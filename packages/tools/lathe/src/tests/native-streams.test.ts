@@ -40,8 +40,28 @@ describe('stream operations reach native', () => {
     expect(out.reach.get('roomEvents')).toEqual({ reach: 'web+native' })
     expect(out.reach.get('exportRows')).toEqual({ reach: 'web+native' })
     expect(out.reach.get('tailLog')).toEqual({ reach: 'web+native' })
-    // A POST stream stays web — its body is a runtime value (the mutation rule).
+    // A POST (here a dual JSON + stream response) stays web — its JSON form
+    // is a mutation, which PMTC does not lower.
     expect(out.reach.get('createChat')?.reach).toBe('web-only')
+  })
+
+  it('a STREAM-ONLY POST reaches native as a TRIGGERED component (see native-triggered-streams)', () => {
+    const spec = JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 't', version: '1' },
+      servers: [{ url: 'https://api.example.com' }],
+      paths: {
+        '/complete': {
+          post: {
+            operationId: 'complete',
+            requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { prompt: { type: 'string' } } } } } },
+            responses: { '200': { content: { 'text/event-stream': { itemSchema: { type: 'object', properties: { data: { type: 'string' } } } } } } },
+          },
+        },
+      },
+    })
+    const r = generate(spec, resolveConfig({ input: 'x', target: 'multiplatform' }))
+    expect(r.reach.get('complete')).toEqual({ reach: 'web+native' })
   })
 
   it('emits a stream component per such operation', () => {

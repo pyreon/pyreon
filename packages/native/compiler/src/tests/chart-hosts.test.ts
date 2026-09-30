@@ -98,15 +98,6 @@ export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
     expect(r.warnings.join('\n')).toContain('<SankeyChart>: needs a `links` attribute on native')
     expect(r.code).toContain('EmptyView()')
   })
-  it('an unsupported OptionChart shape warns by option path instead of naming a view that does not exist', () => {
-    const r = transform(
-      `import { OptionChart } from '@pyreon/charts/option'
-export function C() { return <OptionChart option={{ series: [] }} /> }`,
-      { target: 'swift' },
-    )
-    expect(r.warnings.join('\n')).toContain('<OptionChart option.series>')
-    expect(r.code).not.toContain('OptionChart(')
-  })
   it('importing from @pyreon/charts does not raise the web-only package warning', () => {
     const r = transform(SANKEY, { target: 'swift' })
     expect(r.warnings.some((w) => /web-only/i.test(w))).toBe(false)
@@ -335,7 +326,7 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     const r = transform(FRAMES, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('let pyreonCandles: [Ohlc] = BARS.enumerated().map { (pyreonI, pyreonD) in Ohlc(open: pyreonChartDouble(pyreonD.o), high: pyreonChartDouble(pyreonD.h), low: pyreonChartDouble(pyreonD.l), close: pyreonChartDouble(pyreonD.c)) }')
-    expect(r.code).toContain('let pyreonCats: [String] = BARS.enumerated().map { (pyreonI, pyreonD) in pyreonD.day }')
+    expect(r.code).toContain('let pyreonCats: [String] = BARS.enumerated().map { (pyreonI, pyreonD) in pyreonChartString(pyreonD.day) }')
     expect(r.code).toContain(
       'renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)',
     )
@@ -446,9 +437,9 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.revenue) }')
     expect(r.code).toContain('let pyreonValues1: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost) }')
     expect(r.code).toContain(
-      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#f97362", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
+      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#c88100", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
     )
-    expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonD.name }')
+    expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartString(pyreonD.name) }')
     expect(r.code).toContain(
       `let pyreonSpec: ChartSpec = ChartSpec(width: Double(pyreonGeo.size.width), height: 180.0, series: pyreonSeries, categories: pyreonCats, theme: ${swiftThemeLiteral()}, showXAxis: true, showYAxis: true, showGrid: false, annotations: GOAL)`,
     )
@@ -458,7 +449,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     // bare title — the sentence the web `aria-label` carries, with the title
     // inside it. The invariant is unchanged (a titled host is named by its
     // title); the label says more than the title alone did.
-    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues, xs: $0.onX2 == true ? $0.xs : nil) }, format: nil)))')
+    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: nil)))')
     expect(r.code).toContain('.accessibilityIdentifier("revenue")')
     // The second chart: an index-using accessor, no x, a given width (Group, no reader).
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost + pyreonI) }')
@@ -471,7 +462,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonValues0: List<Double> = MONTHS.mapIndexed { pyreonI, pyreonD -> (pyreonD.revenue).toDouble() }')
     expect(r.code).toContain(
-      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#f97362", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
+      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#c88100", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
     )
     expect(r.code).toContain(
       `val pyreonSpec: ChartSpec = ChartSpec(width = pyreonW, height = 180.0, series = pyreonSeries, categories = pyreonCats, theme = ${kotlinThemeLiteral()}, showXAxis = true, showYAxis = true, showGrid = false, annotations = GOAL)`,
@@ -615,7 +606,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     // report the datum, not the pixel radius it was drawn at.
     expect(r.code).toContain('let pyreonRRaw1: [Double] = CITIES.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.area) }')
     expect(r.code).toContain('let pyreonRadii1: [Double] = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#f97362", width: 2.0, radius: 3.0, label: "Area", showValues: false, rValues: pyreonRRaw1, radii: pyreonRadii1, axis: "right")')
+    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#c88100", width: 2.0, radius: 3.0, label: "Area", showValues: false, rValues: pyreonRRaw1, radii: pyreonRadii1, axis: "right")')
     expect(r.code).toContain(`let pyreonTheme: ChartTheme = ${swiftThemeLiteral({ grid: '"#eeeeee"' })}`)
     expect(r.code).toContain('renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 160.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)')
   })
@@ -625,7 +616,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     expect(r.code).toContain(`theme = ${kotlinThemeLiteral({ label: '"#222222"', fontSize: '12.0' })}, showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1L), y2Format = { v -> plain(v) + "%" })`)
     expect(r.code).toContain('val pyreonRRaw1: List<Double> = CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }')
     expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#f97362", width = 2.0, radius = 3.0, label = "Area", showValues = false, rValues = pyreonRRaw1, radii = pyreonRadii1, axis = "right")')
+    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#c88100", width = 2.0, radius = 3.0, label = "Area", showValues = false, rValues = pyreonRRaw1, radii = pyreonRadii1, axis = "right")')
     expect(r.code).toContain(`val pyreonTheme: ChartTheme = ${kotlinThemeLiteral({ grid: '"#eeeeee"' })}`)
   })
   it('a theme palette colours every mark with no `color` on both targets, and a bad palette warns BY NAME', () => {
@@ -746,7 +737,7 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.code).toContain('let pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.count)')
     expect(r.code).toContain('let pyreonSourceRows = Array(DAYS[pyreonRange.from..<pyreonRange.to])')
     expect(r.code).toContain('let pyreonValues1: [Double] = pyreonSourceRows.enumerated().map { (pyreonJ, pyreonD) -> Double in let pyreonI = pyreonJ + pyreonRange.from; return pyreonChartDouble(pyreonD.avg + pyreonI) }')
-    expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
+    expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonChartString(pyreonD.label) }')
     expect(r.code).toContain('.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDragG.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { pyreonDragG in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')
@@ -1302,7 +1293,7 @@ const MAP_VALUE_LIST = MAP.replace('GeoShape }', 'GeoShape, GeoValue }')
   .replace('export function Regions()', "const VALUES: GeoValue[] = [{ region: 'A', value: 5 }]\nexport function Regions()")
   .replace('values={{ A: 5, B: 9.5 }}', 'values={VALUES}')
 
-describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters (the unlowered list is down to OptionChart)', () => {
+describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters', () => {
   it('Swift: a values record becomes [CalendarValue]; the layout is the web host\'s box; the tap is hitCalendarIndex', () => {
     const r = transform(CALENDAR, { target: 'swift' })
     expect(r.warnings).toEqual([])

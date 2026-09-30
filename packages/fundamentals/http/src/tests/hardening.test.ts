@@ -12,6 +12,7 @@ import {
   HttpError,
   NetworkError,
   ParseError,
+  redactUrl,
   ResponseValidationError,
   ServerError,
   TimeoutError,
@@ -503,6 +504,14 @@ describe('error messages never carry the query string', () => {
     expect(error.message).toContain('GET https://api.test/x ')
     expect(error.message).not.toContain('pw')
     expect(error.message).not.toContain('k=v')
+  })
+
+  it('strips a fragment that has no query string ahead of it', () => {
+    // Every other case here carries `?token=...#frag`, where the fragment
+    // sits AFTER the query and is already cut off by the `end = q`
+    // shortening — `end === h` never moves. A URL with a fragment and NO
+    // query is the shape that actually exercises the fragment branch.
+    expect(redactUrl('https://api.test/x#section')).toBe('https://api.test/x')
   })
 
   it('logger lines', async () => {

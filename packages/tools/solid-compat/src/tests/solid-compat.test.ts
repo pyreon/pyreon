@@ -499,10 +499,12 @@ describe('@pyreon/solid-compat', () => {
 
   it('lazy component uses __loading protocol before loaded (for Suspense)', () => {
     const Lazy = lazy(() => Promise.resolve({ default: () => h('div', null, 'loaded') }))
-    // Before resolved, __loading returns true and component returns null
+    // Before resolved, __loading returns true and the component renders
+    // nothing — through an accessor, which renders the component once loaded.
     expect(Lazy.__loading()).toBe(true)
     const result = Lazy({})
-    expect(result).toBeNull()
+    expect(typeof result).toBe('function')
+    expect((result as () => unknown)()).toBeNull()
   })
 
   it('lazy component renders after loading', async () => {

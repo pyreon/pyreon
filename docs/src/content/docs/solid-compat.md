@@ -855,7 +855,7 @@ function lazy<P>(
 
 Wraps a dynamic import for code splitting. The returned component renders `null` until the module resolves. Call `.preload()` to start loading before the component is rendered.
 
-Loading starts on first use (first render, first `<Suspense>` check, or `.preload()`). On the server, `renderToString` and `renderToStream` wait for a chunk that has not loaded yet, so the HTML carries the real content and hydration adopts it.
+Loading starts on first use (first render, first `<Suspense>` check, or `.preload()`). On the server, `renderToString` and `renderToStream` wait for a chunk that has not loaded yet, so the HTML carries the real content and hydration adopts it — even when the browser's chunk has not landed yet: the server nodes stay in place and are hydrated when it does.
 
 ```tsx
 const Dashboard = lazy(() => import('./Dashboard'))

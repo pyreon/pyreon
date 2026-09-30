@@ -100,10 +100,10 @@
  *  3. MCP server `validate` tool
  */
 
-import { detectPlain } from './plain'
+import { detectPlain, transformPlain } from './plain'
 import { filterSuppressed } from './detector-suppression'
 import ts from 'typescript'
-import { planChartsImports } from './charts-migration'
+import { findChartsLegacyImports } from './charts-migration'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -130,6 +130,7 @@ export type PyreonDiagnosticCode =
   | 'accessor-uncalled-in-template'
   | 'accessor-uncalled-in-condition'
   | 'charts-legacy-import'
+  | 'plain-mode'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -1497,22 +1498,23 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
 }
 
 /**
- * `charts-legacy-import`: an `@pyreon/charts` import the entry-point change
- * broke — `/plot`, `/manual`, `/vite`, the ECharts wrapper's names from the
- * main entry, `Plot` / `Tip`. File-level, because telling the old ECharts
- * `<Chart options>` from the new grammar `<Chart>` needs the whole file.
+ * `charts-legacy-import`: an `@pyreon/charts` import that still targets the
+ * 0.51 ECharts wrapper, which 0.52 removed — `/manual`, `/vite`, `/webview`,
+ * wrapper-only names like `useChart`, or `<Chart options>`. File-level,
+ * because telling the old `<Chart options>` from the new grammar `<Chart>`
+ * needs the whole file. Not fixable: an ECharts option has no mechanical
+ * translation to marks.
  */
 function detectChartsLegacyImports(ctx: DetectContext): void {
-  for (const plan of planChartsImports(ctx.sf)) {
-    const renamed = [...plan.renames].map(([a, b]) => `\`${a}\` → \`${b}\``).join(', ')
+  for (const hit of findChartsLegacyImports(ctx.sf)) {
     pushDiag(
       ctx,
-      plan.node,
+      hit.node,
       'charts-legacy-import',
-      `This \`@pyreon/charts\` import uses the old entry points. The main entry is now Pyreon's own engine (\`<Chart>\` with mark children, formerly \`<Plot>\` at \`/plot\`), the ECharts wrapper is \`<EChart>\` at \`@pyreon/charts/echarts\`, and the rest of the engine is split across \`/option\`, \`/svg\` and \`/engine\`.${renamed === '' ? '' : ` Renames: ${renamed}.`}`,
-      getNodeText(ctx, plan.node),
-      plan.replacement,
-      true,
+      `This \`@pyreon/charts\` import targets the ECharts wrapper, which 0.52 removed (${hit.reason}). \`@pyreon/charts\` is now Pyreon's own engine: \`<Chart>\` takes your rows and marks as children, so rewrite the chart's option as marks — \`series: [{ type: 'bar' }]\` becomes \`<Bar y="…" />\`, \`tooltip\` becomes \`<Tooltip />\`. The \`/vite\` tslib alias is no longer needed; delete it.`,
+      getNodeText(ctx, hit.node),
+      `import { Bar, Chart, Tooltip } from '@pyreon/charts'\n// <Chart data={rows} x="month"><Bar y="revenue" /><Tooltip /></Chart>`,
+      false,
     )
   }
 }
@@ -1527,6 +1529,35 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Plain Mode footguns — the pre-pass's OWN warnings (shallow-state mutation,
+ * a write to `derived`, an unlowerable `signalOf`, …) surfaced as detector
+ * findings. The pre-pass is the single source of truth, so this can never
+ * disagree with the build; without it `validate` / `pyreon check` / doctor
+ * saw a plain file as clean while the compiler was warning about it.
+ */
+function detectPlainModeWarnings(ctx: DetectContext, filename: string): void {
+  let result
+  try {
+    result = transformPlain(ctx.code, filename)
+  } catch {
+    return
+  }
+  if (!result) return
+  const lines = ctx.code.split('\n')
+  for (const w of result.warnings) {
+    ctx.diagnostics.push({
+      code: 'plain-mode',
+      message: w.message.replace(/^\[plain\] /, 'Plain Mode: '),
+      line: w.line,
+      column: w.column,
+      current: (lines[w.line - 1] ?? '').trim(),
+      suggested: 'See the message — the compiler cannot give this line the meaning it reads as.',
+      fixable: false,
+    })
+  }
+}
 
 export function detectPyreonPatterns(code: string, filename = 'input.tsx'): PyreonDiagnostic[] {
   assertClassicTs()
@@ -1545,6 +1576,7 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
   }
   visit(ctx, sf)
   detectChartsLegacyImports(ctx)
+  if (ctx.plainMode) detectPlainModeWarnings(ctx, filename)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
   ctx.diagnostics.sort((a, b) => a.line - b.line || a.column - b.column)
   // …then drop what a `// pyreon-lint-ignore` above the line silenced. A

@@ -130,7 +130,7 @@ describe('<BoxplotChart> lowers', () => {
     const r = transform(BOXPLOT, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('let pyreonBoxes: [FiveNumber] = ROWS.enumerated().map { (pyreonI, pyreonD) in fiveNumber((pyreonD.samples).map { pyreonChartDouble($0) }) }')
-    expect(r.code).toContain('let pyreonCats: [String] = ROWS.enumerated().map { (pyreonI, pyreonD) in pyreonD.team }')
+    expect(r.code).toContain('let pyreonCats: [String] = ROWS.enumerated().map { (pyreonI, pyreonD) in pyreonChartString(pyreonD.team) }')
     expect(r.code).toContain('PyreonChartEntrance(durationMs: 700.0) { pyreonEntrance in')
     expect(r.code).toContain('renderBoxplotChart(pyreonBoxes, Double(pyreonGeo.size.width), 220.0, pyreonCats, pyreonTheme, BoxplotOptions(), pyreonChartMeasure, nil, pyreonEntrance)')
     expect(r.code).toContain('hitBoxplotChart(pyreonBoxes.count, Double(pyreonGeo.size.width), 220.0, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y), pyreonBoxes)')

@@ -1622,7 +1622,11 @@ public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never
 }
-public enum PyreonJSON { public static func encode<T>(_ value: T) -> String { "" } }
+public enum PyreonJSON {
+  public static func encode<T>(_ value: T) -> String { "" }
+  // JSON.stringify(x) lowers here. Encodable, as in the runtime.
+  public static func stringify<T: Encodable>(_ value: T) -> String { "" }
+}
 // PyreonSchema — copied VERBATIM from runtime-swift's PyreonSchema.swift
 // (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
 // throws / returns these; they live in the runtime so two schema-bearing
@@ -1651,11 +1655,6 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
-public struct PyreonChartWebViewSelection { public let name: String? }
-public struct PyreonChartWebViewEvent { public let name: String; public let payload: [String: Any] }
-public struct PyreonChartWebViewError: Error { public let message: String }
-public func pyreonChartWebViewData(option: String, commands: String, loading: Bool, loadingOptions: String, group: String? = nil) -> String { option }
-public func pyreonDispatchChartWebViewMessage(_ message: String, onSelect: ((PyreonChartWebViewSelection) -> Void)? = nil, onEvent: ((PyreonChartWebViewEvent) -> Void)? = nil, onError: ((PyreonChartWebViewError) -> Void)? = nil) {}
 public struct PyreonFlowWebViewSelection { public let id: String; public let data: Any? }
 public struct PyreonFlowWebViewViewport { public let x: Double; public let y: Double; public let zoom: Double }
 public struct PyreonFlowWebViewEvent { public let type: String; public let id: String?; public let data: Any?; public let source: String?; public let target: String?; public let viewport: PyreonFlowWebViewViewport? }
@@ -2011,8 +2010,9 @@ public final class PyreonStream<E> {
   public func fail(_ failure: Error) {}
   public func abort() {}
   public func restart() {}
-  @MainActor public func runSse(_ request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: @escaping (PyreonSseMessage) throws -> E) async {}
-  @MainActor public func runNdjson(_ request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: @escaping (String) throws -> E) async {}
+  public func idle() {}
+  @MainActor public func runSse(_ request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", onEvent: ((E) -> Void)? = nil, decode: @escaping (PyreonSseMessage) throws -> E) async {}
+  @MainActor public func runNdjson(_ request: PyreonStreamRequest, accept: String = "application/x-ndjson", onEvent: ((E) -> Void)? = nil, decode: @escaping (String) throws -> E) async {}
 }
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):
@@ -2061,6 +2061,10 @@ public enum PyreonURL {
   public static func encodePathParam(_ value: Int) -> String { "" }
   public static func encodePathParam(_ value: Double) -> String { "" }
 }
+// pyreonNumberString — JS \`String(number)\`, which every Double-typed
+// template interpoland lowers through. Mirrors the real overload pair.
+public func pyreonNumberString(_ v: Double) -> String { "" }
+public func pyreonNumberString(_ v: Int) -> String { "" }
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}
@@ -2287,8 +2291,6 @@ public final class PyreonChartHandle {
   public var seriesCount: Int = 0
   public var brushType: String = ""
   public var areas: [BrushArea] = []
-  public var step: Int = -1
-  public var playing: Bool = false
   public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
   public func dispatch(_ action: ChartActionInput) {}
 }

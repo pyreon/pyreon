@@ -30,6 +30,7 @@ import {
   isSwiftUIAvailable,
   validateKotlin,
   validateSwiftTypecheck,
+  kotlinCanvasDataClasses,
 } from '../validate'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
@@ -39,6 +40,14 @@ const SWIFT_OUT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonCha
 const KOTLIN_OUT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt'
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const CANVAS_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartCanvas.kt'
+// The engine prints numbers through the runtime's JS-faithful formatter.
+const NUMBER_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'
+const NUMBER_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonNumber.kt'
+const withoutPackage = (code: string): string =>
+  code
+    .split('\n')
+    .filter((l) => !l.startsWith('package '))
+    .join('\n')
 
 describe('native chart engine — generated, drift-locked, compile-proven', () => {
   it('committed files are byte-identical to a fresh generation', () => {
@@ -68,14 +77,13 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
   })
 
   it.skipIf(!isSwiftUIAvailable())('iOS: canvas + engine typecheck as one unit', () => {
-    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(SWIFT_OUT))
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(NUMBER_SWIFT) + '\n' + read(SWIFT_OUT))
     expect(r.ok, r.error ?? '').toBe(true)
   }, 30_000)
 
   it.skipIf(!isKotlincAvailable())('Android: engine compiles with the canvas-owned types (verbatim)', () => {
     const canvas = read(CANVAS_KT)
-    const decls: string[] = []
-    for (const m of canvas.matchAll(/data class Pyreon\w+\([^)]*\)/g)) decls.push(m[0])
+    const decls = kotlinCanvasDataClasses(canvas)
     // Derived, not listed — a hand list is how the gradient types came back
     // `unresolved reference`. The three originals must still be among them.
     for (const name of ['PyreonChartPt', 'PyreonChartRect', 'PyreonDrawCmd']) {
@@ -85,7 +93,7 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
       .split('\n')
       .filter((l) => !l.startsWith('package '))
       .join('\n')
-    const r = validateKotlin(decls.join('\n') + '\n' + engineBody)
+    const r = validateKotlin(decls.join('\n') + '\n' + withoutPackage(read(NUMBER_KT)) + '\n' + engineBody)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 90_000)
 })

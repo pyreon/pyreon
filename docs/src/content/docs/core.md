@@ -1363,6 +1363,23 @@ function App() {
 
 The `Suspense` component checks if a child VNode's type has a `__loading()` signal that returns `true`. While loading, the fallback is displayed; once the module resolves, the actual component renders.
 
+#### Async descendants at any depth
+
+A `lazy()` component (or an `async function` component) does not have to be the *direct* child. Anywhere below a `<Suspense>`, a still-loading one registers with the **nearest** boundary, which shows its fallback until every registered load has settled — the React / Vue model.
+
+```tsx
+<Suspense fallback={<Spinner />}>
+  <Layout>
+    <Sidebar />
+    <LazyChart />   {/* suspends the boundary from inside Layout */}
+  </Layout>
+</Suspense>
+```
+
+While it waits, the boundary's content stays **mounted off-screen** (moved into a detached fragment, not torn down), so `Layout` and `Sidebar` keep their DOM and state, and their setup and `onMount` run once. This also applies after the boundary first resolved: a descendant that starts loading later (a `<Show>` flipping to a lazy component) brings the fallback back, and the content returns with its state intact — a field the user typed into keeps its text. Focus inside the content is lost while it is off-screen.
+
+An inner `<Suspense>` catches its own descendants; the outer one is not affected. Hydration never shows a fallback over server-rendered content: the server already waited for every lazy, and the still-loading ones keep their server nodes until their chunk lands.
+
 ### ErrorBoundary
 
 Catches errors thrown by child components and renders a fallback UI instead of crashing the entire tree. Also reports caught errors to any registered telemetry handlers.
@@ -1472,7 +1489,7 @@ All other props are forwarded to the resolved component or element. If `componen
 
 ## lazy
 
-Lazily load a component module. Returns a wrapper component that shows `null` while loading and the resolved component once ready. Pairs with `Suspense` to show a fallback during loading.
+Lazily load a component module. Returns a wrapper component that renders nothing while loading and the resolved component once ready — whether or not a `Suspense` is around it. Pairs with `Suspense` to show a fallback during loading.
 
 ```tsx
 import { lazy, Suspense } from '@pyreon/core'
@@ -1491,10 +1508,16 @@ function Dashboard() {
 ### How lazy Works
 
 1. `lazy()` starts the dynamic `import()` immediately.
-2. While loading, the wrapper component returns `null` and exposes a `__loading()` signal that returns `true`.
+2. The wrapper renders through an accessor: nothing while loading, the component once the module resolves. It exposes a `__loading()` signal that returns `true` meanwhile, and a `__load()` promise that settles when the import does.
 3. `Suspense` detects `__loading()` and renders the fallback instead.
 4. Once the module resolves, the signal flips and `Suspense` renders the actual component.
-5. If the import fails, the error is thrown during rendering and can be caught by `ErrorBoundary`.
+5. If the import fails, the error is thrown during rendering and can be caught by `ErrorBoundary` (a failure that arrives after the wrapper mounted reaches the boundary too).
+
+### lazy and SSR / hydration
+
+On the server, `renderToString` and `renderToStream` wait for a still-loading chunk, so the HTML carries the real content. If the client's chunk has NOT landed when `hydrateRoot` reaches the component, the server's nodes stay exactly where they are (no fallback, no empty gap) and are hydrated in place once the chunk lands — keeping node identity, focus and typed input. Preloading is still worth doing to make the page interactive sooner, but it is no longer needed for correctness.
+
+The server output of a lazy is bracketed `<!--$-->…<!--/$-->`, the same range markers any reactive child gets: that range is what hydration keeps standing while the chunk loads.
 
 ```ts
 function lazy<P extends Props>(load: () => Promise<{ default: ComponentFn<P> }>): LazyComponent<P>

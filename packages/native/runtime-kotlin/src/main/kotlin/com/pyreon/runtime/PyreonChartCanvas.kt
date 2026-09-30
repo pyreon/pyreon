@@ -125,6 +125,12 @@ data class PyreonDrawCmd(
     var weight: String? = null,
     /** A text halo's width, ECharts' `textBorderWidth`; the colour is `stroke`. */
     var strokeWidth: Double? = null,
+    /** The row key of a keyed bar (`ChartSpec.rowKeys`) — the tween matches keyed commands by key. */
+    var key: String? = null,
+    /** Where a keyed bar grows from and shrinks to (the engine's `growEdgeRect`). */
+    var enter: PyreonChartRect? = null,
+    /** One row key per point of a keyed line. */
+    var pointKeys: List<String>? = null,
 )
 
 /**
@@ -222,6 +228,20 @@ fun pyreonChartDouble(v: Double): Double = v
 
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
 fun pyreonChartDouble(v: Long): Double = v.toDouble()
+
+/**
+ * A category label from an accessor-mapped field. A String passes through; a
+ * number prints as JavaScript's `String(number)` does. The Swift twin exists
+ * because `[String]` rejects a number outright; here it keeps the label from
+ * reading `1.7E12`.
+ */
+fun pyreonChartString(v: String): String = v
+
+fun pyreonChartString(v: Double): String = pyreonNumberString(v)
+
+fun pyreonChartString(v: Int): String = v.toString()
+
+fun pyreonChartString(v: Long): String = v.toString()
 
 /** Locale-aware chart formatters matching the web host's `Intl` defaults. */
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String {
@@ -538,6 +558,77 @@ fun pyreonUniversalTweenChartCommands(from: List<PyreonDrawCmd>, to: List<Pyreon
     return out
 }
 
+/** True when a draw list carries row keys (a keyed `<Chart by>` spec): its transition matches commands by key. */
+fun pyreonChartCommandsAreKeyed(cmds: List<PyreonDrawCmd>): Boolean = cmds.any { it.key != null || it.pointKeys != null }
+
+/**
+ * The keyed data join between two frames of a keyed chart — the native twin
+ * of the web's keyed geometry morph (see the Swift runtime for the contract):
+ * keyed bars slide between rects, enter from and exit into their `enter` rect
+ * (exiting first, so survivors slide over them); a keyed line matches points
+ * by key; everything unkeyed tweens by position.
+ */
+fun pyreonKeyedTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>, progress: Double): List<PyreonDrawCmd> {
+    if (progress >= 1.0) return to
+    val chrome = pyreonTweenChartCommands(from.filter { it.key == null && it.pointKeys == null }, to.filter { it.key == null && it.pointKeys == null }, progress)
+    val bars = LinkedHashMap<String, MutableList<PyreonDrawCmd>>()
+    for (c in from) { val k = c.key; if (c.kind == "rect" && k != null) bars.getOrPut(k) { mutableListOf() }.add(c) }
+    // Every old keyed point, by series (the polyline's `key`, its label) then row.
+    val linePoints = HashMap<String, HashMap<String, PyreonChartPt>>()
+    for (c in from) {
+        val keys = c.pointKeys ?: continue
+        val pts = c.points ?: continue
+        if (c.kind != "polyline") continue
+        val series = linePoints.getOrPut(c.key ?: "") { HashMap() }
+        for (i in keys.indices) if (i < pts.size) series[keys[i]] = pts[i]
+    }
+    val targetCount = HashMap<String, Int>()
+    for (c in to) { val k = c.key; if (c.kind == "rect" && k != null) targetCount[k] = (targetCount[k] ?: 0) + 1 }
+    val exiting = ArrayList<PyreonDrawCmd>()
+    for (key in bars.keys.sorted()) {
+        for (c in bars.getValue(key).drop(targetCount[key] ?: 0)) {
+            val r = c.rect
+            exiting.add(if (r == null) c else c.copy(rect = pyreonChartMixRect(r, c.enter ?: PyreonChartRect(r.x, r.y + r.h, r.w, 0.0), progress)))
+        }
+    }
+    val out = ArrayList<PyreonDrawCmd>()
+    var chromeAt = 0
+    val seen = HashMap<String, Int>()
+    var placedExits = false
+    for (c in to) {
+        if (c.key == null && c.pointKeys == null) {
+            if (chromeAt < chrome.size) out.add(chrome[chromeAt])
+            chromeAt++
+            continue
+        }
+        if (!placedExits) { out.addAll(exiting); placedExits = true }
+        // A keyed value label waits for the tween to land, as the web morph hides it.
+        if (c.kind == "text") continue
+        val keys = c.pointKeys
+        val pts = c.points
+        if (c.kind == "polyline" && keys != null && pts != null) {
+            val at = linePoints[c.key ?: ""] ?: HashMap()
+            out.add(c.copy(points = pts.indices.map { i ->
+                val o = if (i < keys.size) at[keys[i]] else null
+                if (o == null) pts[i] else pyreonChartMixPoint(o, pts[i], progress)
+            }))
+            continue
+        }
+        val key = c.key
+        val r = c.rect
+        if (key == null || r == null) { out.add(c); continue }
+        val n = seen[key] ?: 0
+        seen[key] = n + 1
+        val old = bars[key]?.getOrNull(n)?.rect
+        out.add(c.copy(rect = pyreonChartMixRect(old ?: c.enter ?: PyreonChartRect(r.x, r.y + r.h, r.w, 0.0), r, progress)))
+    }
+    if (!placedExits) out.addAll(exiting)
+    return out
+}
+
+private fun pyreonChartMixRect(a: PyreonChartRect, b: PyreonChartRect, t: Double): PyreonChartRect =
+    PyreonChartRect(pyreonChartMix(a.x, b.x, t), pyreonChartMix(a.y, b.y, t), pyreonChartMix(a.w, b.w, t), pyreonChartMix(a.h, b.h, t))
+
 @Composable
 private fun PyreonStaticChartCanvas(
     cmds: List<PyreonDrawCmd>,
@@ -723,6 +814,13 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
     }
 }
 
+/** One frame of a draw-list transition: keyed by row when the target is keyed, else universal or positional. */
+private fun pyreonChartTween(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>, progress: Double, universal: Boolean): List<PyreonDrawCmd> = when {
+    pyreonChartCommandsAreKeyed(to) -> pyreonKeyedTweenChartCommands(from, to, progress)
+    universal -> pyreonUniversalTweenChartCommands(from, to, progress)
+    else -> pyreonTweenChartCommands(from, to, progress)
+}
+
 /** Draw-list transition host for reactive chart updates on Android. */
 @Composable
 fun PyreonChartCanvas(
@@ -740,11 +838,7 @@ fun PyreonChartCanvas(
     var target by remember { mutableStateOf(cmds) }
     val progress = remember { Animatable(1f) }
     LaunchedEffect(cmds, durationMs, universal, reduceMotion) {
-        from = if (universal) {
-            pyreonUniversalTweenChartCommands(from, target, progress.value.toDouble())
-        } else {
-            pyreonTweenChartCommands(from, target, progress.value.toDouble())
-        }
+        from = pyreonChartTween(from, target, progress.value.toDouble(), universal)
         target = cmds
         progress.snapTo(if (!animated || reduceMotion || durationMs <= 0.0 || from == target) 1f else 0f)
         if (progress.value < 1f) {
@@ -752,11 +846,7 @@ fun PyreonChartCanvas(
             from = target
         }
     }
-    val rendered = if (universal) {
-        pyreonUniversalTweenChartCommands(from, target, progress.value.toDouble())
-    } else {
-        pyreonTweenChartCommands(from, target, progress.value.toDouble())
-    }
+    val rendered = pyreonChartTween(from, target, progress.value.toDouble(), universal)
     PyreonStaticChartCanvas(rendered, modifier)
 }
 
@@ -968,12 +1058,10 @@ class PyreonChartHandle {
     var seriesCount by mutableStateOf(0L)
     var brushType by mutableStateOf("")
     var areas by mutableStateOf(listOf<BrushArea>())
-    var step by mutableStateOf(-1L)
-    var playing by mutableStateOf(false)
 
     fun dispatch(action: ChartActionInput) {
         val next = applyChartAction(
-            ChartActionState(zoom = zoom, hover = hover, selected = selected, hidden = hidden, seriesCount = seriesCount, brushType = brushType, areas = areas, step = step, playing = playing),
+            ChartActionState(zoom = zoom, hover = hover, selected = selected, hidden = hidden, seriesCount = seriesCount, brushType = brushType, areas = areas),
             action,
         )
         if (next.zoom != zoom) zoom = next.zoom
@@ -982,8 +1070,6 @@ class PyreonChartHandle {
         if (next.hidden != hidden) hidden = next.hidden
         if (next.brushType != brushType) brushType = next.brushType
         if (next.areas != areas) areas = next.areas
-        if (next.step != step) step = next.step
-        if (next.playing != playing) playing = next.playing
     }
 }
 

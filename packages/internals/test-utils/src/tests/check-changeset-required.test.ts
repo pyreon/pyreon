@@ -358,6 +358,11 @@ describe('isConsumerAffectingFile', () => {
       expect(isTestRunnerConfigPath('packages/x/vitest.config.ts')).toBe(true)
       expect(isTestRunnerConfigPath('vitest.node.config.mts')).toBe(true)
       expect(isTestRunnerConfigPath('vitest.config.js')).toBe(true)
+      // Multi-segment infix — e.g. the cross-engine browser suite opt-in
+      // (`vitest.browser.engines.config.ts`) — must match too: a single
+      // dotted segment previously stopped at `vitest.browser.config.ts` and
+      // fell through to "consumer-affecting" for anything more qualified.
+      expect(isTestRunnerConfigPath('packages/x/vitest.browser.engines.config.ts')).toBe(true)
       // tsconfig has its OWN predicate (isRepoTsconfigPath) — not this one.
       expect(isTestRunnerConfigPath('packages/x/tsconfig.json')).toBe(false)
       expect(isTestRunnerConfigPath('packages/x/src/vitest-helpers.ts')).toBe(false)

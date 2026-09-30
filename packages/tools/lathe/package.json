@@ -61,7 +61,8 @@
     "lint": "oxlint .",
     "bench": "bun build bench/scaling.ts --target=node --format=esm --outfile=bench/.out/scaling.mjs && node bench/.out/scaling.mjs",
     "bench:jsc": "bun bench/scaling.ts",
-    "corpus": "bun scripts/corpus.ts"
+    "corpus": "bun scripts/corpus.ts",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.1.0",
@@ -76,10 +77,11 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero-content": "workspace:*",
+    "@vitest/browser-playwright": "^5.0.2",
     "axios": "^1.20.0",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.14.5",
     "ky": "^2.1.0",
-    "oxc-parser": "^0.148.0",
+    "oxc-parser": "^0.152.0",
     "zod": "^4.6.5"
   },
   "dependencies": {

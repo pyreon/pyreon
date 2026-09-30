@@ -3,7 +3,6 @@ import {
   applyBrushSelection,
   brushAreaFromDrag,
   brushAreaUsable,
-  brushDataIndex,
   brushDatumPoints,
   brushOnlySeries,
   brushSelection,
@@ -76,30 +75,13 @@ describe('brushDatumPoints — each series kind', () => {
     const d2 = pts[2]!.x - pts[0]!.x
     expect(d1 / d2).toBeCloseTo(0.1, 5)
   })
-  it('a series on the second x axis places by its own xs', () => {
-    const s = spec({
-      xValues: [0, 1, 2],
-      series: [series('line', [5, 5, 5]), series('line', [5, 5, 5], { onX2: true, xs: [0, 90, 100] })],
-    })
-    const l = layoutChart(s, measure)
-    const own = brushDatumPoints(s, l, 1)
-    expect(own.length).toBe(3)
-    expect((own[1]!.x - own[0]!.x) / (own[2]!.x - own[0]!.x)).toBeCloseTo(0.9, 5)
-  })
 })
 
-describe('brushOnlySeries / brushDataIndex', () => {
+describe('brushOnlySeries', () => {
   const sel = [{ seriesIndex: 0, dataIndex: [1] }, { seriesIndex: 1, dataIndex: [2] }]
   it('an empty list keeps every series; a listed index keeps only it', () => {
     expect(brushOnlySeries(sel, [])).toBe(sel)
     expect(brushOnlySeries(sel, [1])).toEqual([{ seriesIndex: 0, dataIndex: [] }, { seriesIndex: 1, dataIndex: [2] }])
-  })
-  it('maps a visual index back through an inverted category axis', () => {
-    const plain = spec()
-    expect(brushDataIndex(plain, 0)).toBe(0)
-    const inv = spec({ xInverse: true })
-    expect(brushDataIndex(inv, 0)).toBe(3)
-    expect(brushDataIndex(inv, 3)).toBe(0)
   })
 })
 

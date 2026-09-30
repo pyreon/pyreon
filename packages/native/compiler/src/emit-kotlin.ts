@@ -22,11 +22,21 @@ import {
   flowRectLiteralFields,
   NODE_RESIZER_FOREIGN_NODE_WARNING,
   nodeResizerTargetsAnotherNode,
+  classifyFlowPathMember,
+  unloweredFlowLiteralWarning,
+  unsupportedFlowOptionsWarning,
+  flowLayoutOptionsDroppedWarning,
+  FLOW_LAYOUT_OPTION_KEYS,
+  droppedNodeToolbarWarning,
+  addEdgeDropWarnings,
+  FLOW_MARKER_LITERAL_SHAPE,
+  droppedFlowEdgePatchWarning,
+  unifyFlowDataRows,
+  flowDataConflictWarning,
 } from './flow-lowering'
 import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
 import { lowerFlowPlainElement } from './flow-dom'
 import { PALETTE_STROKE, VIEWPORT_PORTAL_WARNING, planBaseEdge, planEdgeText } from './flow-base-edge'
-import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
@@ -51,6 +61,7 @@ import {
   explainUntypeableField,
   synthLiteralStructName,
   synthTypedStructName,
+  namedInlineParamType,
   isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -71,6 +82,7 @@ import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
+  buildModuleConstTypes,
   arrayFromMapRewrite,
   classifyNegativeSlice,
   classifyOptionalCondition,
@@ -111,7 +123,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -134,6 +146,7 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  forBlockBodyWarning,
   narrowViewBlock,
   planViewBlock,
   propRefName,
@@ -156,6 +169,7 @@ import {
   structuralPropDynamicWarning,
   unloweredPropWarning,
 } from './unlowered-props'
+import { ignoredTrailingArgs, methodReceiverKind, type MethodReceiver, uncoveredMethodShapeWarning } from './method-shapes'
 import type {
   AttrIR,
   ChildIR,
@@ -183,6 +197,17 @@ import type {
 // `_enumNames` / `_signalEnumTypes` / `_activeEnumType` comment for
 // the structural rationale (avoiding ctx-threading at all call sites).
 let _enumNames: Set<string> = new Set()
+
+/**
+ * One template-literal interpoland. A Double goes through the runtime's
+ * `pyreonNumberString`, because Kotlin interpolation prints a whole-valued
+ * Double as `7.0` where JavaScript's `String(number)` prints `7`.
+ */
+function kotlinTemplatePart(expr: ExprIR, indent: number): string {
+  const emitted = emitKotlinExpr(expr, indent)
+  const t = inferType(expr, _kotlinExprInferCtx)
+  return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
+}
 
 /**
  * The enum name an expression's INFERRED type names, or undefined.
@@ -305,8 +330,18 @@ type StaticFlowNodeToolbar = {
   contentComponent: string
 }
 let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar[]> = new Map()
+/**
+ * The exact `<NodeToolbar>` elements the up-front extraction lowered. The
+ * element emitter decides per TOOLBAR, not per component: a node component
+ * with one static toolbar and one inside a conditional lowers the first and
+ * must still name the second as dropped. Keyed by IR node (one transform's
+ * lifetime), so a WeakSet — nothing to reset or evict.
+ */
+const _extractedFlowToolbarsKotlin: WeakSet<ExprIR> = new WeakSet()
 /** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
 let _flowRendererComponentsKotlin: Set<string> = new Set()
+/** The `<Flow nodeTypes>` renderers only (a `<NodeToolbar>` lowers nowhere else). */
+let _flowNodeRendererComponentsKotlin: Set<string> = new Set()
 let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -654,6 +689,8 @@ let _helperFnNames: Set<string> = new Set()
  * `derivedStateOf` mostly self-infers, but a helper call in a typed position
  * still benefits). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+/** File-scope `const`/`let` name → type (`InferenceCtx.moduleConsts`); rebuilt per file. */
+let _moduleConstTypes: Map<string, TypeIR> = new Map()
 let _helperParamTypesKotlin: Map<string, TypeIR[]> = new Map()
 const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 /**
@@ -748,9 +785,12 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  */
 let _emitWarnings: string[] = []
 
-// JS-faithful `String(double)` — see the Swift twin. Emitted once when used,
-// `private` for the same reason: one per file, so a public top-level `fun`
-// collided across files in one Gradle source set (one package).
+// JS-faithful `String(double)` — see the Swift twin's doc comment for why
+// this is `private` (file-scoped) rather than the bare top-level default:
+// the checked-in chart engine emits the SAME idiom under the SAME name, and
+// in a real app both land in one module — `private` lets each file repeat
+// the declaration without an "invalid redeclaration" the moment they're
+// compiled together.
 let _needsKotlinNumString = false
 const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
     if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
@@ -844,7 +884,10 @@ export function emitKotlin(
   // skipped inside helper bodies. Seeded with the file's structs AND the
   // helper return types, so a local bound from a helper call types too.
   // Overwritten per component, so a component-bearing file is unaffected.
-  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // File-scope bindings, typed once: a component (or helper) reading
+  // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
+  _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
+  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -860,6 +903,7 @@ export function emitKotlin(
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
   _flowRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name))
+  _flowNodeRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name), 'nodeTypes')
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -898,6 +942,7 @@ export function emitKotlin(
     if (resizer.invalid) _flowComponentsWithInvalidResizersKotlin.add(component.name)
     if (resizer.foreignNodeId) _flowComponentsWithForeignResizerKotlin.add(component.name)
     const toolbars = collectStaticFlowNodeToolbarsKotlin(component.returnExpr)
+    for (const toolbar of toolbars) _extractedFlowToolbarsKotlin.add(toolbar)
     if (toolbars.length > 0) {
       const parsedToolbars: StaticFlowNodeToolbar[] = []
       for (const [toolbarIndex, toolbar] of toolbars.entries()) {
@@ -2188,7 +2233,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
-  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs)
+  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs, _moduleConstTypes)
   // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).
@@ -2200,6 +2245,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     c.props,
     c.propsParamName,
     _helperReturns,
+    _moduleConstTypes,
   )
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
@@ -2716,10 +2762,25 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
         .join(', ')})`,
     )
   }
+  // A runtime body is serialized per run; it is ALSO in the key, so a change
+  // re-opens the stream — the web's tracked-source semantic.
+  const bodyJson = d.requestBodyExpr !== undefined ? emitKotlinExpr(d.requestBodyExpr, 0) : undefined
   if (d.requestBody !== undefined) req.push(`body = ${kotlinStr(d.requestBody)}`)
+  else if (bodyJson !== undefined) req.push(`body = ${bodyJson}`)
   const request = `PyreonStreamRequest(${req.join(', ')})`
   const data = kotlinType(d.dataType, ctx)
-  const out = [`  DisposableEffect("\${${url}}#\${${name}.restartTick.value}") {`]
+  const enabled = d.enabled !== undefined ? emitKotlinExpr(d.enabled, 0) : undefined
+  // Only the parts that exist join the key, so a plain stream's emit is unchanged.
+  const key = [`\${${url}}`, `\${${name}.restartTick.value}`]
+  if (enabled !== undefined) key.push(`\${${enabled}}`)
+  if (bodyJson !== undefined) key.push(`\${${bodyJson}}`)
+  const onEvent =
+    d.onEvent !== undefined
+      ? `, onEvent = { ${d.onEvent.param === '_' ? '_' : kotlinIdent(d.onEvent.param)} -> ${d.onEvent.body.map((st) => emitKotlinStatement(st, 6, ctx)).join('; ')} }`
+      : ''
+  const out = [`  DisposableEffect("${key.join('#')}") {`]
+  const pad = enabled !== undefined ? '      ' : '    '
+  if (enabled !== undefined) out.push(`    if (${enabled}) {`)
   if (d.format === 'sse') {
     const opts: string[] = []
     if (d.events) opts.push(`events = listOf(${d.events.map((e) => kotlinStr(e)).join(', ')})`)
@@ -2731,11 +2792,17 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
     )
     const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
     out.push(
-      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
+      `${pad}${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}${onEvent}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
     )
   } else {
     const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
-    out.push(`    ${name}.startNdjson(${request}${accept}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+  }
+  if (enabled !== undefined) {
+    // The web's disabled branch: stop, read `idle`, keep what was received.
+    out.push(`    } else {`)
+    out.push(`      ${name}.idle()`)
+    out.push(`    }`)
   }
   out.push(`    onDispose { ${name}.stop() }`)
   out.push(`  }`)
@@ -3002,8 +3069,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // `const s = useStream(…)` → a remembered PyreonStream; the
   // `DisposableEffect` that starts and stops it is emitted with the harnesses.
+  // `main = PyreonStreamMain` puts every state write and `onEvent` call on the
+  // main looper, where the web runs the whole hook — the loop itself reads on
+  // its own thread, and without this `onEvent` ran there.
   if (d.kind === 'stream') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L, main = PyreonStreamMain) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -3457,15 +3527,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         inferredRowType = { kind: 'typeRef', name: named, args: [] }
       }
     }
-    const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
-    const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
+    // Unify by field NAMES and TYPES (see unifyFlowDataRows).
+    const { heterogeneous, fields, conflicts } = unifyFlowDataRows(dataRows, (value) => inferType(value, _kotlinExprInferCtx))
+    if (d.dataType === undefined && conflicts.length > 0) {
+      _emitWarnings.push(flowDataConflictWarning(d.name, conflicts, (t) => kotlinType(t)))
+    }
     if (d.dataType === undefined && heterogeneous) {
-      const fields = allNames.map((name) => {
-        const values = dataRows.flatMap((row) => row.find((field) => field.name === name)?.value ?? [])
-        const distinct = [...new Map(values.map((value) => { const type = inferType(value, _kotlinExprInferCtx); return [JSON.stringify(type), type] })).values()]
-        const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
-        return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
-      })
       const name = synthStructName(_synthExprStructs.length)
       _synthExprStructs.push({ name, fields })
       inferredRowType = { kind: 'typeRef', name, args: [] }
@@ -3791,6 +3858,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
   const dataExpr = field('data')
+  _emitWarnings.push(...addEdgeDropWarnings(flowName, { pathOptions: pathOptionsExpr, markerStart: markerStartExpr, markerEnd: markerEndExpr }, (m) => kotlinFlowMarkerLiteral(m) !== null))
   const portableData = dataExpr ? kotlinFlowData(dataExpr) : null
   if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'style'] as const
@@ -3863,9 +3931,18 @@ function kotlinFlowConnectionLiteral(arg: ExprIR): string | null {
   return `PyreonFlowConnection(source = ${emitKotlinExpr(source, 0)}, target = ${emitKotlinExpr(target, 0)}${sourceHandle ? `, sourceHandle = ${emitKotlinExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle = ${emitKotlinExpr(targetHandle, 0)}` : ''})`
 }
 
-function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
+const FLOW_VIEWPORT_KEYS: readonly string[] = ['x', 'y', 'zoom', 'duration']
+const FLOW_SET_CENTER_KEYS: readonly string[] = ['zoom', 'duration']
+
+/**
+ * `setViewport` takes `{ x, y, zoom, duration }`; `setCenter(x, y, opts)` takes
+ * only `{ zoom, duration }` (its position is the first two arguments, and the
+ * native init has no `x`/`y` labels there), so the accepted keys are the
+ * caller's.
+ */
+function kotlinFlowViewportLiteral(arg: ExprIR, keys: readonly string[] = FLOW_VIEWPORT_KEYS): string | null {
   if (arg.kind !== 'object') return null
-  const allowed = new Set(['x', 'y', 'zoom', 'duration'])
+  const allowed = new Set(keys)
   if (arg.fields.some((field) => !allowed.has(field.name))) return null
   return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
 }
@@ -4176,7 +4253,7 @@ function emitKotlinStmtLines(stmts: readonly StatementIR[], indent: number, ctx:
  * emit-swift's `emitSwiftViewHelper`.
  */
 function emitKotlinViewHelper(h: ViewHelper, visibility: string, indent: number, ctx?: KotlinCtx): string {
-  const params = h.params.map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`).join(', ')
+  const params = h.params.map((p) => `${kotlinIdent(p.name)}: ${kotlinParamType(p.type, ctx, p.name)}`).join(', ')
   const body = withKotlinLocals(
     h.params.map((p) => [p.name, p.type] as const),
     () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
@@ -4323,10 +4400,16 @@ function emitKotlinSlotArg(
     // Wrapped, never `::renderRow` — the Compose compiler rejects a function
     // reference to a @Composable.
     const h = _viewHelpersKotlin.get(x.name)!
-    const args = h.params.map((_, i) => `a${i}`)
-    return args.length === 0
+    // The lambda must name every parameter the SLOT passes, even when the
+    // helper takes fewer (JS ignores extra arguments) — the same padding the
+    // inline-arrow branch above does. `{ a0 -> cell(a0) }` handed to a
+    // `@Composable (User, Int) -> Unit` slot is a kotlinc arity error.
+    const arity = Math.max(slot?.params.length ?? 0, h.params.length)
+    const args = Array.from({ length: arity }, (_, i) => (i < h.params.length ? `a${i}` : '_'))
+    const callArgs = args.filter((a) => a !== '_')
+    return arity === 0
       ? `{ ${kotlinIdent(h.name)}() }`
-      : `{ ${args.join(', ')} -> ${kotlinIdent(h.name)}(${args.join(', ')}) }`
+      : `{ ${args.join(', ')} -> ${kotlinIdent(h.name)}(${callArgs.join(', ')}) }`
   }
   if (isViewShaped(x) || kotlinCallRendersView(x)) {
     return `{\n${pad}${emitKotlinChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
@@ -4342,6 +4425,26 @@ function isKotlinSlotValue(value: ExprIR): boolean {
   return x.kind === 'identifier' && _viewHelpersKotlin.has(x.name)
 }
 
+/**
+ * A helper function's PARAMETER type: an inline object shape names the data
+ * class its call-site literal resolves to (see `namedInlineParamType`) rather
+ * than a per-helper `PyreonHelpers<Param>` class the literal never constructs.
+ */
+function kotlinParamType(t: TypeIR, ctx: KotlinCtx | undefined, name: string): string {
+  return kotlinType(
+    namedInlineParamType(
+      t,
+      (fields) =>
+        _structTypedKeyToName.get(structShapeKey(fields)) ??
+        _structFieldsToName.get(fields.map((f) => f.name).sort().join(',')),
+      _synthExprStructs,
+      _synthExprStructKeys,
+    ),
+    ctx,
+    name,
+  )
+}
+
 function emitKotlinFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
   ctx: KotlinCtx,
@@ -4353,7 +4456,7 @@ function emitKotlinFunction(
   const params = d.params
     .map((p) => {
       const dflt = p.defaultValue !== undefined ? ` = ${emitKotlinExpr(p.defaultValue, 0)}` : ''
-      return `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}${dflt}`
+      return `${kotlinIdent(p.name)}: ${kotlinParamType(p.type, ctx, p.name)}${dflt}`
     })
     .join(', ')
 
@@ -5183,12 +5286,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinSchemaInput(e.arg, indent)})`
     }
     case 'json-stringify':
-      // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable
-      // (emitted structs) or a serializable builtin; `Json.encodeToString`
-      // resolves the serializer via the reified type. The real device build
-      // needs `import kotlinx.serialization.encodeToString` (added by the CLI's
-      // conditionalKotlinImports); the kotlinc stub fakes it as a Json member.
-      return `Json.encodeToString(${emitKotlinExpr(e.arg, indent)})`
+      // `JSON.stringify(x)` → the runtime's web-identical serializer. kotlinx
+      // keeps declaration order (the source literal's), but writes a whole
+      // Double as `1.0`, exponents as `1.0E21`, and throws on NaN — so the
+      // bytes that leave the device would differ from the web's.
+      // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
+      return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
       if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNamesKotlin.has(e.callee.object.name)) {
         const f = chartActionFields(e.args[0])
@@ -5199,7 +5302,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const int = (x: ExprIR | undefined): string => (x === undefined ? '-1L' : `(${emitKotlinExpr(x, indent)}).toLong()`)
         const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `(${emitKotlinExpr(x, indent)}).toDouble()`)
         const areas = f.areas === undefined ? 'listOf()' : withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitKotlinExpr(f.areas!, indent))
-        return `${kotlinIdent(e.callee.object.name)}.dispatch(ChartActionInput(type = ${emitKotlinExpr(f.type!, indent)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : emitKotlinExpr(f.brushType, indent)}, areas = ${areas}, playing = ${f.playing === undefined ? 'false' : emitKotlinExpr(f.playing, indent)}))`
+        return `${kotlinIdent(e.callee.object.name)}.dispatch(ChartActionInput(type = ${emitKotlinExpr(f.type!, indent)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : emitKotlinExpr(f.brushType, indent)}, areas = ${areas}))`
       }
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
@@ -5905,6 +6008,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'paste' && e.args.length === 1) {
           const lit = kotlinFlowPositionLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
           if (lit !== null) return `${kotlinIdent(flowName)}.paste(${lit})`
+          if (resolveKotlinStaticFlowValue(e.args[0]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = kotlinFlowNodeLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
@@ -5919,6 +6023,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
+          if (resolveKotlinStaticFlowValue(e.args[1]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(e.callee.object.name, '`updateNodePosition(...)` argument 2', 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
           const patch = flowPatchArg
@@ -5941,9 +6046,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
             const fields = patch.fields.flatMap(({ name, value }) => {
               if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'position') { const position = kotlinFlowPositionLiteral(value); return position ? [`position = ${position}`] : [] }
+              // A literal lowers to the native constructor; a NON-literal value
+              // passes through as written (the addNode rule). Only a literal of
+              // the right kind but the wrong shape is dropped — and named.
+              if (name === 'position') {
+                const position = kotlinFlowPositionLiteral(value)
+                if (position) return [`position = ${position}`]
+                if (value.kind === 'object') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateNode(...) field `position`', 'a `{ x, y }` literal with both coordinates')); return [] }
+                return [`position = ${emitKotlinExpr(value, indent)}`]
+              }
               if (name === 'data' && value.kind === 'object') return [`data = node.data.copy(${value.fields.map((field) => `${kotlinIdent(field.name)} = ${emitKotlinExpr(field.value, indent)}`).join(', ')})`]
-              if (name === 'sourceHandles' || name === 'targetHandles') { const handles = kotlinFlowHandlesLiteral(value); return handles ? [`${name} = ${handles}`] : [] }
+              if (name === 'sourceHandles' || name === 'targetHandles') {
+                const handles = kotlinFlowHandlesLiteral(value)
+                if (handles) return [`${name} = ${handles}`]
+                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `updateNode(...) field \`${name}\``, "an array of `{ type, position }` literals (a string `type`, a literal side, an optional string `id`)")); return [] }
+                return [`${name} = ${emitKotlinExpr(value, indent)}`]
+              }
               if (name === 'extent') {
                 const extent = kotlinFlowNodeExtentArgs(value)
                 if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
@@ -5962,10 +6080,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
             const fields = patch.fields.flatMap(({ name, value }) => {
               if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
-              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : [] }
+              if (name === 'pathOptions') {
+                if (value.kind !== 'object' || (value.spreads?.length ?? 0) > 0) { _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, 'pathOptions', 'an inline object literal')); return [] }
+                const unknown = value.fields.filter((field) => !['curvature', 'borderRadius', 'offset'].includes(field.name)).map((field) => field.name)
+                if (unknown.length > 0) _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, `pathOptions.${unknown.join('/')}`, 'one of `curvature`, `borderRadius`, `offset`'))
+                return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
+              }
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : (_emitWarnings.push(droppedFlowEdgePatchWarning(flowName, name, FLOW_MARKER_LITERAL_SHAPE)), []) }
               if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
-              if (name === 'waypoints') { const points = kotlinFlowPositionsLiteral(value); return points ? [`waypoints = ${points}`] : [] }
+              if (name === 'waypoints') {
+                const points = kotlinFlowPositionsLiteral(value)
+                if (points) return [`waypoints = ${points}`]
+                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateEdge(...) field `waypoints`', 'an array of `{ x, y }` literals, each with both coordinates')); return [] }
+                return [`waypoints = ${emitKotlinExpr(value, indent)}`]
+              }
               if (name === 'data') { const data = kotlinFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`data = ${data}`] : [] }
               if (name === 'class') return [`className = ${emitKotlinExpr(value, indent)}`]
               const rendered = name === 'interactionWidth' || name === 'zIndex' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
@@ -5989,14 +6117,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = kotlinFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'zoomTo' && e.args.length >= 1) {
           const duration = kotlinFlowDurationOption(e.args[1])
           if (duration !== null) return `${kotlinIdent(flowName)}.zoomTo(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}${duration ? `, duration = ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'zoomTo', ['duration'], e.args[1]!))
         }
         if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
           const duration = kotlinFlowDurationOption(e.args[0])
           if (duration !== null) return `${kotlinIdent(flowName)}.${member}(${duration ? `duration = ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, member, ['duration'], e.args[0]!))
         }
         if (member === 'moveSelectedNodes' && e.args.length === 2) {
           return `${kotlinIdent(flowName)}.moveSelectedNodes(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
@@ -6010,6 +6141,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = kotlinFlowPositionLiteral(e.args[1]!)
           if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${kotlinIntArg(e.args[2]!, indent)}` : ''})`
+          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         // The waypoint index is a Kotlin `Int` API position (a TS integer is Long).
         if (member === 'removeEdgeWaypoint' && e.args.length === 2) {
@@ -6018,14 +6150,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
           const point = kotlinFlowPositionLiteral(e.args[2]!)
           if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)}, ${point})`
+          if (e.args[2]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 3`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'reconnectEdge', ['source', 'target', 'sourceHandle', 'targetHandle'], e.args[1]!))
         }
         if (member === 'isValidConnection' && e.args.length === 1) {
           const connection = kotlinFlowConnectionLiteral(e.args[0]!)
           if (connection !== null) return `${kotlinIdent(flowName)}.isValidConnection(${connection})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ source, target }` literal (with optional `sourceHandle` / `targetHandle`)', 'emitted'))
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
           const nodes = kotlinFlowNodeListLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
@@ -6039,14 +6174,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const args = kotlinFlowViewportLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
           const duration = kotlinFlowDurationOption(e.args[1])
           if (args !== null && duration !== null) return `${kotlinIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration = ${duration}` : ''})`
+          if (args === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['x', 'y', 'zoom', 'duration'], resolveKotlinStaticFlowValue(e.args[0]!)))
+          if (duration === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['duration'], e.args[1]!))
         }
         if (member === 'animateViewport' && e.args.length >= 1) {
           const args = kotlinFlowViewportLiteral(e.args[0]!)
           if (args !== null) return `${kotlinIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'animateViewport', ['x', 'y', 'zoom'], e.args[0]!))
         }
         if (member === 'fitView' && e.args.length >= 1 && e.args.length <= 3) {
           const duration = kotlinFlowDurationOption(e.args[2])
           if (duration !== null) return `${kotlinIdent(flowName)}.fitView(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, padding = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''}${duration ? `, duration = ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'fitView', ['duration'], e.args[2]!))
         }
         if (member === 'layout') {
           if (e.args.length === 0) return `${kotlinIdent(flowName)}.layout()`
@@ -6054,17 +6193,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (e.args.length === 1) return `${kotlinIdent(flowName)}.layout(${algorithm})`
           const options = e.args[1]!
           if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const dropped: string[] = []
             const fields = options.fields.flatMap(({ name, value }) => {
               if (name === 'direction' || name === 'animate') return [`${name} = ${emitKotlinExpr(value, indent)}`]
               if (name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animationDuration') return [`${name} = ${ktChartDouble(emitKotlinExpr(value, indent))}`]
+              dropped.push(name)
               return []
             })
+            if (dropped.length > 0) _emitWarnings.push(flowLayoutOptionsDroppedWarning(flowName, dropped))
             return `${kotlinIdent(flowName)}.layout(${algorithm}, PyreonFlowLayoutOptions(${fields.join(', ')}))`
           }
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'layout', FLOW_LAYOUT_OPTION_KEYS, options))
         }
         if (member === 'setCenter' && e.args.length >= 2) {
-          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!) : ''
+          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!, FLOW_SET_CENTER_KEYS) : ''
           if (options !== null) return `${kotlinIdent(flowName)}.setCenter(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}${options ? `, ${options}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setCenter', FLOW_SET_CENTER_KEYS, e.args[2]!))
         }
         if (member === 'setNodeExtent' && e.args.length === 1) {
           const value = e.args[0]!
@@ -6075,10 +6219,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'clampToExtent' && e.args.length >= 1) {
           const position = kotlinFlowPositionLiteral(e.args[0]!)
           if (position !== null) return `${kotlinIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${ktChartDouble(emitKotlinExpr(arg, indent))}`).join('')})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'getSnapLines' && e.args.length >= 2) {
           const position = kotlinFlowPositionLiteral(e.args[1]!)
           if (position !== null) return `${kotlinIdent(flowName)}.getSnapLines(${emitKotlinExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}` : ''})`
+          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
       }
       // Flow lookup computeds are JavaScript Maps. Kotlin Map.get already
@@ -6409,6 +6555,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // takes ONLY a combiner (no initial value, reduces to the element
       // type), so the JS 2-arg `reduce(reducer, initial)` form must
       // lower to `fold(initial, reducer)` — handled below.
+      // The warning count after the method arms' operands are emitted — an arm
+      // that already named its shape suppresses the generic shape warning.
+      let warningsBeforeArms = -1
       if (e.callee.kind === 'member') {
         const obj = emitKotlinExpr(e.callee.object, indent)
         // A method call whose RECEIVER chain is optional must keep the chain
@@ -6424,6 +6573,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const objDot =
           e.callee.optional === true || chainHasOptional(e.callee.object) ? '?.' : '.'
         const prop = e.callee.property
+        // Arguments JS itself ignores (a `thisArg`, any argument to
+        // `toUpperCase()` / `trim()` / `reverse()`) — lower the core arity,
+        // named. See method-shapes.ts.
+        const recvKind = methodReceiverKind(inferType(e.callee.object, _kotlinExprInferCtx))
+        const ignored = ignoredTrailingArgs(prop, e.args.length, recvKind)
+        if (ignored !== undefined) {
+          if (!_emitWarnings.includes(ignored.warning)) _emitWarnings.push(ignored.warning)
+          return emitKotlinExpr({ ...e, args: e.args.slice(0, ignored.core) }, indent)
+        }
         // Labeled-return wiring for MULTI-STATEMENT plain (1-param)
         // callbacks — the call site knows the emitted Kotlin method name
         // (the return label). 2-param INDEX callbacks keep their own
@@ -6458,6 +6616,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           }
         }
         const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
+        warningsBeforeArms = _emitWarnings.length
         // Map/Set method vocabulary — mirror of the Swift rewrites, typed
         // off the receiver's inferred kind.
         {
@@ -6539,6 +6698,37 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}${objDot}contains(${argExprs[0]!})`
+            }
+            if (e.args.length === 2) {
+              const lowered = kotlinPositionedSearch('includes', recvKind, e, obj, objDot, argExprs, indent)
+              if (lowered !== null) return lowered
+            }
+            break
+          // `startsWith` / `endsWith` / `split` pass through VERBATIM in
+          // their 1-argument forms (the Kotlin stdlib spells them the same
+          // way). The positioned forms do not: `startsWith(p, i)` returns
+          // false for a negative `i` where JS clamps it to 0, `endsWith` has
+          // no `endPosition`, and Kotlin's `split` limit means "at most n
+          // parts, the last holding the rest" where JS TRUNCATES to n parts.
+          // `indexOf` / `lastIndexOf` are also Int-typed on both sides of the
+          // call in Kotlin — a TS integer is Long (see KOTLIN_INT), so the
+          // 1-argument result widens; `List.indexOf` additionally has no
+          // `fromIndex`, so the 2-argument positioned form applies to
+          // `indexOf` only, not `lastIndexOf`.
+          case 'indexOf':
+          case 'lastIndexOf':
+            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
+            if (prop === 'indexOf' && e.args.length === 2) {
+              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs, indent)
+              if (lowered !== null) return lowered
+            }
+            break
+          case 'startsWith':
+          case 'endsWith':
+          case 'split':
+            if (e.args.length === 2) {
+              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs, indent)
+              if (lowered !== null) return lowered
             }
             break
           // `arr.push(x)` is Kotlin's `add` on a MutableList. Mirrors the
@@ -6776,6 +6966,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (digits !== null) {
               return `"%.${digits}f".format(java.util.Locale.ROOT, ${obj})`
             }
+            // A DYNAMIC digit count builds the same format string at runtime
+            // (it used to fall through to a verbatim `n.toFixed(d)`).
+            if (e.args.length === 1) {
+              const dT = inferType(e.args[0]!, _kotlinExprInferCtx)
+              const d = dT.kind === 'number' && dT.float === true ? `(${argExprs[0]!}).toInt()` : argExprs[0]!
+              return `"%.\${${d}}f".format(java.util.Locale.ROOT, ${obj})`
+            }
+            break
+          }
+          case 'toString': {
+            // `n.toString(radix)` is native Kotlin on an INTEGER (lowercase
+            // digits, as JS). A fractional receiver has no `toString(radix)`
+            // and is named by the shape warning below; `x.toString()` passes
+            // through verbatim.
+            const tsT = inferType(e.callee.object, _kotlinExprInferCtx)
+            if (e.args.length === 1 && tsT.kind === 'number' && tsT.float !== true) {
+              // The radix is a Kotlin `Int` parameter — narrow the same way
+              // `kotlinIntArg` narrows every other Int-typed position (a TS
+              // integer is Long by default now; see KOTLIN_INT).
+              return `${obj}${objDot}toString(${kotlinIntArg(e.args[0]!, indent)})`
+            }
             break
           }
           case 'toUpperCase':
@@ -6848,13 +7059,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             )
             break
           }
-          // Same-named on Kotlin, but Int-typed on both sides of the call: a
-          // TS integer is Long (see KOTLIN_INT), so the result widens and a
-          // count/position narrows.
-          case 'indexOf':
-          case 'lastIndexOf':
-            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
-            break
           case 'repeat':
             if (e.args.length === 1) return `${obj}${objDot}repeat(${kotlinIntArg(e.args[0]!, indent)})`
             break
@@ -6879,6 +7083,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Swift twin's rationale — a JS Array/String method with no lowering
       // reaches this verbatim re-emit; name it.
       warnUnmappedMemberMethod(e)
+      // A MAPPED method whose arm did not cover this argument shape (and did
+      // not already name it) — see method-shapes.ts.
+      if (e.callee.kind === 'member' && _emitWarnings.length === warningsBeforeArms) {
+        const w = uncoveredMethodShapeWarning(
+          e.callee.property,
+          e.args.length,
+          methodReceiverKind(inferType(e.callee.object, _kotlinExprInferCtx)),
+          'kotlin',
+        )
+        if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
       // Optional call `f?.()` → Kotlin's nullable-function invocation
@@ -7155,7 +7370,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       let s = '"'
       for (let i = 0; i < e.quasis.length; i++) {
         s += escapeKotlinStringSegment(e.quasis[i] ?? '')
-        if (i < e.exprs.length) s += `\${${emitKotlinExpr(e.exprs[i]!, indent)}}`
+        if (i < e.exprs.length) s += `\${${kotlinTemplatePart(e.exprs[i]!, indent)}}`
       }
       return s + '"'
     }
@@ -7881,9 +8096,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
-  if (canAliasIntercept(tag, '@pyreon/charts', 'ChartWebView') && _aliasImports.get(tag)?.imported === 'ChartWebView') {
-    return emitKotlinChartWebView(e)
-  }
   if (canAliasIntercept(tag, '@pyreon/flow', 'FlowWebView') && _aliasImports.get(tag)?.imported === 'FlowWebView') {
     return emitKotlinFlowWebView(e)
   }
@@ -7970,7 +8182,11 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'NodeResizer') return 'Box {}'
   if (tag === 'NodeToolbar') {
     for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<NodeToolbar ${name}> is browser CSS and is not applied natively; toolbar placement and content still lower.`)
-    if (!_flowComponentToolbarsKotlin.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
+    // A toolbar lowers ONLY through the up-front extraction, which needs a
+    // registered NODE renderer AND a static child position; otherwise it
+    // is dropped, and why decides the fix.
+    const registered = _flowNodeRendererComponentsKotlin.has(_activeComponentName)
+    if (!registered || !_extractedFlowToolbarsKotlin.has(e)) _emitWarnings.push(droppedNodeToolbarWarning(registered, _activeComponentName))
     return 'Box {}'
   }
   if (tag === 'path') return emitKotlinFlowCustomPath(e, indent)
@@ -8002,11 +8218,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
-  if (tag === 'PieChart') return emitKotlinPieChart(e, indent)
-  if (tag === 'GaugeChart') return emitKotlinGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — mirror of the
-  // Swift branch: the radial family lowers to the runtime composables over
-  // the GENERATED engine.
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
   // Mirror of the Swift branch: `<QueryClientProvider>` is TRANSPARENT on
   // native. The web needs it to inject the client `useQuery` reads; the native
@@ -8171,13 +8382,16 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
   if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
-  // A structured helper result (`get*Path({...}).path`) or the connection
-  // line's `path()` keeps its segments; any other `d` is SVG path data,
-  // parsed at runtime into the same segments.
-  const resultCode = value?.kind === 'member' && value.property === 'path'
-    ? value.object.kind === 'call'
-      ? emitKotlinExpr(value.object, indent)
-      : `${kotlinIdent(value.property)}()`
+  // A structured helper result (`get*Path({...}).path`, or a local bound to
+  // one) or the connection line's `path()` keeps its segments; any other `d`
+  // is SVG path data, parsed at runtime into the same segments.
+  const pathMember = value?.kind === 'member' && value.property === 'path'
+    ? classifyFlowPathMember(value.object, _activePropsParamName, _componentValueConstExprsKotlin)
+    : undefined
+  const resultCode = value?.kind === 'member' && pathMember === 'object'
+    ? emitKotlinExpr(value.object, indent)
+    : value?.kind === 'member' && pathMember === 'accessor'
+      ? `${kotlinIdent(value.property)}()`
     : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
       ? emitKotlinExpr(value, indent)
       : value !== undefined
@@ -8472,7 +8686,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       const t = childExpr
       for (let i = 0; i < t.quasis.length; i++) {
         parts.push(escapeKotlinStringSegment(t.quasis[i] ?? ''))
-        if (i < t.exprs.length) parts.push(`\${${emitKotlinExpr(t.exprs[i]!, indent)}}`)
+        if (i < t.exprs.length) parts.push(`\${${kotlinTemplatePart(t.exprs[i]!, indent)}}`)
       }
     } else {
       // A CALL to a JSX-returning helper reaches `<Text>{row("a")}</Text>`
@@ -8505,9 +8719,12 @@ function kotlinInterpSegment(e: ExprIR, indent: number): string {
   // inferType also fixes optional inference (an arrow's type is never optional).
   const expr = resolveAccessorChild(e)
   const emitted = emitKotlinExpr(expr, indent)
-  if (typeIsOptional(inferType(expr, _kotlinExprInferCtx))) {
+  const t = inferType(expr, _kotlinExprInferCtx)
+  if (typeIsOptional(t)) {
     return `\${${emitted} ?: ""}`
   }
+  // A Double prints as JavaScript does (`7`, not `7.0`) — see kotlinTemplatePart.
+  if (t.kind === 'number' && t.float === true) return `\${pyreonNumberString(${emitted})}`
   return `\${${emitted}}`
 }
 
@@ -8740,6 +8957,68 @@ function warnNonBooleanLogical(
 }
 
 
+/**
+ * The positioned-search forms — Kotlin twin of emit-swift's
+ * `swiftPositionedSearch`; see its doc comment for the JS clamping rules. A
+ * `run { }` block binds the receiver and the position once. Null (the caller
+ * names the shape) on an optional receiver or an unknown kind.
+ */
+function kotlinPositionedSearch(
+  method: string,
+  recvKind: MethodReceiver | undefined,
+  e: Extract<ExprIR, { kind: 'call' }>,
+  obj: string,
+  objDot: string,
+  argExprs: readonly string[],
+  indent: number,
+): string | null {
+  if (e.callee.kind !== 'member' || objDot !== '.') return null
+  if (recvKind !== 'array' && recvKind !== 'string') return null
+  const recvT = inferType(e.callee.object, _kotlinExprInferCtx)
+  if (recvT.kind === 'union' && recvT.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')) return null
+  const x = argExprs[0]!
+  // Every use of `pos` below is a Kotlin `Int` position — `String.indexOf`'s
+  // startIndex, `drop`/`take`'s count, `List.take`'s limit. A TS integer is
+  // Long by default now (see KOTLIN_INT), so this narrows exactly here,
+  // matching `kotlinIntArg`'s own bare-literal-vs-`.toInt()` split.
+  const pos = kotlinIntArg(e.args[1]!, indent)
+  if (recvKind === 'array') {
+    if (method !== 'indexOf' && method !== 'includes') return null
+    const from = `val __pyRecv = ${obj}; val __pyPos = ${pos}; val __pyFrom = if (__pyPos < 0) maxOf(0, __pyRecv.size + __pyPos) else minOf(__pyPos, __pyRecv.size)`
+    return method === 'indexOf'
+      ? `run { ${from}; val __pyAt = __pyRecv.subList(__pyFrom, __pyRecv.size).indexOf(${x}); if (__pyAt < 0) -1 else __pyAt + __pyFrom }`
+      : `run { ${from}; __pyRecv.subList(__pyFrom, __pyRecv.size).contains(${x}) }`
+  }
+  switch (method) {
+    // Kotlin's `String.indexOf(s, startIndex)` IS JS's: both clamp a negative
+    // start to 0 and a past-the-end one to the length.
+    case 'indexOf':
+      return `${obj}.indexOf(${x}, ${pos})`
+    case 'includes':
+      return `(${obj}.indexOf(${x}, ${pos}) >= 0)`
+    case 'startsWith':
+      return `run { val __pyRecv = ${obj}; __pyRecv.drop(maxOf(0, ${pos})).startsWith(${x}) }`
+    case 'endsWith':
+      return `run { val __pyRecv = ${obj}; __pyRecv.take((${pos}).coerceIn(0, __pyRecv.length)).endsWith(${x}) }`
+    case 'split':
+      return `run { val __pyParts = ${obj}.split(${x}); val __pyLimit = ${pos}; if (__pyLimit < 0) __pyParts else __pyParts.take(__pyLimit) }`
+    default:
+      return null
+  }
+}
+
+/** A `<For>` row's content — twin of emit-swift's `forRowBodySwift`. */
+function forRowBodyKotlin(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR, indent: number): string {
+  if (arrow.stmts === undefined || arrow.stmts.length === 0) return emitKotlinExpr(body, indent + 4)
+  const block = planViewBlock(arrow.stmts)
+  if (block === null) {
+    const w = forBlockBodyWarning()
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    return ''
+  }
+  return emitKotlinViewBlock(block, indent + 4).join('\n').trimStart()
+}
+
 /** Mirror of emit-swift's `warnUnmappedMemberMethod` — see its doc comment. */
 function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
   if (e.callee.kind !== 'member') return
@@ -8833,7 +9112,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (rowElem !== undefined) _kotlinExprInferCtx.locals.set(param, rowElem)
   let bodyText: string
   try {
-    bodyText = emitKotlinExpr(body, indent + 4)
+    bodyText = forRowBodyKotlin(arrow, body, indent)
   } finally {
     if (rowElem !== undefined) {
       if (hadRow) _kotlinExprInferCtx.locals.set(param, prevRow!)
@@ -9463,6 +9742,11 @@ function emitKotlinLayoutModifier(
   omit: ReadonlySet<string> = EMPTY_OMIT,
 ): string {
   const parts: string[] = []
+  // One guard for every styling prop the HOST lowers itself (only
+  // `background` is consumed by a host today), rather than a per-prop
+  // `omit.has(…)` arm that no host ever reaches.
+  const stylingValue = (name: string, resolve: Parameters<typeof kotlinStylingValue>[2]) =>
+    omit.has(name) ? undefined : kotlinStylingValue(e, name, resolve)
   // `margin` — the OUTERMOST inset, so it goes FIRST.
   //
   // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
@@ -9474,37 +9758,37 @@ function emitKotlinLayoutModifier(
   // Never implemented until now, though the Swift twin's docblock claimed it
   // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
   // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
-  const margin = (omit.has('margin') ? undefined : kotlinStylingValue(e, 'margin', resolveSpace))
+  const margin = stylingValue('margin', resolveSpace)
   if (margin !== undefined) {
     parts.push(`.padding(${margin}.dp)`)
   }
-  const marginX = (omit.has('marginX') ? undefined : kotlinStylingValue(e, 'marginX', resolveSpace))
+  const marginX = stylingValue('marginX', resolveSpace)
   if (marginX !== undefined) {
     parts.push(`.padding(horizontal = ${marginX}.dp)`)
   }
-  const marginY = (omit.has('marginY') ? undefined : kotlinStylingValue(e, 'marginY', resolveSpace))
+  const marginY = stylingValue('marginY', resolveSpace)
   if (marginY !== undefined) {
     parts.push(`.padding(vertical = ${marginY}.dp)`)
   }
-  const padding = (omit.has('padding') ? undefined : kotlinStylingValue(e, 'padding', resolveSpace))
+  const padding = stylingValue('padding', resolveSpace)
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
   }
-  const paddingX = (omit.has('paddingX') ? undefined : kotlinStylingValue(e, 'paddingX', resolveSpace))
+  const paddingX = stylingValue('paddingX', resolveSpace)
   if (paddingX !== undefined) {
     parts.push(`.padding(horizontal = ${paddingX}.dp)`)
   }
-  const paddingY = (omit.has('paddingY') ? undefined : kotlinStylingValue(e, 'paddingY', resolveSpace))
+  const paddingY = stylingValue('paddingY', resolveSpace)
   if (paddingY !== undefined) {
     parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
-  const background = (omit.has('background') ? undefined : kotlinStylingValue(e, 'background', (v) =>
+  const background = stylingValue('background', (v) =>
     resolveColor(String(v), 'kotlin'),
-  ))
+  )
   if (background !== undefined) {
     parts.push(`.background(${background})`)
   }
-  const radius = (omit.has('radius') ? undefined : kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v))))
+  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
   if (radius !== undefined) {
     // Bare `RoundedCornerShape` — consumer imports from
     // androidx.compose.foundation.shape. Same convention as Color +
@@ -9876,35 +10160,6 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)})`
-}
-
-function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const option = dynamicWebViewAttrKotlin(e, 'option')
-  if (option === undefined) _emitWarnings.push('<ChartWebView>: `option` is required on native; emitting an empty option.')
-  const explicitHtml = dynamicWebViewAttrKotlin(e, 'html')
-  if (explicitHtml !== undefined) {
-    for (const prop of CHART_WEBVIEW_HOST_PROPS) {
-      const legacy = legacyChartHostProp(prop)
-      if (e.attrs.some((attr) => attr.kind === 'attr' && (attr.name === prop || attr.name === legacy))) {
-        _emitWarnings.push(`<ChartWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its configuration.`)
-      }
-    }
-  }
-  const html = explicitHtml === undefined
-    ? JSON.stringify(configureChartWebViewHost(e, readStaticAttrKotlin, (warning) => _emitWarnings.push(warning)))
-    : emitKotlinExpr(explicitHtml, 0)
-  const commands = dynamicWebViewAttrKotlin(e, 'commands')
-  const loading = dynamicWebViewAttrKotlin(e, 'loading')
-  const loadingOptions = dynamicWebViewAttrKotlin(e, 'loadingOptions')
-  const group = dynamicWebViewAttrKotlin(e, 'group')
-  const groupArg = group === undefined ? '' : `, group = ${emitKotlinExpr(group, 0)}`
-  const data = `pyreonChartWebViewData(option = ${option === undefined ? '"{}"' : kotlinWebViewDataArg(option)}, commands = ${commands === undefined ? '"[]"' : kotlinWebViewDataArg(commands)}, loading = ${loading === undefined ? 'false' : emitKotlinExpr(loading, 0)}, loadingOptions = ${loadingOptions === undefined ? '"{}"' : kotlinWebViewDataArg(loadingOptions)}${groupArg})`
-  const callbackArgs = (['select', 'event', 'error'] as const).flatMap((name) => {
-    const attr = e.attrs.find((candidate) => candidate.kind === 'event' && candidate.name === name)
-    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
-  })
-  const onMessage = callbackArgs.length === 0 ? '' : `, onMessage = { pyreonMsg -> pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html = ${html}, data = ${data}${onMessage}${kotlinWebViewModifierArg(e, HANDLED_CHART_WEBVIEW_PROPS)})`
 }
 
 function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -11847,116 +12102,6 @@ function ktChartDouble(text: string): string {
   return m ? `${m[1]}.0` : text
 }
 
-/**
- * `<PieChart data value label …>` (@pyreon/charts) → the runtime-kotlin
- * `PyreonPieChart` composable. Mirror of emitSwiftPieChart — see its
- * docblock for the accessor-arity rule.
- */
-function emitKotlinPieChart(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const attr = (n: string) =>
-    e.attrs.find(
-      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
-    )
-  const data = attr('data')
-  const value = attr('value')
-  const label = attr('label')
-  if (data === undefined || value === undefined || label === undefined) {
-    _emitWarnings.push(
-      'PieChart: the native lowering needs `data`, `value` and `label` props — element left to generic emit (it will not compile natively)',
-    )
-    return emitKotlinGeneric(e, indent)
-  }
-  const color = attr('color')
-  for (const a of [value, label, ...(color === undefined ? [] : [color])]) {
-    if (a.value.kind === 'arrow' && a.value.params.length > 1) {
-      _emitWarnings.push(
-        `PieChart: the \`${a.name}\` accessor uses the (d, index) form — the native lowering supports the single-argument accessor; precompute an array for index-dependent slices`,
-      )
-      return emitKotlinGeneric(e, indent)
-    }
-  }
-  const args = [
-    `data = ${emitKotlinExpr(unwrapAccessorArrow(data.value), indent)}`,
-    `value = ${emitKotlinExpr(value.value, indent)}`,
-    `label = ${emitKotlinExpr(label.value, indent)}`,
-  ]
-  if (color !== undefined) args.push(`color = ${emitKotlinExpr(color.value, indent)}`)
-  for (const n of ['width', 'height', 'innerRadius', 'showLabels'] as const) {
-    const a = attr(n)
-    if (a !== undefined) {
-      const t = emitKotlinExpr(unwrapAccessorArrow(a.value), indent)
-      args.push(`${n} = ${n === 'showLabels' ? t : ktChartDouble(t)}`)
-    }
-  }
-  for (const n of ['showLegend', 'onSelect', 'title', 'accessibleTable'] as const) {
-    if (attr(n) !== undefined) {
-      _emitWarnings.push(
-        `PieChart: \`${n}\` has no native lowering (web-only legend / hit-testing / a11y-table surface) — DROPPED on this target`,
-      )
-    }
-  }
-  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
-  const mods =
-    (testid === undefined ? '' : `.testTag(${testid})`) +
-    kotlinAccessibilityLabelModifier(e).join('') +
-    kotlinAccessibilityHiddenModifier(e).join('')
-  if (mods !== '') args.push(`modifier = Modifier${mods}`)
-  return `PyreonPieChart(${args.join(', ')})`
-}
-
-/**
- * `<GaugeChart value …>` (@pyreon/charts) → the runtime-kotlin
- * `PyreonGaugeChart` composable. Mirror of emitSwiftGaugeChart.
- */
-function emitKotlinGaugeChart(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const attr = (n: string) =>
-    e.attrs.find(
-      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
-    )
-  const value = attr('value')
-  if (value === undefined) {
-    _emitWarnings.push(
-      'GaugeChart: the native lowering needs the `value` prop — element left to generic emit (it will not compile natively)',
-    )
-    return emitKotlinGeneric(e, indent)
-  }
-  const args = [`value = ${ktChartDouble(emitKotlinExpr(unwrapAccessorArrow(value.value), indent))}`]
-  for (const n of [
-    'min',
-    'max',
-    'width',
-    'height',
-    'thickness',
-    'trackColor',
-    'valueColor',
-    'showValue',
-  ] as const) {
-    const a = attr(n)
-    if (a !== undefined) {
-      const t = emitKotlinExpr(unwrapAccessorArrow(a.value), indent)
-      args.push(`${n} = ${n === 'showValue' || n === 'trackColor' || n === 'valueColor' ? t : ktChartDouble(t)}`)
-    }
-  }
-  if (attr('title') !== undefined) {
-    _emitWarnings.push(
-      'GaugeChart: `title` has no native lowering (it feeds the web aria-label) — use `accessibilityLabel`, which lowers on all three targets',
-    )
-  }
-  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
-  const mods =
-    (testid === undefined ? '' : `.testTag(${testid})`) +
-    kotlinAccessibilityLabelModifier(e).join('') +
-    kotlinAccessibilityHiddenModifier(e).join('')
-  if (mods !== '') args.push(`modifier = Modifier${mods}`)
-  return `PyreonGaugeChart(${args.join(', ')})`
-}
-
 // ---------------------------------------------------------------------------
 // `@pyreon/charts` family hosts → PyreonChartCanvas (the Compose Canvas
 // that walks the generated engine's draw list). Mirror of the Swift emitter;
@@ -11978,7 +12123,7 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
     options === 'null'
       ? `${struct}(${fields.map(([f, v]) => `${f} = ${v}`).join(', ')})`
       : `(${options}).let { it.copy(${fields.map(([f, v]) => `${f} = it.${f} ?: ${v}`).join(', ')}) }`,
-  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = ${a.showLabels ?? 'true'}, labelColor = ${a.pieLabelColor ?? '"#ffffff"'}, fontSize = ${a.fontSize ?? '11.0'}${a.pieExtra ?? ''})`,
+  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = ${a.showLabels ?? 'true'}, labelColor = "#ffffff", fontSize = ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis = ${kotlinStr(CHART_THEME_DEFAULT.axis)}, grid = ${kotlinStr(CHART_THEME_DEFAULT.grid)}, label = ${kotlinStr(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
@@ -12153,74 +12298,7 @@ function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number)
   return `(${emitKotlinExpr(handler, indent)})(${hitExpr})`
 }
 
-let _kotlinTimelineSeq = 0
-
-/** Mirror of the Swift timeline: every step's host, the current one shown, over the engine-drawn strip. */
-function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const strip = chartTimelineStripLiteral(chartAttrExprKotlin(e, 'timelineStrip'), KOTLIN_CHART_TARGET)
-  if (strip === null) return 'Box {}'
-  const k = _kotlinTimelineSeq++
-  const step = `pyreonTl${k}`
-  const playing = `pyreonTlPlay${k}`
-  const cur = readStaticAttrKotlin(e, 'timelineCurrent')
-  const autoPlay = readStaticAttrKotlin(e, 'timelineAutoPlay') === true
-  const interval = readStaticAttrKotlin(e, 'timelineInterval')
-  const ms = typeof interval === 'number' && interval > 0 ? Math.round(interval) : 2000
-  const pad = ' '.repeat(indent + 2)
-  const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
-  const branches = children.map((c, i) => `${pad}  ${i}L -> {\n${pad}    ${emitKotlinChartHost(c, indent + 4)}\n${pad}  }\n`).join('')
-  const onChange = e.attrs.find((a) => a.kind === 'event' && a.name === 'timelinechange')
-  const idAttr = readStaticAttrKotlin(e, 'data-testid')
-  const tag = typeof idAttr === 'string' ? `.testTag(${JSON.stringify(idAttr)})` : ''
-  const labels = `pyreonTlStrip${k}.labels`
-  const box = 'PyreonChartRect(0.0, 0.0, pyreonTlW, 40.0)'
-  const tap =
-    `detectTapGestures { pyreonT -> ` +
-    `val pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, (pyreonT.x / pyreonTlDensity).toDouble(), (pyreonT.y / pyreonTlDensity).toDouble()); ` +
-    `if (pyreonHit.kind == 2.0) { ${playing} = !${playing} } else if (pyreonHit.kind > 0.0) { ${playing} = false; ` +
-    `val pyreonNext = if (pyreonHit.kind == 1.0) pyreonHit.index else timelineAdvance(pyreonTlStrip${k}, ${step}.toDouble(), if (pyreonHit.kind == 3.0) -1.0 else 1.0, true); ` +
-    `if (pyreonNext >= 0.0) ${step} = pyreonNext.toLong() } }`
-  // A handle (`timelineChange` / `timelinePlayChange`) owns the step and play state: the locals delegate
-  // to its fields, seeded once from the option (its -1 step means "the option's own").
-  const handleAttr = chartAttrExprKotlin(e, 'handle')
-  const handle = handleAttr?.kind === 'identifier' && _chartHandleNamesKotlin.has(handleAttr.name) ? kotlinIdent(handleAttr.name) : undefined
-  if (handleAttr !== undefined && handle === undefined) _emitWarnings.push('<OptionChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the timeline runs without the handle.')
-  const curN = typeof cur === 'number' ? cur : 0
-  const lines = [
-    `run {`,
-    ...(handle === undefined
-      ? [`${pad}var ${step} by remember { mutableStateOf(${curN}L) }`, `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`]
-      : [
-          `${pad}remember { if (${handle}.step < 0) { ${handle}.step = ${curN}L; ${handle}.playing = ${autoPlay} }; true }`,
-          `${pad}var ${step} by ${handle}::step`,
-          `${pad}var ${playing} by ${handle}::playing`,
-        ]),
-    `${pad}val pyreonTlStrip${k}: TimelineStrip = ${strip}`,
-    `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toLong() } }`,
-  ]
-  if (onChange?.kind === 'event') {
-    // Like the web: a change is reported, the opening step is not.
-    lines.push(`${pad}val pyreonTlSeen${k} = remember { mutableStateOf(false) }`)
-    lines.push(`${pad}LaunchedEffect(${step}) { if (pyreonTlSeen${k}.value) { ${kotlinChartSelectBody(onChange.handler, step, indent)} } else pyreonTlSeen${k}.value = true }`)
-  }
-  lines.push(
-    `${pad}Column(modifier = Modifier.fillMaxWidth()${tag}.semantics { stateDescription = if (${step} < ${labels}.size) ${labels}[${step}.toInt()] else "" }) {`,
-    `${pad}  when (${step}) {`,
-    `${branches}${pad}    else -> {}`,
-    `${pad}  }`,
-    `${pad}  BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(40.dp)) {`,
-    `${pad}    val pyreonTlW = maxWidth.value.toDouble()`,
-    `${pad}    val pyreonTlDensity = LocalDensity.current.density`,
-    `${pad}    PyreonChartCanvas(cmds = renderTimeline(pyreonTlStrip${k}, ${box}, ${step}.toDouble(), ${playing}), modifier = Modifier.fillMaxSize().pointerInput(pyreonTlW, ${step}, ${playing}) { ${tap} }, animated = false)`,
-    `${pad}  }`,
-    `${pad}}`,
-    `${' '.repeat(indent)}}`,
-  )
-  return lines.join('\n')
-}
-
 function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  if (e.tag === CHART_TIMELINE_TAG) return emitKotlinChartTimeline(e, indent)
   const inner = emitKotlinChartHostInner(e, indent)
   // `theme.background` — the ground the web host paints; see the Swift emitter. A Box carries it, since the host is a composable call.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'Box {}') return inner
@@ -12237,10 +12315,6 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitKotlinChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
   }
-  if (tag === 'OptionChart') {
-    const lowered = desugarOptionChart(e, (n) => _moduleConstExprsKotlin.get(n), (w) => _emitWarnings.push(w))
-    return lowered === undefined ? 'Box {}' : emitKotlinChartHost(lowered, indent)
-  }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
     _emitWarnings.push(`<${tag}> only means something as a child of <Chart>; on its own it renders nothing.`)
     return 'Box {}'
@@ -12254,11 +12328,7 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   if (tag === 'BoxplotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinBoxplotHost(e, i))
   if (tag === 'HeatmapChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitKotlinRadarHost(e, indent)
-  if (tag === 'PlotChart' && readStaticAttrKotlin(e, 'effectClock') === true) {
-    // A lines trail: the clock wraps the entrance so every frame re-renders with a new effectTime.
-    const pad = ' '.repeat(indent + 2)
-    return `PyreonChartClock { pyreonClock ->\n${pad}${kotlinChartEntrance(e, tag, indent + 2, (i) => emitKotlinPlotHost(e, i))}\n${' '.repeat(indent)}}`
-  }
+
   if (tag === 'PlotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinPlotHost(e, i))
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinAccessorHost(e, i))
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
@@ -12372,16 +12442,12 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
   }
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf)
-  // An OptionChart-placed family lays out in its frame — a sub-canvas the draw list is shifted into and the tap out of.
-  const frameLit = vm === null ? chartFrameLiteral(e, 'kotlin') : undefined
-  const plotArgs: ChartHostArgs = frameLit !== undefined ? { ...args, W: 'pyreonFrame.w', H: 'pyreonFrame.h' } : vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
-  const inFrame = (c: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${c}, pyreonFrame.x, pyreonFrame.y)` : c)
+  const plotArgs: ChartHostArgs = vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
   // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
   const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
   const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
-  if (frameLit !== undefined) lets.push(`val pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
   if (vm !== null) lets.push(`val pyreonVmPlace = visualStripPlace(pyreonStrip, ${chrome.width(W)}, ${chrome.height(H)})`)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
@@ -12406,7 +12472,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
-  const cmds = `${chrome.mirror(chrome.wrap(`${inFrame(transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET)))}${stripCmds}`))}${tipCmds}`
+  const cmds = `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${stripCmds}`))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
@@ -12418,10 +12484,8 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     // left legend's indent); the tooltip's ANCHOR stays raw, because the
     // tooltip is drawn unmirrored at the finger.
     const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
-    const tx0 = chrome.plotX(rawTx)
-    const tapY0 = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
-    const tx = frameLit !== undefined ? `(${tx0}) - pyreonFrame.x` : tx0
-    const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
+    const tx = chrome.plotX(rawTx)
+    const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
     const hitX = transposed ? tapY : tx
     const hitY = transposed ? tx : tapY
     const parts: string[] = []
@@ -12530,7 +12594,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // is not a composable scope, so the items (whose themed palette reads
   // `isSystemInDarkTheme()`) must be evaluated once, here, and captured.
   const selects = e.attrs.some((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  const hoist = withChrome || tooltip || animating || selects || (tag !== 'PieChart' && chartFrameLiteral(e, 'kotlin') !== undefined)
+  const hoist = withChrome || tooltip || animating || selects
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
@@ -12538,22 +12602,14 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
-  // A placed funnel lays out in its frame (a sub-canvas); the pie frames itself through its own args.
-  const frameLit = tag === 'PieChart' ? undefined : chartFrameLiteral(e, 'kotlin')
-  if (frameLit !== undefined) lets.push(`val pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
-  const inFrame = (c: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${c}, pyreonFrame.x, pyreonFrame.y)` : c)
-  const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttrKotlin(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'kotlin', W, H, chrome.left, chrome.top, tf.label) : chartTipHeader(e, 'kotlin') === undefined ? {} : { tipHeader: chartTipHeader(e, 'kotlin')! }) }
+  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttrKotlin(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize }
   const tipCmds = tooltip
-    ? args.tipHeader !== undefined
-      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure, true)`
-      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.mirror(chrome.wrap(inFrame(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET))))}${tipCmds}`
+  const cmds = `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET)))}${tipCmds}`
   const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
-  const tx0 = chrome.plotX(rawTx)
-  const tapY0 = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
-  const tx = frameLit !== undefined ? `(${tx0}) - pyreonFrame.x` : tx0
-  const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
+  const tx = chrome.plotX(rawTx)
+  const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const parts: string[] = []
   if (tooltip) parts.push(`pyreonTip = ${spec.tooltip(items, tx, tapY, args, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
@@ -12592,8 +12648,9 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const text = showValue
     ? ` + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain(${value}), at = PyreonChartPt(${W} / 2.0, ${H} - 6.0), size = 20.0, align = "middle", baseline = "bottom"))`
     : ''
-  // An OptionChart gauge draws ECharts' whole dial (its own value text among it); a plain one the half-circle track.
-  const cmds = chartDialCmds(e, 'kotlin', W, H) ?? `renderGauge(${value}, PyreonChartRect(0.0, 0.0, ${W}, ${H} * 2.0), ${opts})${text}`
+  // A full `dial` (built on the web by `gaugeDial()`) is a runtime value with no native form: named, and the half-circle track drawn.
+  if (chartAttrExprKotlin(e, 'dial') !== undefined) _emitWarnings.push('<GaugeChart dial>: the full dial is web-only; native draws the half-circle gauge track.')
+  const cmds = `renderGauge(${value}, PyreonChartRect(0.0, 0.0, ${W}, ${H} * 2.0), ${opts})${text}`
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
@@ -12637,7 +12694,7 @@ function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     fields.push(`${f} = (${acc}).toDouble()`)
   }
   const lets = [`val pyreonCandles: List<Ohlc> = ${data}.mapIndexed { pyreonI, pyreonD -> Ohlc(${fields.join(', ')}) }`]
-  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => b, indent)
+  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => `pyreonChartString(${b})`, indent)
   if (catsM === 'unsupported') return 'Box {}'
   lets.push(`val pyreonCats: List<String> = ${catsM ?? 'listOf<String>()'}`)
   lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
@@ -12669,7 +12726,7 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     return 'Box {}'
   }
   const lets = [`val pyreonBoxes: List<FiveNumber> = ${rowsM}`]
-  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => b, indent)
+  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => `pyreonChartString(${b})`, indent)
   if (catsM === 'unsupported') return 'Box {}'
   lets.push(`val pyreonCats: List<String> = ${catsM ?? 'listOf<String>()'}`)
   lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
@@ -12871,35 +12928,6 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${JSON.stringify(direction.value)}`}${shape === undefined ? '' : `, shape = ${JSON.stringify(shape.value)}`})`)
     return true
   }
-  // `extras` (ECharts' encode.tooltip dimensions) is the LAST Series field:
-  // literal `{ label, numbers? | texts? }` objects, one per extra.
-  const extrasOpt = fields.get('extras')
-  const pushExtras = (): boolean => {
-    if (extrasOpt === undefined) return true
-    if (extrasOpt.kind !== 'array') return false
-    const items: string[] = []
-    for (const ex of extrasOpt.elements) {
-      if (ex.kind !== 'object') return false
-      const ev = new Map(ex.fields.map((field) => [field.name, field.value]))
-      const label = ev.get('label')
-      if (label?.kind !== 'literal' || typeof label.value !== 'string') return false
-      const parts = [`label = ${JSON.stringify(label.value)}`]
-      const numbers = ev.get('numbers')
-      const texts = ev.get('texts')
-      if (numbers !== undefined) {
-        if (numbers.kind !== 'array' || numbers.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) return false
-        parts.push(`numbers = listOf(${numbers.elements.map((n) => chartDouble((n as { value: number }).value)).join(', ')})`)
-      }
-      if (texts !== undefined) {
-        if (texts.kind !== 'array' || texts.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'string')) return false
-        parts.push(`texts = listOf(${texts.elements.map((n) => JSON.stringify((n as { value: string }).value)).join(', ')})`)
-      }
-      items.push(`SeriesExtra(${parts.join(', ')})`)
-    }
-    extrasArg = `extras = listOf(${items.join(', ')})`
-    return true
-  }
-  let extrasArg: string | undefined
   let patternPushed = false
   for (const spec of PLOT_MARK_OPTION_FIELDS) {
     if (spec.name === 'negativeColor' && !patternPushed) {
@@ -12915,45 +12943,6 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     }
     const v = fields.get(spec.name)
     if (v !== undefined) {
-      if (spec.kind === 'strings') {
-        if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'string')) {
-          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of string literals on native; emitting an empty Box().`)
-          return 'unsupported'
-        }
-        args.push(`${spec.name} = listOf<String>(${v.elements.map((n) => JSON.stringify((n as { value: string }).value)).join(', ')})`)
-        continue
-      }
-      if (spec.kind === 'rich') {
-        // Every other decline in this loop NAMES the field; these two used to
-        // return bare, so a non-literal `labelRich` made the whole chart an
-        // empty Box() with no warning at all (mirror of the Swift twin).
-        const richDecline = (): 'unsupported' => {
-          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of { name, color?, fontSize? } object literals on native; emitting an empty Box().`)
-          return 'unsupported'
-        }
-        if (v.kind !== 'array') return richDecline()
-        const styles: string[] = []
-        for (const r of v.elements) {
-          if (r.kind !== 'object') return richDecline()
-          const rf = new Map(r.fields.map((field) => [field.name, field.value]))
-          const text = (name: string): string => {
-            const raw = rf.get(name)
-            return JSON.stringify(raw?.kind === 'literal' && typeof raw.value === 'string' ? raw.value : '')
-          }
-          const sizeIR = rf.get('fontSize')
-          styles.push(`RichStyle(name = ${text('name')}, color = ${text('color')}, fontSize = ${sizeIR?.kind === 'literal' && typeof sizeIR.value === 'number' ? chartDouble(sizeIR.value) : '0.0'})`)
-        }
-        args.push(`${spec.name} = listOf<RichStyle>(${styles.join(', ')})`)
-        continue
-      }
-      if (spec.kind === 'numbers') {
-        if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) {
-          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of number literals on native; emitting an empty Box().`)
-          return 'unsupported'
-        }
-        args.push(`${spec.name} = listOf<Double>(${v.elements.map((n) => chartDouble((n as { value: number }).value)).join(', ')})`)
-        continue
-      }
       if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
         _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be a ${spec.kind} literal on native; emitting an empty Box().`)
         return 'unsupported'
@@ -12974,11 +12963,6 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an empty Box().`)
     return 'unsupported'
   }
-  if (!pushExtras()) {
-    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`extras\` needs literal { label, numbers | texts } entries on native; emitting an empty Box().`)
-    return 'unsupported'
-  }
-  if (extrasArg !== undefined) args.push(extrasArg)
   return args
 }
 
@@ -13240,11 +13224,21 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed, decimated)}`)
-    if (fullA11y) lets.push(`val pyreonA11yCats: List<String> = ${kotlinPlotRowMap(data, body, false)}`)
+    const cat = `pyreonChartString(${body})`
+    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, cat, windowed, decimated)}`)
+    if (fullA11y) lets.push(`val pyreonA11yCats: List<String> = ${kotlinPlotRowMap(data, cat, false)}`)
   } else {
     lets.push('val pyreonCats: List<String> = listOf<String>()')
     if (fullA11y) lets.push('val pyreonA11yCats: List<String> = listOf<String>()')
+  }
+  // Mirror of the Swift emitter: `by` keys each drawn row, over the same rows as the values.
+  const byAcc = chartAttrExprKotlin(e, 'by')
+  let keyed = false
+  if (byAcc !== undefined) {
+    const body = kotlinAccessorExpr(byAcc, tag, 'by', indent)
+    if (body === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonRowKeys: List<String> = ${kotlinPlotRowMap(rows, `pyreonChartString(${body})`, windowed, decimated)}`)
+    keyed = true
   }
   const xValueAcc = chartAttrExprKotlin(e, 'xValue')
   if (xValueAcc !== undefined) {
@@ -13273,8 +13267,6 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size.toLong(), pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
   }
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
-  // ECharts' slider box: the strip lives in the grid's bottom margin, the plot keeps its rect.
-  const sliderBox = navigating ? zoomCfgK.sliderBox : null
   if (navigating) {
     // Thinned to the strip's width, exactly as the web host does: a 36px-tall
     // overview needs the min/max envelope per pixel column, not 100k points.
@@ -13282,30 +13274,32 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     // frame — the same defect the web host had before `minMaxBuckets` was
     // wired there, and worse here because the target has less headroom.
     lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1L, (${W} / 2.0).toLong()))`)
-    if (sliderBox === null) lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
+    lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttrKotlin(e, name)
     const v = chartAttrExprKotlin(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitKotlinExpr(v, indent)
   }
-  const below = `${belowNav}${navigating && sliderBox === null ? ' - pyreonNavigator.height' : ''}`
+  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const locale = chartAttrExprKotlin(e, 'locale')
   if (locale !== undefined) lets.push(`val pyreonLocale: String = ${emitKotlinExpr(locale, indent)}`)
-  // The option facade's own compiled spec (an OptionChart's `optionSpec`); named arguments, so order is free.
-  const optSpec = optionSpecArgs(e)
   const specArgs = [
     `width = ${chrome.width(W)}`,
     `height = ${chrome.height(H)}${below}`,
     'series = pyreonSeries',
-    ...optSpec.early.map((a) => `${a.name} = ${kotlinSpecLiteral(a.value)}`),
     'categories = pyreonCats',
     `theme = ${themed ? 'pyreonTheme' : theme}`,
     `showXAxis = ${bool('showXAxis', true)}`,
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
+    ...(readStaticAttrKotlin(e, 'endLabels') === true ? ['endLabels = true'] : []),
+    ...(['xTicks', 'yTicks'] as const).flatMap((k) => {
+      const v = readStaticAttrKotlin(e, k)
+      return typeof v === 'number' ? [`${k} = ${Number.isInteger(v) ? `${v}.0` : v}`] : []
+    }),
   ]
-  // Mirror of the Swift emitter — ChartSpec field 9, before `yFormat`.
+  // Mirror of the Swift emitter — ChartSpec field 10, before `yFormat`.
   const yDom = chartAttrExprKotlin(e, 'yDomain')
   if (yDom !== undefined) specArgs.push(`yDomain = ${emitKotlinExpr(yDom, indent)}`)
   const yFormat = kotlinChartFormatter(e, 'format', indent) ?? (locale === undefined ? undefined : 'pyreonLocaleNumberFormatter(pyreonLocale)')
@@ -13344,20 +13338,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     }
     specArgs.push(`${p.name} = ${p.kind === 'string' ? kotlinStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
-  // The compiled option's late fields, unless the host set the same one itself.
-  for (const a of optSpec.late) if (!PLOT_SPEC_LITERAL_PROPS.some((p) => p.name === a.name && chartAttrExprKotlin(e, p.name) !== undefined)) specArgs.push(`${a.name} = ${kotlinSpecLiteral(a.value)}`)
-  // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
-  const extraAxes = chartAttrExprKotlin(e, 'extraYAxes')
-  if (extraAxes !== undefined) specArgs.push(`extraYAxes = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitKotlinExpr(extraAxes, indent))}`)
-  const x2Labels = chartAttrExprKotlin(e, 'x2Labels')
-  if (x2Labels !== undefined) specArgs.push(`x2Labels = ${emitKotlinExpr(x2Labels, indent)}`)
-  const x2Title = readStaticAttrKotlin(e, 'x2Title')
-  if (typeof x2Title === 'string') specArgs.push(`x2Title = ${kotlinStr(x2Title)}`)
-  const x2Dom = chartAttrExprKotlin(e, 'x2Domain')
-  if (x2Dom !== undefined) specArgs.push(`x2Domain = ${emitKotlinExpr(x2Dom, indent)}`)
-  const linesAttr = chartAttrExprKotlin(e, 'lines')
-  if (linesAttr !== undefined) specArgs.push(`lines = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitKotlinExpr(linesAttr, indent))}`)
-  if (readStaticAttrKotlin(e, 'effectClock') === true) specArgs.push(`effectTime = pyreonClock`)
+  if (keyed) specArgs.push('rowKeys = pyreonRowKeys')
   const magicBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
   // Applied before the brush, which only re-colours out-of-brush datums and must see the series pins already in the fills it starts from.
   const specBuilt = seriesPinning ? `applySeriesSelection(${magicBuilt}, pyreonSelectedSeries)` : magicBuilt
@@ -13369,11 +13350,6 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push(`val pyreonSpec: ChartSpec = applyBrushSelection(pyreonSpecBase, ${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpecBase, layoutChart(pyreonSpecBase, ::pyreonChartMeasure), pyreonAreasNow)${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}, pyreonAreasNow.isNotEmpty(), ${Number.isInteger(area.opacity) ? `${area.opacity}.0` : String(area.opacity)})`)
   } else {
     lets.push(`val pyreonSpec: ChartSpec = ${specBuilt}`)
-  }
-  if (sliderBox !== null) {
-    lets.push(`val pyreonSliderBox: SliderBox = ${sliderBox}`)
-    lets.push(`val pyreonSliderStrip: PyreonChartRect = sliderRect(pyreonSliderBox, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, ${W}, ${H})`)
-    lets.push('val pyreonNavigator: NavigatorLayout = NavigatorLayout(renderSliderZoom(pyreonNavValues, pyreonZoom, pyreonSliderStrip, pyreonSliderBox.brush), pyreonSliderStrip, 0.0)')
   }
   if (toolbox !== null) {
     const actives = [
@@ -13393,25 +13369,21 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size.toLong()); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
     )
   }
-  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}${kotlinGraphicCmds(e)}${toolbox === null ? '' : ' + pyreonToolbox.cmds'}`
+  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}${toolbox === null ? '' : ' + pyreonToolbox.cmds'}`
   // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues, extras = it.extras) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues, extras = it.extras) })).split("\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })).split("\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
-  // An OptionChart without a formatter shows ECharts' default content: its cells drawn as rows.
-  const tipCells = tooltip && tipFormatter === undefined ? chartTooltipCells(e) : undefined
   const tipCmds = tooltip
-    ? tipCells !== undefined
-      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure, ${tipCells.trigger === 'item'})`
-      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   // `rtl` — the same seam the web host uses (`present` in canvas-host.tsx):
   // the FINISHED list is mirrored about the canvas centreline, so chrome,
@@ -13437,7 +13409,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const onAreaSel = chartEventHandler(e, 'brushselected')
   const areaReport = (areasExpr: string): string => {
     if (onAreaSel === undefined) return ''
-    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, pyreonV).toInt()]' : 'categoryIndex(pyreonSpec, pyreonV)'
+    const mapped = decimated ? 'pyreonKeep[pyreonV]' : 'pyreonV'
     const global = windowed ? `${mapped} + pyreonRange.from` : mapped
     return `; ${kotlinChartSelectBody(onAreaSel, `${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${areasExpr})${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}.map { pyreonS -> BrushSeriesSelection(seriesIndex = pyreonS.seriesIndex, dataIndex = pyreonS.dataIndex.map { pyreonV -> ${global} }) }`, indent)}`
   }
@@ -13451,13 +13423,6 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const tapX = chrome.tapX(rawTapX)
   const plotX = chrome.plotX(rawTapX)
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
-  if (tipCells !== undefined) {
-    const tipSeries = (sel: string): string => `TooltipSeries(label = ${sel}.label, values = ${sel}.values, color = ${sel}.color, values2 = ${sel}.values2, rValues = ${sel}.rValues, extras = ${sel}.extras)`
-    const namedList = `listOf(${tipCells.named.map((b) => String(b)).join(', ')})`
-    tipLines = tipCells.trigger === 'axis'
-      ? `tooltipAxisCells(pyreonLocal, pyreonCats, pyreonSeries.map { ${tipSeries('it')} }, ${namedList})`
-      : `run { val pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${plotX}, ${tapYExpr}, 14.0).toInt(); val pyreonNamed: List<Boolean> = ${namedList}; if (pyreonSer < 0 || pyreonSer >= pyreonSeries.size) listOf() else tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.size && pyreonNamed[pyreonSer]) }`
-  }
   let tap = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
   // reason to install a tap, and without it the pin never runs.
@@ -13601,7 +13566,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // on every step — the window then never moves, and the fifth device run
   // showed exactly that (a post-drag tap still reported the un-zoomed index).
   const overlay = navigating
-    ? `Box(modifier = Modifier.fillMaxWidth()${sliderBox !== null ? '.offset(y = (pyreonNavigator.strip.y - 8.0).dp).height((pyreonNavigator.strip.h + 12.0).dp)' : `.offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp)`}.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0L } })`
+    ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0L } })`
     : undefined
   // The data description always uses every source row and mark, independent
   // of paint-only zoom, thinning and legend visibility (mirror of Swift/web).
@@ -13610,7 +13575,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (labels !== undefined) lets.push(`val pyreonSeriesLabels: List<String> = ${emitKotlinExpr(labels, indent)}`)
   const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.hiding ? 'pyreonSeriesAll' : 'pyreonSeries'
   const a11ySeries = labels === undefined
-    ? `${a11ySource}.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues, xs = if (it.onX2 == true) it.xs else null) }`
+    ? `${a11ySource}.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }`
     : `${a11ySource}.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }`
   const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? kotlinStr(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}))`
   let dataViewOverlay: string | undefined
@@ -13993,68 +13958,6 @@ function kotlinSpreadResolver(indent: number): SpreadResolver {
   }
 }
 
-/**
- * The compile-time-resolved `graphic` elements as a `graphicDrawCommands(...)`
- * call, or `''` when the option carried none. The fields are emitted in the
- * generated struct's DECLARATION order — Swift's memberwise init takes them
- * positionally even though every one is labelled.
- */
-function kotlinGraphicCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'graphicElements')
-  const value = attr?.kind === 'attr' ? attr.value : undefined
-  if (value?.kind !== 'array' || value.elements.length === 0) return ''
-  const items: string[] = []
-  for (const raw of value.elements) {
-    if (raw.kind !== 'object') return ''
-    const f = new Map(raw.fields.map((field) => [field.name, field.value]))
-    const num = (name: string): string => {
-      const v = f.get(name)
-      return v?.kind === 'literal' && typeof v.value === 'number' ? chartDouble(v.value) : '0.0'
-    }
-    const str = (name: string): string => {
-      const v = f.get(name)
-      return JSON.stringify(v?.kind === 'literal' && typeof v.value === 'string' ? v.value : '')
-    }
-    const clockwise = f.get('clockwise')
-    const pointsIR = f.get('points')
-    const pts: string[] = []
-    if (pointsIR?.kind === 'array') {
-      for (const p of pointsIR.elements) {
-        if (p.kind !== 'object') return ''
-        const pf = new Map(p.fields.map((field) => [field.name, field.value]))
-        const at = (name: string): string => {
-          const v = pf.get(name)
-          return v?.kind === 'literal' && typeof v.value === 'number' ? chartDouble(v.value) : '0.0'
-        }
-        pts.push(`PyreonChartPt(x = ${at('x')}, y = ${at('y')})`)
-      }
-    }
-    const args = [
-      `kind = ${str('kind')}`,
-      `x = ${num('x')}`,
-      `y = ${num('y')}`,
-      `w = ${num('w')}`,
-      `h = ${num('h')}`,
-      `fill = ${str('fill')}`,
-      `stroke = ${str('stroke')}`,
-      `lineWidth = ${num('lineWidth')}`,
-      `text = ${str('text')}`,
-      `fontSize = ${num('fontSize')}`,
-      `align = ${str('align')}`,
-      `cx = ${num('cx')}`,
-      `cy = ${num('cy')}`,
-      `r = ${num('r')}`,
-      `r0 = ${num('r0')}`,
-      `startAngle = ${num('startAngle')}`,
-      `endAngle = ${num('endAngle')}`,
-      `clockwise = ${clockwise?.kind === 'literal' && clockwise.value === false ? 'false' : 'true'}`,
-      `points = listOf<PyreonChartPt>(${pts.join(', ')})`,
-    ]
-    items.push(`GraphicElement(${args.join(', ')})`)
-  }
-  return ` + graphicDrawCommands(listOf<GraphicElement>(${items.join(', ')}))`
-}
-
 /** A pattern's optional texture fields (angle, symbol, spacingY), in struct order, when present as literals. */
 function patternExtras(values: Map<string, ExprIR>, sep: string): string {
   const out: string[] = []
@@ -14087,19 +13990,4 @@ function patternExtras(values: Map<string, ExprIR>, sep: string): string {
     out.push(`, shapeRings${sep}listOf(${counts.join(', ')})`)
   }
   return out.join('')
-}
-
-/**
- * A forwarded ChartSpec value (an OptionChart's `optionSpec`) as Kotlin: a
- * number as a Double, a number array as `listOf(...)`, a `{ value, percent }`
- * object as a `BarLength`, a string or a boolean as itself.
- */
-function kotlinSpecLiteral(v: unknown): string {
-  if (typeof v === 'number') return chartDouble(v)
-  if (typeof v === 'boolean') return String(v)
-  if (typeof v === 'string') return kotlinStr(v)
-  // A colour list (`ySplitArea`) is strings; every other array field is numbers.
-  if (Array.isArray(v)) return `listOf(${v.map((x) => (typeof x === 'string' ? kotlinStr(x) : chartDouble(Number(x)))).join(', ')})`
-  const o = v as { value?: unknown; percent?: unknown }
-  return `BarLength(value = ${chartDouble(Number(o.value ?? 0))}, percent = ${o.percent === true})`
 }

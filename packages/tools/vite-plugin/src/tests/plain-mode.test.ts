@@ -270,3 +270,76 @@ export function App() { return <div>{count}{double}</div> }`
     expect(result!.code).not.toContain('state(0')
   })
 })
+
+describe('pyreon({ plain: true }) — project-wide Plain Mode', () => {
+  const CARD = `export function Card({ title }) { return <h1>{title}</h1> }\n`
+
+  it('compiles a marker-less APP component as plain (props destructuring is live)', async () => {
+    const plugin = bootstrap({ plain: true })
+    await runBuildStart(plugin)
+    const id = writeFile('src/Card.tsx', CARD)
+    const out = (await runTransform(plugin, CARD, id))!.code
+    expect(out).toContain('Card(props)')
+  })
+
+  it('leaves the same component classic when the option is off', async () => {
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const id = writeFile('src/Card.tsx', CARD)
+    expect((await runTransform(plugin, CARD, id))!.code).toContain('Card({ title })')
+  })
+
+  it("respects a per-file 'use classic' opt-out", async () => {
+    const plugin = bootstrap({ plain: true })
+    await runBuildStart(plugin)
+    const src = `'use classic'\n${CARD}`
+    const id = writeFile('src/Legacy.tsx', src)
+    expect((await runTransform(plugin, src, id))!.code).toContain('Card({ title })')
+  })
+
+  it('never forces third-party node_modules code', async () => {
+    const plugin = bootstrap({ plain: true, include: [/\.tsx$/] })
+    await runBuildStart(plugin)
+    const id = writeFile('node_modules/some-lib/Card.tsx', CARD)
+    const out = await runTransform(plugin, CARD, id)
+    expect(out?.code ?? CARD).not.toContain('Card(props)')
+  })
+})
+
+describe('dev source-location injection ignores JSX text', () => {
+  it('`effect()` written as JSX TEXT is not rewritten into a call (serve mode)', async () => {
+    const plugin = pyreonPlugin()
+    ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'serve' })
+    await runBuildStart(plugin)
+    const src = `import { effect, signal } from '@pyreon/reactivity'
+const n = signal(0)
+effect(() => { void n() })
+export const Doc = () => <Code>Use effect() for side effects and signal() for state.</Code>
+`
+    const id = writeFile('src/Doc.tsx', src)
+    const out = (await runTransform(plugin, src, id))!.code
+    // the real call gets its location (module-level signals go through HMR)…
+    expect(out).toMatch(/effect\(\(\) => \{ void n\(\) \}, \{ __sourceLocation/)
+    // …the prose inside JSX stays prose
+    expect(out).toContain('Use effect() for side effects and signal() for state.')
+  })
+})
+
+describe('HMR state preservation for plain modules', () => {
+  it('a module-level `let x = state(…)` is HMR-preserved exactly like a classic signal (serve mode)', async () => {
+    const plugin = pyreonPlugin()
+    ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'serve' })
+    await runBuildStart(plugin)
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let count = state(0)
+export const View = () => <button onClick={() => { count++ }}>{count}</button>
+`
+    const id = writeFile('src/HmrPlain.tsx', src)
+    const out = (await runTransform(plugin, src, id))!.code
+    // the pre-pass lowered the marker BEFORE HMR injection saw the module, so
+    // the signal is registered under its name and survives a hot update
+    expect(out).toMatch(/const count = __hmr_signal\([^,]+, "count", signal, 0\)/)
+    expect(out).not.toContain('state(')
+  })
+})

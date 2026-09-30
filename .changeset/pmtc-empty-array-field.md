@@ -34,11 +34,6 @@ failed on exactly the payloads JSON exists to carry. Static parts become JSON
 text at compile time and runtime parts are interpolated, so live data still
 flows; a non-literal value keeps the plain `encode(expr)` form.
 
-This is what `examples/native-viz`, the `@pyreon/charts` webview example, needed:
-an ECharts option object has heterogeneous nesting and empty objects, so no
-struct existed for it and the Android build died on `cannot infer type for type
-parameter 'T'`. It now compiles.
-
 A literal that OMITS an optional field now constructs the declared struct
 instead of a synthesized one. Both emitters indexed declared structs by their
 exact sorted field-name set, so `type T = { a: string; b?: string }` with

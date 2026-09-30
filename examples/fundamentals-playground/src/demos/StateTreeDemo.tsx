@@ -1,4 +1,5 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
+import { computed } from '@pyreon/reactivity'
 import type { Patch } from '@pyreon/state-tree'
 import { applySnapshot, getSnapshot, model, onPatch } from '@pyreon/state-tree'
 
@@ -13,11 +14,11 @@ const TodoList = model({ state: { title: 'My Todos', nextId: 1, } })
 
 export function StateTreeDemo() {
   const list = TodoList.create({ title: 'Shopping List' })
-  const patches = signal<Patch[]>([])
-  const savedSnapshot = signal<string>('')
+  let patches = state.raw<Patch[]>([])
+  let savedSnapshot = state<string>('')
 
   onPatch(list, (patch) => {
-    patches.update((p) => [...p.slice(-9), patch])
+    patches = [...patches.slice(-9), patch]
   })
 
   return (
@@ -49,16 +50,16 @@ export function StateTreeDemo() {
         <div class="row" style="margin-bottom: 8px">
           <button
             class="primary"
-            onClick={() => savedSnapshot.set(JSON.stringify(getSnapshot(list)))}
+            onClick={() => { savedSnapshot = JSON.stringify(getSnapshot(list)) }}
           >
             Save Snapshot
           </button>
           <button
             onClick={() => {
-              const snap = savedSnapshot()
+              const snap = savedSnapshot
               if (snap) applySnapshot(list, JSON.parse(snap))
             }}
-            disabled={!savedSnapshot()}
+            disabled={!savedSnapshot}
           >
             Restore Snapshot
           </button>
@@ -67,9 +68,9 @@ export function StateTreeDemo() {
           Current: <code>{() => JSON.stringify(getSnapshot(list))}</code>
         </p>
         {() =>
-          savedSnapshot() ? (
+          savedSnapshot ? (
             <p style="font-size: 13px; color: #2e7d32; margin-top: 4px">
-              Saved: <code>{savedSnapshot()}</code>
+              Saved: <code>{savedSnapshot}</code>
             </p>
           ) : null
         }
@@ -79,9 +80,9 @@ export function StateTreeDemo() {
         <h3>Patch Log</h3>
         <div class="log">
           {() =>
-            patches().length === 0
+            patches.length === 0
               ? 'No patches yet.'
-              : patches()
+              : patches
                   .map((p) => JSON.stringify(p))
                   .join('\n')
           }

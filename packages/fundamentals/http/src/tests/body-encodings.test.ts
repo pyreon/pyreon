@@ -149,6 +149,14 @@ describe('the remaining shapes', () => {
     expect(decodeURIComponent(encodeForm({ items: [{ p: 1 }] }).toString())).toBe('items[0][p]=1')
   })
 
+  it('an exploded object property holding a SCALAR appends the key,value pair directly', () => {
+    // The sibling above ("uses brackets") covers the array-inner branch;
+    // this covers the plain-scalar `else` — no existing test set an
+    // OBJECT field's own property to a bare number/string under the
+    // default (explode: true) style.
+    expect(decodeURIComponent(encodeForm({ o: { a: 1, b: 'x' } }).toString())).toBe('a=1&b=x')
+  })
+
   it('per-call headers merge over declared ones in every HeadersInit form, and null removes one', async () => {
     const { api, handle } = makeApi()
     const ep = api.endpoint('GET /me', { headers: { a: '1', b: '2' } })

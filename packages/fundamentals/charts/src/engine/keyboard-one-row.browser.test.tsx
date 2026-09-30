@@ -28,6 +28,9 @@ describe('keyboard focus formats the focused row only', () => {
     document.body.appendChild(root)
     const un = mount(h(PlotChart<Row>, { data: ROWS, x: (d: Row) => d.i, marks: [line((d: Row) => d.v)], width: 600, height: 300, animate: false, format }), root)
     await flush()
+    // Let the (deferred) accessible table fill first: this measures what a
+    // KEYSTROKE formats, not the table's own one-time build.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)))
     const canvas = root.querySelector('canvas')!
     const live = root.querySelector('[aria-live="polite"]')!
 

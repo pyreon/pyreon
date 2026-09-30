@@ -15,12 +15,23 @@
 //
 // The CONTAINER is the `useStream` result (`events`, `latest`, `status`,
 // `error` as Compose `MutableState`) plus the connection loop, a port of
-// `createStream`. The loop runs on its own daemon thread, started from the
+// `createStream`. The loop reads on its own daemon thread, started from the
 // emitted `DisposableEffect` and stopped by its `onDispose`: a blocking socket
 // read ignores coroutine cancellation, so the only reliable way to end one is
-// to close the connection from outside, which `stop()` does. Writes to
-// `MutableState` from that thread are the same shape PyreonWebSocket's OkHttp
-// callbacks already use; Compose snapshots accept them.
+// to close the connection from outside, which `stop()` does.
+//
+// Everything the loop makes OBSERVABLE — every state write and every
+// `onEvent` call — is handed to the container's `main` executor instead of
+// running on the reader thread. On the web the whole hook runs on the one JS
+// thread, so an `onEvent` that writes a signal, reads another, or touches
+// anything main-bound behaves the same as any other handler; running it on the
+// reader thread made the same source a data race on Android only (a Compose
+// `SnapshotStateObserver` write from the wrong thread is the crash
+// PyreonWebSocketOkHttp and PyreonRateLimit already document). The emit passes
+// `PyreonStreamMain` (PyreonStreamAndroid.kt, the main looper); the default is
+// inline so the container stays plain JVM for its tests. Each posted block
+// re-checks that its session is still the live one, so a write queued before
+// `stop()` / `idle()` / `abort()` cannot land after it.
 
 package com.pyreon.runtime
 
@@ -337,7 +348,15 @@ public object PyreonStreamHttpTransport : PyreonStreamTransport {
  * The `useStream` result plus the connection loop the emitted
  * `DisposableEffect` starts. `status` uses the web's vocabulary exactly.
  */
-public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
+public class PyreonStream<E>(
+    public val maxEvents: Long = 1000L,
+    /**
+     * Where observable work runs: every state write and every `onEvent` call.
+     * Must be ONE ordered thread (FIFO) — the emit passes the main looper. The
+     * inline default is for plain-JVM callers and tests.
+     */
+    private val main: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() },
+) {
     public val events: MutableState<List<E>> = mutableStateOf(emptyList())
     public val latest: MutableState<E?> = mutableStateOf(null)
     public val status: MutableState<String> = mutableStateOf("idle")
@@ -387,6 +406,18 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         restartTick.value = restartTick.value + 1
     }
 
+    /**
+     * `enabled` turned false: stop the running stream and read `idle`, keeping
+     * the events already received — the web hook's disabled branch
+     * (`stop(); status.set('idle')`). A no-op after [abort], exactly as the web
+     * effect returns before reading `enabled` once aborted.
+     */
+    public fun idle() {
+        if (aborted) return
+        stop()
+        status.value = "idle"
+    }
+
     /** End the running stream without touching the observable state (dispose). */
     public fun stop() {
         synchronized(lock) {
@@ -403,10 +434,11 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         options: PyreonSseOptions = PyreonSseOptions(),
         accept: String = "text/event-stream",
         transport: PyreonStreamTransport = PyreonStreamHttpTransport,
+        onEvent: ((E) -> Unit)? = null,
         decode: (PyreonSseMessage) -> E,
     ) {
         val allowed = options.events?.toSet()
-        start(request, accept, true, options.reconnect, options.lastEventId, transport, { msg ->
+        start(request, accept, true, options.reconnect, options.lastEventId, transport, onEvent, { msg ->
             if (allowed != null && msg.type !in allowed) {
                 null
             } else {
@@ -420,9 +452,10 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         request: PyreonStreamRequest,
         accept: String = "application/x-ndjson",
         transport: PyreonStreamTransport = PyreonStreamHttpTransport,
+        onEvent: ((E) -> Unit)? = null,
         decode: (String) -> E,
     ) {
-        start(request, accept, false, null, null, transport, null) { line, text ->
+        start(request, accept, false, null, null, transport, onEvent, null) { line, text ->
             try { decode(text) } catch (e: Throwable) { throw PyreonStreamError.Parse(line, text, e) }
         }
     }
@@ -434,6 +467,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         policy: PyreonStreamReconnect?,
         initialId: String?,
         transport: PyreonStreamTransport,
+        onEvent: ((E) -> Unit)?,
         onSse: ((PyreonSseMessage) -> E?)?,
         onLine: ((Int, String) -> E)?,
     ) {
@@ -444,7 +478,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
             session = s
         }
         begin()
-        val thread = Thread({ s.run(request, accept, sse, policy, initialId, transport, onSse, onLine) }, "pyreon-stream")
+        val thread = Thread({ s.run(request, accept, sse, policy, initialId, transport, onEvent, onSse, onLine) }, "pyreon-stream")
         thread.isDaemon = true
         s.thread = thread
         thread.start()
@@ -457,6 +491,15 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         private val wake = java.util.concurrent.CountDownLatch(1)
 
         fun live(): Boolean = !cancelled && session === this
+
+        /**
+         * Run observable work on [main], and only if this session is still the
+         * live one WHEN IT RUNS — a `stop()` on the main thread between the post
+         * and its execution must win, or a stopped stream would reopen itself.
+         */
+        fun post(block: () -> Unit) {
+            main.execute { if (live()) block() }
+        }
 
         fun cancel() {
             cancelled = true
@@ -471,6 +514,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
             policy: PyreonStreamReconnect?,
             initialId: String?,
             transport: PyreonStreamTransport,
+            onEvent: ((E) -> Unit)?,
             onSse: ((PyreonSseMessage) -> E?)?,
             onLine: ((Int, String) -> E)?,
         ) {
@@ -480,7 +524,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
             var failures = 0
             while (true) {
                 if (!live()) return
-                if (attempt > 0) status.value = "reconnecting"
+                if (attempt > 0) post { status.value = "reconnecting" }
                 var failure: Throwable? = null
                 var ended = false
                 try {
@@ -505,7 +549,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
                         res.close()
                         ended = true
                     } else {
-                        status.value = "open"
+                        post { status.value = "open" }
                         val splitter = PyreonStreamLineSplitter()
                         val parser = PyreonSseParser(lastId ?: "")
                         val lines = PyreonNdjsonLines()
@@ -519,14 +563,24 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
                                     val event = onSse(msg)
                                     if (event != null && live()) {
                                         failures = 0
-                                        push(event)
+                                        // One block, so `onEvent` runs right
+                                        // after its own push — the web's
+                                        // `options.onEvent?.(event, queryClient)`
+                                        // — on the main thread, in wire order.
+                                        post {
+                                            push(event)
+                                            onEvent?.invoke(event)
+                                        }
                                     }
                                 }
                             } else if (onLine != null) {
                                 val hit = lines.line(line)
                                 if (hit != null) {
                                     val event = onLine(hit.first, hit.second)
-                                    if (live()) push(event)
+                                    post {
+                                        push(event)
+                                        onEvent?.invoke(event)
+                                    }
                                 }
                             }
                         }
@@ -554,12 +608,12 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
                     failure = e
                 }
                 if (ended && policy?.onEnd != true) {
-                    if (live()) status.value = "closed"
+                    post { status.value = "closed" }
                     return
                 }
                 if (failure != null) {
                     if (policy == null || !PyreonStreamPolicy.isRetryable(failure) || failures >= policy.attempts) {
-                        if (live()) fail(failure)
+                        post { fail(failure) }
                         return
                     }
                     failures++

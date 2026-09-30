@@ -59,24 +59,51 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
-    // 0.52 made `@pyreon/charts`'s main entry the package's own engine and
-    // moved the ECharts wrapper to `/echarts`. An app still on the old paths
-    // hits one of two errors, neither naming the move: the bundler's missing
-    // export specifier (`/plot`, `/manual`, `/vite` no longer exist) or the
-    // type checker's missing member (`Plot`, `Tip`, `useChart`, … no longer
-    // come from the main entry). The fix is mechanical and automated.
+    // 0.52 replaced `@pyreon/charts`'s ECharts wrapper with Pyreon's own
+    // engine and removed the wrapper. An app still on 0.51's API hits one of
+    // two errors, neither naming the change: the bundler's missing export
+    // specifier (`/manual`, `/vite`, `/webview` no longer exist) or the type
+    // checker's missing member (`useChart`, `EChartsOption`, … no longer
+    // exist anywhere).
     pattern:
       // Quotes as \x22 / \x27 escapes: a regex literal holding raw quote
       // characters derails the lexical import scanners (loom's among them),
       // which have no notion of a regex literal.
-      /(?:Missing \x22\.\/(plot|manual|vite)\x22 specifier in \x22@pyreon\/charts\x22 package|Module \x27\x22@pyreon\/charts(?:\/plot)?\x22\x27 has no exported member \x27(Plot|PlotProps|Tip|TipProps|useChart|EChartsOption|ComposeOption|getCore|connect|PieChart|FunnelChart|HeatmapChart|CandlestickChart|OptionChart|optionToSvg|chartToSvg|PlotChart)\x27)/,
+      /(?:Missing \x22\.\/(manual|vite|webview)\x22 specifier in \x22@pyreon\/charts\x22 package|Module \x27\x22@pyreon\/charts\x22\x27 has no exported member \x27(useChart|UseChartConfig|UseChartResult|EChartsOption|ECharts|ComposeOption|SetOptionOpts|ChartEventParams|ChartEventHandler|getCore|connect|\w+SeriesOption|\w+ComponentOption)\x27)/,
     diagnose: (m) => ({
       cause:
-        "`@pyreon/charts` changed its entry points in 0.52: the main entry is now Pyreon's own engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), the ECharts wrapper is `<EChart>` at `/echarts`, and the rest of the engine is split across `/option`, `/svg` and `/engine`. " +
-        (m[1] !== undefined ? '`@pyreon/charts/' + m[1] + '` no longer exists.' : '`' + m[2] + '` no longer comes from where this import asks for it.'),
-      fix: "Run `pyreon check --fix` (or the MCP `migrate_pyreon` tool): it rewrites every old `@pyreon/charts` import to the entry that exports each name and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart`. Then move `<Chart toolbox>` to a `<Toolbox>` child and `onSelectIndex` to `onSelect`.",
-      fixCode: `import { Chart, Line, Tooltip } from '@pyreon/charts'
-import { EChart } from '@pyreon/charts/echarts'`,
+        "`@pyreon/charts` 0.52 removed the ECharts wrapper: it is now Pyreon's own engine, where `<Chart>` takes your rows and marks as children instead of an ECharts `options` object. " +
+        (m[1] !== undefined ? '`@pyreon/charts/' + m[1] + '` no longer exists.' : '`' + m[2] + '` belonged to the wrapper and no longer exists.'),
+      fix: "Rewrite the chart with marks: each ECharts series becomes a mark (`type: 'bar'` → `<Bar y=\"field\" />`, `'line'` → `<Line>`, `'pie'` → `<Arc>`), `tooltip` becomes `<Tooltip />`, `legend` `<Legend />`, and the family charts (sankey, treemap, gauge, …) are components. Delete the `/vite` tslib alias — it is no longer needed. `pyreon check` lists every import still on the wrapper.",
+      fixCode: `import { Bar, Chart, Tooltip } from '@pyreon/charts'
+
+<Chart data={rows} x="month">
+  <Bar y="revenue" />
+  <Tooltip />
+</Chart>`,
+    }),
+  },
+  {
+    // The second half of the 0.52 wrapper removal: an app that still renders
+    // `<Chart options={…}>` (the 0.51 ECharts wrapper's grammar) typechecks
+    // against the NEW `<Chart>`, whose props are rows + marks. The import
+    // itself still resolves, so the entry above never fires — the type
+    // checker reports an unknown `options` prop instead, naming neither the
+    // removal nor the replacement.
+    pattern:
+      /Property \x27(options|notMerge|lazyUpdate|onEvents)\x27 does not exist on type \x27[^\x27]*ChartProps/,
+    diagnose: (m) => ({
+      cause:
+        '`' +
+        (m[1] ?? 'options') +
+        "` is a prop of the 0.51 ECharts wrapper `<Chart options>`, which `@pyreon/charts` 0.52 removed. The new `<Chart>` is Pyreon's own engine: it takes your rows as `data` and draws the marks you give it as children, so it has no ECharts option object to accept.",
+      fix: 'Translate the option into marks: pass the rows as `data` and the category field as `x`, turn each series into a mark (`type: \'bar\'` → `<Bar y="field" />`, `\'line\'` → `<Line>`, `\'pie\'` → `<Arc>`), and replace `tooltip` / `legend` with `<Tooltip />` / `<Legend />`. `pyreon check` flags every remaining `<Chart options>` in the project.',
+      fixCode: `import { Bar, Chart, Tooltip } from '@pyreon/charts'
+
+<Chart data={rows} x="month">
+  <Bar y="revenue" />
+  <Tooltip />
+</Chart>`,
     }),
   },
   {
@@ -1288,6 +1315,24 @@ const Page = lazy(() => import('./Page'))`,
     }),
   },
   {
+    // Deferred lazy hydration: a server-rendered `lazy()` whose client chunk
+    // had not landed keeps its server nodes until the chunk settles. When the
+    // chunk FAILS instead, those nodes are dropped and the error reaches the
+    // nearest <ErrorBoundary> — the residual a user now sees is the browser's
+    // own chunk-load error, arriving after the page looked complete.
+    pattern: /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/,
+    diagnose: () => ({
+      cause:
+        'A code-split chunk (a `lazy()` / `defineAsyncComponent` import) failed to load. During hydration the server-rendered content of that component stayed on screen while the chunk loaded; when the load failed it was removed and the error was sent to the nearest `<ErrorBoundary>`. The usual causes are a deploy that replaced the hashed chunk files while this page was open, or a network error.',
+      fix: 'Wrap lazily loaded regions in an `<ErrorBoundary>` with a fallback that offers a reload, so a stale deploy degrades visibly instead of emptying the region. Keep the previous deploy\'s assets available for a while (most hosts do), or reload the page on this error.',
+      fixCode: `<ErrorBoundary fallback={() => <button onClick={() => location.reload()}>Reload</button>}>
+  <Suspense fallback={<Spinner />}>
+    <Settings />
+  </Suspense>
+</ErrorBoundary>`,
+    }),
+  },
+  {
     pattern: /Hydration mismatch/,
     diagnose: () => ({
       cause: "Server-rendered HTML doesn't match client-rendered output.",
@@ -1870,10 +1915,24 @@ const geometry = () => props.shape
     pattern: /from ['"`]@pyreon\/core\/plain['"`] reached the runtime/,
     diagnose: () => ({
       cause:
-        "A Plain Mode marker (`state()` / `derived()` / `effect()` from `@pyreon/core/plain`) executed at runtime. Plain Mode is a compile-time dialect: the Pyreon compiler's plain pre-pass rewrites the markers to `signal`/`computed`/`effect` and removes the import. Reaching the marker body means this module was never transformed — the `pyreon()` vite plugin is missing, the build bypassed it (bare `tsc`, a non-Vite bundler without the plugin), or the module fell outside the transform filter. Note the filter covers `.tsx`/`.jsx`/`.pyreon` plus any `.ts`/`.mts` module that carries the `'use plain'` directive or the `@pyreon/core/plain` import — a plain store in a `.ts` file works, but only through the plugin.",
-      fix: "Add `pyreon()` from `@pyreon/vite-plugin` to `vite.config.ts` `plugins`, and make sure the failing module is actually served through Vite (not consumed from a prebuilt output that skipped the plugin). For test runners, compile through the real `transformJSX` or run under the Vite plugin (vitest with the plugin in its config).",
+        "A Plain Mode marker (`state()` / `derived()` / `effect()` / `signalOf()` / `state.from()` / `derived.from()` from `@pyreon/core/plain`) executed at runtime. Plain Mode is a compile-time dialect: the Pyreon compiler's plain pre-pass rewrites the markers to `signal`/`computed`/`effect` and removes the import. Reaching the marker body means this module was never transformed — the `pyreon()` vite plugin is missing, the build bypassed it (bare `tsc`, a non-Vite bundler without the plugin), or the module fell outside the transform filter. Note the filter covers `.tsx`/`.jsx`/`.pyreon` plus any `.ts`/`.mts` module that carries the `'use plain'` directive or the `@pyreon/core/plain` import — a plain store in a `.ts` file works, but only through the plugin.",
+      fix: "Add `pyreon()` from `@pyreon/vite-plugin` to `vite.config.ts` `plugins`, and make sure the failing module is actually served through Vite (not consumed from a prebuilt output that skipped the plugin). The most common case is a TEST: vitest needs the same plugin in `vitest.config`'s `plugins` — a generic `jsx: 'automatic'` / `jsxImportSource` setting compiles the JSX but never runs the Plain Mode pre-pass. Note that `pyreon plain --write` skips test files by default for exactly this reason; a test that IMPORTS plain app code still needs the plugin.",
       fixCode:
         "// vite.config.ts\nimport { pyreon } from '@pyreon/vite-plugin'\nexport default defineConfig({ plugins: [pyreon()] })",
+    }),
+  },
+  {
+    // A Plain Mode signal-bridge marker the pre-pass could not lower. The
+    // compiler leaves the call in place (so it throws at runtime) and warns —
+    // this entry teaches the warning. `signalOf` needs a binding the pre-pass
+    // KNOWS is a signal; `state.from`/`derived.from` need exactly one argument.
+    pattern: /(signalOf\(\) takes exactly one state\/derived binding|(state|derived)\.from\(\) takes exactly one signal argument)/,
+    diagnose: () => ({
+      cause:
+        "A Plain Mode signal bridge could not be compiled. `signalOf(x)` returns the SIGNAL behind a plain binding, so `x` must be a binding the compiler knows is reactive: one declared with `state(…)` / `derived(…)` / `state.from(…)` in plain code, or an imported plain export. A prop, a local, an expression (`signalOf(a + 1)`) or a second argument has no signal behind it. `state.from(sig)` / `derived.from(sig)` adopt ONE existing signal as a plain binding and must initialize a variable declaration.",
+      fix: "Pass the plain binding itself: `signalOf(count)`. To expose a derived value as a signal, declare it with `derived(…)` first and pass that binding. To use a library signal in plain code, adopt it once — `let theme = state.from(useStorage('theme', 'light'))` — and read/assign `theme` directly. In a call argument next to arrow siblings, pin the type with `signalOf<typeof x>(x)` if TypeScript infers `unknown`.",
+      fixCode:
+        "let count = state(0)\nconst doubled = derived(count * 2)\nuseAutosave(signalOf(count))\nregister(signalOf(doubled))\n\nlet theme = state.from(useStorage('theme', 'light'))",
     }),
   },
   {

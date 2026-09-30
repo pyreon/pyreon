@@ -7,7 +7,7 @@
  */
 import { For, Show } from '@pyreon/core'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@pyreon/query'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { mount } from '@pyreon/runtime-dom'
 // One import site. The per-tag split is the generator's business, not the
 // app's -- nothing here knows `listBooks` was filed under `books`.
@@ -53,13 +53,13 @@ function Books() {
   // the generated `GetBookData` component in `books.native.tsx`, which takes
   // `bookId` as a prop. A standalone hook is read as a View by PMTC and never
   // lowers whatever its body does, which is why the two shapes both exist.
-  const selected = signal<string | undefined>(undefined)
+  let selected = state<string | undefined>(undefined)
   // `undefined` means "not ready", and the generated hook disables the query
   // rather than firing it. The alternative is to pass a placeholder id AND a
   // matching `enabled` option — the same condition written twice, where
   // getting the second one wrong requests `/books/` with an empty id.
   const detail = useGetBook(() => {
-    const id = selected()
+    const id = selected
     return id === undefined ? undefined : { params: { bookId: id } }
   })
 
@@ -74,7 +74,7 @@ function Books() {
                 <button
                   type="button"
                   data-testid={`book-${book.id}`}
-                  onClick={() => selected.set(book.id)}
+                  onClick={() => { selected = book.id }}
                 >
                   {book.title}
                 </button>
@@ -87,7 +87,7 @@ function Books() {
       </Show>
 
       <Show
-        when={() => selected() !== undefined}
+        when={() => selected !== undefined}
         fallback={<p data-testid="detail-empty">Pick a book.</p>}
       >
         {/*

@@ -9,4 +9,11 @@ import { type BrowserProviderFactory, defineBrowserConfig } from '@pyreon/vitest
 // `open={sig()}` ONCE (static), so reactive component props would never update.
 export default defineBrowserConfig(playwright() as unknown as BrowserProviderFactory, {
   plugins: [pyreon()],
+  // Pre-declare what `@pyreon/testing` pulls in. Left to discovery, the first
+  // COLD run re-optimizes mid-suite and vitest 5 fails the file on the
+  // resulting page reload (`Cannot read properties of undefined (reading
+  // 'config')`); warm caches masked it.
+  optimizeDeps: {
+    include: ['@pyreon/testing > @testing-library/dom', '@pyreon/testing > @testing-library/jest-dom/matchers'],
+  },
 })

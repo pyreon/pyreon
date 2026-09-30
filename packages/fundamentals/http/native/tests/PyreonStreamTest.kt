@@ -162,6 +162,84 @@ fun testContainer() {
     check(s.restartTick.value == tick + 1) { "restart bumps the effect key" }
 }
 
+/** `onEvent` runs once per event that lands, after the state write, in order. */
+fun testOnEvent() {
+    val seen = java.util.Collections.synchronizedList(ArrayList<String>())
+    val s = PyreonStream<Int>()
+    s.startNdjson(
+        PyreonStreamRequest(url = "http://x"),
+        transport = Scripted(listOf(200 to "1\n2\n3\n")),
+        onEvent = { v -> seen.add("$v:${s.events.value.size}") },
+    ) { it.trim().toInt() }
+    awaitStatus(s, "closed", "error")
+    // The size read inside the callback proves the push happened FIRST.
+    check(seen == listOf("1:1", "2:2", "3:3")) { "onEvent per event, after the push: $seen" }
+}
+
+/** `enabled` → false: stop, read `idle`, keep what was received. */
+fun testIdle() {
+    val s = PyreonStream<Int>()
+    s.begin()
+    s.push(4)
+    s.idle()
+    check(s.status.value == "idle") { "idle reads idle: ${s.status.value}" }
+    check(s.events.value == listOf(4)) { "idle keeps the events: ${s.events.value}" }
+    s.abort()
+    s.idle()
+    check(s.status.value == "closed") { "idle after abort is a no-op, like the web effect" }
+}
+
+/** An executor that only QUEUES — the test drains it, standing in for a main looper. */
+private class Queued : java.util.concurrent.Executor {
+    val queue = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+    override fun execute(command: Runnable) { queue.add(command) }
+    fun awaitSize(n: Int) {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (queue.size < n) {
+            check(System.currentTimeMillis() < deadline) { "timed out: ${queue.size} of $n posts queued" }
+            Thread.sleep(5)
+        }
+    }
+    fun drain() { while (true) (queue.poll() ?: return).run() }
+}
+
+/**
+ * Nothing observable happens on the reader thread: every state write and every
+ * `onEvent` call waits for the `main` executor, in wire order. On Android that
+ * executor is the main looper, which is where the web runs the whole hook.
+ */
+fun testObservableWorkRunsOnMain() {
+    val main = Queued()
+    val seen = ArrayList<String>()
+    val s = PyreonStream<Int>(main = main)
+    s.startNdjson(
+        PyreonStreamRequest(url = "http://x"),
+        transport = Scripted(listOf(200 to "1\n2\n3\n")),
+        onEvent = { v -> seen.add("$v:${s.events.value.size}:${Thread.currentThread().name}") },
+    ) { it.trim().toInt() }
+    // open, three push+onEvent blocks, closed.
+    main.awaitSize(5)
+    check(s.status.value == "connecting" && s.events.value.isEmpty() && seen.isEmpty()) {
+        "the reader thread wrote state directly: ${s.status.value} ${s.events.value} $seen"
+    }
+    main.drain()
+    check(s.status.value == "closed") { "closed once drained: ${s.status.value}" }
+    check(s.events.value == listOf(1, 2, 3)) { "events once drained: ${s.events.value}" }
+    val me = Thread.currentThread().name
+    check(seen == listOf("1:1:$me", "2:2:$me", "3:3:$me")) { "onEvent on the draining thread, after its push: $seen" }
+
+    // A stop() between the post and its execution wins: queued writes are dropped.
+    val later = Queued()
+    val t = PyreonStream<Int>(main = later)
+    t.startNdjson(PyreonStreamRequest(url = "http://x"), transport = Scripted(listOf(200 to "7\n"))) { it.trim().toInt() }
+    later.awaitSize(3)
+    t.stop()
+    later.drain()
+    check(t.events.value.isEmpty() && t.status.value == "connecting") {
+        "writes queued before stop() landed after it: ${t.status.value} ${t.events.value}"
+    }
+}
+
 fun main() {
     testGrammar()
     testDecoder()
@@ -171,5 +249,8 @@ fun main() {
     testLoopGivesUpOnNonRetryable()
     testNdjsonLoop()
     testContainer()
+    testOnEvent()
+    testIdle()
+    testObservableWorkRunsOnMain()
     println("[PyreonStreamTest] all checks passed")
 }

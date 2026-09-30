@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { type Role, setRole } from './permissions'
 import { RoleButton, RoleToggle } from './styled'
 
@@ -8,16 +8,16 @@ import { RoleButton, RoleToggle } from './styled'
  * the buttons can highlight the current selection without subscribing
  * to the permissions store.
  */
-const activeRole = signal<Role>('admin')
+let activeRole = state<Role>('admin')
 
 export function RoleToggleHeader() {
   return (
     <RoleToggle>
       <RoleButton
         type="button"
-        $active={activeRole() === 'admin'}
+        $active={activeRole === 'admin'}
         onClick={() => {
-          activeRole.set('admin')
+          activeRole = 'admin'
           setRole('admin')
         }}
       >
@@ -25,9 +25,9 @@ export function RoleToggleHeader() {
       </RoleButton>
       <RoleButton
         type="button"
-        $active={activeRole() === 'viewer'}
+        $active={activeRole === 'viewer'}
         onClick={() => {
-          activeRole.set('viewer')
+          activeRole = 'viewer'
           setRole('viewer')
         }}
       >

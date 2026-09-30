@@ -44,13 +44,13 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "hotkeys-js": "^4.0.8",
     "mousetrap": "^1.6.5",
-    "tinykeys": "^4.0.0"
+    "tinykeys": "^4.0.1"
   },
   "publishConfig": {
     "access": "public"

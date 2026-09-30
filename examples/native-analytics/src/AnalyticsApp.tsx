@@ -14,8 +14,9 @@
 //   Lowers correctly per target (Swift `reduce(init, cb)`, Kotlin
 //   `fold(init, cb)`).
 // - **Heavy viz via the WebView host, BOTH bridge directions** — the
-//   chart is web-only-rich (`@pyreon/charts` / `@pyreon/flow` can't
-//   compile to native), so the escape-hatch primitives select per
+//   chart here is a hand-written web page standing in for any web-only-rich
+//   component (a DOM editor, a document preview), so the escape-hatch
+//   primitives select per
 //   platform: `<Web>` renders an inline chart, `<NativeIOS>` /
 //   `<NativeAndroid>` host the SAME web chart in a `<WebView>` (WKWebView
 //   / Android WebView). The chart is INTERACTIVE end-to-end:
@@ -56,7 +57,7 @@ import {
   NativeAndroid,
   WebView,
 } from '@pyreon/primitives'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 
 const TITLE = 'Quarterly Analytics'
 
@@ -98,22 +99,22 @@ export function AnalyticsApp() {
   // accumulation `s + m.growth` infers fractional), so
   // `reduce(0.0, …).toFixed(1)` typechecks; the Int columns keep their
   // `0` seed.
-  const metrics = signal<Metric[]>([
+  let metrics = state.raw<Metric[]>([
     { region: 'EMEA', revenue: 1240, deals: 38, growth: 12.5 },
     { region: 'APAC', revenue: 980, deals: 27, growth: 8.3 },
     { region: 'AMER', revenue: 1530, deals: 51, growth: 15.1 },
     { region: 'LATAM', revenue: 610, deals: 19, growth: 9.7 },
   ])
-  const filter = signal('')
+  let filter = state('')
   // Reverse bridge — the region of the chart bar the user tapped INSIDE
   // the hosted WebView, pushed back to native via window.pyreonPostMessage.
-  const selected = signal('')
+  let selected = state('')
 
   return (
     <Stack gap="md" padding={4}>
       <Heading level={1}>{TITLE}</Heading>
-      <Field label="Filter region" value={filter} />
-      <Text>Selected: {selected()}</Text>
+      <Field label="Filter region" value={signalOf<typeof filter>(filter)} />
+      <Text>Selected: {selected}</Text>
 
       <Inline gap="md">
         <Text>Region</Text>
@@ -122,7 +123,7 @@ export function AnalyticsApp() {
         <Text>Growth %</Text>
       </Inline>
 
-      <For each={metrics()} by={(m) => m.region}>
+      <For each={metrics} by={(m) => m.region}>
         {(m) => (
           <Inline gap="md">
             <Text>{m.region}</Text>
@@ -135,19 +136,19 @@ export function AnalyticsApp() {
 
       <Inline gap="md">
         <Text>Total</Text>
-        <Text>{String(metrics().reduce((s, m) => s + m.revenue, 0))}</Text>
-        <Text>{String(metrics().reduce((s, m) => s + m.deals, 0))}</Text>
-        <Text>{metrics().reduce((s, m) => s + m.growth, 0).toFixed(1)}</Text>
+        <Text>{String(metrics.reduce((s, m) => s + m.revenue, 0))}</Text>
+        <Text>{String(metrics.reduce((s, m) => s + m.deals, 0))}</Text>
+        <Text>{metrics.reduce((s, m) => s + m.growth, 0).toFixed(1)}</Text>
       </Inline>
 
       <Web>
         <Text>Chart renders inline on web (e.g. @pyreon/charts).</Text>
       </Web>
       <NativeIOS>
-        <WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />
+        <WebView html={CHART_HTML} data={metrics} onMessage={(m) => { selected = m }} />
       </NativeIOS>
       <NativeAndroid>
-        <WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />
+        <WebView html={CHART_HTML} data={metrics} onMessage={(m) => { selected = m }} />
       </NativeAndroid>
     </Stack>
   )

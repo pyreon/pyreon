@@ -9,7 +9,7 @@ import { DARK_PALETTE, DEFAULT_PALETTE } from './palette'
  * `theme={{ palette: palettes.okabeIto }}`.
  *
  * `pyreon` is the default (see `DEFAULT_PALETTE`); `pyreonDark` is the same
- * hues lifted 8–12% for a dark ground. The rest are the classics developers
+ * hues re-picked to clear 3:1 against the dark ground. The rest are the classics developers
  * ask for by name: ECharts 6's tokens and the ECharts 5 / dark palettes,
  * Observable 10, Tableau 10, Okabe–Ito (colour-vision safe) and Tailwind's
  * 500 step for design systems built on it.

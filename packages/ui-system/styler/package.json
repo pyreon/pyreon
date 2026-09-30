@@ -37,6 +37,7 @@
     "lint": "oxlint .",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "test:browser:engines": "vitest run --config ./vitest.browser.engines.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -53,7 +54,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/browser-playwright": "^5.0.2",
     "@vitus-labs/tools-rolldown": "^2.6.3"
   },
   "engines": {

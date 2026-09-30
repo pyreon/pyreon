@@ -58,6 +58,7 @@ const ENV_KEYS = [
   'PYREON_VALIDATE_CACHE_DIR',
   'PYREON_SKIP_NATIVE_VALIDATE',
   'PYREON_REQUIRE_NATIVE_VALIDATE',
+  'PYREON_KOTLIN_DAEMON',
 ]
 
 beforeAll(() => {
@@ -67,6 +68,15 @@ beforeAll(() => {
   process.env.PYREON_VALIDATE_CACHE_DIR = PRIVATE_CACHE
   delete process.env.PYREON_SKIP_NATIVE_VALIDATE
   delete process.env.PYREON_REQUIRE_NATIVE_VALIDATE
+  // The warm-compile DAEMON is a second process boundary that `execFileSync`
+  // does not cover: it talks to a JVM over a spool directory. Whether it
+  // engages depends on the developer's machine — with `KOTLIN_HOME` set it
+  // locates `kotlin-compiler.jar` without asking `which` (the one call this
+  // file's fake answers with ''), starts, and REALLY compiles the fake inputs,
+  // so the four diagnostic-assembly specs below read a genuine kotlinc error
+  // instead of the fabricated one. Switch it off so the fake is the only
+  // compiler this file can reach, on every machine.
+  process.env.PYREON_KOTLIN_DAEMON = '0'
 })
 
 afterAll(() => {

@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import { useDroppable } from '@pyreon/dnd'
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 import { toast } from '@pyreon/toast'
 import { useBoardModel, type Column, type Priority } from '../lib/board'
 import { useFilterTerm } from '../lib/filter-context'
@@ -29,7 +29,7 @@ export default function BoardColumn(props: BoardColumnProps) {
   let columnEl: HTMLElement | null = null
 
   // Reactive column data — re-derives when the board state-tree updates.
-  const column = computed<Column | undefined>(() =>
+  const column = derived<Column | undefined>(() =>
     (board.columns() as Column[]).find((c) => c.id === props.columnId),
   )
 
@@ -48,17 +48,17 @@ export default function BoardColumn(props: BoardColumnProps) {
     },
   })
 
-  const addOpen = signal(false)
-  const newTitle = signal('')
-  const newPriority = signal<Priority>('medium')
+  let addOpen = state(false)
+  let newTitle = state('')
+  let newPriority = state<Priority>('medium')
 
   const handleAddCard = () => {
-    const title = newTitle().trim()
+    const title = newTitle.trim()
     if (!title) return
-    board.addCard(props.columnId, { title, priority: newPriority() })
-    newTitle.set('')
-    newPriority.set('medium')
-    addOpen.set(false)
+    board.addCard(props.columnId, { title, priority: newPriority })
+    newTitle = ''
+    newPriority = 'medium'
+    addOpen = false
     toast.success(`Added "${title}"`)
   }
 
@@ -72,19 +72,19 @@ export default function BoardColumn(props: BoardColumnProps) {
       }}
     >
       <div class="column-header">
-        <span>{() => column()?.title ?? ''}</span>
+        <span>{() => column?.title ?? ''}</span>
         <span
           class="column-count"
           data-testid={`column-${props.columnId}-count`}
         >
-          {() => column()?.cards.length ?? 0}
+          {() => column?.cards.length ?? 0}
         </span>
       </div>
 
       <div class="column-cards">
         <For
           each={() => {
-            const cards = column()?.cards ?? []
+            const cards = column?.cards ?? []
             const term = getTerm().trim().toLowerCase()
             if (!term) return cards
             return cards.filter((c) =>
@@ -98,24 +98,22 @@ export default function BoardColumn(props: BoardColumnProps) {
       </div>
 
       {() =>
-        addOpen() ? (
+        addOpen ? (
           <div class="add-card-form">
             <textarea
               placeholder="Enter card title…"
-              value={() => newTitle()}
+              value={() => newTitle}
               onInput={(e) =>
-                newTitle.set((e.currentTarget as HTMLTextAreaElement).value)
+                { newTitle = (e.currentTarget as HTMLTextAreaElement).value }
               }
               autoFocus
               data-testid={`new-card-input-${props.columnId}`}
             />
             <div class="actions">
               <select
-                value={() => newPriority()}
+                value={() => newPriority}
                 onChange={(e) =>
-                  newPriority.set(
-                    (e.currentTarget as HTMLSelectElement).value as Priority,
-                  )
+                  { newPriority = (e.currentTarget as HTMLSelectElement).value as Priority }
                 }
               >
                 <option value="low">Low</option>
@@ -134,8 +132,8 @@ export default function BoardColumn(props: BoardColumnProps) {
                 type="button"
                 class="btn-secondary"
                 onClick={() => {
-                  addOpen.set(false)
-                  newTitle.set('')
+                  addOpen = false
+                  newTitle = ''
                 }}
               >
                 ✕
@@ -146,7 +144,7 @@ export default function BoardColumn(props: BoardColumnProps) {
           <button
             type="button"
             class="add-card-btn"
-            onClick={() => addOpen.set(true)}
+            onClick={() => { addOpen = true }}
             data-testid={`add-card-btn-${props.columnId}`}
           >
             + Add a card

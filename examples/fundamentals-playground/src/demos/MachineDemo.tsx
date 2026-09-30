@@ -1,5 +1,6 @@
 import { createMachine } from '@pyreon/machine'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 
 // ─── Wizard Machine ─────────────────────────────────────────────────────────
 
@@ -26,19 +27,19 @@ const fetcher = createMachine({
   },
 })
 
-const fetchData = signal<string | null>(null)
-const fetchError = signal<string | null>(null)
+let fetchData = state<string | null>(null)
+let fetchError = state<string | null>(null)
 
 fetcher.onEnter('loading', () => {
-  fetchData.set(null)
-  fetchError.set(null)
+  fetchData = null
+  fetchError = null
   // Simulate API call
   setTimeout(() => {
     if (Math.random() > 0.3) {
-      fetchData.set(`Data loaded at ${new Date().toLocaleTimeString()}`)
+      fetchData = `Data loaded at ${new Date().toLocaleTimeString()}`
       fetcher.send('SUCCESS')
     } else {
-      fetchError.set('Network error (simulated 30% failure rate)')
+      fetchError = 'Network error (simulated 30% failure rate)'
       fetcher.send('ERROR')
     }
   }, 800)
@@ -67,14 +68,14 @@ const player = createMachine({
 
 // ─── Guarded Machine ────────────────────────────────────────────────────────
 
-const formValid = signal(false)
+let formValid = state(false)
 
 const guardedForm = createMachine({
   initial: 'editing',
   states: {
     editing: {
       on: {
-        SUBMIT: { target: 'submitting', guard: () => formValid.peek() },
+        SUBMIT: { target: 'submitting', guard: () => untrack(() => formValid) },
       },
     },
     submitting: { on: { SUCCESS: 'done', ERROR: 'editing' } },
@@ -83,15 +84,15 @@ const guardedForm = createMachine({
 })
 
 export function MachineDemo() {
-  const transitionLog = signal<string[]>([])
+  let transitionLog = state.raw<string[]>([])
 
   // Log all wizard transitions
   wizard.onTransition((from, to, event) => {
-    transitionLog.update((l) => [...l.slice(-14), `${event.type}: ${from} → ${to}`])
+    transitionLog = [...transitionLog.slice(-14), `${event.type}: ${from} → ${to}`]
   })
 
   fetcher.onTransition((from, to, event) => {
-    transitionLog.update((l) => [...l.slice(-14), `[fetch] ${event.type}: ${from} → ${to}`])
+    transitionLog = [...transitionLog.slice(-14), `[fetch] ${event.type}: ${from} → ${to}`]
   })
 
   return (
@@ -178,7 +179,7 @@ export function MachineDemo() {
           if (fetcher.matches('success'))
             return (
               <div>
-                <p style="color: green">{fetchData()}</p>
+                <p style="color: green">{fetchData}</p>
                 <div class="row">
                   <button onClick={() => fetcher.send('REFETCH')}>Refetch</button>
                   <button onClick={() => fetcher.send('RESET')}>Reset</button>
@@ -188,7 +189,7 @@ export function MachineDemo() {
           if (fetcher.matches('error'))
             return (
               <div>
-                <p style="color: red">{fetchError()}</p>
+                <p style="color: red">{fetchError}</p>
                 <div class="row">
                   <button onClick={() => fetcher.send('RETRY')}>Retry</button>
                   <button onClick={() => fetcher.send('RESET')}>Reset</button>
@@ -253,15 +254,15 @@ export function MachineDemo() {
                 <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
                   <input
                     type="checkbox"
-                    checked={formValid()}
-                    onChange={() => formValid.update((v) => !v)}
+                    checked={formValid}
+                    onChange={() => { formValid = !formValid }}
                   />
                   Form is valid (guard checks this)
                 </label>
                 <button onClick={() => guardedForm.send('SUBMIT')}>Submit</button>
                 <p style="font-size: 13px; opacity: 0.7; margin-top: 4px">
                   {() =>
-                    formValid()
+                    formValid
                       ? 'Guard will pass — click Submit.'
                       : 'Guard will block — Submit does nothing until checkbox is checked.'
                   }
@@ -291,9 +292,9 @@ export function MachineDemo() {
         <h3>Transition Log</h3>
         <div class="log" style="min-height: 100px">
           {() =>
-            transitionLog().length === 0
+            transitionLog.length === 0
               ? 'Interact with the machines above to see transitions.'
-              : transitionLog().join('\n')
+              : transitionLog.join('\n')
           }
         </div>
       </div>

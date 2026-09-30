@@ -17,7 +17,7 @@
 
 import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, isServer, signal } from '@pyreon/reactivity'
 import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput, A11yTable } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
@@ -33,6 +33,7 @@ import { placeTooltip } from './tooltip'
 import type { Size } from './tooltip'
 import { renderTooltipHtml } from './tooltip-html'
 import { easeOutCubic } from './tween'
+import { getFrameSerializer } from './frame-seam'
 import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
 import { mirrorCmds, mirrorX, screenRectX , transposeCmds, transposeRect } from './rtl'
 
@@ -41,6 +42,8 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 export const A11Y_TABLE_MAX = 1000
 /** Rows per `<tbody>` block of the accessible table (see `a11yTableNode`). */
 const TABLE_CHUNK = 50
+/** Above this many rows the accessible table fills after the first paint (see `a11yTableNode`). */
+const DEFER_ROWS = 200
 const OFFSCREEN = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0'
 
 /** Make `parent` hold exactly `n` `tag` children, reusing the ones it has; returns them. */
@@ -73,13 +76,42 @@ function setCell(el: Element, text: string): void {
  */
 export function a11yTableNode(read: () => A11yTable, id: string, title: () => string): VNode {
   const host = signal<HTMLTableElement | null>(null)
+  // A LARGE table is filled after the chart's first paint, not before it. At
+  // 1k rows its layout was ~9ms of a ~10.5ms first frame — the reason a plain
+  // line chart painted several times later than uPlot's. A screen reader
+  // reaches it a frame later; a sighted user sees the chart that much sooner.
+  // Up to DEFER_ROWS it is filled at mount as before: that layout is under
+  // ~2ms, not worth a frame of delay. (A server render ships it filled either
+  // way — `tableHtml`.)
+  const ready = signal(false)
   // What each body cell last held, so an unchanged cell costs a string compare
   // and no DOM read or write.
   let shown: string[][] = []
+  // A large table is written after the next paint on EVERY change, not only
+  // the first mount: a data update used to refill 1,000 rows inside the
+  // update's own frame (measured: 6.0ms vs 1.4ms without the table on a 10k
+  // update). Coalesced — a burst of updates writes the latest table once.
+  let pending: A11yTable | null = null
   effect(() => {
     const el = host()
     if (el === null) return
     const t = read()
+    if (t.rows.length > DEFER_ROWS) {
+      if (!ready()) return
+      const scheduled = pending !== null
+      pending = t
+      if (!scheduled) {
+        afterPaint(() => {
+          const next = pending
+          pending = null
+          if (next !== null && el.isConnected) writeTable(el, next)
+        })
+      }
+      return
+    }
+    writeTable(el, t)
+  })
+  function writeTable(el: HTMLTableElement, t: A11yTable): void {
     const doc = el.ownerDocument
     let caption = el.caption
     if (caption === null) caption = el.createCaption()
@@ -129,13 +161,49 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
       }
     }
     shown = next
-  })
+  }
   // `table-layout: fixed` + containment: the table is offscreen, so nothing it
   // holds may cost a page layout. AUTO table layout measures every cell of
   // every row to size its columns — ~6ms for 1,000 rows on each forced layout,
   // several times the chart's own draw. Containment and fixed layout change
   // nothing in the accessibility tree, which is the table's only reader.
-  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', ref: (el: HTMLTableElement | null) => host.set(el) }))
+  // The rows are built through the DOM on the client, so a server render used
+  // to ship an EMPTY table: a crawler, a no-JS reader, or anyone before
+  // hydration got the chart's name and none of its numbers. The server now
+  // writes the same structure as markup; hydration adopts it as-is (a
+  // `dangerouslySetInnerHTML` element's server children are trusted, never
+  // re-parsed) and the effect above keeps it current from there. On a pure
+  // client mount the payload is empty and the effect builds it, as before.
+  const html = isServer ? tableHtml(read(), title()) : ''
+  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => {
+    host.set(el)
+    if (el !== null && !ready.peek()) afterPaint(() => ready.set(true))
+  } }))
+}
+
+/** Run `fn` after the next frame has painted: rAF runs BEFORE paint, so the timeout inside it lands after. */
+function afterPaint(fn: () => void): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    fn()
+    return
+  }
+  requestAnimationFrame(() => setTimeout(fn, 0))
+}
+
+const escHtml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** The accessible table as markup, in the same caption / thead / chunked-tbody shape the client builds, so hydration adopts it cell for cell. */
+export function tableHtml(t: A11yTable, title: string): string {
+  const caption = title + (t.rows.length < t.total ? ` (first ${t.rows.length} of ${t.total} rows)` : '')
+  let out = `<caption>${escHtml(caption)}</caption><thead><tr>${t.headers.map((x) => `<th scope="col">${escHtml(x)}</th>`).join('')}</tr></thead>`
+  for (let k = 0; k * TABLE_CHUNK < t.rows.length; k++) {
+    out += '<tbody>'
+    for (const row of t.rows.slice(k * TABLE_CHUNK, (k + 1) * TABLE_CHUNK)) {
+      out += '<tr>' + row.map((c, i) => (i === 0 ? `<th scope="row">${escHtml(c)}</th>` : `<td>${escHtml(c)}</td>`)).join('') + '</tr>'
+    }
+    out += '</tbody>'
+  }
+  return out
 }
 
 /** The crossing chrome functions return an EMPTY list for a miss; the host's tooltip contract says `null`. */
@@ -220,8 +288,8 @@ export interface TooltipView {
 /**
  * The item under the pointer, described the way ECharts describes it to a
  * tooltip formatter. A family reports it through its spec's `item` hook so the
- * option facade can apply the option's own `tooltip`, `cursor` and `silent` to
- * any family without knowing its geometry.
+ * host's `itemTooltip`, `itemCursor` and `itemSilent` props apply to any family
+ * without knowing its geometry.
  */
 export interface HostItem {
   /** The series the item belongs to; 0 for a family that draws one series. */
@@ -314,8 +382,7 @@ export interface CanvasHostProps {
   /**
    * Rewrite the tooltip for the item under the pointer: the family's own
    * lines come in, a box (or null for none) goes out. Only a family that
-   * reports items (its spec's `item` hook) calls it; `<OptionChart>` uses it to
-   * apply the option's `tooltip` component to every family.
+   * reports items (its spec's `item` hook) calls it.
    */
   itemTooltip?: ((item: HostItem, lines: string[], press: boolean) => string[] | TooltipView | null) | undefined
   /** The CSS cursor over an item; absent keeps the family's own. */
@@ -344,8 +411,8 @@ export interface CanvasHostSpec<L> {
    * Whether this layout draws a continuous effect (a `lines` trail) that
    * `render` reads from `time`. While true, the host runs a frame clock —
    * stopped under `prefers-reduced-motion`, where time holds at 0 and the
-   * chart is still. (It is not the entrance: an option chart's `animate` is
-   * off, and a trail is the chart's content, not its arrival.)
+   * chart is still. (It is not the entrance: a trail is the chart's content,
+   * not its arrival.)
    */
   effectClock?: ((layout: L) => boolean) | undefined
   /**
@@ -505,6 +572,9 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   const keyboardOn = props.keyboard !== false
   const toolList: ToolboxTool[] = props.toolbox?.saveAsImage === true ? ['saveAsImage'] : []
   const tableId = createUniqueId()
+  // The server first frame (see `serverFrameSvg`), until the canvas paints over it.
+  let ssrFrame: Element | null = null
+  let canvasPainted = false
 
   // The last draw's frame: what every hit test and the keyboard read.
   let last: Frame<L> | null = null
@@ -694,6 +764,13 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const t = theme()
     const ctx = prepareCanvas(el, w, hgt, t.background)
     if (ctx === null) return
+    // The canvas paints below, in this same task: the server's first-frame SVG
+    // stood in for it until now.
+    canvasPainted = true
+    if (ssrFrame !== null) {
+      ssrFrame.remove()
+      ssrFrame = null
+    }
     const measure = canvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
@@ -874,8 +951,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     if (drawn !== null) return drawn.layout
     const el = canvas
     // Before the canvas lands, the chart's own `width` (else 300): laying out at a
-    // width the chart does not have described the wrong geometry AND made an
-    // option chart compile its option a second time for it.
+    // width the chart does not have described the wrong geometry.
     const w = el === null ? (props.width ?? 300) : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6
@@ -1085,13 +1161,46 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   const liveNode = (): VNode => h('div', { role: 'status', 'aria-live': 'polite', style: OFFSCREEN }, () => announce())
 
-  const extras: (VNode | (() => VNode))[] = []
+  // The server's first frame: the family drawn as SVG at its final state, so an
+  // SSR / SSG page shows the chart before any script runs — the same frame the
+  // canvas paints (title, legend, RTL mirror and transpose included), through
+  // the serializer `@pyreon/charts/svg` registers. Hydration adopts it
+  // untouched (a `dangerouslySetInnerHTML` element's server children are
+  // trusted) and the first canvas paint removes it; on a client mount it is
+  // an empty element removed the same way. Without a registered serializer the
+  // server ships none (the accessible table is in the HTML either way).
+  const serverFrameSvg = (): string => {
+    const ser = getFrameSerializer()
+    if (ser === null) return ''
+    // A width the server cannot measure: the explicit one, else a typical column;
+    // the SVG then scales to its container.
+    const w = props.width ?? 600
+    const hgt = props.height ?? spec.defaultHeight
+    const t = theme()
+    const measure = ser.measure()
+    const f = frame(w, hgt, measure, t)
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, 1.0, 0.0)) : spec.render(f.layout, measure, t, 1.0, 0.0)
+    const svg = ser.svg(present([...f.chrome, ...family], w), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+    return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
+  }
+  const ssrFrameNode = h('div', {
+    'data-pyreon-chart-frame': '',
+    'aria-hidden': 'true',
+    style: 'position:absolute;inset:0;pointer-events:none',
+    dangerouslySetInnerHTML: { __html: isServer ? serverFrameSvg() : '' },
+    ref: (el: Element | null) => {
+      if (el === null) return
+      if (canvasPainted) el.remove()
+      else ssrFrame = el
+    },
+  })
+
+  const extras: (VNode | (() => VNode))[] = [ssrFrameNode]
   const t = tipNode()
   if (t !== null) extras.push(t)
   if (keyboardOn) extras.push(liveNode())
   if (props.accessibleTable !== false) {
     extras.push(a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption))
   }
-  if (extras.length === 0) return canvasNode
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
 }

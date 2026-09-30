@@ -600,11 +600,13 @@ describe('lazy', () => {
     const MyComp = (props: { text: string }) => h('p', null, props.text)
     const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
 
-    expect(Lazy({ text: 'hello' })).toBeNull()
+    // The wrapper renders through an accessor (a body runs once; the accessor
+    // re-reads when the chunk lands): nothing while loading, the component after.
+    const out = Lazy({ text: 'hello' }) as () => unknown
+    expect(out()).toBeNull()
 
     await new Promise<void>((r) => setTimeout(r, 10))
-    const result = Lazy({ text: 'hello' })
-    expect(result).not.toBeNull()
+    expect(out()).not.toBeNull()
   })
 
   test('__loading reports loading state', async () => {

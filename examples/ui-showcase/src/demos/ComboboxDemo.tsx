@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { Combobox, MenuItem, Title } from '@pyreon/ui-components'
 import type { ComboboxState } from '@pyreon/ui-primitives'
 
@@ -12,7 +12,7 @@ const options = [
 ]
 
 export function ComboboxDemo() {
-  const selected = signal('')
+  let selected = plainState('')
 
   return (
     <div>
@@ -21,8 +21,8 @@ export function ComboboxDemo() {
       <div style="max-width: 300px; margin-bottom: 24px;">
         <Combobox
           options={options}
-          value={selected()}
-          onChange={(v: string | string[]) => selected.set(v as string)}
+          value={selected}
+          onChange={(v: string | string[]) => { selected = v as string }}
           placeholder="Search framework..."
         >
           {(state: ComboboxState) => (
@@ -79,7 +79,7 @@ export function ComboboxDemo() {
           )}
         </Combobox>
         <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
-          Selected: {() => selected() || '(none)'}
+          Selected: {() => selected || '(none)'}
         </p>
       </div>
     </div>

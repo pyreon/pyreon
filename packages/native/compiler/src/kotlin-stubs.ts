@@ -996,13 +996,6 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier) {}
-data class PyreonChartWebViewSelection(val name: String? = null)
-data class PyreonChartWebViewEvent(val name: String, val payload: Map<String, Any?> = emptyMap())
-data class PyreonChartWebViewError(val message: String)
-@Suppress("UNUSED_PARAMETER")
-fun pyreonChartWebViewData(option: String, commands: String, loading: Boolean, loadingOptions: String, group: String? = null): String = option
-@Suppress("UNUSED_PARAMETER")
-fun pyreonDispatchChartWebViewMessage(message: String, onSelect: ((PyreonChartWebViewSelection) -> Unit)? = null, onEvent: ((PyreonChartWebViewEvent) -> Unit)? = null, onError: ((PyreonChartWebViewError) -> Unit)? = null) {}
 data class PyreonFlowWebViewSelection(val id: String, val data: Any? = null)
 data class PyreonFlowWebViewViewport(val x: Double, val y: Double, val zoom: Double)
 data class PyreonFlowWebViewEvent(val type: String, val id: String? = null, val data: Any? = null, val source: String? = null, val target: String? = null, val viewport: PyreonFlowWebViewViewport? = null)
@@ -1017,6 +1010,9 @@ fun pyreonDispatchFlowWebViewMessage(message: String, onSelect: ((PyreonFlowWebV
 object PyreonJson {
     @Suppress("UNUSED_PARAMETER")
     inline fun <reified T> encode(value: T): String = ""
+    // JSON.stringify(x) lowers here (web-identical bytes).
+    @Suppress("UNUSED_PARAMETER")
+    inline fun <reified T> stringify(value: T): String = ""
 }
 
 // PyreonSchema — copied VERBATIM from runtime-kotlin's PyreonSchema.kt
@@ -1155,7 +1151,11 @@ data class PyreonStreamReconnect(val attempts: Long = 5L, val delay: Long = 1000
 data class PyreonSseOptions(val events: List<String>? = null, val lastEventId: String? = null, val reconnect: PyreonStreamReconnect? = PyreonStreamReconnect())
 data class PyreonStreamRequest(val method: String = "GET", val url: String, val headers: Map<String, String> = emptyMap(), val body: String? = null)
 data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
-class PyreonStream<E>(val maxEvents: Long = 1000L) {
+// The main-looper executor (PyreonStreamAndroid.kt) the emit hands the container.
+object PyreonStreamMain : java.util.concurrent.Executor {
+  override fun execute(command: Runnable) {}
+}
+class PyreonStream<E>(val maxEvents: Long = 1000L, main: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() }) {
   val events: MutableState<List<E>> = mutableStateOf(emptyList())
   val latest: MutableState<E?> = mutableStateOf(null)
   val status: MutableState<String> = mutableStateOf("idle")
@@ -1167,8 +1167,9 @@ class PyreonStream<E>(val maxEvents: Long = 1000L) {
   fun abort() {}
   fun restart() {}
   fun stop() {}
-  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: (PyreonSseMessage) -> E) {}
-  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: (String) -> E) {}
+  fun idle() {}
+  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", onEvent: ((E) -> Unit)? = null, decode: (PyreonSseMessage) -> E) {}
+  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", onEvent: ((E) -> Unit)? = null, decode: (String) -> E) {}
 }
 
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
@@ -1212,6 +1213,9 @@ object PyreonURL {
   @JvmStatic fun encodePathParam(value: Long): String = ""
   @JvmStatic fun encodePathParam(value: Double): String = ""
 }
+// pyreonNumberString — JS \`String(number)\`, which every Double-typed
+// template interpoland lowers through. Mirrors the real signature.
+fun pyreonNumberString(value: Number): String = ""
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.
@@ -2697,6 +2701,10 @@ fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawC
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
 fun pyreonChartDouble(v: Long): Double = v.toDouble()
+fun pyreonChartString(v: String): String = v
+fun pyreonChartString(v: Double): String = ""
+fun pyreonChartString(v: Int): String = ""
+fun pyreonChartString(v: Long): String = ""
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""
@@ -2709,8 +2717,6 @@ class PyreonChartHandle {
   var seriesCount: Long = 0L
   var brushType: String = ""
   var areas: List<BrushArea> = listOf()
-  var step: Long = -1L
-  var playing: Boolean = false
   fun dispatch(action: ChartActionInput) {}
 }
 `

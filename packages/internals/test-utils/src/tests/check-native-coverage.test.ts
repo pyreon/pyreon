@@ -118,10 +118,10 @@ describe('classifyEntry — web-first', () => {
 
 describe('classifyEntry — webview-host', () => {
   const entry: RegistryEntry = {
-    name: '@x/charts',
+    name: '@x/flow',
     mechanism: 'webview-host',
-    rationale: 'hosts ECharts in a native WebView',
-    webviewHost: { hostHtmlExport: 'buildChartHostHtml', componentExport: 'ChartWebView' },
+    rationale: 'hosts the flow renderer in a native WebView',
+    webviewHost: { hostHtmlExport: 'buildFlowHostHtml', componentExport: 'FlowWebView' },
   }
   const ok: WebviewHostCheck = {
     exportDeclared: true,
@@ -149,8 +149,8 @@ describe('classifyEntry — webview-host', () => {
   it.each([
     ['the subpath export vanished', { exportDeclared: false }, 'no "./webview" export'],
     ['the module vanished', { moduleExists: false }, 'does not exist on disk'],
-    ['the host-page builder vanished', { hostHtmlExported: false }, 'buildChartHostHtml'],
-    ['the host component vanished', { componentExported: false }, 'ChartWebView'],
+    ['the host-page builder vanished', { hostHtmlExported: false }, 'buildFlowHostHtml'],
+    ['the host component vanished', { componentExported: false }, 'FlowWebView'],
     ['no test covers it', { testExists: false }, 'no test file'],
   ])('is a REGRESSION when %s', (_label, broken, expected) => {
     const r = classifyEntry(entry, undefined, undefined, { ...ok, ...broken })
@@ -349,11 +349,11 @@ describe('validateRegistry — invariants', () => {
 })
 
 describe('the real REGISTRY', () => {
-  it('carries the shared + service-backend tiers plus the partial set (39 entries)', () => {
-    // 39 = 38 packages + @pyreon/flow's webview host at its real subpath: the
+  it('carries the shared + service-backend tiers plus the partial set (38 entries)', () => {
+    // 38 = 37 packages + @pyreon/flow's webview host at its real subpath: the
     // package itself is a pmtc-lowers entry (createFlow → PyreonFlowState) and
     // the <WebView> bridge is a separate, still-verified crossing.
-    expect(REGISTRY.length).toBe(39)
+    expect(REGISTRY.length).toBe(38)
   })
 
   it('@pyreon/flow is a pmtc-lowers entry whose snippet exercises createFlow; its WebView bridge lives at the subpath', () => {

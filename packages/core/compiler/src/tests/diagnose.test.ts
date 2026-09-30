@@ -54,6 +54,20 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('defineAsyncComponent')
   })
 
+  it('diagnoses a failed code-split chunk (the residual of deferred lazy hydration)', () => {
+    // The messages Chromium, Firefox and Safari throw for a failed dynamic import.
+    for (const msg of [
+      'TypeError: Failed to fetch dynamically imported module: https://x/assets/Page-abc.js',
+      'TypeError: error loading dynamically imported module: https://x/assets/Page-abc.js',
+      'TypeError: Importing a module script failed.',
+    ]) {
+      const r = diagnoseError(msg)
+      expect(r, msg).not.toBeNull()
+      expect(r!.cause).toContain('lazy()')
+      expect(r!.fix).toContain('ErrorBoundary')
+    }
+  })
+
   it('diagnoses a VNode array rendered as "[object Object]"', () => {
     for (const symptom of [
       '[object Object],[object Object]',
@@ -266,5 +280,32 @@ describe('diagnoseError — validate compiler unsupported-node entry', () => {
 
   it('does not fire on an unrelated unsupported message', () => {
     expect(diagnoseError('unsupported node type in the AST')).toBeNull()
+  })
+})
+
+describe('diagnoseError — 0.51 `<Chart options>` against the 0.52 engine', () => {
+  it("maps the type checker's unknown-prop error to the marks rewrite", () => {
+    const d = diagnoseError(
+      "Type '{ options: () => EChartsOption; }' is not assignable to type 'IntrinsicAttributes & ChartProps<unknown>'.\n  Property 'options' does not exist on type 'IntrinsicAttributes & ChartProps<unknown>'.",
+    )
+    expect(d?.cause).toContain('`options`')
+    expect(d?.cause).toContain('0.52 removed')
+    expect(d?.fixCode).toContain('<Bar y="revenue" />')
+  })
+
+  it('does not fire on an unknown `options` prop of an unrelated component', () => {
+    const d = diagnoseError("Property 'options' does not exist on type 'IntrinsicAttributes & SelectProps'.")
+    expect(d?.cause ?? '').not.toContain('ECharts wrapper')
+  })
+})
+
+describe('Plain Mode signal-bridge warnings are diagnosable', () => {
+  it.each([
+    '[plain] signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.',
+    '[plain] state.from() takes exactly one signal argument.',
+    '[plain] derived.from() takes exactly one signal argument.',
+  ])('%s', (msg) => {
+    const d = diagnoseError(msg)
+    expect(d?.cause).toContain('signal bridge')
   })
 })

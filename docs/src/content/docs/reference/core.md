@@ -139,7 +139,7 @@ const Card = () => {
 | [`Switch`](#switch) | component | Multi-branch conditional rendering. |
 | [`Match`](#match) | component | A branch inside a `<Switch>`. |
 | [`For`](#for) | component | Keyed reactive list rendering. |
-| [`Suspense`](#suspense) | component | Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. |
+| [`Suspense`](#suspense) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a |
 | [`ErrorBoundary`](#errorboundary) | component | Catches render errors thrown by descendant components. |
 | [`lazy`](#lazy) | function | Wrap a dynamic import for code splitting. |
 | [`Dynamic`](#dynamic) | component | Renders a component by reference or string tag name. |
@@ -606,7 +606,7 @@ const items = signal([
 <Suspense fallback={loadingUI}>{children}</Suspense>
 ```
 
-Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout). Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.
+Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a still-loading descendant registers with the NEAREST boundary through context. While it waits, the content stays mounted off-screen (not torn down), so the descendant's ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout); hydration never shows the fallback over server content. Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.
 
 **Example**
 
@@ -660,7 +660,7 @@ Catches render errors thrown by descendant components. The `fallback` receives t
 lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent
 ```
 
-Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: `renderToStream` resolves it inside the Suspense boundary after flushing the fallback, and `renderToString` renders the loaded content. The client adopts that HTML only if its chunk has also loaded before hydration, so preload it first (zero's `startClient` does this for route components).
+Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: `renderToStream` resolves it inside the Suspense boundary after flushing the fallback, and `renderToString` renders the loaded content. If the client chunk has not landed when hydration reaches it, the server nodes are KEPT in place and hydrated once it lands (node identity, focus and typed input survive); preloading only makes the page interactive sooner. A lazy mounted while loading renders its component once the chunk lands, with or without a `Suspense`.
 
 **Example**
 

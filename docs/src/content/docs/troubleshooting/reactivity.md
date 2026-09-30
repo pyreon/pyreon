@@ -235,6 +235,14 @@ A dispatched subscriber can add a third subscriber, promoting the inline slots i
 
 ---
 
+### A Plain Mode line the compiler cannot give its apparent meaning
+
+Mutating a property of SHALLOW plain state (`state.raw` / a non-literal initializer), assigning to a `derived` value or a prop, a `signalOf(x)` whose `x` is not a plain binding. The pre-pass compiles these but only WARNS in the Vite terminal, and the running app is silently wrong (a mutation that notifies nobody). **Fix**: replace shallow state wholesale (`cfg = { ...cfg, open: true }`) or use a literal initializer for deep state; lift writes to the owner. The same warnings surface in the editor via the `pyreon/plain-mode-footgun` lint rule and in `validate` / `pyreon check` via this detector — all three read the pre-pass itself, so they cannot disagree with the build. Plain files are also covered by the classic reactivity lint rules that opt into `meta.plainLowered` (they run on the file's compiled form).
+
+**Detected by:** `plain-mode` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
 ### A sync effect that writes with `setX((prev) => …)`
 
 The updater reads the library's own atom, so the effect subscribes to what it writes and re-runs forever. Track only your own inputs (`options()`) and wrap the library write in `untrack`.

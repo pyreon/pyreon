@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { detectPlain, transformPlain } from '../plain'
-import { transformJSX_JS } from '../jsx'
+import { transformJSX, transformJSX_JS } from '../jsx'
 
 const P = (code: string, knownSignals?: string[]) =>
   transformPlain(code, 'test.tsx', knownSignals ? { knownSignals } : {})
@@ -223,9 +223,108 @@ describe('writes', () => {
     expect(r.code).toContain(`signal(makeConfig())`)
   })
 
-  it('destructuring assignment onto state warns', () => {
+  it('destructuring assignment onto state writes each target through its signal', () => {
     const r = P(`${HEADER}let a = state(0)\n;({ a } = foo())\n`)!
-    expect(r.warnings.some((w) => w.message.includes('destructuring assignment'))).toBe(true)
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ a: __plainD0_0 } = __plainDv0); a.set(__plainD0_0); return __plainDv0 })(foo())')
+    expect(r.code).toContain('let __plainD0_0 = a.peek()')
+  })
+
+  it('destructuring onto a derived value warns (read-only)', () => {
+    const r = P(`${HEADER}let a = state(0)\nconst d = derived(a)\n;[d] = [1]\n`)!
+    expect(r.warnings.some((w) => w.message.includes('derived values are read-only'))).toBe(true)
+  })
+
+  // `rewriteDestructuringAssignment`'s `target()` walk handles every
+  // destructuring-assignment TARGET shape (array elements, object properties,
+  // rests, defaults, computed keys, and bare member-expression targets), not
+  // just the single-key object-pattern shorthand the tests above exercise.
+  // Each of these threads the target through the same temp/peek/set dance —
+  // the only thing that varies is which AST shape the target arm walks.
+  it('array-pattern destructuring writes each state target through its signal', () => {
+    const r = P(`${HEADER}let a = state(0)\nlet b = state(0)\n;[a, b] = [1, 2]\n`)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('([__plainD0_0, __plainD0_1] = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+    expect(r.code).toContain('b.set(__plainD0_1)')
+  })
+
+  it('array-pattern with a REST element leaves the rest binding untouched', () => {
+    const r = P(`${HEADER}let a = state(0)\ndeclare const arr: number[]\n;[a, ...rest] = arr\n`)!
+    expect(r.warnings).toEqual([])
+    // `rest` is not itself a plain binding — the rewrite passes it through
+    // bare inside the destructuring pattern, only `a` routes through a temp.
+    expect(r.code).toContain('([__plainD0_0, ...rest] = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+  })
+
+  it('object-pattern default value (AssignmentPattern) still rewrites the target and walks the default', () => {
+    const r = P(`${HEADER}let a = state(0)\ndeclare function obj(): any\n;({ a = 5 } = obj())\n`)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ a: __plainD0_0 = 5 } = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+  })
+
+  it('object-pattern with a COMPUTED key walks the key expression as a read', () => {
+    const r = P(
+      `${HEADER}let a = state(0)\ndeclare const key: string\ndeclare function obj(): any\n;({ [key]: a } = obj())\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ [key]: __plainD0_0 } = __plainDv0)')
+  })
+
+  it('object-pattern with a REST property leaves the rest binding untouched', () => {
+    const r = P(
+      `${HEADER}let a = state(0)\ndeclare function obj(): any\n;({ a, ...restObj } = obj())\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ a: __plainD0_0, ...restObj } = __plainDv0)')
+  })
+
+  it('a bare MEMBER-EXPRESSION target alongside a state target walks it as a plain read', () => {
+    // `[a, obj.x] = [1, 2]` is a valid assignment pattern — `obj.x` is not a
+    // declared name, so it never becomes a temp; it falls to the `default:`
+    // arm, which treats the target's OBJECT as an ordinary read.
+    const r = P(`${HEADER}let a = state(0)\nconst obj = { x: 0 }\n;[a, obj.x] = [1, 2]\n`)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('([__plainD0_0, obj.x] = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+  })
+
+  // `state.from(sig)` / `derived.from(sig)` adopt an EXISTING signal (a hook
+  // result, a store field) as a plain binding — the inverse of `signalOf`.
+  // The declaration becomes the bare expression and reads/writes rewrite
+  // exactly like a directly-declared binding.
+  it('state.from(sig) adopts an existing signal — reads rewrite to tracked calls', () => {
+    const r = P(
+      `${HEADER}declare function useSomeHook(): any\nlet raw = useSomeHook()\nlet x = state.from(raw)\nconsole.log(x)\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('const x = raw')
+    expect(r.code).toContain('console.log(x())')
+  })
+
+  it('derived.from(sig) adopts an existing signal as a read-only derived binding', () => {
+    const r = P(
+      `${HEADER}declare function useSomeHook(): any\nlet raw = useSomeHook()\nlet y = derived.from(raw)\nconsole.log(y)\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('const y = raw')
+    expect(r.code).toContain('console.log(y())')
+  })
+
+  it('state.from() / derived.from() with the wrong argument count warns and leaves the call alone', () => {
+    const zeroArgs = P(`${HEADER}let z = state.from()\n`)!
+    expect(zeroArgs.warnings.some((w) => w.message.includes('takes exactly one signal argument'))).toBe(
+      true,
+    )
+    expect(zeroArgs.code).toContain('state.from()')
+
+    const spread = P(`${HEADER}declare const arr: any[]\nlet z = state.from(...arr)\n`)!
+    expect(spread.warnings.some((w) => w.message.includes('takes exactly one signal argument'))).toBe(
+      true,
+    )
+    expect(spread.code).toContain('state.from(...arr)')
   })
 })
 
@@ -457,11 +556,20 @@ describe('component props', () => {
     expect(r.code).toContain(`{props.a}`)
   })
 
-  it('rest / nested patterns bail with a warning and stay untouched', () => {
+  it('a top-level rest becomes a descriptor-copying splitProps (stays reactive)', () => {
     const src = `${HEADER}export function B({ a, ...rest }) { return <i {...rest}>{a}</i> }\n`
     const r = P(src)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`B(props) { const rest = __plainSplitProps(props, ['a'])[1];`)
+    expect(r.code).toContain(`import { splitProps as __plainSplitProps } from '@pyreon/core'`)
+    expect(r.code).toContain(`{props.a}`)
+  })
+
+  it('a rest INSIDE a nested pattern still bails (no faithful live form)', () => {
+    const src = `${HEADER}export function B({ o: { a, ...rest } }) { return <i>{a}</i> }\n`
+    const r = P(src)!
     expect(r.warnings.some((w) => w.message.includes('complex props destructuring'))).toBe(true)
-    expect(r.code).toContain(`{ a, ...rest }`)
+    expect(r.code).toContain(`{ o: { a, ...rest } }`)
   })
 
   it('uses __props when the body already binds `props`', () => {
@@ -770,6 +878,27 @@ export const x = local()\n`
     expect(r.warnings).toHaveLength(0)
   })
 
+  it('a `var` declaration hoisted through a nested block shadows an outer signal by the same name', () => {
+    // Hoisting means the `var` binding shadows for the WHOLE function body,
+    // not just from the point of declaration onward — `walkFunction` scans
+    // for hoisted `var`/function names up front (`hoistScan`) so the shadow
+    // is in effect before the body's first statement, matching real JS
+    // scoping (a `var` is "declared" at function entry, assigned in place).
+    const src = `${HEADER}let count = state(0)
+function helper() {
+  if (true) {
+    var count = 99
+  }
+  return count
+}
+`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.warnings).toHaveLength(0)
+    expect(r.code).toContain('var count = 99')
+    expect(r.code).toContain('return count')
+    expect(r.code).not.toContain('return count()')
+  })
+
   it('computed keys and nested patterns in props bail as complex', () => {
     const src = `'use plain'
 import { state } from '@pyreon/core/plain'
@@ -779,7 +908,10 @@ export function C({ a }, extra) { return <i>{a}{extra}</i> }
 export function D(props) { const { a: { b } } = props; return <i>{b}</i> }\n`
     const r = transformPlain(src, 't.tsx')!
     const complex = r.warnings.filter((w) => w.message.includes('complex props destructuring'))
-    expect(complex.length).toBeGreaterThanOrEqual(3)
+    // Only the COMPUTED key stays complex — nested patterns now read live paths.
+    expect(complex.length).toBe(1)
+    expect(r.code).toContain(`B(props) { return <i>{props.pos.x}</i> }`)
+    expect(r.code).toContain(`return <i>{props.a.b}</i>`)
     // C is SIMPLE with a second param — the rewrite fires and `extra` shadows.
     expect(r.code).toContain(`C(props, extra)`)
     expect(r.code).toContain(`{props.a}{extra}`)
@@ -843,5 +975,51 @@ describe('effect total tracking — scope discipline (round 2)', () => {
     )!
     expect(r.code).toContain(`s()?.items?.[0]?.id`)
     expect(r.code).not.toMatch(/void \([^;]*s\(\)\.items/)
+  })
+})
+
+describe('project-wide Plain Mode (force) + the `use classic` opt-out', () => {
+  const COMPONENT = `export function Card({ title }) { return <h1>{title}</h1> }\n`
+
+  it('a marker-less module is NOT plain by default', () => {
+    expect(transformPlain(COMPONENT, 'c.tsx')).toBeNull()
+  })
+
+  it('force: true rewrites it (props destructuring stays live)', () => {
+    const r = transformPlain(COMPONENT, 'c.tsx', { force: true })!
+    expect(r.code).toContain('Card(props) { return <h1>{props.title}</h1> }')
+  })
+
+  it("'use classic' opts a forced module out, byte-untouched", () => {
+    const src = `'use classic'\n${COMPONENT}`
+    expect(transformPlain(src, 'c.tsx', { force: true })).toBeNull()
+  })
+
+  it('transformJSX({ plain: true }) routes marker-less modules through the pre-pass', () => {
+    // forced: the param becomes `props` and the text binds LIVE to props.title
+    const out = transformJSX(COMPONENT, 'c.tsx', { plain: true }).code
+    expect(out).toContain('Card(props)')
+    expect(out).toContain('_bindProp(props, "title"')
+    // default: the destructured snapshot stays (classic semantics)
+    expect(transformJSX(COMPONENT, 'c.tsx').code).toContain('Card({ title })')
+  })
+})
+
+describe('detectPyreonPatterns reports Plain Mode footguns (validate / pyreon check / doctor)', () => {
+  it('a shallow-state mutation is a `plain-mode` finding at its line', async () => {
+    const { detectPyreonPatterns } = await import('../pyreon-intercept')
+    const src = `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const t = () => { cfg.open = true }\n`
+    const d = detectPyreonPatterns(src, 'x.tsx').filter((x) => x.code === 'plain-mode')
+    expect(d).toHaveLength(1)
+    expect(d[0]!.line).toBe(4)
+    expect(d[0]!.message).toContain('does not notify subscribers')
+  })
+
+  it('correct plain code and classic code produce no plain-mode findings', async () => {
+    const { detectPyreonPatterns } = await import('../pyreon-intercept')
+    const ok = `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state({ open: false })\nexport const t = () => { cfg.open = true }\n`
+    expect(detectPyreonPatterns(ok, 'x.tsx').filter((x) => x.code === 'plain-mode')).toEqual([])
+    const classic = `import { signal } from '@pyreon/reactivity'\nconst c = signal({ open: false })\nexport const t = () => { c().open = true }\n`
+    expect(detectPyreonPatterns(classic, 'x.tsx').filter((x) => x.code === 'plain-mode')).toEqual([])
   })
 })

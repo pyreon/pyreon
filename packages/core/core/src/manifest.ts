@@ -396,7 +396,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
       kind: 'component',
       signature: '<Suspense fallback={loadingUI}>{children}</Suspense>',
       summary:
-        'Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout). Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.',
+        'Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a still-loading descendant registers with the NEAREST boundary through context. While it waits, the content stays mounted off-screen (not torn down), so the descendant\'s ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout); hydration never shows the fallback over server content. Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.',
       example: `const LazyPage = lazy(() => import("./HeavyPage"))
 
 <Suspense fallback={<div>Loading...</div>}>
@@ -432,7 +432,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
       signature:
         'lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent',
       summary:
-        'Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: `renderToStream` resolves it inside the Suspense boundary after flushing the fallback, and `renderToString` renders the loaded content. The client adopts that HTML only if its chunk has also loaded before hydration, so preload it first (zero\'s `startClient` does this for route components).',
+        'Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: `renderToStream` resolves it inside the Suspense boundary after flushing the fallback, and `renderToString` renders the loaded content. If the client chunk has not landed when hydration reaches it, the server nodes are KEPT in place and hydrated once it lands (node identity, focus and typed input survive); preloading only makes the page interactive sooner. A lazy mounted while loading renders its component once the chunk lands, with or without a `Suspense`.',
       example: `const Settings = lazy(() => import("./pages/Settings"))
 
 // Use in JSX (wrap with Suspense):

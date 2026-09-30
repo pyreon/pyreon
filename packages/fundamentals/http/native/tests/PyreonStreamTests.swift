@@ -127,6 +127,17 @@ struct PyreonStreamTests {
         s.restart()
         check(s.restartTick == tick + 1, "restart bumps the task key")
 
+        // `enabled` → false: stop, read `idle`, keep what was received; a
+        // no-op once aborted (the web effect returns before reading it).
+        let e = PyreonStream<Int>()
+        e.begin()
+        e.push(4)
+        e.idle()
+        check(e.status == "idle" && e.events == [4], "idle keeps events: \(e.status) \(e.events)")
+        e.abort()
+        e.idle()
+        check(e.status == "closed", "idle after abort is a no-op")
+
         print("[PyreonStreamTests] all checks passed")
     }
 }

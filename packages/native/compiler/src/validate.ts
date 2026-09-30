@@ -328,7 +328,22 @@ export function _resetObservationCache(): void {
  * if the same function produces both the key and the file.
  */
 export function _swiftTypecheckPreamble(source: string): string {
-  return source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+  const imports = source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+  return imports + swiftNumberRuntime(source)
+}
+
+/**
+ * The real `PyreonNumber.swift`, when the source calls `pyreonNumberString`
+ * without declaring it. Every Double-typed template interpoland lowers
+ * through it — including the generated chart engine's — so a typecheck
+ * against real SwiftUI needs it linked like the runtime would. The real file,
+ * not a stub, so its behaviour is the one type-checked. Part of the
+ * preamble, and therefore of the verdict-cache key.
+ */
+function swiftNumberRuntime(source: string): string {
+  if (!source.includes('pyreonNumberString(') || source.includes('func pyreonNumberString')) return ''
+  const file = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'))
+  return file === undefined ? '' : `${file.replace(/^import Foundation\n/m, '')}\n`
 }
 
 export function validateSwiftTypecheck(source: string): ValidationResult {
@@ -526,14 +541,23 @@ export function swiftChartAugmentation(source: string): string {
   return viewStubs + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
 }
 
+/**
+ * The `data class Pyreon…(…)` declarations of the Kotlin chart canvas, verbatim.
+ * Comments are stripped first: the match ends at the first `)`, so a doc
+ * comment with a parenthesis in it would cut a class short mid-parameter-list.
+ */
+export function kotlinCanvasDataClasses(canvas: string): string[] {
+  const code = canvas.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  return [...code.matchAll(/data class Pyreon\w+\([^)]*\)/g)].map((m) => m[0])
+}
+
 /** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */
 export function kotlinChartAugmentation(source: string): string {
   if (!CHART_HOST_MARK.test(source)) return ''
   const canvas = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartCanvas.kt'))
   const engine = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt'))
   if (canvas === undefined || engine === undefined) return KOTLIN_CHART_VIEW_STUBS
-  const decls: string[] = []
-  for (const m of canvas.matchAll(/data class Pyreon\w+\([^)]*\)/g)) decls.push(m[0])
+  const decls = kotlinCanvasDataClasses(canvas)
   const body = engine
     .split('\n')
     .filter((l) => !l.startsWith('package '))

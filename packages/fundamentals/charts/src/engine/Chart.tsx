@@ -9,19 +9,23 @@ import { createUniqueId, h } from '@pyreon/core'
 import { a11yTableNode, A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
 import { lttbIndices, minMaxBuckets } from './decimate-values'
+import { warnOnce } from './dev-warn'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
+import { getFrameSerializer } from './frame-seam'
+import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph, morphMatches } from './keyed-morph'
+import type { KeyedGeo } from './keyed-morph'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
-import { easeOutCubic, sameShape, sameValues, tweenValues } from './tween'
+import { alignByKey, easeOutCubic, sameKeys, sameShape, sameValues, tweenValues } from './tween'
 import { cmdsEqual, universalTweenCmds } from './cmd-tween'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { applySeriesSelection, categoryIndex, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
@@ -31,7 +35,7 @@ import { scaleLinear } from './scale'
 import { markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
-import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum } from './a11y'
 import type { A11yInput } from './a11y'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
@@ -41,7 +45,7 @@ import type { BandFeature, PlotFeatures } from './plot-features'
 import type { ZoomWindow } from './zoom'
 import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
-import type { Domain, DrawCmd, Double, Rect } from './types'
+import type { Domain, DrawCmd, Double, MeasureText, Rect } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
@@ -65,6 +69,11 @@ export interface PlotChartProps<T> {
   onSelectIndex?: (index: number) => void
   /** Draw a legend, using each mark's `label`. */
   showLegend?: boolean
+  /** Name each line and area at its last point instead of in a legend box (`<Legend direct />`). */
+  endLabels?: boolean
+  /** Target tick counts (see `<Axis ticks>`); unset, sized to the chart. */
+  xTicks?: number
+  yTicks?: number
   /** Where the legend sits; `top` by default. `left`/`right` stack the entries beside the plot. */
   legendPosition?: LegendPosition
   /**
@@ -177,9 +186,9 @@ export interface PlotChartProps<T> {
   /** The datums inside the brush, per series, in GLOBAL row indices; empty lists when cleared. */
   onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
   /**
-   * Keyboard navigation: the canvas becomes focusable; Left/Right (and
-   * Up/Down) move a focus datum, Home/End jump, Enter/Space select (through
-   * `onSelect`), Escape clears. The focused datum is announced in a polite
+   * Keyboard navigation: the canvas becomes focusable; Left/Right move a
+   * focus datum, Up/Down step through the series (then back to all of them),
+   * Home/End jump, Enter/Space select (through `onSelect`), Escape clears. The focused datum is announced in a polite
    * live region and drawn with a focus ring. Default on; `false` disables.
    */
   keyboard?: boolean
@@ -260,6 +269,13 @@ export interface PlotChartProps<T> {
    * in domain units, which is a different chart.
    */
   xValue?: (d: T, index: number) => Double
+  /**
+   * Row identity for update animation (`<For by>`'s convention — JSX reserves
+   * `key`). With it a data change tweens each row from its OWN previous value
+   * and a new row grows in, so a sliding window or an insertion animates what
+   * actually changed. Without it rows are matched by position.
+   */
+  by?: (d: T, index: number) => string
   /**
    * Label the x axis with calendar steps rather than the numeric ladder. Only
    * meaningful with `xValue` returning epoch milliseconds.
@@ -434,6 +450,31 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const band = (): BandFeature | undefined => features.zoom ?? features.toolbox
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
+  // A devicePixelRatio change (browser zoom, dragging the window to another
+  // display) leaves the CSS width untouched, so the ResizeObserver never
+  // fires and the backing store stays at the old ratio — a soft (or
+  // oversized) chart. `matchMedia` on the CURRENT ratio fires exactly once
+  // when it stops matching; re-arm on the new ratio each time.
+  let dprQuery: MediaQueryList | null = null
+  const onDprChange = (): void => {
+    stopDprWatch()
+    draw()
+    watchDpr()
+  }
+  const stopDprWatch = (): void => {
+    if (dprQuery) dprQuery.onchange = null
+    dprQuery = null
+  }
+  const watchDpr = (): void => {
+    if (typeof matchMedia === 'undefined') return
+    if (typeof globalThis.devicePixelRatio !== 'number') return
+    stopDprWatch()
+    dprQuery = matchMedia(`(resolution: ${globalThis.devicePixelRatio}dppx)`)
+    // The handler PROPERTY, not `addEventListener`: this query object is ours
+    // alone and is replaced on every re-arm, so its one slot is the whole
+    // subscription — `stopDprWatch` clears it, no listener bookkeeping.
+    dprQuery.onchange = onDprChange
+  }
 
   // Entrance progress. Starts at 1 (fully drawn) and only ever dips for the
   // ONE tween on first data: SSR output, `chartToSvg`, and every later
@@ -494,7 +535,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const keep = lastKeep
     const tb = features.toolbox
     const sel = tb === undefined ? [] : tb.brushOnlySeries(tb.brushSelection(f.spec, f.layout, brushAreas.peek()), props.brushSeriesIndex ?? [])
-    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => { const i = categoryIndex(f.spec, v); return (keep === null ? i : keep[i]!) + off }) })))
+    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => (keep === null ? v : keep[v]!) + off) })))
   }
   const clearBrushAreas = (): void => {
     brushAreas.set([])
@@ -561,6 +602,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const navJson = signal('null')
   // Keyboard focus datum (LOCAL index into the visible rows); -1 = none.
   const focusIdx = signal(-1)
+  /** The series Up/Down picked for the announcement; -1 announces the whole row. */
+  const focusSeries = signal(-1)
   // What the live region says about the focused datum.
   const announce = signal('')
   // Preset button hit rects from the LAST draw, in canvas pixels.
@@ -568,10 +611,18 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const presetBoxesJson = signal('[]')
   // Update tween: the previous frame's values, the running t, and its frame.
   let lastValues: Double[][] | null = null
+  /** The row keys (`by`) behind `lastValues`, and behind the spec being built. */
+  let lastKeys: string[] | null = null
+  let builtKeys: string[] | null = null
+  // Keyed GEOMETRY morph (`keyed-morph.ts`): the last settled frame's bar /
+  // line geometry by key, and the frame a running morph starts from.
+  let geoSnap: KeyedGeo[] | null = null
+  let morphFrom: KeyedGeo[] | null = null
   let tweenFrom: Double[][] | null = null
   let tweenT = 1.0
   let tweenFrame = 0.0
   const keyboardOn = props.keyboard !== false
+  const legendKeysOn = (): boolean => props.showLegend === true && props.legendToggle !== false
   const startTween = (): void => {
     if (typeof requestAnimationFrame !== 'function') {
       tweenT = 1.0
@@ -601,8 +652,27 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const tweened = (spec: ChartSpec): ChartSpec => {
     const cur = spec.series.map((x) => x.values)
     shapeChangedThisFrame = false
+    const keys = builtKeys
     if (tweenT >= 1.0 || tweenFrom === null) {
       const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
+      // Keyed: realign the previous values to the new rows, so the shape
+      // always matches and each row tweens from its own old value.
+      if (enabled && lastValues !== null && keys !== null && lastKeys !== null && lastValues.length === cur.length && !sameKeys(lastKeys, keys)) {
+        // Morphable (bars, lines, stacks, groups): slide, grow in and shrink out by key.
+        if (geoSnap !== null && canKeyMorph(spec) && morphMatches(geoSnap, spec)) {
+          morphFrom = geoSnap
+          lastValues = cur
+          lastKeys = keys
+          startTween()
+          return spec
+        }
+        tweenFrom = alignByKey(lastValues, lastKeys, keys, spec.series.map((x) => x.kind))
+        lastValues = cur
+        lastKeys = keys
+        startTween()
+        return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
+      }
+      lastKeys = keys
       if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
         tweenFrom = lastValues
         lastValues = cur
@@ -619,8 +689,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   }
   // Command-level tween for a shape change under `universalTransition`: the
   // previous frame's rendered geometry (not values — the arrays don't line
-  // up) morphs into the new frame's, the same `cmd-tween.ts` machinery
-  // `OptionChart`'s canvas host uses. `lastCoreCmds` is the last SETTLED
+  // up) morphs into the new frame's through the `cmd-tween.ts` machinery.
+  // `lastCoreCmds` is the last SETTLED
   // (fully-resolved) plot geometry, before the legend/nav/crosshair shift —
   // the same scope `canvas-host.tsx` calls `family`.
   let lastCoreCmds: DrawCmd[] | null = null
@@ -745,14 +815,28 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
   const decimateRows = (rows: T[]): number[] | null => {
     const max = props.maxPoints
-    if (max === undefined || max < 3 || rows.length <= max) return null
-    const first = props.marks[0]
-    if (first === undefined) return null
-    // `lttbIndices` with no `xs` treats the index as x — which is what this is,
-    // rows being evenly spaced — so there is no `{x, y}` object per row and no
-    // `.x` read back out afterwards.
-    const keep = lttbIndices([], rows.map((d, i) => first.y(d, i)), max)
-    return keep.length === 0 ? null : keep
+    if (max === undefined) return null
+    if (max < 3) {
+      warnOnce('maxPoints', `maxPoints=${max} is below 3, the smallest LTTB can keep (first, last, one interior point) — decimation is off.`)
+      return null
+    }
+    if (rows.length <= max) return null
+    const marks = props.marks
+    if (marks.length === 0) return null
+    // Every mark gets its share of the budget and the kept rows are the
+    // UNION: LTTB over only the first mark dropped the peaks of every other
+    // series (a spike in series 2 simply vanished at 50k rows).
+    const per = Math.max(3, Math.floor(max / marks.length))
+    // A real x (time or numeric `xValue`) is LTTB's x — the index is only
+    // right for evenly spaced rows.
+    const xAcc = props.xValue
+    const xs = xAcc === undefined ? [] : rows.map((d, i) => xAcc(d, i))
+    const keepSet = new Set<number>()
+    for (const m of marks) {
+      for (const k of lttbIndices(xs, rows.map((d, i) => Number(m.y(d, i))), per)) keepSet.add(k)
+    }
+    if (keepSet.size === 0 || keepSet.size >= rows.length) return null
+    return [...keepSet].sort((a, b) => a - b)
   }
 
   // The number formatter every surface shares: the explicit `format`, else
@@ -769,6 +853,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
     const inner = buildSpecInner(allRows, w, hgt)
+    if (props.yScale === 'log' && process.env.NODE_ENV !== 'production') {
+      for (const sr of inner.series) {
+        if (sr.values.some((v) => v <= 0)) {
+          warnOnce('log', `yScale="log" with values ≤ 0 (series "${sr.label}") — a log axis cannot place them; they are clamped to the axis floor. Filter them out or use a linear scale.`)
+          break
+        }
+      }
+    }
     const withStates = features.toolbox === undefined ? inner : features.toolbox.applyMagicType(inner, magicKind(), magicStack())
     const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
     // The handle's `legendInverseSelect` flips over the series the chart drew.
@@ -786,24 +878,36 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const rows = keep === null ? visible : keep.map((i) => visible[i]!)
     /** The GLOBAL row index behind visible row `i`. */
     const gi = (i: number): number => (keep === null ? i : keep[i]!) + off
-    return {
-    width: w,
-    height: hgt,
-    // Accessors receive the GLOBAL index — an accessor keyed on position
-    // (striping, ids) must not see its data renumbered by a zoom.
-    series: hideHidden(resolveMarks(rows, props.marks.map((m) => ({
+    builtKeys = props.by === undefined ? null : rows.map((d, i) => props.by!(d, gi(i)))
+    // A frame over EVERY row (no zoom, no decimation) resolves exactly what
+    // the accessible description and table resolve, so both read one memo
+    // instead of walking every row through every accessor twice (measured:
+    // 26% of mount JS at 1M points). A zoomed or thinned frame resolves its
+    // own subset, with accessors seeing GLOBAL indices.
+    const full = rows === allRows ? resolveFull(allRows) : null
+    const resolved = full !== null ? full.series : resolveMarks(rows, props.marks.map((m) => ({
       ...m,
       // magicType: a line/bar switch retypes the INDEPENDENT marks only —
       // stacked/grouped/points keep their geometry (a stack is not a line).
       kind: m.kind,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
-    })), theme().palette)),
-    categories: resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i))),
+    })), theme().palette)
+    const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
+    return {
+    width: w,
+    height: hgt,
+    // Accessors receive the GLOBAL index — an accessor keyed on position
+    // (striping, ids) must not see its data renumbered by a zoom.
+    series: hideHidden(resolved),
+    categories: resolvedCats,
     theme: theme(),
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
+    endLabels: props.endLabels === true,
+    ...(props.xTicks !== undefined ? { xTicks: props.xTicks } : {}),
+    ...(props.yTicks !== undefined ? { yTicks: props.yTicks } : {}),
     yFormat: resolvedFormat(),
     xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),
@@ -840,7 +944,23 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const hgt = props.height ?? 200
     const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    const measure = canvasMeasure(ctx, FONT)
+    const painted = frameAt(w, hgt, canvasMeasure(ctx, FONT))
+    paint(ctx, painted, w, hgt, FONT)
+    canvasPainted = true
+    // The server's first-frame SVG stood in for the canvas until now.
+    if (ssrFrame !== null) {
+      ssrFrame.remove()
+      ssrFrame = null
+    }
+    if (props.onRendered !== undefined) untrack(() => props.onRendered!())
+  }
+
+  /**
+   * The whole frame as a draw list — title, legend, plot, overlays — at a
+   * size. Pure of the canvas: the draw paints it, and a server render
+   * serializes it as the first-frame SVG.
+   */
+  const frameAt = (w: number, hgt: number, measure: MeasureText): DrawCmd[] => {
     const rows = readData()
 
     // Title block first, then the legend, then the plot in what is left. Each
@@ -977,7 +1097,16 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const tba = features.toolbox
     const spec = tba === undefined ? built : tba.applyBrushSelection(built, tba.brushOnlySeries(tba.brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
     frameCache = { spec, layout: l, w, hgt }
-    const cmds = coreCmdsFor(renderChartIn(spec, measure, l))
+    const morphing = morphFrom !== null && tweenT < 1.0 && builtKeys !== null && canKeyMorph(spec)
+    const plotCmds = morphing
+      ? [...renderChartIn(maskForMorph(spec), measure, l), ...keyedMorphCmds(morphFrom!, keyedGeometry(spec, l, builtKeys!), easeOutCubic(tweenT))]
+      : renderChartIn(spec, measure, l)
+    if (!morphing) {
+      morphFrom = null
+      // Only a keyed chart pays for the snapshot.
+      geoSnap = props.by !== undefined && builtKeys !== null && canKeyMorph(spec) ? keyedGeometry(spec, l, builtKeys) : null
+    }
+    const cmds = coreCmdsFor(plotCmds)
     const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
     if (navRect !== null && legendLeft !== 0.0) navRect = { ...navRect, x: navRect.x + legendLeft }
     const navStr = JSON.stringify(navRect)
@@ -1001,8 +1130,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     lastFrame = painted
     lastW = w
     lastH = hgt
-    paint(ctx, painted, w, hgt, FONT)
-    if (props.onRendered !== undefined) untrack(() => props.onRendered!())
+    return painted
   }
 
   // The navigator's series over ALL rows, resolved once per data change (the
@@ -1083,8 +1211,32 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     batch(() => {
       focusIdx.set(next)
       hoverIdx.set(next)
-      announce.set(row === undefined ? '' : row.join(', '))
+      announce.set(announcementFor(input, g, row))
     })
+  }
+
+  /** The live-region text for global row `g`: the focused series' datum, else the whole row. */
+  const announcementFor = (input: A11yInput, g: number, row: string[] | undefined): string => {
+    const fs = focusSeries()
+    if (fs >= 0) return describeDatum(input, fs, g)
+    return row === undefined ? '' : row.join(', ')
+  }
+
+  /**
+   * Up/Down step through the series (then back to "all"), so a reader can
+   * follow one line across the chart instead of hearing every series at every
+   * point — Highcharts' keyboard model.
+   */
+  const moveSeries = (delta: number): void => {
+    const input = a11yInput()
+    const n = input.series.length
+    if (n === 0) return
+    let next = focusSeries() + delta
+    if (next >= n) next = -1
+    if (next < -1) next = n - 1
+    focusSeries.set(next)
+    if (focusIdx() < 0) moveFocus(0, 0)
+    else moveFocus(0)
   }
 
   /** A datum was picked (click or keyboard): pin it per `selectedMode`, then report the pick. */
@@ -1106,16 +1258,34 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   const handleKeyDown = (ev: KeyboardEvent): void => {
     const key = ev.key
-    if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
-    else if (key === 'ArrowLeft' || key === 'ArrowDown') moveFocus(-1)
+    if (key === 'ArrowRight') moveFocus(1)
+    else if (key === 'ArrowLeft') moveFocus(-1)
+    else if (key === 'ArrowUp') moveSeries(-1)
+    else if (key === 'ArrowDown') moveSeries(1)
     else if (key === 'Home') moveFocus(0, 0)
     else if (key === 'End') moveFocus(0, viewRows(readData()).length - 1)
+    else if (legendKeysOn() && key.length === 1 && key >= '1' && key <= '9') {
+      // The legend is painted on the canvas — no DOM button to Tab to — so
+      // the digit keys toggle legend entry N, and the change is announced.
+      const labels = props.marks.map((m, k) => markLabel(m, k))
+      const distinct = [...new Set(labels)]
+      const entry = Number(key) - 1
+      if (entry >= distinct.length) return
+      const next = legendToggleGroup(hiddenSeries(), labels, entry)
+      const target = distinct[entry]!
+      const nowHidden = labels.every((l, j) => l !== target || next.includes(j))
+      batch(() => {
+        hiddenSeries.set(next)
+        announce.set(`${target} ${nowHidden ? 'hidden' : 'shown'}`)
+      })
+    }
     else if (key === 'Enter' || key === ' ') {
       const idx = focusIdx()
       if (idx >= 0) pickDatum(idx + viewRange(readData()).from)
     } else if (key === 'Escape') {
       batch(() => {
         focusIdx.set(-1)
+        focusSeries.set(-1)
         hoverIdx.set(-1)
         announce.set('')
       })
@@ -1169,7 +1339,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const pts =
         g.xValues !== undefined && g.xValues.length > 0
           ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
-          : categoryPoints(g, sr.values, plot, dom)
+          : categoryPoints(sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
@@ -1648,7 +1818,16 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const ly = ev.clientY - r0.top
       const i = legendHitIndex(legendBoxes, lx, ly)
       if (i >= 0) {
-        hiddenSeries.set(legendToggleGroup(hiddenSeries(), props.marks.map((m, k) => markLabel(m, k)), i))
+        const labels = props.marks.map((m, k) => markLabel(m, k))
+        const next = legendToggleGroup(hiddenSeries(), labels, i)
+        const target = [...new Set(labels)][i]
+        batch(() => {
+          hiddenSeries.set(next)
+          if (target !== undefined && keyboardOn) {
+            const nowHidden = labels.every((l, j) => l !== target || next.includes(j))
+            announce.set(`${target} ${nowHidden ? 'hidden' : 'shown'}`)
+          }
+        })
         return
       }
     }
@@ -1687,22 +1866,36 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // The a11y input is read by the description, the table and every keystroke;
   // resolving the marks over all rows each time was a full O(N) pass per read.
   // Memoized on the inputs' identity — a new rows array or marks array is a new pass.
+  let lastFull: { rows: T[]; marks: Mark<T>[]; x: ((d: T, i: number) => string) | undefined; palette: readonly string[]; series: Series[]; categories: string[] } | null = null
+  /** Every row through every mark, memoized on the inputs that decide it. */
+  const resolveFull = (rows: T[]): { series: Series[]; categories: string[] } => {
+    const palette = theme().palette
+    const m = lastFull
+    if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
+    const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette), categories: resolveCategories(rows, props.x) }
+    lastFull = next
+    return next
+  }
   let a11yMemo: { rows: T[]; marks: Mark<T>[]; labels: string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
   const a11yInput = (): A11yInput => {
     const rows = readData()
     const m = a11yMemo
     const fmtNow = resolvedFormat()
     if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title) return m.input
-    const resolved = resolveMarks(rows, props.marks)
+    const full = resolveFull(rows)
+    const resolved = full.series
     const input: A11yInput = {
       title: props.title,
       // The spoken description says the same numbers the axis shows. A chart
       // whose axis reads "$3.2K" and whose description reads "3204.55" is one
       // chart to a sighted reader and another to a screen-reader user.
       format: fmtNow,
-      categories: resolveCategories(rows, props.x),
+      categories: full.categories,
       series: resolved.map((s, i) => ({
-        label: props.seriesLabels?.[i] ?? `Series ${i + 1}`,
+        // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
+        // legend and tooltip show. It used to fall straight to "Series N", so a
+        // screen reader heard names no sighted reader ever saw.
+        label: props.seriesLabels?.[i] ?? s.label,
         values: s.values,
         kind: s.kind,
         // A band's low edge. Mapping field by field is how it went missing:
@@ -1711,12 +1904,43 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
-        ...(s.onX2 === true && s.xs !== undefined ? { xs: s.xs } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }
     return input
   }
+
+  // The server's first frame: the chart as SVG in the HTML, so an SSR / SSG
+  // page shows the chart before any script runs rather than an empty box.
+  // Needs the serializer `@pyreon/charts/svg` registers (see `frame-seam.ts`).
+  // Hydration adopts it untouched (a `dangerouslySetInnerHTML` element's
+  // server children are trusted), and the first canvas paint removes it. On
+  // a client mount it is an empty element removed the same way.
+  let ssrFrame: Element | null = null
+  // The canvas can paint before this sibling's ref fires; then the ref removes it.
+  let canvasPainted = false
+  const serverFrameSvg = (): string => {
+    // A width the server cannot measure: the explicit one, else a typical
+    // column; the SVG then scales to the container, so the first frame is
+    // the chart at a plausible size rather than at the page's real one.
+    const ser = getFrameSerializer()
+    if (ser === null) return ''
+    const w = props.width ?? 600
+    const hgt = props.height ?? 200
+    const svg = ser.svg(frameAt(w, hgt, ser.measure()), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+    return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
+  }
+  const ssrFrameNode = h('div', {
+    'data-pyreon-chart-frame': '',
+    'aria-hidden': 'true',
+    style: 'position:absolute;inset:0;pointer-events:none',
+    dangerouslySetInnerHTML: { __html: isServer ? serverFrameSvg() : '' },
+    ref: (el: Element | null) => {
+      if (el === null) return
+      if (canvasPainted) el.remove()
+      else ssrFrame = el
+    },
+  })
 
   const canvasNode = h('canvas', {
     class: props.class,
@@ -1734,6 +1958,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       canvas = el
       sizeObserver?.disconnect()
       sizeObserver = null
+      stopDprWatch()
       if (el === null) {
         // Unmounted mid-animation: no frame may keep the closure alive.
         if (typeof cancelAnimationFrame === 'function') {
@@ -1769,6 +1994,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         draw()
       })
       sizeObserver.observe(box)
+      watchDpr()
     },
     onClick: handleClick,
     // Stable, reactive hooks for consumers and tests: the zoom window and the
@@ -1858,7 +2084,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // The toolbox data view: the chart's table, visible, over the canvas, with its own close button.
   const dataViewNode = (): VNode | null => {
     if (!dataView()) return null
-    const t = chartTable(a11yInput())
+    // Capped like the accessible table: an uncapped 50k-row chart built a
+    // 50k-row DOM table on every open.
+    const t = chartTable(a11yInput(), A11Y_TABLE_MAX)
     return h(
       'div',
       {
@@ -1891,6 +2119,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     'div',
     { style: 'position:relative' },
     canvasNode,
+    ssrFrameNode,
     dataViewNode,
     ...(props.tooltip === true ? [tooltipNode()] : []),
     ...(keyboardOn ? [liveNode()] : []),

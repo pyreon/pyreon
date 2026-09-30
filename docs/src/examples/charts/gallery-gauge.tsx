@@ -1,12 +1,11 @@
-import { ChartThemeProvider } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
+import { GaugeChart, gaugeDial } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — a gauge whose value is a signal: the option is an accessor, so a
- * write repaints the dial. The `shared` signal counts nudges.
- * The provider opts it into the colour mode in scope — the page's scheme
- * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * Gallery — a gauge whose value is a signal. `gaugeDial()` builds the full
+ * dial (split lines, ticks, labels, a pointer and a progress arc) with every
+ * part defaulted, so only what differs is written; reading the signal inside
+ * it makes the dial repaint on a write. The `shared` signal counts nudges.
  */
 export default function GalleryGauge(props: { shared?: Signal<number> }) {
   const nudges = props.shared ?? signal(0)
@@ -26,14 +25,12 @@ export default function GalleryGauge(props: { shared?: Signal<number> }) {
         </button>
         <span>nudges: {() => nudges()}</span>
       </div>
-      <ChartThemeProvider>
-        <OptionChart
-          height={300}
-          option={() => ({
-            series: [{ type: 'gauge', progress: { show: true, width: 14 }, axisLine: { lineStyle: { width: 14 } }, detail: { formatter: '{value}%' }, data: [{ value: load(), name: 'CPU' }] }],
-          })}
-        />
-      </ChartThemeProvider>
+      <GaugeChart
+        value={() => load()}
+        height={300}
+        title="CPU"
+        dial={gaugeDial({ data: [{ value: load(), name: 'CPU' }], progressShow: true, progressWidth: 14, lineWidth: 14, format: (v) => `${v}%` })}
+      />
     </div>
   )
 }
