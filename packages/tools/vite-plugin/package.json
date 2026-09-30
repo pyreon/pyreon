@@ -46,7 +46,7 @@
   "dependencies": {
     "@pyreon/compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "oxc-parser": "^0.148.0"
+    "oxc-parser": "^0.152.0"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
