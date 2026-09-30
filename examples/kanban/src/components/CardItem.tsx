@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from '@pyreon/dnd'
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 import { toast } from '@pyreon/toast'
 import { useBoardModel, type Card, type Column } from '../lib/board'
 
@@ -16,10 +16,10 @@ interface CardItemProps {
 export default function CardItem(props: CardItemProps) {
   const board = useBoardModel()
   let cardEl: HTMLElement | null = null
-  const overEdge = signal<'before' | 'after' | null>(null)
+  let overEdge = state<'before' | 'after' | null>(null)
 
   // Reactive card data — re-derives from board state.
-  const card = computed<Card | undefined>(() => {
+  const card = derived<Card | undefined>(() => {
     for (const col of board.columns() as Column[]) {
       const found = col.cards.find((c) => c.id === props.cardId)
       if (found) return found
@@ -46,10 +46,10 @@ export default function CardItem(props: CardItemProps) {
     canDrop: (data) =>
       (data as { kind?: string }).kind === 'kanban-card' &&
       (data as { cardId?: string }).cardId !== props.cardId,
-    onDragEnter: () => overEdge.set('before'),
-    onDragLeave: () => overEdge.set(null),
+    onDragEnter: () => { overEdge = 'before' },
+    onDragLeave: () => { overEdge = null },
     onDrop: (data) => {
-      overEdge.set(null)
+      overEdge = null
       const { cardId } = data as { cardId: string }
       const cols = board.columns()
       const targetCol = cols.find((c) => c.id === props.columnId)
@@ -63,7 +63,7 @@ export default function CardItem(props: CardItemProps) {
   })
 
   const handleDelete = () => {
-    const c = card()
+    const c = card
     if (!c) return
     board.removeCard(props.cardId)
     toast.info(`Removed "${c.title}"`)
@@ -75,18 +75,18 @@ export default function CardItem(props: CardItemProps) {
       data-card-id={props.cardId}
       data-testid={`card-${props.cardId}`}
       data-active={() => (isDragging() ? 'true' : 'false')}
-      data-over-edge={() => overEdge() ?? ''}
+      data-over-edge={() => overEdge ?? ''}
       ref={(el) => {
         cardEl = el
       }}
     >
-      <p class="card-title">{() => card()?.title ?? ''}</p>
+      <p class="card-title">{() => card?.title ?? ''}</p>
       <div class="card-meta">
         <span
-          class={() => `card-priority priority-${card()?.priority ?? 'medium'}`}
+          class={() => `card-priority priority-${card?.priority ?? 'medium'}`}
           data-testid={`card-${props.cardId}-priority`}
         >
-          {() => card()?.priority ?? ''}
+          {() => card?.priority ?? ''}
         </span>
       </div>
       <div class="card-actions">

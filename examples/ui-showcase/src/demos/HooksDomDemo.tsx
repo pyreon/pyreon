@@ -1,5 +1,5 @@
 import { useClickOutside, useElementSize, useIntersection, useWindowResize } from '@pyreon/hooks'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 export function HooksDomDemo() {
@@ -11,9 +11,9 @@ export function HooksDomDemo() {
   const elemSize = useElementSize(() => sizeEl)
 
   // useClickOutside
-  const open = signal(false)
+  let open = state(false)
   let dropdownEl: HTMLElement | null = null
-  useClickOutside(() => dropdownEl, () => open.set(false))
+  useClickOutside(() => dropdownEl, () => { open = false })
 
   // useIntersection
   let intersectEl: HTMLElement | null = null
@@ -42,9 +42,9 @@ export function HooksDomDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">useClickOutside(ref, handler)</Title>
       <div style="position: relative; max-width: 280px; margin-bottom: 24px;">
-        <Button state="primary" onClick={() => open.set(!open())}>Open Dropdown</Button>
+        <Button state="primary" onClick={() => { open = !open }}>Open Dropdown</Button>
         {() =>
-          open() ? (
+          open ? (
             <div
               ref={(el: HTMLElement | null) => { dropdownEl = el }}
               style="position: absolute; top: 100%; left: 0; margin-top: 8px; padding: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 200px;"

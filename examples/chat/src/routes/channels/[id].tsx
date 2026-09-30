@@ -2,7 +2,8 @@ import { onMount } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import { useRouter } from '@pyreon/router'
 import { useMutation, useQuery, useSSE } from '@pyreon/query'
-import { computed, effect, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
+import { effect, untrack } from '@pyreon/reactivity'
 import { useUrlState } from '@pyreon/url-state'
 import { toast } from '@pyreon/toast'
 import { useChatModel } from '../../lib/chat-store'
@@ -29,22 +30,22 @@ export default function ChannelPage() {
   const store = useChatModel()
 
   // Reactive channelId from route params.
-  const channelId = computed<string>(
+  const channelId = derived<string>(
     () => (router.currentRoute().params.id ?? 'general') as string,
   )
 
   // Persist last-visited channel to localStorage as user navigates.
   effect(() => {
-    const id = channelId()
+    const id = channelId
     store.setLastVisited(id)
   })
 
   // Reactive channel metadata.
-  const channel = computed<Channel | undefined>(() =>
-    (store.channels() as Channel[]).find((c) => c.id === channelId()),
+  const channel = derived<Channel | undefined>(() =>
+    (store.channels() as Channel[]).find((c) => c.id === channelId),
   )
 
-  useHead(() => ({ title: `#${channel()?.name ?? channelId()} — Chat` }))
+  useHead(() => ({ title: `#${channel?.name ?? channelId} — Chat` }))
 
   // URL-synced search filter.
   const q = useUrlState('q', '')
@@ -53,9 +54,9 @@ export default function ChannelPage() {
   // channel change. Options are passed as a function so reactive
   // reads inside (channelId()) re-run on change.
   const history = useQuery<Message[]>(() => ({
-    queryKey: ['history', channelId()],
+    queryKey: ['history', channelId],
     queryFn: async () => {
-      const res = await fetch(`/api/history/${channelId()}`)
+      const res = await fetch(`/api/history/${channelId}`)
       if (!res.ok) throw new Error(`history fetch failed: ${res.status}`)
       return res.json() as Promise<Message[]>
     },
@@ -64,39 +65,39 @@ export default function ChannelPage() {
   // Local mutable message list — starts empty, populated by history,
   // appended by SSE, prepended by optimistic sends. Reset on channel
   // change (handled by the effect below).
-  const messages = signal<Message[]>([])
+  let messages = state.raw<Message[]>([])
 
   effect(() => {
     // Seed from history when it lands.
     const h = history.data()
     if (h && Array.isArray(h)) {
-      messages.set(h)
+      messages = h
     }
   })
 
   // Reset messages BEFORE the new history arrives so we don't show
   // the old channel's messages while the new ones are in flight.
   effect(() => {
-    channelId()
-    messages.set([])
+    void channelId
+    messages = []
   })
 
   // Live stream — useSSE reconnects when channelId changes (reactive URL).
   const sse = useSSE<{ kind?: string } & Partial<Message>>({
-    url: () => `/api/stream/${channelId()}`,
+    url: () => `/api/stream/${channelId}`,
     parse: (raw) => JSON.parse(raw) as { kind?: string } & Partial<Message>,
     onMessage: (msg) => {
       if (msg?.kind === 'open') return // connection-ack ping
       if (!msg?.id || !msg?.body) return
       // Append (or deduplicate by id — server echo of an optimistic send).
-      messages.update((prev) => {
+      messages = ((prev) => {
         if (prev.some((m) => m.id === msg.id)) {
           return prev.map((m) =>
             m.id === msg.id ? ({ ...m, ...msg, pending: false } as Message) : m,
           )
         }
         return [...prev, msg as Message]
-      })
+      })(untrack(() => messages))
     },
   })
 
@@ -108,7 +109,7 @@ export default function ChannelPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelId: channelId(),
+          channelId: channelId,
           body,
           author: { name: 'You', color: '#4338ca' },
         }),
@@ -138,11 +139,11 @@ export default function ChannelPage() {
     if (!trimmed) return
     // Optimistic insert.
     const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-    messages.update((prev) => [
-      ...prev,
+    messages = [
+      ...messages,
       {
         id: optimisticId,
-        channelId: channelId(),
+        channelId: channelId,
         author: 'You',
         authorColor: '#4338ca',
         body: trimmed,
@@ -150,14 +151,14 @@ export default function ChannelPage() {
         own: true,
         pending: true,
       },
-    ])
+    ]
     sendMutation.mutate(trimmed)
   }
 
   // Filtered messages — narrows by search term (case-insensitive).
-  const visible = computed<Message[]>(() => {
+  const visible = derived<Message[]>(() => {
     const term = q().trim().toLowerCase()
-    const all = messages() as Message[]
+    const all = messages as Message[]
     if (!term) return all
     return all.filter((m) => m.body.toLowerCase().includes(term))
   })
@@ -168,12 +169,12 @@ export default function ChannelPage() {
   })
 
   return (
-    <section class="channel-page" data-testid={`channel-page-${channelId()}`}>
+    <section class="channel-page" data-testid={`channel-page-${channelId}`}>
       <header class="channel-header">
         <div class="channel-header-title">
           <span class="channel-hash">#</span>
-          <h2>{() => channel()?.name ?? channelId()}</h2>
-          <span class="channel-topic">{() => channel()?.topic ?? ''}</span>
+          <h2>{() => channel?.name ?? channelId}</h2>
+          <span class="channel-topic">{() => channel?.topic ?? ''}</span>
         </div>
         <div class="channel-header-status" data-testid="connection-status">
           <span class={() => `conn-dot conn-${sse.status()}`} />
@@ -192,13 +193,13 @@ export default function ChannelPage() {
         <span class="channel-search-stats" data-testid="channel-search-stats">
           {() =>
             q().trim()
-              ? `${visible().length} of ${(messages() as Message[]).length} match`
-              : `${(messages() as Message[]).length} messages`
+              ? `${visible.length} of ${(messages as Message[]).length} match`
+              : `${(messages as Message[]).length} messages`
           }
         </span>
       </div>
 
-      <MessageList messages={visible()} />
+      <MessageList messages={visible} />
 
       <MessageInput
         onSend={handleSend}

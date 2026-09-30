@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { createI18n, I18nProvider, Trans, useI18n } from '@pyreon/i18n'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 const i18n = createI18n({
   locale: 'en',
@@ -34,11 +34,11 @@ const i18n = createI18n({
 
 function I18nContent() {
   const { t, locale } = useI18n()
-  const name = signal('Alice')
-  const count = signal(1)
-  const seconds = signal(0)
+  let name = state('Alice')
+  let count = state(1)
+  let seconds = state(0)
 
-  setInterval(() => seconds.update((s) => s + 1), 1000)
+  setInterval(() => { seconds = seconds + 1 }, 1000)
 
   return (
     <div>
@@ -66,22 +66,22 @@ function I18nContent() {
         <div class="field">
           <label>Name</label>
           <input
-            value={name()}
-            onInput={(e: Event) => name.set((e.target as HTMLInputElement).value)}
+            value={name}
+            onInput={(e: Event) => { name = (e.target as HTMLInputElement).value }}
           />
         </div>
-        <p style="font-size: 18px">{() => t('greeting', { name: name() })}</p>
-        <p style="color: #666">{() => t('description', { count: seconds() })}</p>
+        <p style="font-size: 18px">{() => t('greeting', { name: name })}</p>
+        <p style="color: #666">{() => t('description', { count: seconds })}</p>
       </div>
 
       <div class="section">
         <h3>Pluralization</h3>
         <div class="row" style="margin-bottom: 8px">
-          <button onClick={() => count.update((c) => Math.max(0, c - 1))}>-</button>
-          <span style="min-width: 30px; text-align: center">{() => count()}</span>
-          <button onClick={() => count.update((c) => c + 1)}>+</button>
+          <button onClick={() => { count = Math.max(0, count - 1) }}>-</button>
+          <span style="min-width: 30px; text-align: center">{() => count}</span>
+          <button onClick={() => { count = count + 1 }}>+</button>
         </div>
-        <p>{() => t('items', { count: count() })}</p>
+        <p>{() => t('items', { count: count })}</p>
       </div>
 
       <div class="section">

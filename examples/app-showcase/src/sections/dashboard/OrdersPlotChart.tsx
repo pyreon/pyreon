@@ -1,7 +1,7 @@
 import { PlotChart, bars, line } from '@pyreon/charts/engine'
 import { useQuery } from '@pyreon/query'
 import { Show } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { fetchRevenueByDay } from './data/api'
 import type { Datum } from './data/types'
 import { ChartCard, ChartFallback, ChartTitle } from './styled'
@@ -29,7 +29,7 @@ export function OrdersPlotChart() {
   // a click / an Enter on the keyboard reported (the interaction leg of the
   // charts gate — the hosts' own browser suites run under vitest's JSX
   // transform, this page under the shipped compiler).
-  const picked = signal(-1)
+  let picked = state(-1)
   // A 7-day tail: the point is to prove the engine draws in a real app, and a
   // shorter series keeps the bars wide enough to hit-test. Read INSIDE the
   // chart's own `data` accessor rather than in a conditional around the
@@ -40,7 +40,7 @@ export function OrdersPlotChart() {
   return (
     <ChartCard>
       <ChartTitle>Revenue — Pyreon plot engine</ChartTitle>
-      <span data-testid="plot-engine-picked">{() => String(picked())}</span>
+      <span data-testid="plot-engine-picked">{() => String(picked)}</span>
       <Show when={() => query.data() !== undefined} fallback={<ChartFallback>Loading chart…</ChartFallback>}>
         <div data-testid="plot-engine-chart">
           <PlotChart
@@ -52,7 +52,7 @@ export function OrdersPlotChart() {
             tooltip
             crosshair
             title="Revenue, last 7 days"
-            onSelect={(i) => picked.set(i)}
+            onSelect={(i) => { picked = i }}
           />
         </div>
       </Show>

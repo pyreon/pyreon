@@ -6,7 +6,7 @@ import {
   createScale,
   createSlide,
 } from '@pyreon/kinetic-presets'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const FactoryFadeUp = kinetic('div').preset(createFade({ direction: 'up', distance: 24 }))
@@ -21,11 +21,11 @@ const boxStyle =
   'padding: 24px; background: #0070f3; color: white; border-radius: 8px; text-align: center; font-weight: 600;'
 
 export function AnimationsFactoriesDemo() {
-  const fadeOpen = signal(true)
-  const slideOpen = signal(true)
-  const scaleOpen = signal(true)
-  const rotateOpen = signal(true)
-  const blurOpen = signal(true)
+  let fadeOpen = state(true)
+  let slideOpen = state(true)
+  let scaleOpen = state(true)
+  let rotateOpen = state(true)
+  let blurOpen = state(true)
 
   return (
     <div>
@@ -36,42 +36,42 @@ export function AnimationsFactoriesDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">createFade(direction, distance)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => fadeOpen.set(!fadeOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { fadeOpen = !fadeOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <FactoryFadeUp show={() => fadeOpen()} style={boxStyle}>fade up 24px</FactoryFadeUp>
+        <FactoryFadeUp show={() => fadeOpen} style={boxStyle}>fade up 24px</FactoryFadeUp>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">createSlide(direction, distance)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => slideOpen.set(!slideOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { slideOpen = !slideOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <FactorySlideRight show={() => slideOpen()} style={boxStyle}>slide right 32px</FactorySlideRight>
+        <FactorySlideRight show={() => slideOpen} style={boxStyle}>slide right 32px</FactorySlideRight>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">createScale(from, easing)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => scaleOpen.set(!scaleOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { scaleOpen = !scaleOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <FactoryScaleSpring show={() => scaleOpen()} style={boxStyle}>scale spring 0.5→1</FactoryScaleSpring>
+        <FactoryScaleSpring show={() => scaleOpen} style={boxStyle}>scale spring 0.5→1</FactoryScaleSpring>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">createRotate(degrees, duration)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => rotateOpen.set(!rotateOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { rotateOpen = !rotateOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <FactoryRotate show={() => rotateOpen()} style={boxStyle}>rotate 30°</FactoryRotate>
+        <FactoryRotate show={() => rotateOpen} style={boxStyle}>rotate 30°</FactoryRotate>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">createBlur(amount, scale)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => blurOpen.set(!blurOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { blurOpen = !blurOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <FactoryBlurScale show={() => blurOpen()} style={boxStyle}>blur 12px + scale</FactoryBlurScale>
+        <FactoryBlurScale show={() => blurOpen} style={boxStyle}>blur 12px + scale</FactoryBlurScale>
       </div>
     </div>
   )

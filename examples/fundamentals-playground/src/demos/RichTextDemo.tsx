@@ -1,4 +1,5 @@
-import { computed, onCleanup, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { onCleanup } from '@pyreon/reactivity'
 import type { JSONContent } from '@pyreon/rich-text'
 import { bindRichTextToSignal, createRichTextEditor, RichText } from '@pyreon/rich-text'
 
@@ -15,8 +16,8 @@ export function RichTextDemo() {
   })
 
   // ── Two-way binding: an external draft signal <-> the editor document ──
-  const draft = signal<JSONContent>(editor.json())
-  const binding = bindRichTextToSignal({ editor, signal: draft })
+  let draft = state<JSONContent>(editor.json())
+  const binding = bindRichTextToSignal({ editor, signal: signalOf<typeof draft>(draft) })
 
   // Editor instance + binding are user-owned — tear both down on unmount.
   onCleanup(() => {
@@ -24,8 +25,8 @@ export function RichTextDemo() {
     editor.dispose()
   })
 
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  let log = state.raw<string[]>([])
+  const addLog = (msg: string) => { log = [...log.slice(-9), msg] }
 
   // Toolbar descriptor: [label, command, isActive-check]. The command runs
   // through editor.chain(); the active check is read reactively per render.
@@ -61,7 +62,7 @@ export function RichTextDemo() {
     </button>
   )
 
-  const stateView = computed(() =>
+  const stateView = derived(() =>
     JSON.stringify(
       {
         editable: editor.editable(),
@@ -161,17 +162,17 @@ export function RichTextDemo() {
           <button
             type="button"
             onClick={() =>
-              draft.set({
+              { draft = {
                 type: 'doc',
                 content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Set from the bound signal ✨' }] }],
-              })
+              } }
             }
           >
             draft.set(…)
           </button>
         </div>
         <pre style="background: #1e1e1e; color: #9cdcfe; padding: 12px; border-radius: 8px; font-size: 12px; max-height: 160px; overflow: auto">
-          {() => JSON.stringify(draft(), null, 2)}
+          {() => JSON.stringify(draft, null, 2)}
         </pre>
       </div>
 
@@ -179,7 +180,7 @@ export function RichTextDemo() {
       <div class="section">
         <h3>Reactive State</h3>
         <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; font-size: 13px">
-          {() => stateView()}
+          {() => stateView}
         </pre>
       </div>
 
@@ -194,7 +195,7 @@ export function RichTextDemo() {
       <div class="section">
         <h3>Action Log</h3>
         <div class="log">
-          {() => (log().length === 0 ? 'Use the toolbar above to interact with the editor.' : log().join('\n'))}
+          {() => (log.length === 0 ? 'Use the toolbar above to interact with the editor.' : log.join('\n'))}
         </div>
       </div>
     </div>

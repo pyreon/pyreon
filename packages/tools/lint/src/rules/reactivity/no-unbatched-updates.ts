@@ -299,6 +299,7 @@ export const noUnbatchedUpdates: Rule = {
       'Warn when 3+ .set() calls can fire on the SAME execution path in a function without batch().',
     severity: 'warn',
     fixable: false,
+    plainLowered: true,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {

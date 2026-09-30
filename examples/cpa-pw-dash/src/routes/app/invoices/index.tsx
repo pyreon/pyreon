@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { state } from '@pyreon/core/plain'
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
@@ -9,10 +9,10 @@ export const meta = { title: "Invoices" }
 export default function Invoices() {
   useHead({ title: meta.title })
 
-  const invoices = signal<Invoice[]>([])
+  let invoices = state.raw<Invoice[]>([])
 
   onMount(() => {
-    void listInvoices().then((i) => invoices.set(i))
+    void listInvoices().then((i) => { invoices = i })
   })
 
   return (
@@ -35,7 +35,7 @@ export default function Invoices() {
         </thead>
         <tbody>
           {() =>
-            invoices().map((inv) => (
+            invoices.map((inv) => (
               <tr>
                 <td>
                   <Link href={`/app/invoices/${inv.id}`}>{inv.number}</Link>

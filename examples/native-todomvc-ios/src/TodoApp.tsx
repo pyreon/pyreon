@@ -35,7 +35,7 @@
 // reaches XCUITest + Espresso. The compiler handles the translation
 // silently for any data-* attr (E3.1).
 
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
 // `@pyreon/storage` — cross-platform persistence (Phase 0+: still
 // uses localStorage on web; Phase 1+ adds @pyreon/storage-ios /
 // @pyreon/storage-android per the platform-abstractions spec).
@@ -59,21 +59,21 @@ type Filter = 'all' | 'active' | 'completed'
 
 export function TodoApp() {
   const todos = useStorage<Todo[]>('pyreon-todomvc:todos', [])
-  const filter = signal<Filter>('all')
-  const draft = signal<string>('')
+  let filter = state<Filter>('all')
+  let draft = state<string>('')
 
-  const visible = computed(() => {
+  const visible = derived(() => {
     const xs = todos()
-    if (filter() === 'active') return xs.filter(t => !t.done)
-    if (filter() === 'completed') return xs.filter(t => t.done)
+    if (filter === 'active') return xs.filter(t => !t.done)
+    if (filter === 'completed') return xs.filter(t => t.done)
     return xs
   })
 
-  const remaining = computed(() => todos().filter(t => !t.done).length)
-  const hasCompleted = computed(() => todos().some(t => t.done))
+  const remaining = derived(() => todos().filter(t => !t.done).length)
+  const hasCompleted = derived(() => todos().some(t => t.done))
 
   const addTodo = () => {
-    const text = draft().trim()
+    const text = draft.trim()
     if (text.length === 0) return
     // Derive the next id from PERSISTED state — a module-level counter
     // resets on every launch while todos survive via useStorage, so a
@@ -82,7 +82,7 @@ export function TodoApp() {
     // test_todosPersistAcrossRelaunch on a state-polluted simulator).
     const maxId = todos().reduce((m, t) => (t.id > m ? t.id : m), 0)
     todos.set([...todos(), { id: maxId + 1, text, done: false }])
-    draft.set('')
+    draft = ''
   }
 
   const toggle = (id: number) => {
@@ -100,8 +100,8 @@ export function TodoApp() {
   return (
     <Stack gap={2} data-testid="todo-app">
       <Field
-        value={draft}
-        onChangeText={(t) => draft.set(t)}
+        value={signalOf<typeof draft>(draft)}
+        onChangeText={(t) => { draft = t }}
         onSubmit={addTodo}
         placeholder="What needs to be done?"
         data-testid="new-todo"
@@ -115,7 +115,7 @@ export function TodoApp() {
           web-only CSS enter/leave props are ignored on native. Adding/removing
           a todo now flows through the animated list path. */}
       <TransitionGroup>
-        <For each={visible} by={(t) => t.id}>
+        <For each={signalOf<typeof visible>(visible)} by={(t) => t.id}>
           {(t) => (
             <TodoRow
               todo={t}
@@ -128,10 +128,10 @@ export function TodoApp() {
 
       <Inline gap={2} align="center">
         <Text>{remaining} remaining</Text>
-        <Button onPress={() => filter.set('all')}>All</Button>
-        <Button onPress={() => filter.set('active')}>Active</Button>
-        <Button onPress={() => filter.set('completed')}>Completed</Button>
-        <Show when={hasCompleted}>
+        <Button onPress={() => { filter = 'all' }}>All</Button>
+        <Button onPress={() => { filter = 'active' }}>Active</Button>
+        <Button onPress={() => { filter = 'completed' }}>Completed</Button>
+        <Show when={signalOf<typeof hasCompleted>(hasCompleted)}>
           <Button onPress={clearCompleted}>Clear completed</Button>
         </Show>
       </Inline>

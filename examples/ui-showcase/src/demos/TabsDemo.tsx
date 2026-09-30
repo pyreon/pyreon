@@ -1,14 +1,14 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Tabs, Tab, TabPanel, Paragraph, Title } from '@pyreon/ui-components'
 
 export function TabsDemo() {
-  const active = signal('overview')
+  let active = state('overview')
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Tabs</Title>
 
-      <Tabs value={active()} onChange={(v: string) => active.set(v)}>
+      <Tabs value={active} onChange={(v: string) => { active = v }}>
         <div style="display: flex; margin-bottom: 16px;">
           <Tab value="overview">Overview</Tab>
           <Tab value="features">Features</Tab>
