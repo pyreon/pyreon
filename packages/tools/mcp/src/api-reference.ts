@@ -979,7 +979,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
 <Suspense fallback={<Spinner />}>
   <Settings />
 </Suspense>`,
-    notes: `Wrap a dynamic import for code splitting. Returns a component that integrates with \`Suspense\` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: \`renderToStream\` resolves it inside the Suspense boundary after flushing the fallback, and \`renderToString\` renders the loaded content. The client adopts that HTML only if its chunk has also loaded before hydration, so preload it first (zero's \`startClient\` does this for route components). See also: Suspense, Dynamic.`,
+    notes: 'Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: `renderToStream` resolves it inside the Suspense boundary after flushing the fallback, and `renderToString` renders the loaded content. If the client chunk has not landed when hydration reaches it, the server nodes are KEPT in place and hydrated once it lands (node identity, focus and typed input survive); preloading only makes the page interactive sooner. A lazy mounted while loading renders its component once the chunk lands, with or without a `Suspense`. See also: Suspense, Dynamic.',
   },
 
   'core/Dynamic': {

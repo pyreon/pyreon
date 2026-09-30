@@ -38,7 +38,7 @@ describe('lazy() — renderToStream', () => {
       ),
     )
     expect(html).toContain('<div id="pyreon-s-0"><i>fb</i></div>')
-    expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><p class="q">quote:a<\/p><!--\/\$--><\/template>/)
+    expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><!--\$--><p class="q">quote:a<\/p><!--\/\$--><!--\/\$--><\/template>/)
     // The fallback is flushed BEFORE the resolved content.
     expect(html.indexOf('<i>fb</i>')).toBeLessThan(html.indexOf('quote:a'))
   })
@@ -50,7 +50,7 @@ describe('lazy() — renderToStream', () => {
         h(Suspense, { fallback: h('i', null, 'fb') }, h('section', null, h(Lazy, { who: 'n' }))),
       ),
     )
-    expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><section><p class="q">quote:n<\/p><\/section><!--\/\$--><\/template>/)
+    expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><section><!--\$--><p class="q">quote:n<\/p><!--\/\$--><\/section><!--\/\$--><\/template>/)
   })
 
   it('a lazy that FAILS to load keeps the fallback (no swap)', async () => {
@@ -69,7 +69,7 @@ describe('lazy() — renderToStream', () => {
   it('awaits a lazy outside any Suspense, like an async component', async () => {
     const Lazy = slowLazy()
     const html = await read(renderToStream(h('main', null, h(Lazy, { who: 'o' }))))
-    expect(html).toContain('<main><p class="q">quote:o</p></main>')
+    expect(html).toContain('<main><!--$--><p class="q">quote:o</p><!--/$--></main>')
   })
 })
 
@@ -86,7 +86,7 @@ describe('lazy() — renderToString', () => {
   it('awaits a lazy outside any Suspense', async () => {
     const Lazy = slowLazy()
     const html = await renderToString(h('main', null, h(Lazy, { who: 't' })))
-    expect(html).toBe('<main><p class="q">quote:t</p></main>')
+    expect(html).toBe('<main><!--$--><p class="q">quote:t</p><!--/$--></main>')
   })
 
   it('an already-loaded lazy renders synchronously-shaped output (no extra wait)', async () => {
