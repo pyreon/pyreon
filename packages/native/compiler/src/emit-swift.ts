@@ -88,6 +88,7 @@ import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
+  buildModuleConstTypes,
   classifyNegativeSlice,
   arrayFromMapRewrite,
   classifyOptionalCondition,
@@ -777,6 +778,8 @@ let _helperFnNames: Set<string> = new Set()
 /** File-scope helper name → return type, assigned onto each component's infer
  * ctx so a computed over a helper call infers its return type (not `Any`). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+/** File-scope `const`/`let` name → type (`InferenceCtx.moduleConsts`); rebuilt per file. */
+let _moduleConstTypes: Map<string, TypeIR> = new Map()
 /** Top-level helper name → its parameter types; steers an object-literal ARGUMENT to the parameter's named struct. */
 let _helperParamTypes: Map<string, TypeIR[]> = new Map()
 /** Object-literal argument node → the struct its parameter names (populated at the call, read by the literal emit). */
@@ -1115,6 +1118,44 @@ function emitSwiftMemberCallArgs(
       }
     }
   }
+  // `reduce((acc, el) => …, seed)` — the element is the SECOND param and the
+  // accumulator the first, so the element-first seeding above misses it and
+  // `s + m.qty * RATE` emitted a bare `Int * Double`. Bind the element to the
+  // receiver's element type and the accumulator to the seed's type (the
+  // element's, when seedless — JS seeds from `arr[0]`).
+  if (
+    callee.kind === 'member' &&
+    callee.property === 'reduce' &&
+    cb !== undefined &&
+    cb.kind === 'arrow' &&
+    cb.params.length >= 2
+  ) {
+    const recvT = inferType(callee.object, _activeInferCtx)
+    if (recvT.kind === 'array') {
+      const seed = e.args[1]
+      const accT = seed !== undefined ? inferType(seed, _activeInferCtx) : recvT.element
+      const bindings: [string, TypeIR][] = [
+        [cb.params[0]!, accT],
+        [cb.params[1]!, recvT.element],
+      ]
+      const saved = bindings.map(([n]) => ({
+        n,
+        had: _activeInferCtx.locals.has(n),
+        prev: _activeInferCtx.locals.get(n),
+      }))
+      for (const [n, t] of bindings) {
+        if (t.kind !== 'unknown') _activeInferCtx.locals.set(n, t)
+      }
+      try {
+        return e.args.map((a) => emitSwiftExpr(a, indent))
+      } finally {
+        for (const x of saved.reverse()) {
+          if (x.had) _activeInferCtx.locals.set(x.n, x.prev!)
+          else _activeInferCtx.locals.delete(x.n)
+        }
+      }
+    }
+  }
   return e.args.map((a) => emitSwiftExpr(a, indent))
 }
 
@@ -1361,13 +1402,16 @@ export function emitSwift(
   // skipped inside helper bodies. Seeded with the file's structs AND the
   // helper return types, so a local bound from a helper call types too.
   // Overwritten per component, so a component-bearing file is unaffected.
-  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // File-scope bindings, typed once: a component (or helper) reading
+  // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
+  _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
+  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   // BOTH contexts: Swift keeps two (`_activeInferCtx` for the type-gated call
   // lowerings, `_exprInferCtx` for the condition + optional lowerings), and
   // they alias only inside a component. A helper-only file has two distinct
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
-  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   // v2 — per-hook method registry for the chain-call rewrite.
   _storeMethodNames = new Map(
     stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
@@ -1633,6 +1677,10 @@ function emitSwiftStore(s: StoreDefnIR): string {
       })),
       [],
       _structDefs,
+      [],
+      undefined,
+      undefined,
+      _moduleConstTypes,
     )
     for (const c of s.computeds ?? []) {
       const t = inferType(c.expr, storeCtx)
@@ -1707,6 +1755,10 @@ function emitSwiftModel(m: ModelDefnIR): string {
       })),
       [],
       _structDefs,
+      [],
+      undefined,
+      undefined,
+      _moduleConstTypes,
     )
     for (const v of m.views ?? []) {
       _activePropsParamName = v.selfParam
@@ -2470,7 +2522,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Write-site float widening BEFORE the ctx build — a signal whose writes
   // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
   // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
-  widenFloatSignals(c, _storeDefs, _structDefs)
+  widenFloatSignals(c, _storeDefs, _structDefs, _moduleConstTypes)
   // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).
@@ -2485,6 +2537,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     c.props,
     c.propsParamName,
     _helperReturns,
+    _moduleConstTypes,
   )
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
@@ -5641,9 +5694,20 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'for-of': {
       const pad = ' '.repeat(indent)
       const iter = emitSwiftExpr(s.iterable, indent)
+      // The item carries the iterated array's element type in the body's
+      // scope — the sibling of the `for-range` counter registration below.
+      // Unregistered, `acc += it * RATE` over an `[Int]` inferred `it` as
+      // unknown, the binary coercion never fired, and swiftc rejected
+      // `Int * Double` (Kotlin promotes, so only iOS failed).
+      const iterT = inferType(s.iterable, _activeInferCtx)
+      const hadItem = _activeInferCtx.locals.has(s.item)
+      const prevItem = _activeInferCtx.locals.get(s.item)
+      if (iterT.kind === 'array') _activeInferCtx.locals.set(s.item, iterT.element)
       const lines = s.body
         .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
         .join('\n')
+      if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
+      else _activeInferCtx.locals.delete(s.item)
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
       return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
     }
@@ -10897,11 +10961,15 @@ let _needsSwiftKeepAliveWrapper = false
 // family became Double-returning. Emitted once, only when used (the
 // PyreonUrlStateDouble.set formatter, extracted).
 //
-// `private` (file scope): the helper is emitted into EVERY file that needs it,
-// so an internal `func` collided the moment two such files shared one Xcode
-// target (`invalid redeclaration of 'pyreonNumString'`). It is only ever
-// called from bodies in the same file, never named in a signature, so
-// file-private is both sufficient and correct.
+// `private`, not the bare default (module-visible `internal`): the checked-in
+// chart engine (packages/native/runtime-swift/…/PyreonChartEngine.swift) also
+// needs this exact idiom and emits its OWN copy the same way — in a real app
+// both land in one module, and an `internal`/bare top-level `func` collides
+// ("invalid redeclaration") the moment BOTH files are compiled together,
+// which is exactly what happens whenever a chart-using app has any other
+// component doing `String(someDouble)`. `private` at file scope is legal to
+// repeat identically across sibling files in Swift, so each file's own copy
+// stays self-contained without ever colliding with the engine's.
 let _needsSwiftNumString = false
 const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
     v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)

@@ -82,6 +82,7 @@ import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
+  buildModuleConstTypes,
   arrayFromMapRewrite,
   classifyNegativeSlice,
   classifyOptionalCondition,
@@ -688,6 +689,8 @@ let _helperFnNames: Set<string> = new Set()
  * `derivedStateOf` mostly self-infers, but a helper call in a typed position
  * still benefits). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+/** File-scope `const`/`let` name → type (`InferenceCtx.moduleConsts`); rebuilt per file. */
+let _moduleConstTypes: Map<string, TypeIR> = new Map()
 let _helperParamTypesKotlin: Map<string, TypeIR[]> = new Map()
 const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 /**
@@ -782,9 +785,12 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  */
 let _emitWarnings: string[] = []
 
-// JS-faithful `String(double)` — see the Swift twin. Emitted once when used,
-// `private` for the same reason: one per file, so a public top-level `fun`
-// collided across files in one Gradle source set (one package).
+// JS-faithful `String(double)` — see the Swift twin's doc comment for why
+// this is `private` (file-scoped) rather than the bare top-level default:
+// the checked-in chart engine emits the SAME idiom under the SAME name, and
+// in a real app both land in one module — `private` lets each file repeat
+// the declaration without an "invalid redeclaration" the moment they're
+// compiled together.
 let _needsKotlinNumString = false
 const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
     if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
@@ -878,7 +884,10 @@ export function emitKotlin(
   // skipped inside helper bodies. Seeded with the file's structs AND the
   // helper return types, so a local bound from a helper call types too.
   // Overwritten per component, so a component-bearing file is unaffected.
-  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // File-scope bindings, typed once: a component (or helper) reading
+  // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
+  _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
+  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -2224,7 +2233,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
-  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs)
+  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs, _moduleConstTypes)
   // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).
@@ -2236,6 +2245,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     c.props,
     c.propsParamName,
     _helperReturns,
+    _moduleConstTypes,
   )
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],

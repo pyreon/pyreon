@@ -1547,7 +1547,7 @@ fun hitArc(arcs: List<ArcGeometry>, center: PyreonChartPt, outerR: Double, inner
         continue
       }
       val off = ang - a.start
-      val d = off - Math.floor(((off).toDouble() / (TAU).toDouble()).toDouble()) * TAU
+      val d = off - Math.floor((off).toDouble() / (TAU).toDouble()) * TAU
       if (d <= a.end - a.start) {
         return i
       }
