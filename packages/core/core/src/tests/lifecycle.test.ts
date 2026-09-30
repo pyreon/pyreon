@@ -348,3 +348,46 @@ describe('captureCallSite — skip patterns cover published-bundle paths', () =>
     ).toBe(false)
   })
 })
+
+describe('captureCallSite — every-frame-skipped fallback', () => {
+  afterEach(() => {
+    setCurrentHooks(null)
+  })
+
+  test('omits "Called from:" when every stack frame is framework-internal', () => {
+    // captureCallSite is not exported, so this reaches its unreachable-in-
+    // practice fallback (every real-world stack has SOME user frame, even
+    // if only a vitest/tinypool internal) by stubbing the global `Error`
+    // constructor for the duration of one synchronous call — every line in
+    // this synthetic stack matches a skip pattern (function-name matchers
+    // AND the framework-path matcher), so the walk exhausts `lines` without
+    // ever hitting the `return line.trim()` branch, falling through to the
+    // `return ''` at the end of the function.
+    const OriginalError = globalThis.Error
+    const fakeStack = [
+      'Error',
+      '    at captureCallSite (/repo/packages/core/core/src/lifecycle.ts:33:15)',
+      '    at warnOutsideSetup (/repo/packages/core/core/src/lifecycle.ts:87:22)',
+      '    at onMount (/repo/packages/core/core/src/lifecycle.ts:107:3)',
+    ].join('\n')
+
+    function FakeError(this: { stack: string }): void {
+      this.stack = fakeStack
+    }
+    globalThis.Error = FakeError as unknown as ErrorConstructor
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      onMount(() => {})
+    } finally {
+      // Restore immediately — nothing else in this synchronous call should
+      // ever observe the stubbed Error.
+      globalThis.Error = OriginalError
+    }
+
+    const message = warnSpy.mock.calls[0]?.[0] as string
+    expect(message).toContain('onMount() called outside component setup')
+    expect(message).not.toContain('Called from:')
+    warnSpy.mockRestore()
+  })
+})

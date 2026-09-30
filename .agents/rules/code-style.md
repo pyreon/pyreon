@@ -4,7 +4,7 @@
 
 - **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
 - **oxfmt** for formatting (Rust-powered, Prettier-compatible)
-- **@pyreon/lint** for Pyreon-specific rules (132 rules, 25 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
+- **@pyreon/lint** for Pyreon-specific rules (133 rules, 25 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
 - Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting), `.pyreonlintrc.json` (Pyreon-specific rules)
 - Commands: `bun run lint` (`oxlint .`), `bun run format` (`oxfmt --write .`), `bun run format:check` (`oxfmt --check .`)
 - Inline suppression: `// oxlint-disable-next-line rule-name` (not `biome-ignore`)

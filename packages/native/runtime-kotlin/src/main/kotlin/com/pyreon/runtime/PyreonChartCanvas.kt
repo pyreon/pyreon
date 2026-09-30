@@ -1006,12 +1006,12 @@ class PyreonChartHandle {
  * as the canvas mirrors its draw list.
  */
 @Composable
-fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Int, first: Int = 0, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {
+fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Long, first: Long = 0L, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {
     if (visible <= 0 || plot.w <= 0.0 || plot.h <= 0.0) return
     val headers = chartTable(input, 0).headers
     val total = chartRowCount(input)
     val band = (if (horizontal) plot.h else plot.w) / visible
-    for (j in 0 until visible) {
+    for (j in 0L until visible) {
         val i = first + j
         if (i >= total) break
         val cells = chartTableRow(input, i.toLong())

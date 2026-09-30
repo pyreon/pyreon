@@ -209,6 +209,10 @@ function render(
       return render(type.inner, doc, depth, field, self)
     case 'number':
       return numberFaker(type)
+    // A bigint the schema accepts. Drawn as a safe integer within the bounds
+    // (they are safe integers by construction -- see the input layer).
+    case 'bigint':
+      return `BigInt(${numberFaker({ ...type, kind: 'number', integer: true })})`
     case 'boolean':
       return 'faker.datatype.boolean()'
     case 'null':

@@ -39,12 +39,12 @@ describe('native chart data for screen readers', () => {
 
   it('Android: one TalkBack node per category, from the same input', () => {
     const code = transform(plain, { target: 'kotlin' }).code
-    expect(code).toMatch(/PyreonChartPoints\(A11yInput\(title = "Q1", categories = pyreonCats, [^\n]*layoutChart\(pyreonSpec, ::pyreonChartMeasure\)\.plot, pyreonCats\.size, 0, false/)
+    expect(code).toMatch(/PyreonChartPoints\(A11yInput\(title = "Q1", categories = pyreonCats, [^\n]*layoutChart\(pyreonSpec, ::pyreonChartMeasure\)\.plot, pyreonCats\.size\.toLong\(\), 0L, false/)
   })
 
   it('Android: a zoomed chart labels its visible rows from the full data', () => {
     const code = transform(zoomed, { target: 'kotlin' }).code
-    expect(code).toMatch(/PyreonChartPoints\(A11yInput\([^\n]*categories = pyreonA11yCats[^\n]*pyreonCats\.size, pyreonRange\.from\.toInt\(\),/)
+    expect(code).toMatch(/PyreonChartPoints\(A11yInput\([^\n]*categories = pyreonA11yCats[^\n]*pyreonCats\.size\.toLong\(\), pyreonRange\.from,/)
   })
 
   it('Android: decimated and continuous-x charts keep the description only (no evenly spaced columns)', () => {

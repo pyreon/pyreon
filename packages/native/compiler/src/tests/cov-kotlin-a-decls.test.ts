@@ -71,9 +71,9 @@ export function App() {
 
   it('a 0-param callback becomes <Unit> with an `_` binder; a typed param keeps its name and type', () => {
     const zero = kt(RL(`const dc = useDebouncedCallback(() => { n.set(1) }, 300)`)).code
-    expect(zero).toContain('PyreonDebounced<Unit>(300, PyreonTaskScheduler()) { _ ->')
+    expect(zero).toContain('PyreonDebounced<Unit>(300L, PyreonTaskScheduler()) { _ ->')
     const typed = kt(RL(`const tc = useThrottledCallback((v: number) => { n.set(v) }, 100)`)).code
-    expect(typed).toContain('PyreonThrottled<Long>(100, PyreonTaskScheduler()) { v ->')
+    expect(typed).toContain('PyreonThrottled<Long>(100L, PyreonTaskScheduler()) { v ->')
   })
 })
 

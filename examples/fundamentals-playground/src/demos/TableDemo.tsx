@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import type { SortingState } from '@pyreon/table'
 import {
   columnFilteringFeature,
@@ -160,22 +160,22 @@ const columns = columnHelper.columns([
 ])
 
 export function TableDemo() {
-  const sorting = signal<SortingState>([])
-  const globalFilter = signal('')
+  let sorting = state.raw<SortingState>([])
+  let globalFilter = state('')
 
   const table = useTable(() => ({
     features,
     data: employees,
     columns,
     state: {
-      sorting: sorting(),
-      globalFilter: globalFilter(),
+      sorting: sorting,
+      globalFilter: globalFilter,
     },
     onSortingChange: (updater) => {
-      sorting.set(typeof updater === 'function' ? updater(sorting()) : updater)
+      sorting = typeof updater === 'function' ? updater(sorting) : updater
     },
     onGlobalFilterChange: (updater) => {
-      globalFilter.set(typeof updater === 'function' ? updater(globalFilter()) : updater)
+      globalFilter = typeof updater === 'function' ? updater(globalFilter) : updater
     },
   }))
 
@@ -190,8 +190,8 @@ export function TableDemo() {
         <h3>Employee Directory</h3>
         <input
           placeholder="Search all columns..."
-          value={globalFilter()}
-          onInput={(e: Event) => globalFilter.set((e.target as HTMLInputElement).value)}
+          value={globalFilter}
+          onInput={(e: Event) => { globalFilter = (e.target as HTMLInputElement).value }}
           style="margin-bottom: 12px"
         />
 

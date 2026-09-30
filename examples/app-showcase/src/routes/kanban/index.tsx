@@ -1,5 +1,6 @@
 import { PermissionsProvider } from '@pyreon/permissions'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 import { useHotkey } from '@pyreon/hotkeys'
 import { BoardCard } from '../../sections/kanban/BoardCard'
 import { COLUMNS } from '../../sections/kanban/data/seed'
@@ -35,11 +36,11 @@ import {
 const DRAG_MIME = 'text/x-kanban-card-id'
 
 /** Local UI state — kept module-level so it survives navigation. */
-const draggingId = signal<string | null>(null)
-const dropTargetCol = signal<ColumnId | null>(null)
-const dropBeforeCard = signal<string | null>(null)
-const activeRole = signal<Role>('admin')
-const newCardDraft = signal('')
+let draggingId = state<string | null>(null)
+let dropTargetCol = state<ColumnId | null>(null)
+let dropBeforeCard = state<string | null>(null)
+let activeRole = state<Role>('admin')
+let newCardDraft = state('')
 
 /**
  * Kanban section — drag-and-drop task board with snapshot-based undo.
@@ -67,7 +68,7 @@ export default function KanbanRoute() {
   // ── Drag handlers ───────────────────────────────────────────────────
   function onDragStart(cardId: string, e: DragEvent) {
     if (!can('cards.write')) return
-    draggingId.set(cardId)
+    draggingId = cardId
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move'
       e.dataTransfer.setData(DRAG_MIME, cardId)
@@ -75,9 +76,9 @@ export default function KanbanRoute() {
   }
 
   function onDragEnd() {
-    draggingId.set(null)
-    dropTargetCol.set(null)
-    dropBeforeCard.set(null)
+    draggingId = null
+    dropTargetCol = null
+    dropBeforeCard = null
   }
 
   function onColumnDragOver(columnId: ColumnId, e: DragEvent) {
@@ -87,10 +88,10 @@ export default function KanbanRoute() {
     // If we just entered a different column, reset the per-card target
     // to "append to end" — `onCardDragOver` will overwrite it if the
     // cursor lands on a specific card next.
-    if (dropTargetCol.peek() !== columnId) {
-      dropBeforeCard.set(null)
+    if (untrack(() => dropTargetCol) !== columnId) {
+      dropBeforeCard = null
     }
-    dropTargetCol.set(columnId)
+    dropTargetCol = columnId
   }
 
   function onCardDragOver(beforeCardId: string, e: DragEvent) {
@@ -100,26 +101,26 @@ export default function KanbanRoute() {
     // ALSO fire so `dropTargetCol` updates to the column that owns
     // this card. Otherwise dragging directly from column A onto a
     // card in column B leaves the highlight stuck on column A.
-    dropBeforeCard.set(beforeCardId)
+    dropBeforeCard = beforeCardId
   }
 
   function onColumnDrop(columnId: ColumnId, e: DragEvent) {
     if (!can('cards.write')) return
     e.preventDefault()
-    const cardId = e.dataTransfer?.getData(DRAG_MIME) ?? draggingId.peek()
+    const cardId = e.dataTransfer?.getData(DRAG_MIME) ?? untrack(() => draggingId)
     if (!cardId) return
     undoManager.record()
-    board.moveCard(cardId, columnId, dropBeforeCard.peek())
+    board.moveCard(cardId, columnId, untrack(() => dropBeforeCard))
     onDragEnd()
   }
 
   function addCardFromDraft(e?: Event) {
     e?.preventDefault()
-    const title = newCardDraft.peek().trim()
+    const title = untrack(() => newCardDraft).trim()
     if (!title || !can('cards.write')) return
     undoManager.record()
     board.addCard(title)
-    newCardDraft.set('')
+    newCardDraft = ''
   }
 
   function removeCard(id: string) {
@@ -149,7 +150,7 @@ export default function KanbanRoute() {
   useHotkey('r', () => resetBoard(), { description: 'Reset board' })
 
   function selectRole(role: Role) {
-    activeRole.set(role)
+    activeRole = role
     setKanbanRole(role)
   }
 
@@ -184,14 +185,14 @@ export default function KanbanRoute() {
             <ToolbarGroup>
               <ToolbarButton
                 type="button"
-                $active={activeRole() === 'admin'}
+                $active={activeRole === 'admin'}
                 onClick={() => selectRole('admin')}
               >
                 Admin
               </ToolbarButton>
               <ToolbarButton
                 type="button"
-                $active={activeRole() === 'viewer'}
+                $active={activeRole === 'viewer'}
                 onClick={() => selectRole('viewer')}
               >
                 Viewer
@@ -209,7 +210,7 @@ export default function KanbanRoute() {
               board.cards().filter((c) => c.columnId === column.id)
             return (
               <ColumnRoot
-                $dropTarget={dropTargetCol() === column.id}
+                $dropTarget={dropTargetCol === column.id}
                 onDragOver={(e: DragEvent) => onColumnDragOver(column.id, e)}
                 onDrop={(e: DragEvent) => onColumnDrop(column.id, e)}
               >
@@ -227,16 +228,16 @@ export default function KanbanRoute() {
                       innerRef={setNewCardRef}
                       type="text"
                       placeholder="New card title…"
-                      value={newCardDraft()}
+                      value={newCardDraft}
                       disabled={!can('cards.write')}
                       onInput={(e: Event) =>
-                        newCardDraft.set((e.target as HTMLInputElement).value)
+                        { newCardDraft = (e.target as HTMLInputElement).value }
                       }
                     />
                   </NewCardForm>
                 ) : null}
 
-                <CardSlot $dropping={dropTargetCol() === column.id}>
+                <CardSlot $dropping={dropTargetCol === column.id}>
                   {() => {
                     const cards = columnCards()
                     if (cards.length === 0) {
@@ -250,7 +251,7 @@ export default function KanbanRoute() {
                       <div onDragOver={(e: DragEvent) => onCardDragOver(card.id, e)}>
                         <BoardCard
                           card={card}
-                          dragging={draggingId() === card.id}
+                          dragging={draggingId === card.id}
                           canWrite={can('cards.write')}
                           onDragStart={(e) => onDragStart(card.id, e)}
                           onDragEnd={onDragEnd}

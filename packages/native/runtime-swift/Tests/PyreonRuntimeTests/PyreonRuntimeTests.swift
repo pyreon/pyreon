@@ -132,6 +132,54 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertEqual(try jsonRes.decode(User.self), User(id: 7, name: "x"))
     }
 
+
+    /// The shared schema types every emitted schema struct throws / returns.
+    /// Declared once in the runtime so two schema-bearing modules in one
+    /// target cannot both declare them.
+    func testPyreonSchemaTypes() throws {
+        let e: Error = PyreonSchemaError.constraintViolation(field: "name", rule: "min length 2")
+        guard case let PyreonSchemaError.constraintViolation(field, rule)? = e as? PyreonSchemaError else {
+            return XCTFail("expected constraintViolation")
+        }
+        XCTAssertEqual(field, "name")
+        XCTAssertEqual(rule, "min length 2")
+        let ok = PyreonParseResult(success: true, data: 3)
+        XCTAssertTrue(ok.success)
+        XCTAssertEqual(ok.data, 3)
+        let bad = PyreonParseResult<Int>(success: false, data: nil)
+        XCTAssertFalse(bad.success)
+        XCTAssertNil(bad.data)
+    }
+
+    /// A typed value becomes the `[String: Any]` an emitted schema reads —
+    /// through its own Codable encoding, with booleans as Swift `Bool` and
+    /// numbers keeping NSNumber's JS-like bridging.
+    func testPyreonSchemaInputFromTypedValue() throws {
+        struct Owner: Codable { var email: String }
+        struct Pet: Codable {
+            var name: String
+            var age: Int
+            var weight: Double
+            var ok: Bool
+            var tags: [String]
+            var owner: Owner
+            var nick: String?
+        }
+        let input = pyreonSchemaInput(Pet(
+            name: "Rex", age: 3, weight: 3.5, ok: true, tags: ["a"], owner: Owner(email: "a@b.co"), nick: nil
+        ))
+        XCTAssertEqual(input["name"] as? String, "Rex")
+        XCTAssertEqual(input["age"] as? Int, 3)
+        XCTAssertNil(input["weight"] as? Int, "3.5 is not an Int, as in JS")
+        XCTAssertEqual(input["weight"] as? Double, 3.5)
+        XCTAssertEqual(input["ok"] as? Bool, true)
+        XCTAssertNil(input["ok"] as? Int, "a Bool must not pass as a number")
+        XCTAssertEqual(input["tags"] as? [String], ["a"])
+        XCTAssertEqual((input["owner"] as? [String: Any])?["email"] as? String, "a@b.co")
+        XCTAssertNil(input["nick"], "a nil optional is omitted, as a missing field")
+        let literal: [String: Any] = ["a": 1]
+        XCTAssertEqual(pyreonSchemaInput(literal)["a"] as? Int, 1)
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
@@ -144,6 +192,4 @@ final class PyreonRuntimeTests: XCTestCase {
 /// single-threaded so atomicity is not a concern.
 final class ObservationFlag: @unchecked Sendable {
     var fired: Bool = false
-
-
 }

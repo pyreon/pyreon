@@ -561,6 +561,55 @@ its cost on large lists. The same meaning on every client: passed to
 for `fetch` / `axios` / `ky`. Native modules decode into typed structs and are
 not affected.
 
+## 64-bit integers
+
+```ts
+lathe: { input: './openapi.yaml', int64: 'bigint' }
+```
+
+An OpenAPI `format: int64` id is routinely larger than 2^53 − 1
+(9007199254740991), and `JSON.parse` rounds such a number before any schema
+runs: `9007199254740993` arrives as `9007199254740992` — a different record.
+By default (`int64: 'number'`) the field is typed `number` and the loss is
+reported as an `int64-precision` note.
+
+`int64: 'bigint'` fixes it end to end:
+
+- **Types and schemas** — the field is a `bigint`. Its schema widens a SAFE
+  integer to a bigint (`s.preprocess(…, s.bigint().min(1n))`, the same with
+  `z.`), so a small id is a bigint too and the type does not lie. Every other
+  number accepts the bigint the decoder can hand it (a `double` a server wrote
+  as `100000000000000000000`) and reads it back as the double `JSON.parse`
+  would have produced.
+- **Responses** — the client decodes JSON from its SOURCE TEXT. The `pyreon`
+  client is created with `json: losslessJson` from
+  [`@pyreon/http/json`](/docs/http#lossless-json); an `axios` / `ky` / `fetch`
+  client carries an emitted copy of the same codec (held identical by a
+  differential test). Error bodies and SSE / NDJSON events decode the same way.
+- **Requests** — a `bigint` in a `json` body is written as JSON NUMBER text,
+  digit for digit (`JSON.stringify` would throw); in a form or multipart body
+  it is sent as its digits.
+- **Fixtures** — mock fixtures and `faker` factories produce bigints.
+- **Contract diff** — the surface names the type `int64`, so an `int32` →
+  `int64` change (which changes the generated type from `number` to `bigint`)
+  is reported as breaking.
+
+Three things to know:
+
+- **Validation must stay on.** It is the int64 field's schema that turns a
+  small id into a bigint, so `responseValidation: 'off'` — for the client or
+  for an operation whose response carries an int64 — is refused. Switching it
+  off at runtime with `configureApi({ validate: 'off' })` leaves small int64
+  values as numbers.
+- **Parameters take the bigint back.** A path, query, header or cookie
+  parameter of int64 type is typed `bigint | number`, so the id the client
+  decoded goes straight back out (`getEntry({ params: { id: entry.id } })`) —
+  written as its exact digits, never through a lossy `Number(…)`. A cache key
+  carries those digits too (hashing a bigint throws).
+- **Web only.** PMTC has no bigint, so the native modules keep the platform
+  integer — Swift `Int` (64-bit, exact) and Kotlin `Int` (32-bit) — and an
+  `int64-native` note says so.
+
 ## Fake data that stays valid
 
 ```ts
@@ -847,19 +896,52 @@ still untyped, with an `error-responses` note.
 ### Webhooks and callbacks
 
 3.1 `webhooks` and operation `callbacks` are requests the API SENDS, so they get
-no endpoint or hook. With the `schemas` plugin they produce `webhooks.ts` — a
-schema per payload, and a handler type inferred from it:
+no endpoint or hook. With the `schemas` plugin they produce `webhooks.ts`: a
+schema per payload, a handler type inferred from it, and the receiving side —
+a fetch-style handler (`Request` in, `Response` out), which is also the shape
+of a `@pyreon/zero` API route:
 
 ```ts
-import { webhookSchemas, type WebhookHandler } from './gen'
+// src/routes/api/hooks.ts
+import { webhookHandler } from '../../gen'
 
-const onNewPet: WebhookHandler<'newPet'> = (pet) => console.log(pet.name)
-
-app.post('/hooks/new-pet', async (req) => {
-  const result = await webhookSchemas.newPet['~standard'].validate(await req.json())
-  if (!result.issues) await onNewPet(result.value)
-})
+export const POST = webhookHandler(
+  {
+    newPet: async (pet) => { await db.pets.insert(pet) },
+    'subscribe.onEvent': (event) => console.log(event.kind),
+  },
+  {
+    // Which webhook this request is — from a header, or the parsed body.
+    event: (request) => (request.headers.get('x-event') === 'pet' ? 'newPet' : 'subscribe.onEvent'),
+    // Checked BEFORE the body is parsed, over the exact bytes received.
+    verify: ({ request, bytes }) => verifySignature(request.headers.get('x-signature'), bytes),
+  },
+)
 ```
+
+The handler verifies, parses the body as its declared media type (JSON, a form,
+text, multipart), picks the event, checks the method, validates the payload
+against the emitted schema and dispatches — answering `401` / `400` / `404` /
+`405` (with `Allow`) / `422` (with the issues) or `204`, or the handler's own
+`Response`. One handler needs no `event`; several do. Signature checking is a
+hook on purpose: every sender signs differently (GitHub, Stripe and Slack each
+their own way), and a guessed scheme is a false sense of security.
+`validateWebhook(name, body)` runs a schema on its own.
+
+A callback's URL is an OpenAPI runtime expression; `callbackUrl` evaluates it
+against the request that registered the callback:
+
+```ts
+import { callbackUrl } from '../../gen'
+
+const target = callbackUrl('subscribe.onEvent', { request: { body: await req.json() } })
+// '{$request.body#/callbackUrl}' -> 'https://client.example/cb'
+```
+
+The full grammar is supported — `$url`, `$method`, `$statusCode`, and
+`$request.` / `$response.` with `header.<name>` (case-insensitive),
+`query.<name>`, `path.<name>` and `body#/json/pointer`, alone or embedded in a
+template. An expression that resolves to nothing throws, naming it.
 
 A callback is keyed `<operationId>.<callbackName>`; an entry with several
 methods gets `.post` / `.put` suffixes.
@@ -1090,6 +1172,12 @@ mock picks by the request's `Accept`: `<op>Stream` gets the stream, the plain
 call gets the JSON fixture. Override either with `mockOperation('createChat', …)`
 or `mockOperation('createChatStream', …)`.
 
+To exercise reconnection, tell a stream mock to drop:
+`mockOperation('roomEvents', { dropAfter: 1 })` delivers one event per connection and then fails it the way a
+lost network does. A GET SSE stream reconnects, sends `Last-Event-ID`, and the
+mock answers with the events after it, so every event still arrives once. An
+NDJSON stream has no resume id, so the drop reaches the reader as an error.
+
 When the spec does not say an operation streams — an endpoint that streams
 when its body says `stream: true` — declare it:
 
@@ -1165,6 +1253,7 @@ Paths passed on the command line are relative to the working directory.
 | `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
 | `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
 | `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `int64` | `"number" \| "bigint"` | `'number'` | How an OpenAPI `format: int64` integer is generated. |
 | `remoteRefs` | `"fetch" \| "off"` | — | What `generate` does with a `$ref` into a REMOTE document (an http(s) URL) in a spec on disk. `off` (the default) keeps generation offline and deterministic: the ref is reported and typed `unknown` -- `lathe pull` a remote spec to bundle it instead. `fetch` downloads every remote part with the same rules as `lathe pull`: a per-document ETag cache under `node_modules/.cache/lathe`, credentials from `remoteHeaders` for their own origin only, and a failed fetch fails the run rather than silently typing that part `unknown`. |
 | `remoteHeaders` | `Record<string, Readonly<Record<string, string>>>` | — | Headers for `remoteRefs: 'fetch'`, keyed by ORIGIN: each set is sent only to documents on that origin, so a spec that references another host never receives your credential. |
 | `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
@@ -1178,7 +1267,7 @@ Paths passed on the command line are relative to the working directory.
 | `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
 {/* gen:lathe-config:end */}
 
-An unknown `plugins`, `client`, `validator` or `target` value is refused by
+An unknown `plugins`, `client`, `validator`, `target` or `int64` value is refused by
 name, with the known values listed.
 
 ## Command line
@@ -1420,7 +1509,8 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `cyclic-ref` | loss | a `$ref` cycle through references alone, the cyclic part of an `allOf`, or a path item / response that includes itself across files — contributes nothing |
 | `duplicate-key` | loss | a JSON spec writes a key twice in one object — `JSON.parse` keeps the last, so the first definition is gone (a YAML spec with a duplicate key is refused outright) |
 | `unsupported-method` | loss | a `trace` operation — the Fetch standard forbids the method, so `fetch` throws before sending it; no call is generated |
-| `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
+| `int64-precision` | loss | one note for every `format: int64` number under the default `int64: 'number'` — `JSON.parse` rounds past 2^53 − 1 before validation, so the value arrives rounded; set `int64: 'bigint'` to decode it losslessly (see [64-bit integers](#64-bit-integers)) |
+| `int64-native` | loss | `int64: 'bigint'` with `target: 'multiplatform'` — PMTC has no bigint, so the native modules keep a platform integer (Swift `Int`, 64-bit; Kotlin `Int`, 32-bit) while the web client holds a `bigint` |
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
 | `extra-tags` | choice | grouped under the first tag only |
@@ -1454,8 +1544,8 @@ never touched. Commit the manifest with the rest of the output.
   disk is reported by default; `remoteRefs: 'fetch'` or `lathe pull` bundles it. Names of hoisted
   schemas are stable per target, but a new collision can renumber a
   `<name>2` model.
-- **Webhooks and callbacks are types and schemas only** — Lathe generates no
-  server route or signature verification for them.
+- **Webhook signatures are a hook, not built in** — `webhookHandler` calls your
+  `verify`; it does not know any vendor's signing scheme.
 - A security scheme other than bearer / OAuth2 / OpenID Connect / basic / API
   key (HTTP digest, mutual TLS) gets no `auth` helper and is reported as a loss.
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
@@ -1476,6 +1566,10 @@ never touched. Commit the manifest with the rest of the output.
 - **No multi-project composition.** `projects: [...]` writes N independent
   output trees; there is no combined entry across them.
 - **`faker` does not reach native**, and neither do the preview components.
+- **`int64: 'bigint'` is web-only.** The native modules decode `format: int64`
+  as the platform integer PMTC lowers `number().int()` to — Swift `Int`
+  (64-bit), Kotlin `Int` (32-bit, so a value past 2147483647 fails to decode on
+  Android) — reported as `int64-native`.
 - **Streams are web-only.** PMTC has no streaming lowering, so `<op>Stream` /
   `use<Op>Stream` exist in the web output only; a stream-only operation is
   reported `web-only` with that reason.
@@ -1483,10 +1577,8 @@ never touched. Commit the manifest with the rest of the output.
   zero-dependency subpath) — the one place an axios / ky / fetch client depends
   on `@pyreon/http`, and only when the spec has a streaming operation. On axios,
   a stream request uses axios's `fetch` adapter: its default adapter returns a
-  Node `Readable` on the server and cannot stream at all in a browser.
-- **A mocked stream ends after its fixture events** — it never drops the
-  connection by itself, so exercising a reconnect still needs a test that
-  fails a request (`mockOperation(…, { error })`) or a real server.
+  Node `Readable` on the server and cannot stream at all in a browser. That
+  path is tested against node's `fetch` and in real Chromium.
 - **Plugin hooks run twice each** (the determinism check), sequentially, so an
   expensive or slow async `emit` costs twice its work.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the

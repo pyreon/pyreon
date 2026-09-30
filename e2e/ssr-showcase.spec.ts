@@ -5,6 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from './hydration-barrier'
 
 // ─── SSR Content ──────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ test.describe('SSR content', () => {
 test.describe('hydration', () => {
   test('counter works after hydration — click increments', async ({ page }) => {
     await page.goto('/')
+    await waitForHydration(page)
     // Wait for hydration
     await expect(page.locator('[data-testid="counter"]')).toBeVisible()
 
@@ -64,6 +66,7 @@ test.describe('hydration', () => {
     })
 
     await page.goto('/')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid="counter"]')).toBeVisible()
 
     // Filter out known non-issues (e.g. favicon 404)
@@ -79,6 +82,7 @@ test.describe('hydration', () => {
 test.describe('navigation', () => {
   test('client-side nav — no full reload', async ({ page }) => {
     await page.goto('/')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid="home-page"]')).toBeVisible()
 
     // Track if a full navigation (page reload) happens
@@ -96,6 +100,7 @@ test.describe('navigation', () => {
 
   test('back/forward works', async ({ page }) => {
     await page.goto('/')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid="home-page"]')).toBeVisible()
 
     // Navigate to About
@@ -158,6 +163,7 @@ test.describe('navigation', () => {
     // so screen readers never say "you are now on <page>". It pushes the
     // destination route's meta.title to a polite aria-live region.
     await page.goto('/')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid="home-page"]')).toBeVisible()
 
     await page.locator('[data-testid="nav-about"]').click()
@@ -200,6 +206,7 @@ test.describe('route loaders', () => {
 test.describe('theme', () => {
   test('theme toggle changes data-theme', async ({ page }) => {
     await page.goto('/')
+    await waitForHydration(page)
     await expect(page.locator('[data-testid="theme-toggle"]')).toBeVisible()
 
     // Click toggle to switch theme
@@ -213,6 +220,7 @@ test.describe('theme', () => {
 
   test('theme persists across toggle clicks', async ({ page }) => {
     await page.goto('/')
+    await waitForHydration(page)
 
     // Toggle twice — should cycle through themes
     const toggle = page.locator('[data-testid="theme-toggle"]')
@@ -366,6 +374,7 @@ test.describe('CPSE — cpseStyled end-to-end (SSR + hydration + dynamic)', () =
 
   test('dynamic: a signal-driven box updates its computed padding on click', async ({ page }) => {
     await page.goto('/cpse-probe')
+    await waitForHydration(page)
     const dyn = page.getByTestId('box-dyn')
     await expect(dyn).toHaveCSS('padding-top', '8px')
     await expect(page.getByTestId('pad-val')).toHaveText('8')

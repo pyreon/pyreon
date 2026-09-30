@@ -6,7 +6,7 @@ import { useClipboard, useToggle, useBreakpoint } from '@pyreon/hooks'
 import { useI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
 import { CodeEditor, createEditor } from '@pyreon/code'
-import { computed } from '@pyreon/reactivity'
+import { derived } from '@pyreon/core/plain'
 import { onUnmount } from '@pyreon/core'
 import { usePermissions } from '@pyreon/permissions'
 import { useBookmarksModel, type Bookmark } from '../../lib/bookmarks'
@@ -57,7 +57,7 @@ export default function Item() {
     editor?.dispose()
   })
 
-  const jsonText = computed(() => {
+  const jsonText = derived(() => {
     const data = query.data()
     return data ? JSON.stringify(data, null, 2) : ''
   })
@@ -68,7 +68,7 @@ export default function Item() {
     // no `.peek()`. Call it directly to read the cached value without
     // subscribing (we're outside any tracking scope here anyway).
     editor = createEditor({
-      value: jsonText(),
+      value: jsonText,
       language: 'json',
       readOnly: true,
       theme: 'dark',
@@ -77,7 +77,7 @@ export default function Item() {
     return editor
   }
 
-  const isBookmarked = computed(() => {
+  const isBookmarked = derived(() => {
     const data = query.data()
     if (!data) return false
     return (bookmarks.has(data.id) as boolean)
@@ -92,7 +92,7 @@ export default function Item() {
   const handleBookmark = () => {
     const data = query.data()
     if (!data) return
-    if (isBookmarked()) {
+    if (isBookmarked) {
       bookmarks.remove(data.id)
       toast.info(t('item.unbookmark'))
     } else {
@@ -184,7 +184,7 @@ export default function Item() {
                 <span> | </span>
                 <button type="button" class="link-btn" onClick={handleBookmark}>
                   {() =>
-                    isBookmarked() ? t('item.unbookmark') : t('item.bookmark')
+                    isBookmarked ? t('item.unbookmark') : t('item.bookmark')
                   }
                 </button>
                 <span> | </span>

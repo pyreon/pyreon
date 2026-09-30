@@ -72,20 +72,33 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     // Regression guard for the flex-stack-and-overlap bug: the header must be a
     // horizontal row at the top of the viewport, and the addon panel must NOT
     // cover the canvas preview.
-    const geo = await page.evaluate(() => {
-      const header = document.querySelector('header') as HTMLElement
-      const btn = document.querySelector('[data-testid="canvas-preview"] button') as HTMLElement
-      const r = btn.getBoundingClientRect()
-      const onTop = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
-      return {
-        headerY: Math.round(header.getBoundingClientRect().y),
-        headerDir: getComputedStyle(header).flexDirection,
-        previewClickable: !!onTop && (btn.contains(onTop) || onTop === btn),
-      }
-    })
+    //
+    // `networkidle` only waits for network activity to settle — it says
+    // nothing about whether a panel's open/close CSS transition has finished
+    // repainting. A one-shot `elementFromPoint` read taken the instant the
+    // page settles can catch the addon panel mid-transition, still covering
+    // the preview button's center for a few frames. Poll instead of reading
+    // once: a real (persistent) overlap regression still fails after the
+    // timeout, but a transient mid-transition frame — likelier on a loaded/
+    // CPU-throttled CI runner than on a fast local machine — no longer flakes
+    // the assertion.
+    const readGeo = () =>
+      page.evaluate(() => {
+        const header = document.querySelector('header') as HTMLElement
+        const btn = document.querySelector('[data-testid="canvas-preview"] button') as HTMLElement
+        const r = btn.getBoundingClientRect()
+        const onTop = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+        return {
+          headerY: Math.round(header.getBoundingClientRect().y),
+          headerDir: getComputedStyle(header).flexDirection,
+          previewClickable: !!onTop && (btn.contains(onTop) || onTop === btn),
+        }
+      })
+
+    await expect.poll(async () => (await readGeo()).previewClickable).toBe(true)
+    const geo = await readGeo()
     expect(geo.headerY).toBe(0)
     expect(geo.headerDir).toBe('row')
-    expect(geo.previewClickable).toBe(true)
 
     expect(errors).toEqual([])
   })

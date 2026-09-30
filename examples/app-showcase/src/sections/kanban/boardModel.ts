@@ -1,5 +1,6 @@
 import { applySnapshot, getSnapshot, model } from '@pyreon/state-tree'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 import { SEED_CARDS } from './data/seed'
 import type { Card, ColumnId } from './data/types'
 
@@ -102,42 +103,42 @@ const MAX_HISTORY = 50
  * button enabled state.
  */
 export function createUndoManager(board: ReturnType<typeof useBoard>) {
-  const undoStack = signal<BoardSnapshot[]>([])
-  const redoStack = signal<BoardSnapshot[]>([])
+  let undoStack = state.raw<BoardSnapshot[]>([])
+  let redoStack = state.raw<BoardSnapshot[]>([])
 
   function snapshot(): BoardSnapshot {
     return getSnapshot<{ cards: Card[] }>(board) as BoardSnapshot
   }
 
   function record(): void {
-    const next = [...undoStack.peek(), snapshot()]
+    const next = [...untrack(() => undoStack), snapshot()]
     if (next.length > MAX_HISTORY) next.shift()
-    undoStack.set(next)
+    undoStack = next
     // A new mutation invalidates the redo branch.
-    if (redoStack.peek().length > 0) redoStack.set([])
+    if (untrack(() => redoStack).length > 0) redoStack = []
   }
 
   function undo(): void {
-    const stack = undoStack.peek()
+    const stack = untrack(() => undoStack)
     if (stack.length === 0) return
     const previous = stack[stack.length - 1] as BoardSnapshot
-    redoStack.set([...redoStack.peek(), snapshot()])
-    undoStack.set(stack.slice(0, -1))
+    redoStack = [...untrack(() => redoStack), snapshot()]
+    undoStack = stack.slice(0, -1)
     applySnapshot(board, previous as unknown as Record<string, unknown>)
   }
 
   function redo(): void {
-    const stack = redoStack.peek()
+    const stack = untrack(() => redoStack)
     if (stack.length === 0) return
     const next = stack[stack.length - 1] as BoardSnapshot
-    undoStack.set([...undoStack.peek(), snapshot()])
-    redoStack.set(stack.slice(0, -1))
+    undoStack = [...untrack(() => undoStack), snapshot()]
+    redoStack = stack.slice(0, -1)
     applySnapshot(board, next as unknown as Record<string, unknown>)
   }
 
   function clear(): void {
-    undoStack.set([])
-    redoStack.set([])
+    undoStack = []
+    redoStack = []
   }
 
   return {
@@ -145,9 +146,9 @@ export function createUndoManager(board: ReturnType<typeof useBoard>) {
     undo,
     redo,
     clear,
-    canUndo: () => undoStack().length > 0,
-    canRedo: () => redoStack().length > 0,
-    undoDepth: () => undoStack().length,
+    canUndo: () => undoStack.length > 0,
+    canRedo: () => redoStack.length > 0,
+    undoDepth: () => undoStack.length,
   }
 }
 

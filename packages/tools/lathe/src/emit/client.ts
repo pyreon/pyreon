@@ -22,7 +22,7 @@ import {
   reachableModels,
   topoSortModels,
 } from "../core/graph";
-import { collectRefNames } from "../core/walk";
+import { bigintAsNumber, collectRefNames, usesBigInt } from "../core/walk";
 import type { IrDocument, IrOperation, IrType } from "../core/ir";
 import {
   assignNames,
@@ -37,6 +37,7 @@ import {
   CLIENT_PACKAGE,
   runtimeEndpoint,
   runtimeError,
+  runtimeJsonCodec,
   runtimePreamble,
   runtimeTransport,
   runtimeValidate,
@@ -109,6 +110,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
     ...(hasStreams(doc) ? ["ResponseOf"] : []),
   );
   f.import("@pyreon/http/schema", "standardSchema");
+  // `int64: 'bigint'`: JSON is decoded from its SOURCE TEXT, so an int64 past
+  // 2^53 - 1 is a bigint rather than a silently rounded number.
+  const lossless = usesBigInt(doc);
+  if (lossless) f.import("@pyreon/http/json", "losslessJson");
   f.line();
   f.doc(
     "Runtime settings for the client — see {@link configureApi}.",
@@ -208,6 +213,7 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line("  baseUrl: () => settings.baseUrl,");
   if (opts.keyScope) f.line(`  keyScope: ${q(opts.keyScope)},`);
   f.line("  schema: standardSchema,");
+  if (lossless) f.line("  json: losslessJson,");
   f.line("  validate: () => settings.validate,");
   f.line("  headers: () => {");
   f.line("    const h = settings.headers");
@@ -438,6 +444,8 @@ function emitAdapterClient(
 ): SourceFile {
   const f = new SourceFile(CLIENT_FILE);
   const pkg = CLIENT_PACKAGE[client];
+  // `int64: 'bigint'`: the client decodes and encodes JSON losslessly.
+  const lossless = usesBigInt(doc);
   if (client === "axios") {
     f.importDefault("axios", "axios");
     f.import("axios", "AxiosError");
@@ -467,18 +475,25 @@ function emitAdapterClient(
   } else if (client === "ky") {
     // One permanent hook that runs the `configureApi({ use })` slot, so the
     // slot can change at runtime without re-creating the instance.
+    // `parseJson` is what ky decodes an ERROR body with (`error.data`).
     f.line(
-      "export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] } })",
+      lossless
+        ? "export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] }, parseJson: parseJsonLossless })"
+        : "export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] } })",
     );
   }
   if (client !== "fetch") f.line();
   f.lines(...runtimeError());
   f.line();
-  f.lines(...runtimePreamble());
+  f.lines(...runtimePreamble(lossless));
   f.line();
   f.lines(...runtimeValidate());
   f.line();
-  f.lines(...runtimeTransport(client));
+  if (lossless) {
+    f.lines(...runtimeJsonCodec());
+    f.line();
+  }
+  f.lines(...runtimeTransport(client, lossless));
   f.line();
   f.lines(
     ...runtimeEndpoint(
@@ -486,6 +501,7 @@ function emitAdapterClient(
       baseUrlOf(doc, opts),
       opts.keyScope,
       opts.responseValidation,
+      lossless,
     ),
   );
   emitAuthHelpers(f, doc, client);
@@ -703,7 +719,8 @@ export function emitWebEndpoints(
         f.importType(schemaSpecifierFor(path, name, doc), name);
     }
 
-    const decls = ops.map((op) => endpointDecl(op, validator, models));
+    const lossless = usesBigInt(doc);
+    const decls = ops.map((op) => endpointDecl(op, validator, models, false, lossless));
     // An encoded body is typed through the encoder's own value type.
     if (decls.some((d) => d.generics.includes("FormValue"))) {
       f.importType(
@@ -747,7 +764,7 @@ export function emitWebEndpoints(
       validator,
       streamDecl: (op) => ({
         spec: endpointSpec(op),
-        ...endpointDecl(op, validator, models, true),
+        ...endpointDecl(op, validator, models, true, lossless),
       }),
     });
     files.push(f);
@@ -785,6 +802,7 @@ function endpointDecl(
   validator: ValidatorName,
   models: ModelTypes,
   asStream = false,
+  lossless = false,
 ): EndpointDecl {
   const entries: string[] = [];
   // `asStream`: the raw-body twin of a JSON endpoint, which `<op>Stream`
@@ -793,7 +811,7 @@ function endpointDecl(
   let responseConst: string | undefined;
   let v = "undefined";
   if (!asStream && op.response && op.response.kind !== "unknown") {
-    const expr = schemaExpr(op.response, { native: false, validator });
+    const expr = schemaExpr(op.response, { native: false, validator, lossless });
     if (op.response.kind === "ref") {
       entries.push(`response: ${op.response.name}`);
       v = `typeof ${op.response.name}`;
@@ -828,7 +846,7 @@ function endpointDecl(
       binding = e.type.name
     } else {
       binding = `${op.id}$error${e.status === 'default' ? 'Default' : e.status}`
-      errorConsts.push(`const ${binding} = ${schemaExpr(e.type, { native: false, validator })}`)
+      errorConsts.push(`const ${binding} = ${schemaExpr(e.type, { native: false, validator, lossless })}`)
     }
     errorEntries.push(`${key}: ${binding}`)
     errorTypes.push(`${key}: typeof ${binding}`)
@@ -862,7 +880,7 @@ function endpointDecl(
   // `E` (the error schemas' types) is the fifth type parameter, so a typed
   // error needs the kind spelled out even when it is the default `json`.
   const errorsGeneric = errorTypes.length > 0 ? [q(kind ?? 'json'), `{ ${errorTypes.join('; ')} }`] : kind ? [q(kind)] : []
-  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models), ...errorsGeneric].join(', ')}>`
+  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models, lossless), ...errorsGeneric].join(', ')}>`
   const config = entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
   const consts = [...(responseConst ? [responseConst] : []), ...errorConsts]
   const constText = consts.join('\n')
@@ -931,7 +949,8 @@ function nativeTs(
     const inner = nativeTs(type.items, models, depth + 1);
     return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`;
   }
-  return tsType(type, 0, true);
+  // PMTC has no bigint: an int64 is the platform integer on native.
+  return tsType(bigintAsNumber(type), 0, true);
 }
 
 /**
@@ -1362,7 +1381,7 @@ export function emitNativeModules(
       // the quoted-key form the other emitters need. If that normalization
       // ever moves, this breaks loudly at typecheck rather than silently.
       const propsType = [
-        ...params.map((p) => `${p.name}: ${tsType(p.type)}`),
+        ...params.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
         `children: (data: ${ret} | undefined) => unknown`,
       ].join("; ");
       // `props.x`, never a destructure: destructuring reads the getter once
