@@ -28,6 +28,12 @@ export interface EmitOptions {
    * exist, so the position is not just unhelpful but actively misleading.
    * Callers that have a real path should pass it; the default stays for
    * in-memory callers that genuinely have none.
+   *
+   * It is ALSO what marks the emit as one module of a multi-file build: when
+   * set, the file-scope structs PMTC synthesizes for anonymous object literals
+   * get a per-module suffix (`__Obj0_k3x9a`), so two generated files in one
+   * Xcode target / Gradle source set cannot both declare `__Obj0`. Without it
+   * the bare `__ObjN` names are kept, which is correct for a single file.
    */
   filename?: string
 }

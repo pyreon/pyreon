@@ -72,14 +72,16 @@ export const s = zodSchema(z.object({ age: z.number().min(0).max(150) }))
     expect(r.code).toContain('rule: "max 150"')
   })
 
-  it('Swift: constraintViolation case added to PyreonSchemaError', () => {
+  it('Swift: a constraint throws the runtime PyreonSchemaError.constraintViolation', () => {
     const src = `
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
 export const s = zodSchema(z.object({ x: z.string().min(1) }))
 `
     const r = transform(src, { target: 'swift' })
-    expect(r.code).toContain('case constraintViolation(field: String, rule: String)')
+    expect(r.code).toContain('throw PyreonSchemaError.constraintViolation(field: "x", rule: "min length 1")')
+    // Declared once, in the runtime — not per file.
+    expect(r.code).not.toContain('case constraintViolation(field: String, rule: String)')
   })
 
   it('Kotlin: string .min() and .max() emit length guards', () => {
@@ -104,20 +106,19 @@ export const s = zodSchema(z.object({ email: z.string().email() }))
     expect(r.code).toContain('.matches(emailVal)')
   })
 
-  it('Kotlin: ConstraintViolation case added to PyreonSchemaError', () => {
+  it('Kotlin: a constraint throws the runtime PyreonSchemaError.ConstraintViolation', () => {
     const src = `
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
 export const s = zodSchema(z.object({ x: z.string().min(1) }))
 `
     const r = transform(src, { target: 'kotlin' })
-    expect(r.code).toContain(
-      'data class ConstraintViolation(val field: String, val rule: String)',
-    )
+    expect(r.code).toContain('throw PyreonSchemaError.ConstraintViolation("x", "min length 1")')
+    expect(r.code).not.toContain('data class ConstraintViolation(val field: String, val rule: String)')
   })
 
   it('No constraints → no runtime constraint throw-sites emitted', () => {
-    // (The PyreonSchemaError enum still declares the constraintViolation
+    // (The runtime's PyreonSchemaError still has the constraintViolation
     // case — that's harmless. We assert no constraint THROW SITES exist.)
     const src = `
 import { zodSchema } from '@pyreon/validation'
