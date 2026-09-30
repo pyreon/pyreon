@@ -34,6 +34,8 @@ import type {
 export interface ParseContext {
   validate: ValidateMode
   schema: SchemaResolver | undefined
+  /** The client's JSON decoder — `JSON.parse` unless a codec was configured. */
+  parseJson?: ((text: string) => unknown) | undefined
 }
 
 /** A promise for the response, with body decoders attached. */
@@ -229,6 +231,7 @@ function readCloneUnderSignal(response: HttpResponse, signal: AbortSignal | unde
 async function readErrorBody(
   response: HttpResponse,
   signal: AbortSignal | undefined,
+  parseJson: ((text: string) => unknown) | undefined,
 ): Promise<unknown> {
   if (isBodyless(response.status)) return undefined
   let text: string
@@ -242,7 +245,7 @@ async function readErrorBody(
   }
   if (text.length === 0) return undefined
   try {
-    return JSON.parse(text) as unknown
+    return parseJson ? parseJson(text) : (JSON.parse(text) as unknown)
   } catch {
     return text
   }
@@ -280,7 +283,7 @@ export async function buildHttpError(
   ctx: ParseContext,
   signal?: AbortSignal | undefined,
 ): Promise<HttpError> {
-  const body = await readErrorBody(response, signal)
+  const body = await readErrorBody(response, signal, ctx.parseJson)
   const match = errors ? errorSchemaFor(errors, response.status) : undefined
   if (match === undefined) return httpErrorFor(response, body)
   const [key, validator] = match
@@ -301,7 +304,10 @@ export async function buildHttpError(
   }
 }
 
-async function readJson(response: HttpResponse): Promise<unknown> {
+async function readJson(
+  response: HttpResponse,
+  parseJson: ((text: string) => unknown) | undefined,
+): Promise<unknown> {
   if (isBodyless(response.status)) return undefined
   // Read as text first: an empty 200 body makes `res.json()` throw, and a
   // proxy returning an HTML error page should produce a ParseError naming
@@ -314,7 +320,7 @@ async function readJson(response: HttpResponse): Promise<unknown> {
   }
   if (text.length === 0) return undefined
   try {
-    return JSON.parse(text)
+    return parseJson ? parseJson(text) : JSON.parse(text)
   } catch (cause) {
     throw new ParseError('JSON', cause, response.request)
   }
@@ -400,7 +406,7 @@ class ResponsePromise implements HttpResponsePromise {
 
   json<T = unknown>(validator?: Validator<unknown>): Promise<T> {
     return this._read(async (response) => {
-      const raw = await readJson(response)
+      const raw = await readJson(response, this._ctx.parseJson)
       return applyValidator(raw, validator, this._ctx, response) as T
     })
   }

@@ -99,7 +99,13 @@ function legacyRejectionIsCompilerOutput(error: string): boolean {
 /** Which validator produced the verdict. Two validators can disagree about
  * the same source (`-parse` accepts what `-typecheck` rejects), so the kind
  * is part of the key rather than an afterthought. */
-export type ValidateKind = 'swift-parse' | 'swift-typecheck' | 'swift-stubs' | 'kotlin'
+export type ValidateKind =
+  | 'swift-parse'
+  | 'swift-typecheck'
+  | 'swift-stubs'
+  | 'swift-stubs-module'
+  | 'kotlin'
+  | 'kotlin-module'
 
 const memo = new Map<string, CachedVerdict>()
 

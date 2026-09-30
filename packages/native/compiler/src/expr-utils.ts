@@ -289,6 +289,54 @@ export function buildJsonLiteralParts(expr: ExprIR): JsonLiteralPart[] | null {
 }
 
 /**
+ * The per-module suffix every synthesized anonymous-object struct carries.
+ *
+ * Synthesized structs are declared at FILE scope with a counter name
+ * (`__Obj0`, `__Obj1`, …), so two generated files in one Xcode target / one
+ * Gradle source set (one Kotlin package) each declared `__Obj0` and the build
+ * failed with `invalid redeclaration` / `Redeclaration`. They cannot simply be
+ * made file-private: a synthesized struct is named in internal signatures (a
+ * `@State` property's type, a helper's return type), and neither language lets
+ * an internal declaration expose a private type. So the NAME is made unique
+ * per module instead.
+ *
+ * Set by `transform()` for the duration of one emit, and only when the caller
+ * identifies the module (`filename`) — a standalone in-memory emit keeps the
+ * bare `__ObjN`, which is what a single file needs. The suffix hashes the
+ * SOURCE, not the path: the path is machine-dependent (the CLI passes an
+ * absolute one), and generated output must not change with the checkout
+ * location. Two files with identical source would already collide on their
+ * component names, so source identity is sufficient.
+ */
+let _synthStructSuffix = ''
+
+/** Run `fn` with `suffix` as the synthesized-struct suffix, restoring the previous one after. */
+export function withSynthStructSuffix<T>(suffix: string, fn: () => T): T {
+  const prev = _synthStructSuffix
+  _synthStructSuffix = suffix
+  try {
+    return fn()
+  } finally {
+    _synthStructSuffix = prev
+  }
+}
+
+/** The name of the `n`-th synthesized struct in the current emit. */
+export function synthStructName(n: number): string {
+  return `__Obj${n}${_synthStructSuffix}`
+}
+
+/** A short, stable, identifier-safe tag for a module's source (FNV-1a, 32-bit). */
+export function moduleTag(source: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < source.length; i++) {
+    h ^= source.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(36)
+}
+
+/**
  * Why a field value cannot be given a struct-field type — the ONE place that
  * knows, so both emitters produce the same message for the same shape.
  *
@@ -351,7 +399,7 @@ export function synthLiteralStructName(
     .join(',')
   const existing = keys.get(shapeKey)
   if (existing !== undefined) return existing
-  const name = `__Obj${structs.length}`
+  const name = synthStructName(structs.length)
   structs.push({ name, fields: typed })
   keys.set(shapeKey, name)
   return name
@@ -432,7 +480,7 @@ export function synthTypedStructName(
     .join(',')
   const existing = keys.get(shapeKey)
   if (existing !== undefined) return existing
-  const name = `__Obj${structs.length}`
+  const name = synthStructName(structs.length)
   structs.push({ name, fields: typed })
   keys.set(shapeKey, name)
   return name
@@ -1421,4 +1469,32 @@ export function optionalSpreadWarning(name: string): string {
 export function isNumericLiteralOrNegation(x: ExprIR): boolean {
   if (x.kind === 'literal') return typeof x.value === 'number' || typeof x.value === 'string'
   return x.kind === 'unary' && (x.op === '-' || x.op === '+') && x.argument.kind === 'literal' && typeof x.argument.value === 'number'
+}
+
+/**
+ * Does a value of type `t` need converting before a schema can read it?
+ *
+ * An emitted schema's `parse` reads plain values — a dictionary for an
+ * object, native scalars for fields. A scalar already is one; a struct, an
+ * inline object, or a collection that holds either is a typed value, and is
+ * routed through the runtime's `pyreonSchemaValue` (Codable / @Serializable
+ * → plain JSON values). An `unknown` type is NOT converted: the conversion
+ * only compiles for an encodable value, and guessing would turn code that
+ * compiles into code that does not.
+ */
+export function schemaInputNeedsConversion(t: TypeIR): boolean {
+  switch (t.kind) {
+    case 'typeRef':
+    case 'object':
+      return true
+    case 'array':
+    case 'set':
+      return schemaInputNeedsConversion(t.element)
+    case 'map':
+      return schemaInputNeedsConversion(t.value)
+    case 'union':
+      return t.branches.some(schemaInputNeedsConversion)
+    default:
+      return false
+  }
 }

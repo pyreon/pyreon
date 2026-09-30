@@ -235,6 +235,32 @@ export interface LatheSection {
    */
   responseValidation?: ResponseValidation;
   /**
+   * How an OpenAPI `format: int64` integer is generated.
+   *
+   * `number` (the default) types it as a `number`, and `JSON.parse` rounds any
+   * value past 2^53 - 1 (9007199254740991) before validation runs — reported as
+   * an `int64-precision` note. `bigint` generates it as a `bigint` and makes the
+   * client decode JSON LOSSLESSLY: the digits are read from the response text
+   * (`@pyreon/http/json` on the `pyreon` client, the same codec emitted into an
+   * axios / ky / fetch client), so `9007199254740993` arrives exactly, and a
+   * `bigint` in a request body is sent as JSON number text.
+   *
+   * Under `bigint`, every int64 field's schema widens a safe integer to a
+   * `bigint`, so response validation must stay on — `responseValidation: 'off'`
+   * is refused (and switching it off at runtime leaves small int64 values as
+   * numbers). Path, query and header parameters of int64 type are typed
+   * `string | number` / `string`: pass a large id as its digits. Web only: the
+   * native modules keep a platform integer (an `int64-native` note says which).
+   *
+   * @example
+   * ```ts
+   * export default { lathe: { input: './openapi.yaml', int64: 'bigint' } }
+   * ```
+   *
+   * @default 'number'
+   */
+  int64?: Int64Mode;
+  /**
    * What `generate` does with a `$ref` into a REMOTE document (an http(s) URL)
    * in a spec on disk. `off` (the default) keeps generation offline and
    * deterministic: the ref is reported and typed `unknown` -- `lathe pull` a
@@ -384,6 +410,11 @@ export interface LatheSection {
   strictNative?: boolean;
 }
 
+/** How `format: int64` is generated — see `LatheSection.int64`. */
+export type Int64Mode = "number" | "bigint";
+
+export const ALL_INT64_MODES: readonly Int64Mode[] = ["number", "bigint"];
+
 /** One operation's stream declaration — see `LatheSection.streams`. */
 export interface StreamConfig {
   /** Required when the spec does not already declare a streaming response. */
@@ -434,6 +465,7 @@ export interface ResolvedConfig {
   streams?: Readonly<Record<string, StreamConfig>> | undefined;
   strictNative: boolean;
   responseValidation: ResponseValidation;
+  int64: Int64Mode;
   /** Third-party plugins, in declaration order. Built-ins are in `plugins`. */
   customPlugins: readonly LathePlugin[];
   operations?:
@@ -556,6 +588,23 @@ export function resolveConfig(
       `[Pyreon] lathe: unknown responseValidation \`${String(responseValidation)}\`. Known: ${ALL_RESPONSE_VALIDATION.join(", ")}.`,
     );
   }
+  const int64 = section?.int64 ?? "number";
+  if (!ALL_INT64_MODES.includes(int64)) {
+    throw new Error(
+      `[Pyreon] lathe: unknown int64 \`${String(int64)}\`. Known: ${ALL_INT64_MODES.join(", ")}.`,
+    );
+  }
+  // REFUSED rather than tolerated: under `bigint` the lossless decoder only
+  // turns an integer that does not fit a double into a bigint, and it is the
+  // int64 field's SCHEMA that widens the rest. With validation off, an int64
+  // field would hold a bigint for a large id and a number for a small one --
+  // under a type that promises bigint.
+  if (int64 === "bigint" && responseValidation === "off") {
+    throw new Error(
+      "[Pyreon] lathe: `int64: 'bigint'` needs response validation — each int64 field's schema is what turns a small id into a bigint. " +
+        "Use `responseValidation: 'strict'` or `'warn'`, or `int64: 'number'`.",
+    );
+  }
   const remoteRefs = section?.remoteRefs ?? 'off'
   if (remoteRefs !== 'off' && remoteRefs !== 'fetch') {
     throw new Error(`[Pyreon] lathe: unknown remoteRefs \`${String(remoteRefs)}\`. Known: off, fetch.`)
@@ -595,6 +644,7 @@ export function resolveConfig(
     streams: section?.streams,
     strictNative: section?.strictNative ?? false,
     responseValidation,
+    int64,
     customPlugins,
     operations: section?.operations,
     filters: section?.filters,
