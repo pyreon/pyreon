@@ -4382,6 +4382,20 @@ for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, heade
 - Iterating the same stream twice — it is single-use; call the function again for a new request.`,
   },
 
+  'http/losslessJson': {
+    signature: 'const losslessJson: JsonCodec  // { parse: parseJsonLossless, stringify: stringifyJsonLossless }',
+    example: `import { createHttp } from '@pyreon/http'
+import { losslessJson } from '@pyreon/http/json'
+
+const api = createHttp({ baseUrl: '/api', json: losslessJson })
+const order = await api.get('/orders/1').json<{ id: bigint | number }>()
+await api.post('/orders', { json: { id: 9007199254740993n } })`,
+    notes: 'A JSON codec from `@pyreon/http/json` that keeps 64-bit integers exact. `JSON.parse` rounds an integer past 2^53 - 1 before any schema sees it (`9007199254740993` arrives as `9007199254740992`); pass `createHttp({ json: losslessJson })` and such an integer decodes as a `bigint`, while a `bigint` in a request `json` body is written as JSON NUMBER text instead of throwing. Everything else is byte-for-byte `JSON.parse` / `JSON.stringify` — a safe integer, a fraction and an exponent form all stay numbers. The client routes response bodies, error bodies and request bodies through it; an extended client inherits it; a `bigint` is also accepted as a path / query / header / cookie parameter (written as its exact digits, and as digits in the query KEY, since `JSON.stringify` — and so the TanStack key hash — throws on a bigint); streams take `parseJson: parseJsonLossless`. Digits are read from the source text: plain `JSON.parse` when no 16-digit run exists, the reviver `context.source` where the engine passes it, an own strict parser elsewhere (same `SyntaxError`s as `JSON.parse`).',
+    mistakes: `- Expecting EVERY integer to become a bigint — only one a double cannot hold exactly does; a small id stays a number, so a field typed \`bigint\` needs a schema that widens it (\`@pyreon/lathe\` \`int64: 'bigint'\` emits one).
+- Parsing the body yourself with \`JSON.parse\` (\`await res.text()\` then parse) — the rounding happens there, before the codec can help.
+- Turning validation \`off\` on a field that relies on a widening schema — small values then stay numbers under a bigint type.`,
+  },
+
   'http/RequestError': {
     signature: 'class RequestError extends Error { readonly request: HttpRequest | undefined }  — subclasses: HttpError (+ ClientError/ServerError), TimeoutError, AbortError, NetworkError, ParseError, ResponseValidationError',
     example: `try {
@@ -12350,10 +12364,11 @@ const report = verifyNative(files, transform, compile)
 
 if (!report.ran) console.warn('not verified:', report.reason)
 if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
-    notes: `Runs the real native compiler over the generated \`.native.tsx\` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains \`PyreonQuery<\` / \`PyreonZodSchema_\` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping \`useQuery\` produces no warnings and emits Swift that cannot find the symbol. Passing \`undefined\` for \`transform\` yields \`ran: false\` with a reason, never a pass. Warnings are classified by CLASS per declaration (a verbatim reproduction is \`broken\`, a dropped field \`partial\`), identically for both targets; with \`compile\` (the project compiler's \`validateSwiftWithStubs\` / \`validateKotlin\`, as \`resolveNativeCompiler()\` returns them) each module is compiled too, and a compile error outranks every heuristic.`,
+    notes: `Runs the real native compiler over the generated \`.native.tsx\` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains \`PyreonQuery<\` / \`PyreonZodSchema_\` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping \`useQuery\` produces no warnings and emits Swift that cannot find the symbol. Passing \`undefined\` for \`transform\` yields \`ran: false\` with a reason, never a pass. Warnings are classified by CLASS per declaration (a verbatim reproduction is \`broken\`, a dropped field \`partial\`), identically for both targets; with \`compile\` (the project compiler's \`validateSwiftWithStubs\` / \`validateKotlin\`, as \`resolveNativeCompiler()\` returns them) each module is compiled too, and a compile error outranks every heuristic. When the compiler also exports \`validateSwiftFilesWithStubs\` / \`validateKotlinFiles\`, every module of a target is ALSO compiled together as one (\`report.modules\`), because a per-file compile cannot see two modules declaring the same type — and that is exactly how an app builds them; a failure there makes the report \`broken\`.`,
     mistakes: `- Reading \`warnings.length === 0\` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
 - Treating \`ran: false\` as a pass. A verification that could not run is not one that ran and succeeded; \`--strict-native\` fails on it deliberately.
-- Bundling a copy of \`@pyreon/native-compiler\` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.`,
+- Bundling a copy of \`@pyreon/native-compiler\` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.
+- Reading only \`report.files\` for the compile result. Each file can compile alone while the set does not (two modules declaring the same type); \`report.modules\` carries the together-compile, and \`worstVerdict\` already folds it in.`,
   },
 
   'lathe/contractDiff': {

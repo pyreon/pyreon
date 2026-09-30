@@ -16,6 +16,8 @@ import {
   isSwiftcAvailable,
   transform,
   validateKotlin,
+  validateKotlinFiles,
+  validateSwiftFilesWithStubs,
   validateSwiftWithStubs,
 } from '@pyreon/native-compiler'
 import { resolveConfig } from '../core/config'
@@ -58,6 +60,42 @@ describe('warning classes', () => {
     const r = verifyNative([file], fake([]), { swift: failing, kotlin: skipped })
     expect(r.files.find((f) => f.target === 'swift')).toMatchObject({ verdict: 'broken', compiled: { ok: false, errors: ["invalid redeclaration of 'Pet'"] } })
     expect(r.files.find((f) => f.target === 'kotlin')).toMatchObject({ verdict: 'lowers', compiled: { skipped: 'kotlinc not found' } })
+  })
+})
+
+describe('all modules compiled TOGETHER', () => {
+  const two = [file, { path: 'y.native.tsx', contents: file.contents }]
+
+  it('hands every module of a target to the multi-file compiler at once', () => {
+    const seen: number[] = []
+    const r = verifyNative(two, fake([]), {
+      swiftFiles: (codes) => (seen.push(codes.length), { ok: true }),
+      kotlinFiles: (codes) => (seen.push(codes.length), { ok: true }),
+    })
+    expect(seen).toEqual([2, 2])
+    expect(r.modules).toEqual([
+      { target: 'swift', compiled: { ok: true, errors: [] } },
+      { target: 'kotlin', compiled: { ok: true, errors: [] } },
+    ])
+    expect(worstVerdict(r)).toBe('lowers')
+  })
+
+  it('a cross-file collision is BROKEN even though every file compiles alone', () => {
+    const r = verifyNative(two, fake([]), {
+      swift: () => ({ ok: true }),
+      swiftFiles: () => ({ ok: false, error: "Input1.swift:3:6: error: invalid redeclaration of 'PyreonSchemaError'" }),
+    })
+    expect(r.files.every((f) => f.verdict === 'lowers')).toBe(true)
+    expect(r.modules?.[0]).toEqual({
+      target: 'swift',
+      compiled: { ok: false, errors: ["invalid redeclaration of 'PyreonSchemaError'"] },
+    })
+    expect(worstVerdict(r)).toBe('broken')
+  })
+
+  it('a single module has no module-set check (it would repeat the per-file one)', () => {
+    const r = verifyNative([file], fake([]), { swiftFiles: () => ({ ok: false }) })
+    expect(r.modules).toBeUndefined()
   })
 })
 
@@ -113,6 +151,53 @@ describe('the OAI petstore shape, through the real compiler', () => {
         const errors = String((r as { error?: string }).error ?? '')
         expect(errors).not.toMatch(/invalid redeclaration|cannot find 'zodSchema'|cannot find 's' in scope|cannot find type 'Pets'/)
       })
+    })
+  }
+})
+
+// Two tags → two schema-bearing native modules. Each compiled cleanly on its
+// own while BOTH declared `PyreonSchemaError`, so the app — which builds them
+// into one target — did not. Only compiling them together asks that question.
+const TWO_TAGS = JSON.stringify({
+  openapi: '3.0.0',
+  info: { title: 'Shelter', version: '1' },
+  servers: [{ url: 'https://shelter.test/v1' }],
+  paths: {
+    '/pets': { get: { operationId: 'listPets', tags: ['pets'], responses: { '200': { description: 'x', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Pet' } } } } } } } },
+    '/owners': { get: { operationId: 'listOwners', tags: ['owners'], responses: { '200': { description: 'x', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Owner' } } } } } } } },
+  },
+  components: {
+    schemas: {
+      Pet: { type: 'object', required: ['id', 'name'], properties: { id: { type: 'string' }, name: { type: 'string', minLength: 1 } } },
+      Owner: { type: 'object', required: ['id', 'email'], properties: { id: { type: 'string' }, email: { type: 'string', format: 'email' } } },
+    },
+  },
+})
+
+describe('two schema-bearing modules, compiled together through the real compiler', () => {
+  for (const validator of ['pyreon', 'zod'] as const) {
+    const files = generate(TWO_TAGS, resolveConfig({ input: 'x', target: 'multiplatform', validator })).files
+    const compile = {
+      swift: validateSwiftWithStubs,
+      kotlin: validateKotlin,
+      swiftFiles: validateSwiftFilesWithStubs,
+      kotlinFiles: validateKotlinFiles,
+    }
+
+    it(`${validator}: two native modules are generated`, () => {
+      expect(files.filter((f) => f.path.endsWith('.native.tsx')).length).toBe(2)
+    })
+
+    describe.skipIf(!isSwiftcAvailable() && !isKotlincAvailable())('swiftc / kotlinc', () => {
+      it(`${validator}: every module set compiles`, () => {
+        const r = verifyNative(files, transform, compile)
+        expect(r.modules?.length).toBe(2)
+        for (const m of r.modules ?? []) {
+          if ('skipped' in m.compiled) continue
+          expect(m.compiled.errors, m.target).toEqual([])
+          expect(m.compiled.ok, m.target).toBe(true)
+        }
+      }, 600_000)
     })
   }
 })

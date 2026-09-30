@@ -77,7 +77,11 @@ export function reachesNative(client: ClientName): boolean {
 }
 
 /** Shared preamble: types and helpers every generated adapter needs. */
-export function runtimePreamble(): string[] {
+export function runtimePreamble(lossless = false): string[] {
+  // `int64: 'bigint'`: an int64 id is a bigint, and it goes back OUT as a path /
+  // query / header / cookie parameter as its exact digits -- the same widening
+  // `@pyreon/http`'s parameter types carry.
+  const big = lossless ? ' | bigint' : ''
   return [
     'export type EndpointKey = readonly unknown[]',
     '',
@@ -88,7 +92,7 @@ export function runtimePreamble(): string[] {
     ' * DROPPED rather than serialized as the strings `"undefined"` / `"null"`,',
     ' * and arrays repeat the key.',
     ' */',
-    'export type QueryScalar = string | number | boolean',
+    `export type QueryScalar = string | number${big} | boolean`,
     '',
     '/** An object query parameter — bracket keys unless a `QueryStyle` says otherwise. */',
     'export interface QueryObject {',
@@ -105,7 +109,7 @@ export function runtimePreamble(): string[] {
     '',
     '/** What a call SENDS. An endpoint may be declared with a narrower input. */',
     'export interface EndpointInput {',
-    '  params?: Record<string, string | number> | undefined',
+    `  params?: Record<string, string | number${big}> | undefined`,
     '  query?: Record<string, QueryValue> | undefined',
     '  json?: unknown',
     '  form?: Record<string, FormValue> | undefined',
@@ -116,9 +120,9 @@ export function runtimePreamble(): string[] {
     '/** Per-call options every endpoint accepts, whatever its input type. */',
     'export interface EndpointCallOptions {',
     '  /** `undefined` / `null` values are OMITTED, not sent as text. */',
-    '  headers?: Record<string, string | number | boolean | null | undefined> | undefined',
+    `  headers?: Record<string, string | number${big} | boolean | null | undefined> | undefined`,
     '  /** Sent as a `Cookie` header (server-side; a browser drops it). */',
-    '  cookies?: Record<string, string | number | boolean | null | undefined> | undefined',
+    `  cookies?: Record<string, string | number${big} | boolean | null | undefined> | undefined`,
     '  signal?: AbortSignal | undefined',
     '}',
     '',
@@ -147,7 +151,7 @@ export function runtimePreamble(): string[] {
     '   * `client` setting and fail under another, which is the divergence this',
     '   * whole seam exists to prevent.',
     '   */',
-    '  params?: Record<string, string | number>',
+    `  params?: Record<string, string | number${big}>`,
     '  query?: Record<string, QueryValue>',
     '  /** `json`, `form`, `multipart` and `body` are mutually exclusive encodings. */',
     '  json?: unknown',
@@ -158,9 +162,9 @@ export function runtimePreamble(): string[] {
     '  /** A raw body, sent as-is. */',
     '  body?: Blob | ArrayBuffer | string',
     '  /** `undefined` / `null` values are OMITTED, not sent as text. */',
-    '  headers?: Record<string, string | number | boolean | null | undefined>',
+    `  headers?: Record<string, string | number${big} | boolean | null | undefined>`,
     '  /** Sent as a `Cookie` header (server-side; a browser drops it). */',
-    '  cookies?: Record<string, string | number | boolean | null | undefined>',
+    `  cookies?: Record<string, string | number${big} | boolean | null | undefined>`,
     '  signal?: AbortSignal',
     '}',
     '',
@@ -169,6 +173,8 @@ export function runtimePreamble(): string[] {
     '  | string',
     '  | number',
     '  | boolean',
+    // `int64: 'bigint'`: an int64 form field is a bigint, sent as its digits.
+    ...(lossless ? ["  | bigint"] : []),
     '  | null',
     '  | undefined',
     '  | Date',
@@ -379,7 +385,7 @@ export function runtimePreamble(): string[] {
     '  return joined.includes("?") ? `${joined}&${qs.slice(1)}` : `${joined}${qs}`',
     '}',
     '',
-    ...runtimeBodyEncoders(),
+    ...runtimeBodyEncoders(lossless),
   ]
 }
 
@@ -390,7 +396,8 @@ export function runtimePreamble(): string[] {
  * encoding per `client` setting would make the same spec send a different
  * request body depending on a config flag.
  */
-function runtimeBodyEncoders(): string[] {
+function runtimeBodyEncoders(lossless = false): string[] {
+  const big = lossless ? ' | bigint' : ''
   return [
     'function formScalar(v: FormValue): string | undefined {',
     '  if (v === null || v === undefined) return undefined',
@@ -482,7 +489,7 @@ function runtimeBodyEncoders(): string[] {
     '}',
     '',
     '/** A `Cookie` header value. Nullish entries omitted, values percent-encoded. */',
-    'export function encodeCookies(cookies: Readonly<Record<string, string | number | boolean | null | undefined>>): string {',
+    `export function encodeCookies(cookies: Readonly<Record<string, string | number${big} | boolean | null | undefined>>): string {`,
     '  const parts: string[] = []',
     '  for (const key of Object.keys(cookies)) {',
     '    const v = cookies[key]',
@@ -588,7 +595,7 @@ export function runtimeValidate(): string[] {
  * unchanged when the client is swapped, which is the entire point of having
  * the seam in the first place.
  */
-export function runtimeTransport(client: ClientName = 'fetch'): string[] {
+export function runtimeTransport(client: ClientName = 'fetch', lossless = false): string[] {
   return [
     '/** A request as the library is about to send it — after its interceptors. */',
     'export interface DevRequest {',
@@ -635,7 +642,7 @@ export function runtimeTransport(client: ClientName = 'fetch'): string[] {
     '  const headers = new Headers(answer.headers)',
     '  let body: string | null = null',
     '  if (answer.json !== undefined) {',
-    '    body = JSON.stringify(answer.json)',
+    `    body = ${lossless ? 'stringifyJsonLossless' : 'JSON.stringify'}(answer.json)`,
     '    if (!headers.has("content-type")) headers.set("content-type", "application/json")',
     '  } else if (answer.body !== undefined) {',
     '    body = answer.body',
@@ -719,7 +726,7 @@ function interceptorDecl(client: ClientName): string[] {
 }
 
 /** How the `use` slot runs, per library. */
-function interceptorRun(client: ClientName): string[] {
+function interceptorRun(client: ClientName, lossless = false): string[] {
   if (client === 'axios') {
     return [
       '',
@@ -755,7 +762,7 @@ function interceptorRun(client: ClientName): string[] {
       '          ? data',
       '          : data instanceof FormData || data instanceof URLSearchParams || data instanceof Blob || data instanceof ArrayBuffer',
       '            ? await new Response(data).text()',
-      '            : JSON.stringify(data)',
+      `            : ${lossless ? 'stringifyJsonLossless' : 'JSON.stringify'}(data)`,
       '    const answer = await devTransport({',
       '      method: (config.method ?? "get").toUpperCase(),',
       '      url: config.url ?? "",',
@@ -850,7 +857,8 @@ function interceptorRun(client: ClientName): string[] {
 }
 
 /** The adapter-specific request execution. */
-function sendFn(client: ClientName): string[] {
+function sendFn(client: ClientName, lossless = false): string[] {
+  const parse = lossless ? 'parseJsonLossless' : 'JSON.parse'
   if (client === 'fetch') {
     return [
       'async function send(',
@@ -884,7 +892,7 @@ function sendFn(client: ClientName): string[] {
       '  const text = await res.text()',
       '  if (text === "") return undefined',
       '  try {',
-      '    return JSON.parse(text) as unknown',
+      `    return ${parse}(text) as unknown`,
       '  } catch {',
       '    // A non-JSON error page is far more useful as its text than as a',
       '    // parse failure that hides what the server actually said.',
@@ -910,20 +918,46 @@ function sendFn(client: ClientName): string[] {
       '      headers,',
       '      ...(payload === undefined ? {} : { data: payload }),',
       '      ...(signal ? { signal } : {}),',
-      '      // Non-JSON bodies decode as the platform type, never through JSON.',
-      '      ...(kind === "json" ? {} : { responseType: kind }),',
+      ...(lossless
+        ? [
+            '      // JSON is read as TEXT and decoded losslessly below: axios\'s own',
+            '      // `JSON.parse` would round an int64 before anything could see it.',
+            '      ...(kind === "json" ? { responseType: "text", transformResponse: [(d: unknown) => d] } : { responseType: kind }),',
+          ]
+        : [
+            '      // Non-JSON bodies decode as the platform type, never through JSON.',
+            '      ...(kind === "json" ? {} : { responseType: kind }),',
+          ]),
       '    })',
       '    if (kind !== "json") return res.data',
       '    // axios reports an empty body as the EMPTY STRING, not `undefined`,',
       '    // so a 204 would decode to `""` and then fail a schema the other',
       '    // adapters never even reach with a value.',
-      '    return res.data === "" ? undefined : res.data',
+      lossless
+        ? '    return res.data === "" ? undefined : parseJsonLossless(res.data as string)'
+        : '    return res.data === "" ? undefined : res.data',
       '  } catch (err) {',
       '    const res = (err as { response?: { status: number; data: unknown } }).response',
-      '    if (res) throw new LatheHttpError(res.status, url, res.data)',
+      lossless
+        ? '    if (res) throw new LatheHttpError(res.status, url, decodeErrorBody(res.data))'
+        : '    if (res) throw new LatheHttpError(res.status, url, res.data)',
       '    throw err',
       '  }',
       '}',
+      ...(lossless
+        ? [
+            '',
+            '/** An error body read as text: JSON when it parses, the text otherwise. */',
+            'function decodeErrorBody(data: unknown): unknown {',
+            '  if (typeof data !== "string" || data === "") return data === "" ? undefined : data',
+            '  try {',
+            '    return parseJsonLossless(data)',
+            '  } catch {',
+            '    return data',
+            '  }',
+            '}',
+          ]
+        : []),
     ]
   }
   return [
@@ -947,7 +981,7 @@ function sendFn(client: ClientName): string[] {
     '    if (kind === "stream") return res.body',
     '    if (res.status === 204 || res.status === 205) return undefined',
     '    const text = await res.text()',
-    '    return text === "" ? undefined : (JSON.parse(text) as unknown)',
+    `    return text === "" ? undefined : (${parse}(text) as unknown)`,
     '  } catch (err) {',
     '    const e = err as { response?: Response; data?: unknown }',
     '    if (e.response) {',
@@ -977,9 +1011,10 @@ export function runtimeEndpoint(
   baseUrl: string,
   keyScope?: string,
   validate: ResponseValidation = 'strict',
+  lossless = false,
 ): string[] {
   return [
-    ...sendFn(client),
+    ...sendFn(client, lossless),
     '',
     ...interceptorDecl(client),
     '',
@@ -1013,7 +1048,7 @@ export function runtimeEndpoint(
     '  validate: DEFAULT_VALIDATE,',
     '  use: [],',
     '}',
-    ...interceptorRun(client),
+    ...interceptorRun(client, lossless),
     '',
     '/** The base URL requests currently go to — the generated default, or what `configureApi` set. */',
     'export function apiBaseUrl(): string {',
@@ -1037,6 +1072,7 @@ export function runtimeEndpoint(
     'function isEmpty(v: Record<string, unknown> | undefined): boolean {',
     '  return v === undefined || Object.keys(v).length === 0',
     '}',
+    ...(lossless ? runtimeKeySafe() : []),
     '',
     'export const api = {',
     '  /**',
@@ -1077,8 +1113,15 @@ export function runtimeEndpoint(
     '    const buildKey = (args?: EndpointArgs): EndpointKey => {',
     '      if (isEmpty(args?.params) && isEmpty(args?.query)) return prefix',
     '      const scope: Record<string, unknown> = {}',
-    '      if (!isEmpty(args?.params)) scope.params = args?.params',
-    '      if (!isEmpty(args?.query)) scope.query = args?.query',
+    ...(lossless
+      ? [
+          '      if (args?.params !== undefined && !isEmpty(args.params)) scope.params = keySafeScope(args.params)',
+          '      if (args?.query !== undefined && !isEmpty(args.query)) scope.query = keySafeScope(args.query)',
+        ]
+      : [
+          '      if (!isEmpty(args?.params)) scope.params = args?.params',
+          '      if (!isEmpty(args?.query)) scope.query = args?.query',
+        ]),
     '      return [...prefix, scope]',
     '    }',
     '',
@@ -1091,7 +1134,7 @@ export function runtimeEndpoint(
     '      // Declared headers, then configured ones, then per-call ones (per-call',
     '      // wins); nullish values are omitted rather than sent as "undefined".',
     '      const headers: Record<string, string> = {}',
-    '      const put = (h: Record<string, string | number | boolean | null | undefined> | undefined): void => {',
+    `      const put = (h: Record<string, string | number${lossless ? ' | bigint' : ''} | boolean | null | undefined> | undefined): void => {`,
     '        if (!h) return',
     '        for (const k of Object.keys(h)) {',
     '          const v = h[k]',
@@ -1110,7 +1153,7 @@ export function runtimeEndpoint(
     '      let payload: BodyInit | undefined',
     '      if (args?.json !== undefined) {',
     '        headers["content-type"] ??= "application/json"',
-    '        payload = JSON.stringify(args.json)',
+    `        payload = ${lossless ? 'stringifyJsonLossless' : 'JSON.stringify'}(args.json)`,
     '      } else if (args?.form !== undefined) {',
     '        headers["content-type"] ??= "application/x-www-form-urlencoded"',
     '        payload = encodeForm(args.form, config?.formEncoding).toString()',
@@ -1150,6 +1193,264 @@ export function runtimeEndpoint(
     '      }),',
     '    }) as unknown as Endpoint<BodyOf<K, Infer<V>>, I, E>',
     '  },',
+    '}',
+  ]
+}
+
+/**
+ * The lossless JSON codec, for a generated adapter client under
+ * `int64: 'bigint'` — `@pyreon/http/json` ported into the output.
+ *
+ * Emitted rather than imported for the same reason `buildUrl` is: a project
+ * that chose axios / ky / fetch did so to NOT depend on `@pyreon/http`. The
+ * cost of a second copy is drift, paid down the same way —
+ * `lossless-json-parity.test.ts` runs this emitted text against
+ * `@pyreon/http/json` as the ORACLE, every parse layer forced.
+ *
+ * `JSON.parse` rounds an integer past 2^53 - 1 before any schema sees it, so
+ * the digits are recovered from the SOURCE TEXT: plain `JSON.parse` when no
+ * 16-digit run is present, the reviver's `context.source` where the engine
+ * passes it, an own strict parser elsewhere. A bigint is encoded as JSON
+ * NUMBER text (`JSON.rawJSON`, or a counted placeholder swap).
+ */
+/**
+ * `@pyreon/http`'s `keySafeScope`, ported: a cache key with every `bigint`
+ * replaced by its digits. `@pyreon/query` hashes a key with `JSON.stringify`,
+ * which throws on a bigint -- so without this an int64 path / query parameter
+ * made the generated hook fail before it fetched. Emitted only under
+ * `int64: 'bigint'`, the one mode a bigint can reach a key in.
+ */
+function runtimeKeySafe(): string[] {
+  return [
+    '',
+    '/** A key scope with every `bigint` replaced by its digits (hashing a bigint throws). */',
+    'function keySafeScope(record: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {',
+    '  let out: Record<string, unknown> | undefined',
+    '  for (const k of Object.keys(record)) {',
+    '    const v = record[k]',
+    '    const safe = keySafeValue(v)',
+    '    if (safe !== v) (out ??= { ...record })[k] = safe',
+    '  }',
+    '  return out ?? record',
+    '}',
+    '',
+    'function keySafeValue(v: unknown): unknown {',
+    '  if (typeof v === "bigint") return v.toString()',
+    '  if (Array.isArray(v)) {',
+    '    return v.some((x) => typeof x === "bigint") ? v.map((x) => (typeof x === "bigint" ? x.toString() : x)) : v',
+    '  }',
+    '  if (v !== null && typeof v === "object") return keySafeScope(v as Record<string, unknown>)',
+    '  return v',
+    '}',
+  ]
+}
+
+export function runtimeJsonCodec(): string[] {
+  return [
+    'type SourceReviver = (key: string, value: unknown, context?: { source?: string }) => unknown',
+    '',
+    'let sourceTextSupport: boolean | undefined',
+    '',
+    'function hasSourceText(): boolean {',
+    '  if (sourceTextSupport === undefined) {',
+    '    let seen: string | undefined',
+    '    ;(JSON.parse as (text: string, reviver: SourceReviver) => unknown)("1", (_k, v, c) => {',
+    '      seen = c?.source',
+    '      return v',
+    '    })',
+    '    sourceTextSupport = seen === "1"',
+    '  }',
+    '  return sourceTextSupport',
+    '}',
+    '',
+    '/** A bigint when a double cannot hold the integer the text spells exactly. */',
+    'function numberFromText(text: string, parsed: number): number | bigint {',
+    '  return !Number.isSafeInteger(parsed) && /^-?(?:0|[1-9]\\d*)$/.test(text) ? BigInt(text) : parsed',
+    '}',
+    '',
+    '/**',
+    ' * Parse JSON, decoding an integer past 2^53 - 1 as a `bigint` (an int64 id',
+    ' * survives exactly). Throws a `SyntaxError` for what `JSON.parse` rejects.',
+    ' */',
+    'export function parseJsonLossless(text: string): unknown {',
+    '  if (!/\\d{16}/.test(text)) return JSON.parse(text)',
+    '  if (hasSourceText()) {',
+    '    return (JSON.parse as (text: string, reviver: SourceReviver) => unknown)(text, (_k, v, c) =>',
+    '      typeof v === "number" && !Number.isSafeInteger(v) && c?.source !== undefined ? numberFromText(c.source, v) : v,',
+    '    )',
+    '  }',
+    '  return strictParse(text)',
+    '}',
+    '',
+    '/** RFC 8259, with `JSON.parse`\'s observable behaviour: last duplicate key wins, `__proto__` is an OWN key. */',
+    'function strictParse(s: string): unknown {',
+    '  let i = 0',
+    '  const fail = (message: string): never => {',
+    '    throw new SyntaxError(`${message} at position ${i}`)',
+    '  }',
+    '  const ws = (): void => {',
+    '    while (i < s.length) {',
+    '      const c = s.charCodeAt(i)',
+    '      if (c !== 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) return',
+    '      i++',
+    '    }',
+    '  }',
+    '  const digit = (): boolean => {',
+    '    const c = s.charCodeAt(i)',
+    '    return c >= 0x30 && c <= 0x39',
+    '  }',
+    '  const str = (): string => {',
+    '    i++',
+    '    let out = ""',
+    '    for (;;) {',
+    '      if (i >= s.length) fail("Unterminated string in JSON")',
+    '      const c = s.charCodeAt(i)',
+    '      if (c === 0x22) {',
+    '        i++',
+    '        return out',
+    '      }',
+    '      if (c < 0x20) fail("Bad control character in string literal")',
+    '      if (c !== 0x5c) {',
+    '        out += s[i]',
+    '        i++',
+    '        continue',
+    '      }',
+    '      const e = s[i + 1]',
+    '      i += 2',
+    '      if (e === "u") {',
+    '        const hex = s.slice(i, i + 4)',
+    '        if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail("Bad Unicode escape in JSON")',
+    '        out += String.fromCharCode(Number.parseInt(hex, 16))',
+    '        i += 4',
+    '        continue',
+    '      }',
+    '      const simple: Record<string, string> = { \'"\': \'"\', "\\\\": "\\\\", "/": "/", b: "\\b", f: "\\f", n: "\\n", r: "\\r", t: "\\t" }',
+    '      const mapped = e === undefined ? undefined : simple[e]',
+    '      if (mapped === undefined) {',
+    '        i -= 1',
+    '        fail("Bad escaped character in JSON")',
+    '      }',
+    '      out += mapped',
+    '    }',
+    '  }',
+    '  const num = (): number | bigint => {',
+    '    const start = i',
+    '    if (s[i] === "-") i++',
+    '    if (s[i] === "0") i++',
+    '    else if (digit() && s[i] !== "0") while (digit()) i++',
+    '    else fail("No number after minus sign in JSON")',
+    '    if (s[i] === ".") {',
+    '      i++',
+    '      if (!digit()) fail("Unterminated fractional number in JSON")',
+    '      while (digit()) i++',
+    '    }',
+    '    if (s[i] === "e" || s[i] === "E") {',
+    '      i++',
+    '      if (s[i] === "+" || s[i] === "-") i++',
+    '      if (!digit()) fail("Exponent part is missing a number in JSON")',
+    '      while (digit()) i++',
+    '    }',
+    '    const text = s.slice(start, i)',
+    '    return numberFromText(text, Number(text))',
+    '  }',
+    '  const value = (): unknown => {',
+    '    const c = s[i]',
+    '    if (c === "{") {',
+    '      const out: Record<string, unknown> = {}',
+    '      i++',
+    '      ws()',
+    '      if (s[i] === "}") {',
+    '        i++',
+    '        return out',
+    '      }',
+    '      for (;;) {',
+    '        if (s[i] !== \'"\') fail("Expected a string key")',
+    '        const key = str()',
+    '        ws()',
+    '        if (s[i] !== ":") fail("Expected \':\' after a key")',
+    '        i++',
+    '        ws()',
+    '        const v = value()',
+    '        if (key === "__proto__") Object.defineProperty(out, key, { value: v, writable: true, enumerable: true, configurable: true })',
+    '        else out[key] = v',
+    '        ws()',
+    '        if (s[i] === ",") {',
+    '          i++',
+    '          ws()',
+    '          continue',
+    '        }',
+    '        if (s[i] === "}") {',
+    '          i++',
+    '          return out',
+    '        }',
+    '        fail("Expected \',\' or \'}\'")',
+    '      }',
+    '    }',
+    '    if (c === "[") {',
+    '      const out: unknown[] = []',
+    '      i++',
+    '      ws()',
+    '      if (s[i] === "]") {',
+    '        i++',
+    '        return out',
+    '      }',
+    '      for (;;) {',
+    '        out.push(value())',
+    '        ws()',
+    '        if (s[i] === ",") {',
+    '          i++',
+    '          ws()',
+    '          continue',
+    '        }',
+    '        if (s[i] === "]") {',
+    '          i++',
+    '          return out',
+    '        }',
+    '        fail("Expected \',\' or \']\'")',
+    '      }',
+    '    }',
+    '    if (c === \'"\') return str()',
+    '    for (const [word, v] of [["true", true], ["false", false], ["null", null]] as const) {',
+    '      if (s.startsWith(word, i)) {',
+    '        i += word.length',
+    '        return v',
+    '      }',
+    '    }',
+    '    if (c === "-" || digit()) return num()',
+    '    return fail(c === undefined ? "Unexpected end of JSON input" : `Unexpected token \'${c}\'`)',
+    '  }',
+    '  ws()',
+    '  const out = value()',
+    '  ws()',
+    '  if (i !== s.length) fail("Unexpected non-whitespace character after JSON")',
+    '  return out',
+    '}',
+    '',
+    '/**',
+    ' * `JSON.stringify`, writing a `bigint` as JSON NUMBER text. Byte-identical',
+    ' * to `JSON.stringify` for a value without one.',
+    ' */',
+    'export function stringifyJsonLossless(value: unknown): string {',
+    '  const raw = (JSON as unknown as { rawJSON?: (text: string) => unknown }).rawJSON',
+    '  if (raw !== undefined) return JSON.stringify(value, (_k, v: unknown) => (typeof v === "bigint" ? raw(v.toString()) : v))',
+    '  for (;;) {',
+    '    // A placeholder per bigint, swapped for its digits; the swap is COUNTED,',
+    '    // so a user string that happens to match costs a retry, not a bad body.',
+    '    const nonce = `\\uE000${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}:`',
+    '    let written = 0',
+    '    const out = JSON.stringify(value, (_k, v: unknown) => {',
+    '      if (typeof v !== "bigint") return v',
+    '      written++',
+    '      return `${nonce}${v.toString()}`',
+    '    })',
+    '    if (written === 0) return out',
+    '    let swapped = 0',
+    '    const result = out.replace(new RegExp(`"${nonce}(-?\\\\d+)"`, "g"), (_m, digits: string) => {',
+    '      swapped++',
+    '      return digits',
+    '    })',
+    '    if (swapped === written && !result.includes(nonce)) return result',
+    '  }',
     '}',
   ]
 }
