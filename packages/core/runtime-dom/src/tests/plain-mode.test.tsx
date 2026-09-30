@@ -500,3 +500,169 @@ export function App() { return <div><span>{n}</span></div> }`
     expect(container.textContent).toBe('6')
   })
 })
+
+// ─── signalOf escape hatch ─────────────────────────────────────────────────
+
+describe('signalOf — the signal-identity escape hatch', () => {
+  it('hands over the LIVE signal: an external write through it updates plain readers', () => {
+    const src = `'use plain'
+import { state, signalOf } from '@pyreon/core/plain'
+let count = state(1)
+export const handle = signalOf(count)
+export function View() { return <b>{count}</b> }`
+    const { exports } = compilePlainModule<{
+      View: unknown
+      handle: { (): number; set(v: number): void }
+    }>(src, ['View', 'handle'])
+    const { container, cleanup } = mountComponent(exports.View)
+    expect(exports.handle()).toBe(1)
+    exports.handle.set(7)
+    expect(container.textContent).toBe('7')
+    cleanup()
+  })
+
+  it('a plain write is visible through the handed-over signal (same identity)', () => {
+    const src = `'use plain'
+import { state, signalOf } from '@pyreon/core/plain'
+let n = state(0)
+export const sig = signalOf(n)
+export const bump = () => { n = n + 1 }`
+    const { exports } = compilePlainModule<{ sig: () => number; bump: () => void }>(src, ['sig', 'bump'])
+    exports.bump()
+    exports.bump()
+    expect(exports.sig()).toBe(2)
+  })
+
+  it('signalOf(derived) is the computed itself — recomputes on source writes', () => {
+    const src = `'use plain'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+let n = state(2)
+const doubled = derived(n * 2)
+export const c = signalOf(doubled)
+export const set = (v) => { n = v }`
+    const { exports } = compilePlainModule<{ c: () => number; set: (v: number) => void }>(src, ['c', 'set'])
+    expect(exports.c()).toBe(4)
+    exports.set(5)
+    expect(exports.c()).toBe(10)
+  })
+
+  it('an arrow-expression setter handler (the codemod block-wrap shape) stays reactive', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let n = state(0)
+export function B() { return <button onClick={() => { n = n + 1 }}>{n}</button> }`
+    const { exports } = compilePlainModule<{ B: unknown }>(src, ['B'])
+    const { container, cleanup } = mountComponent(exports.B)
+    click(container.querySelector('button'))
+    expect(container.textContent).toBe('1')
+    cleanup()
+  })
+})
+
+// ─── Destructuring assignment onto state ───────────────────────────────────
+
+describe('destructuring assignment onto plain state', () => {
+  it('swap `[a, b] = [b, a]` updates both bindings and the DOM', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let a = state('A')
+let b = state('B')
+export const swap = () => { [a, b] = [b, a] }
+export function V() { return <p>{a}{'-'}{b}</p> }`
+    const { exports } = compilePlainModule<{ V: unknown; swap: () => void }>(src, ['V', 'swap'])
+    const { container, cleanup } = mountComponent(exports.V)
+    expect(container.textContent).toBe('A-B')
+    exports.swap()
+    expect(container.textContent).toBe('B-A')
+    exports.swap()
+    expect(container.textContent).toBe('A-B')
+    cleanup()
+  })
+
+  it('defaults see earlier targets exactly as JS does, and the expression yields the rhs', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let a = state(1)
+let b = state(2)
+export const run = (x) => ([a, b = a] = x)
+export const read = () => [a, b]`
+    const { exports } = compilePlainModule<{ run: (x: unknown) => unknown; read: () => number[] }>(src, [
+      'run',
+      'read',
+    ])
+    const rhs = [5]
+    expect(exports.run(rhs)).toBe(rhs)
+    expect(exports.read()).toEqual([5, 5])
+  })
+
+  it('a deep-state target stays deep after the write (member mutation still notifies)', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let user = state({ name: 'a' })
+export const load = (x) => { ;({ user } = x) }
+export const rename = () => { user.name = 'renamed' }
+export function V() { return <i>{user.name}</i> }`
+    const { exports } = compilePlainModule<{ V: unknown; load: (x: unknown) => void; rename: () => void }>(src, [
+      'V',
+      'load',
+      'rename',
+    ])
+    const { container, cleanup } = mountComponent(exports.V)
+    exports.load({ user: { name: 'loaded' } })
+    expect(container.textContent).toBe('loaded')
+    exports.rename()
+    expect(container.textContent).toBe('renamed')
+    cleanup()
+  })
+})
+
+// ─── Rest / nested props destructuring stays live ─────────────────────────
+
+describe('rest + nested props destructuring', () => {
+  it('a `...rest` spread stays reactive and a nested read tracks the parent state', () => {
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let title = state('t1')
+let city = state('Prague')
+export const flip = () => { title = 't2'; city = 'Brno' }
+function Card({ label, addr: { city: c }, ...rest }) {
+  return <section {...rest}>{label}:{c}</section>
+}
+export function App() { return <Card label="x" addr={{ city }} title={title} /> }`
+    const { exports } = compilePlainModule<{ App: unknown; flip: () => void }>(src, ['App', 'flip'])
+    const { container, cleanup } = mountComponent(exports.App)
+    const section = container.querySelector('section')!
+    expect(section.getAttribute('title')).toBe('t1')
+    expect(section.textContent).toBe('x:Prague')
+    exports.flip()
+    expect(section.getAttribute('title')).toBe('t2')
+    expect(section.textContent).toBe('x:Brno')
+    cleanup()
+  })
+})
+
+// ─── state.from / derived.from — adopting library signals ─────────────────
+
+describe('state.from / derived.from adopt existing signals', () => {
+  it('reads and writes go through the ADOPTED signal (same identity, no copy)', async () => {
+    const { signal, computed } = await import('@pyreon/reactivity')
+    const external = signal('light')
+    const doubled = computed(() => external().length * 2)
+    const src = `'use plain'
+import { state, derived } from '@pyreon/core/plain'
+export function T() {
+  let theme = state.from(source)
+  const len = derived.from(lenSig)
+  return <button onClick={() => { theme = theme === 'light' ? 'dark' : 'light' }}>{theme}:{len}</button>
+}`
+    const { exports } = compilePlainModule<{ T: unknown }>(src, ['T'], { source: external, lenSig: doubled })
+    const { container, cleanup } = mountComponent(exports.T)
+    expect(container.textContent).toBe('light:10')
+    click(container.querySelector('button'))
+    expect(external()).toBe('dark') // the plain write reached the library's signal
+    expect(container.textContent).toBe('dark:8')
+    external.set('light') // and a library write reaches the plain reader
+    expect(container.textContent).toBe('light:10')
+    cleanup()
+  })
+})

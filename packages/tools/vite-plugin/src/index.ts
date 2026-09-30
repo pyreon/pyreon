@@ -35,6 +35,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseSync } from 'oxc-parser'
 import { detectPlain,
   type CollapsibleSite,
   generateContext,
@@ -95,6 +96,24 @@ export interface PyreonPluginApi {
 }
 
 export interface PyreonPluginOptions {
+  /**
+   * Project-wide Plain Mode. Every app module (anything outside
+   * `node_modules`) is compiled as plain JavaScript reactivity — no
+   * `'use plain'` directive needed. Importing a marker (`state`, `derived`,
+   * `signalOf`) already activates a single file; this option additionally
+   * makes props destructuring (`function Card({ title })`) and reactive early
+   * returns live in EVERY component. A module can opt out with a
+   * `'use classic'` directive. Classic `signal()` code keeps working unchanged
+   * in a plain project — the pre-pass only rewrites plain bindings.
+   *
+   * @default false
+   * @example
+   * ```ts
+   * export default defineConfig({ plugins: [pyreon({ plain: true })] })
+   * ```
+   */
+  plain?: boolean
+
   /**
    * Restrict which modules the JSX transform runs on (the Vite-plugin
    * `createFilter` convention — picomatch globs, regexes, or arrays).
@@ -1450,6 +1469,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         ...(ssrTemplate ? { ssrTemplate: true } : {}),
         ...(templatizeComponentChildren ? { templatizeComponentChildren: true } : {}),
         knownSignals,
+        ...(options?.plain === true && !id.includes('/node_modules/') ? { plain: true } : {}),
         ...(collapseRocketstyle ? { collapseRocketstyle } : {}),
       })
       // Surface compiler warnings in the terminal
@@ -2043,6 +2063,13 @@ function injectSignalNames(code: string, moduleId: string): string {
   // get `, { __sourceLocation: ... }` injected INSIDE the template literal,
   // corrupting the help-text content at runtime.
   const masked = _maskStringsAndComments(code)
+  // The mask cannot see JSX TEXT (`<Code>effect()</Code>` in a demo), and a
+  // character scanner cannot tell a JSX `<` from less-than reliably. So every
+  // regex hit is CONFIRMED against the AST: only a real call whose callee is
+  // the matched identifier gets the injection. `null` (the file did not parse)
+  // keeps the regex-only behaviour — the pre-existing conservative default.
+  const realCallees = _reactiveCalleeStarts(code, moduleId)
+  const isRealCall = (tokenStart: number): boolean => realCallees === null || realCallees.has(tokenStart)
 
   // Pass 1: bound forms — `const X = (signal|computed|effect)(…)`.
   // Extract `X` as the debug name + the reactive primitive kind.
@@ -2068,7 +2095,8 @@ function injectSignalNames(code: string, moduleId: string): string {
   while (m !== null) {
     const argsStart = m.index + m[0].length
     const args = _extractBalancedArgs(code, argsStart)
-    if (args !== null && !hasMultipleArgs(args)) {
+    const boundTokenStart = m.index + m[0].length - (m[2]?.length ?? 0) - 1
+    if (args !== null && !hasMultipleArgs(args) && isRealCall(boundTokenStart)) {
       matches.push({
         start: argsStart,
         end: argsStart + args.length,
@@ -2087,7 +2115,7 @@ function injectSignalNames(code: string, moduleId: string): string {
 
   m = reUnboundEffect.exec(masked)
   while (m !== null) {
-    if (!covered.has(m.index)) {
+    if (!covered.has(m.index) && isRealCall(m.index)) {
       const argsStart = m.index + m[0].length
       const args = _extractBalancedArgs(code, argsStart)
       if (args !== null && !hasMultipleArgs(args)) {
@@ -2123,6 +2151,51 @@ function injectSignalNames(code: string, moduleId: string): string {
     output = `${output.slice(0, start)}${args}, { ${inner} }${output.slice(end)}`
   }
   return output
+}
+
+/**
+ * Start offsets of every `signal` / `computed` / `effect` CALLEE identifier
+ * in `code` — the ground truth `injectSignalNames` confirms its regex hits
+ * against. Returns `null` when the module does not parse, so the caller keeps
+ * its regex-only behaviour instead of dropping every injection.
+ *
+ * @internal — exported for tests.
+ */
+export function _reactiveCalleeStarts(code: string, moduleId: string): Set<number> | null {
+  let program: unknown
+  try {
+    const lang = /\.tsx?(?:$|\?)/.test(moduleId) ? (moduleId.includes('.tsx') ? 'tsx' : 'ts') : 'jsx'
+    const r = parseSync(moduleId, code, { sourceType: 'module', lang })
+    if (r.errors.length > 0) return null
+    program = r.program
+  } catch {
+    return null
+  }
+  const out = new Set<number>()
+  const visit = (n: unknown): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const c of n) visit(c)
+      return
+    }
+    const node = n as { type?: unknown; callee?: { type?: string; name?: string; start?: number } }
+    if (typeof node.type !== 'string') return
+    if (
+      node.type === 'CallExpression' &&
+      node.callee?.type === 'Identifier' &&
+      (node.callee.name === 'signal' || node.callee.name === 'computed' || node.callee.name === 'effect') &&
+      typeof node.callee.start === 'number'
+    ) {
+      out.add(node.callee.start)
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'type' || key === 'start' || key === 'end') continue
+      const v = (node as Record<string, unknown>)[key]
+      if (v && typeof v === 'object') visit(v)
+    }
+  }
+  visit(program)
+  return out
 }
 
 /**

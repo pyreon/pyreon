@@ -1,7 +1,7 @@
 import { defineFeature } from '@pyreon/feature'
 import { For } from '@pyreon/core'
 import { QueryClient, QueryClientProvider } from '@pyreon/query'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 import { z } from 'zod'
 
 // ─── In-memory mock REST backend ────────────────────────────────────────
@@ -91,11 +91,11 @@ function FeatureContent() {
   const deleteMut = taskFeature.useDelete()
 
   // Search reactively over a signal — useSearch wires a debounced query.
-  const term = signal('')
-  const search = taskFeature.useSearch(term)
+  let term = state('')
+  const search = taskFeature.useSearch(signalOf<typeof term>(term))
 
   // Local input state
-  const newTitle = signal('')
+  let newTitle = state('')
 
   return (
     <div>
@@ -180,18 +180,18 @@ function FeatureContent() {
             type="text"
             data-testid="feature-new-title"
             placeholder="New task title…"
-            value={() => newTitle()}
-            onInput={(e) => newTitle.set(e.currentTarget.value)}
+            value={() => newTitle}
+            onInput={(e) => { newTitle = e.currentTarget.value }}
           />
           <button
             class="primary"
             data-testid="feature-add"
-            disabled={() => createMut.isPending() || !newTitle().trim()}
+            disabled={() => createMut.isPending() || !newTitle.trim()}
             onClick={() => {
-              const title = newTitle().trim()
+              const title = newTitle.trim()
               if (!title) return
               createMut.mutate({ title, done: false })
-              newTitle.set('')
+              newTitle = ''
             }}
           >
             {() => (createMut.isPending() ? 'Adding…' : 'Add')}
@@ -205,12 +205,12 @@ function FeatureContent() {
           type="text"
           data-testid="feature-search"
           placeholder="Type to search by title…"
-          value={() => term()}
-          onInput={(e) => term.set(e.currentTarget.value)}
+          value={() => term}
+          onInput={(e) => { term = e.currentTarget.value }}
         />
         <div style="margin-top:12px" data-testid="feature-search-results">
           {() =>
-            term().trim() === '' ? (
+            term.trim() === '' ? (
               <p style="font-size:13px; color:#666">
                 (type a term above to see matching tasks)
               </p>

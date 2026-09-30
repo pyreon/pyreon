@@ -46,6 +46,14 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('renderToString')
   })
 
+  it('diagnoses the compat hook-context error, pointing at a core lazy() in a compat app', () => {
+    // The exact message the compat hook runtime throws.
+    const r = diagnoseError('Error: [Pyreon] Hook called outside of a component render')
+    expect(r).not.toBeNull()
+    expect(r!.cause).toContain('@pyreon/core')
+    expect(r!.fix).toContain('defineAsyncComponent')
+  })
+
   it('diagnoses a VNode array rendered as "[object Object]"', () => {
     for (const symptom of [
       '[object Object],[object Object]',
@@ -258,5 +266,16 @@ describe('diagnoseError — validate compiler unsupported-node entry', () => {
 
   it('does not fire on an unrelated unsupported message', () => {
     expect(diagnoseError('unsupported node type in the AST')).toBeNull()
+  })
+})
+
+describe('Plain Mode signal-bridge warnings are diagnosable', () => {
+  it.each([
+    '[plain] signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.',
+    '[plain] state.from() takes exactly one signal argument.',
+    '[plain] derived.from() takes exactly one signal argument.',
+  ])('%s', (msg) => {
+    const d = diagnoseError(msg)
+    expect(d?.cause).toContain('signal bridge')
   })
 })

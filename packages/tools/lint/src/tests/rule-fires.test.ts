@@ -103,6 +103,11 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `${SIG}const a = signal(1), total = signal(0)\neffect(() => { total.set(a() * 2) })`,
     good: `${SIG}const a = signal(1)\nconst total = computed(() => a() * 2)`,
   },
+  'pyreon/plain-mode-footgun': {
+    file: 'src/a.tsx',
+    bad: `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const toggle = () => { cfg.open = true }`,
+    good: `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const toggle = () => { cfg = { ...cfg, open: true } }`,
+  },
   'pyreon/no-effect-assignment': {
     file: 'src/a.ts',
     bad: `${SIG}const total = signal(0)\neffect(() => { total.update((n) => n + 1) })`,

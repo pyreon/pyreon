@@ -8,7 +8,8 @@ import {
   useFocus,
   usePrevious,
 } from '@pyreon/hooks'
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { computed } from '@pyreon/reactivity'
 import {
   filter,
   search as rxSearch,
@@ -47,7 +48,7 @@ export default function SearchPage() {
   const debouncedQ = useDebouncedValue(q, 300)
 
   // Sort mode signal — local UI only (not URL synced).
-  const sortMode = signal<'relevance' | 'points' | 'recent'>('relevance')
+  let sortMode = state<'relevance' | 'points' | 'recent'>('relevance')
 
   // Track previous query for "your search changed" UX (hooks.usePrevious).
   const previousQ = usePrevious(debouncedQ)
@@ -72,10 +73,10 @@ export default function SearchPage() {
   // ── Rx-driven computed chain ───────────────────────────────────────────
   // Each rx operator returns a Computed when its source is a signal.
   // We read each step's result into the next via signal accessors.
-  const stories = computed<Story[]>(() => query.data() ?? [])
+  const stories = derived<Story[]>(() => query.data() ?? [])
 
   // `search(source, query, keys)` — full-text across title + domain.
-  const hits = rxSearch(stories, debouncedQ, ['title', 'domain'])
+  const hits = rxSearch(signalOf<typeof stories>(stories), debouncedQ, ['title', 'domain'])
 
   // `filter(source, predicate)` — drop job posts from search results.
   const onlyStories = filter(hits as never, (s: Story) => s.type !== 'job')
@@ -83,9 +84,9 @@ export default function SearchPage() {
   // `sortBy(source, ...keys)` — sort by points descending OR time descending.
   // We compute this in a Pyreon `computed()` so the sort key can be reactive
   // (depends on sortMode).
-  const sorted = computed<Story[]>(() => {
+  const sorted = derived<Story[]>(() => {
     const arr = (onlyStories as never as () => Story[])()
-    const mode = sortMode()
+    const mode = sortMode
     if (mode === 'points')
       return [...arr].sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
     if (mode === 'recent') return [...arr].sort((a, b) => b.time - a.time)
@@ -93,7 +94,7 @@ export default function SearchPage() {
   })
 
   // `take(source, n)` — cap to 50 results.
-  const finalResults = take(sorted as never, 50)
+  const finalResults = take(signalOf<typeof sorted>(sorted) as never, 50)
 
   // `groupBy(source, key)` — facet hits by domain for the sidebar.
   const domainFacets = groupBy(
@@ -171,8 +172,8 @@ export default function SearchPage() {
             <input
               type="radio"
               name="sort"
-              checked={() => sortMode() === 'relevance'}
-              onChange={() => sortMode.set('relevance')}
+              checked={() => sortMode === 'relevance'}
+              onChange={() => { sortMode = 'relevance' }}
             />
             Relevance
           </label>
@@ -180,8 +181,8 @@ export default function SearchPage() {
             <input
               type="radio"
               name="sort"
-              checked={() => sortMode() === 'points'}
-              onChange={() => sortMode.set('points')}
+              checked={() => sortMode === 'points'}
+              onChange={() => { sortMode = 'points' }}
             />
             Points
           </label>
@@ -189,8 +190,8 @@ export default function SearchPage() {
             <input
               type="radio"
               name="sort"
-              checked={() => sortMode() === 'recent'}
-              onChange={() => sortMode.set('recent')}
+              checked={() => sortMode === 'recent'}
+              onChange={() => { sortMode = 'recent' }}
             />
             Recent
           </label>

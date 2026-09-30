@@ -5,7 +5,7 @@ import { Element, Text, List } from '@pyreon/elements'
 import { Container, Row, Col } from '@pyreon/coolgrid'
 import { Transition } from '@pyreon/runtime-dom'
 import { fade } from '@pyreon/kinetic-presets'
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 import { useBookmarksModel } from '../lib/bookmarks'
 import { usePrefs } from '../lib/prefs'
 
@@ -27,9 +27,9 @@ export default function PrefsPage() {
 
   const prefs = usePrefs()
   const bookmarks = useBookmarksModel()
-  const modalOpen = signal(false)
+  let modalOpen = state(false)
 
-  const bookmarkCount = computed(() => bookmarks.count() as number)
+  const bookmarkCount = derived(() => bookmarks.count() as number)
 
   return (
     <>
@@ -126,13 +126,13 @@ export default function PrefsPage() {
           >
             <Text tag="h2">Stats</Text>
             <Text tag="p" paragraph>
-              You have <strong>{() => bookmarkCount()}</strong> bookmarked stories.
+              You have <strong>{() => bookmarkCount}</strong> bookmarked stories.
             </Text>
             <button
               type="button"
               class="btn-primary"
               onClick={() => {
-                modalOpen.set(true)
+                modalOpen = true
                 toast.info('Modal opened')
               }}
               data-testid="open-modal"
@@ -140,7 +140,7 @@ export default function PrefsPage() {
               Show modal demo (Portal + Transition)
             </button>
             <span data-testid="modal-state">
-              state: {() => (modalOpen() ? 'open' : 'closed')}
+              state: {() => (modalOpen ? 'open' : 'closed')}
             </span>
           </Element>
         </Col>
@@ -160,7 +160,7 @@ export default function PrefsPage() {
         this version of @pyreon/elements; flat in-flow render is the
         portable shape. */}
     <Transition
-      show={() => modalOpen()}
+      show={() => modalOpen}
       enterFrom={fade.enterFrom}
       enterTo={fade.enterTo}
       leaveFrom={fade.leaveFrom}
@@ -170,7 +170,7 @@ export default function PrefsPage() {
         class="prefs-modal-backdrop"
         data-testid="modal-backdrop"
         style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;transition:opacity 200ms"
-        onClick={() => modalOpen.set(false)}
+        onClick={() => { modalOpen = false }}
       >
         <div
           class="prefs-modal"
@@ -186,7 +186,7 @@ export default function PrefsPage() {
           <button
             type="button"
             class="btn-primary"
-            onClick={() => modalOpen.set(false)}
+            onClick={() => { modalOpen = false }}
             data-testid="close-modal"
           >
             Close

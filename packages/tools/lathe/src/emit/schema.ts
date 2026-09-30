@@ -8,9 +8,9 @@
  */
 
 import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
-import type { IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
+import type { IrBigIntType, IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
-import { collectRefNames } from '../core/walk'
+import { collectRefNames, usesBigInt } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
 import { fieldDoc, modelDoc } from './jsdoc'
 import { q, regexLiteral, relativeSpecifier, safeBlockComment, SourceFile } from './writer'
@@ -37,15 +37,6 @@ export interface SchemaExprOptions {
    */
   models?: ReadonlyMap<string, IrType> | undefined
   /**
-   * The BINDING a named model's schema has, when it is not the model's name.
-   *
-   * The native modules name each schema const differently from its type
-   * (audit G6): TypeScript keeps values and types in separate namespaces, but
-   * Swift and Kotlin do not, so `const Pet` beside `type Pet` became
-   * `let Pet` beside `struct Pet` — `invalid redeclaration` on both targets.
-   */
-  refBinding?: ((name: string) => string) | undefined
-  /**
    * Refs currently being inlined, so a `$ref` CYCLE terminates.
    *
    * A cycle cannot be inlined at all — there is no finite nesting for it — so
@@ -54,6 +45,13 @@ export interface SchemaExprOptions {
    * represented, and saying so beats emitting a bounded lie.
    */
   expanding?: ReadonlySet<string> | undefined
+  /**
+   * The document was read under `int64: 'bigint'`, so a validated value can
+   * hold a bigint anywhere -- including behind a ref this walk does not
+   * follow. The one place that matters is `uniqueItems`, whose check keys
+   * items by `JSON.stringify`, which throws on a bigint.
+   */
+  lossless?: boolean | undefined
 }
 
 /**
@@ -91,6 +89,10 @@ export function tsType(
       return enumTs(type.values, widenEnums, native)
     case 'number':
       return 'number'
+    // Native decodes into typed structs and PMTC has no bigint: the native
+    // schema keeps `number().int()` (see `schemaExpr`), so its type must too.
+    case 'bigint':
+      return native ? 'number' : 'bigint'
     case 'boolean':
       return 'boolean'
     case 'null':
@@ -206,8 +208,16 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       return stringExpr(type, b, p, dialect.uriCheck)
     case 'enum':
       return enumExpr(type.values, b, opts.native, p)
-    case 'number':
-      return numberExpr(type, b, opts.native, p)
+    case 'number': {
+      const expr = numberExpr(type, b, opts.native, p)
+      // Under `int64: 'bigint'` the lossless decoder hands ANY integer past
+      // 2^53 - 1 over as a bigint, including in a plain number field; it is
+      // read back as the number `JSON.parse` would have produced. Web only:
+      // native decodes its own JSON.
+      return type.acceptsBigInt && !opts.native ? `${c('preprocess')}(${BIGINT_TO_NUMBER}, ${expr})` : expr
+    }
+    case 'bigint':
+      return bigintExpr(type, b, opts.native, p)
     case 'boolean':
       return `${c('boolean')}()`
     case 'null':
@@ -240,8 +250,7 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // A back edge closes a `$ref` cycle. `const` is not hoisted, so naming
       // the target directly here is a TDZ ReferenceError at import; `lazy`
       // defers the read to first use, which is exactly what a cycle needs.
-      const binding = opts.refBinding ? opts.refBinding(type.name) : type.name
-      return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${binding})` : binding
+      return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${type.name})` : type.name
     }
     case 'array': {
       let expr = `${c('array')}(${schemaExpr(type.items, opts, depth + 1)})`
@@ -252,7 +261,10 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // their JSON text, which is exact for scalars (the dominant case) and
       // for objects serialized in a consistent key order.
       if (type.uniqueItems) {
-        expr += `.refine((a) => new Set(a.map((v) => JSON.stringify(v))).size === a.length, { message: 'items must be unique' })`
+        const key = opts.lossless
+          ? "JSON.stringify(v, (_k, x: unknown) => (typeof x === 'bigint' ? `${x}n` : x))"
+          : 'JSON.stringify(v)'
+        expr += `.refine((a) => new Set(a.map((v) => ${key})).size === a.length, { message: 'items must be unique' })`
       }
       return expr
     }
@@ -328,6 +340,43 @@ function stringExpr(type: IrStringType, b: string, p: string, uriCheck: string):
   if (type.maxLength !== undefined) expr += `.max(${type.maxLength})`
   if (type.pattern && portableRegex(type.pattern)) expr += `.regex(${regexLiteral(type.pattern)})`
   return expr
+}
+
+/**
+ * A plain number field's `preprocess` step under `int64: 'bigint'`. A bigint
+ * only reaches one when the value is past 2^53 - 1, where `Number(v)` is
+ * exactly the rounding `JSON.parse` applies -- so the field sees what it would
+ * have seen without the lossless decoder.
+ */
+const BIGINT_TO_NUMBER = "(v) => (typeof v === 'bigint' ? Number(v) : v)"
+
+/**
+ * An int64 field's `preprocess` step. The lossless decoder leaves a SAFE
+ * integer as a number (it has no schema to consult), so one is widened here;
+ * anything else -- a fraction, a string -- is left for the `bigint` check to
+ * reject.
+ */
+const INTEGER_TO_BIGINT = "(v) => (typeof v === 'number' && Number.isInteger(v) ? BigInt(v) : v)"
+
+/**
+ * A `format: int64` integer under `int64: 'bigint'`.
+ *
+ * Web: `preprocess(widen, bigint())` with the bounds as bigint literals, which
+ * both `@pyreon/validate` and zod spell `.min(5n)`. Native: the platform
+ * integer PMTC lowers, exactly what the default mode emits there -- PMTC has
+ * no bigint, and `generate` reports the difference (`int64-native`).
+ */
+function bigintExpr(type: IrBigIntType, b: string, native: boolean, p: string): string {
+  if (native) {
+    return numberExpr({ kind: 'number', integer: true, minimum: type.minimum, maximum: type.maximum }, b, true, p)
+  }
+  let inner = `${p}${b}.bigint()`
+  if (type.minimum !== undefined) inner += `.min(${type.minimum}n)`
+  if (type.maximum !== undefined) inner += `.max(${type.maximum}n)`
+  if (type.exclusiveMinimum !== undefined) inner += `.gt(${type.exclusiveMinimum}n)`
+  if (type.exclusiveMaximum !== undefined) inner += `.lt(${type.exclusiveMaximum}n)`
+  if (type.multipleOf !== undefined && type.multipleOf > 0) inner += `.multipleOf(${type.multipleOf}n)`
+  return `${p}${b}.preprocess(${INTEGER_TO_BIGINT}, ${inner})`
 }
 
 function numberExpr(type: IrNumberType, b: string, native: boolean, p: string): string {
@@ -512,7 +561,7 @@ export function emitSchemas(
       f.line()
       f.doc(...modelDoc(model))
       f.line(typeDeclaration(model.name, model.type, dialect.emptyObjectType))
-      const expr = schemaExpr(model.type, { ...opts, defer })
+      const expr = schemaExpr(model.type, { ...opts, defer, lossless: usesBigInt(doc) })
       if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
       f.line(`export const ${model.name} = ${expr} as unknown as ${dialect.schemaTypeRef(model.name)}`)
     }
@@ -667,7 +716,7 @@ export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 
   for (const name of order) {
     const model = byName.get(name)
     if (!model) continue
-    const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name) })
+    const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name), lossless: usesBigInt(doc) })
     f.line(`const ${name}$ = ${expr}`)
     f.line(`export const ${name}$agrees: Same<${infer(`${name}$`)}, ${name}> = true`)
     f.line(`export const ${name}$spec: Same<${name}, ${tsType(model.type, 0, false, false, false, dialect.emptyObjectType)}> = true`)

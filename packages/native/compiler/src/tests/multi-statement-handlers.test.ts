@@ -36,7 +36,7 @@ describe('multi-statement event handlers emit every statement', () => {
     expect(out).toContain('n = n + 1')
     expect(out).toContain('m = m + 1')
     expect(out).toContain('k = k + 1')
-    expect(out).toContain('Button(onClick = { n = n + 1 })')
+    expect(out).toContain('Button(onClick = { n = n + 1L })')
   })
 
   it('a handler with an `if` statement after an expression emits both (parseStatementBlock path)', () => {
@@ -53,7 +53,7 @@ function C() {
     expect(sw).toContain('m = 0')
     const kt = transform(src, { target: 'kotlin' }).code
     expect(kt).toContain('n = n + 1')
-    expect(kt).toContain('if (n > 2) {')
+    expect(kt).toContain('if (n > 2L) {')
     expect(kt).toContain('m = 0')
   })
 

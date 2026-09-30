@@ -37,6 +37,7 @@
     "lint": "oxlint .",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "test:browser:engines": "vitest run --config ./vitest.browser.engines.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

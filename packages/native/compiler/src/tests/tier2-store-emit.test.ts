@@ -63,7 +63,7 @@ describe('Tier-2 — @pyreon/store Strategy-B emit v1 (Gap 4 PR-4)', () => {
     const src = readFileSync(FIXTURE, 'utf8')
     const result = transform(src, { target: 'kotlin' })
     expect(result.code).toContain('object PyreonStore_counter : PyreonStore')
-    expect(result.code).toContain('var count by mutableStateOf(0)')
+    expect(result.code).toContain('var count by mutableStateOf(0L)')
     expect(result.code).toContain('var label by mutableStateOf("counter")')
   })
 

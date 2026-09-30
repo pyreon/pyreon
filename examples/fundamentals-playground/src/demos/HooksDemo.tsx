@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 import {
   useClipboard,
   useDebouncedValue,
@@ -15,8 +15,8 @@ export function HooksDemo() {
   const open = useToggle(false)
 
   // useDebouncedValue — debounce a signal by ms
-  const query = signal('')
-  const debouncedQuery = useDebouncedValue(query, 300)
+  let query = state('')
+  const debouncedQuery = useDebouncedValue(signalOf<typeof query>(query), 300)
 
   // useClipboard — write to clipboard, auto-resets `copied` after 2s
   const clipboard = useClipboard()
@@ -67,11 +67,11 @@ export function HooksDemo() {
           type="text"
           data-testid="hooks-debounce-input"
           placeholder="Type something…"
-          value={() => query()}
-          onInput={(e) => query.set(e.currentTarget.value)}
+          value={() => query}
+          onInput={(e) => { query = e.currentTarget.value }}
         />
         <p style="margin-top: 8px; font-size: 13px">
-          Live: <strong data-testid="hooks-live">{() => query() || '(empty)'}</strong>
+          Live: <strong data-testid="hooks-live">{() => query || '(empty)'}</strong>
           {' · '}
           Debounced:{' '}
           <strong data-testid="hooks-debounced">

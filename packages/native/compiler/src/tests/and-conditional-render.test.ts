@@ -41,7 +41,7 @@ describe('`{cond && <JSX/>}` conditional render → `if cond { view }`', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('if (v) {')
     expect(out).toContain('Text(text = "shown")')
-    expect(out).toContain('if (n > 0) {')
+    expect(out).toContain('if (n > 0L) {')
     expect(out).not.toContain('v && Text')
     expect(out).not.toContain('&& Text(text = "shown")')
     expect(out).not.toContain('"${v &&')

@@ -25,7 +25,7 @@ describe('synthesized data classes — @Serializable consistency', () => {
       `,
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('@Serializable\ndata class AppData(val name: String, val age: Int)')
+    expect(out).toContain('@Serializable\ndata class AppData(val name: String, val age: Long)')
     // Spelled with the PyreonFetchJson prefix on purpose: the bare
     // `Json.decodeFromString<…>` is a SUBSTRING of it, so the old assertion
     // kept passing after the decode moved to the parity-configured reader —
