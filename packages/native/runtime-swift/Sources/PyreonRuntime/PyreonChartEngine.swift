@@ -3415,8 +3415,10 @@ public func gradientSolid(_ g: PyreonChartGradient, _ fallback: String) -> Strin
     return g.stops[0].color
   }
 
+public func isFiniteChartNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
+
 public func plain(_ v: Double) -> String {
-    if !isFiniteNumber(v) {
+    if !isFiniteChartNumber(v) {
       if !(v == v) {
         return "NaN"
       }
@@ -3533,7 +3535,7 @@ public func padded(_ v: Double, _ width: Int) -> String {
   }
 
 public func formatDate(_ ms: Double, _ pattern: String) -> String {
-    if !isFiniteNumber(ms) {
+    if !isFiniteChartNumber(ms) {
       return ""
     }
     let days = floor(Double(ms / Double(DAY_MS)))
@@ -3672,7 +3674,7 @@ public func niceDomain(_ d: Domain, _ targetCount: Double) -> Domain {
     return Domain(min: floor(Double(d.min / step)) * step, max: ceil(Double(d.max / step)) * step)
   }
 
-public func isFiniteNumber(_ v: Double) -> Bool { finiteNumber(v) }
+public func isFiniteNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
 
 public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
     var out: [Tick] = []
@@ -13751,7 +13753,7 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
     }
     for i in 0..<n {
       let v = values[i]
-      if !isFiniteNumber(v) {
+      if !isFiniteChartNumber(v) {
         return out
       }
     }
