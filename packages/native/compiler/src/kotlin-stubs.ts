@@ -1160,8 +1160,9 @@ class PyreonStream<E>(val maxEvents: Long = 1000L) {
   fun abort() {}
   fun restart() {}
   fun stop() {}
-  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: (PyreonSseMessage) -> E) {}
-  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: (String) -> E) {}
+  fun idle() {}
+  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", onEvent: ((E) -> Unit)? = null, decode: (PyreonSseMessage) -> E) {}
+  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", onEvent: ((E) -> Unit)? = null, decode: (String) -> E) {}
 }
 
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
@@ -2692,11 +2693,11 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> = cmds
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonChartDouble(v: Long): Double = v.toDouble()
 fun pyreonChartString(v: String): String = v
 fun pyreonChartString(v: Double): String = ""
 fun pyreonChartString(v: Int): String = ""
 fun pyreonChartString(v: Long): String = ""
-fun pyreonChartDouble(v: Long): Double = v.toDouble()
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""

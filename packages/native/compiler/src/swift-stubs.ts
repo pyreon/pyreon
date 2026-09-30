@@ -2006,8 +2006,9 @@ public final class PyreonStream<E> {
   public func fail(_ failure: Error) {}
   public func abort() {}
   public func restart() {}
-  @MainActor public func runSse(_ request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: @escaping (PyreonSseMessage) throws -> E) async {}
-  @MainActor public func runNdjson(_ request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: @escaping (String) throws -> E) async {}
+  public func idle() {}
+  @MainActor public func runSse(_ request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", onEvent: ((E) -> Void)? = nil, decode: @escaping (PyreonSseMessage) throws -> E) async {}
+  @MainActor public func runNdjson(_ request: PyreonStreamRequest, accept: String = "application/x-ndjson", onEvent: ((E) -> Void)? = nil, decode: @escaping (String) throws -> E) async {}
 }
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):

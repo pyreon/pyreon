@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { bars, line } from './marks'
+import { PieChart } from './PieChart'
 import { PlotChart } from './Chart'
 import { prepareCanvas } from './canvas-web'
 
@@ -152,6 +153,15 @@ describe('the server first-frame placeholder', () => {
       PlotChart<{ v: number }>({ data: [{ v: 1 }, { v: 2 }], marks: [bars((d) => d.v)], width: 200, height: 100, animate: false }),
     )
     await flush()
+    expect(container.querySelector('[data-pyreon-chart-frame]')).toBeNull()
+  })
+
+  it('a canvas-hosted family removes it too, once the canvas has painted', async () => {
+    const { container } = mountInBrowser(() =>
+      PieChart<{ v: number }>({ data: [{ v: 1 }, { v: 2 }], value: (d) => d.v, label: (_d, i) => String(i), width: 200, height: 100 }),
+    )
+    await flush()
+    expect(container.querySelector('canvas')).not.toBeNull()
     expect(container.querySelector('[data-pyreon-chart-frame]')).toBeNull()
   })
 })

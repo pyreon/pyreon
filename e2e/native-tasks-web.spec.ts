@@ -196,6 +196,30 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([])
   })
 
+  // The web third of the useStream proof. The native device gates assert the
+  // SAME rendered log against the SAME server, so this is what makes the
+  // lowering's claim "the web's semantics" checkable rather than asserted:
+  // a mid-event drop reconnects with Last-Event-ID (the server echoes it into
+  // `resumed`), and an `enabled`-gated NDJSON stream stays idle until tapped,
+  // then its `onEvent` sums the rows.
+  test('streams: SSE resumes after a mid-event drop; gated NDJSON runs onEvent', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('login-username').fill('ada')
+    await page.getByTestId('login-submit').click()
+    await expect(page.getByTestId('tasks-page')).toBeVisible()
+    await page.getByTestId('tasks-streams').click()
+    await expect(page.getByTestId('streams-page')).toBeVisible()
+
+    await expect(page.getByTestId('nd-status')).toHaveText('idle')
+    await expect(page.getByTestId('sse-log')).toHaveText('1:1@,2:2@,3:3@2,4:4@2', { timeout: 20_000 })
+    await expect(page.getByTestId('sse-status')).toHaveText('closed')
+    await expect(page.getByTestId('nd-status')).toHaveText('idle')
+
+    await page.getByTestId('nd-start').click()
+    await expect(page.getByTestId('nd-sum')).toHaveText('6')
+    await expect(page.getByTestId('nd-status')).toHaveText('closed')
+  })
+
   test('url-state writes through to the URL', async ({ page }) => {
     // The one behaviour that is genuinely web-specific: on native the router
     // holds the query, on web it must reach `location.search`. A lowering that

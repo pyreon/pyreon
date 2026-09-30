@@ -14,7 +14,7 @@ import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
 import { getFrameSerializer } from './frame-seam'
-import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph } from './keyed-morph'
+import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph, morphMatches } from './keyed-morph'
 import type { KeyedGeo } from './keyed-morph'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { placeLegend } from './legend'
@@ -658,8 +658,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // Keyed: realign the previous values to the new rows, so the shape
       // always matches and each row tweens from its own old value.
       if (enabled && lastValues !== null && keys !== null && lastKeys !== null && lastValues.length === cur.length && !sameKeys(lastKeys, keys)) {
-        // Morphable (plain bars / lines): slide, grow in and shrink out by key.
-        if (geoSnap !== null && canKeyMorph(spec)) {
+        // Morphable (bars, lines, stacks, groups): slide, grow in and shrink out by key.
+        if (geoSnap !== null && canKeyMorph(spec) && morphMatches(geoSnap, spec)) {
           morphFrom = geoSnap
           lastValues = cur
           lastKeys = keys

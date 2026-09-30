@@ -52,18 +52,18 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@tanstack/form-core": "^1.33.5",
-    "arktype": "^2.2.3",
+    "arktype": "^2.2.5",
     "formik": "^2.4.9",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-hook-form": "^7.88.0"
+    "react-hook-form": "^7.89.0"
   },
   "publishConfig": {
     "access": "public"

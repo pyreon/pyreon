@@ -43,7 +43,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/core": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/router": "workspace:*",

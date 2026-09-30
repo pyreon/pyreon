@@ -47,10 +47,10 @@
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser": "^4.1.11",
-    "@vitest/browser-playwright": "^4.1.11",
-    "@vitest/coverage-v8": "^4.1.11",
-    "happy-dom": "^20.11.6",
-    "vitest": "^4.1.11"
+    "@vitest/browser": "^5.0.2",
+    "@vitest/browser-playwright": "^5.0.2",
+    "@vitest/coverage-v8": "^5.0.2",
+    "happy-dom": "^20.14.5",
+    "vitest": "^5.0.2"
   }
 }

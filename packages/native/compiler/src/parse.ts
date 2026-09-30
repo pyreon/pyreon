@@ -5,7 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
@@ -846,6 +846,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Refine the signal's number type to Double from its fractional literal
   // initializer — additive (only flips number→float on a fractional).
   refineSignalNumberFloats(components, moduleDecls)
+  refineChartFormatterParams(components, ctx.helperFns)
 
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
@@ -5951,6 +5952,27 @@ function isFractionalLiteral(e: ExprIR): boolean {
  * `{ kind:'number', float:true }` on fractional-literal evidence; integer
  * signals and arrays are never touched (zero regression).
  */
+/** The chart props whose value is called as `(Double) -> String`. */
+const CHART_FORMATTER_PROPS: ReadonlySet<string> = new Set(['format', 'xFormat', 'yFormat', 'y2Format'])
+
+function refineChartFormatterParams(components: ComponentIR[], helpers: Extract<DeclIR, { kind: 'function' }>[]): void {
+  const widen = (name: string, locals: DeclIR[]): void => {
+    const fn = locals.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === name) ?? helpers.find((h) => h.name === name)
+    if (fn === undefined || fn.params.length !== 1) return
+    const p = fn.params[0]!
+    if (p.type.kind === 'number' && p.type.float !== true) p.type = { kind: 'number', float: true }
+  }
+  for (const c of components) {
+    forEachExpr(c.returnExpr, (n) => {
+      if (n.kind !== 'jsx-element') return
+      if (!isChartHostTag(n.tag) && !GRAMMAR_CONFIG_TAGS.includes(n.tag) && n.tag !== 'Chart') return
+      for (const a of n.attrs) {
+        if (a.kind === 'attr' && CHART_FORMATTER_PROPS.has(a.name) && a.value.kind === 'identifier') widen(a.value.name, c.decls)
+      }
+    })
+  }
+}
+
 function refineSignalNumberFloats(components: ComponentIR[], moduleDecls: readonly ModuleDeclIR[] = []): void {
   for (const c of components) {
     for (const d of c.decls) {

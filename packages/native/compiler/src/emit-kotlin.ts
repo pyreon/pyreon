@@ -2759,10 +2759,25 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
         .join(', ')})`,
     )
   }
+  // A runtime body is serialized per run; it is ALSO in the key, so a change
+  // re-opens the stream — the web's tracked-source semantic.
+  const bodyJson = d.requestBodyExpr !== undefined ? emitKotlinExpr(d.requestBodyExpr, 0) : undefined
   if (d.requestBody !== undefined) req.push(`body = ${kotlinStr(d.requestBody)}`)
+  else if (bodyJson !== undefined) req.push(`body = ${bodyJson}`)
   const request = `PyreonStreamRequest(${req.join(', ')})`
   const data = kotlinType(d.dataType, ctx)
-  const out = [`  DisposableEffect("\${${url}}#\${${name}.restartTick.value}") {`]
+  const enabled = d.enabled !== undefined ? emitKotlinExpr(d.enabled, 0) : undefined
+  // Only the parts that exist join the key, so a plain stream's emit is unchanged.
+  const key = [`\${${url}}`, `\${${name}.restartTick.value}`]
+  if (enabled !== undefined) key.push(`\${${enabled}}`)
+  if (bodyJson !== undefined) key.push(`\${${bodyJson}}`)
+  const onEvent =
+    d.onEvent !== undefined
+      ? `, onEvent = { ${d.onEvent.param === '_' ? '_' : kotlinIdent(d.onEvent.param)} -> ${d.onEvent.body.map((st) => emitKotlinStatement(st, 6, ctx)).join('; ')} }`
+      : ''
+  const out = [`  DisposableEffect("${key.join('#')}") {`]
+  const pad = enabled !== undefined ? '      ' : '    '
+  if (enabled !== undefined) out.push(`    if (${enabled}) {`)
   if (d.format === 'sse') {
     const opts: string[] = []
     if (d.events) opts.push(`events = listOf(${d.events.map((e) => kotlinStr(e)).join(', ')})`)
@@ -2774,11 +2789,17 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
     )
     const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
     out.push(
-      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
+      `${pad}${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}${onEvent}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
     )
   } else {
     const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
-    out.push(`    ${name}.startNdjson(${request}${accept}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+  }
+  if (enabled !== undefined) {
+    // The web's disabled branch: stop, read `idle`, keep what was received.
+    out.push(`    } else {`)
+    out.push(`      ${name}.idle()`)
+    out.push(`    }`)
   }
   out.push(`    onDispose { ${name}.stop() }`)
   out.push(`  }`)
@@ -13204,6 +13225,15 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('val pyreonCats: List<String> = listOf<String>()')
     if (fullA11y) lets.push('val pyreonA11yCats: List<String> = listOf<String>()')
   }
+  // Mirror of the Swift emitter: `by` keys each drawn row, over the same rows as the values.
+  const byAcc = chartAttrExprKotlin(e, 'by')
+  let keyed = false
+  if (byAcc !== undefined) {
+    const body = kotlinAccessorExpr(byAcc, tag, 'by', indent)
+    if (body === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonRowKeys: List<String> = ${kotlinPlotRowMap(rows, `pyreonChartString(${body})`, windowed, decimated)}`)
+    keyed = true
+  }
   const xValueAcc = chartAttrExprKotlin(e, 'xValue')
   if (xValueAcc !== undefined) {
     const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
@@ -13302,6 +13332,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     }
     specArgs.push(`${p.name} = ${p.kind === 'string' ? kotlinStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
+  if (keyed) specArgs.push('rowKeys = pyreonRowKeys')
   const magicBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
   // Applied before the brush, which only re-colours out-of-brush datums and must see the series pins already in the fills it starts from.
   const specBuilt = seriesPinning ? `applySeriesSelection(${magicBuilt}, pyreonSelectedSeries)` : magicBuilt

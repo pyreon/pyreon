@@ -127,16 +127,29 @@ export function C() { return <Chart data={ROWS} x="m"><Line y="a" /><Axis y tick
 })
 
 describe('<Chart by> on native', () => {
-  it('warns by name that keyed matching is web-only, and still lowers the chart', () => {
-    const src = `import { Bar, Chart } from '@pyreon/charts'
+  const src = `import { Bar, Chart } from '@pyreon/charts'
 interface Row { id: string; v: number }
-const ROWS: Row[] = [{ id: 'a', v: 1 }]
+const ROWS: Row[] = [{ id: 'a', v: 1 }, { id: 'b', v: 2 }]
 export function C() { return <Chart data={ROWS} x="id" by="id"><Bar y="v" /></Chart> }
 `
-    for (const target of ['swift', 'kotlin'] as const) {
-      const r = transform(src, { target })
-      expect(r.warnings.join('\n')).toContain('<Chart by>')
-      expect(r.code).toContain('PyreonChartCanvas')
-    }
+  it('lowers `by` to the spec\'s rowKeys (one key per drawn row) with no warning, and compiles', () => {
+    const sw = transform(src, { target: 'swift' })
+    const kt = transform(src, { target: 'kotlin' })
+    expect(sw.warnings).toEqual([])
+    expect(kt.warnings).toEqual([])
+    expect(sw.code).toContain('let pyreonRowKeys: [String] = ')
+    expect(sw.code).toMatch(/ChartSpec\([^\n]*rowKeys: pyreonRowKeys\)/)
+    expect(kt.code).toContain('val pyreonRowKeys: List<String> = ')
+    expect(kt.code).toMatch(/ChartSpec\([^\n]*rowKeys = pyreonRowKeys/)
+    const s = validateSwiftWithStubs(sw.code)
+    if (!s.skipped) expect(s.ok, s.error).toBe(true)
+    const k = validateKotlin(kt.code)
+    if (!k.skipped) expect(k.ok, k.error).toBe(true)
+  })
+
+  it('an unkeyed chart carries no rowKeys', () => {
+    const unkeyed = src.replace(' by="id"', '')
+    expect(transform(unkeyed, { target: 'swift' }).code).not.toContain('rowKeys')
+    expect(transform(unkeyed, { target: 'kotlin' }).code).not.toContain('rowKeys')
   })
 })

@@ -162,6 +162,33 @@ fun testContainer() {
     check(s.restartTick.value == tick + 1) { "restart bumps the effect key" }
 }
 
+/** `onEvent` runs once per event that lands, after the state write, in order. */
+fun testOnEvent() {
+    val seen = java.util.Collections.synchronizedList(ArrayList<String>())
+    val s = PyreonStream<Int>()
+    s.startNdjson(
+        PyreonStreamRequest(url = "http://x"),
+        transport = Scripted(listOf(200 to "1\n2\n3\n")),
+        onEvent = { v -> seen.add("$v:${s.events.value.size}") },
+    ) { it.trim().toInt() }
+    awaitStatus(s, "closed", "error")
+    // The size read inside the callback proves the push happened FIRST.
+    check(seen == listOf("1:1", "2:2", "3:3")) { "onEvent per event, after the push: $seen" }
+}
+
+/** `enabled` → false: stop, read `idle`, keep what was received. */
+fun testIdle() {
+    val s = PyreonStream<Int>()
+    s.begin()
+    s.push(4)
+    s.idle()
+    check(s.status.value == "idle") { "idle reads idle: ${s.status.value}" }
+    check(s.events.value == listOf(4)) { "idle keeps the events: ${s.events.value}" }
+    s.abort()
+    s.idle()
+    check(s.status.value == "closed") { "idle after abort is a no-op, like the web effect" }
+}
+
 fun main() {
     testGrammar()
     testDecoder()
@@ -171,5 +198,7 @@ fun main() {
     testLoopGivesUpOnNonRetryable()
     testNdjsonLoop()
     testContainer()
+    testOnEvent()
+    testIdle()
     println("[PyreonStreamTest] all checks passed")
 }

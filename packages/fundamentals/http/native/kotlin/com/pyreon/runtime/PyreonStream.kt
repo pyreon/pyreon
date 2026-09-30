@@ -387,6 +387,18 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         restartTick.value = restartTick.value + 1
     }
 
+    /**
+     * `enabled` turned false: stop the running stream and read `idle`, keeping
+     * the events already received — the web hook's disabled branch
+     * (`stop(); status.set('idle')`). A no-op after [abort], exactly as the web
+     * effect returns before reading `enabled` once aborted.
+     */
+    public fun idle() {
+        if (aborted) return
+        stop()
+        status.value = "idle"
+    }
+
     /** End the running stream without touching the observable state (dispose). */
     public fun stop() {
         synchronized(lock) {
@@ -403,10 +415,11 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         options: PyreonSseOptions = PyreonSseOptions(),
         accept: String = "text/event-stream",
         transport: PyreonStreamTransport = PyreonStreamHttpTransport,
+        onEvent: ((E) -> Unit)? = null,
         decode: (PyreonSseMessage) -> E,
     ) {
         val allowed = options.events?.toSet()
-        start(request, accept, true, options.reconnect, options.lastEventId, transport, { msg ->
+        start(request, accept, true, options.reconnect, options.lastEventId, transport, onEvent, { msg ->
             if (allowed != null && msg.type !in allowed) {
                 null
             } else {
@@ -420,9 +433,10 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         request: PyreonStreamRequest,
         accept: String = "application/x-ndjson",
         transport: PyreonStreamTransport = PyreonStreamHttpTransport,
+        onEvent: ((E) -> Unit)? = null,
         decode: (String) -> E,
     ) {
-        start(request, accept, false, null, null, transport, null) { line, text ->
+        start(request, accept, false, null, null, transport, onEvent, null) { line, text ->
             try { decode(text) } catch (e: Throwable) { throw PyreonStreamError.Parse(line, text, e) }
         }
     }
@@ -434,6 +448,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
         policy: PyreonStreamReconnect?,
         initialId: String?,
         transport: PyreonStreamTransport,
+        onEvent: ((E) -> Unit)?,
         onSse: ((PyreonSseMessage) -> E?)?,
         onLine: ((Int, String) -> E)?,
     ) {
@@ -444,7 +459,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
             session = s
         }
         begin()
-        val thread = Thread({ s.run(request, accept, sse, policy, initialId, transport, onSse, onLine) }, "pyreon-stream")
+        val thread = Thread({ s.run(request, accept, sse, policy, initialId, transport, onEvent, onSse, onLine) }, "pyreon-stream")
         thread.isDaemon = true
         s.thread = thread
         thread.start()
@@ -471,6 +486,7 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
             policy: PyreonStreamReconnect?,
             initialId: String?,
             transport: PyreonStreamTransport,
+            onEvent: ((E) -> Unit)?,
             onSse: ((PyreonSseMessage) -> E?)?,
             onLine: ((Int, String) -> E)?,
         ) {
@@ -520,13 +536,22 @@ public class PyreonStream<E>(public val maxEvents: Long = 1000L) {
                                     if (event != null && live()) {
                                         failures = 0
                                         push(event)
+                                        // After the state write, like the web's
+                                        // `options.onEvent?.(event, queryClient)`.
+                                        // Runs on this stream's thread: Compose
+                                        // state writes are thread-safe, and
+                                        // events stay in wire order.
+                                        onEvent?.invoke(event)
                                     }
                                 }
                             } else if (onLine != null) {
                                 val hit = lines.line(line)
                                 if (hit != null) {
                                     val event = onLine(hit.first, hit.second)
-                                    if (live()) push(event)
+                                    if (live()) {
+                                        push(event)
+                                        onEvent?.invoke(event)
+                                    }
                                 }
                             }
                         }

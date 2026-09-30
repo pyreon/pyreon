@@ -158,9 +158,29 @@ export type DrawCmd =
       grad?: ChartGradient | undefined
       /** Paint a repeating overlay clipped to the shape. */
       pattern?: ChartPattern | undefined
+      /**
+       * The row key this bar belongs to — set only when the spec carries
+       * `rowKeys` (a keyed `<Chart by>` on native). A host that tweens draw
+       * lists matches keyed commands by key, the n-th command with a key in
+       * the old list to the n-th with it in the new, so a row slides between
+       * slots instead of being matched by position. Absent serializes as before.
+       */
+      key?: string | undefined
+      /** Where this bar grows from and shrinks to: the rect collapsed onto its zero-side edge (`growEdgeRect`). Set with `key`. */
+      enter?: Rect | undefined
     }
   | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double; dash?: Double[] | undefined }
-  | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double; dash?: Double[] | undefined }
+  | {
+      kind: 'polyline'
+      points: Pt[]
+      /** One row key per point — set only when the spec carries `rowKeys` and the line's points are its rows one-to-one. */
+      pointKeys?: string[] | undefined
+      /** The series a keyed run belongs to (its label), so a line split by gaps matches its points across runs. Set with `pointKeys`. */
+      key?: string | undefined
+      stroke: string
+      width: Double
+      dash?: Double[] | undefined
+    }
   | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined; pattern?: ChartPattern | undefined }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {
@@ -186,6 +206,8 @@ export type DrawCmd =
       stroke?: string | undefined
       /** The halo's width in px (ECharts' `textBorderWidth`, 2 by default). */
       strokeWidth?: Double | undefined
+      /** The row key of a keyed chart's value label: a host tweening by key hides it until the tween lands, as the web morph does. */
+      key?: string | undefined
     }
   /**
    * Clip every following command to `rect` until the matching `unclip` — a

@@ -1,4 +1,6 @@
+import { isServer, signal } from '@pyreon/reactivity'
 import { nativeCompat } from './compat-marker'
+import { createContext, provide } from './context'
 import { Fragment, h } from './h'
 import type { Props, VNode, VNodeChild } from './types'
 
@@ -43,6 +45,53 @@ export function _setSuspenseHydrating(v: boolean): boolean {
   return prev
 }
 
+// ─── Boundary registration (the React / Vue model) ───────────────────────────
+/**
+ * The nearest `<Suspense>`, as seen by an async DESCENDANT. A still-loading
+ * `lazy()` (or async component) anywhere below the boundary — not only its
+ * direct child — registers its settle promise here, and the boundary shows its
+ * fallback until every registered load has settled.
+ *
+ * `pending()` is a signal (the number of unsettled registrations). Only the
+ * DOM renderer acts on it: it keeps the boundary's content MOUNTED but moves it
+ * off-screen and shows the fallback in its place, so a descendant that suspends
+ * costs neither its siblings' state nor a second mount. The server needs none
+ * of this — both renderers already wait for every lazy / async component
+ * before rendering it.
+ *
+ * @internal Consumed by `lazy()`, the compat lazies and `@pyreon/runtime-dom`.
+ */
+export interface SuspenseBoundary {
+  /** Register a load; the fallback shows until it settles. A promise that rejects counts as settled. */
+  register(settled: Promise<unknown>): void
+  /** Number of registered loads that have not settled. */
+  readonly pending: () => number
+  /** The boundary's `fallback` prop, resolved. */
+  readonly fallback: () => VNodeChild
+}
+
+/** @internal See {@link SuspenseBoundary}. */
+export const SuspenseBoundaryContext = createContext<SuspenseBoundary | null>(null)
+
+function createSuspenseBoundary(fallback: () => VNodeChild): SuspenseBoundary {
+  const count = signal(0)
+  const settle = () => count.update((n) => n - 1)
+  return {
+    register(settled) {
+      // Hydrating over server content: the server already waited for this load
+      // and the DOM holds its content — the descendant's own hydration keeps
+      // that content standing until the chunk lands. Showing the fallback
+      // would hide exactly what hydration is adopting. The server itself never
+      // needs to show anything either.
+      if (_hydrating || isServer) return
+      count.update((n) => n + 1)
+      settled.then(settle, settle)
+    },
+    pending: count,
+    fallback,
+  }
+}
+
 /**
  * Suspense — shows `fallback` while a lazy child component is still loading.
  *
@@ -63,6 +112,14 @@ function Suspense(props: { fallback: VNodeChild; children?: VNodeChild }): VNode
       '[Pyreon] <Suspense> is missing a `fallback` prop. Provide fallback UI to show while loading.',
     )
   }
+
+  const fallback = (): VNodeChild => {
+    const fb = props.fallback
+    return typeof fb === 'function' ? (fb as () => VNodeChild)() : fb
+  }
+  // Descendants below the direct child register with this boundary (see
+  // `SuspenseBoundary`); the DOM renderer shows the fallback while any is pending.
+  provide(SuspenseBoundaryContext, createSuspenseBoundary(fallback))
 
   return h(Fragment, null, () => {
     const ch = props.children
