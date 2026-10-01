@@ -443,14 +443,18 @@ jobs:
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
+            -parallel-testing-enabled NO \
+            -test-repetition-relaunch-enabled YES \
             -retry-tests-on-failure \
             -test-iterations 3 \
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug
+            -configuration Debug \
+            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
 
       # ── Gap 7 part (a) — XCUITest coverage beyond TodoMVC ──
       # The audit (2026-06-05 native-readiness) explicitly calls out
@@ -510,14 +514,18 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
+          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
+            -parallel-testing-enabled NO \
+            -test-repetition-relaunch-enabled YES \
             -retry-tests-on-failure \
             -test-iterations 3 \
             -project PyreonCounter.xcodeproj \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug
+            -configuration Debug \
+            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
 
       # THE REAL-APP GATE. Every step above builds a DEMO — one screen, one
       # list, navigation only. This one builds a realistic app and asserts a
@@ -535,14 +543,18 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
+          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
+            -parallel-testing-enabled NO \
+            -test-repetition-relaunch-enabled YES \
             -retry-tests-on-failure \
             -test-iterations 3 \
             -project PyreonFinance.xcodeproj \
             -scheme PyreonFinance \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug
+            -configuration Debug \
+            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
 
       # The useWebSocket device proof needs a live loopback peer — the iOS
       # Simulator shares the host loopback, so a background bun process is
@@ -588,14 +600,18 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
+          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
+            -parallel-testing-enabled NO \
+            -test-repetition-relaunch-enabled YES \
             -retry-tests-on-failure \
             -test-iterations 3 \
             -project PyreonRouterDemo.xcodeproj \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug
+            -configuration Debug \
+            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
 
       # Tasks showcase — Gap 5 PR-5.3(b) closure. Runs the
       # PyreonTasksUITests.swift suite (auth-gate + navigation +
@@ -646,14 +662,27 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
+          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
           xcodebuild test \
+            -parallel-testing-enabled NO \
+            -test-repetition-relaunch-enabled YES \
             -retry-tests-on-failure \
             -test-iterations 3 \
             -project PyreonTasks.xcodeproj \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug
+            -configuration Debug \
+            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
+
+      - name: Upload iOS test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-test-results
+          path: .ci-ios-results/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
 
       # ── Release & distribution: the iOS ARCHIVE lane ──
       # Every other xcodebuild invocation in this workflow is

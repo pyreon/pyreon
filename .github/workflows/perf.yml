@@ -103,7 +103,7 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bash scripts/install-playwright.sh chromium
 
       - name: Record
         # Dev mode only — preview (prod build) tree-shakes the counter
