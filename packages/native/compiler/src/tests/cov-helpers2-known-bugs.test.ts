@@ -35,42 +35,19 @@ export function App() {
   return (<Stack><WebView html="x" data={[...xs(), 9]} /></Stack>)
 }`
 
-describe('KNOWN BUG — an array SPREAD in a JSON position nests instead of flattening', () => {
-  it('reproduces: the spread argument is encoded as a NESTED array element', () => {
-    // `[...xs, 9]` is `[1, 2, 9]` in JS. `buildJsonLiteralParts`'s array arm
-    // walks `e.elements`, and a `spread` element matches none of the
-    // literal/array/object/paren cases — so it falls through to the generic
-    // "runtime value" tail and becomes ONE hole, which the emitter fills with
-    // `encode(xs)` == `[1,2]`. The emitted JSON is `[[1,2],9]`.
+describe('array spreads in JSON positions flatten their encoded fragments', () => {
+  it('splices the spread payload instead of encoding a nested array', () => {
     const sw = transform(SPREAD_JSON, { target: 'swift' }).code
-    expect(sw).toContain('"[\\(PyreonJSON.encode(xs)),9]"')
+    expect(sw).not.toContain('"[\\\\(PyreonJSON.encode(xs)),9]"')
+    expect(sw).toContain('String(PyreonJSON.encode(xs).dropFirst().dropLast())')
     const kt = transform(SPREAD_JSON, { target: 'kotlin' }).code
-    expect(kt).toContain('"[${PyreonJson.encode(xs)},9]"')
+    expect(kt).toContain('PyreonJson.encode(xs).drop(1).dropLast(1)')
   })
 
-  it.fails(
-    'KNOWN BUG: fix = handle `spread` inside the array arm of `buildJsonLiteralParts` — ' +
-      'either splice the spread argument into the surrounding array (a `concat`-shaped ' +
-      'runtime join) or return null so the caller keeps its own path. ' +
-      'Today `data={[...xs(), 9]}` ships `[[1,2],9]` to the hosted page where the web ' +
-      'ships `[1,2,9]` — a different SHAPE, read by `Object.keys`/indexing on the page.',
-    () => {
-      const sw = transform(SPREAD_JSON, { target: 'swift' }).code
-      // The nested form must NOT be what we emit.
-      expect(sw).not.toContain('"[\\(PyreonJSON.encode(xs)),9]"')
-    },
-  )
-
-  it.fails(
-    'KNOWN BUG: the diagnostic raised for this shape is the WRONG one — it says ' +
-      '"Spread arguments (`f(...args)`)", which is about a CALL spread, not an array ' +
-      'literal spread in a JSON position. Fix = raise a diagnostic naming the array/JSON ' +
-      'shape, or none at all once the lowering is correct.',
-    () => {
-      const w = transform(SPREAD_JSON, { target: 'swift' }).warnings.join('\n')
-      expect(w).not.toContain('Spread arguments (`f(...args)`)')
-    },
-  )
+  it('does not classify an array-element spread as an unsupported call spread', () => {
+    for (const target of ['swift', 'kotlin'] as const)
+      expect(transform(SPREAD_JSON, { target }).warnings).toEqual([])
+  })
 
   it('the NEIGHBOURING shapes are correct — this is specific to a spread', () => {
     const plain = `import { Stack, WebView } from '@pyreon/primitives'

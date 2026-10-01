@@ -194,6 +194,18 @@ The template `attrSetter` (`compiler/src/jsx.ts`, mirrored by `native/src/lib.rs
 
 ---
 
+### A JSON array spread is a fragment, not one encoded element.
+
+Native WebView payload lowering must flatten spread fragments and insert commas after discarding empty fragments; emitting `encode(xs)` as one array slot silently sends `[[1,2],9]` instead of `[1,2,9]`. Preserve this rule inside nested heterogeneous payloads. Swift fragment construction uses a typed local to avoid exponential inference of nested string interpolations. Lock: `native/compiler/src/tests/webview-json-spread-parity.test.ts` executes emitted expressions for empty, singleton and multi-element operands on both toolchains.
+
+---
+
+### An absent cooked tagged-template value does not mean empty text.
+
+CSS escapes such as `\2014` can leave JavaScript template quasis without a cooked value while their raw text remains intact. Native styled-template extraction falls back to raw text so one CSS escape cannot erase sibling declarations or interpolations. Lock: `native/compiler/src/tests/cov-parse-a-styled-css.test.ts`.
+
+---
+
 ### An object literal PMTC cannot type must warn, not fall back to a tuple.
 
 Struct synthesis needs a type for every field. A tuple fallback is invalid Kotlin (named arguments with no constructor) and a non-`Codable` Swift value that compiles and encodes wrong bytes. Shapes that defeat synthesis: an empty array field (`{ nodes, edges: [] }`), a lone empty array, a `null`/`undefined` field, a nested empty array, a mixed-type array, an array of arrays. The emitters warn at the bail site (`warnUntypeableObjectLiteral`, reason from `expr-utils.ts:explainUntypeableField`), which covers the whole class. The remedy is an annotated declaration (`signal<Shape>({…})`, `const x: Shape = {…}`), which lowers to a real struct on both targets. An object/array literal passed to `<WebView data={…}>` is JSON, not a model: it lowers to compile-time JSON with runtime parts interpolated (`buildJsonLiteralParts`); a non-literal keeps `encode(expr)`. A warning count is not a compile; `scripts/check-native-coverage.ts` webview-host entries carry snippets with real payload shapes so the compile pass exercises them.

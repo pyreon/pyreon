@@ -1111,7 +1111,9 @@ function cssTemplateToStyleObject(
     if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
   }
   for (let i = 0; i < quasis.length; i++) {
-    pushText(quasis[i]?.value?.cooked ?? '')
+    // Tagged templates retain raw CSS even when a CSS escape is invalid JS
+    // (for example \\2014). An absent cooked value must not erase its siblings.
+    pushText(quasis[i]?.value?.cooked ?? quasis[i]?.value?.raw ?? '')
     if (i < expressions.length) decls[decls.length - 1]!.push({ t: 'expr', node: expressions[i] })
   }
 

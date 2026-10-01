@@ -62,6 +62,7 @@ import {
   isReReadableExpr,
   substituteIdentifier,
   buildJsonLiteralParts,
+  type JsonLiteralPart,
   subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
@@ -12137,16 +12138,18 @@ function emitSwiftMessageHandler(handler: ExprIR): string {
 function swiftWebViewDataArg(dataExpr: ExprIR): string {
   const parts = buildJsonLiteralParts(dataExpr)
   if (parts === null) return `PyreonJSON.encode(${emitSwiftExpr(dataExpr, 0)})`
-  const body = parts
-    .map((p) =>
-      'static' in p
-        ? // Swift string escaping: backslash first (so the quote escape it
-          // introduces is not itself re-escaped), then quote.
-          p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-        : `\\(PyreonJSON.encode(${emitSwiftExpr(p.dyn, 0)}))`,
-    )
-    .join('')
-  return `"${body}"`
+  const render = (pieces: JsonLiteralPart[]): string => {
+    const body = pieces.map((p) => {
+      if ('static' in p) return p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      if ('dyn' in p) return `\\(PyreonJSON.encode(${emitSwiftExpr(p.dyn, 0)}))`
+      const segments = p.array.map((segment) => 'spread' in segment
+        ? `String(PyreonJSON.encode(${emitSwiftExpr(segment.spread, 0)}).dropFirst().dropLast())`
+        : render(segment.parts))
+      return `\\(({ () -> String in let fragments: [String] = [${segments.join(', ')}]; return "[" + fragments.filter { !$0.isEmpty }.joined(separator: ",") + "]" })())`
+    }).join('')
+    return `"${body}"`
+  }
+  return render(parts)
 }
 
 function swiftWebViewContentArg(

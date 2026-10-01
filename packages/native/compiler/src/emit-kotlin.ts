@@ -57,6 +57,7 @@ import {
   isCompoundExpr,
   substituteIdentifier,
   buildJsonLiteralParts,
+  type JsonLiteralPart,
   subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
@@ -10286,16 +10287,18 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
 function kotlinWebViewDataArg(dataExpr: ExprIR): string {
   const parts = buildJsonLiteralParts(dataExpr)
   if (parts === null) return `PyreonJson.encode(${emitKotlinExpr(dataExpr, 0)})`
-  const body = parts
-    .map((p) =>
-      'static' in p
-        ? // Kotlin string escaping: backslash, quote, and `$` (which would
-          // otherwise open an interpolation of its own).
-          p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
-        : `\${PyreonJson.encode(${emitKotlinExpr(p.dyn, 0)})}`,
-    )
-    .join('')
-  return `"${body}"`
+  const render = (pieces: JsonLiteralPart[]): string => {
+    const body = pieces.map((p) => {
+      if ('static' in p) return p.static.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$')
+      if ('dyn' in p) return `\${PyreonJson.encode(${emitKotlinExpr(p.dyn, 0)})}`
+      const segments = p.array.map((segment) => 'spread' in segment
+        ? `PyreonJson.encode(${emitKotlinExpr(segment.spread, 0)}).drop(1).dropLast(1)`
+        : render(segment.parts))
+      return `\${"[" + listOf(${segments.join(', ')}).filter { it.isNotEmpty() }.joinToString(",") + "]"}`
+    }).join('')
+    return `"${body}"`
+  }
+  return render(parts)
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (Kotlin). Mirror of

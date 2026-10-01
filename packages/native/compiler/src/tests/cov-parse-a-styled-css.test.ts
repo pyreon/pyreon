@@ -199,39 +199,20 @@ describe('styled() CSS template — an interpolation INSIDE the property name', 
 // KNOWN BUG — locked with `it.fails`, self-retiring when the product is fixed.
 // ---------------------------------------------------------------------------
 
-describe('KNOWN BUG — one CSS escape silently drops the WHOLE template', () => {
-  // `cssTemplateToStyleObject` reads each quasi as `quasis[i]?.value?.cooked ??
-  // ''` (parse.ts:963). In a TAGGED template a segment whose escape sequence is
-  // illegal in JS has `cooked === undefined` while `raw` still holds the text —
-  // that is precisely why tagged templates keep `raw`. Falling back to `''`
-  // therefore discards the segment's ENTIRE text, so every declaration in it
-  // disappears, with no warning.
-  //
-  // The trigger is an ordinary styled-components idiom: a CSS unicode escape
-  // (`content: "\2014"` — an em-dash). `\2` is a legacy octal escape, illegal
-  // in a template literal, so the quasi has no `cooked`. And it is
-  // shape-dependent, which is worse than uniform: `\f101` survives (`\f` is a
-  // valid JS escape) while `\2014` takes the whole block down, so the same file
-  // can lose one rule set and keep the next.
-  //
-  // FIX: fall back to `raw` rather than `''` — `quasis[i]?.value?.cooked ??
-  // quasis[i]?.value?.raw ?? ''`. CSS wants the raw text anyway; the cooked
-  // form would already be wrong for any escape CSS defines and JS does not.
-  const withEscape = styledCss('padding: 4px; content: "\\2014";')
+describe('CSS escapes preserve sibling declarations', () => {
+  it.each(['\\2014', '\\f101', '\\000041'])(
+    '%s keeps static declarations when a tagged template has no cooked value', (escape) => {
+      const source = styledCss(`padding: 4px; content: "${escape}"; opacity: 0.5;`)
+      expect(swift(source)).toContain('.padding(4)')
+      expect(swift(source)).toContain('.opacity(0.5)')
+      expect(kotlin(source)).toContain('padding')
+    },
+  )
 
-  it.fails('KNOWN BUG: a sibling declaration must survive a CSS unicode escape', () => {
-    expect(swift(withEscape)).toContain('.padding(4)')
-  })
-
-  it.fails('KNOWN BUG: or, failing that, the loss must be reported', () => {
-    expect(styledWarnings(withEscape)).not.toEqual([])
-  })
-
-  it('the silent whole-template drop it produces today, pinned', () => {
-    expect(swift(withEscape)).not.toContain('.padding(4)')
-    expect(styledWarnings(withEscape)).toEqual([])
-    // A JS-valid escape in the same position keeps everything — which is what
-    // makes the failure shape-dependent rather than uniform.
-    expect(swift(styledCss('padding: 4px; content: "\\f101";'))).toContain('.padding(4)')
+  it('retains declarations in separate quasis around a theme interpolation', () => {
+    const source = mod('const Boxy = styled(Stack)`padding: 4px; content: "\\2014"; color: ${() => "red"}; opacity: 0.5;`')
+    expect(swift(source)).toContain('.padding(4)')
+    expect(swift(source)).toContain('.opacity(0.5)')
+    expect(styledWarnings(source).join(' ')).toContain('color')
   })
 })
