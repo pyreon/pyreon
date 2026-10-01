@@ -413,22 +413,26 @@ describe('messages and spinner', () => {
   })
 
   it('colours only on a TTY, and never with NO_COLOR', () => {
-    setup(true)
-    intro('x')
-    expect(printed()).toContain(`${ESC}[`)
     const prev = process.env.NO_COLOR
-    process.env.NO_COLOR = '1'
     try {
+      delete process.env.NO_COLOR
       setup(true)
+      intro('x')
+      expect(printed()).toContain(`${ESC}[`)
+
+      process.env.NO_COLOR = '1'
+      setup(true)
+      intro('x')
+      expect(printed()).not.toContain(`${ESC}[`)
+
+      delete process.env.NO_COLOR
+      setup(false)
       intro('x')
       expect(printed()).not.toContain(`${ESC}[`)
     } finally {
       if (prev === undefined) delete process.env.NO_COLOR
       else process.env.NO_COLOR = prev
     }
-    setup(false)
-    intro('x')
-    expect(printed()).not.toContain(`${ESC}[`)
   })
 
   it('non-TTY spinner prints start and stop lines, no animation', () => {

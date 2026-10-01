@@ -910,7 +910,8 @@ final class PyreonRouterDemoUITests: XCTestCase {
     func test_deepLinkOpensTheRouteColdAndWarm() throws {
         let app = XCUIApplication()
 
-        // COLD: launch via the URL itself.
+        // Install/launch once, then terminate so the URL exercises a cold start.
+        // XCTest delivers through the OS without depending on Safari UI.
         app.launch()
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
@@ -918,14 +919,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
         app.terminate()
 
-        guard openURL("pyreondemo://about") else {
-            throw XCTSkip(
-                "Safari could not be driven on this runner (it never reached the "
-                    + "foreground, or its address bar never appeared), so the deep "
-                    + "link was never delivered. Skipped rather than failed: nothing "
-                    + "about the app under test was exercised."
-            )
-        }
+        XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "pyreondemo://about")))
         XCTAssertTrue(
             app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 30),
             "A cold launch via pyreondemo://about did not open the about route — the "
@@ -933,71 +927,13 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
 
         // WARM: the app is already running; hand it a different link.
-        guard openURL("pyreondemo://styles") else {
-            throw XCTSkip("Safari could not be driven on this runner for the warm link.")
-        }
+        XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "pyreondemo://styles")))
         XCTAssertTrue(
             app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 20),
             "A warm deep link did not navigate — the live router is not receiving "
                 + "links, so every link after launch is dropped"
         )
     }
-
-    /// Open a URL the way the OS would, reporting whether Safari could be
-    /// DRIVEN at all.
-    ///
-    /// XCUITest has no API for opening a URL, so this goes through Safari's
-    /// address bar — the standard approach, and closer to a real user's path
-    /// than any private hook. The return value exists because that dependency
-    /// fails in two very different ways:
-    ///
-    ///   * Safari never reaches the foreground, or its address field never
-    ///     appears. Nothing about the app under test has been exercised, and
-    ///     reporting a FAILURE there says the deep link is broken when what
-    ///     broke is the runner. A bounded retry was already added for this and
-    ///     was exhausted — all three launches failing means the simulator
-    ///     could not start Safari, which a fourth attempt does not fix.
-    ///   * Safari works and the app does not open the route. That IS the
-    ///     product failing, and the caller still asserts it.
-    ///
-    /// So this returns `false` only for the first kind. The route assertions
-    /// stay hard failures, and the deep-link proof still runs on every runner
-    /// where Safari comes up — which is nearly all of them.
-    private func openURL(_ url: String) -> Bool {
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        // Launch with a bounded RETRY. A single `launch()` is the flakiest line
-        // in this suite: on a loaded runner it intermittently returns without
-        // producing a process, and the next interaction dies with
-        // `Application 'com.apple.mobilesafari' does not have a process ID`.
-        //
-        // `terminate()` first on a retry, because the failure mode leaves a
-        // half-started Safari that a second `launch()` will not replace.
-        var launched = false
-        for attempt in 1...3 {
-            if attempt > 1 { safari.terminate() }
-            safari.launch()
-            if safari.wait(for: .runningForeground, timeout: 20) {
-                launched = true
-                break
-            }
-        }
-        if !launched { return false }
-
-        // The address field is a text field on the URL bar; its identifier has
-        // moved across iOS versions, so match either of the shipped ones.
-        let field = safari.textFields["Address"].exists
-            ? safari.textFields["Address"]
-            : safari.textFields.firstMatch
-        if !field.waitForExistence(timeout: 20) { return false }
-        field.tap()
-        field.typeText("\(url)\n")
-
-        // Safari asks before handing off to another app.
-        let open = safari.buttons["Open"]
-        if open.waitForExistence(timeout: 10) { open.tap() }
-        return true
-    }
-
 
     // Styling row — @pyreon/coolgrid, listed as supported since it landed but
     // never rendered on a device. The 12-column split is ASYMMETRIC (3/9) so

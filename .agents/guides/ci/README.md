@@ -110,3 +110,11 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 ## Bootstrap env vars
 
 `scripts/bootstrap.ts`: `PYREON_BOOTSTRAP_SKIP`, `PYREON_BOOTSTRAP_SKIP_NATIVE`, `PYREON_BOOTSTRAP_SOFT`, `PYREON_BOOTSTRAP_FORCE_FAIL`.
+
+## Browser and iOS runner reliability
+
+- All Linux Playwright installs use `bash scripts/install-playwright.sh <engines>`. The OS-dependency timeout runs **inside sudo**, with SIGKILL for the whole process group at the deadline. A runner-owned timeout around Playwright cannot terminate its root-owned apt descendants, leaving a dpkg lock that poisons every retry. A TERM-then-KILL timer can also leave a resistant descendant if its immediate child exits before escalation. Repair interrupted dpkg before retrying or falling back; never remove lock files or kill unrelated package-manager processes.
+- Chromium-only setup keeps the fallback to Ubuntu's preinstalled libraries. WebKit/Firefox dependencies and all browser downloads fail hard after bounded attempts. Downloads run as the runner user so they reconcile the restored browser store. Engine suites run only after successful setup; a setup failure already makes the required job red.
+- `Test (browser)` has a 35-minute backstop derived from both setup budgets (10 + 16 minutes including retries/repair/download kill grace), test work and shared setup. Keep the outer timeout above the sum when changing any inner budget.
+- iOS UI suites target the resolved simulator UDID with parallel testing disabled, so device state (appearance, location, URL delivery) belongs to the device configured by the workflow. Test retries relaunch the runner process. Each app writes a separate `.xcresult` bundle, uploaded after success or failure.
+- Deliver deep links through `XCUIDevice.shared.system.open(URL)` in XCUITest, then assert both cold and warm routes. Safari's address bar and confirmation sheet are unrelated dependencies and must not decide whether URL handling is tested. A failed route assertion stays a hard failure.

@@ -1159,23 +1159,7 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: |
-          # The recurring e2e / Test(browser) "cancelled" flake is the Playwright
-          # install hanging until the 15-min job timeout (the specs never run —
-          # the whole budget burns in this step). TWO independent apt hangs cause
-          # it, both addressed here:
-          #   1. `apt-get update` hangs on GitHub's packages.microsoft.com apt
-          #      sources (azure-cli + prod) when they 403 → strip them first.
-          #   2. The `apt-get install` of the OS deps hangs FETCHING the ~21 MB of
-          #      .deb archives from GitHub's apt mirror (observed: 14 min stuck at
-          #      "Need to get 21.1 MB" before cancellation).
-          # ubuntu-latest already ships Chromium's core libs, so the OS-dep install
-          # is best-effort + hard-timeout-bounded + non-fatal; the browser binary
-          # (from Playwright's own CDN, which never hangs) is what matters and is
-          # ALWAYS installed.
-          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
-          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
-          bunx playwright install chromium
+        run: bash scripts/install-playwright.sh chromium
       # Same shared-entry rule as the browser-test job above.
       - name: Save Playwright browsers (main only)
         if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
@@ -1313,12 +1297,7 @@ jobs:
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium (hydration cell)
         if: ${{ contains(matrix.members, 'cpa-smoke-app-node') }}
-        run: |
-          # Same bounded apt handling as the e2e jobs (see "Install Playwright
-          # Chromium" there): OS deps are best-effort, the browser is required.
-          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
-          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
-          bunx playwright install chromium
+        run: bash scripts/install-playwright.sh chromium
       # scaffold-smoke.ts accepts positional cell filters and runs the
       # matches sequentially:
       #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel cpa-smoke-app-static`
@@ -1558,9 +1537,10 @@ jobs:
     needs: [install, fast-gates]
     if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    # ~2.5 min for the Chromium pass (main, 2026-09); the cross-engine pass
-    # adds two bounded 300s apt attempts in the worst case plus its suites.
-    timeout-minutes: 25
+    # Composed outage bound: Chromium setup <= 10m, engine setup <= 16m
+    # (including repair/download retries and SIGKILL grace), ~3m tests +
+    # ~4m checkout/cache/bootstrap. 35m keeps the job above its inner bounds.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
@@ -1588,23 +1568,7 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
-        run: |
-          # The recurring e2e / Test(browser) "cancelled" flake is the Playwright
-          # install hanging until the 15-min job timeout (the specs never run —
-          # the whole budget burns in this step). TWO independent apt hangs cause
-          # it, both addressed here:
-          #   1. `apt-get update` hangs on GitHub's packages.microsoft.com apt
-          #      sources (azure-cli + prod) when they 403 → strip them first.
-          #   2. The `apt-get install` of the OS deps hangs FETCHING the ~21 MB of
-          #      .deb archives from GitHub's apt mirror (observed: 14 min stuck at
-          #      "Need to get 21.1 MB" before cancellation).
-          # ubuntu-latest already ships Chromium's core libs, so the OS-dep install
-          # is best-effort + hard-timeout-bounded + non-fatal; the browser binary
-          # (from Playwright's own CDN, which never hangs) is what matters and is
-          # ALWAYS installed.
-          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
-          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
-          bunx playwright install chromium
+        run: bash scripts/install-playwright.sh chromium
       # Populate the shared entry ONLY from main, so one copy serves every PR
       # instead of one copy per PR. `if: always()` is deliberate: a failing spec
       # must not throw away a browser download the next run would reuse.
@@ -1634,24 +1598,11 @@ jobs:
       # from Playwright's CDN and only runs on PRs touching an opted-in
       # package, so paying it per run is the cheaper side of that trade.
       - name: Install Playwright WebKit + Firefox (not cached)
+        id: engines-install
         if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' }}
-        run: |
-          # Unlike Chromium, these engines' OS libraries are NOT preinstalled on
-          # ubuntu-latest (WebKit needs GStreamer, libwoff, libmanette, …), so
-          # install-deps is required here, not best-effort. The known apt hang
-          # (see the Chromium step) is bounded per attempt and retried once;
-          # a second failure fails the step loudly rather than running engines
-          # that cannot launch.
-          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
-          ok=0
-          for attempt in 1 2; do
-            if timeout 300 bunx playwright install-deps webkit firefox; then ok=1; break; fi
-            echo "::warning::playwright install-deps attempt $attempt failed or timed out"
-          done
-          [ "$ok" = 1 ] || { echo "::error::Could not install WebKit/Firefox OS dependencies"; exit 1; }
-          bunx playwright install webkit firefox
+        run: bash scripts/install-playwright.sh webkit firefox
       - name: Test (browser engines — WebKit + Firefox)
-        if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' }}
+        if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' && steps.engines-install.outcome == 'success' }}
         env:
           ENGINE_SUITES: ${{ needs.install.outputs.browser-engines }}
         run: |

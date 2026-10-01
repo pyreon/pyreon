@@ -82,11 +82,18 @@ When CI fails on a gate not listed here, add a row in the same PR.
 | `check-lockfile-version` / `Install` fails with `Unknown lockfile version` | `bun.lock` was written by a bun newer than `.bun-version`. Bun rewrites the lockfile only when a resolution changes, so a mismatched local bun goes unnoticed until the first dependency edit; every installing job then dies at setup. | `bunx bun@<.bun-version> install` and commit. `BUN_LOCKFILE_SUPPORT` in `scripts/check-lockfile-version.ts` maps each pinned bun to the lockfile versions it can read; an unknown bun fails by name. |
 | `typecheck (…)`: `TS2307 Cannot find module '@pyreon/x/subpath'` | A `bun.lock` reset dropped a dependency edge. `git checkout <ref> -- bun.lock` stages the change, and a later commit includes it. CI's `--frozen-lockfile` then lacks the symlink that a local non-frozen install created. | `git diff <parent-branch> -- bun.lock` must be empty. After a lock reset, check `git diff --cached --name-only` and `git restore --staged bun.lock`. The lock's dep string must match `package.json` exactly (`workspace:*` ≠ `workspace:^`). |
 
+### Browser setup
+
+| Gate | When it trips | Fix |
+|---|---|---|
+| `Test (browser)` / e2e: apt timeout followed by a dpkg lock failure | A runner-owned timeout left Playwright's root-owned apt process alive | Use `scripts/install-playwright.sh`: root-owned group timeout with SIGKILL, bounded dpkg repair, then retry. Do not delete lock files. |
+
 ### Native
 
 | Gate | When it trips | Fix |
 |---|---|---|
 | `Build` / `Verify Modes` / `E2E` / `e2e (native-*-web)` red together after a shared-source change | A tri-target `examples/native-*-ios/src/App.tsx` gained an import the web sibling cannot resolve (native targets never read `node_modules`). Reported as a blank page. | `bun run check-shared-source-deps` names the package; add it to the web example's `package.json`, `bun install`, commit `bun.lock`. For rendering changes, run `bun run test:e2e:native-router-demo-web`. |
+| `iOS — xcodebuild`: Safari “Open” AX failure followed by launch timeouts | The deep-link proof depended on Safari UI; later retry attempts timed out launching the app | Open links with `XCUIDevice.shared.system.open`, assert cold and warm routes, keep UI tests serial on the configured UDID, and inspect the uploaded `.xcresult` bundle. |
 | `iOS — xcodebuild` red on a Keychain test that passes locally | `xcodebuild test … CODE_SIGNING_ALLOWED=NO`: an unsigned simulator app has no entitlements and securityd denies `SecItemAdd`. Local builds ad-hoc sign. xcodegen's `entitlements:` alone does not embed entitlements under ad-hoc signing; `CODE_SIGN_ENTITLEMENTS` does. | `bun run check-ios-signing-policy` enforces both: no `CODE_SIGNING_ALLOWED=NO` on `xcodebuild test` (allowed on `build`), and every `native-*-ios` example sets `CODE_SIGN_ENTITLEMENTS`. |
 | `native chart engine — generated, drift-locked` after an edit to `packages/fundamentals/charts/src/engine/*` | Those modules are `ENGINE_FILES`; the Swift/Kotlin engine is generated from them and committed. Without regeneration native keeps the old behaviour. | `bun packages/native/compiler/scripts/gen-chart-engine.ts`, commit `PyreonChartEngine.swift` / `.kt` / `chart-engine-structs.ts` with the source edit. Do not diagnose from the diff's Expected/Received labels — run the generator and check whether the diff is empty. |
 | Native lanes run on a PR that touches nothing native | — | Both native decide jobs use `scripts/native-surface-touched.ts` (fail-closed, unit-tested). Before trusting a directory-name regex, check every sibling that uses the name (`ls -d packages/*/*/native` — the JSX compiler's napi crate is `packages/core/compiler/native/`). |
