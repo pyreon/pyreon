@@ -77,10 +77,7 @@ afterEach(() => restore?.())
 function setup(tty: boolean, columns?: number) {
   const input = new FakeInput(tty)
   out = []
-  restore = setPromptIo({
-    input,
-    output: { isTTY: tty, columns, write: (s: string) => out.push(s) },
-  })
+  restore = setPromptIo({ input, output: { isTTY: tty, columns, write: (s: string) => out.push(s) } })
   return input
 }
 const printed = () => out.join('')
@@ -124,14 +121,7 @@ describe('decodeKeys', () => {
 describe('TTY prompts', () => {
   it('text: types, erases, submits; restores the terminal', async () => {
     const input = setup(true)
-    const value = await drive(
-      input,
-      text({ message: 'Name', placeholder: 'my-app' }),
-      'ab',
-      'x\u007f',
-      ' c',
-      '\r',
-    )
+    const value = await drive(input, text({ message: 'Name', placeholder: 'my-app' }), 'ab', 'x\u007f', ' c', '\r')
     expect(value).toBe('ab c')
     expect(input.raw).toBe(false)
     expect(input.paused).toBe(true)
@@ -146,10 +136,7 @@ describe('TTY prompts', () => {
 
   it('text: validate blocks submit and shows the message until fixed', async () => {
     const input = setup(true)
-    const p = text({
-      message: 'Name',
-      validate: (v) => (v.trim() ? undefined : 'Project name is required'),
-    })
+    const p = text({ message: 'Name', validate: (v) => (v.trim() ? undefined : 'Project name is required') })
     await tick()
     input.send('\r')
     expect(printed()).toContain('Project name is required')
@@ -163,19 +150,11 @@ describe('TTY prompts', () => {
       expect(isCancel(await drive(input, text({ message: 'x' }), 'abc', key))).toBe(true)
       input = setup(true)
       expect(
-        isCancel(
-          await drive(input, select({ message: 'x', options: [{ value: 1, label: 'one' }] }), key),
-        ),
+        isCancel(await drive(input, select({ message: 'x', options: [{ value: 1, label: 'one' }] }), key)),
       ).toBe(true)
       input = setup(true)
       expect(
-        isCancel(
-          await drive(
-            input,
-            multiselect({ message: 'x', options: [{ value: 1, label: 'one' }] }),
-            key,
-          ),
-        ),
+        isCancel(await drive(input, multiselect({ message: 'x', options: [{ value: 1, label: 'one' }] }), key)),
       ).toBe(true)
       input = setup(true)
       expect(isCancel(await drive(input, confirm({ message: 'x' }), key))).toBe(true)
@@ -191,15 +170,11 @@ describe('TTY prompts', () => {
 
   it('select: starts at initialValue, arrows (and j/k) move with wrap-around', async () => {
     let input = setup(true)
-    expect(
-      await drive(input, select({ message: 'Pick', options: OPTS, initialValue: 'b' }), '\r'),
-    ).toBe('b')
+    expect(await drive(input, select({ message: 'Pick', options: OPTS, initialValue: 'b' }), '\r')).toBe('b')
     input = setup(true)
     expect(await drive(input, select({ message: 'Pick', options: OPTS }), UP, '\r')).toBe('c')
     input = setup(true)
-    expect(
-      await drive(input, select({ message: 'Pick', options: OPTS }), DOWN, 'j', 'j', 'k', '\r'),
-    ).toBe('c')
+    expect(await drive(input, select({ message: 'Pick', options: OPTS }), DOWN, 'j', 'j', 'k', '\r')).toBe('c')
     input = setup(true)
     expect(await drive(input, select({ message: 'Pick', options: OPTS }), '\t', '\r')).toBe('b')
     expect(printed()).toContain('Beta')
@@ -207,13 +182,9 @@ describe('TTY prompts', () => {
 
   it('select and multiselect ignore unrelated keys', async () => {
     let input = setup(true)
-    expect(await drive(input, select({ message: 'Pick', options: OPTS }), 'x', LEFT, '\r')).toBe(
-      'a',
-    )
+    expect(await drive(input, select({ message: 'Pick', options: OPTS }), 'x', LEFT, '\r')).toBe('a')
     input = setup(true)
-    expect(
-      await drive(input, multiselect({ message: 'M', options: OPTS }), 'x', LEFT, ' ', '\r'),
-    ).toEqual(['a'])
+    expect(await drive(input, multiselect({ message: 'M', options: OPTS }), 'x', LEFT, ' ', '\r')).toEqual(['a'])
   })
 
   it('select: an unknown initialValue falls back to the first option; hint shows on the focused row', async () => {
@@ -228,43 +199,17 @@ describe('TTY prompts', () => {
   it('multiselect: space toggles, `a` toggles all, result keeps option order', async () => {
     let input = setup(true)
     expect(
-      await drive(
-        input,
-        multiselect({ message: 'M', options: OPTS, initialValues: ['c'] }),
-        ' ',
-        DOWN,
-        ' ',
-        '\r',
-      ),
+      await drive(input, multiselect({ message: 'M', options: OPTS, initialValues: ['c'] }), ' ', DOWN, ' ', '\r'),
     ).toEqual(['a', 'b', 'c'])
     input = setup(true)
-    expect(await drive(input, multiselect({ message: 'M', options: OPTS }), 'a', '\r')).toEqual([
-      'a',
-      'b',
-      'c',
-    ])
+    expect(await drive(input, multiselect({ message: 'M', options: OPTS }), 'a', '\r')).toEqual(['a', 'b', 'c'])
     input = setup(true)
     expect(
-      await drive(
-        input,
-        multiselect({ message: 'M', options: OPTS, initialValues: ['a', 'b', 'c'] }),
-        'a',
-        'k',
-        ' ',
-        '\r',
-      ),
+      await drive(input, multiselect({ message: 'M', options: OPTS, initialValues: ['a', 'b', 'c'] }), 'a', 'k', ' ', '\r'),
     ).toEqual(['c'])
     input = setup(true)
     expect(
-      await drive(
-        input,
-        multiselect({ message: 'M', options: OPTS, initialValues: ['a'], required: false }),
-        UP,
-        'j',
-        ' ',
-        '\t',
-        '\r',
-      ),
+      await drive(input, multiselect({ message: 'M', options: OPTS, initialValues: ['a'], required: false }), UP, 'j', ' ', '\t', '\r'),
     ).toEqual([])
   })
 
@@ -277,9 +222,7 @@ describe('TTY prompts', () => {
     input.send(' ', '\r')
     expect(await p).toEqual(['a'])
     input = setup(true)
-    expect(
-      await drive(input, multiselect({ message: 'M', options: OPTS, required: false }), '\r'),
-    ).toEqual([])
+    expect(await drive(input, multiselect({ message: 'M', options: OPTS, required: false }), '\r')).toEqual([])
   })
 
   it('groupMultiselect: headers are not focusable; items keep group order', async () => {
@@ -288,13 +231,7 @@ describe('TTY prompts', () => {
       input,
       groupMultiselect({
         message: 'Features',
-        options: {
-          State: [{ value: 's', label: 'store' }],
-          Data: [
-            { value: 'q', label: 'query' },
-            { value: 'f', label: 'form' },
-          ],
-        },
+        options: { State: [{ value: 's', label: 'store' }], Data: [{ value: 'q', label: 'query' }, { value: 'f', label: 'form' }] },
         initialValues: ['f'],
         required: false,
       }),
@@ -324,9 +261,7 @@ describe('TTY prompts', () => {
     expect(await drive(input, confirm({ message: 'ok?' }), LEFT, '\r')).toBe(false)
     input = setup(true)
     // Four toggles land back on the default.
-    expect(await drive(input, confirm({ message: 'ok?' }), UP, DOWN, `${ESC}[C`, '\t', '\r')).toBe(
-      true,
-    )
+    expect(await drive(input, confirm({ message: 'ok?' }), UP, DOWN, `${ESC}[C`, '\t', '\r')).toBe(true)
     input = setup(true)
     expect(await drive(input, confirm({ message: 'ok?', initialValue: false }), 'y')).toBe(true)
     input = setup(true)
@@ -337,13 +272,7 @@ describe('TTY prompts', () => {
 
   it('redraws in place: each frame clears exactly the lines the previous one used', async () => {
     const input = setup(true, 20)
-    const p = select({
-      message: 'Pick',
-      options: [
-        { value: 1, label: 'x'.repeat(30) },
-        { value: 2, label: 'y' },
-      ],
-    })
+    const p = select({ message: 'Pick', options: [{ value: 1, label: 'x'.repeat(30) }, { value: 2, label: 'y' }] })
     await tick()
     input.send(DOWN, '\r')
     await p
@@ -359,13 +288,7 @@ describe('non-TTY prompts (one line per answer)', () => {
     await tick()
     input.send('my-a', 'pp\n2\r\n')
     expect(await first).toBe('my-app')
-    const second = select({
-      message: 'Pick',
-      options: [
-        { value: 'a', label: 'A' },
-        { value: 'b', label: 'B' },
-      ],
-    })
+    const second = select({ message: 'Pick', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] })
     expect(await second).toBe('b')
     expect(input.paused).toBe(true)
   })
@@ -373,22 +296,8 @@ describe('non-TTY prompts (one line per answer)', () => {
   it('an empty line takes the default', async () => {
     const input = setup(false)
     const answers = Promise.all([
-      select({
-        message: 's',
-        options: [
-          { value: 'a', label: 'A' },
-          { value: 'b', label: 'B' },
-        ],
-        initialValue: 'b',
-      }),
-      multiselect({
-        message: 'm',
-        options: [
-          { value: 1, label: 'one' },
-          { value: 2, label: 'two' },
-        ],
-        initialValues: [2],
-      }),
+      select({ message: 's', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], initialValue: 'b' }),
+      multiselect({ message: 'm', options: [{ value: 1, label: 'one' }, { value: 2, label: 'two' }], initialValues: [2] }),
       confirm({ message: 'c', initialValue: false }),
       text({ message: 't' }),
     ])
@@ -399,13 +308,7 @@ describe('non-TTY prompts (one line per answer)', () => {
 
   it('select accepts a value or a 1-based number; re-asks on anything else', async () => {
     const input = setup(false)
-    const p = select({
-      message: 'Pick',
-      options: [
-        { value: 'ssg', label: 'SSG' },
-        { value: 'spa', label: 'SPA' },
-      ],
-    })
+    const p = select({ message: 'Pick', options: [{ value: 'ssg', label: 'SSG' }, { value: 'spa', label: 'SPA' }] })
     await tick()
     input.send('nope\n', '3\n', 'spa\n')
     expect(await p).toBe('spa')
@@ -415,11 +318,7 @@ describe('non-TTY prompts (one line per answer)', () => {
 
   it('multiselect accepts values/numbers separated by commas or spaces, and `-` for none', async () => {
     const input = setup(false)
-    const opts = [
-      { value: 'x', label: 'X' },
-      { value: 'y', label: 'Y' },
-      { value: 'z', label: 'Z' },
-    ]
+    const opts = [{ value: 'x', label: 'X' }, { value: 'y', label: 'Y' }, { value: 'z', label: 'Z' }]
     const answers = Promise.all([
       multiselect({ message: 'm', options: opts, required: false }),
       multiselect({ message: 'm', options: opts, initialValues: ['x'], required: false }),
@@ -495,9 +394,7 @@ describe('glyphs', () => {
     expect(supportsUnicode('win32', { WT_SESSION: '1' })).toBe(true)
     expect(supportsUnicode('win32', { TERM_PROGRAM: 'vscode' })).toBe(true)
     const ascii = symbolSet(false)
-    expect([ascii.bar, ascii.active, ascii.boxOn, ...ascii.spinner].join('')).toMatch(
-      /^[\x20-\x7e]+$/,
-    )
+    expect([ascii.bar, ascii.active, ascii.boxOn, ...ascii.spinner].join('')).toMatch(/^[\x20-\x7e]+$/)
     expect(symbolSet(true).bar).toBe('│')
   })
 })
@@ -510,14 +407,7 @@ describe('messages and spinner', () => {
     cancel('Cancelled.')
     outro('Happy building!')
     const s = printed()
-    for (const part of [
-      'Pyreon Zero',
-      'Next steps',
-      'cd app',
-      'bun install',
-      'Cancelled.',
-      'Happy building!',
-    ]) {
+    for (const part of ['Pyreon Zero', 'Next steps', 'cd app', 'bun install', 'Cancelled.', 'Happy building!']) {
       expect(s).toContain(part)
     }
   })
