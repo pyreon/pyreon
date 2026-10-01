@@ -59,6 +59,10 @@ happy-dom is a partial DOM in Node. It does not model real `IntersectionObserver
 
 A test that mocks `@pyreon/core`, `@pyreon/runtime-dom` or another framework package tests the mock. Use the real package.
 
+### Ambient terminal environment
+
+Color-policy tests must set and restore `NO_COLOR` explicitly. A fake TTY alone does not enable colors when the calling shell disables them. Exercise TTY with `NO_COLOR` unset, TTY with it set, and non-TTY with it unset, so the last assertion proves the TTY policy independently of the environment flag. Restore the original environment in `finally`, including after a failed assertion.
+
 ### A spec that hardcodes a platform modifier
 
 Playwright resolves `Meta`/`Control` against the host OS; a component resolves its shortcut from the user agent (for example `packages/zero/zero-content/src/search/search-runtime.tsx`: `navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey`). A spec pressing `Meta+k` passes on a Mac and silently does nothing on the Linux CI runner.
