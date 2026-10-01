@@ -33,6 +33,7 @@ let server: Server
 let base = ''
 let seen: Seen[] = []
 let roomHits = 0
+let dropRoomConnection: (() => void) | undefined
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
@@ -62,10 +63,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     roomHits++
     sse()
     if (roomHits === 1) {
+      dropRoomConnection = () => res.destroy()
       res.write('retry: 5\nid: 1\ndata: {"kind":"join",')
       await pause(5)
       res.write('"at":1}\n\n')
-      setTimeout(() => res.destroy(), 10)
+      // The consumer drops this socket after receiving event 1. A fixed
+      // 10ms timer raced receipt under load, so the test did not reliably
+      // reach the resume scenario it was meant to exercise.
       return
     }
     res.end('id: 2\ndata: {"kind":"leave","at":2}\n\n')
@@ -113,6 +117,7 @@ afterAll(async () => {
 beforeEach(() => {
   seen = []
   roomHits = 0
+  dropRoomConnection = undefined
 })
 
 type Stream<T> = AsyncIterable<T> & { close(): void }
@@ -152,17 +157,27 @@ async function load(client: ClientName): Promise<Mod> {
   return mod
 }
 
-async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {
+async function collect<T>(it: AsyncIterable<T>, onValue?: (value: T) => void): Promise<T[]> {
   const out: T[] = []
-  for await (const v of it) out.push(v)
+  for await (const v of it) {
+    out.push(v)
+    onValue?.(v)
+  }
   return out
 }
 
 for (const client of CLIENTS) {
   describe(`generated ${client} client — streams`, () => {
-    it('reassembles partial chunks, reconnects a dropped GET with Last-Event-ID, through the client pipeline', async () => {
+    it('reassembles partial chunks, reconnects a dropped GET with Last-Event-ID, through the client pipeline', async ({ onTestFinished }) => {
       const gen = await load(client)
-      const events = await collect(gen.roomEventsStream({ params: { room: 'lobby' } }))
+      const stream = gen.roomEventsStream({ params: { room: 'lobby' } })
+      onTestFinished(() => stream.close())
+      const events = await collect(stream, (event) => {
+        if (event.id === '1') {
+          expect(dropRoomConnection).toBeTypeOf('function')
+          dropRoomConnection!()
+        }
+      })
       expect(events.map((e) => [e.id, e.data.kind, e.data.at])).toEqual([
         ['1', 'join', 1],
         ['2', 'leave', 2],

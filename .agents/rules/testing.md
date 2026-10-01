@@ -65,6 +65,8 @@ Specs can assert broken behaviour (a `??` that swallowed an explicit `null`; an 
 
 Reference: `packages/fundamentals/sync/src/tests/ws-relay.test.ts`.
 
+- A stream-resume fixture must wait for the consumer to receive its first complete event before dropping the socket. A fixed disconnect timer races receipt and may never exercise `Last-Event-ID` resume under load. Register the stream's cleanup with the test context's `onTestFinished` so even a test timeout closes it.
+
 - **The wall-clock backstop must exceed the composed internal budgets.** A test that awaits three sequential `waitFor`s needs a vitest timeout above three budgets, or vitest kills it with an opaque "test timed out" that hides the descriptive error.
 - Use one constant (`WAIT_BUDGET_MS`) for both the `waitFor` default and the backstop, and derive the backstop: `MAX_SEQUENTIAL_WAITS × WAIT_BUDGET_MS + headroom`, set once at `describe` level (`describe(name, { timeout }, fn)`). Per-test magic-number overrides fall below the sum as soon as the budget grows.
 - Prove a timeout option is applied by forcing it to `1` and seeing `Test timed out in 1ms`.
