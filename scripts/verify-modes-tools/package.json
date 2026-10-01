@@ -1,0 +1,9 @@
+{
+  "name": "pyreon-verify-modes-tools",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "wrangler": "4.146.0"
+  }
+}

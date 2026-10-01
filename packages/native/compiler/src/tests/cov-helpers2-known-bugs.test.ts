@@ -129,10 +129,8 @@ describe('KNOWN BUG — a JSX route-loader body emits an unbound `ctx` on BOTH t
   )
 
   it('every NON-JSX body shape either lowers the param or warns — JSX is the only hole', () => {
-    const mk = (loader: string) => JSX_LOADER.replace(
-      'loader: (ctx) => <Text>{ctx.params.id}</Text>',
-      `loader: ${loader}`,
-    )
+    const mk = (loader: string) =>
+      JSX_LOADER.replace('loader: (ctx) => <Text>{ctx.params.id}</Text>', `loader: ${loader}`)
     for (const loader of [
       '(ctx) => fetchUser(ctx.params.id)',
       '(ctx) => [ctx.params.id]',
@@ -141,9 +139,9 @@ describe('KNOWN BUG — a JSX route-loader body emits an unbound `ctx` on BOTH t
     ]) {
       expect(transform(mk(loader), { target: 'swift' }).code).toContain('params["id"]')
     }
-    expect(transform(mk('(ctx) => fetchUser(ctx)'), { target: 'swift' }).warnings.join('\n')).toContain(
-      'for something other than `ctx.params.*`',
-    )
+    expect(
+      transform(mk('(ctx) => fetchUser(ctx)'), { target: 'swift' }).warnings.join('\n'),
+    ).toContain('for something other than `ctx.params.*`')
   })
 })
 
@@ -243,7 +241,7 @@ describe('KNOWN BUG — a PARAM-fed accumulator is never widened to Double', () 
   })
 
   it.fails(
-    'KNOWN BUG: fix = seed the function DECL\'s own params into the ctx handed to ' +
+    "KNOWN BUG: fix = seed the function DECL's own params into the ctx handed to " +
       '`widenFloatLocals` (emit-swift.ts / emit-kotlin.ts call it with the component-level ' +
       '`inferCtx`, which knows nothing about `rs`), mirroring the scratch-ctx seeding ' +
       '`inferReturnType` already performs. Without the param bound, `inferType(rs)` is ' +
@@ -276,14 +274,11 @@ describe('KNOWN BUG — a PARAM-fed accumulator is never widened to Double', () 
 })
 
 // ───────────────────────────────────────────────────────────────────────────
-// 5 + 6. STUB FIDELITY — the validation stubs are NARROWER than the real SDKs
+// 5 + 6. SDK parity — inline borders and all padding overloads compile
 // ───────────────────────────────────────────────────────────────────────────
 //
-// A stub narrower than the runtime MANUFACTURES a bug in correct codegen: the
-// emit below is valid SwiftUI / valid Compose, and the gate rejects it. The
-// consequence is worse than a red test — it means these two emits, which every
-// inline `style={{ border… }}` / per-side `padding` produces, have NEVER been
-// verified to compile by any gate.
+// These shapes previously failed validation because the stubs omitted real SDK
+// members. The compilation assertions keep that false rejection from returning.
 
 const BORDER_APP = `import { Stack, Text } from '@pyreon/primitives'
 export function App() {
@@ -295,20 +290,15 @@ export function App() {
   return (<Stack style={{ paddingTop: 1, paddingLeft: 2, paddingBottom: 3, paddingRight: 4 }}><Text>x</Text></Stack>)
 }`
 
-describe('KNOWN BUG — `swift-stubs.ts` declares no `RoundedRectangle`', () => {
-  it('reproduces: the border emit names a SwiftUI type the stubs do not declare', () => {
+describe('SwiftUI border validation', () => {
+  it('the border emit uses a rounded rectangle stroke', () => {
     expect(transform(BORDER_APP, { target: 'swift' }).code).toContain(
       '.overlay(RoundedRectangle(cornerRadius: 6).stroke(',
     )
   })
 
-  swiftFails(
-    'KNOWN BUG: fix = add `RoundedRectangle` (a real SwiftUI `Shape` with a ' +
-      '`cornerRadius:` init and a `.stroke(_:lineWidth:)`) to `swift-stubs.ts`. ' +
-      'Today every `borderWidth`+`borderColor` inline style fails ' +
-      "`validateSwiftWithStubs` with `cannot find 'RoundedRectangle' in scope` — so the " +
-      'emit is CORRECT and the gate is what is wrong, and no gate can currently prove ' +
-      'this emit compiles at all.',
+  it.skipIf(!isSwiftcAvailable())(
+    'an inline border overlay compiles with SwiftUI stubs',
     () => {
       const r = validateSwiftWithStubs(transform(BORDER_APP, { target: 'swift' }).code)
       // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
@@ -323,19 +313,15 @@ describe('KNOWN BUG — `swift-stubs.ts` declares no `RoundedRectangle`', () => 
   })
 })
 
-describe('KNOWN BUG — `kotlin-stubs.ts` lacks the 4-arg `Modifier.padding` overload', () => {
+describe('Compose per-side padding validation', () => {
   it('reproduces: the per-side padding emit uses named start/top/end/bottom args', () => {
     expect(transform(PAD4_APP, { target: 'kotlin' }).code).toContain(
       '.padding(start = 2.dp, top = 1.dp, end = 4.dp, bottom = 3.dp)',
     )
   })
 
-  kotlinFails(
-    'KNOWN BUG: fix = add `fun padding(start: Dp = 0.dp, top: Dp = 0.dp, end: Dp = 0.dp, ' +
-      'bottom: Dp = 0.dp): Modifier` to the `Modifier` stub — it is a REAL Compose ' +
-      'overload (androidx.compose.foundation.layout), and the stub declares only ' +
-      '`padding(all)` and `padding(horizontal, vertical)`. Today every per-side inline ' +
-      "padding fails `validateKotlin` with `no parameter with name 'start' found`.",
+  it.skipIf(!isKotlincAvailable())(
+    'per-side padding compiles with Compose stubs',
     () => {
       const r = validateKotlin(transform(PAD4_APP, { target: 'kotlin' }).code)
       // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
@@ -343,7 +329,7 @@ describe('KNOWN BUG — `kotlin-stubs.ts` lacks the 4-arg `Modifier.padding` ove
     },
   )
 
-  it('the two STUBBED padding overloads do compile — so this is a gap, not a broken emit', () => {
+  it('uniform and axis padding compile alongside per-side padding', () => {
     const uniform = PAD4_APP.replace(
       '{ paddingTop: 1, paddingLeft: 2, paddingBottom: 3, paddingRight: 4 }',
       '{ padding: 4 }',
@@ -357,7 +343,6 @@ describe('KNOWN BUG — `kotlin-stubs.ts` lacks the 4-arg `Modifier.padding` ove
       '.padding(horizontal = 2.dp, vertical = 4.dp)',
     )
   })
-
 })
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -374,34 +359,25 @@ export function App() {
   return (<Stack><Text>{w()}</Text></Stack>)
 }`
 
-describe('KNOWN BUG — an optional-CHAIN member read is annotated NON-optional', () => {
-  it('reproduces: the emit propagates `?.` but the annotation says `Int`', () => {
+describe('optional member reads retain optional result types', () => {
+  it('the optional length read is annotated Int?', () => {
     const sw = transform(OPT_LEN, { target: 'swift' }).code
-    // The emit is right — `rows` is `[String]?`, so the read must be `?.`.
+    // `rows` is `[String]?`, and the member read and its annotation must agree.
     expect(sw).toContain('o.rows?.count')
-    // …and the annotation is not: `o.rows?.count` is `Int?`, not `Int`.
-    expect(sw).toContain('private var w: Int {')
+    // An optional count has type Int?, even when the field itself is a number.
+    expect(sw).toContain('private var w: Int? {')
     expect(transform(OPT_LEN, { target: 'swift' }).warnings.join('\n')).toBe('')
   })
 
-  it.fails(
-    'KNOWN BUG: fix = in `inferType`\'s `member` case, when the access has an optional ' +
-      'LINK (`expr.optional === true`, or `exprHasOptionalLink(expr.object)`), wrap the ' +
-      'resolved result in a `union` carrying `undefined` — the same shape `.find` returns. ' +
-      'Today the case calls `unwrapOptionalType(inferType(expr.object))` and then types the ' +
-      'property off the UNWRAPPED object, so the optionality the `?.` introduces is thrown ' +
-      'away. `array.length`, `string.length`, a struct field and `map.size` all take this ' +
-      'path, so it is the whole member family, not one property.',
+  it(
+    'optional member inference preserves undefined',
     () => {
       expect(transform(OPT_LEN, { target: 'swift' }).code).toContain('private var w: Int? {')
     },
   )
 
-  swiftFails(
-    'KNOWN BUG (swiftc): the emit does not compile — `value of optional type \'Int?\' ' +
-      'must be unwrapped`. Note KOTLIN compiles it, because its `val` carries no explicit ' +
-      'annotation and infers `Int?` itself — so a Kotlin-only check would report this ' +
-      'shape as healthy.',
+  it.skipIf(!isSwiftcAvailable())(
+    'an optional array length compiles on Swift',
     () => {
       const r = validateSwiftWithStubs(transform(OPT_LEN, { target: 'swift' }).code)
       // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
@@ -409,17 +385,14 @@ describe('KNOWN BUG — an optional-CHAIN member read is annotated NON-optional'
     },
   )
 
-  kotlinFails(
-    'KNOWN BUG (the asymmetry itself): Kotlin currently COMPILES this, so this lock is a ' +
-      'tripwire — if the Kotlin emit ever starts annotating the derived value explicitly, ' +
-      'it inherits the Swift failure and this turns red first.',
+  it.skipIf(!isKotlincAvailable())(
+    'an optional array length compiles on Kotlin',
     () => {
       const r = validateKotlin(transform(OPT_LEN, { target: 'kotlin' }).code)
       // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
-      expect(r.ok).toBe(false)
+      expect(r.ok, r.error ?? '').toBe(true)
     },
   )
-
 
   // The same defect on the shape people actually write. `data` is optional at
   // every layer, so `q.data()?.text` is the CORRECT source for reading a field
@@ -436,16 +409,12 @@ export function App() {
 
   it('the same divergence reaches the FETCH container — not an exotic corner', () => {
     const sw = transform(FETCH_OPT, { target: 'swift' }).code
-    expect(sw).toContain('private var d: String { q.data?.text }')
+    expect(sw).toContain('private var d: String? { q.data?.text }')
     expect(transform(FETCH_OPT, { target: 'swift' }).warnings.join('\n')).toBe('')
   })
 
-  swiftFails(
-    'KNOWN BUG (swiftc, fetch shape): `q.data()?.text` annotates `String` over a `String?` ' +
-      "value — `value of optional type 'String?' must be unwrapped`. Same single fix as " +
-      'above; listed separately because this is the shape a POST-response reader writes, ' +
-      'while every device-proven example fetches an ARRAY and reads it as `data() ?? []`, ' +
-      'which never takes an optional MEMBER access — which is why it was never compiled.',
+  it.skipIf(!isSwiftcAvailable())(
+    'an optional fetch-response member compiles on Swift',
     () => {
       const r = validateSwiftWithStubs(transform(FETCH_OPT, { target: 'swift' }).code)
       // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
@@ -454,7 +423,10 @@ export function App() {
   )
 
   it('the NON-optional twin compiles and is annotated consistently', () => {
-    const nonOpt = OPT_LEN.replace('rows?: string[]', 'rows: string[]').replace('rows?.length', 'rows.length')
+    const nonOpt = OPT_LEN.replace('rows?: string[]', 'rows: string[]').replace(
+      'rows?.length',
+      'rows.length',
+    )
     const sw = transform(nonOpt, { target: 'swift' }).code
     expect(sw).toContain('private var w: Int {')
     expect(sw).toContain('o.rows.count')

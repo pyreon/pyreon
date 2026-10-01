@@ -488,6 +488,10 @@ public enum Edge {
 }
 public protocol Shape {}
 public struct Rectangle: Shape { public init() {} }
+public struct RoundedRectangle: Shape {
+  public init(cornerRadius: Double) {}
+  public func stroke(_ color: Color, lineWidth: Double = 1) -> some View { EmptyView() }
+}
 public struct SpatialTapValue { public var location: CGPoint = CGPoint() }
 public struct SpatialTapGesture: Gesture {
   public init(count: Int = 1) {}
@@ -608,6 +612,7 @@ extension View {
   // runtime does is how a broken emit slips through — the same trap the
   // lineLimit note above records, in the opposite direction.
   public func background<V: View>(_ background: V) -> some View { self }
+  public func overlay<V: View>(_ overlay: V, alignment: Alignment = .center) -> some View { self }
   public func overlay<V: View>(alignment: Alignment = .center, @ViewBuilder content: () -> V) -> some View { self }
   // useHotkey -> .keyboardShortcut on a hidden Button. Mirrors SwiftUI's real
   // signature including the modifiers-defaults-to-command DEFAULT: the emit always

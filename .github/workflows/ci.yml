@@ -1377,14 +1377,17 @@ jobs:
       # `vite build` every example × mode cell and assert the RENDERED content
       # (not just a green build) — the typed-but-unimplemented backstop.
       # A4: the cloudflare cell serves its output under workerd via
-      # `wrangler pages dev`. Pinned, installed outside the workspace so it
-      # never enters bun.lock; PYREON_REQUIRE_WORKERD turns the local
+      # `wrangler pages dev`. Its isolated npm lock pins every transitive
+      # dependency by integrity; PYREON_REQUIRE_WORKERD turns the local
       # "no wrangler" skip into a failure here (fail-closed).
       - name: Install wrangler (workerd) for Verify Modes
         id: wrangler
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
-          npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.138.0
+          mkdir -p "$RUNNER_TEMP/wrangler"
+          cp scripts/verify-modes-tools/package{,-lock}.json "$RUNNER_TEMP/wrangler/"
+          npm ci --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund
+          npm audit --prefix "$RUNNER_TEMP/wrangler" --audit-level=high
           echo "bin=$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
       - name: Verify Modes
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
@@ -1634,6 +1637,8 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
+      - name: Reject high-severity dependency advisories
+        run: bun audit --audit-level=high
       - name: Clean full build of every published package (release path)
         run: bun scripts/build-batched.ts
       - name: Pack + validate every manifest (publish dry-run, no upload)

@@ -10,7 +10,11 @@ import { loadOpenApi } from '../input/openapi'
 import { cleanEmitted, emitToDisk } from './helpers/emit-to-disk'
 import { typecheckSpec } from './helpers/typecheck'
 
-const PET = { type: 'object', required: ['id', 'name'], properties: { id: { type: 'integer', readOnly: true }, name: { type: 'string' } } }
+const PET = {
+  type: 'object',
+  required: ['id', 'name'],
+  properties: { id: { type: 'integer', readOnly: true }, name: { type: 'string' } },
+}
 
 const SPEC = JSON.stringify({
   openapi: '3.1.0',
@@ -20,27 +24,57 @@ const SPEC = JSON.stringify({
     newPet: {
       post: {
         summary: 'A pet was added.',
-        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Pet' } } } },
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Pet' } } },
+        },
         responses: { 200: { description: 'ack' } },
       },
     },
     ping: { post: { responses: { 204: { description: 'ok' } } } },
     audit: {
-      post: { requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['at'], properties: { at: { type: 'string' } } } } } }, responses: {} },
-      put: { requestBody: { content: { 'text/plain': { schema: { type: 'string' } } } }, responses: {} },
+      post: {
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['at'], properties: { at: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {},
+      },
+      put: {
+        requestBody: { content: { 'text/plain': { schema: { type: 'string' } } } },
+        responses: {},
+      },
     },
   },
   paths: {
     '/subscriptions': {
       post: {
         operationId: 'subscribe',
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { callbackUrl: { type: 'string' } } } } } },
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', properties: { callbackUrl: { type: 'string' } } },
+            },
+          },
+        },
         responses: { 201: { description: 'ok' } },
         callbacks: {
           onEvent: {
             '{$request.body#/callbackUrl}': {
               post: {
-                requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: ['created', 'deleted'] } } } } } },
+                requestBody: {
+                  content: {
+                    'application/json': {
+                      schema: {
+                        type: 'object',
+                        required: ['kind'],
+                        properties: { kind: { type: 'string', enum: ['created', 'deleted'] } },
+                      },
+                    },
+                  },
+                },
                 responses: { 200: { description: 'ok' } },
               },
             },
@@ -64,9 +98,15 @@ describe('the IR', () => {
       ['callback', 'subscribe.onEvent', 'POST'],
     ])
     const newPet = doc.webhooks?.find((w) => w.name === 'newPet')
-    expect(newPet).toMatchObject({ summary: 'A pet was added.', payload: { kind: 'ref', name: 'Pet' }, mediaType: 'application/json' })
+    expect(newPet).toMatchObject({
+      summary: 'A pet was added.',
+      payload: { kind: 'ref', name: 'Pet' },
+      mediaType: 'application/json',
+    })
     expect(doc.webhooks?.find((w) => w.name === 'ping')?.payload).toBeUndefined()
-    expect(doc.webhooks?.find((w) => w.kind === 'callback')?.expression).toBe('{$request.body#/callbackUrl}')
+    expect(doc.webhooks?.find((w) => w.kind === 'callback')?.expression).toBe(
+      '{$request.body#/callbackUrl}',
+    )
   })
 
   it('says they exist, rather than dropping them silently', () => {
@@ -84,7 +124,14 @@ describe('webhooks.ts', () => {
   it('validates an incoming payload with the emitted schema', async () => {
     const e = emitToDisk('webhooks', SPEC, { plugins: ['schemas'] })
     const mod = await e.load<{
-      webhookSchemas: Record<string, { '~standard': { validate(v: unknown): Promise<{ issues?: unknown[] }> | { issues?: unknown[] } } }>
+      webhookSchemas: Record<
+        string,
+        {
+          '~standard': {
+            validate(v: unknown): Promise<{ issues?: unknown[] }> | { issues?: unknown[] }
+          }
+        }
+      >
     }>('webhooks.ts')
     const check = async (name: string, body: unknown): Promise<boolean> =>
       !(await mod.webhookSchemas[name]?.['~standard'].validate(body))?.issues
@@ -95,8 +142,39 @@ describe('webhooks.ts', () => {
     expect(e.file('index.ts')).toContain("export * from './webhooks'")
   })
 
-  it.each(['pyreon', 'zod'] as const)('types a handler from the payload schema (validator=%s)', (validator) => {
-    const usage = `
+  it('preserves a declared __proto__ webhook as an own property', async () => {
+    const spec = JSON.parse(SPEC)
+    Object.defineProperty(spec.webhooks, '__proto__', {
+      value: spec.webhooks.newPet,
+      enumerable: true,
+    })
+    const emitted = emitToDisk('webhooks-prototype-name', JSON.stringify(spec), {
+      plugins: ['schemas'],
+    })
+    try {
+      const mod = await emitted.load<{
+        webhookSchemas: Record<string, unknown>
+        webhookHandler(
+          handlers: Record<string, (value: unknown) => void>,
+        ): (request: Request) => Promise<Response>
+      }>('webhooks.ts')
+      expect(Object.hasOwn(mod.webhookSchemas, '__proto__')).toBe(true)
+      const received = vi.fn()
+      const handle = mod.webhookHandler({ ['__proto__']: received })
+      const request = (body: string) =>
+        new Request('https://app.test/hooks', { method: 'POST', body })
+      expect((await handle(request('{"id":1,"name":"Rex"}'))).status).toBe(204)
+      expect(received).toHaveBeenCalledWith({ id: 1, name: 'Rex' }, expect.any(Object))
+      expect((await handle(request('{"id":1}'))).status).toBe(422)
+    } finally {
+      cleanEmitted('webhooks-prototype-name')
+    }
+  })
+
+  it.each(['pyreon', 'zod'] as const)(
+    'types a handler from the payload schema (validator=%s)',
+    (validator) => {
+      const usage = `
 import type { WebhookHandler, WebhookPayloads } from './webhooks'
 export const onNewPet: WebhookHandler<'newPet'> = (pet) => { void pet.name.toUpperCase(); void pet.id.toFixed() }
 export const onEvent: WebhookHandler<'subscribe.onEvent'> = (e) => { void e.kind }
@@ -105,31 +183,60 @@ export const onPing: WebhookHandler<'ping'> = (p) => { const nothing: undefined 
 export const wrong: WebhookHandler<'newPet'> = (pet) => { void pet.nope }
 export type Keys = keyof WebhookPayloads
 `
-    const { errors } = typecheckSpec(`webhooks-${validator}`, SPEC, { validator, plugins: ['schemas', 'client', 'queries'] }, { extra: { 'usage.ts': usage } })
-    expect(errors, errors.join('\n')).toEqual([])
-  })
+      const { errors } = typecheckSpec(
+        `webhooks-${validator}`,
+        SPEC,
+        { validator, plugins: ['schemas', 'client', 'queries'] },
+        { extra: { 'usage.ts': usage } },
+      )
+      expect(errors, errors.join('\n')).toEqual([])
+    },
+  )
 })
 
 describe('the receiving side, executed', () => {
   type Handler = (input: Request | { request: Request }) => Promise<Response>
   interface Mod {
-    webhookHandler(handlers: Record<string, (payload: unknown, ctx: { name: string; rawBody: string; bytes: Uint8Array }) => unknown>, options?: {
-      verify?: (ctx: { request: Request; bytes: Uint8Array; rawBody: string }) => boolean | Promise<boolean>
-      event?: (request: Request, body: unknown) => string | undefined
-    }): Handler
-    validateWebhook(name: string, body: unknown): Promise<{ ok: boolean; value?: unknown; issues?: unknown[] }>
+    webhookHandler(
+      handlers: Record<
+        string,
+        (payload: unknown, ctx: { name: string; rawBody: string; bytes: Uint8Array }) => unknown
+      >,
+      options?: {
+        bodyLimit?: number
+        verify?: (ctx: {
+          request: Request
+          bytes: Uint8Array
+          rawBody: string
+        }) => boolean | Promise<boolean>
+        event?: (request: Request, body: unknown) => string | undefined
+      },
+    ): Handler
+    validateWebhook(
+      name: string,
+      body: unknown,
+    ): Promise<{ ok: boolean; value?: unknown; issues?: unknown[] }>
     callbackUrl(name: string, ctx: Record<string, unknown>): string
     evaluateRuntimeExpression(expression: string, ctx: Record<string, unknown>): unknown
     expandCallbackUrl(template: string, ctx: Record<string, unknown>): string
   }
   let mod: Mod
   beforeAll(async () => {
-    mod = await emitToDisk('webhooks-runtime', SPEC, { plugins: ['schemas'] }).load<Mod>('webhooks.ts')
+    mod = await emitToDisk('webhooks-runtime', SPEC, { plugins: ['schemas'] }).load<Mod>(
+      'webhooks.ts',
+    )
   })
   afterAll(() => cleanEmitted('webhooks-runtime'))
 
-  const post = (body: string, headers: Record<string, string> = { 'content-type': 'application/json' }, method = 'POST') =>
-    new Request('https://app.test/hooks', method === 'GET' ? { method, headers } : { method, body, headers })
+  const post = (
+    body: string,
+    headers: Record<string, string> = { 'content-type': 'application/json' },
+    method = 'POST',
+  ) =>
+    new Request(
+      'https://app.test/hooks',
+      method === 'GET' ? { method, headers } : { method, body, headers },
+    )
 
   it('validates, then dispatches a valid payload to its handler (204)', async () => {
     const seen: unknown[] = []
@@ -158,13 +265,19 @@ describe('the receiving side, executed', () => {
     )
     expect((await accept(post('{"id":1,"name":"Rex"}'))).status).toBe(204)
     expect(calls).toEqual(['verify 21 {"id":1,"name":"Rex"}', 'handled'])
-    const refuse = mod.webhookHandler({ newPet: () => void calls.push('never') }, { verify: () => false })
+    const refuse = mod.webhookHandler(
+      { newPet: () => void calls.push('never') },
+      { verify: () => false },
+    )
     expect((await refuse(post('{not json'))).status).toBe(401)
-    const throws = mod.webhookHandler({ newPet: () => void calls.push('never') }, {
-      verify: () => {
-        throw new Error('bad signature')
+    const throws = mod.webhookHandler(
+      { newPet: () => void calls.push('never') },
+      {
+        verify: () => {
+          throw new Error('bad signature')
+        },
       },
-    })
+    )
     expect((await throws(post('{"id":1,"name":"Rex"}'))).status).toBe(401)
     expect(calls).not.toContain('never')
   })
@@ -181,7 +294,10 @@ describe('the receiving side, executed', () => {
     )
     // `newPet` (JSON) is the first candidate, so this text body does not parse
     // as JSON -- it must still reach `audit.put`, which declares text/plain.
-    expect((await handle(post('hello', { 'content-type': 'text/plain', 'x-event': 'audit.put' }, 'PUT'))).status).toBe(204)
+    expect(
+      (await handle(post('hello', { 'content-type': 'text/plain', 'x-event': 'audit.put' }, 'PUT')))
+        .status,
+    ).toBe(204)
     expect((await handle(post('', { 'x-event': 'ping' }))).status).toBe(204)
     expect((await handle(post('{}', { 'x-event': 'nope' }))).status).toBe(404)
     expect((await handle(post('{}', {}))).status).toBe(404)
@@ -191,7 +307,49 @@ describe('the receiving side, executed', () => {
     ])
   })
 
-  it('takes zero\'s `{ request }` context, and passes a handler\'s own Response through', async () => {
+  it('bounds untrusted bodies before verifying or dispatching, including chunked uploads', async () => {
+    const verify = vi.fn(() => true)
+    const handled = vi.fn(() => undefined)
+    const handle = mod.webhookHandler({ newPet: handled }, { bodyLimit: 24, verify })
+    expect((await handle(post('{"id":1,"name":"Rex"}', { 'content-length': '100' }))).status).toBe(
+      413,
+    )
+    expect(verify).not.toHaveBeenCalled()
+    const cancel = vi.fn()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"id":1,"name":"'))
+        controller.enqueue(new TextEncoder().encode('oversized-name"}'))
+      },
+      cancel,
+    })
+    const req = new Request('https://app.test/hooks', {
+      method: 'POST',
+      body,
+      duplex: 'half',
+      headers: { 'content-length': '1' },
+    } as RequestInit)
+    expect((await handle(req)).status).toBe(413)
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(verify).not.toHaveBeenCalled()
+    expect(handled).not.toHaveBeenCalled()
+    expect((await handle(post('{"id":1,"name":"Rex"}'))).status).toBe(204)
+  })
+
+  it('refuses prototype names as registrations or remotely selected events', async () => {
+    expect(() => mod.webhookHandler({ toString: () => undefined })).toThrow('is not a webhook')
+    const handled = vi.fn(() => undefined)
+    const handle = mod.webhookHandler(
+      { newPet: handled },
+      { event: (req) => req.headers.get('x-event') ?? undefined },
+    )
+    for (const name of ['toString', 'constructor', '__proto__']) {
+      expect((await handle(post('{}', { 'x-event': name }))).status).toBe(404)
+    }
+    expect(handled).not.toHaveBeenCalled()
+  })
+
+  it("takes zero's `{ request }` context, and passes a handler's own Response through", async () => {
     const handle = mod.webhookHandler({ newPet: () => new Response('queued', { status: 202 }) })
     const res = await handle({ request: post('{"id":1,"name":"Rex"}') })
     expect(res.status).toBe(202)
@@ -200,12 +358,19 @@ describe('the receiving side, executed', () => {
 
   it('refuses a registration it cannot honour, at construction', () => {
     expect(() => mod.webhookHandler({})).toThrow('register at least one handler')
-    expect(() => mod.webhookHandler({ newPet: () => undefined, ping: () => undefined })).toThrow('need an `event` option')
-    expect(() => mod.webhookHandler({ nope: () => undefined })).toThrow('`nope` is not a webhook or callback this API declares')
+    expect(() => mod.webhookHandler({ newPet: () => undefined, ping: () => undefined })).toThrow(
+      'need an `event` option',
+    )
+    expect(() => mod.webhookHandler({ nope: () => undefined })).toThrow(
+      '`nope` is not a webhook or callback this API declares',
+    )
   })
 
   it('validateWebhook runs the schema, and a body-less webhook validates to undefined', async () => {
-    expect(await mod.validateWebhook('subscribe.onEvent', { kind: 'created' })).toEqual({ ok: true, value: { kind: 'created' } })
+    expect(await mod.validateWebhook('subscribe.onEvent', { kind: 'created' })).toEqual({
+      ok: true,
+      value: { kind: 'created' },
+    })
     expect((await mod.validateWebhook('subscribe.onEvent', { kind: 'x' })).ok).toBe(false)
     expect(await mod.validateWebhook('ping', 'anything')).toEqual({ ok: true, value: undefined })
   })
@@ -220,15 +385,19 @@ describe('callback URLs: the OpenAPI runtime-expression evaluator', () => {
   }
   let mod: Mod
   beforeAll(async () => {
-    mod = await emitToDisk('webhooks-callbacks', SPEC, { plugins: ['schemas'] }).load<Mod>('webhooks.ts')
+    mod = await emitToDisk('webhooks-callbacks', SPEC, { plugins: ['schemas'] }).load<Mod>(
+      'webhooks.ts',
+    )
   })
   afterAll(() => cleanEmitted('webhooks-callbacks'))
 
   it('resolves a callback from the registering request body', () => {
     expect(mod.callbackUrls).toEqual({ 'subscribe.onEvent': '{$request.body#/callbackUrl}' })
-    expect(mod.callbackUrl('subscribe.onEvent', { request: { body: { callbackUrl: 'https://client.test/cb' } } })).toBe(
-      'https://client.test/cb',
-    )
+    expect(
+      mod.callbackUrl('subscribe.onEvent', {
+        request: { body: { callbackUrl: 'https://client.test/cb' } },
+      }),
+    ).toBe('https://client.test/cb')
     expect(() => mod.callbackUrl('subscribe.onEvent', { request: { body: {} } })).toThrow(
       'callback URL: `$request.body#/callbackUrl` resolved to nothing',
     )
@@ -256,16 +425,25 @@ describe('callback URLs: the OpenAPI runtime-expression evaluator', () => {
     expect(mod.evaluateRuntimeExpression('$request.body', ctx)).toBe(ctx.request.body)
     expect(mod.evaluateRuntimeExpression('$response.header.location', ctx)).toBe('/subs/7')
     expect(mod.evaluateRuntimeExpression('$response.body#/id', ctx)).toBe(7)
-    expect(mod.evaluateRuntimeExpression('$request.query.q', { request: { query: { q: 'r' } } })).toBe('r')
     expect(
-      mod.expandCallbackUrl('https://n.test/cb?tx={$request.body#/a/b~1c/0}&id={$response.body#/id}', ctx),
+      mod.evaluateRuntimeExpression('$request.query.q', { request: { query: { q: 'r' } } }),
+    ).toBe('r')
+    expect(
+      mod.expandCallbackUrl(
+        'https://n.test/cb?tx={$request.body#/a/b~1c/0}&id={$response.body#/id}',
+        ctx,
+      ),
     ).toBe('https://n.test/cb?tx=10&id=7')
     expect(mod.expandCallbackUrl('$request.header.X-Callback', ctx)).toBe('https://h.test')
   })
 
   it('refuses what the grammar does not allow', () => {
-    expect(() => mod.evaluateRuntimeExpression('$request.cookie.x', {})).toThrow('is not an OpenAPI runtime expression')
-    expect(() => mod.evaluateRuntimeExpression('$response.query.x', {})).toThrow('a response has no query')
+    expect(() => mod.evaluateRuntimeExpression('$request.cookie.x', {})).toThrow(
+      'is not an OpenAPI runtime expression',
+    )
+    expect(() => mod.evaluateRuntimeExpression('$response.query.x', {})).toThrow(
+      'a response has no query',
+    )
     expect(() => mod.evaluateRuntimeExpression('$request.bodyx', {})).toThrow('a body reference is')
   })
 })
@@ -288,7 +466,12 @@ export async function check(): Promise<void> {
 // @ts-expect-error -- a handler's payload is typed
 export const wrong: WebhookHandlers = { newPet: (pet) => { void pet.nope } }
 `
-    const { errors } = typecheckSpec(`webhooks-runtime-${validator}`, SPEC, { validator, plugins: ['schemas'] }, { extra: { 'usage.ts': usage } })
+    const { errors } = typecheckSpec(
+      `webhooks-runtime-${validator}`,
+      SPEC,
+      { validator, plugins: ['schemas'] },
+      { extra: { 'usage.ts': usage } },
+    )
     expect(errors, errors.join('\n')).toEqual([])
   })
 })

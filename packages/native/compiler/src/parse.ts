@@ -7245,7 +7245,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const first = name.charAt(0)
   const isCamelCase = first === first.toLowerCase() && first !== first.toUpperCase()
   const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
-  if (hasValueParams && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
+  if ((hasValueParams || hasNonViewReturnAnnotation) && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep

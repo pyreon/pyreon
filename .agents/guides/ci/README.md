@@ -88,6 +88,8 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 - **Release**:
   - Changesets fixed group (all packages share one version).
   - `check-release-readiness`: `publishConfig.access` + fixed-group coverage.
+  - Native coverage allows a cold verdict cache: a 60-minute measurement ceiling inside a 75-minute job, with per-compile and per-test deadlines still enforced. Stub/compiler changes invalidate cached verdicts.
+  - `Release Build` and the publishing workflow reject high-severity locked dependency advisories with `bun audit --audit-level=high`. The isolated Verify Modes workerd tool installs with `npm ci` from `scripts/verify-modes-tools/package-lock.json` and audits that tree too; update the lock together with its manifest.
   - `check-published-state`: every publishable package, not sentinels. A partial release where some packages lag the cut version is red and names each lagging package.
   - `scripts/publish.ts` retries only npm errors with evidence of being transient (5xx, dropped sockets). Never 404/403/conflict, and never `E422 Error verifying sigstore provenance bundle`, which reproduces on every attempt (a manifest missing `repository` causes it).
   - `release.yml`'s `resume-detect` / `resume-publish` republish lagging packages from the release tag (never main), once per version.

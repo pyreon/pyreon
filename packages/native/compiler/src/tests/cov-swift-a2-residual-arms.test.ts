@@ -7,9 +7,7 @@
 // the neighbour that merely LOOKS like it. So each spec here pairs a
 // deliberately-unmatched input with the emit it has to produce instead.
 //
-// One `it.fails` lock: a ZERO-PARAM top-level function with an explicit
-// NON-VIEW return annotation is classified as a COMPONENT and emitted as a
-// `struct … : View` whose body is a String — uncompilable, with no warning.
+// Annotated zero-parameter value helpers must remain functions on both targets.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -192,28 +190,27 @@ export function App() {
   const qh = useQuery<Res>(() => ({ queryKey: ['h'], queryFn: () => fetch('https://x/h', { headers: { A: 'b' } }).then((r) => r.json()) }))
   return (<Stack><Text>{String(qh.data())}</Text></Stack>)
 }`)
-    expect(out).toContain('PyreonHttpRequest(method: .get, url: "https://x/h", headers: ["A": "b"])')
+    expect(out).toContain(
+      'PyreonHttpRequest(method: .get, url: "https://x/h", headers: ["A": "b"])',
+    )
   })
 })
 
-describe('KNOWN BUG — a ZERO-PARAM annotated helper is emitted as a View', () => {
-  it.fails(
-    'KNOWN BUG: `function helperV(): string { return "h" }` is classified as a COMPONENT and emitted as `struct helperV: View { var body: some View { "h" } }` — swiftc: "static method \'buildExpression\' requires that \'String\' conform to \'View\'", plus "expected member name or initializer call after type name" at the `helperV` call site, and NO warning. Kotlin emits a `@Composable fun helperV() { "h" }` whose body does nothing, so the same source is broken on both targets. The helper gate in `parse.ts:tryComponentFromTopLevel` requires `hasValueParams`, documented as a deliberate false-negative because a no-param value-returning function is "indistinguishable from the harness shape" — but this one is NOT indistinguishable: it carries the explicit NON-VIEW return annotation the gate already computes as `hasNonViewReturnAnnotation` for the nullish-return refinement. Fix: let that annotation satisfy the gate when `hasValueParams` is false. A one-param helper (`dbl(x)`) is already correct, which is what makes this silent.',
-    () => {
-      const r = transform(
-        `import { Stack, Text } from '${P}'
+describe('annotated zero-argument helpers', () => {
+  it('an annotated zero-argument value helper emits a native function', () => {
+    const r = transform(
+      `import { Stack, Text } from '${P}'
 import { computed } from '@pyreon/reactivity'
 export function helperV(): string { return 'h' }
 export function App() {
   const a = computed(() => helperV())
   return (<Stack><Text>{() => a()}</Text></Stack>)
 }`,
-        { target: 'swift' },
-      )
-      expect(r.code).toContain('func helperV() -> String')
-      expect(r.code).not.toContain('struct helperV: View')
-    },
-  )
+      { target: 'swift' },
+    )
+    expect(r.code).toContain('func helperV() -> String')
+    expect(r.code).not.toContain('struct helperV: View')
+  })
 
   it('a ONE-param helper of the same shape IS emitted as a `func` — the contrast', () => {
     const out = swift(`import { Stack, Text } from '${P}'

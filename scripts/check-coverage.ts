@@ -133,12 +133,15 @@ const PACKAGE_TIMEOUT_MS = 600_000
  * so its wall time is a function of the VERDICT CACHE, not of the suite. Warm
  * it is fast; cold it exceeds the shared budget, which is what a fresh checkout
  * always is. CI restores the cache (`PYREON_VALIDATE_CACHE_DIR`), so this
- * headroom is for the cold local run rather than the normal path.
+ * headroom is for the cold local run rather than the normal path. A cold
+ * runner takes about 2,600s of Kotlin compilation alone; changing validation
+ * stubs invalidates every verdict, so a 30-minute ceiling guaranteed a failure
+ * on a valid release. Allow one hour while keeping each compile bounded.
  *
  * A timeout here is still a LOUD failure that says the thresholds were not
  * enforced — raising it buys a measurement, it does not paper over one.
  */
-const NATIVE_TIMEOUT_MS = 1_800_000
+const NATIVE_TIMEOUT_MS = 3_600_000
 const timeoutFor = (pkg: string): number =>
   pkg === '@pyreon/native-compiler' ? NATIVE_TIMEOUT_MS : PACKAGE_TIMEOUT_MS
 
@@ -1177,8 +1180,8 @@ export function describeProblem(p: CoverageProblem): string {
   }
   if (p.timedOut) {
     return (
-      `${p.package}: coverage run exceeded ${PACKAGE_TIMEOUT_MS / 1000}s and was killed.\n` +
-      `    Its thresholds were NOT enforced. Speed the suite up or raise PACKAGE_TIMEOUT_MS \u2014\n` +
+      `${p.package}: coverage run exceeded ${timeoutFor(p.package) / 1000}s and was killed.\n` +
+      `    Its thresholds were NOT enforced. Speed the suite up or revise its measurement deadline \u2014\n` +
       `    do not leave it unmeasured.`
     )
   }

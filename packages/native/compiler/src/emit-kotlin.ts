@@ -5083,6 +5083,13 @@ function resolveKotlinSynthFieldType(
   parentName: string,
   fieldName: string,
 ): TypeIR {
+  if (ft.kind === 'union') {
+    return { ...ft, branches: ft.branches.map((branch) => resolveKotlinSynthFieldType(branch, ctx, parentName, fieldName)) }
+  }
+  if (ft.kind === 'array' && ft.element.kind === 'union') {
+    const singular = fieldName.endsWith('s') ? fieldName.slice(0, -1) : fieldName
+    return { ...ft, element: resolveKotlinSynthFieldType(ft.element, ctx, parentName, singular) }
+  }
   const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
   if (ft.kind === 'object') {
     const nested = registerKotlinSynthClass(ft, ctx, uniqueKotlinClassName(ctx, parentName + suffix))

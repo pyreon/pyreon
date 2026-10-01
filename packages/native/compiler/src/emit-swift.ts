@@ -96,6 +96,7 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  inferTypeValue,
   objectLengthRangeForm,
   optionalMemberTernary,
   rewriteObjectKeys,
@@ -6033,20 +6034,21 @@ function registerNestedSwiftStruct(
   parentName: string,
   fieldName: string,
 ): void {
+  ft = unwrapOptionalType(ft)
   const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
   let inner: Extract<TypeIR, { kind: 'object' }> | undefined
   let base: string | undefined
   if (ft.kind === 'object') {
     inner = ft
     base = parentName + suffix
-  } else if (ft.kind === 'array' && ft.element.kind === 'object') {
-    inner = ft.element
+  } else if (ft.kind === 'array' && unwrapOptionalType(ft.element).kind === 'object') {
+    inner = unwrapOptionalType(ft.element) as Extract<TypeIR, { kind: 'object' }>
     const singular = suffix.endsWith('s') ? suffix.slice(0, -1) : suffix
     base = parentName + singular
   }
   if (inner === undefined || base === undefined) return
   const key = structShapeKey(inner.fields)
-  if (_structFieldsToName.has(key)) return // shape already synthesized — reuse
+  if (_structTypedKeyToName.has(key)) return // identical typed shape already synthesized
   registerSwiftSynthStruct(inner, synth, uniqueSwiftStructName(synth, base), key)
 }
 
@@ -6091,9 +6093,8 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       // user's own `Todo` struct when one exists — prop type and
       // literal construction then agree on one nominal type.
       const key = structShapeKey(t.fields)
-      const declared =
-        _structTypedKeyToName.get(key) ??
-        _structFieldsToName.get(t.fields.map((f) => f.name).sort().join(','))
+      // This is a TYPE site: a name-only match may have incompatible fields.
+      const declared = _structTypedKeyToName.get(key)
       if (declared !== undefined) return declared
       if (synth !== undefined) {
         const name = synthesizeSwiftTypeName(synth.componentName, declName)
@@ -8659,7 +8660,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // keep `?.` for union-with-null receivers, `Any`/unknown (can't prove),
       // and propagated-optional chains — so a genuinely-nullable receiver is
       // never wrongly de-optionalized (no null-deref risk).
-      const recvType = inferType(e.object, _exprInferCtx)
+      // Swift unwraps the earlier link inside a chain. Decide from the field's
+      // own optionality, while computed annotations retain the whole chain's type.
+      const recvType = e.object.kind === 'member' && exprHasOptionalLink(e.object)
+        ? inferTypeValue(e.object, _exprInferCtx)
+        : inferType(e.object, _exprInferCtx)
       const recvProvablyNonNull =
         recvType.kind !== 'unknown' &&
         recvType.kind !== 'null' &&

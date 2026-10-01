@@ -17,7 +17,7 @@
  * emits land in the journey's snapshot window cleanly.
  */
 import type { VNodeChild } from '@pyreon/core'
-import { For, h, Show } from '@pyreon/core'
+import { For, h, onUnmount, Show } from '@pyreon/core'
 import {
   QueryClient,
   QueryClientProvider,
@@ -296,9 +296,19 @@ function MountedQueryClient(props: { children: () => VNodeChild }): VNodeChild {
   // Allocate a fresh client per For iteration — captures it into the
   // module-level box so imperative drivers can reach it.
   const client = new QueryClient({
-    defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY, retry: false } },
+    defaultOptions: {
+      queries: { staleTime: Number.POSITIVE_INFINITY, retry: false },
+      // Stress runs measure work and cleanup, without retaining mutation history.
+      mutations: { gcTime: 0 },
+    },
   })
   activeClient.current = client
+  // This component owns a fresh cache per workload. Default query GC timers
+  // otherwise retain every discarded client for five minutes between runs.
+  onUnmount(() => {
+    client.clear()
+    if (activeClient.current === client) activeClient.current = null
+  })
   return h(QueryClientProvider, { client }, props.children())
 }
 

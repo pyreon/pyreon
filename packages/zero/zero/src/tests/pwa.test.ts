@@ -5,19 +5,29 @@ import { buildServiceWorker, buildWebManifest } from '../pwa'
 type Listener = (e: unknown) => void
 
 /** Execute the generated worker against in-memory caches + a fake fetch. */
-function bootWorker(opts: { skipWaiting?: boolean; online: () => boolean }) {
+function bootWorker(opts: {
+  skipWaiting?: boolean
+  online: () => boolean
+  responseHeaders?: HeadersInit
+}) {
   const stores = new Map<string, Map<string, string>>()
   const open = async (name: string) => {
     if (!stores.has(name)) stores.set(name, new Map())
     const m = stores.get(name)!
-    const key = (r: string | { url: string }) => new URL(typeof r === 'string' ? r : r.url, 'https://a.test').pathname
+    const key = (r: string | { url: string }) =>
+      new URL(typeof r === 'string' ? r : r.url, 'https://a.test').pathname +
+      new URL(typeof r === 'string' ? r : r.url, 'https://a.test').search
     return {
+      match: async (r: string | { url: string }) =>
+        m.has(key(r)) ? { body: m.get(key(r))!, ok: true } : undefined,
       addAll: async (urls: string[]) => urls.forEach((u) => m.set(u, `pre:${u}`)),
       put: async (r: { url: string }, res: { body: string }) => void m.set(key(r), res.body),
     }
   }
   const match = async (r: string | { url: string }) => {
-    const k = new URL(typeof r === 'string' ? r : r.url, 'https://a.test').pathname
+    const k =
+      new URL(typeof r === 'string' ? r : r.url, 'https://a.test').pathname +
+      new URL(typeof r === 'string' ? r : r.url, 'https://a.test').search
     for (const m of stores.values()) if (m.has(k)) return { body: m.get(k)!, ok: true }
     return undefined
   }
@@ -32,7 +42,16 @@ function bootWorker(opts: { skipWaiting?: boolean; online: () => boolean }) {
   const fetchFn = async (r: { url: string }) => {
     calls.net.push(new URL(r.url).pathname)
     if (!opts.online()) throw new TypeError('offline')
-    return { ok: true, body: `net:${new URL(r.url).pathname}`, clone() { return this } }
+    return {
+      ok: true,
+      headers: new Headers(
+        opts.responseHeaders ?? { 'cache-control': 'public', 'content-type': 'text/html' },
+      ),
+      body: `net:${new URL(r.url).pathname}`,
+      clone() {
+        return this
+      },
+    }
   }
   const src = buildServiceWorker({
     precache: ['index.html', 'posts/a/index.html', 'assets/app.abc.js'],
@@ -44,27 +63,45 @@ function bootWorker(opts: { skipWaiting?: boolean; online: () => boolean }) {
   })
   runInNewContext(src, {
     self,
-    caches: { open, match, keys: async () => [...stores.keys()], delete: async (k: string) => stores.delete(k) },
+    caches: {
+      open,
+      match,
+      keys: async () => [...stores.keys()],
+      delete: async (k: string) => stores.delete(k),
+    },
     fetch: fetchFn,
     URL,
     Promise,
   })
   const dispatch = async (type: string, extra: Record<string, unknown>) => {
     let pending: Promise<unknown> = Promise.resolve()
-    const ev = { ...extra, waitUntil: (p: Promise<unknown>) => (pending = p), respondWith: (p: Promise<unknown>) => (pending = p) }
+    const lifetime: Promise<unknown>[] = []
+    const ev = {
+      ...extra,
+      waitUntil: (p: Promise<unknown>) => lifetime.push(p),
+      respondWith: (p: Promise<unknown>) => (pending = p),
+    }
     listeners.get(type)!(ev)
-    return pending
+    const response = await pending
+    await Promise.all(lifetime)
+    return response
   }
   return { dispatch, calls, stores }
 }
 
-const req = (path: string, mode = 'no-cors') => ({ request: { url: `https://a.test${path}`, method: 'GET', mode } })
+const req = (path: string, mode = 'no-cors') => ({
+  request: { url: `https://a.test${path}`, method: 'GET', mode, headers: new Headers() },
+})
 
 describe('generated service worker', () => {
   it('install precaches the list; waits unless skipWaiting', async () => {
     const w = bootWorker({ online: () => true })
     await w.dispatch('install', {})
-    expect([...w.stores.get('p-precache-v1')!.keys()]).toEqual(['/index.html', '/posts/a/index.html', '/assets/app.abc.js'])
+    expect([...w.stores.get('p-precache-v1')!.keys()]).toEqual([
+      '/index.html',
+      '/posts/a/index.html',
+      '/assets/app.abc.js',
+    ])
     expect(w.calls.skipWaiting).toBe(0)
     const w2 = bootWorker({ online: () => true, skipWaiting: true })
     await w2.dispatch('install', {})
@@ -76,28 +113,64 @@ describe('generated service worker', () => {
     let online = true
     const w = bootWorker({ online: () => online })
     await w.dispatch('install', {})
-    expect(await w.dispatch('fetch', req('/posts/a', 'navigate'))).toMatchObject({ body: 'net:/posts/a' })
+    expect(await w.dispatch('fetch', req('/posts/a', 'navigate'))).toMatchObject({
+      body: 'net:/posts/a',
+    })
     online = false
     // Visited while online → the last-seen network copy wins offline.
-    expect(await w.dispatch('fetch', req('/posts/a', 'navigate'))).toMatchObject({ body: 'net:/posts/a' })
+    expect(await w.dispatch('fetch', req('/posts/a', 'navigate'))).toMatchObject({
+      body: 'net:/posts/a',
+    })
     // Never visited → the precached prerendered page.
-    expect(await w.dispatch('fetch', req('/', 'navigate'))).toMatchObject({ body: 'pre:/index.html' })
+    expect(await w.dispatch('fetch', req('/', 'navigate'))).toMatchObject({
+      body: 'pre:/index.html',
+    })
+  })
+
+  it.each([
+    { 'cache-control': 'private, no-store' },
+    { 'cache-control': 'public, no-store' },
+    { 'cache-control': 'no-cache' },
+    { 'cache-control': 'public', vary: 'Cookie' },
+    { 'cache-control': 'public', vary: '*' },
+    {},
+  ])('never replays a private or unclassified navigation offline: %j', async (headers) => {
+    let online = true
+    const w = bootWorker({
+      online: () => online,
+      responseHeaders: { 'content-type': 'text/html', ...headers },
+    })
+    await w.dispatch('fetch', req('/account', 'navigate'))
+    online = false
+    await expect(w.dispatch('fetch', req('/account', 'navigate'))).rejects.toThrow('offline')
+  })
+
+  it('retains query variants separately for public offline navigation', async () => {
+    let online = true
+    const w = bootWorker({ online: () => online })
+    await w.dispatch('fetch', req('/search?q=one', 'navigate'))
+    online = false
+    expect(await w.dispatch('fetch', req('/search?q=one', 'navigate'))).toMatchObject({ body: 'net:/search' })
+    await expect(w.dispatch('fetch', req('/search?q=two', 'navigate'))).rejects.toThrow('offline')
   })
 
   it('hashed assets are cache-first (no network hit when precached)', async () => {
     const w = bootWorker({ online: () => true })
     await w.dispatch('install', {})
-    expect(await w.dispatch('fetch', req('/assets/app.abc.js'))).toMatchObject({ body: 'pre:/assets/app.abc.js' })
+    expect(await w.dispatch('fetch', req('/assets/app.abc.js'))).toMatchObject({
+      body: 'pre:/assets/app.abc.js',
+    })
     expect(w.calls.net).not.toContain('/assets/app.abc.js')
   })
 
   it('activate drops precaches of older versions only', async () => {
     const w = bootWorker({ online: () => true })
     w.stores.set('p-precache-old', new Map())
-    w.stores.set('p-runtime', new Map())
+    w.stores.set('p-runtime', new Map([['/account', 'old private HTML']]))
+    w.stores.set('p-runtime-public-v1', new Map())
     await w.dispatch('install', {})
     await w.dispatch('activate', {})
-    expect([...w.stores.keys()].sort()).toEqual(['p-precache-v1', 'p-runtime'])
+    expect([...w.stores.keys()].sort()).toEqual(['p-precache-v1', 'p-runtime-public-v1'])
   })
 })
 
@@ -122,7 +195,11 @@ describe('buildWebManifest', () => {
       display: 'minimal-ui' as const,
       icons: [{ src: '/i.png', sizes: '192x192', purpose: 'maskable' as const }],
     }
-    expect(JSON.parse(buildWebManifest(manifest, '/'))).toEqual({ start_url: '/', scope: '/', ...manifest })
+    expect(JSON.parse(buildWebManifest(manifest, '/'))).toEqual({
+      start_url: '/',
+      scope: '/',
+      ...manifest,
+    })
   })
 })
 
@@ -167,7 +244,10 @@ describe('registerServiceWorker', () => {
     vi.stubEnv('NODE_ENV', 'production')
     const { registerServiceWorker } = await loadClient()
     await registerServiceWorker()
-    expect(register).toHaveBeenCalledWith('/docs/sw.js', { scope: '/docs/', updateViaCache: 'none' })
+    expect(register).toHaveBeenCalledWith('/docs/sw.js', {
+      scope: '/docs/',
+      updateViaCache: 'none',
+    })
   })
 
   it('resolves null where service workers are unsupported', async () => {
@@ -183,7 +263,10 @@ describe('registerServiceWorker', () => {
     const listeners: Record<string, () => void> = {}
     const reg = {
       waiting,
-      installing: null as null | { state: string; addEventListener: (t: string, f: () => void) => void },
+      installing: null as null | {
+        state: string
+        addEventListener: (t: string, f: () => void) => void
+      },
       addEventListener: (type: string, fn: () => void) => {
         listeners[type] = fn
       },
@@ -193,17 +276,32 @@ describe('registerServiceWorker', () => {
     vi.stubEnv('NODE_ENV', 'production')
     const offers: Array<() => void> = []
     const { registerServiceWorker } = await loadClient()
-    await registerServiceWorker({ url: '/custom-sw.js', scope: '/app/', onUpdate: (activate) => offers.push(activate) })
-    expect(container.register).toHaveBeenCalledWith('/custom-sw.js', { scope: '/app/', updateViaCache: 'none' })
+    await registerServiceWorker({
+      url: '/custom-sw.js',
+      scope: '/app/',
+      onUpdate: (activate) => offers.push(activate),
+    })
+    expect(container.register).toHaveBeenCalledWith('/custom-sw.js', {
+      scope: '/app/',
+      updateViaCache: 'none',
+    })
     // Already-waiting worker with an existing controller → offered at once.
     expect(offers).toHaveLength(1)
     offers[0]!()
     expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' })
-    expect(container.addEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function), { once: true })
+    expect(container.addEventListener).toHaveBeenCalledWith(
+      'controllerchange',
+      expect.any(Function),
+      { once: true },
+    )
 
     // A later update: offered only once the new worker reaches `installed`.
     let onState: () => void = () => {}
-    const installing = { state: 'installing', postMessage: vi.fn(), addEventListener: (_t: string, f: () => void) => (onState = f) }
+    const installing = {
+      state: 'installing',
+      postMessage: vi.fn(),
+      addEventListener: (_t: string, f: () => void) => (onState = f),
+    }
     reg.installing = installing
     listeners.updatefound!()
     onState()

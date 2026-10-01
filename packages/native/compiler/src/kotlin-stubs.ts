@@ -624,6 +624,8 @@ object Modifier {
   @Suppress("UNUSED_PARAMETER")
   fun padding(horizontal: Dp = 0.dp, vertical: Dp = 0.dp): Modifier = this
   @Suppress("UNUSED_PARAMETER")
+  fun padding(start: Dp = 0.dp, top: Dp = 0.dp, end: Dp = 0.dp, bottom: Dp = 0.dp): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
   fun background(color: Color): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun clip(shape: Shape): Modifier = this

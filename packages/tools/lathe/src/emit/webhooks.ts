@@ -42,6 +42,9 @@ import { SourceFile, q, safeBlockComment } from './writer'
 
 export const WEBHOOKS_FILE = 'webhooks.ts'
 
+// A literal __proto__ key changes an object's prototype instead of declaring a field.
+const objectKey = (name: string): string => (name === '__proto__' ? `[${q(name)}]` : q(name))
+
 /** `webhooks.ts`, or `null` when the spec declares no webhook or callback. */
 export function emitWebhooks(doc: IrDocument, validator: ValidatorName): SourceFile | null {
   const hooks = doc.webhooks ?? []
@@ -52,51 +55,71 @@ export function emitWebhooks(doc: IrDocument, validator: ValidatorName): SourceF
   for (const w of hooks) if (w.payload) schemaRefs(w.payload, refs)
   for (const name of [...refs].sort()) f.import(schemaSpecifierFor(WEBHOOKS_FILE, name, doc), name)
   const withPayload = hooks.filter((w) => w.payload !== undefined)
-  const exprs = withPayload.map((w) => schemaExpr(w.payload as NonNullable<typeof w.payload>, { native: false, validator, lossless: usesBigInt(doc) }))
-  if (exprs.some((e) => new RegExp(`\\b${dialect.binding}\\.`).test(e))) f.import(dialect.module, dialect.binding)
-  const infer = (t: string): string => (dialect.typeHelper ? `${dialect.typeHelper.name}<${t}>` : `${dialect.binding}.infer<${t}>`)
+  const exprs = withPayload.map((w) =>
+    schemaExpr(w.payload as NonNullable<typeof w.payload>, {
+      native: false,
+      validator,
+      lossless: usesBigInt(doc),
+    }),
+  )
+  if (exprs.some((e) => new RegExp(`\\b${dialect.binding}\\.`).test(e)))
+    f.import(dialect.module, dialect.binding)
+  const infer = (t: string): string =>
+    dialect.typeHelper ? `${dialect.typeHelper.name}<${t}>` : `${dialect.binding}.infer<${t}>`
   if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
-  else if (!exprs.some((e) => new RegExp(`\\b${dialect.binding}\\.`).test(e))) f.importType(dialect.module, dialect.binding)
+  else if (!exprs.some((e) => new RegExp(`\\b${dialect.binding}\\.`).test(e)))
+    f.importType(dialect.module, dialect.binding)
   f.line()
   f.doc(
     'Schemas for the payloads this API SENDS (webhooks and callbacks), keyed by name.',
-    'Validate an incoming body with `webhookSchemas[name][\'~standard\'].validate(body)`.',
+    "Validate an incoming body with `webhookSchemas[name]['~standard'].validate(body)`.",
   )
   f.line('export const webhookSchemas = {')
   withPayload.forEach((w, i) => {
     const describe = [
-      w.kind === 'callback' ? `Callback \`${w.method}\`${w.expression ? ` to \`${w.expression}\`` : ''}` : `Webhook \`${w.method}\``,
+      w.kind === 'callback'
+        ? `Callback \`${w.method}\`${w.expression ? ` to \`${w.expression}\`` : ''}`
+        : `Webhook \`${w.method}\``,
       w.summary,
     ].filter(Boolean)
     f.line(`  /** ${safeBlockComment(describe.join(' — ').replace(/\s+/g, ' '))} */`)
-    f.line(`  ${q(w.name)}: ${exprs[i]},`)
+    f.line(`  ${objectKey(w.name)}: ${exprs[i]},`)
   })
   f.line('} as const')
   f.line()
   f.doc('The payload of each webhook / callback — `undefined` for one that sends no body.')
   f.line('export interface WebhookPayloads {')
   for (const w of hooks) {
-    f.line(`  ${q(w.name)}: ${w.payload ? infer(`typeof webhookSchemas[${q(w.name)}]`) : 'undefined'}`)
+    f.line(
+      `  ${q(w.name)}: ${w.payload ? infer(`typeof webhookSchemas[${q(w.name)}]`) : 'undefined'}`,
+    )
   }
   f.line('}')
   f.line()
   f.doc('A handler for one webhook or callback, typed by its payload.')
-  f.line('export type WebhookHandler<K extends keyof WebhookPayloads> = (payload: WebhookPayloads[K]) => void | Promise<void>')
+  f.line(
+    'export type WebhookHandler<K extends keyof WebhookPayloads> = (payload: WebhookPayloads[K]) => void | Promise<void>',
+  )
   f.line()
-  f.line('/** How each webhook / callback is sent: its method, and its body\'s media type. */')
-  f.line('const webhookRequests: { readonly [K in keyof WebhookPayloads]: { readonly method: string; readonly media: string | undefined } } = {')
-  for (const w of hooks) f.line(`  ${q(w.name)}: { method: ${q(w.method)}, media: ${w.mediaType !== undefined && w.payload !== undefined ? q(w.mediaType) : 'undefined'} },`)
+  f.line("/** How each webhook / callback is sent: its method, and its body's media type. */")
+  f.line(
+    'const webhookRequests: { readonly [K in keyof WebhookPayloads]: { readonly method: string; readonly media: string | undefined } } = {',
+  )
+  for (const w of hooks)
+    f.line(
+      `  ${objectKey(w.name)}: { method: ${q(w.method)}, media: ${w.mediaType !== undefined && w.payload !== undefined ? q(w.mediaType) : 'undefined'} },`,
+    )
   f.line('}')
   f.lines(...WEBHOOK_RUNTIME)
   const callbacks = hooks.filter((w) => w.kind === 'callback' && w.expression !== undefined)
   if (callbacks.length > 0) {
     f.line()
     f.doc(
-      'Each callback\'s URL, as the spec declares it: an OpenAPI runtime expression',
+      "Each callback's URL, as the spec declares it: an OpenAPI runtime expression",
       '(`{$request.body#/callbackUrl}`), resolved by {@link callbackUrl}.',
     )
     f.line('export const callbackUrls = {')
-    for (const w of callbacks) f.line(`  ${q(w.name)}: ${q(w.expression as string)},`)
+    for (const w of callbacks) f.line(`  ${objectKey(w.name)}: ${q(w.expression as string)},`)
     f.line('} as const')
     f.lines(...CALLBACK_RUNTIME)
   }
@@ -110,7 +133,7 @@ export function emitWebhooks(doc: IrDocument, validator: ValidatorName): SourceF
  */
 const WEBHOOK_RUNTIME: readonly string[] = [
   '',
-  '/** One problem with a payload, in Standard Schema\'s shape. */',
+  "/** One problem with a payload, in Standard Schema's shape. */",
   'export interface WebhookIssue {',
   '  readonly message: string',
   '  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined',
@@ -129,12 +152,12 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   'type StandardResult = { readonly value?: unknown; readonly issues?: readonly WebhookIssue[] | undefined }',
   '',
   '/**',
-  ' * Validate an incoming body against the webhook\'s schema. A webhook that',
+  " * Validate an incoming body against the webhook's schema. A webhook that",
   ' * declares no body validates to `undefined`.',
   ' */',
   'export async function validateWebhook<K extends keyof WebhookPayloads>(name: K, body: unknown): Promise<WebhookValidation<K>> {',
   '  const schemas: Readonly<Record<string, StandardLike | undefined>> = webhookSchemas',
-  '  const schema = schemas[name]',
+  '  const schema = Object.hasOwn(schemas, name) ? schemas[name] : undefined',
   '  if (!schema) return { ok: true, value: undefined as unknown as WebhookPayloads[K] }',
   '  const result = await schema["~standard"].validate(body)',
   '  return result.issues ? { ok: false, issues: result.issues } : { ok: true, value: result.value as WebhookPayloads[K] }',
@@ -151,7 +174,7 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '',
   '/**',
   ' * Handlers by webhook / callback name. Return nothing for a `204`, or a',
-  ' * `Response` to answer with it. A throw propagates, so the framework\'s own',
+  " * `Response` to answer with it. A throw propagates, so the framework's own",
   ' * error handling (and its 500) applies.',
   ' */',
   'export type WebhookHandlers = {',
@@ -162,10 +185,12 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '}',
   '',
   'export interface WebhookHandlerOptions {',
+  '  /** Maximum incoming body size in bytes, enforced while reading. Default 1 MiB. */',
+  '  bodyLimit?: number | undefined',
   '  /**',
   '   * Authenticate the request BEFORE its body is parsed — a signature, a',
   '   * shared secret, an allow-listed source. Return `false` (or throw) to',
-  '   * answer `401`. Lathe does not guess a vendor\'s signing scheme: compute',
+  "   * answer `401`. Lathe does not guess a vendor's signing scheme: compute",
   '   * the HMAC (or whatever the sender documents) over `bytes` here.',
   '   */',
   '  verify?: ((context: WebhookRequestContext) => boolean | Promise<boolean>) | undefined',
@@ -179,7 +204,7 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '    | undefined',
   '}',
   '',
-  '/** A fetch `Request`, or anything carrying one (zero\'s API-route context). */',
+  "/** A fetch `Request`, or anything carrying one (zero's API-route context). */",
   'export type WebhookInput = Request | { readonly request: Request }',
   '',
   'function webhookReply(status: number, error: string, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}): Response {',
@@ -189,12 +214,45 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '  })',
   '}',
   '',
+  'async function readWebhookBody(request: Request, limit: number): Promise<ArrayBuffer | Response> {',
+  '  const length = request.headers.get("content-length")',
+  '  if (length !== null && Number(length) > limit) {',
+  '    await request.body?.cancel().catch(() => undefined)',
+  '    return webhookReply(413, "webhook body exceeds bodyLimit")',
+  '  }',
+  '  if (!request.body) return new ArrayBuffer(0)',
+  '  const reader = request.body.getReader()',
+  '  const chunks: Uint8Array[] = []',
+  '  let total = 0',
+  '  try {',
+  '    while (true) {',
+  '      const { done, value } = await reader.read()',
+  '      if (done) break',
+  '      total += value.byteLength',
+  '      if (total > limit) {',
+  '        await reader.cancel().catch(() => undefined)',
+  '        return webhookReply(413, "webhook body exceeds bodyLimit")',
+  '      }',
+  '      chunks.push(value)',
+  '    }',
+  '  } finally {',
+  '    reader.releaseLock()',
+  '  }',
+  '  const bytes = new Uint8Array(total)',
+  '  let offset = 0',
+  '  for (const chunk of chunks) {',
+  '    bytes.set(chunk, offset)',
+  '    offset += chunk.byteLength',
+  '  }',
+  '  return bytes.buffer',
+  '}',
+  '',
   '/** A body as its declared media type reads: JSON, a form, text, or a multipart form. */',
   'async function parseWebhookBody(buffer: ArrayBuffer, text: string, media: string | undefined, contentType: string | null): Promise<unknown> {',
   '  if (media === undefined) return undefined',
   '  const type = media.split(";")[0]?.trim().toLowerCase() ?? ""',
   '  if (type === "application/x-www-form-urlencoded") {',
-  '    const out: Record<string, string | string[]> = {}',
+  '    const out: Record<string, string | string[]> = Object.create(null)',
   '    for (const [k, v] of new URLSearchParams(text)) {',
   '      const prev = out[k]',
   '      out[k] = prev === undefined ? v : Array.isArray(prev) ? [...prev, v] : [prev, v]',
@@ -203,7 +261,7 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '  }',
   '  if (type === "multipart/form-data") {',
   '    const form = await new Response(buffer, { headers: { "content-type": contentType ?? type } }).formData()',
-  '    const out: Record<string, FormDataEntryValue | FormDataEntryValue[]> = {}',
+  '    const out: Record<string, FormDataEntryValue | FormDataEntryValue[]> = Object.create(null)',
   '    for (const [k, v] of form) {',
   '      const prev = out[k]',
   '      out[k] = prev === undefined ? v : Array.isArray(prev) ? [...prev, v] : [prev, v]',
@@ -220,9 +278,10 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   ' * verifies, parses, validates and dispatches incoming webhooks.',
   ' *',
   ' * Answers `401` when `verify` refuses, `400` for a body that does not parse,',
-  ' * `404` for an event with no handler, `405` for the wrong method (with',
+  ' * `413` when the body exceeds bodyLimit, `404` for an event with no handler,',
+  ' * `405` for the wrong method (with',
   ' * `Allow`), `422` with the issues for an invalid payload, and `204` (or the',
-  ' * handler\'s own `Response`) otherwise.',
+  " * handler's own `Response`) otherwise.",
   ' *',
   ' * ```ts',
   ' * export const POST = webhookHandler(',
@@ -235,15 +294,19 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '  const names = (Object.keys(handlers) as Array<keyof WebhookPayloads>).filter((n) => handlers[n] !== undefined)',
   '  if (names.length === 0) throw new Error("webhookHandler: register at least one handler.")',
   '  for (const n of names) {',
-  '    if (!(n in webhookRequests)) throw new Error(`webhookHandler: \\`${String(n)}\\` is not a webhook or callback this API declares.`)',
+  '    if (!Object.hasOwn(webhookRequests, n)) throw new Error(`webhookHandler: \\`${String(n)}\\` is not a webhook or callback this API declares.`)',
   '  }',
+  '  const limit = options.bodyLimit ?? 1024 * 1024',
+  '  if (!Number.isSafeInteger(limit) || limit < 0) throw new Error("webhookHandler: bodyLimit must be a non-negative safe integer.")',
   '  const pick = options.event',
   '  if (names.length > 1 && !pick) {',
   '    throw new Error(`webhookHandler: ${names.length} handlers need an \\`event\\` option to tell which one a request is for.`)',
   '  }',
   '  return async (input) => {',
   '    const request = input instanceof Request ? input : input.request',
-  '    const buffer = await request.arrayBuffer()',
+  '    const incoming = await readWebhookBody(request, limit)',
+  '    if (incoming instanceof Response) return incoming',
+  '    const buffer = incoming',
   '    const bytes = new Uint8Array(buffer)',
   '    const rawBody = new TextDecoder().decode(bytes)',
   '    const context: WebhookRequestContext = { request, bytes, rawBody }',
@@ -276,7 +339,7 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   '    const firstMedia = webhookRequests[names[0] as keyof WebhookPayloads].media',
   '    const early = await parse(firstMedia)',
   '    const name = pick ? await pick(request, early.ok ? early.value : undefined) : names[0]',
-  '    const handler = name === undefined ? undefined : handlers[name]',
+  '    const handler = name === undefined || !Object.hasOwn(handlers, name) ? undefined : handlers[name]',
   '    if (name === undefined || !handler) return webhookReply(404, `no handler for webhook ${JSON.stringify(name ?? null)}`)',
   '    const declared = webhookRequests[name]',
   '    if (request.method.toUpperCase() !== declared.method) {',
@@ -386,7 +449,7 @@ const CALLBACK_RUNTIME: readonly string[] = [
   '  return template.replace(/\\{(\\$[^}]+)\\}/g, (_, expression: string) => value(expression))',
   '}',
   '',
-  '/** A callback\'s URL, resolved against the request that registered it. */',
+  "/** A callback's URL, resolved against the request that registered it. */",
   'export function callbackUrl(name: keyof typeof callbackUrls, context: RuntimeExpressionContext): string {',
   '  return expandCallbackUrl(callbackUrls[name], context)',
   '}',

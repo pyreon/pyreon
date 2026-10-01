@@ -214,6 +214,9 @@ jobs:
       - name: Cap changeset bumps at minor (0.x policy)
         run: bun scripts/cap-changeset-bumps.ts
 
+      - name: Reject high-severity dependency advisories before publishing
+        run: bun audit --audit-level=high
+
       - name: Create Release PR or Publish
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
@@ -497,6 +500,9 @@ jobs:
       # unfiltered `bun run typecheck` was timing out at 45 min.
       - name: Disable local git hooks for the publish flow
         run: git config core.hooksPath /dev/null
+
+      - name: Reject high-severity dependency advisories before publishing
+        run: bun audit --audit-level=high
 
       - name: Publish snapshot
         run: |

@@ -230,6 +230,8 @@ The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — componen
 
 ## Gotchas
 
+- PWA runtime navigation caching requires explicit `Cache-Control: public` HTML without private/no-store/no-cache directives, state-dependent `Vary`, or CSP nonces. Private/session/preview pages stay out of the offline runtime cache. Activation removes the legacy runtime store; prerendered public pages remain available offline.
+
 - `@pyreon/zero` ≠ `@pyreon/zero/server` — the main entry is client-safe. Server plugins (`faviconPlugin`, `seoPlugin`, `createServer`) MUST be imported from `/server` (or `/favicon`, `/config`, …). They are not exported from the main entry, so importing one from `@pyreon/zero` is a structural compile error (`TS2305`).
 - ISR with auth-gated pages needs `cacheKey: (req) => …` that varies on session — the default keys by `url.pathname + url.search` (cookies/auth excluded) and will serve one user's HTML to another.
 - `_404.tsx` rendered HTML is emitted by SSG, but **static hosts must be configured to serve it** for unmatched URLs (most managed hosts do this by convention; bare S3 / nginx / Caddy need explicit per-locale `try_files` / `[[redirects]]`).
