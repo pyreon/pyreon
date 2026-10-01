@@ -7,6 +7,12 @@ description: "Common ci / build gate mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Archiving a live compiler cache after cancellation silently loses completed work
+
+Native workers can outlive the cancelled test step and keep renaming verdicts. GNU tar then reports `file changed as we read it`; `actions/cache/save` warns and stays green without uploading anything. Snapshot complete atomic verdict/probe JSON records to a separate directory before saving, and hydrate the live directory on restore. Exclude temporary files, binaries and symlinks; keep the archived path identical in every lane. Verify an actual saved key/cache entry, not the step conclusion. Reference: `scripts/snapshot-native-verdict-cache.ts`; regression: `packages/internals/test-utils/src/tests/snapshot-native-verdict-cache.test.ts` archives and restores a stable snapshot while a real writer continues.
+
+---
+
 ### A published `.d.ts` that is invalid or imports an undeclared package degrades to `any` SILENTLY — the default `skipLibCheck: true` hides it from every consumer
 
 (2026-09, `check-declarations`). Three shipped instances, all green in-repo because the workspace resolves everything and nothing compiled the OUTPUT strictly: `s.string().iso.date()` returned `any` (an inferred `{ date: (…) => this }` put polymorphic `this` in an object type literal — TS2526 in a declaration, fine in source); `@pyreon/feature` emitted `import("@tanstack/table-core")`, a package only its dependency declares; and every `@pyreon/elements` props type violated `ComponentFn<P extends Record<string, unknown>>` once instantiated, because an `interface` has no implicit index signature (source passed only because the generic hid it). **Rules: (1) a props/theme bound should be `object`, not `Record<string, unknown>` — the latter rejects every `interface`; (2) give an inferred PUBLIC export a named type when the inference mentions `this` or a transitive package; (3) a declaration-emitting package must declare every package its `.d.ts` imports.** Gate: `bun run check-declarations` (imports declared + every `types` entry compiles with `skipLibCheck: false`). Probe gotcha: on macOS `/tmp` is a symlink — list the files by REAL path or core's global JSX types load twice and report `Duplicate identifier 'Element'`.

@@ -72,6 +72,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 - Scaffold CI restores this commit's libraries through setup-pyreon, then sets `PYREON_BOOTSTRAP_SKIP=1` for the smoke step. Each temporary app otherwise changes `bun.lock`, invalidates bootstrap's global hash, and rebuilds every package again. This skips only the root bootstrap; generated-app installs, dependency lifecycle scripts, builds and smoke assertions still run. Local scaffold runs keep the default bootstrap behavior.
 - `bun-install-cache-<os>-<lockhash>`: `Install` saves it on main. A PR whose `bun.lock` differs from the base saves its own; everyone else only restores.
 - The macOS native lanes restore and save the content-addressed verdict store, like their Linux twin.
+- Native workers write `.cache/pyreon-native-validate`; Actions archives only `.cache/pyreon-native-validate-archive`. Hydrate before tests and snapshot complete atomic JSON verdict/probe records before every save, including cancellation paths, with `scripts/snapshot-native-verdict-cache.ts`. Workers can outlive a cancelled test step, and GNU tar rejects a directory that changes while it reads. A green cache action can hide a failed upload warning: confirm the log's saved key and the cache API entry. Changing the archived path changes Actions' cache version, so the first run of this format is cold; keep restore/save paths aligned across all native lanes.
 
 ## Gate reference
 

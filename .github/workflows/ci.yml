@@ -997,9 +997,13 @@ jobs:
         if: contains(matrix.members, 'native-rest')
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-native-rest-${{ github.sha }}
           restore-keys: native-verdicts-ci-${{ runner.os }}-native-rest-
+
+      - name: Hydrate native compile-verdict cache
+        if: contains(matrix.members, 'native-rest')
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
 
       - name: Run tests (${{ matrix.name }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
@@ -1103,11 +1107,14 @@ jobs:
 
       # Small content-addressed verdicts are useful even after a failure.
       # Exactly one batch owns native-rest; preserve its existing key namespace.
+      - name: Snapshot native compile-verdict cache
+        if: always() && contains(matrix.members, 'native-rest')
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate .cache/pyreon-native-validate-archive
       - name: Save native compile-verdict cache
         if: always() && contains(matrix.members, 'native-rest')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-native-rest-${{ github.sha }}
 
 

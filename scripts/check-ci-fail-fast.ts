@@ -139,16 +139,59 @@ export function findCiSchedulingViolations(workflow: string, setupAction: string
     if (!install.includes(profile)) errors.push(`missing workload-specific batching: ${profile}`)
   }
   const tests = jobs.get('test-cell') ?? ''
+  const nativeSteps = tests
+    .split(/^ {6}- /m)
+    .slice(1)
+    .filter(
+      (step) =>
+        step.includes('native-verdicts-ci-') || step.includes('snapshot-native-verdict-cache.ts'),
+    )
   if (
     tests.includes('native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}') ||
-    !tests.includes("if: contains(matrix.members, 'native-rest')") ||
-    !tests.includes("if: always() && contains(matrix.members, 'native-rest')")
+    nativeSteps.length === 0 ||
+    nativeSteps.some((step) => {
+      const saving =
+        step.includes('actions/cache/save@') ||
+        step.includes('snapshot-native-verdict-cache.ts .cache/pyreon-native-validate ')
+      const condition = saving
+        ? "always() && contains(matrix.members, 'native-rest')"
+        : "contains(matrix.members, 'native-rest')"
+      return !step.includes(`if: ${condition}`)
+    })
   )
     errors.push('native-rest cache ownership must follow membership, not batch name')
   if (!(jobs.get('test') ?? '').includes('NEEDS_JSON: ${{ toJSON(needs) }}'))
     errors.push('Test must validate scheduler results and selection outputs')
   if (/restore-keys:\s*node-modules-/m.test(setupAction))
     errors.push('node_modules must not download a stale prefix tree that fallback discards')
+  return errors
+}
+
+/** Cache actions must archive immutable records, even while cancelled workers run. */
+export function findNativeCacheSnapshotViolations(workflow: string): string[] {
+  const errors: string[] = []
+  const live = '.cache/pyreon-native-validate'
+  const archive = `${live}-archive`
+  const condition = (step: string) => /^ {8}if:\s*(.+)$/m.exec(step)?.[1]?.trim() ?? ''
+  for (const job of parseJobBlocks(workflow)) {
+    const steps = job.body.split(/^ {6}- /m).slice(1)
+    steps.forEach((step, index) => {
+      if (!/^\s+key:\s*native-verdicts-ci-/m.test(step)) return
+      const kind = /uses: actions\/cache\/(restore|save)@/.exec(step)?.[1]
+      const adjacent = steps[index + (kind === 'restore' ? 1 : -1)] ?? ''
+      const command = kind === 'restore' ? `${archive} ${live}` : `${live} ${archive}`
+      if (
+        !kind ||
+        !step.includes(`path: ${archive}\n`) ||
+        !adjacent.includes(`run: bun scripts/snapshot-native-verdict-cache.ts ${command}\n`) ||
+        condition(adjacent) !== condition(step) ||
+        (kind === 'save' && !condition(step).includes('always()'))
+      )
+        errors.push(
+          `${job.name}: native cache ${kind ?? 'action'} must use a matching immutable snapshot step`,
+        )
+    })
+  }
   return errors
 }
 
@@ -160,6 +203,11 @@ if (import.meta.main) {
   const violations = [
     ...findCiFailFastViolations(workflow, aggregate),
     ...findCiSchedulingViolations(workflow, setup),
+    ...['ci.yml', 'ci-main.yml', 'native-validate.yml'].flatMap((file) =>
+      findNativeCacheSnapshotViolations(
+        readFileSync(join(root, '.github/workflows', file), 'utf8'),
+      ),
+    ),
   ]
   if (violations.length > 0) {
     console.error(

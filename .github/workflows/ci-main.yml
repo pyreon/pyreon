@@ -115,16 +115,22 @@ jobs:
       - name: Restore native compile-verdict cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}
           restore-keys: native-verdicts-ci-${{ runner.os }}-coverage-native-
+      - name: Hydrate native compile-verdict cache
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
+
       - name: Run native-compiler coverage
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
         run: bun run coverage -- --only=@pyreon/native-compiler
+      - name: Snapshot native compile-verdict cache
+        if: always()
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate .cache/pyreon-native-validate-archive
       - name: Save native compile-verdict cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}
