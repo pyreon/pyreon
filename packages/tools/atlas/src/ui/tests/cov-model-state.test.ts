@@ -330,19 +330,23 @@ describe('runPlay', () => {
 })
 
 describe('previewRef — re-probing on a real mutation', () => {
-  it('re-reads the a11y verdict when the rendered DOM changes underneath it', async () => {
+  it('re-reads the a11y verdict when the rendered DOM changes underneath it', async ({ onTestFinished }) => {
     const m = createModel(CATALOG, {})
     const el = document.createElement('div')
     el.innerHTML = '<button>Go</button>'
     document.body.append(el)
     m.previewRef(el)
+    onTestFinished(() => {
+      m.previewRef(null)
+      el.remove()
+    })
     expect(m.a11y().fails).toBe(0)
 
     // The observer is what catches a re-render the model was never told about.
     el.firstElementChild!.replaceWith(document.createElement('img'))
-    await new Promise((r) => setTimeout(r, 0))
-
-    expect(m.a11y().fails).toBeGreaterThan(0)
+    // The observer coalesces re-probes into requestAnimationFrame. A zero
+    // timer can finish before that frame; wait for the verdict itself.
+    await vi.waitFor(() => expect(m.a11y().fails).toBeGreaterThan(0))
   })
 
   it('applies the writing direction to the captured element, reactively', () => {
