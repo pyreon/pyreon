@@ -1,5 +1,150 @@
 # @pyreon/permissions
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3651](https://github.com/pyreon/pyreon/pull/3651) [`9d6ca3d`](https://github.com/pyreon/pyreon/commit/9d6ca3d705b555a2bb52d6dfd0c5fe231ff69f5c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hardening pass across six fundamentals packages.
+
+  **@pyreon/rx** — `groupBy` / `keyBy` / `countBy` / `mapValues` now build prototype-free records (`Object.create(null)`). A key named `constructor` made `groupBy` throw and `countBy` produce `'function Object() …1'`; a `__proto__` key was written as the result's prototype and vanished. Behaviour change: the results no longer inherit from `Object.prototype` (call `Object.hasOwn(result, k)`, not `result.hasOwnProperty(k)`). `search()` gains signal/plain overloads (a plain call is typed `T[]`, a signal call a computed) instead of `any`.
+
+  **@pyreon/machine** — event and state names are looked up as OWN keys, so `send('toString')` is an unhandled event instead of moving the machine into an undefined state; an initial/target named after an `Object.prototype` member is rejected at creation. A throwing `onExit` / `onEnter` / `onTransition` / `onDone` listener is reported (`console.error`, `[Pyreon]` prefix) and no longer aborts the transition midway. Behaviour change: `send()` called from inside a listener is QUEUED and runs after the current macrostep completes (run-to-completion), instead of running nested in the middle of it; such a call returns the state as it is at that moment.
+
+  **@pyreon/permissions** — behaviour change: `usePermissions([])` is a self-contained deny-all instance; it no longer falls back to the provider's instance (the mode is chosen by the presence of the argument, not its length). The native lowering makes the same choice. The resolve memo is re-enabled once `patch()` replaces the last predicate with a boolean. `can.all` / `can.any` accept an array plus a context (`can.all(['a', 'b'], post)`) so multi-checks reach context-dependent predicates; the rest-args form is unchanged.
+
+  **@pyreon/i18n** — `<Trans>` no longer lets an interpolated value create markup: angle brackets in values are neutralised before tags are parsed, so `x</bold><link>…` renders as text instead of invoking the `link` component. Loader-returned namespaces get the same normalization as `messages` (flat dotted keys expanded, unsafe keys dropped, a store-owned deep copy). Behaviour change: locales resolve along the BCP 47 step-down chain (`en-US` → `en` → `fallbackLocale`, itself stepped down). Key paths, inline format names and custom plural rules are OWN-property lookups (`t('a.constructor.name')` no longer returns `'Object'`). `$t()` nesting no longer re-interpolates a nested result, so a value that looks like `{{x}}` is not substituted twice. The `Intl.PluralRules` cache and the per-instance resolution cache are LRU-bounded (the resolution cache used to stop caching entirely after 2000 keys).
+
+  **@pyreon/url-state** — signals now follow navigations made through the registered router (`router.push('?page=2')`, `<RouterLink>`), including a router registered after the signal was created (`UrlRouter` gains an optional `currentRoute`, which `@pyreon/router` already provides). Behaviour changes: array params keep their element type, inferred from the default's first element (`[0]` → `number[]`), and a `,` inside an element round-trips; a lone custom `serialize` or `deserialize` is honoured (the other half is inferred), and with `arrayFormat: 'repeat'` a custom codec applies per element; `onChange` fires only when the value actually changed; an empty number param (`?page=`) and an unrecognised boolean fall back to the default, and booleans accept `1`/`0`. The native lowering decodes empty numbers and booleans the same way.
+
+  **@pyreon/table** — `flexRenderCell` tracks the cell renderer itself (the lookup stays untracked), so a renderer reading table state such as `info.row.getIsSelected()` updates on that change; data edits still re-run only the edited row. `columnSignature` covers group columns' children and the `cell` / `header` / `footer` renderers (by source text, so an inline column literal stays stable), so a renderer swap re-renders the cells. Cleanup is registered on the owning `EffectScope` instead of `onUnmount`, so `useTable` in a store no longer warns.
+
+  **@pyreon/atlas** — the permission-set recorder wraps the new array form of `can.all` / `can.any` too, so keys passed that way are seeded with the role's policy and recorded as consulted.
+
+- [#2790](https://github.com/pyreon/pyreon/pull/2790) [`ed6518a`](https://github.com/pyreon/pyreon/commit/ed6518a68ec678e546713abf4e2551a3297a794f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Co-locate native runtimes into their own packages.
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+- [#3056](https://github.com/pyreon/pyreon/pull/3056) [`07f0ac8`](https://github.com/pyreon/pyreon/commit/07f0ac84535bec7386db08d4ffedf83e4de5e6a0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `usePermissions(['posts.edit'])` works on the web, so a permission-gated screen can be written once
+
+  The seeded form is what `@pyreon/native-compiler` lowers to — it becomes a
+  `PyreonPermissions` seeded with the same literal keys, and the compiler's own
+  diagnostics point authors at it. On the web that identical call threw
+  `usePermissions() must be used within <PermissionsProvider>`, so a screen using
+  it ran on iOS and Android and died in a browser.
+
+  A seeded call is self-contained by definition: it says what it grants, so there
+  is nothing for a provider to contribute. It now builds a local instance and
+  needs no provider. The bare `usePermissions()` contract is unchanged — it still
+  reads the nearest provider and still throws without one, and the message now
+  names the seeded form as the other way out.
+
+  Found by rendering a shared multi-target source in a real browser.
+
+### Patch Changes
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#2922](https://github.com/pyreon/pyreon/pull/2922) [`8aeffe0`](https://github.com/pyreon/pyreon/commit/8aeffe09bf62ea08af1278c45ecdaf26d1a04cb6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship the MIT LICENSE file in the package tarball
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- [#2820](https://github.com/pyreon/pyreon/pull/2820) [`4be7791`](https://github.com/pyreon/pyreon/commit/4be7791afaf86864ce03a4548c30b295292e7833) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native `.*` granted more than the web did
+
+  `PyreonPermissions.can()` resolved a `"prefix.*"` grant with a bare prefix
+  match on both platforms, so granting `"posts.*"` also granted
+  `"posts.comments.edit"` — a key the web **denies**. A permission check that
+  grants more on device than in the browser, from the same source, is the wrong
+  direction to be wrong in. Neither runtime recognised `.**` or `*` at all, so
+  the two wildcards that _should_ widen a grant were silently ignored.
+
+  The two native runtimes agreed with each other and disagreed with the web:
+  both were written from one belief about what `.*` means. `can()` now resolves
+  in the web's order — exact, then one-segment `.*`, then recursive `.**`
+  most-specific-ancestor-first, then global `*`.
+
+  Measured three ways rather than mirrored: the web resolver via
+  `native-parity.test.ts`, and both runtimes compiled and **run** against the
+  same nine cases.
+
+  ## The call site was inverted too
+
+  Web `usePermissions()` takes no arguments — the grants come from
+  `<PermissionsProvider>`, which has no native lowering. So the correct web call
+  emitted an empty native set in which every check denies, silently: guarded
+  views simply never appeared on device. The only way to get a non-empty native
+  set is `usePermissions([...])`, a call the web API rejects.
+
+  Seeding the provider natively is a larger arc. What changes here is the
+  silence — the empty-set case now says so and names the shape that works, and
+  the provider's own advice no longer tells an author already holding the hook
+  to "use the hook instead", which changed nothing.
+
+  Still web-only: predicate permissions (`(context) => boolean`) and explicit
+  `false` values, both of which need a value-carrying granted set rather than
+  the current `Set<String>`. The web arm pins them so the gap is visible.
+
+  ## `<PermissionsProvider>` now lowers
+
+  Web `usePermissions()` takes no arguments — the grants come from the provider
+  above it, which had no native lowering. A literal
+  `<PermissionsProvider permissions={{ 'posts.*': true }}>` now injects them
+  into the SwiftUI environment / Compose `CompositionLocal` that a bare
+  `usePermissions()` reads, so the web-correct call works unchanged instead of
+  denying everything.
+
+  The plumbing is emitted INLINE rather than shipped in the co-located runtime,
+  for the reason `PyreonUrlState` already is: it needs SwiftUI's environment
+  machinery / Compose's CompositionLocal, and a runtime that pulls those in
+  stops being self-contained (and stops verifying against the compile gate's
+  stub set).
+
+  A NON-literal map (`permissions={fromServer}`) cannot be baked into the emit
+  and declines from the emitter, which is the only layer that knows whether the
+  injection happened — the blanket import warning is suppressed once the tag is
+  present, so without this a provider that injects nothing would have gone
+  silent.
+
+  One more silent drop fixed on the way: an object literal with a STRING key
+  (`{ 'posts.*': true }` — ordinary TS) was dropped by the parser with no field
+  and no warning, unlike the computed-key case beside it which warns. String
+  keys are now preserved.
+
+- [#2817](https://github.com/pyreon/pyreon/pull/2817) [`c9f3c6c`](https://github.com/pyreon/pyreon/commit/c9f3c6c832167f72aafe54daa2ba6b6c58f9d666) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(permissions): predicate evaluation is fail-CLOSED — only an explicit `true` grants
+
+  `evaluate()` returned the raw predicate result, so a predicate that returned a truthy NON-boolean granted access it should deny. A predicate is typed `(context?) => boolean`, but a body reading an `any`-typed context (`(u: any) => u.permissions.edit`) returns `any` with no type error — so at runtime it could yield a truthy string/number/object, or (worst) a `Promise`, which is ALWAYS truthy, so an accidentally-async predicate ALWAYS granted. `can()` now returns `true` only when the predicate returns exactly `true` (matching the fail-closed posture the throw path already uses). A genuine `false` deny and all boolean predicates are unchanged. Bisect-verified.
+
+- [#3750](https://github.com/pyreon/pyreon/pull/3750) [`5f5bedf`](https://github.com/pyreon/pyreon/commit/5f5bedf81133dc6128486b083cdf59b8496c7c29) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native `usePermissions()` with no `<PermissionsProvider>` above it now warns once per process instead of silently denying every check. The SwiftUI environment default and the Compose CompositionLocal default are a distinguished deny-all instance (`isUnprovidedFallback`); the first `can()` against it prints a warning naming the missing provider (Swift: `#if DEBUG` only; Kotlin: once via `System.err`, since a library cannot read the host app's `BuildConfig`). An explicit `usePermissions([])` is unchanged and never warns. Web already threw on a missing provider. Validation stubs mirrored.
+
+- [#3750](https://github.com/pyreon/pyreon/pull/3750) [`5f5bedf`](https://github.com/pyreon/pyreon/commit/5f5bedf81133dc6128486b083cdf59b8496c7c29) Thanks [@vitbokisch](https://github.com/vitbokisch)! - PMTC no longer emits per-file helper declarations that collide when two files share a Swift module or Kotlin package. `PyreonUrlState`, the number-string helper and the permissions environment key/CompositionLocal moved into the runtimes (stubs mirrored, parity-tested); synthesized `__ObjN` structs carry a per-module suffix. A `<PermissionsProvider>` with no readers in its file now compiles, and a bare `usePermissions()` no longer warns per file since the provider is app-wide.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -535,7 +680,6 @@
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -549,7 +693,6 @@
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

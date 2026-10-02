@@ -1,5 +1,0 @@
----
-"@pyreon/flow": minor
----
-
-Native `<Flow colorMode>` now themes the canvas the way the web does. Both native renderers resolve the web's `--pyreon-flow-*` tokens per colour mode (`PyreonFlowPalette` — light mirrors the web fallbacks, dark mirrors `[data-color-mode="dark"]`) and paint the canvas background, default edge, edge labels, handles, resizers, reconnect controls, selection rectangle, minimap and background pattern from it. On iOS the mode is scoped to the flow (and the `<Panel>` overlays beside it) through `.environment(\.colorScheme)` instead of `.preferredColorScheme`, which re-themed the whole window; on Android `PyreonFlowColorMode` scopes a `MaterialTheme` and the palette the same way. The Compose canvas also fills the box it is given (the web's `width: 100%; height: 100%`) instead of wrapping to its Controls column. Device-proven on both targets: Panel position, marker rendering, reactive colour mode, a custom connection line, and `config.reducedMotion` suppressing viewport animation.

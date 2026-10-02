@@ -1,5 +1,64 @@
 # @pyreon/rocketstyle
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3019](https://github.com/pyreon/pyreon/pull/3019) [`a0c4cd7`](https://github.com/pyreon/pyreon/commit/a0c4cd7803dd244b79a8828dca36dff6c34b0b8c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A `.theme()` chain with no `.styles()` now renders its theme as CSS
+
+  `.theme()` supplies values; nothing turned them into CSS unless the author also
+  chained `.styles()`. So a theme-only chain rendered COMPLETELY UNSTYLED in a
+  browser, while `@pyreon/native-compiler` reads the same `.theme()` statically and
+  emits real view modifiers — one declaration, fully styled on iOS/Android and bare
+  on the web.
+
+  The bridge arrives through ui-core's existing theme-engine seam
+  (`responsiveStyles`, registered by unistyle), so rocketstyle gains no dependency
+  on unistyle and still degrades to no CSS without it. It applies ONLY when the
+  chain declared no `.styles()` of its own — an explicit chain already owns the
+  bridge, and a second one would emit the theme twice.
+
+- [#3638](https://github.com/pyreon/pyreon/pull/3638) [`a92fd69`](https://github.com/pyreon/pyreon/commit/a92fd69a81dde9b99ca8585e213454fbf399b7f5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Type theme callbacks locally with `rocketstyle(config).withTheme<Tokens>()`, and actually check them.
+
+  - `withTheme<Tokens>()` binds the theme type every `.theme()` and dimension callback built from the factory receives, so `t` is inferred and checked, with no global `declare module '@pyreon/rocketstyle'` augmentation. It is type-only and returns the same factory. An `interface` works directly.
+  - `.theme()` now checks its callback. Its object arm (`Partial<Record<string, unknown>>`) accepted any function, so every callback matched it and a wrong annotation on `t` compiled. **Type-level breaking:** a `.theme((t: X) => …)` whose annotation disagrees with the bound theme is now an error. Bind the factory with `withTheme<X>()` and drop the annotation.
+  - New exported types: `RocketstyleFactory`, `ThemeShape`, `ThemeObject`.
+
+### Patch Changes
+
+- [#3678](https://github.com/pyreon/pyreon/pull/3678) [`a6e97cb`](https://github.com/pyreon/pyreon/commit/a6e97cb4c0ee97dbc405900d4d9655f8fd81937a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct the API documentation (manifests, llms.txt, MCP api-reference, docs reference pages) for rocketstyle, styler, attrs, elements, kinetic and coolgrid so it matches the shipped runtime. Notable corrections: styler's `ThemeProvider` takes an object only (no parent-merging function form) and reads it once; rocketstyle's `Provider` snapshots its parent context and writes only the ui-core context; `.config({ inversed })` inverts only the component itself; `.compose()` wraps user HOCs last-defined-outermost; `keyframes` and static `createGlobalStyle` inject at call time; `useCSS`'s `boost` argument has no effect; `List` renders a fragment unless `rootElement` is set; kinetic's `show` accepts an accessor, a value, or nothing. No runtime changes.
+
+- [#3492](https://github.com/pyreon/pyreon/pull/3492) [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Expose the chain's base as a `__rs_component` static (a tag string for `.config({ component: 'hr' })`, otherwise the wrapped component), beside the existing `__rs_attrs`, so `@pyreon/atlas` discovery can learn what a component renders as when its attrs chain sets no `tag`.
+
+- [#2804](https://github.com/pyreon/pyreon/pull/2804) [`1e6c0f2`](https://github.com/pyreon/pyreon/commit/1e6c0f26e906bb3628f37a663456d572985ea61d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(rocketstyle): use a named optional param in the `Rocketstyle` type instead of a destructuring pattern
+
+  The `Rocketstyle` function type declared its optional config as a destructuring pattern (`({ dimensions, useBooleans }?: {...})`). Binding-pattern names in a function type are documentary, but destructuring an OPTIONAL param makes some TypeScript builds report `Property 'dimensions' does not exist on type '{...} | undefined'` when this source is type-checked cross-package (e.g. `@pyreon/loom` importing rocketstyle) — which surfaces only when a rocketstyle dependency changes forces a re-typecheck. The runtime implementation already destructures with defaults, so this is a type-only, behaviour-preserving change (the param is now a named `config?`).
+
+- [#3637](https://github.com/pyreon/pyreon/pull/3637) [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Published type declarations now compile strictly (`skipLibCheck: false`), and no longer degrade to `any` under the default `skipLibCheck: true`.
+
+  - `@pyreon/core`: component props may be a plain `interface`. `ComponentFn`, `defineComponent`, `lazy`, `Defer`, `HigherOrderComponent` and `h()` bounded props by `Record<string, unknown>`, which an interface does not satisfy (no implicit index signature). `ComponentFn<ButtonProps>` was TS2344, and every `@pyreon/elements` props type violated the bound once emitted into a `.d.ts`. The bound is now `object`; `Props` is unchanged.
+  - `@pyreon/rocketstyle`: the origin-props parameter of `RocketStyleComponent` accepts interface-typed props for the same reason.
+  - `@pyreon/validate`: `s.string().iso.date()` / `.dateTime()` / `.time()` returned `any` to consumers. The inferred type put polymorphic `this` inside an object type literal, which is invalid in a declaration file. It is now typed as the named `IsoChecks<this>`, and the chain stays typed.
+  - `@pyreon/feature`: its declarations import `@tanstack/table-core`, which it now declares as a dependency. Before, the import resolved only where the package manager hoists transitive dependencies.
+  - `@pyreon/document-primitives`: declares `@pyreon/ui-core`, which its declarations import.
+
+- [#3069](https://github.com/pyreon/pyreon/pull/3069) [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - String-mode SSR no longer leaks CSS between requests. The styler's server rule buffer was never reset, so a page's `<style>` carried every rule an earlier request had inserted (ssr-showcase `/posts/1`: 2,850 B, then 12,710 B after one `/sections` request), and prerendered page CSS depended on prerender order. `runWithRequestContext` is now a styler request scope, render sites that hand out a cached class mark it used (`sheet.markUsed`), and module-level `keyframes` / static `createGlobalStyle` rules are emitted to every request. `ssg.cssMode: 'asset'` now writes one file per distinct rule set instead of linking every page to the first page's CSS.
+
+- [#3679](https://github.com/pyreon/pyreon/pull/3679) [`29f1002`](https://github.com/pyreon/pyreon/commit/29f10026097e30e261dcc49ad25ea3928ab7e026) Thanks [@vitbokisch](https://github.com/vitbokisch)! - UI providers are now reactive, and two diagnostics are corrected.
+
+  - `@pyreon/rocketstyle` `Provider` reads its parent context and its own props lazily, so `<Provider inversed>` follows a later parent mode change and a signal-driven `theme`/`mode` prop stays live (it previously froze at mount).
+  - `@pyreon/ui-core`'s low-level `Provider` no longer logs "CoreProvider is internal" on every mount — rocketstyle's public `Provider` delegates to it — and exposes getter-backed props lazily. `@pyreon/unistyle`'s `Provider` re-enriches a changing `theme` prop.
+  - `@pyreon/styler` `ThemeProvider` follows later `theme` prop changes for consumers tracking the reactive `ThemeContext`.
+  - `@pyreon/elements` `Overlay` `trigger` / `children` render-prop callbacks are contextually typed (no implicit `any` under strict TS).
+  - rocketstyle's reserved-dimension error names the clashing key(s) and the reserved set (it printed `[object Object]`).
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`ed98e38`](https://github.com/pyreon/pyreon/commit/ed98e380716dacea266b65e25394b5157265a415), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`a6e97cb`](https://github.com/pyreon/pyreon/commit/a6e97cb4c0ee97dbc405900d4d9655f8fd81937a), [`c95ea09`](https://github.com/pyreon/pyreon/commit/c95ea0941a5a09cd9b14e817b09c857ce64b1112), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`5b93f4c`](https://github.com/pyreon/pyreon/commit/5b93f4cb70a6e210325aca3c79678b62383bc773), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`a0c4cd7`](https://github.com/pyreon/pyreon/commit/a0c4cd7803dd244b79a8828dca36dff6c34b0b8c), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`9dafed7`](https://github.com/pyreon/pyreon/commit/9dafed7a5238c057c44c00dcff3b56044f16dfa8), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`57f0480`](https://github.com/pyreon/pyreon/commit/57f04800c4fc7bb5f2e4098e6b3399a0860ab6eb), [`e690309`](https://github.com/pyreon/pyreon/commit/e690309cc58c842fc8cb07869519b4288c667eb5), [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`47dfb62`](https://github.com/pyreon/pyreon/commit/47dfb62f7ea49b523dfff216710e0ce6e1f5ec73), [`195a9dc`](https://github.com/pyreon/pyreon/commit/195a9dc6417f964eb3858772da449a3bc1f1d02a), [`29f1002`](https://github.com/pyreon/pyreon/commit/29f10026097e30e261dcc49ad25ea3928ab7e026), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -674,7 +733,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -932,7 +990,6 @@ N to be 0` (N=64 and N=100 respectively); control spec stays green
   3/3 pass.
 
   ## Surfaces updated
-
   - `packages/ui-system/rocketstyle/src/rocketstyle.ts` — `RS_MEMO_CAP`
     32 → 128 + rationale comment
   - `packages/ui-system/rocketstyle/src/__tests__/memo-cap.test.ts` —

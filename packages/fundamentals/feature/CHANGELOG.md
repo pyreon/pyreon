@@ -1,5 +1,162 @@
 # @pyreon/feature
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2905](https://github.com/pyreon/pyreon/pull/2905) [`475985d`](https://github.com/pyreon/pyreon/commit/475985dc116aaeaceadc074e5e1687cbb0305597) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `feature.Field` — render one schema field without hand-writing its markup.
+
+  `defineFeature` has always derived `fields: FieldInfo[]` from the schema (name, type, optionality, enum values, a human label) and nothing consumed it, so every app hand-wrote markup the schema had already described. `<Feature.Field form={form} name="title" />` now renders the label, a control typed from the schema (string → text, number → number, boolean → checkbox, enum → select with its values), and the error — wired through the form's own `register` / `labelProps` / `errorProps`, so label↔control association and the error's `role="alert"` come for free.
+
+  Deliberately PER-FIELD rather than a whole-form renderer. A generated form is excellent right up until a designer wants one field different, at which point an all-or-nothing component is worse than the markup it replaced. Every derived value has an override (`label`, `type`, `options`, `placeholder`, `class`, `inputClass`), and a field you do not want generated is written by hand next to the ones you do.
+
+  An unknown `name` throws naming the field and listing the real ones, rather than rendering an empty row that reads as a styling bug.
+
+  Type inference is duck-typed on Zod, so a `z.string().email()` renders `type="text"` — the component does not guess an input type from the field NAME, which would mistype a field called `emailVerified`. Pass `type` explicitly.
+
+- [#3064](https://github.com/pyreon/pyreon/pull/3064) [`950f1c2`](https://github.com/pyreon/pyreon/commit/950f1c24e1421b6690d71255cc020b93d2d020ea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `defineFeature` reads the literal field-type map, the one schema form that crosses to native
+
+  `@pyreon/native-compiler` introspects `schema: { id: 'string', done: 'boolean' }`
+  and emits a Codable struct from it. A runtime Zod / Valibot / ArkType schema is
+  NOT introspected there and warns by name — so the literal map is the form the
+  multiplatform docs prescribe for a feature that has to run on all three targets.
+
+  On the web that form produced ZERO fields: no auto form fields, no table
+  columns, no create defaults. The one shape that crosses was inert on the target
+  it was written for.
+
+  `extractFields` now recognizes it, gated on EVERY value being a known field-type
+  name so a real schema can never be mistaken for one — and `FeatureConfig.schema`
+  accepts it, so the documented shape typechecks instead of needing a cast.
+
+- [#2906](https://github.com/pyreon/pyreon/pull/2906) [`e9bbe3e`](https://github.com/pyreon/pyreon/commit/e9bbe3e97341b43213354ee345b6c8a18dc009da) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `feature.Table` — render the table `useTable()` already computes.
+
+  `useTable()` derives columns from the schema, wires sorting and the global filter to signals, and returns a live table. Nothing rendered it, so every app hand-wrote ~50 lines of thead/tbody — and met two traps that have nothing to do with their domain:
+
+  - A `<th>` carries a `key`, so the keyed reconciler REUSES the node on a state change and never re-runs its body. A sort indicator read bare therefore freezes at its first value; it must sit inside an accessor.
+  - `getVisibleCells()` comes from `columnVisibilityFeature`, which `featureTableFeatures` does not register — `getAllCells()` is correct here, and reaching for the other one silently renders nothing.
+
+  `<Feature.Table of={t} />` owns both. Per-COLUMN cell overrides keyed by column id (`cell={{ status: ({ value, row }) => … }}`), for the same reason `Field` is per-field: a generated table is excellent until one column needs a badge or a formatted date. `empty` renders a full-width row when the row model is empty; `sortable={false}` drops the handlers and the indicator.
+
+- [#3642](https://github.com/pyreon/pyreon/pull/3642) [`0667b0b`](https://github.com/pyreon/pyreon/commit/0667b0bdad937bd79a8a7d3fef3a2b11d7a3f7ff) Thanks [@vitbokisch](https://github.com/vitbokisch)! - @pyreon/form hardening:
+
+  - **Behaviour change:** `handleSubmit` no longer re-throws an error thrown by `onSubmit`. The error is recorded in `submitError` and the returned promise resolves, so `<Form>` / `<form onSubmit={form.handleSubmit}>` no longer produce an unhandled rejection on every failed submit. Programmatic callers that want the rejection pass `form.handleSubmit({ rethrow: true })` (new `SubmitOptions` type).
+  - `handleSubmit` is re-entrancy safe: concurrent calls (double Enter, double click during a slow async validator) share one in-flight submit, so `onSubmit` runs once. `<Submit>` is also disabled while validating.
+  - `field.reset()`, `form.reset()` and `setInitialValues()` now invalidate in-flight async validation (field validators and schema runs); `form.reset()` also aborts the validation `AbortSignal`. A pending "username taken" check can no longer write its error onto a freshly reset or re-based field.
+  - A `''` validator result is valid everywhere: `aria-invalid` / `aria-describedby`, `useField().hasError` / `showError`, `trigger()` and `focusFirstError()` now agree with `validate()`.
+  - `debounceMs` now debounces schema validation of schema-only fields (it used to apply only to per-field validators).
+  - Dirty tracking compares `Date` by time, `Map` / `Set` by content and other class instances (`File`, …) by identity; values of different prototypes are never equal. A changed date field is now marked dirty.
+  - A schema that throws on blur / change / `trigger()` is surfaced as `submitError` with a dev warning instead of being swallowed; `trigger()` returns `false`.
+  - **Behaviour change:** `register(name, { type: 'number' })` stores `undefined` (not the raw string) for an empty or unparsable number input.
+  - `useWatch(form)` now includes fields added with `registerField()` after the watch was created (and drops unregistered ones).
+  - Error messages use the `[Pyreon]` prefix; `useField().register` gains the `{ type: 'file' }` overload.
+
+  @pyreon/feature hardening:
+
+  - `<F.Field>` binds number fields with `{ type: 'number' }` (stores a number, not `"42"`) and date fields as `Date` values, so `z.number()` / `z.date()` schemas accept them. Required fields carry `aria-required`; `z.string().email()` / `.url()` render `type="email"` / `type="url"`; number inputs get `inputmode="decimal"`.
+  - Edit-mode `useForm` no longer lets a failed record load leave an enabled blank form that PUTs blanks over the record: the error is surfaced (`loadError`, `submitError`, `onError`), the form is disabled and submitting is refused (also while the load is in flight). The returned form now exposes `isLoading` and `loadError` (new `FeatureFormState` type).
+  - **Behaviour change:** the edit-mode load re-bases the form (`setInitialValues`) instead of calling `setFieldValue`, so loaded values are not dirty and not validated; it goes through the query cache under the `useById` key, and ISO date strings are converted to `Date` for date fields.
+  - `useUpdate` removes the optimistic partial record when a failed update had no cached record to restore.
+  - `useById` accepts an accessor id (`useById(() => props.id)`) and refetches when it changes.
+  - `defaultInitialValues` honours `.default(x)`, uses `[]` for arrays and `undefined` for dates; `FieldInfo` gains `defaultValue` and `format`.
+  - `<F.Table>` sortable headers render a keyboard-reachable `<button>` with a live `aria-sort` on the `<th>`.
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#2986](https://github.com/pyreon/pyreon/pull/2986) [`5ff6d4a`](https://github.com/pyreon/pyreon/commit/5ff6d4a1ea651d28b262a0b1250faaee71027c3c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/feature` declares the native frontend it already had
+
+  `defineFeature({ name, schema })` with the literal field-type map has been
+  lowering to a Codable struct plus a module-scope const (`name`,
+  `initialValues`) on both targets — but the manifest still said the package had
+  NO native emit, so the compiler's derived web-only set kept warning about it and
+  the coverage registry counted it as an open gap.
+
+  The declaration half now says what it does, and the runtime half (the generated
+  CRUD hooks, the fetcher, validator/form integration) is scoped honestly as the
+  part that stays web. A runtime schema (Zod / Valibot / ArkType) is still not
+  introspected and warns by name.
+
+  Native app-runtime coverage: 34/37 → 35/37.
+
+- [#2815](https://github.com/pyreon/pyreon/pull/2815) [`54f6d97`](https://github.com/pyreon/pyreon/commit/54f6d97dfae80b03fbffdd7d8fade52def4c5623) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(feature): edit-mode `useForm` no longer gets stuck (and populates) when the backend returns server-only keys
+
+  `useForm({ mode: 'edit', id })` auto-fetches the record and populated the form by iterating EVERY key of the server response and calling `form.setFieldValue(key, …)`. But `@pyreon/form`'s `setFieldValue` THROWS on a field the form doesn't have — and a real backend returns server-only keys (`id`, `createdAt`, `updatedAt`, relations) that aren't schema fields. The throw fired inside the populate `batch()`, aborting before `isSubmitting.set(false)` → the form was left permanently `isSubmitting: true` (submit disabled, appears frozen) with the fields unpopulated, plus an unhandled promise rejection. The populate loop now skips keys that aren't registered form fields. Also guards the dev-only Zod-detection against a nullish `schema` (a JS-caller edge that crashed at `defineFeature` time). Bisect-verified.
+
+- [#3207](https://github.com/pyreon/pyreon/pull/3207) [`78b3423`](https://github.com/pyreon/pyreon/commit/78b3423b830ec4c5d60034ae8f468eec111cacf2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - PMTC: a `defineFeature` binding is now REACHABLE from the shared source that declares it
+
+  `const Todo = defineFeature({ name, schema })` lowered its DECLARATION on both
+  targets — a `Codable` struct plus `enum PyreonFeature_Todo` / `object
+PyreonFeature_Todo` carrying `name` and `initialValues` — and emitted nothing
+  called `Todo`. Since the only reason to declare a feature is to use it, every
+  real shared-source app failed to build on **both** platforms the moment it wrote
+  `Todo.name`: swiftc `cannot find 'Todo' in scope`, kotlinc `unresolved
+reference 'Todo'`, in a generated file the author never wrote.
+
+  The two sibling lowerings in the same emitter (`PyreonFieldMeta`,
+  `PyreonZodSchema`) have always emitted an alias under the source binding name.
+  The feature one did not. It now does: `let Todo = PyreonFeature_Todo.self`
+  (Swift) and `val Todo = PyreonFeature_Todo` (Kotlin).
+
+  It survived five green specs because every one of them asserts the emitted
+  DECLARATION and none ever writes the binding in a component body — and because
+  this test file made **zero** `swiftc`/`kotlinc` calls, so the whole
+  `@pyreon/feature` lowering had never been compiled by either toolchain. Both
+  halves are closed: the specs now reference the binding, and they compile the
+  result with the real compilers.
+
+  One limit is now DECLINED BY NAME rather than shipped broken. Swift and Kotlin
+  share a single namespace for types and values — unlike TypeScript, where
+  `interface Todo` and `const Todo` coexist — so a shared file declaring both a
+  feature binding and a TYPE of that name cannot emit both. Neither alias form
+  escapes it (a `typealias` and a value binding collide identically; both were
+  measured, which is why the value form is chosen for sibling symmetry and NOT
+  sold as collision-safe). The compiler now warns naming the binding and the
+  remedy instead of emitting a redeclaration error.
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3637](https://github.com/pyreon/pyreon/pull/3637) [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Published type declarations now compile strictly (`skipLibCheck: false`), and no longer degrade to `any` under the default `skipLibCheck: true`.
+
+  - `@pyreon/core`: component props may be a plain `interface`. `ComponentFn`, `defineComponent`, `lazy`, `Defer`, `HigherOrderComponent` and `h()` bounded props by `Record<string, unknown>`, which an interface does not satisfy (no implicit index signature). `ComponentFn<ButtonProps>` was TS2344, and every `@pyreon/elements` props type violated the bound once emitted into a `.d.ts`. The bound is now `object`; `Props` is unchanged.
+  - `@pyreon/rocketstyle`: the origin-props parameter of `RocketStyleComponent` accepts interface-typed props for the same reason.
+  - `@pyreon/validate`: `s.string().iso.date()` / `.dateTime()` / `.time()` returned `any` to consumers. The inferred type put polymorphic `this` inside an object type literal, which is invalid in a declaration file. It is now typed as the named `IsoChecks<this>`, and the chain stays typed.
+  - `@pyreon/feature`: its declarations import `@tanstack/table-core`, which it now declares as a dependency. Before, the import resolved only where the package manager hoists transitive dependencies.
+  - `@pyreon/document-primitives`: declares `@pyreon/ui-core`, which its declarations import.
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`443a646`](https://github.com/pyreon/pyreon/commit/443a646875093e1987fbf4be56ffac934ba60c17), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`ed98e38`](https://github.com/pyreon/pyreon/commit/ed98e380716dacea266b65e25394b5157265a415), [`61e0482`](https://github.com/pyreon/pyreon/commit/61e0482b7fa532d439af670066b8928fe121a53c), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`6bf2770`](https://github.com/pyreon/pyreon/commit/6bf2770d8d25e02aa853ac249b6c07923dac001d), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`26e1837`](https://github.com/pyreon/pyreon/commit/26e1837c562b35887a5b3866fc0251f086f32063), [`a0c4cd7`](https://github.com/pyreon/pyreon/commit/a0c4cd7803dd244b79a8828dca36dff6c34b0b8c), [`0667b0b`](https://github.com/pyreon/pyreon/commit/0667b0bdad937bd79a8a7d3fef3a2b11d7a3f7ff), [`8665c92`](https://github.com/pyreon/pyreon/commit/8665c9296c0d0fa696aad9560f039e95f9df2201), [`9d6ca3d`](https://github.com/pyreon/pyreon/commit/9d6ca3d705b555a2bb52d6dfd0c5fe231ff69f5c), [`d2abd90`](https://github.com/pyreon/pyreon/commit/d2abd907e169567321e8033039d8a3467593beb9), [`f74c37c`](https://github.com/pyreon/pyreon/commit/f74c37cac8b162012b6bcb8494eef3bd5c3be85b), [`fe29937`](https://github.com/pyreon/pyreon/commit/fe2993738a67840e666aa083497b524318d9a8e7), [`0f18357`](https://github.com/pyreon/pyreon/commit/0f183572631e53e5ca4a283f663bd64800810845), [`2a85027`](https://github.com/pyreon/pyreon/commit/2a85027c190335e782bd581b5856ae2ef783207d), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`fc91492`](https://github.com/pyreon/pyreon/commit/fc91492c18cba19e38811486884eba76a46ef832), [`b81dc7c`](https://github.com/pyreon/pyreon/commit/b81dc7cade1eca1fd0e5673e27587b72680fc2c3), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`f166e69`](https://github.com/pyreon/pyreon/commit/f166e69d8308eaab6481cbee5d1afc6f813b15cb), [`592c07b`](https://github.com/pyreon/pyreon/commit/592c07b848cb92cb1c0e5222b706f3c80c7c23ff), [`c41314d`](https://github.com/pyreon/pyreon/commit/c41314da54f7217a4a63cd0d6ec07583fd431001), [`cf780e1`](https://github.com/pyreon/pyreon/commit/cf780e15f31bc55119be29482a0adf706cae6c54), [`f166e69`](https://github.com/pyreon/pyreon/commit/f166e69d8308eaab6481cbee5d1afc6f813b15cb), [`f166e69`](https://github.com/pyreon/pyreon/commit/f166e69d8308eaab6481cbee5d1afc6f813b15cb), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`fc91492`](https://github.com/pyreon/pyreon/commit/fc91492c18cba19e38811486884eba76a46ef832), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`ed6518a`](https://github.com/pyreon/pyreon/commit/ed6518a68ec678e546713abf4e2551a3297a794f), [`8b49de2`](https://github.com/pyreon/pyreon/commit/8b49de2f440c9e4be30402a499b91e53bf7705f1), [`d873013`](https://github.com/pyreon/pyreon/commit/d873013b7c3ba8f4e2bc5984b974e684009a287d), [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50), [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50), [`2e12add`](https://github.com/pyreon/pyreon/commit/2e12addb54586212dce479699d7ea70f084d1a7e), [`7c69228`](https://github.com/pyreon/pyreon/commit/7c6922838c8c05695b320c62d5758e3379840560), [`ea12a88`](https://github.com/pyreon/pyreon/commit/ea12a887e736882b5019388ad0c61ba0d1e1490c), [`45a04fb`](https://github.com/pyreon/pyreon/commit/45a04fb6e95af5b6d0dad9d3e76d5d756a218f02), [`2eb6540`](https://github.com/pyreon/pyreon/commit/2eb6540c024529b2b26bd1bd9d97aeda64a48323), [`b1f9914`](https://github.com/pyreon/pyreon/commit/b1f991412dbd53cb2e943678aadbe89a6dfdb513), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`e56b865`](https://github.com/pyreon/pyreon/commit/e56b865f08946b7f848906bf2562911fa7f95066), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`5867cca`](https://github.com/pyreon/pyreon/commit/5867cca15becbf4811effac32e81bdb3dc0a0d86), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`41df05a`](https://github.com/pyreon/pyreon/commit/41df05a6eba6a474ef8f57cdfb973c2402c3c2ee), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`e0e0dc0`](https://github.com/pyreon/pyreon/commit/e0e0dc066470e92066652ccbd739ae0d6e518c58), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`05ad36a`](https://github.com/pyreon/pyreon/commit/05ad36acb9e3dfe6b4f9ee8b012fc9919f8cd219), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5a52b2b`](https://github.com/pyreon/pyreon/commit/5a52b2be1759fbb4fc5f2fb368217adf5ac6070a), [`adb5897`](https://github.com/pyreon/pyreon/commit/adb58970bc878291bfd892927ee15cb8a4ca87a9), [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`b3af6f5`](https://github.com/pyreon/pyreon/commit/b3af6f5ade4cbc9ce756c173d349acb640f09264), [`76c0feb`](https://github.com/pyreon/pyreon/commit/76c0febfda0b05a73e0be307c344819435a8479d), [`58c0fc4`](https://github.com/pyreon/pyreon/commit/58c0fc46789226dd23e1556908ccb8af52bae41e), [`920f97b`](https://github.com/pyreon/pyreon/commit/920f97b0b746bafabbc263a8d89e6283e2df75ef), [`2b11ae1`](https://github.com/pyreon/pyreon/commit/2b11ae1977597aa08aa8f8f7668a642c50eed301), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`111ac7e`](https://github.com/pyreon/pyreon/commit/111ac7e262c6deda789f4060db9d6ebf35e00fbb), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`c8a45f5`](https://github.com/pyreon/pyreon/commit/c8a45f50138420d851407b34ce97d7c357f3cbcc), [`cf64ac7`](https://github.com/pyreon/pyreon/commit/cf64ac738115998ade80f3c8ed984a2d109cbc17), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/form@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/validation@0.52.0
+  - @pyreon/http@0.52.0
+  - @pyreon/store@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/query@0.52.0
+  - @pyreon/table@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -1008,7 +1165,6 @@
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -1031,7 +1187,6 @@
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

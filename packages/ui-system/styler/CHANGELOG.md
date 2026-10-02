@@ -1,5 +1,108 @@
 # @pyreon/styler
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2929](https://github.com/pyreon/pyreon/pull/2929) [`9dafed7`](https://github.com/pyreon/pyreon/commit/9dafed7a5238c057c44c00dcff3b56044f16dfa8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(ssr): ship the styler CSS for the class names SSR emits
+
+  Server-rendered HTML carried styler class names (`pyr-1abc23`) with **no
+  `<style>` tag at all** on two of the three SSR paths: `@pyreon/zero`'s dev SSR
+  middleware and its production `createServer`. Measured on `examples/ui-showcase`
+  before the fix: 23 of 23 styler classes on `/button` had zero matching CSS
+  rules, on every route. The page hydrated to the correct DOM, so only the FIRST
+  PAINT was wrong — every SSR page flashed unstyled.
+
+  The cause was that `renderPage`'s `collectStyles` hook is opt-in, and of its
+  three consumers only zero's SSG prerender entry ever passed one. SSG had been
+  fixed for exactly this bug ("prerendered HTML carried styler-generated class
+  names … but had ZERO `<style>` tags in the head"), and the sibling call sites
+  were left behind — a fix applied to one call site rather than to the class.
+
+  `renderPage` now defaults `collectStyles` to a `globalThis.__PYREON_STYLER_COLLECT__`
+  collector that `@pyreon/styler`'s singleton registers on SSR init — the
+  string-mode twin of the `__PYREON_STYLER_FLUSH__` seam the streaming pipeline
+  already used, so there is still no `@pyreon/server` → `@pyreon/styler`
+  dependency. Fixing the one choke point covers all three consumers plus any bare
+  `@pyreon/server` user, so no caller can forget it again.
+
+  Unchanged: an explicit `collectStyles` still wins (SSG is byte-identical);
+  apps without styler get no global and no `<style>`; the streaming path keeps
+  its per-boundary watermarked flush, which `getStyleTag()` never disturbs.
+
+  Why it survived this long: a second bug hid it. Hydration was discarding the
+  server DOM and rebuilding it, so users saw _nothing_ for ~300ms rather than
+  seeing the content unstyled. The mask made the defect symptomless — it only
+  becomes visible once hydration correctly adopts the server DOM.
+
+### Patch Changes
+
+- [#3396](https://github.com/pyreon/pyreon/pull/3396) [`ed98e38`](https://github.com/pyreon/pyreon/commit/ed98e380716dacea266b65e25394b5157265a415) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three correctness residuals from the pre-release audit:
+
+  - **`@pyreon/state-tree` — a cyclic parent chain is now LOUD instead of a wrong answer.** `getRoot` / `getPath` bound their ancestor walk with a depth counter (the allocation win over a per-call `Set` is real and is kept), but reaching the bound exited SILENTLY: `getRoot` returned whatever node it was holding — a wrong root, on every call of the hot `reference()` resolve path — and `getPath` returned a 600,000-character garbage string built by 100,000 `unshift`s (~700ms per call). A cycle is reachable through the public API (`a.child.set(b)` then `b.child.set(a)` makes each the other's parent), so this was not hypothetical. Hitting the bound means the acyclicity invariant these walks rest on is already broken and there is no correct answer left to return, so both now throw a `[Pyreon]`-prefixed error naming the node and the fix. `getPath` also collects leaf-to-root and reverses instead of `unshift`ing, which was what made the failure O(n²).
+
+  - **`@pyreon/styler` — prop forwarding iterated the prototype chain but copied own descriptors.** `filterProps` and `buildProps` (4 loops) enumerated with `for...in` while `keep`/`copyDescriptor` read an OWN descriptor, so an INHERITED enumerable prop was iterated and then silently dropped. They now iterate own keys, which makes the two halves agree by construction and matches the rest of the layer (`@pyreon/ui-core`'s `omit`/`pick` and `@pyreon/core`'s `mergeProps`/`splitProps` are all own-key operations). Output is unchanged — the drop was already happening; what changes is that it can no longer be "fixed" the other way, since copying an inherited accessor onto the target would sever the prototype link and rebind its `this`. Measured: `Object.keys` costs the same as `for...in` here (983 ns/call both), so the clarity is free. **Behaviour change:** both helpers now force `configurable: true` on copied descriptors, mirroring `mergeProps`. A source getter defined via `Object.defineProperty` without an explicit flag is non-configurable, and copying it verbatim made the key impossible to redefine downstream (`TypeError: Cannot redefine property`).
+
+  - **`@pyreon/http` — the static-header semantic is now stated and pinned.** The client folds its leading run of static header sources once and memoizes it, so a caller passing a mutable record sees the value captured at the first request rather than the current one. That is the intended semantic — it is this module's immutability rule, and a function source is the supported seam for a per-request value — but it shipped with no test in either direction and no mention in the prop's docs. Both are now explicit. No behaviour change.
+
+- [#3678](https://github.com/pyreon/pyreon/pull/3678) [`a6e97cb`](https://github.com/pyreon/pyreon/commit/a6e97cb4c0ee97dbc405900d4d9655f8fd81937a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct the API documentation (manifests, llms.txt, MCP api-reference, docs reference pages) for rocketstyle, styler, attrs, elements, kinetic and coolgrid so it matches the shipped runtime. Notable corrections: styler's `ThemeProvider` takes an object only (no parent-merging function form) and reads it once; rocketstyle's `Provider` snapshots its parent context and writes only the ui-core context; `.config({ inversed })` inverts only the component itself; `.compose()` wraps user HOCs last-defined-outermost; `keyframes` and static `createGlobalStyle` inject at call time; `useCSS`'s `boost` argument has no effect; `List` renders a fragment unless `rootElement` is set; kinetic's `show` accepts an accessor, a value, or nothing. No runtime changes.
+
+- [#2801](https://github.com/pyreon/pyreon/pull/2801) [`57f0480`](https://github.com/pyreon/pyreon/commit/57f04800c4fc7bb5f2e4098e6b3399a0860ab6eb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(styler): preserve reactive props through `filterProps`, and never lose the streaming-SSR `@layer` ordering statement
+
+  Two correctness fixes surfaced by a styler audit:
+
+  - **`filterProps` value-copied** (`filtered[key] = props[key]`), firing a getter-shaped reactive `_rp` prop (what the compiler emits for `<X title={sig()} />`) at copy time and freezing it — silently killing reactivity for any consumer using this public helper to forward props. It now descriptor-copies (mirrors the internal `buildProps.copyDescriptor`), which is also what the manifest documents it as doing. Static props are unaffected.
+
+  - **Streaming SSR `@layer` ordering** (`flushSSRPending`) emitted the `@layer elements, rocketstyle;` order statement only on the FIRST flush of a stream. A stream whose opening Suspense boundary flushed only keyframes/global CSS (neither is a layered rule) emitted it nowhere, and if a later boundary carried the first layered rule its cascade fell to stream first-appearance order — risking an `elements`-beats-`rocketstyle` inversion. The statement is now deferred (via a persistent per-stream flag) to the first flush that actually carries a layered rule, so it precedes that rule. A configured custom `layer` still decides upfront (unchanged).
+
+  Both bisect-verified; full `@pyreon/styler` suite (607) green.
+
+- [#3071](https://github.com/pyreon/pyreon/pull/3071) [`e690309`](https://github.com/pyreon/pyreon/commit/e690309cc58c842fc8cb07869519b4288c667eb5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `normalizeCSS` builds its output by copying verbatim runs (`css.slice`) instead
+  of appending one character at a time.
+
+  The single-pass scanner classified characters with `charCodeAt` (correct — the
+  discipline the sibling scanners in this file already follow), but built its
+  result with per-char `out += css[i]` — the exact allocation anti-pattern those
+  scanners' own comments warn against (a fresh 1-char string per iteration, and a
+  rope the downstream `hash()` / insertCache must flatten). This finishes that
+  discipline: runs are copied with `slice`, and when nothing is skipped or inserted
+  the input string is returned by identity (no allocation).
+
+  Behavior is BYTE-IDENTICAL — proven by a differential fuzz test that asserts the
+  new implementation matches a pinned copy of the original on hand-picked edge
+  cases (comments, `://` in URLs, redundant semicolons, whitespace collapse,
+  leading/trailing) plus 20,000 random inputs.
+
+  Perf: an A/B on the CSS-in-JS cold-insert bench is CI95-disjoint faster
+  (~1.3×), though the machine was under elevated load when measured, so treat the
+  exact ratio as directional. Note the honest scope: cold insert runs once per
+  unique rule per sheet lifetime (≈zero in the no-reset production SSG shape), so
+  this is primarily a code-hygiene fix + a bench-headline improvement, not a
+  user-perceivable speedup. Warm dedup / dynamic resolve / SSR collect were
+  measured at their architectural floor and are unchanged.
+
+- [#3069](https://github.com/pyreon/pyreon/pull/3069) [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - String-mode SSR no longer leaks CSS between requests. The styler's server rule buffer was never reset, so a page's `<style>` carried every rule an earlier request had inserted (ssr-showcase `/posts/1`: 2,850 B, then 12,710 B after one `/sections` request), and prerendered page CSS depended on prerender order. `runWithRequestContext` is now a styler request scope, render sites that hand out a cached class mark it used (`sheet.markUsed`), and module-level `keyframes` / static `createGlobalStyle` rules are emitted to every request. `ssg.cssMode: 'asset'` now writes one file per distinct rule set instead of linking every page to the first page's CSS.
+
+- [#3402](https://github.com/pyreon/pyreon/pull/3402) [`47dfb62`](https://github.com/pyreon/pyreon/commit/47dfb62f7ea49b523dfff216710e0ce6e1f5ec73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three silent-wrong-answer fixes, one per package.
+
+  **`@pyreon/validate` — `.strict()` short-circuited on a key COUNT, which is not a membership test.** Both strict emitters reduced "no unknown keys" to `Object.keys(x).length === N`, on the premise that the field checks had proven all N declared keys present — but a field check reads `x.name`, which walks the prototype chain. So `Object.create({ name, age })` (and any class instance whose fields are prototype getters) had `is()` return `false` while `parse().ok` was `true`, breaking the locked `is() ⇔ parse().ok` invariant; and `{ nmae: 'Ada', age: 36 }` — a typo'd key in place of a real one, keeping the own-key count at N — never reported `Unrecognized key "nmae"`, which is the case `.strict()` exists for. The short-circuit now proves membership in the same set the count came from (`|Object.keys(x)| === N` **and** every declared key is in `Object.keys(x)`, tested with `Object.prototype.propertyIsEnumerable.call`) before skipping the scan; anything else falls through to the interpreter's own per-key predicate. `Object.hasOwn` is deliberately NOT the test: it is true for an own non-enumerable property, which `Object.keys` does not return, and that leaves the same hole one shape over.
+
+  **`@pyreon/kinetic` — `show={signal}` rendered permanently invisible.** Every kinetic surface normalized `props.show` to an accessor at component setup. The compiler emits `show={isOpen}` as an `_rp` getter, so that single read fired the getter outside any tracking scope and froze the "accessor" on a snapshot: the element mounted hidden and never left — silently, since children stay mounted and nothing throws. On the EXPORTED surface the reproduction is `kinetic('div').preset(fade)` with `show={sig}`, or `useTransitionState` passed a getter-bearing options object. `show` is now read from its holder inside the accessor, per call, at all six call sites (`kinetic(tag)`, `useTransitionState`, and the internal `Transition` ×2, `Collapse`, `Stagger`), matching `<Show>`'s `callWhen(props.when)`. Sibling props read at setup off the same holders (`transition`, `timeout`, the callbacks) carry the same freeze and are NOT changed here — the reason `show` is singled out is recorded in `show-accessor.ts`.
+
+  **`@pyreon/styler` — the second streaming SSR request shipped class names with no CSS.** The per-request bag scoped the SSR buffer and its flush watermark, but the className dedup stayed per-instance and `insert()` returned on a cache hit before any buffer push. So a request rendering a class an earlier request had already inserted flushed an empty `<style>`. Buffer dedup is now scoped like the buffer, and every SSR emit path — the scoped insert, both cache-hit returns, `insertKeyframes`, `insertGlobal`, and `injectRules` (collapsed rocketstyle bundles, which had the identical hole through its own per-instance `injectedBundles` dedup) — pushes through one predicate. `getStyleTag()`, the seam `renderPage` collects string-mode SSR through, was affected the same way and is covered.
+
+- [#3679](https://github.com/pyreon/pyreon/pull/3679) [`29f1002`](https://github.com/pyreon/pyreon/commit/29f10026097e30e261dcc49ad25ea3928ab7e026) Thanks [@vitbokisch](https://github.com/vitbokisch)! - UI providers are now reactive, and two diagnostics are corrected.
+
+  - `@pyreon/rocketstyle` `Provider` reads its parent context and its own props lazily, so `<Provider inversed>` follows a later parent mode change and a signal-driven `theme`/`mode` prop stays live (it previously froze at mount).
+  - `@pyreon/ui-core`'s low-level `Provider` no longer logs "CoreProvider is internal" on every mount — rocketstyle's public `Provider` delegates to it — and exposes getter-backed props lazily. `@pyreon/unistyle`'s `Provider` re-enriches a changing `theme` prop.
+  - `@pyreon/styler` `ThemeProvider` follows later `theme` prop changes for consumers tracking the reactive `ThemeContext`.
+  - `@pyreon/elements` `Overlay` `trigger` / `children` render-prop callbacks are contextually typed (no implicit `any` under strict TS).
+  - rocketstyle's reserved-dimension error names the clashing key(s) and the reserved set (it printed `[object Object]`).
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -583,7 +686,6 @@
   Reverting BOTH the reset + the chain fails Specs A and B simultaneously. Restoring → 3/3 audit specs + 255/255 vite-plugin + 428/428 styler + both typechecks clean.
 
   ### API contract
-
   - `StyleSheet.resetSSRBuffer()` is a NEW public method on the styler. Internal-use (intended for the rocketstyle-collapse resolver during SSR builds). No breaking changes — it's purely additive.
   - `CollapseResolver.resolve()` signature unchanged. Behavior change: calls are serialized via an internal chain. Wall-clock latency increases for parallel transforms (N sites → N × render latency), but dedup integrity is guaranteed.
   - No public API surface changes for end users.
@@ -623,7 +725,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -994,7 +1095,7 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 
   **No runtime or API change** — purely additive doc metadata. `gen-docs --check` in sync; lint **0 errors** (303 pre-existing warnings, same class as prior PRs); typecheck clean (styler + mcp); styler 410 tests, manifest 135 all green; new `manifest-snapshot.test.ts` (5 specs) locks the rendered bullet/section/api-reference shape + foot-gun-catalog assertions locally; `check-manifest-depth` passes (styler enters at port-grade density, intentionally NOT added to `LOCKED` — visible migration backlog, not yet flagship).
 
-  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested `` \`…\``` code spans) emits `\\\ `` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
+  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested ``\`…\``` code spans) emits `\\\`` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
 
 - Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
   - @pyreon/reactivity@0.19.0

@@ -1,5 +1,92 @@
 # @pyreon/test-utils
 
+## 0.50.2
+
+### Patch Changes
+
+- [#3121](https://github.com/pyreon/pyreon/pull/3121) [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Closes every open finding from the lint audit, and adds the leak class nothing
+  caught.
+
+  **The 280 `querySelector(…) as HTMLX` casts are gone.** They were ratcheted
+  because 92 files across 12 packages is not a safe hand-edit; a codemod with
+  paren-balancing did it, and the conversion is verified rather than assumed —
+  `query()` THROWS where a cast silently returned null, so a wrong conversion
+  fails loudly. Typecheck clean across all 17 packages, node tests green, and
+  **476 browser tests in real Chromium** covering the sites that only exist
+  there. The doctor grade goes **F → A**, the ratchet drops **284 → 9**, and
+  `no-query-selector-cast-in-test` is back at `error` rather than the `warn` it
+  was demoted to in order to fire at all.
+
+  **A ReDoS I introduced, caught by CodeQL.** `js/polynomial-redos`, high
+  severity: `/(?:^|\/)routes\/(.+)$/` backtracks on paths with many `/routes/a`
+  repetitions, and a linter is handed whatever paths its caller has. Replaced
+  with linear string slicing — which also fixed a real misclassification, since
+  the greedy regex anchored on the FIRST `/routes/` and mis-resolved nested
+  paths. Both halves are pinned.
+
+  **New rule — `pyreon/no-unguarded-async-signal-write`** (opt-in), for memory
+  leak class F, which the catalog lists as caught by nothing. A slow earlier
+  response resolves last and overwrites newer data: not a crash, not visible in
+  a heap snapshot, just the wrong answer intermittently. Precision came from
+  measuring — 42 findings became 9 after two narrowings the corpus taught:
+  tests and benches cannot race with themselves, and `Map.set(key, value)` takes
+  two arguments where a signal write takes one.
+
+  It found two real bugs, both fixed: `<Mermaid>` and `<Math>` wrote their
+  rendered output after an await with no cancellation, so unmounting mid-render
+  kept the whole closure alive for a signal nothing reads.
+
+  **Two rules stopped keying on what a thing is NAMED.** `no-mutate-store-state`
+  fired only when a variable name contained "store" — renaming `cartStore` to
+  `cart` disabled it silently. It now tracks the binding. `toast-a11y` exempted
+  the literal spelling `Toaster`, so `import { Toaster as AppToast }` was
+  reported for missing a11y it already has; the exemption follows the import.
+
+  **`<Icon svg>` now states its contract.** It renders raw and cannot sanitize —
+  the sanitized `innerHTML` prop needs a `DOMParser` and so cannot run during
+  SSR, which an icon must. Rather than change that, the prop documents that it
+  takes markup you control, and the new lint rule flags misuse in consumer code.
+
+  **A bundle-budget failure now explains itself.** gzip differs between macOS and
+  the ubuntu runner — measured ~177 B on a 16.5 KB package — so a budget with
+  less headroom than that fails on CI while passing locally. The overage message
+  now says when it is inside that band.
+
+  Also fixes an untimed `fetch()` in `lathe pull` that could hang the CLI
+  forever against a server that accepts and never answers.
+
+  **The ratchet is now empty.** Every advisory finding is resolved rather than
+  carried:
+
+  - The five leak-class-F sites got real guards, and three were genuine
+    concurrency bugs rather than style issues: `useWakeLock` and
+    `useAudioRecorder` both checked their "already running" flag BEFORE the
+    await, so two calls arriving during it each acquired a resource and orphaned
+    the first — a wake lock held with nothing able to release it, a microphone
+    stream left open. `useDeviceMotion` would attach its listener twice.
+    `useClipboard` and atlas's source viewer could land a stale value.
+  - `<CodeBlock>`'s line-number gutter no longer builds an HTML string at all. It
+    was a workaround for a compiler bug that has since been fixed, so it was a
+    raw sink in a component that never needed one; it renders real nodes now.
+  - The three remaining sinks cannot be routed through the sanitized `innerHTML`
+    prop, and that is verified rather than assumed: the allowlist deliberately
+    excludes `foreignObject` and `<style>` (which mermaid emits for labels and
+    theming) and does not cover MathML at all (which is all KaTeX emits), so
+    sanitizing would strip working output. They are hardened at the library
+    layer instead — `securityLevel: 'strict'` for mermaid, `trust: false` for
+    KaTeX — and exempted with that reasoning recorded at each call site.
+
+  The rule that found them also learned two things from being wrong: an in-flight
+  promise shared between callers is a staleness guard just as much as a version
+  counter, and a guard may live one scope out from the `async` function that
+  writes.
+
+- Updated dependencies [[`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`a6e97cb`](https://github.com/pyreon/pyreon/commit/a6e97cb4c0ee97dbc405900d4d9655f8fd81937a), [`c95ea09`](https://github.com/pyreon/pyreon/commit/c95ea0941a5a09cd9b14e817b09c857ce64b1112), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`1e6c0f2`](https://github.com/pyreon/pyreon/commit/1e6c0f26e906bb3628f37a663456d572985ea61d), [`a0c4cd7`](https://github.com/pyreon/pyreon/commit/a0c4cd7803dd244b79a8828dca36dff6c34b0b8c), [`a92fd69`](https://github.com/pyreon/pyreon/commit/a92fd69a81dde9b99ca8585e213454fbf399b7f5), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`195a9dc`](https://github.com/pyreon/pyreon/commit/195a9dc6417f964eb3858772da449a3bc1f1d02a), [`29f1002`](https://github.com/pyreon/pyreon/commit/29f10026097e30e261dcc49ad25ea3928ab7e026), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/rocketstyle@0.52.0
+
 ## 0.50.1
 
 ### Patch Changes

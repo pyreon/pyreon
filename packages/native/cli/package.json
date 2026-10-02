@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-cli",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "CLI for the Pyreon Multi-Target Compiler: builds a directory of Pyreon sources to SwiftUI and Jetpack Compose with @pyreon/native-compiler.",
   "license": "MIT",
   "repository": {
