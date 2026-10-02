@@ -331,17 +331,25 @@ test.describe('docs rendering', () => {
     // NOTHING on the Linux CI runner, where the component is listening for
     // Control. Playwright's `ControlOrMeta` resolves the same way the
     // component does, so the spec follows the product rather than one OS.
-    await page.keyboard.press('ControlOrMeta+k')
-    // Overlay should be open with input focused.
-    await expect(page.locator('.pyreon-search__panel')).toBeVisible()
-    await expect(page.locator('.pyreon-search__input')).toBeVisible()
-    // Type a query and expect results from the index. In dev the
-    // plugin's `configureServer` middleware serves the index in-memory
-    // on first request (walking + transforming every `.md` to populate
-    // `searchEntries`), which can take a moment on cold-start. Use
-    // toPass-style polling with a generous timeout so flakes from
-    // dev-server warm-up don't fail the gate.
-    await page.locator('.pyreon-search__input').fill('signal')
+    // A cold dev server transforms the whole markdown collection before
+    // answering this request. Start the result assertion only once the
+    // required index has arrived; keep typing during loading so this still
+    // exercises a query entered before the index is ready.
+    await Promise.all([
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/search-index-docs.json',
+        { timeout: 0 }, // The existing whole-test deadline owns this setup wait.
+      ).then(async (response) => {
+        expect(response.ok()).toBe(true)
+        expect(await response.finished()).toBeNull()
+      }),
+      (async () => {
+        await page.keyboard.press('ControlOrMeta+k')
+        await expect(page.locator('.pyreon-search__panel')).toBeVisible()
+        await expect(page.locator('.pyreon-search__input')).toBeVisible()
+        await page.locator('.pyreon-search__input').fill('signal')
+      })(),
+    ])
     await expect(async () => {
       const resultCount = await page.locator('.pyreon-search__result').count()
       expect(resultCount).toBeGreaterThan(0)

@@ -7,6 +7,12 @@ description: "Common build pipeline mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Evaluating page modules to collect static metadata can stall the index and run application effects
+
+Dev search warmed markdown with `ssrLoadModule`, executing each page and its dependency graph even though the transform had already recorded every search field. Use `transformRequest(file, { ssr: true })` for metadata collection. Keep configuration loading separate. The real-Vite regression confirms catalog/chunk contents, asserts page effects stay dormant while indexing, and explicitly loads the page afterward as an execution control. Reference: `packages/zero/zero-content/src/plugin.ts`; test `dev-search-no-evaluation.test.ts`.
+
+---
+
 ### Layout decisions every target must make belong in the engine, not a host file.
 
 If the web host and a code generator both have to make a decision, implement it once in shared engine code. Legend placement used to live only in the web `canvas-host.tsx`. The native emitters drew every legend at the top, and even the one shared placement was off by 8px. Now `placeLegend(entries, area, position, opts, measure) -> { cmds, top, bottom, left, right, boxes }` in `packages/fundamentals/charts/src/engine/legend.ts` is the only implementation. The emitters pass a position and read the insets back. Only the insets a position can take are emitted, so the default (top) keeps its one-axis `pyreonShiftCmds(p, top)`. A prop that "does not lower yet" while every primitive it needs already crosses usually means a decision is stuck in one host.

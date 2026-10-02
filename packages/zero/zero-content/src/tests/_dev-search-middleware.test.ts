@@ -64,7 +64,10 @@ const defaultSsrLoad = (config: unknown = CONFIG) =>
   async (file: string): Promise<unknown> =>
     /content\.config\./.test(file) ? { default: config } : {}
 
-async function boot(opts: { ssrLoad?: (f: string) => Promise<unknown> } = {}) {
+async function boot(opts: {
+  ssrLoad?: (f: string) => Promise<unknown>
+  transform?: (f: string) => Promise<unknown>
+} = {}) {
   const plugin = content()
   const warnings: string[] = []
   let mw: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | undefined
@@ -78,6 +81,7 @@ async function boot(opts: { ssrLoad?: (f: string) => Promise<unknown> } = {}) {
   const server = {
     middlewares: { use: (fn: typeof mw) => { mw = fn } },
     ssrLoadModule: opts.ssrLoad ?? defaultSsrLoad(),
+    transformRequest: opts.transform ?? (async () => null),
     config: { logger: { warn: (m: string) => warnings.push(m) } },
   }
   await (plugin.configureServer as (s: unknown) => Promise<void>)(server as never)
@@ -226,13 +230,13 @@ describe('the catalog lists only searchable collections that HAVE entries', () =
 })
 
 describe('warming walks the collection paths exactly once', () => {
-  it('force-loads each markdown file so transform populates the index', async () => {
+  it('transforms each markdown file so transform populates the index', async () => {
     // The warm is what makes dev search work at all — without it the
     // plugin has transformed nothing and every collection looks empty.
     const loaded: string[] = []
     const load = defaultSsrLoad()
     const { request } = await boot({
-      ssrLoad: async (f: string) => { loaded.push(f); return load(f) },
+      transform: async (f: string) => { loaded.push(f); return load(f) },
     })
     await request('/search-index.json')
     expect(loaded.some((f) => f.endsWith('a.md')), 'the .md file must be loaded').toBe(true)
@@ -244,7 +248,7 @@ describe('warming walks the collection paths exactly once', () => {
     const loaded: string[] = []
     const load = defaultSsrLoad()
     const { request } = await boot({
-      ssrLoad: async (f: string) => { loaded.push(f); return load(f) },
+      transform: async (f: string) => { loaded.push(f); return load(f) },
     })
     await request('/search-index.json')
     const afterFirst = loaded.length
@@ -259,7 +263,7 @@ describe('warming walks the collection paths exactly once', () => {
     await fs.writeFile(path.join(root, 'src', 'content', 'docs', 'bad.md'), '---\nbroken')
     const load = defaultSsrLoad()
     const { request } = await boot({
-      ssrLoad: async (f: string) => {
+      transform: async (f: string) => {
         if (f.endsWith('bad.md')) throw new Error('transform failed')
         return load(f)
       },

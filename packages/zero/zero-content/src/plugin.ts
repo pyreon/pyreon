@@ -680,8 +680,9 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
         if (!loadedConfig) return
         const rootDir = resolvedConfig?.root ?? process.cwd()
         // Walk each searchable collection's `.md` / `.mdx` files and
-        // ssrLoadModule each so the plugin's transform fires and the
-        // search entry gets stashed in `searchEntries`. Idempotent.
+        // Transform each so the plugin records its static search entry.
+        // Evaluating SSR modules also executes the page's application code
+        // and dependency graph, which can block an otherwise complete index.
         const walkers = Object.entries(loadedConfig.config.collections)
           .filter(([, def]) => isSearchable(def))
           .map(async ([name, def]) => {
@@ -705,13 +706,11 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
               }
             }
             await walk(absRoot)
-            // Force the plugin's transform hook by loading each file as
-            // an SSR module — Vite's pipeline calls every plugin's
-            // `transform` for `.md` / `.mdx` files, including ours,
-            // which populates `searchEntries`.
+            // Request the SSR transform without evaluating the module. The
+            // transform hook already records every field the index needs.
             await Promise.all(
               files.map((f) =>
-                server.ssrLoadModule(f).catch(() => {
+                server.transformRequest(f, { ssr: true }).catch(() => {
                   /* one bad file shouldn't kill the index */
                 }),
               ),
@@ -1196,7 +1195,7 @@ export {}
       // so the next /search-index*.json request rebuilds + serves the
       // freshly-transformed entry shape (`searchEntries` itself updates
       // automatically via the re-running transform hook). Cheap — the
-      // warming step's `ssrLoadModule` calls are idempotent.
+      // warming step's `transformRequest` calls are idempotent.
       if (isMarkdownId(ctx.file)) {
         _devIndexWarmed = false
       }
