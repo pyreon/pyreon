@@ -8,7 +8,7 @@
 // member access then fails the REAL-SDK typecheck with zero compiler
 // warnings — the documented parse-only/real-SDK asymmetry).
 //
-// TWO of the specs here are `it.fails` locks on real, swiftc-verified defects
+// A remaining mixed-shape array spec is an `it.fails` lock on a real defect
 // found writing this file. Both are silent-wrong-output, both Swift-only
 // (the Kotlin emit of the same source is correct), and neither is papered
 // over here.
@@ -44,7 +44,7 @@ export function App(props: { rows: { a: number }[] }) {
 
   it('a struct name COLLISION between two distinct nested paths gets a counter', () => {
     const { code } = swift(`import { Stack, Text } from '@pyreon/primitives'
-export function App(props: { outer: { inner: { c: number }; inners: { c: number }[] } }) {
+export function App(props: { outer: { inner: { c: number }; inners: { c: string }[] } }) {
   return (<Stack><Text>{() => \`\${props.outer.inner.c}\${props.outer.inners.length}\`}</Text></Stack>)
 }`)
     // `inner` → AppOuterInner, `inners` singularized → AppOuterInner too, so
@@ -119,32 +119,25 @@ describe('KNOWN BUGS — Swift-only, swiftc-verified, silent', () => {
   // Both were found writing this file, both produce code that does not
   // compile with ZERO warnings, and the Kotlin emit of the same source is
   // correct — so neither is an inherent limit of the shared-source model.
-  it.fails(
-    'KNOWN BUG: a MIXED-shape array literal annotates with the FIRST element’s struct — swiftc: "cannot convert value of type \'__Obj0\' to expected element type \'AppC\'". Fix: when the array’s element shapes differ, the annotation must widen (or the literal must be named as untypeable, the way `warnUntypeableObjectLiteral` names its own bail); Kotlin already emits an un-annotated `listOf(...)` here and compiles.',
-    () => {
-      const { code, warnings } = swift(`import { Stack, Text } from '@pyreon/primitives'
+  it.fails("KNOWN BUG: a MIXED-shape array literal annotates with the FIRST element’s struct — swiftc: \"cannot convert value of type '__Obj0' to expected element type 'AppC'\". Fix: when the array’s element shapes differ, the annotation must widen (or the literal must be named as untypeable, the way `warnUntypeableObjectLiteral` names its own bail); Kotlin already emits an un-annotated `listOf(...)` here and compiles.", () => {
+    const { code, warnings } = swift(`import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 export function App() {
   const c = signal([{ q: 3, r: 4 }, { z: 1 }])
   return (<Stack><Text>{() => String(c().length)}</Text></Stack>)
 }`)
-      // Either the annotation admits both elements, or the shape is NAMED.
-      const annotatedToFirst = /@State private var c: \[AppC\] = \[AppC\(q: 3, r: 4\), __Obj0\(z: 1\)\]/.test(
-        code,
-      )
-      expect(annotatedToFirst && warnings.length === 0).toBe(false)
-    },
-  )
+    // Either the annotation admits both elements, or the shape is NAMED.
+    const annotatedToFirst =
+      /@State private var c: \[AppC\] = \[AppC\(q: 3, r: 4\), __Obj0\(z: 1\)\]/.test(code)
+    expect(annotatedToFirst && warnings.length === 0).toBe(false)
+  })
 
-  it.fails(
-    'KNOWN BUG: two sibling props whose nested objects share a FIELD NAME but not its TYPE collapse onto ONE synthesized struct — swiftc: "value of type \'AppOneMeta\' has no member \'b\'". The nested registration looks a TYPED shape key up in the NAME-ONLY map (`registerNestedSwiftStruct` → `_structFieldsToName.has(structShapeKey(...))`), so the second shape is judged already-synthesized. Fix: consult `_structTypedKeyToName` there, as `resolveSwiftObjectStructName` does. Kotlin emits AppOne/AppTwo correctly.',
-    () => {
-      const { code } = swift(`import { Stack, Text } from '@pyreon/primitives'
+  it('nested prop shapes with different field types get distinct structs', () => {
+    const { code } = swift(`import { Stack, Text } from '@pyreon/primitives'
 export function App(props: { one: { meta: { a: number } }; two: { meta: { b: string } } }) {
   return (<Stack><Text>{() => \`\${props.one.meta.a}\${props.two.meta.b}\`}</Text></Stack>)
 }`)
-      expect(code).toContain('struct AppTwoMeta: Codable')
-      expect(code).not.toMatch(/let two: AppOne\b/)
-    },
-  )
+    expect(code).toContain('struct AppTwoMeta: Codable')
+    expect(code).not.toMatch(/let two: AppOne\b/)
+  })
 })

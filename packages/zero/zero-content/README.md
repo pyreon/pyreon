@@ -163,6 +163,8 @@ Every path/filename the plugin treats specially, in one place. **`<root>`** is t
 | **Markdown directives**: `:::tip`, `:::warning`, `:::note`, `:::danger`, `:::info` | Container directives → `<Callout type="…">`. Unknown names get a `did-you-mean…?` warning; forgetting the closing `:::` triggers an unclosed-fence heuristic. |
 | **Markdown directives**: `:::code-group`                    | Tabbed code blocks → `<CodeGroup>`. Each child fence carries its label in `[brackets]`.          |
 
+In development, the search middleware builds the same catalog and collection chunks lazily. It collects static metadata through Vite transforms, without evaluating markdown page modules or their application dependencies. Content configuration still loads normally to define the searchable collections.
+
 ## Diagnostics
 
 The plugin surfaces non-fatal compile warnings through Vite's `this.warn(...)`:

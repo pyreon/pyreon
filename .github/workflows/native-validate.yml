@@ -327,10 +327,14 @@ jobs:
         if: github.event_name != 'schedule'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
           restore-keys: |
             native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+
+      - name: Hydrate native compile-verdict cache
+        if: github.event_name != 'schedule'
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
 
       - name: Run native-compiler tests with validation REQUIRED
         # PYREON_REQUIRE_NATIVE_VALIDATE=1 promotes the "skip when tool
@@ -537,11 +541,14 @@ jobs:
       # is skipped when `timeout-minutes` cancels the job, so the verdicts a run
       # DID compute were lost and every retry started exactly as cold, timing out
       # again: a PR with enough new native code could never go green.
+      - name: Snapshot native compile-verdict cache
+        if: always() && github.event_name != 'schedule'
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate .cache/pyreon-native-validate-archive
       - name: Save native compile-verdict cache
         if: always() && github.event_name != 'schedule'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
 
   validate-swift-typecheck:
@@ -667,10 +674,14 @@ jobs:
         if: github.event_name != 'schedule'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
           restore-keys: |
             native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+
+      - name: Hydrate native compile-verdict cache
+        if: github.event_name != 'schedule'
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
 
       - name: Run native-compiler tests (real-SDK Swift -typecheck)
         # macos-15 ships the real SwiftUI SDK → isSwiftUIAvailable()=true → the
@@ -731,9 +742,12 @@ jobs:
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 
       # See the matching step in `validate`: a timed-out run must still save.
+      - name: Snapshot native compile-verdict cache
+        if: always() && github.event_name != 'schedule'
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate .cache/pyreon-native-validate-archive
       - name: Save native compile-verdict cache
         if: always() && github.event_name != 'schedule'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import {
   findCiFailFastViolations,
   findCiSchedulingViolations,
+  findNativeCacheSnapshotViolations,
   parseJobBlocks,
 } from '../../../../../scripts/check-ci-fail-fast'
 
@@ -46,6 +47,36 @@ describe('parseJobBlocks', () => {
       ).map((j) => j.name),
     ).toEqual(['a-job', 'next'])
   })
+})
+
+describe('native cache snapshot wiring', () => {
+  for (const file of ['ci.yml', 'ci-main.yml', 'native-validate.yml']) {
+    const ci = readFileSync(
+      new URL(`../../../../../.github/workflows/${file}`, import.meta.url),
+      'utf8',
+    )
+    it(`accepts snapshot/restore wiring in ${file}`, () => {
+      expect(findNativeCacheSnapshotViolations(ci)).toEqual([])
+    })
+    it(`rejects live-directory archiving and missing/conditional snapshots in ${file}`, () => {
+      expect(
+        findNativeCacheSnapshotViolations(
+          ci.replace(
+            'path: .cache/pyreon-native-validate-archive',
+            'path: .cache/pyreon-native-validate',
+          ),
+        ).length,
+      ).toBeGreaterThan(0)
+      expect(
+        findNativeCacheSnapshotViolations(
+          ci.replaceAll('snapshot-native-verdict-cache.ts', 'missing-snapshot.ts'),
+        ).length,
+      ).toBeGreaterThan(0)
+      expect(
+        findNativeCacheSnapshotViolations(ci.replaceAll('if: always()', 'if: success()')).length,
+      ).toBeGreaterThan(0)
+    })
+  }
 })
 
 describe('scheduling invariants', () => {

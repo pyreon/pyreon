@@ -9,10 +9,9 @@
  *   1. Build + launch the example via `scripts/perf/server.ts` (preview
  *      mode by default — measures production-shaped behavior, not dev
  *      with sourcemaps inlined).
- *   2. Launch Chromium with `--js-flags=--expose-gc` so we can call
- *      `globalThis.gc()` between samples — removes the dominant source
- *      of `usedJSHeapSize` noise (asynchronous V8 collection cycles
- *      running mid-sample).
+ *   2. Launch Chromium with precise heap counters and force collection via
+ *      the browser protocol between samples, including detached navigation
+ *      contexts. Default heap counters are rounded and cached.
  *   3. Boot + warmup (5 cycles, discarded).
  *   4. Run `cycles` iterations:
  *      - Run the journey
@@ -54,6 +53,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { startServer as startViteServer } from './perf/server'
+import { forceGcTwice, HEAP_AUDIT_CHROMIUM_ARGS } from './perf/heap'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '..')
@@ -226,13 +226,6 @@ async function runOneCycle(page: Page, journeyName: string): Promise<void> {
  * just one pass shows post-free-but-pre-compact size, which is
  * spuriously higher than the true retained-set size.
  */
-async function forceGcTwice(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const g = globalThis as { gc?: () => void }
-    g.gc?.()
-    g.gc?.()
-  })
-}
 
 async function sampleHeap(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -260,7 +253,7 @@ async function main(): Promise<void> {
   console.log(`[leak-audit] launching Chromium with --js-flags=--expose-gc…`)
   const browser = await chromium.launch({
     headless: true,
-    args: ['--js-flags=--expose-gc'],
+    args: HEAP_AUDIT_CHROMIUM_ARGS,
   })
 
   try {

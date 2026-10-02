@@ -217,7 +217,10 @@ export function subsetStructName(
  * One piece of a JSON literal lowering: either static JSON text, or a runtime
  * expression whose encoded form goes in that slot.
  */
-export type JsonLiteralPart = { static: string } | { dyn: ExprIR }
+export type JsonLiteralPart =
+  | { static: string }
+  | { dyn: ExprIR }
+  | { array: ({ spread: ExprIR } | { parts: JsonLiteralPart[] })[] }
 
 /**
  * Lower an object/array literal that sits in a JSON POSITION straight to JSON,
@@ -244,44 +247,60 @@ export type JsonLiteralPart = { static: string } | { dyn: ExprIR }
  */
 export function buildJsonLiteralParts(expr: ExprIR): JsonLiteralPart[] | null {
   const parts: JsonLiteralPart[] = []
-  const pushStatic = (text: string): void => {
-    const last = parts[parts.length - 1]
+  const pushStatic = (output: JsonLiteralPart[], text: string): void => {
+    const last = output[output.length - 1]
     if (last !== undefined && 'static' in last) last.static += text
-    else parts.push({ static: text })
+    else output.push({ static: text })
   }
-  const walk = (e: ExprIR): boolean => {
+  const walk = (e: ExprIR, output: JsonLiteralPart[] = parts): boolean => {
     if (e.kind === 'literal') {
       const v = e.value
-      if (v === null || v === undefined) pushStatic('null')
-      else if (typeof v === 'string') pushStatic(JSON.stringify(v))
-      else pushStatic(String(v))
+      if (v === null || v === undefined) pushStatic(output, 'null')
+      else if (typeof v === 'string') pushStatic(output, JSON.stringify(v))
+      else pushStatic(output, JSON.stringify(v))
       return true
     }
     if (e.kind === 'array') {
-      pushStatic('[')
-      for (let i = 0; i < e.elements.length; i++) {
-        if (i > 0) pushStatic(',')
-        if (!walk(e.elements[i]!)) return false
+      // A spread contributes zero or more elements, not one encoded array.
+      // Keep its fragments separate so emitters can omit empty fragments and
+      // insert commas at runtime, including nested heterogeneous JSON arrays.
+      if (e.elements.some((el) => el.kind === 'spread')) {
+        const segments: ({ spread: ExprIR } | { parts: JsonLiteralPart[] })[] = []
+        for (const el of e.elements) {
+          if (el.kind === 'spread') segments.push({ spread: el.argument })
+          else {
+            const elementParts: JsonLiteralPart[] = []
+            if (!walk(el, elementParts)) return false
+            segments.push({ parts: elementParts })
+          }
+        }
+        output.push({ array: segments })
+        return true
       }
-      pushStatic(']')
+      pushStatic(output, '[')
+      for (let i = 0; i < e.elements.length; i++) {
+        if (i > 0) pushStatic(output, ',')
+        if (!walk(e.elements[i]!, output)) return false
+      }
+      pushStatic(output, ']')
       return true
     }
     if (e.kind === 'object') {
       // A spread cannot be resolved to JSON text at compile time.
       if ((e.spreads?.length ?? 0) > 0) return false
-      pushStatic('{')
+      pushStatic(output, '{')
       for (let i = 0; i < e.fields.length; i++) {
-        if (i > 0) pushStatic(',')
-        pushStatic(`${JSON.stringify(e.fields[i]!.name)}:`)
-        if (!walk(e.fields[i]!.value)) return false
+        if (i > 0) pushStatic(output, ',')
+        pushStatic(output, `${JSON.stringify(e.fields[i]!.name)}:`)
+        if (!walk(e.fields[i]!.value, output)) return false
       }
-      pushStatic('}')
+      pushStatic(output, '}')
       return true
     }
-    if (e.kind === 'paren') return walk(e.inner)
+    if (e.kind === 'paren') return walk(e.inner, output)
     // Anything else is a runtime value — leave a hole for the emitter to fill
     // with its own `encode(…)` interpolation.
-    parts.push({ dyn: e })
+    output.push({ dyn: e })
     return true
   }
   if (expr.kind !== 'object' && expr.kind !== 'array') return null

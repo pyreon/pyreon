@@ -72,6 +72,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 - Scaffold CI restores this commit's libraries through setup-pyreon, then sets `PYREON_BOOTSTRAP_SKIP=1` for the smoke step. Each temporary app otherwise changes `bun.lock`, invalidates bootstrap's global hash, and rebuilds every package again. This skips only the root bootstrap; generated-app installs, dependency lifecycle scripts, builds and smoke assertions still run. Local scaffold runs keep the default bootstrap behavior.
 - `bun-install-cache-<os>-<lockhash>`: `Install` saves it on main. A PR whose `bun.lock` differs from the base saves its own; everyone else only restores.
 - The macOS native lanes restore and save the content-addressed verdict store, like their Linux twin.
+- Native workers write `.cache/pyreon-native-validate`; Actions archives only `.cache/pyreon-native-validate-archive`. Hydrate before tests and snapshot complete atomic JSON verdict/probe records before every save, including cancellation paths, with `scripts/snapshot-native-verdict-cache.ts`. Workers can outlive a cancelled test step, and GNU tar rejects a directory that changes while it reads. A green cache action can hide a failed upload warning: confirm the log's saved key and the cache API entry. Changing the archived path changes Actions' cache version, so the first run of this format is cold; keep restore/save paths aligned across all native lanes.
 
 ## Gate reference
 
@@ -88,6 +89,8 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 - **Release**:
   - Changesets fixed group (all packages share one version).
   - `check-release-readiness`: `publishConfig.access` + fixed-group coverage.
+  - Native coverage allows a cold verdict cache: a 60-minute measurement ceiling inside a 75-minute job, with per-compile and per-test deadlines still enforced. Stub/compiler changes invalidate cached verdicts.
+  - `Release Build` and the publishing workflow reject high-severity locked dependency advisories with `bun audit --audit-level=high`. The isolated Verify Modes workerd tool installs with `npm ci` from `scripts/verify-modes-tools/package-lock.json` and audits that tree too; update the lock together with its manifest.
   - `check-published-state`: every publishable package, not sentinels. A partial release where some packages lag the cut version is red and names each lagging package.
   - `scripts/publish.ts` retries only npm errors with evidence of being transient (5xx, dropped sockets). Never 404/403/conflict, and never `E422 Error verifying sigstore provenance bundle`, which reproduces on every attempt (a manifest missing `repository` causes it).
   - `release.yml`'s `resume-detect` / `resume-publish` republish lagging packages from the release tag (never main), once per version.

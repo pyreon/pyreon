@@ -99,14 +99,14 @@ jobs:
     # that job pins its own swiftc/kotlinc, and the compiler version is part
     # of every verdict key, so those entries would all miss here.)
     #
-    # The cap is sized for a mostly-warm cache, not a cold one: warm, the
-    # ~6,500 specs are JS time under V8 instrumentation; a wholly cold cache
-    # is ~2,600s of kotlinc alone and the script's own 30-minute per-package
-    # ceiling reports that as TIMED OUT rather than letting the job cap turn
-    # it into `cancelled` with no table.
+    # A stub or compiler change legitimately invalidates the complete verdict
+    # cache. Cold Kotlin compilation alone has measured ~2,600s, so the old
+    # 30-minute script ceiling could never finish that valid run. The script
+    # allows 60 minutes for native coverage; this job also budgets setup and
+    # cache transfers. Individual compiles and test cases remain bounded.
     if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
@@ -115,16 +115,22 @@ jobs:
       - name: Restore native compile-verdict cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}
           restore-keys: native-verdicts-ci-${{ runner.os }}-coverage-native-
+      - name: Hydrate native compile-verdict cache
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
+
       - name: Run native-compiler coverage
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
         run: bun run coverage -- --only=@pyreon/native-compiler
+      - name: Snapshot native compile-verdict cache
+        if: always()
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate .cache/pyreon-native-validate-archive
       - name: Save native compile-verdict cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/pyreon-native-validate
+          path: .cache/pyreon-native-validate-archive
           key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}

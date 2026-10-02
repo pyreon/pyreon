@@ -18,7 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
-import { exprReferencesIdent, isReReadableExpr } from './expr-utils'
+import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
 
@@ -1520,6 +1520,23 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
 }
 
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
+  const resolved = inferTypeValue(expr, ctx)
+  // Every property read after an optional link can short-circuit to undefined.
+  // Preserve that after resolving the property off its non-nullish receiver.
+  if (expr.kind !== 'member' || (!expr.optional && !exprHasOptionalLink(expr.object)))
+    return resolved
+  if (resolved.kind === 'unknown' || resolved.kind === 'null' || resolved.kind === 'undefined')
+    return resolved
+  if (resolved.kind === 'union') {
+    return resolved.branches.some((b) => b.kind === 'undefined')
+      ? resolved
+      : { kind: 'union', branches: [...resolved.branches, { kind: 'undefined' }] }
+  }
+  return { kind: 'union', branches: [resolved, { kind: 'undefined' }] }
+}
+
+/** The declared property type before optional-chain short-circuiting. */
+export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     // The declared generics ARE the type — a SizedMap<K, V> behaves as a map
     // at every use site (`m.get(k)` yields V), so downstream inference reads

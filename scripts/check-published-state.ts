@@ -352,12 +352,15 @@ if (import.meta.main) {
       const version = lagging[0]!.repo
       console.error(
         `  The publish step of release ${version} did not complete for these packages\n` +
-          `  (a transient npm error — E422 provenance verification, 5xx — or a package\n` +
-          `  whose Trusted Publisher is not configured). release.yml's "Resume partial\n` +
-          `  release" job republishes from the v${version} tag on the next main push;\n` +
-          `  trigger it now with: gh workflow run release.yml\n` +
-          `  A package that keeps failing with E404/E422 needs its Trusted Publisher on\n` +
-          `  npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`,
+          `  Inspect the failed publish logs before choosing a recovery:\n` +
+          `    - Transient 5xx/socket failures: release.yml can resume from v${version}\n` +
+          `      after its tagged-manifest preflight passes: gh workflow run release.yml\n` +
+          `    - E404/403: check npm permissions and the package's Trusted Publisher\n` +
+          `      (GitHub Actions → pyreon/pyreon → release.yml).\n` +
+          `    - E422 provenance verification is deterministic. Inspect repository\n` +
+          `      metadata in the TAGGED manifests. A tag missing that metadata cannot\n` +
+          `      be repaired by changes on main or replaying it; cut a new release\n` +
+          `      with corrected metadata instead.`,
       )
       console.error(
         `::error title=Partial release ${version}::${lagging.map((r) => r.pkg).join(', ')} lag on npm`,
@@ -380,7 +383,7 @@ if (import.meta.main) {
           `       manifest rewrite every release publish applies, so the tarball would\n` +
           `       carry \`workspace:*\` dependencies (\`npm i\` fails with\n` +
           `       EUNSUPPORTEDPROTOCOL), the \`bun\` export condition pointing at src/,\n` +
-          `       and src/ itself — 83 files instead of 23.\n` +
+          `       and untransformed src/ files.\n` +
           `    2. on npmjs.com → the package → Settings → add a Trusted Publisher\n` +
           `       (GitHub Actions, repo pyreon/pyreon, workflow release.yml, no environment)\n` +
           `  Subsequent releases publish it via OIDC like the rest of the suite.`,

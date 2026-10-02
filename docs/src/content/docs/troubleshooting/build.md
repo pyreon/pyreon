@@ -7,6 +7,12 @@ description: "Common build pipeline mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Evaluating page modules to collect static metadata can stall the index and run application effects
+
+Dev search warmed markdown with `ssrLoadModule`, executing each page and its dependency graph even though the transform had already recorded every search field. Use `transformRequest(file, { ssr: true })` for metadata collection. Keep configuration loading separate. The real-Vite regression confirms catalog/chunk contents, asserts page effects stay dormant while indexing, and explicitly loads the page afterward as an execution control. Reference: `packages/zero/zero-content/src/plugin.ts`; test `dev-search-no-evaluation.test.ts`.
+
+---
+
 ### Layout decisions every target must make belong in the engine, not a host file.
 
 If the web host and a code generator both have to make a decision, implement it once in shared engine code. Legend placement used to live only in the web `canvas-host.tsx`. The native emitters drew every legend at the top, and even the one shared placement was off by 8px. Now `placeLegend(entries, area, position, opts, measure) -> { cmds, top, bottom, left, right, boxes }` in `packages/fundamentals/charts/src/engine/legend.ts` is the only implementation. The emitters pass a position and read the insets back. Only the insets a position can take are emitted, so the default (top) keeps its one-axis `pyreonShiftCmds(p, top)`. A prop that "does not lower yet" while every primitive it needs already crosses usually means a decision is stuck in one host.
@@ -191,6 +197,18 @@ The template `attrSetter` (`compiler/src/jsx.ts`, mirrored by `native/src/lib.rs
   - A real default replaces only the unconfigured backend. An app that installs its own backend (Room, an encrypted store) in `Application.onCreate` keeps it. Test the install policy in both directions.
   - Keep persistence logic and install policy in dependency-free files so `packages/native/runtime-kotlin/scripts/run-kotlin-tests.ts` executes them (it only runs modules importing no `androidx.*`/`android.*`/`kotlinx.*`). The JSON codec is hand-written because CI compiles against minimal stubs, where a stubbed JSON library would make assertions vacuous.
   - Reference: `packages/fundamentals/hooks/native/swift/PyreonDatabase.swift` (`FileDatabaseBackend`), `packages/fundamentals/hooks/native/kotlin/com/pyreon/runtime/PyreonDatabase.kt`, `packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonStorageBackends.kt`.
+
+---
+
+### A JSON array spread is a fragment, not one encoded element.
+
+Native WebView payload lowering must flatten spread fragments and insert commas after discarding empty fragments; emitting `encode(xs)` as one array slot silently sends `[[1,2],9]` instead of `[1,2,9]`. Preserve this rule inside nested heterogeneous payloads. Swift fragment construction uses a typed local to avoid exponential inference of nested string interpolations. Lock: `native/compiler/src/tests/webview-json-spread-parity.test.ts` executes emitted expressions for empty, singleton and multi-element operands on both toolchains.
+
+---
+
+### An absent cooked tagged-template value does not mean empty text.
+
+CSS escapes such as `\2014` can leave JavaScript template quasis without a cooked value while their raw text remains intact. Native styled-template extraction falls back to raw text so one CSS escape cannot erase sibling declarations or interpolations. Lock: `native/compiler/src/tests/cov-parse-a-styled-css.test.ts`.
 
 ---
 

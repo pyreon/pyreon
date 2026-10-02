@@ -1111,7 +1111,9 @@ function cssTemplateToStyleObject(
     if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
   }
   for (let i = 0; i < quasis.length; i++) {
-    pushText(quasis[i]?.value?.cooked ?? '')
+    // Tagged templates retain raw CSS even when a CSS escape is invalid JS
+    // (for example \\2014). An absent cooked value must not erase its siblings.
+    pushText(quasis[i]?.value?.cooked ?? quasis[i]?.value?.raw ?? '')
     if (i < expressions.length) decls[decls.length - 1]!.push({ t: 'expr', node: expressions[i] })
   }
 
@@ -7245,7 +7247,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const first = name.charAt(0)
   const isCamelCase = first === first.toLowerCase() && first !== first.toUpperCase()
   const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
-  if (hasValueParams && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
+  if ((hasValueParams || hasNonViewReturnAnnotation) && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep

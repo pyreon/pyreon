@@ -7,6 +7,18 @@ description: "Common testing mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A mounted canvas is not proof its first frame has painted
+
+Polling the canvas count and then reading pixels once races the first draw. Poll the complete verdict together: every expected canvas exists, has positive dimensions, and contains painted pixels. Keep one readiness budget for the count and pixel checks, and include the canvas label and observed dimensions in failures. A delayed real-paint control must pass; a canvas that remains blank must still fail. Reference: `e2e/app-showcase-charts.spec.ts`.
+
+---
+
+### A result assertion that races its still-loading input asset flakes on cold CI
+
+Docs search compiled the entire markdown collection on the first index request, while its result poll expired after 15 seconds. Await the required index response and body before starting the result assertion, under the existing whole-test deadline. Register the response waiter before opening search and keep typing during loading; prewarming the index would stop exercising that path. A delayed real response reproduces the old zero-result failure and passes with synchronization, without widening the result budget. Reference: `e2e/docs.spec.ts` (Cmd+K search).
+
+---
+
 ### A verify check that passes on an empty render
 
 "mounts, clicks and unmounts without throwing" is true of a component that rendered nothing, so `@pyreon/atlas` once reported every scenario verified while many previews were blank. Causes and rules:

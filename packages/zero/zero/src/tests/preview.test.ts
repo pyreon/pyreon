@@ -17,9 +17,9 @@ const ctxFor = (url: string, cookie?: string): MiddlewareContext => {
 }
 
 async function enableCookie(): Promise<string> {
-  const res = await createPreviewHandler({ secret: SECRET, token: TOKEN })(
+  const res = (await createPreviewHandler({ secret: SECRET, token: TOKEN })(
     ctxFor(`https://x.test/api/preview?token=${TOKEN}&redirect=/blog/draft`),
-  ) as Response
+  )) as Response
   expect(res.status).toBe(307)
   expect(res.headers.get('location')).toBe('/blog/draft')
   return res.headers.getSetCookie()[0]!.split(';')[0]!
@@ -27,9 +27,9 @@ async function enableCookie(): Promise<string> {
 
 describe('createPreviewHandler', () => {
   it('sets a signed HttpOnly cookie for the right token', async () => {
-    const res = await createPreviewHandler({ secret: SECRET, token: TOKEN })(
+    const res = (await createPreviewHandler({ secret: SECRET, token: TOKEN })(
       ctxFor(`https://x.test/api/preview?token=${TOKEN}`),
-    ) as Response
+    )) as Response
     const c = res.headers.getSetCookie()[0]!
     expect(c.startsWith(`${PREVIEW_COOKIE}=`)).toBe(true)
     expect(c).toMatch(/HttpOnly/)
@@ -37,25 +37,33 @@ describe('createPreviewHandler', () => {
   })
 
   it('rejects a wrong token with 401 and no cookie', async () => {
-    const res = await createPreviewHandler({ secret: SECRET, token: TOKEN })(
+    const res = (await createPreviewHandler({ secret: SECRET, token: TOKEN })(
       ctxFor('https://x.test/api/preview?token=nope'),
-    ) as Response
+    )) as Response
     expect(res.status).toBe(401)
     expect(res.headers.getSetCookie()).toEqual([])
   })
 
   it('never open-redirects', async () => {
-    for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test']) {
-      const res = await createPreviewHandler({ secret: SECRET, token: TOKEN })(
+    for (const bad of [
+      'https://evil.test',
+      '//evil.test',
+      '/\\evil.test',
+      '/\t/evil.test',
+      '/\t\\evil.test',
+      '/\n/evil.test',
+      '/\r/evil.test',
+    ]) {
+      const res = (await createPreviewHandler({ secret: SECRET, token: TOKEN })(
         ctxFor(`https://x.test/api/preview?token=${TOKEN}&redirect=${encodeURIComponent(bad)}`),
-      ) as Response
+      )) as Response
       expect(res.headers.get('location')).toBe('/')
     }
   })
 
   it('exit clears the cookie; other paths pass through', async () => {
     const mw = createPreviewHandler({ secret: SECRET, token: TOKEN })
-    const res = await mw(ctxFor('https://x.test/api/preview/exit')) as Response
+    const res = (await mw(ctxFor('https://x.test/api/preview/exit'))) as Response
     expect(res.headers.getSetCookie()[0]).toMatch(/Max-Age=0/)
     expect(await mw(ctxFor('https://x.test/other'))).toBeUndefined()
   })
@@ -80,9 +88,9 @@ describe('previewMiddleware + isPreview', () => {
 
 describe('createPreviewHandler — edge paths', () => {
   it('a missing token answers 401 (treated as the empty string, never a match)', async () => {
-    const res = await createPreviewHandler({ secret: SECRET, token: TOKEN })(
+    const res = (await createPreviewHandler({ secret: SECRET, token: TOKEN })(
       ctxFor('https://x.test/api/preview'),
-    ) as Response
+    )) as Response
     expect(res.status).toBe(401)
     expect(await res.text()).toBe('Invalid preview token')
   })
@@ -90,11 +98,11 @@ describe('createPreviewHandler — edge paths', () => {
   it('a custom path (trailing slash stripped) and loopback http drop Secure', async () => {
     const mw = createPreviewHandler({ secret: SECRET, token: TOKEN, path: '/cms/preview/' })
     for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-      const res = await mw(ctxFor(`http://${host}:3000/cms/preview?token=${TOKEN}`)) as Response
+      const res = (await mw(ctxFor(`http://${host}:3000/cms/preview?token=${TOKEN}`))) as Response
       expect(res.status).toBe(307)
       expect(res.headers.getSetCookie()[0]).not.toMatch(/Secure/)
     }
-    const exit = await mw(ctxFor('https://x.test/cms/preview/exit?redirect=/blog')) as Response
+    const exit = (await mw(ctxFor('https://x.test/cms/preview/exit?redirect=/blog'))) as Response
     expect(exit.headers.get('location')).toBe('/blog')
     expect(await mw(ctxFor(`https://x.test/api/preview?token=${TOKEN}`))).toBeUndefined()
   })
@@ -118,21 +126,32 @@ describe('preview × ISR — a preview visitor bypasses the cache and never popu
   it('published page cached for the public; preview visitor gets a fresh draft render', async () => {
     let version = 'published-v1'
     const Page = () => h('p', null, `${useLoaderData<{ v: string }>()?.v}`)
-    const routes: RouteRecord[] = [{
-      path: '/',
-      component: Page,
-      loader: ({ request }) => ({ v: isPreview({ request }) ? 'DRAFT' : version }),
-    }]
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Page,
+        loader: ({ request }) => ({ v: isPreview({ request }) ? 'DRAFT' : version }),
+      },
+    ]
     const { App } = createApp({ routes, url: '/' })
-    const handler = createHandler({ App, routes, middleware: [previewMiddleware({ secret: SECRET })] })
-    const isr = createISRHandler(handler, { revalidate: 3600, cacheKey: (r) => new URL(r.url).pathname })
+    const handler = createHandler({
+      App,
+      routes,
+      middleware: [previewMiddleware({ secret: SECRET })],
+    })
+    const isr = createISRHandler(handler, {
+      revalidate: 3600,
+      cacheKey: (r) => new URL(r.url).pathname,
+    })
 
     const pub1 = await isr(new Request('https://x.test/'))
     expect(await pub1.text()).toContain('published-v1')
     expect(pub1.headers.get('x-isr-cache')).toBe('MISS')
     version = 'published-v2' // origin changed; cache still holds v1
 
-    const prev = await isr(new Request('https://x.test/', { headers: { cookie: await enableCookie() } }))
+    const prev = await isr(
+      new Request('https://x.test/', { headers: { cookie: await enableCookie() } }),
+    )
     expect(await prev.text()).toContain('DRAFT')
     expect(prev.headers.get('x-isr-cache')).toBe('BYPASS')
     expect(prev.headers.get('cache-control')).toBe('private, no-store')

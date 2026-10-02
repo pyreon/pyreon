@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { journeys } from '../examples/perf-dashboard/src/journeys'
 import { linearRegression } from './leak-audit'
+import { forceGcTwice, HEAP_AUDIT_CHROMIUM_ARGS } from './perf/heap'
 import { startServer as startViteServer } from './perf/server'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -82,14 +83,6 @@ async function runOneCycle(page: Page, name: string): Promise<void> {
   // (click / fill / waitForSelector / evaluate / reload) — a strict
   // subset of Playwright's Page. Pass our real `Page` through.
   await fn(page as unknown as Parameters<typeof fn>[0])
-}
-
-async function forceGcTwice(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const g = globalThis as { gc?: () => void }
-    g.gc?.()
-    g.gc?.()
-  })
 }
 
 async function sampleHeap(page: Page): Promise<number> {
@@ -236,7 +229,7 @@ async function main(): Promise<void> {
 
   const browser = await chromium.launch({
     headless: true,
-    args: ['--js-flags=--expose-gc'],
+    args: HEAP_AUDIT_CHROMIUM_ARGS,
   })
 
   try {

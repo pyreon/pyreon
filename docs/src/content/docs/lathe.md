@@ -1544,6 +1544,7 @@ never touched. Commit the manifest with the rest of the output.
   disk is reported by default; `remoteRefs: 'fetch'` or `lathe pull` bundles it. Names of hoisted
   schemas are stable per target, but a new collision can renumber a
   `<name>2` model.
+- **Webhook request bodies are bounded** — generated receivers reject bodies above 1 MiB with `413` before verification or dispatch. Set `bodyLimit` in `webhookHandler` options for larger legitimate payloads; the limit applies to streamed bytes as well as `Content-Length`.
 - **Webhook signatures are a hook, not built in** — `webhookHandler` calls your
   `verify`; it does not know any vendor's signing scheme.
 - A security scheme other than bearer / OAuth2 / OpenID Connect / basic / API

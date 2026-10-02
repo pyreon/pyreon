@@ -16,6 +16,7 @@
  * This module is client-safe (Web Crypto only, no `node:*`, no runtime import
  * of `@pyreon/server`), so `isPreview` can be imported from shared code.
  */
+import { classifyRedirectTarget } from '@pyreon/router'
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
 import {
   createSigner,
@@ -50,7 +51,10 @@ export interface PreviewHandlerOptions extends PreviewOptions {
 }
 
 function isLocalHttp(url: URL): boolean {
-  return url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  return (
+    url.protocol === 'http:' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  )
 }
 
 function cookieAttrs(url: URL) {
@@ -74,8 +78,11 @@ async function tokensEqual(a: string, b: string): Promise<boolean> {
 
 /** Only same-origin relative paths — never an open redirect. */
 function safeRedirect(target: string | null): string {
-  if (!target || !target.startsWith('/') || target.startsWith('//') || target.startsWith('/\\')) return '/'
-  return target
+  if (!target) return '/'
+  // Judge the same normalized bytes the browser will navigate to. Tabs and
+  // newlines inside /<control>/host become an authority delimiter.
+  const verdict = classifyRedirectTarget(target)
+  return verdict.kind === 'internal' && verdict.url.startsWith('/') ? verdict.url : '/'
 }
 
 /**
@@ -97,7 +104,10 @@ function safeRedirect(target: string | null): string {
  * ```
  */
 export function previewMiddleware(options: PreviewOptions): Middleware {
-  const signer = createSigner(normalizeSecrets(options.secret, 'previewMiddleware'), 'pyreon-preview')
+  const signer = createSigner(
+    normalizeSecrets(options.secret, 'previewMiddleware'),
+    'pyreon-preview',
+  )
   return async (ctx: MiddlewareContext) => {
     const cookie = readCookie(ctx.req, PREVIEW_COOKIE)
     if (!cookie) return
@@ -121,7 +131,10 @@ export function previewMiddleware(options: PreviewOptions): Middleware {
  * ```
  */
 export function createPreviewHandler(options: PreviewHandlerOptions): Middleware {
-  const signer = createSigner(normalizeSecrets(options.secret, 'createPreviewHandler'), 'pyreon-preview')
+  const signer = createSigner(
+    normalizeSecrets(options.secret, 'createPreviewHandler'),
+    'pyreon-preview',
+  )
   normalizeSecrets(options.token, 'createPreviewHandler (token)')
   const path = (options.path ?? '/api/preview').replace(/\/$/, '')
   const maxAge = options.maxAge ?? 60 * 60
@@ -131,7 +144,10 @@ export function createPreviewHandler(options: PreviewHandlerOptions): Middleware
     const headers = new Headers({ 'cache-control': 'private, no-store' })
     const location = safeRedirect(ctx.url.searchParams.get('redirect'))
     if (pathname === `${path}/exit`) {
-      headers.append('set-cookie', serializeCookie(PREVIEW_COOKIE, '', { ...cookieAttrs(ctx.url), maxAge: 0 }))
+      headers.append(
+        'set-cookie',
+        serializeCookie(PREVIEW_COOKIE, '', { ...cookieAttrs(ctx.url), maxAge: 0 }),
+      )
       headers.set('location', location)
       return new Response(null, { status: 307, headers })
     }
@@ -143,7 +159,10 @@ export function createPreviewHandler(options: PreviewHandlerOptions): Middleware
     replaceSetCookie(
       headers,
       PREVIEW_COOKIE,
-      serializeCookie(PREVIEW_COOKIE, await signer.sign(true, maxAge), { ...cookieAttrs(ctx.url), maxAge }),
+      serializeCookie(PREVIEW_COOKIE, await signer.sign(true, maxAge), {
+        ...cookieAttrs(ctx.url),
+        maxAge,
+      }),
     )
     headers.set('location', location)
     return new Response(null, { status: 307, headers })
