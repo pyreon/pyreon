@@ -1,5 +1,258 @@
 # @pyreon/toast
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3652](https://github.com/pyreon/pyreon/pull/3652) [`a156c40`](https://github.com/pyreon/pyreon/commit/a156c4069ad6882d9e402efa552566dd5714b94d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hardening pass across five fundamentals packages. Behaviour changes are marked **(behaviour)**.
+
+  **@pyreon/hooks**
+
+  - **(behaviour)** Hook teardown is now owned by the component. Every hook registered its cleanup with `onCleanup` from `@pyreon/reactivity`, which only registers inside an effect run: a root-mounted component never cleaned up (the GPS watch, socket, window listeners and speech kept running after unmount), and a component inside a `<For>` / `<Show>` / routed page had its cleanup tied to that boundary's effect — adding one `<For>` row tore down the resources of every row that stayed. Teardown now runs exactly when the component unmounts.
+  - `useGeolocation`: a TIMEOUT / POSITION_UNAVAILABLE error no longer drops the watch id (which left GPS on after unmount and let a retry open a second watch). Only a permission denial ends the watch, and it is cleared explicitly.
+  - **(behaviour)** `useEventListener`: a `target` that is `null` at setup (a ref) is resolved at mount instead of silently falling back to `window`; if it is still `null`, nothing is bound and a dev warning fires. `target` may also be an `EventTarget` directly.
+  - `useTimeAgo`: a reactive date getter is tracked, so a change re-renders immediately and restarts the timer. **(behaviour)** The "just now" bucket goes through a custom `formatter` as `(0, 'second', isPast)`.
+  - `useSpeech`: only the hook's own current utterance drives `speaking()` (a replaced utterance's late `onend` no longer flips it off mid-speech), and **(behaviour)** `stop()` / unmount only cancel speech this hook started.
+  - `useNotifications`: when the `Notification` constructor throws (Android Chrome), falls back to the service-worker registration's `showNotification`; `notify()` on a platform without the API warns in dev.
+  - **(behaviour)** `useClickOutside`: listens for a single `pointerdown` instead of `mousedown` + `touchstart`, which fired the handler twice per touch tap.
+  - `useInfiniteScroll`: keeps loading while the sentinel stays visible after a page lands (a first page that does not fill the container no longer stalls), and does not start a second load while one is in flight.
+  - **(behaviour)** `useLinking().openUrl` refuses `javascript:` / `data:` and any scheme other than http(s), mailto and tel (relative URLs allowed), with a dev warning.
+  - `useIntersection` / `useElementSize`: the element getter is tracked from mount, so an element that appears after mount is observed.
+  - `useMediaQuery` accepts a query getter and re-subscribes when it changes. `useKeyboard` gains `ignoreInputs`. `useWebSocket` gains `maxMessages`. `useScrollLock` compensates for the removed scrollbar and also locks `<html>` (iOS Safari).
+  - **(behaviour)** `useFetch`: `isPending` starts `true` on the server as well, matching the client's first render (was a hydration mismatch).
+
+  **@pyreon/a11y**
+
+  - **(behaviour)** `announce()`: both regions are created on the first call and messages are written ~100ms later, so the first announcement lands in a region the screen reader has already seen; messages announced together are joined instead of overwriting each other.
+  - `<LiveRegion>`, `<VisuallyHidden>` and `<SkipLink>` no longer freeze reactive props at setup. `<LiveRegion>` accepts accessors for `politeness` / `atomic` / `role` / `visible`, and toggling `visible` restyles the region instead of remounting it.
+  - **(behaviour)** `<SkipLink>` handles the jump itself (focus + scrollIntoView) and cancels the default hash navigation, which a hash-mode router read as a route.
+  - `<RouteAnnouncer>` warns in dev when `<RouterView>`'s built-in announcer is also active. `createA11yId`'s docs no longer claim server/client ids always match.
+
+  **@pyreon/toast**
+
+  - **(behaviour)** A duration a timer cannot hold (`Infinity`, above 2^31-1 ms, `NaN`, negative) is treated as persistent — it used to overflow and dismiss the toast after ~1ms.
+  - **(behaviour)** `toast()` is a no-op on the server (dev warning): the store is process-wide, so a server-side toast leaked into other requests.
+  - **(behaviour)** An action's `onClick` receives `{ id, dismiss }`.
+  - A second mounted `<Toaster>` warns in dev; a Toaster's `duration` default is restored on unmount; the Toaster now removes its portal host and visibility listener on unmount. Animations respect `prefers-reduced-motion`.
+
+  **@pyreon/hotkeys**
+
+  - A keydown without a `key` (Chrome autofill) no longer throws out of the shared listener; IME composition keystrokes never fire shortcuts; input detection uses `composedPath()[0]` so inputs inside a shadow root are recognised; `alt+<letter/digit>` matches on macOS via `event.code`.
+  - `useHotkey`'s `target` may be a ref / getter, resolved at mount and tracked afterwards.
+
+  **@pyreon/virtual**
+
+  - **(behaviour)** Options are read once per pass and REPLACE the previous options, so a key you stop returning falls back to TanStack's default instead of lingering. `useVirtualizer` warns in dev when `getScrollElement()` is still `null` after mount.
+
+- [#3755](https://github.com/pyreon/pyreon/pull/3755) [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Finish the Kotlin `Int` to `Long` move for the runtime APIs emitted code reaches. `PyreonToast.maxToasts`, `PyreonSortable.moveIndex`, `PyreonRateLimit` delays and scheduler, `PyreonSizedMap` (`maxEntries`, `size`), `PyreonScreenOrientation.angle`, `PyreonStream` (`maxEvents`, reconnect `attempts`) and the chart web-view selection indices now use `Long`, and the emit adds the `L` suffix to the literals it passes them. `PyreonChartPoints` takes `Long` counts, which fixes a real `gradle assembleDebug` failure in every chart-bearing Android example. `syncedSignal` and `PyreonCrdtMap.set` now accept `Long` (a `Long` signal previously threw `unsupported value type`).
+
+- [#2784](https://github.com/pyreon/pyreon/pull/2784) [`5fc3b9f`](https://github.com/pyreon/pyreon/commit/5fc3b9fda70b8d96a412b08f7e58e6e0df35e8fe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/toast` works on iOS + Android — and its native runtime is **co-located in the package** (`@pyreon/toast/native/{swift,kotlin}/`), the per-package architecture rather than the monolithic `@pyreon/native-runtime-*`. This is the first package to prove that model end-to-end.
+
+  **Runtime (co-located) — `PyreonToast`** (Swift `@Observable` singleton / Kotlin `object`): a process-global observable queue (add/dismiss/remove/clear), newest-last, distinct monotonic ids, a bounded stack (drops the oldest past `maxToasts`), and an auto-dismiss timer. It ships in `@pyreon/toast/native/`, declared via the package.json `pyreon.native` field, so `pyreon-native wire` aggregates it into a native app build straight from the installed package — no monolith, native tree-shakes to what you import, and a third-party package can follow the same convention.
+
+  **Co-source verify gate** (`scripts/check-native-cosource.ts`, wired into the native-validate CI job): scans every package's `pyreon.native` sources and compiles + smoke-runs them against the stub harness (Kotlin via `verify-kotlin --source`, which gained a path override; Swift via `swiftc -parse-as-library` + run), so a co-located `.swift`/`.kt` can't rot silently now that it lives outside `@pyreon/native-runtime-*`'s own `src/`. Toast's queue behavior is unit-tested this way on both toolchains.
+
+  **Lowering:**
+  - `toast("msg")` → `PyreonToast.shared.add("msg", type: "info")` (Swift) / `PyreonToast.add("msg", "info")` (Kotlin). The message is any expression; a renamed import (`toast as notify`) is handled; a literal `{ duration }` (ms → the auto-dismiss; `0` = persistent) lowers.
+  - Preset methods `toast.success/error/warning/info/loading("msg")` select the type.
+  - `<Toaster />` → a native overlay iterating the reactive queue.
+
+  A new `toast-call` ExprIR kind is threaded through `parse` (gated on the `@pyreon/toast` import) + both emits + the `expr-utils` walkers + `infer-type`. Proven R2 (emit) + R3 (typecheck vs the compiler's `PyreonToast` stubs on swiftc + kotlinc); `native-toast.test.ts` 7 cases + the co-source gate.
+
+  **v1 scope (disclosed):** message + preset type + literal `duration` lower; the other options (`onDismiss`/`description`/`icon`/`action`) are dropped, and `toast.promise()` / `toast.update()` aren't lowered. `<Toaster />` is a minimal message stack (positioning/styling/animation are a follow-up). No device (Simulator/Emulator) proof yet — the runtime is unit-tested by the co-source gate and the emit is stub-typechecked.
+
+- [#2798](https://github.com/pyreon/pyreon/pull/2798) [`e56b865`](https://github.com/pyreon/pyreon/commit/e56b865f08946b7f848906bf2562911fa7f95066) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Derive the native compiler's web-only warning set from the package manifests
+
+  Importing a web-only `@pyreon/*` package into shared source is meant to warn at
+  parse time, naming the `<Web>` escape hatch. Four packages — `@pyreon/url-state`,
+  `@pyreon/head`, `@pyreon/hotkeys` and `@pyreon/feature` — declared
+  `multiplatform: { tier: 'web-only' }` but were absent from the compiler's
+  hand-written `WEB_ONLY_PACKAGES` literal, so importing one produced **no
+  diagnostic at all**: the call emitted verbatim and the native build failed with
+  `cannot find 'x' in scope`, pointing nowhere near the cause.
+
+  The set is now derived from the manifests (`tier === 'web-only'` and no
+  `nativeFrontend`) and regenerated by `check-multiplatform-tier`, which gates that
+  it stays in sync. The hand-written list had already been repaired twice by hand —
+  `@pyreon/sync` and `@pyreon/rich-text` were missing, `@pyreon/toast` went stale
+  the other way once its core lowered — each time with a comment recording the
+  incident rather than closing the class.
+
+  A cross-check test existed but ran in one direction only (every compiler entry
+  must declare web-only), and its comment waved the other direction through as
+  acceptable. That was the direction that shipped the bug; it now asserts equality.
+
+  Two supporting changes:
+
+  - `multiplatform` gains an optional `nativeFrontend` field for packages that
+    lower part of their surface. The three-value tier vocabulary could not express
+    partial crossing, which is what made `@pyreon/toast` go stale. `toast`, `a11y`,
+    `query` and `validation` now declare it.
+  - The blanket warning defers to `UNLOWERED_PYREON_MODULES`, the finer per-symbol
+    mechanism, so packages covered there (`validate`, `validation`, `http`, `rx`)
+    warn exactly once with their specific advice instead of twice.
+
+  `@pyreon/query` and `@pyreon/validation` also had factually stale rationales:
+  query's said native fetching is `useFetch/PyreonFetch` although `PyreonQuery`
+  shipped and `useQuery` is lowered, and validation's said per-validator lowering
+  was "not shipped" although the Gap-4 schema forms emit native validators.
+
+  ## Lower `@pyreon/validate`'s `s` DSL to native validators
+
+  A top-level `const X = s.object({ … })` declaration now emits a Swift `Codable`
+  struct and a Kotlin `data class`, each with `parse` / `safeParse` and real
+  constraint enforcement — from the same source, on both targets. Before this,
+  `@pyreon/validate` had no native story at all: a native app could not validate
+  data, and the schema emitted verbatim.
+
+  It reuses the existing Gap-4 schema pipeline (recognizer → IR → per-target
+  emit) rather than adding a second one. The only structural difference from
+  zod / valibot / arktype is that `s.object({ … })` arrives with no wrapper call —
+  it already IS a Standard Schema — so the shared walker's `schemaFn` became
+  nullable instead of being copied.
+
+  Scope, stated plainly: the DECLARATION form lowers. Inline uses
+  (`s.string().parse(x)`), the JIT, JSON-schema export and the v1/mini compat
+  surfaces stay web, and still warn.
+
+  The recognizer gates on the IMPORT, not the bare name: `zodSchema(...)` is a
+  distinctive wrapper but a lone `s` is not, and claiming it would silently
+  rewrite a user's own binding.
+
+  ## Native router: implement the `query` it has always advertised
+
+  `PyreonRouter`'s header has listed `query` (typed search params) since the C1
+  scaffold on BOTH platforms, and neither implemented it. Worse than missing: a
+  path carrying `?…` was handed to `matchPath` whole, so `/users/42?tab=a`
+  captured `id == "42?tab=a"` and a static route stopped matching altogether.
+  Every deep link with a query string — an OAuth callback, a shared link — hit
+  that, on iOS and Android alike.
+
+  Both routers now parse the query alongside `params`, in the same step, so the
+  two always describe one navigation. New surface, identical on each side:
+  `query`, `setQueryParam(key, value)` (replace semantics — changing a filter must
+  not add a back-stack entry per keystroke), plus `splitPathAndQuery` /
+  `parseQuery` / `serializeQuery`. `parseQuery` follows `URLSearchParams`: a bare
+  key is present-with-empty-value, a repeated key keeps the last. `serializeQuery`
+  sorts, so the rewritten URL is stable. The query survives an unmatched path — a
+  404 page usually needs the parameters it was called with.
+
+  ## `useUrlState` lowers to the native router's search parameters
+
+  `const q = useUrlState('q', 'all')` now binds one search parameter on iOS and
+  Android, from the same source: `q()` reads and `q.set(v)` writes, exactly as on
+  the web. Built on the router `query` support above.
+
+  The helper type is emitted INLINE rather than shipped as a co-located runtime,
+  because it needs the ACTIVE router — a standalone runtime would have to import
+  PyreonRouter and stop being self-contained. Same reasoning as `PyreonSchemaError`.
+
+  Scope: string-valued keys with literal arguments. A non-string default declines
+  WITH a reason rather than coercing silently, and a non-literal key declines
+  because it cannot be baked into the emit — the conservative rule `useFetch`
+  applies to its URL and `useStorage` to its key. History entries, `popstate`,
+  `batchUrlUpdates` and the pluggable serializers stay web.
+
+  ## `<Transition name>` resolves to a native transition instead of always fading
+
+  The native `<Transition>` emit ignored `name` and animated every show/hide as a
+  fade. An author who wrote a slide-up got a fade on device — and because an
+  animation still played, nothing looked broken enough to investigate.
+
+  `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already honours
+  on the web, and `@pyreon/kinetic` ships its presets under the same vocabulary,
+  so it is the one shape an author writes once. `fade` · `scale-in` · `slide-up` ·
+  `slide-down` · `slide-left` · `slide-right` now map to SwiftUI transitions and
+  Compose enter/exit pairs respectively. An unknown name still falls back to a
+  fade — a custom CSS animation has no native translation, and a fade beats
+  refusing to compile — and a `<Transition>` with NO name emits byte-identically
+  to before.
+
+  `kinetic()` itself stays web: the chainable class/style factory has no native
+  model. What crosses is the preset vocabulary.
+
+  ## An unlowered package's diagnostic names ITS alternative
+
+  `@pyreon/table` was told it "renders via the DOM / a browser-only library".
+  TanStack Table is HEADLESS — that claim is simply false — and the message
+  stopped short of naming the native answer this package's own manifest states.
+
+  It now says the real thing: the row model (`getRowModel` / `getVisibleCells` /
+  `flexRender`) is a WEB render surface with no native analogue, while sort and
+  filter state is ordinary logic to hold in signals and render with
+  `<For each={rows}>` + `@pyreon/primitives`.
+
+  The hook arc now reads the same per-package advice, so this improves every
+  package that has an entry (rx, validate, permissions, storage, http, table) —
+  not just the one that surfaced it.
+
+- [#3422](https://github.com/pyreon/pyreon/pull/3422) [`ac7699c`](https://github.com/pyreon/pyreon/commit/ac7699c24961e506b18e0a2cd7909131297c0c15) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The auto-dismiss countdown is held by three independent sources, and a hidden tab no longer burns it
+
+  `<Toaster>` suspended the clock on hover and on keyboard focus through a single
+  shared flag, so the two defeated each other: a keyboard user tabbing into a
+  toast (`focusin` → paused) lost it the moment the pointer swept across the stack
+  and off again (`mouseleave` → resumed), and the toast dismissed itself out from
+  under the reader. Holds are now taken and released BY IDENTITY — `hover`,
+  `focus`, `hidden` — and the clock only restarts once the last holder lets go.
+
+  Identity rather than a depth counter, because takes and releases are not
+  reliably balanced: a browser need not fire `focusout` when the focused element
+  is removed, which an auto-dismiss does routinely. A counter left above zero
+  freezes every later toast for the life of the page; a stranded `'focus'` hold is
+  cleared by the next `focusout`.
+
+  The third source is new: a backgrounded tab no longer counts down. A four-second
+  toast is four seconds of ATTENTION, not of wall clock, so one raised just before
+  the user switches tabs is still there when they come back — matching sonner and
+  react-hot-toast. A Toaster that mounts into an already-hidden tab starts
+  suspended, and unmounting while hidden releases the hold rather than stranding it.
+
+### Patch Changes
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3051](https://github.com/pyreon/pyreon/pull/3051) [`6b90f4a`](https://github.com/pyreon/pyreon/commit/6b90f4adef7e514a4c9e8b7f2e8ec4bfa77b3e0e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two bugs the device gates found, both invisible to every other check
+
+  **`LocalPyreonRouter.current` is nullable.** The `useUrlState` lowering passed it
+  into a synthesized `PyreonUrlState(router: PyreonRouter, …)`, so a real
+  `gradle assembleDebug` failed with
+  `actual type is 'PyreonRouter?', but 'PyreonRouter' was expected`. The Kotlin
+  stub typed the CompositionLocal non-null and hid it. The synthesized classes now
+  take `PyreonRouter?` and safe-call it, exactly as router-kotlin's own hooks do
+  (`router?.push(path)`), and the stub is nullable so the same mistake fails
+  locally.
+
+  **`PyreonToast.swift` used a bare `Task`.** That file is compiled INTO the app
+  target, so an app with its own `Task` model shadows Swift's concurrency type and
+  the bare name resolves to the user's struct — `argument type '_' does not
+conform to expected type 'any Decoder'`. A tasks app is exactly the app that has
+  one. Now `_Concurrency.Task`, which is what the emitter already writes for this
+  reason; the shipped runtime did not, and nothing compiled it until it was put in
+  a gated app.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#2810](https://github.com/pyreon/pyreon/pull/2810) [`83b1853`](https://github.com/pyreon/pyreon/commit/83b1853933fc7ccee212d423bbaf333994e4ebbc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(toast): a description added later via `toast.update()` now renders (the `<Show>` gate was frozen)
+
+  `ToastItem` read `hasDescription` ONCE from the setup snapshot and gated the description container on that static boolean — while `description` is a mutable field `toast.update()` (and `toast.promise` transitions) patch. So a toast created without a description, then given one via `toast.update(id, { description })`, updated the store correctly but never mounted its `.pyreon-toast__description` div (the inner content thunk already read `live()`). The gate is now reactive — `when={() => live()?.description != null}` — so the container mounts/unmounts with the live value. `icon`/`action`/`dismissible` stay frozen reads (genuinely immutable — `updateToast` never touches them). Bisect-verified in real Chromium.
+
+- [#2811](https://github.com/pyreon/pyreon/pull/2811) [`e87a031`](https://github.com/pyreon/pyreon/commit/e87a0315417c0037a57b2e86fe6840d7f72854b1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(toast): a toast created WHILE the container is hover/focus-paused no longer auto-dismisses under the cursor
+
+  Pause-on-hover only cleared the timers of toasts that ALREADY existed when the pointer entered. A toast arriving during an active hover/focus (a background job, a WebSocket event) armed its auto-dismiss timer unconditionally and counted down under the user's cursor — the opposite of what pause-on-hover promises. A module-level `_paused` flag (set by `_pauseAll`, cleared by `_resumeAll` and `_reset`) now makes `startTimer` hold the full duration WITHOUT arming while paused; the next `_resumeAll` (mouseleave/blur) arms it via its existing `duration > 0 && timer === undefined && remaining > 0` guard. Mirrors react-hot-toast / sonner's global paused state. Bisect-verified.
+
+- Updated dependencies [[`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

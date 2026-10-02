@@ -1,5 +1,140 @@
 # @pyreon/document
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2844](https://github.com/pyreon/pyreon/pull/2844) [`afd139e`](https://github.com/pyreon/pyreon/commit/afd139ef46c7d9d687a7ac0755a3043601679f4e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **The four binary-format libraries are now OPTIONAL PEER dependencies instead of `optionalDependencies`.** `optionalDependencies` reads as "optional" and is not — every package manager installs them by default (the field means "tolerate an install failure", which is why `@pyreon/compiler` uses it correctly for platform binaries). So every consumer of `@pyreon/document` was force-fed pdfmake + docx + exceljs + pptxgenjs whether or not they ever emitted a binary format, carrying both their install weight and their CVE surface — two live advisories reached consumers this way (exceljs → a vulnerable `uuid`, pptxgenjs → a vulnerable `image-size`).
+
+  The renderers were always written for peer semantics: each one `await import()`s its library and throws a named, actionable error when it is missing. This aligns the manifest with the code.
+
+  **Action required if you emit a binary format**: install its library alongside `@pyreon/document` — `bun add pdfmake` (PDF), `docx` (DOCX), `exceljs` (XLSX), `pptxgenjs` (PPTX). Every text format (HTML, Markdown, SVG, text, email, chat, JSON/JSONL, CSV) is built in and needs nothing extra. A missing library fails with the install command in the message rather than silently.
+
+- [#3644](https://github.com/pyreon/pyreon/pull/3644) [`4798bc7`](https://github.com/pyreon/pyreon/commit/4798bc766fbd8dffc3be8963d12c85f527948925) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Harden every renderer against output injection, and fix several render/DX bugs.
+
+  Security:
+
+  - `sanitizeHref` / `sanitizeImageSrc` are now ALLOWLISTS (`http`, `https`, `mailto`, `tel`, relative; plus `data:image/…` for images). The old blocklist was bypassed by a leading control character (`\x01javascript:`) or an entity-encoded scheme (`&[#106](https://github.com/pyreon/pyreon/issues/106);avascript:`). Control characters are stripped from accepted URLs.
+  - PDF links/buttons and inline links in PDF and DOCX paragraphs are now sanitized (they previously wrote the raw href into a live link annotation). Inline links are sanitized once in `getInlineRuns`, so every inline-link consumer is covered.
+  - Markdown, Teams and Discord link/image destinations are percent-encoded so a `)` or space in a URL cannot close the link and open a second one. Slack `<url|label>` URLs are entity/percent-encoded so `>` or `|` cannot inject `<!channel>`.
+  - Markdown text (headings, paragraphs, lists, table cells, captions, alt text) is escaped, so raw HTML such as `<img onerror>` and markdown metacharacters are no longer live. Discord text is escaped the same way; Teams and Google Chat list items now get the same escaping as other text.
+  - Code blocks cannot be closed by their content: Markdown uses a fence longer than any backtick run; Slack/WhatsApp/Discord/Teams break ``` runs in content with a zero-width space. Code language tags are restricted to `[\w+#.-]`.
+  - CSV: text cells starting with `=` `+` `-` `@` tab or CR are prefixed with `'` (formula injection); numbers are untouched. Cells containing `\r` are quoted, and the table caption is written as a quoted cell so a newline cannot inject a row.
+  - Email links/buttons with `target="_blank"` carry `rel="noopener noreferrer"`.
+
+  Bugs / DX:
+
+  - XLSX sheet names derived from headings are normalized to Excel's rules (forbidden `[]:*?/\` removed, 31-char cap, case-insensitive dedupe, `Sheet N` fallback) — a heading like `Q1/Q2: [draft]` made `render()` throw.
+  - `render()` now has per-format overloads: `pdf`/`docx`/`xlsx`/`pptx` resolve to `Uint8Array`, every other built-in format to `string`; a custom format string still returns `RenderResult`. New exported types `BinaryOutputFormat` and `TextOutputFormat`. Calls that passed the format `as never` now resolve to `Uint8Array` — drop the cast.
+  - A link or button whose href is rejected renders as its plain label instead of an empty link (`[label]()`, `label: `, `<a href="">`, an Adaptive Card / Slack button with no url).
+  - Inline links inside paragraphs now keep their href in Notion, Discord and Teams output.
+  - `download()` gives binary Blobs their MIME type, revokes the object URL on a later task instead of synchronously after `click()`, and checks for a browser before rendering.
+
+  Behaviour changes: link destinations with schemes outside the allowlist (including `data:` links, `ftp:`, `file:` and custom app schemes) are now dropped; Markdown/Discord output contains backslash escapes for markup characters in text.
+
+### Patch Changes
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3673](https://github.com/pyreon/pyreon/pull/3673) [`5874d04`](https://github.com/pyreon/pyreon/commit/5874d04e6fe9854faed52462f3c795ff70deb865) Thanks [@vitbokisch](https://github.com/vitbokisch)! - JSX follow-ups: a `true` child in a document tree now renders nothing (JSX semantics) instead of the text "true"; `<Page header={<Text>…</Text>}>` / `footer` given as JSX are resolved (they were silently dropped by the PDF/DOCX renderers); `createDocument().add()` is typed to accept a JSX / `h()` tree (it already worked at runtime). Manifest/docs updated; the long example no longer uses a non-existent `<List items>` prop.
+
+- [#3435](https://github.com/pyreon/pyreon/pull/3435) [`3c8af9c`](https://github.com/pyreon/pyreon/commit/3c8af9c66a81e7cc8b1b0d6cc8d1d69a2a2dd8d5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(document): `TableColumn.width` broke out of the style attribute
+
+  `width` is typed `number | string` and a string is documented input, so it
+  reached a `style` attribute raw — while every sibling in the same template
+  literal was guarded (`sanitizeColor` on the background and colour, the escaped
+  header). A value of `1px" onmouseover="alert(1)` closed the attribute early and
+  became an event handler:
+
+  ```html
+  <th style="font-weight:bold;width:1px" onmouseover="alert(1);padding:8px"></th>
+  ```
+
+  Both the `html` and `email` renderers carried it; `sanitizeStyle` was already
+  imported in one of them. Severity depends on provenance — developer-authored
+  columns cap it low, but a tenant config or a user-saved view makes it stored
+  XSS.
+
+- [#3673](https://github.com/pyreon/pyreon/pull/3673) [`5874d04`](https://github.com/pyreon/pyreon/commit/5874d04e6fe9854faed52462f3c795ff70deb865) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: composing document primitives through JSX or `h()` now renders the real document. Previously `render(<Document><Page><Text>hello</Text></Page></Document>, 'html')` (and the `h()` equivalent) produced flat concatenated text — or nothing at all for the automatic JSX runtime — because the VNode tree was never resolved: its component types were never invoked and every renderer fell through to its default arm. `render()` and `download()` now accept a `DocNode` or a Pyreon VNode tree and resolve it first (primitive and user components invoked with children merged into `props.children`, fragments flattened, accessor children read once), so JSX, `h()` and direct calls render byte-identically in every format; primitives called directly also accept VNode children. A DOM element (`<div>`) inside a document tree now throws a `[@pyreon/document]` error naming the tag instead of rendering garbage, and a root that does not resolve to exactly one document node throws. `isDocNode` no longer reports a VNode as a `DocNode`. The primitives gain a JSX-compatible call signature (`DocPrimitive` / `OptionalPropsDocPrimitive` types), so `<Document>…</Document>` now typechecks — it did not before.
+
+- [#3103](https://github.com/pyreon/pyreon/pull/3103) [`7a07462`](https://github.com/pyreon/pyreon/commit/7a0746285f30512833da601d546c73be94ea6bb8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: PURE-form node brands so a subset import drops unused nodes (−68%)
+
+  The document node primitives (`Text`, `Heading`, `Table`, …) each did a bare
+  top-level `X._documentType = '…'` mutation. Because a bundler must run every
+  top-level side effect once ANY binding of the module is used, importing a SINGLE
+  node retained ALL 18 — the same bundle-pinning class fixed in `@pyreon/elements`
+  ([#2418](https://github.com/pyreon/pyreon/issues/2418)), through a brand property (`_documentType`) the `no-bare-component-brand`
+  gate did not scan.
+
+  Each node now brands on its export via `/* @__PURE__ */ Object.assign(fn, {
+_documentType })` (same identity, `_documentType` still an own property read
+  identically by `extractDocumentTree`). Measured on the nodes module: a
+  `Text`-only import drops **1949 → 626 bytes (−68%)**; the full barrel grows
+  2996 → 3288 (+292, the accepted subset-vs-whole trade — most consumers use a
+  subset of node types). The gate now scans `_documentType` too (bisect-verified),
+  excluding manifest/api-reference doc-string examples.
+
+- [#2757](https://github.com/pyreon/pyreon/pull/2757) [`ebb0b3d`](https://github.com/pyreon/pyreon/commit/ebb0b3d021d1a373fa580b5c988e37a6704c57b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Render hot-path performance pass + a code-block double-escape fix.
+
+  - **Fix: code blocks no longer double-escape in the html and email renderers.** Both wrapped `renderChildren(...)` — which already escapes string children — in a second outer escape, so `<Code>a < b && c</Code>` emitted `a &amp;lt; b &amp;amp;&amp;amp; c` and the entities rendered literally. Code content is now escaped exactly once (regression-locked through the public `render()` API, bisect-verified).
+  - **Perf: `escapeXml` is now single-pass** — a `NEEDS_ESCAPE_RE` fast path returns clean strings untouched (the dominant case), and dirty strings take one charCode scan with lazy slicing instead of the previous 4 chained `.replace()` passes. The entity set is unchanged (`& < > "` — no `&[#39](https://github.com/pyreon/pyreon/issues/39);`); output is byte-identical (differential-tested against the old implementation).
+  - **Perf: `''`-joined `.map().join('')` child concatenation replaced with `acc +=` loops** in `getTextContent` and the html/email/markdown/text/telegram/whatsapp/slack renderers (V8 cons-strings beat join at every measured size). Separator joins are untouched.
+
+  Measured on the repo's `bench:document` (median-of-7): escape-heavy formats gain the most — LARGE report email ~6×, html ~5×, svg ~3×, google-chat ~2.6× docs/sec; most other formats move within noise.
+
+- [#3510](https://github.com/pyreon/pyreon/pull/3510) [`ff6a451`](https://github.com/pyreon/pyreon/commit/ff6a4518381e5c2b26803813e8dc04313e08859c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix attribute/style breakouts across the `html`, `email` and `svg` renderers — funnel, not enumeration
+
+  PR [#3435](https://github.com/pyreon/pyreon/issues/3435) guarded `TableColumn.width` breaking out of a `style` attribute. The FIELD
+  was fixed; the CLASS was not. Every user-controllable value reaching an attribute or
+  style position broke out identically — `col.align` one line above the guarded `width`,
+  the image `width`/`height` ATTRIBUTES, the divider/spacer/button geometry, and (because
+  the `email` renderer had no sanitizing funnel at all) the whole of its `heading`, `text`
+  and `section` emit. `email`'s heading interpolated `level` into the TAG NAME.
+
+  Every style-position value in all three renderers now goes through one shared funnel
+  (`styleDecls` / `cssDecl`, both `sanitizeStyle`-backed), and every numerically-typed
+  field (`width`, `height`, `thickness`, `borderRadius`, `size`, `lineHeight`, `gap`,
+  `level`) is coerced with `sanitizeNumber`, which emits nothing when the value is not
+  finite. A numeric STRING still renders, so a JSON document tree keeps working. `svg`
+  additionally stops poisoning every later coordinate with a non-numeric spacer height.
+
+- [#3102](https://github.com/pyreon/pyreon/pull/3102) [`cb90140`](https://github.com/pyreon/pyreon/commit/cb901407043538e290ad861d6faff2796178ce84) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: O(n) table column indexing in the teams/discord renderers (was O(n²))
+
+  Both renderers resolved a cell's column with `columns.indexOf(col)` inside a
+  per-column × per-row loop — O(cols) per cell, O(rows × cols²) per table. The
+  loop index is already available (`.map`'s second arg / the `for` counter), so
+  use it directly: O(1) per cell. Using the actual loop position is also more
+  correct than `indexOf` if two column defs compare equal.
+
+  Behaviour-identical; locked by the existing multi-column table tests plus a new
+  column-alignment spec (bisect-verified: a wrong index drops later columns).
+
+- [#2922](https://github.com/pyreon/pyreon/pull/2922) [`8aeffe0`](https://github.com/pyreon/pyreon/commit/8aeffe09bf62ea08af1278c45ecdaf26d1a04cb6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship the MIT LICENSE file in the package tarball
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -628,6 +763,5 @@
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations

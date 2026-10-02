@@ -1,5 +1,277 @@
 # @pyreon/reactivity
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2973](https://github.com/pyreon/pyreon/pull/2973) [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two-tier TRACKING-subscriber storage — an `_s1` inline slot mirroring the `_d1` idiom already used for direct updaters.
+
+  A census of the row-list and computed-chain workloads found the tracking-subscriber count is exactly **1 in 100% of measured cases**, so the `_s` Set — and its hashed add/delete — was pure overhead there. The first tracking subscriber now lives in a plain field and only a SECOND one promotes to a Set (no demotion; a Set that shrinks back to one entry stays a Set).
+
+  Measured in real Chromium/V8, two independent 15-pass round-robin runs, page-isolated per arm, load 4.25–6.87 (median, CI95, arm verified from the loaded module before each sample):
+
+  | region                                      | baseline    | tier        | ratio                        |
+  | ------------------------------------------- | ----------- | ----------- | ---------------------------- |
+  | dispose 50k tracked effects                 | 2.500ms     | 1.400ms     | **1.79× CI-disjoint**        |
+  | 50k writes through a 20-deep computed chain | 41.6–42.5ms | 35.6–35.7ms | **1.17–1.19× CI-disjoint**   |
+  | 20k batches × 10 writes                     | 8.8–8.9ms   | 7.7–8.0ms   | **1.10–1.16× CI-disjoint**   |
+  | 300k writes, 1 tracked subscriber           | 7.0ms       | 6.4–6.5ms   | **1.08–1.09× CI-disjoint**   |
+  | 5k writes × 50 subscribers (Set path)       | 8.1–8.2ms   | 8.2–8.3ms   | tie (unchanged, as intended) |
+
+  The notify win comes from deleting a real allocation: reaching a sole subscriber used to require `_s.values().next().value`, materialising a Set iterator plus an iterator-result object **on every write**. `propagateLazyDirty`'s fused chain walk now hops via the inline slot for the same reason.
+
+  `deps` records the HOST rather than the host's subscriber Set (there is no Set to record while a source has one subscriber). That also makes verify-mode dep reuse strictly more stable: the `_suspendSoleSubscriber` container swap used to change `host._s`'s identity and spuriously diverge every effect tracking that signal.
+
+  Also fixes a latent liveness bug in `@pyreon/solid-compat`'s `createStore` sweep, which tested `_s` alone and so reported "unused" for the dominant single-subscriber shape — evicting a LIVE signal, after which writes to that path stopped re-running its effect. The tier-aware check is now owned by `@pyreon/reactivity` as `_hasSubscribers()` (covering `_s1`/`_s`/`_d1`/`_d`) so consumers cannot re-derive it and miss a tier.
+
+  This is a JS-only saving. It is **below the resolution floor of the row-list DOM benchmark**: `clear rows` is timer-quantised at 100µs (the suite reports it "too fast to time"), while the subscriber-teardown saving for a 1,000-row clear is ~22µs. No end-to-end row-list win is claimed.
+
+- [#2983](https://github.com/pyreon/pyreon/pull/2983) [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `computed(fn)` now gates on value by default, without giving up laziness
+
+  A computed whose recomputed value is `Object.is`-equal to its previous value no
+  longer notifies downstream. This matches Solid's `createMemo`, Vue's `computed`
+  and Svelte's `$derived`, and closes the one place Pyreon diverged from every
+  peer: an effect re-running on an identical derived value.
+
+  Crucially this does NOT make computeds eager. The dirty cascade stays flag-only
+  until it reaches a RUNNER (an effect notify, a raw listener, a `direct()`
+  updater), at which point the computed immediately above books a tier-1 refresh
+  whose gate decides whether that runner fires. So a computed with no live
+  consumer still evaluates zero times across any number of dependency writes,
+  while one behind N consumers evaluates once and runs none of them on a blocked
+  write. The evaluation is not extra work — the runner was going to pull that
+  value during the drain anyway.
+
+  An explicit `{ equals }` keeps its existing eager semantics deliberately: it is
+  a statement about WHERE the gate belongs, typically a cheap identity-preserving
+  lookup placed above a consumer that rebuilds a fresh object and so could never
+  gate on its own. Nothing about explicit-`equals` behaviour changes.
+
+  BREAKING for anyone relying on a computed notifying on every dependency change
+  regardless of value. A derivation that returns a fresh object or array each run
+  is unaffected (a new reference is never `Object.is`-equal). A derivation
+  returning a scalar that repeats will now stop propagating — which is the intent.
+
+- [#3653](https://github.com/pyreon/pyreon/pull/3653) [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `onCleanup()` called synchronously in a component body now belongs to that component: it runs exactly once, when the component unmounts. Previously it only registered while an effect run was open, so a root-mounted component's setup-time cleanups never ran (listeners, sockets and watches leaked), and a component mounted inside `<For>` / `<Show>` / a routed page handed its cleanups to that boundary's effect, whose re-runs fired them while the component was still mounted (adding a `<For>` row tore down the listeners of every existing row).
+
+  `EffectScope.runInScope(fn)` now owns `onCleanup()` calls made in `fn` the same way, running them on `stop()`. This also makes `onCleanup()` inside `onMount()` run on unmount (it was silently dropped), and keeps a store first created inside a component from handing its setup cleanups to that component.
+
+  Behaviour change: code that relied on setup-time `onCleanup` never firing will now see it fire on unmount. `onCleanup` inside `effect()` is unchanged.
+
+### Patch Changes
+
+- [#2951](https://github.com/pyreon/pyreon/pull/2951) [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct the `computed({ equals })` docs — there is no default equality check
+
+  The manifest told users `equals` "defaults to `Object.is`". It does not.
+  `computed.ts` reads `options?.equals ? computedWithEquals(fn, …) : <plain
+computed>`, so WITHOUT `equals` a computed notifies downstream on every
+  dependency change even when the recomputed value is byte-identical.
+
+  The asymmetry is the part nobody expects: a SIGNAL write does gate on
+  `Object.is` (`set(same)` is a no-op), so it is reasonable to assume a computed
+  does too. It does not, and the claim propagated to the MCP api-reference and
+  the generated reference page — i.e. to AI assistants writing Pyreon code.
+
+  This is a performance claim, not a wording nit. `computed(() => items().length)`
+  re-runs its effects on every item mutation that leaves the length alone. A
+  memoization-wall benchmark measured the gated form at the Vanilla floor (12µs)
+  and the BARE form users actually write at 46µs — last in the field, behind
+  every competitor. The docs were describing the fast path while handing out the
+  slow one.
+
+  Corrected in the manifest (the single source), with a `mistakes` entry so the
+  footgun surfaces in `get_api` rather than only in prose, and regenerated into
+  both derived surfaces. No runtime change.
+
+- [#2971](https://github.com/pyreon/pyreon/pull/2971) [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop calling `computed` "memoized" without saying what that does and does not cover
+
+  `computed` caches its value and recomputes lazily — but it does NOT gate
+  propagation on equality. Without `equals` it notifies downstream on every
+  dependency change, even when the recomputed value is identical. That is the one
+  place Pyreon diverges from Solid `createMemo` and Vue/Preact `computed`, which
+  all memoize by default.
+
+  The prose said so. Four summary lines did not, and those are the ones people
+  read first: the `llms.txt`/`llms-full.txt` one-liner that AI assistants consume,
+  the header comment in the usage example, the API table row, and the return-value
+  description. All four said "memoized" unqualified — the exact word that means
+  "gates on equality" in every peer framework, aimed squarely at the audience most
+  likely to be porting from one.
+
+  No behaviour change. The divergence is now stated where a reader meets it,
+  including an explicit note for anyone porting from Solid/Vue/Preact.
+
+- [#2972](https://github.com/pyreon/pyreon/pull/2972) [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Document that `{ equals }` trades laziness for gating, and gate `useFieldArray().length`
+
+  `computed(fn, { equals })` does not simply add an equality check — it switches
+  the computed from LAZY to EAGER, because gating requires knowing the new value
+  at notification time. With a live subscriber that is free (it would have
+  evaluated anyway). Without one, a computed that was never evaluated now
+  evaluates on every dependency change.
+
+  That inverts the obvious advice. Gating `computed(() => walkEntireDocument(doc()))`
+  buys a suppressed notification and pays a full document walk on every keystroke
+  whenever nothing is subscribed. The rule is now stated where a reader meets the
+  option: gate CHEAP bodies (`n > 0`, `arr.length`, `x !== undefined`), leave
+  expensive ones lazy.
+
+  `useFieldArray().length` was exactly the cheap case the docs already used as
+  their example of what to gate, un-gated in our own code. `items` changes
+  identity on every move/swap while the count does not, so four reorders sent
+  five notifications where one was correct.
+
+- [#2912](https://github.com/pyreon/pyreon/pull/2912) [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createSelector().subscribe()` — unsubscribe without touching the map
+
+  The `.subscribe()` channel is the compiler-emitted fast path for a `<For>` row's
+  reactive class, so its dispose path runs once per row on every list teardown. It
+  was `boundSubs.get(value)` + `boundSubs.delete(value)`: two hashed map operations
+  per row.
+
+  The map value is now a holder the disposer closes over, so unsubscribing writes
+  one field and touches no map, and the last unsubscribe drops the whole map in one
+  `clear()`. Dead holders are reclaimed on insertion, matching the amortisation the
+  tracked channel already used.
+
+  Measured on the 1000-row krausest shape in real Chromium: `clear rows` 140µs →
+  125µs (framework overhead over vanilla 60µs → 35µs), with the JS-side clear path
+  78.7µs → 60.7µs. Costs one small object per live subscribed key (148.8 → 180.8
+  B/key), fully reclaimed on teardown. No API change.
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#3704](https://github.com/pyreon/pyreon/pull/3704) [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Document where `onCleanup` runs for each owner (effect, component setup, `onMount`/`runInScope`, `renderEffect`) now that setup-time cleanups have an owner.
+
+- [#3569](https://github.com/pyreon/pyreon/pull/3569) [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The dev-mode devtools registry no longer keeps reactive nodes, or what their creators closed over, in memory. Each signal, computed and effect created in development captures an `Error` so its source location can be parsed on demand. That unformatted `Error` held every captured frame's function and closure, and it sat on a record in a strong map, so a node whose creator could reach it was never released. In practice, an unmounted component that created a signal stayed in memory for the whole dev session. The pending location now lives in a `WeakMap` keyed by the node, and the capture keeps only the frames the parser reads. Production builds were never affected, because this path is dev-only.
+
+- [#3091](https://github.com/pyreon/pyreon/pull/3091) [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: single Map lookup in the createStore proxy traps
+
+  The `createStore` proxy's `get` (non-own-property), `set`, and `deleteProperty`
+  traps did a `propSignals.has(key)` followed by `propSignals.get(key)` — two hashes
+  of the same key on the steady-state path. `getOrCreateSignal` in the same file
+  already collapsed this to a single `get`, with the documented invariant that makes
+  it safe: every stored entry is a real `Signal`, so `get(key) === undefined` is
+  unambiguous with "no entry". The traps just weren't given the same treatment.
+
+  Now one lookup each. The `set` trap fires on every `store.x = y` write and the
+  `get` non-own branch on every prototype-method read (`.map`/`.push` on a store
+  array), so this removes one hash-of-key per store mutation / array-method access
+  on the dominant path. Behavior-identical.
+
+- [#3350](https://github.com/pyreon/pyreon/pull/3350) [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two inline tracking subscribers before a Set, hash-free effect teardown, and
+  unit teardown for a compiled slot's static children.
+
+  `@pyreon/runtime-dom`: a compiled `<div>{children}</div>` lowers to
+  `_mountSlot(children, el, placeholder)`, and when `children` is a static
+  value (an array of row VNodes, not an accessor) every row element used to
+  receive its own DOM remover, so disposing a 500-row list removed 500 nodes one
+  by one before dropping the container that already contained them. A static
+  slot value is part of the clone and leaves with it, so it now mounts under the
+  same "removed as a unit" contract the clone's own children have
+  (`mountChildAsUnit`): effects are still disposed, DOM removal is left to the
+  clone. An accessor slot is unchanged — it is a reactive boundary that must
+  clear its own range on every flip. Same treatment for `_mountChild`'s
+  non-accessor absorbed-component case.
+
+  A signal or computed now keeps its first TWO tracking subscribers inline and
+  promotes to a `Set` only on the third. The second lives in the existing `_s`
+  field as a FUNCTION (a `Set` there still means ≥3), so a signal grows by no
+  property — an extra field measured +24 B per signal under V8's in-object
+  slack, which on a 10k-row page is the whole retained-heap margin the board
+  tracks. The one-slot census counted flat row lists and computed chains, where
+  a source has exactly one subscriber; a list row that owns an `effect()` AND a
+  text bind on its own signal — the dispose-500 scenario, and any row with a
+  derived side effect — has exactly two, and paid a hashed `Set.delete` per
+  subscriber per dispose. With two inline subscribers a write routes through
+  the pending queues exactly as a promoted Set does (the two-tier drain keeps a
+  `{ equals }` computed ahead of an effect that reads it; a listener added or
+  removed by the first callback follows the same cap-iteration rule), so
+  ordering is unchanged; a single subscriber keeps the direct dispatch.
+
+  Effect, render-effect and `_bind` disposers also stop truncating their dep
+  array with `deps.length = 0` for the one-dep case (a length-setter store V8
+  takes slowly) and `pop()` instead.
+
+  Any code that reads `_s` as a Set must now handle the function form — use
+  `_hasSubscribers` / `_tierCount` from `@pyreon/reactivity` rather than
+  touching the field (the in-repo readers — devtools graph, `debug()`,
+  `createSelector`, the store's sole-subscriber swap — are updated).
+
+  Measured on the dispose-500 ablation ladder (real Chromium, CDP attribution,
+  the board's exact shape as its own arm): 60.8 → 15.6 µs on-CPU and 95 → 27.8 µs
+  wall, against SolidJS at 14.7 / 26.3 in the same runs. On the scenario board
+  the op reads Pyreon 40 µs vs Solid 35 µs with overlapping CI95 (was 115 µs,
+  3.29×). Retained heap per signal unchanged (152 B).
+
+- [#2892](https://github.com/pyreon/pyreon/pull/2892) [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createSelector` now RECLAIMS per-key state, so a selector over a list whose ids never repeat no longer grows without bound.
+
+  The selector keeps a per-key subscriber bucket so a selection change can notify only the two affected keys instead of every subscriber. That bucket was created on first access and never removed: disposing the subscriber emptied the bucket's `Set` but left the key, the empty `Set` and the host object in the internal maps for the selector's lifetime. For a bounded key space (tabs, a radio group) this is invisible. For UNBOUNDED-cardinality churn — infinite scroll, a chat log, a paginated table whose row ids never repeat — it accumulated one bucket per row ever rendered, and with OBJECT keys it pinned the user's own objects too. Measured on V8: **257.9 bytes retained per unique key** (24.6 MB after 100,000 keys had been queried and every subscriber disposed).
+
+  Two changes, both invisible to callers:
+
+  - The `subs` (value → Set) and `hosts` (value → `{_s}`) maps are merged into one. They always stored the same relationship, so every key paid two Map entries to record one fact. The bucket's `Set` is now allocated lazily by `trackSubscriber`, so a read outside any tracking scope allocates nothing at all.
+  - A key whose bucket has no subscribers left is dropped by an amortized sweep on the next key insertion. A bucket with no subscribers holds no state — the current selection lives outside the map — so a swept key that is queried again simply gets a fresh bucket, which makes the sweep semantically invisible. Steady-state memory is now proportional to the keys currently SUBSCRIBED rather than to every key the selector has ever been asked about: the same 100,000-key workload retains **3.1 bytes per key** (0.29 MB), an 84× reduction.
+
+  The sweep can never drop a live subscription: it deletes only buckets that are empty, and it never runs while a selection change is being delivered. `dispose()` still releases everything at once and is still worth calling when a selector outlives its list.
+
+- [#3611](https://github.com/pyreon/pyreon/pull/3611) [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Smaller client bundles: the client no longer ships the ~160-name event-handler list. `runtime-dom` and `@pyreon/head`'s DOM syncer now ask the element which lowercase `on*` names are real handlers (`key in el`, new `isElementEventHandlerAttr` export) — the engine's exact answer — while SSR keeps the list. The template cache is a plain FIFO `Map` (drops the `@pyreon/sized-map` dependency), and a signal's production read closure no longer carries a dev-only rest parameter. The krausest-style table app bundle goes from 16.6 KB to 15.7 KB gzipped.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3389](https://github.com/pyreon/pyreon/pull/3389) [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close five correctness holes on the compiled path and the redirect boundary, two of them security-relevant.
+
+  **The compiled template path skipped `setStaticProp` branches it never re-stated.** The compiler routes each attribute by name straight to `_setAttr` / `_setValue` / `_setStyle`, so every branch `setStaticProp` runs _above_ that dispatch point is one the compiled path skips. Three shipped that way: `_setAttr` had no URL guard, so a compiled `<a href={u}>` wrote `javascript:alert(1)` while `h()` dropped it and SSR omitted it (an XSS in every compiled app, and a hydration mismatch); `_setValue` had no nullish branch, so `<input value={undefined}>` displayed the literal text `undefined`; and `_setStyle` cleared an object style on a nullish flip but never a string one. The shared branch is now one predicate both paths call, locked by a differential test over {attribute} × {payload} × {compiled, `h()`, SSR}.
+
+  **A namespaced JSX attribute reached every template name-reader as the empty string.** `xlink:href` parses as `JSXNamespacedName`, and the readers test for `JSXIdentifier`. Neither backend errored: the JS backend baked malformed HTML (`<use ="/static">`), the Rust backend dropped the attribute — so `<use xlink:href="#icon">`, the SVG sprite idiom, rendered nothing in every compiled app, differently per backend, for static and dynamic values alike. Both backends now bail the element to `h()`, where the runtime sets the qualified name and guards it.
+
+  **`\` is an authority delimiter, so blocking only `//host` left three bypasses.** The URL parser resolves `\\evil.com`, `/\evil.com` and `\/evil.com` off-origin exactly as `//evil.com` does, but the router's redirect boundary — whose verdict is emitted as a raw `Location:` header — classified all three as internal. Fixed as the class (any leading run of two or more `[/\]`), in the redirect boundary and in `classifyHref`, where an `internal` verdict renders a real `href` that a ctrl-click resolves without ever reaching the click handler. A blocked target now says so in dev instead of silently landing on `/`.
+
+  **A subscriber could be skipped when the tier promoted mid-notify.** `createSelector`'s `notifyBucket` snapshotted both inline subscribers, then asked whether the second was still subscribed using an identity compare against the inline tiers only — so when the first registered a third subscriber and `addSubscriber` promoted both slots into a Set, the second matched neither and was silently dropped. The check now covers every shape the two-tier store can be in.
+
+  Also: the hydration adoption marker is removed on final dispose, and the fuzz gate's timeout is derived from its seed count so the documented high-seed command can finish.
+
+- [#2800](https://github.com/pyreon/pyreon/pull/2800) [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(reactivity): `watch` now runs its per-run cleanup on OWNING-SCOPE disposal, not only on stop/re-run
+
+  `watch(source, cb)` stored the cleanup returned by its callback in a closure the internal effect never owned, so the effect's `runCleanup` (which fires on re-run AND on `dispose()`) never saw it — the cleanup ran only at the next re-run or when the caller invoked the returned `stop()`. A consumer that discards `stop()` and relies on its owning component scope disposing the effect (the dominant shape) therefore orphaned the cleanup whenever the scope died between re-runs.
+
+  Real-world impact: `@pyreon/kinetic`'s `useAnimationEnd` (Transition/Collapse/TransitionItem) added `transitionend`/`animationend` listeners plus a `setTimeout(done, timeout)` (default 5000ms) in the callback and discarded the disposer, so unmounting a component mid-enter-animation left the 5s timer and both listeners pinning the detached subtree and the disposed component's signals until the timer self-fired. Every `watch` consumer that returns a cleanup shared the same latent orphan.
+
+  Fix: register the per-run cleanup on the effect via `onCleanup` instead of a closure, so the effect owns it and scope disposal runs it. Behaviour is otherwise preserved — cleanup still runs before each re-run and on `stop()`. Verified across the full reactivity suite (749/749) and every `watch` consumer (kinetic, form, hooks, validate, ui-primitives).
+
+- [#2807](https://github.com/pyreon/pyreon/pull/2807) [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `why()` no longer breaks on a cyclic signal value
+
+  `why()` interpolated `JSON.stringify(e.prev)` directly, which throws on a cyclic
+  structure. Cyclic values in signals are ordinary — a DOM node, a store with a
+  back-reference, a Yjs doc, any class instance with a parent pointer.
+
+  Three failures compounded, and the third is the one that matters:
+
+  1. the throw landed inside the signal-write path;
+  2. the framework's trace guard caught it and printed _"signal trace listener
+     threw — listener is buggy"_, blaming the user's listener when the buggy
+     listener was `why()` itself;
+  3. the log entry was never recorded, so `why()` concluded **"No signal updates
+     detected"** — a debugging tool reporting that nothing happened at exactly the
+     moment something did, which sends the reader off to look somewhere else.
+
+  It now uses `preview()` from `reactive-trace.ts`, which was already cycle-safe
+  and whose own comment names this hazard ("Avoid full JSON.stringify — it can be
+  huge or throw on cycles / BigInt / getters"). The lesson had been learned in one
+  file and not applied in its sibling.
+
 ## 0.51.0
 
 ### Patch Changes
@@ -805,7 +1077,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -835,11 +1106,11 @@
   ## What
 
   ```ts
-  const isSelected = createSelector(selectedId);
+  const isSelected = createSelector(selectedId)
   // In each row's template:
   const dispose = isSelected.subscribe(row.id, (matches) => {
-    rowEl.className = matches ? "selected" : "";
-  });
+    rowEl.className = matches ? 'selected' : ''
+  })
   ```
 
   Equivalent to `renderEffect(() => updater(selector(key)))` but skips the `renderEffect` machinery entirely: no `deps` array, no `withTracking` / `setDepsCollector`, no `run` closure allocation, no scope `add({ dispose })` wrapper. The selector's source effect stores the user's updater DIRECTLY in a per-key bound bucket and calls it with the resolved boolean (`true` on selection added, `false` on selection removed).
@@ -967,13 +1238,13 @@
 
   ```ts
   // Before (foundation PR):
-  import { startLpihPolling } from "@pyreon/reactivity/lpih";
-  startLpihPolling("/tmp/pyreon-lpih.json", 250);
+  import { startLpihPolling } from '@pyreon/reactivity/lpih'
+  startLpihPolling('/tmp/pyreon-lpih.json', 250)
   // + set PYREON_LPIH_CACHE=/tmp/pyreon-lpih.json on the LSP
 
   // Now (zero config):
-  import { startLpihPolling } from "@pyreon/reactivity/lpih";
-  startLpihPolling(); // writes to <cwd>/.pyreon-lpih.json
+  import { startLpihPolling } from '@pyreon/reactivity/lpih'
+  startLpihPolling() // writes to <cwd>/.pyreon-lpih.json
   // LSP auto-discovers; no env var needed
   ```
 
@@ -1006,10 +1277,10 @@
 
   ```tsx
   function App() {
-    const count = signal(0); // 🔥 signal fired 240×
-    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
-    effect(() => console.log(doubled())); // 🔥 effect fired 241×
-    return <div>{count()}</div>;
+    const count = signal(0) // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2) // 🔥 derived fired 240×
+    effect(() => console.log(doubled())) // 🔥 effect fired 241×
+    return <div>{count()}</div>
   }
   ```
 
@@ -1042,8 +1313,8 @@
 - [#780](https://github.com/pyreon/pyreon/pull/780) [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: sustained-rate hint via EWMA. Inlay-hint labels now show both cumulative fire count AND current fires/second when active — making hot-path debugging visible at a glance.
 
   ```tsx
-  const count = signal(0); // 🔥 signal fired 240× (12/s) — active
-  const stable = signal(0); // 🔥 signal fired 240×          — idle
+  const count = signal(0) // 🔥 signal fired 240× (12/s) — active
+  const stable = signal(0) // 🔥 signal fired 240×          — idle
   ```
 
   **Why**: cumulative count alone can't distinguish "this is firing right now" from "this fired a lot a few minutes ago." For hot-path debugging (the LPIH [#1](https://github.com/pyreon/pyreon/issues/1) use case), the user needs to see _current_ rate. Adding a decayed-EWMA rate alongside the cumulative count gives both signals without bloating the label.
@@ -1095,7 +1366,7 @@
 
   ```ts
   // User source:
-  const count = signal(0);
+  const count = signal(0)
 
   // Runtime, when devtools active:
   // 1. new Error() + parse stack → ~2.2µs cost per creation
@@ -1106,13 +1377,13 @@
 
   ```ts
   // User source (unchanged):
-  const count = signal(0);
+  const count = signal(0)
 
   // Vite-transformed source (dev mode):
   const count = signal(0, {
-    name: "count",
-    __sourceLocation: { file: "app.tsx", line: 5, col: 14 },
-  });
+    name: 'count',
+    __sourceLocation: { file: 'app.tsx', line: 5, col: 14 },
+  })
 
   // Runtime, when devtools active:
   // 1. Read options.__sourceLocation → ~0ns cost
@@ -1170,8 +1441,8 @@
   **3. String-region false-positives in `injectSignalNames` (medium impact)** — the regexes `(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(` (R4+R8 bound) and `(?<![\w$.])effect\(` (R8 unbound) matched anywhere in source text, including INSIDE string literals / template literals / comments. User code like:
 
   ```ts
-  const docs = `effect(() => x)`;
-  throw new Error("effect() must be called inside a component");
+  const docs = `effect(() => x)`
+  throw new Error('effect() must be called inside a component')
   // TODO: replace effect(() => log()) with watch()
   ```
 
@@ -1232,8 +1503,8 @@
       extra: { component: ctx.component, reactiveTrace: ctx.reactiveTrace },
       // e.g. [{ name: 'status', prev: '"idle"', next: '"submitting"' },
       //       { name: 'user',   prev: 'null',    next: 'User {id, …}' }]
-    });
-  });
+    })
+  })
   ```
 
   **New: `getReactiveTrace()` / `clearReactiveTrace()`** (`@pyreon/reactivity`) — read / reset the buffer directly (devtools, test isolation), plus the `ReactiveTraceEntry` type.
@@ -1389,7 +1660,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1403,7 +1673,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics

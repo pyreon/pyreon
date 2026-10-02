@@ -1,5 +1,220 @@
 # create-zero
 
+## 0.52.0
+
+### Patch Changes
+
+- [#3709](https://github.com/pyreon/pyreon/pull/3709) [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/charts` no longer carries an ECharts-compatibility layer. It is Pyreon's own engine only: `<Chart>` with mark children, the family components, `/svg` and `/engine`.
+
+  - The chart engine drops every `Series` / `ChartSpec` field and helper that only an ECharts option could set: the ECharts bar layout and nice-domain algorithm, label placement and rich text, emphasis/select/blur states, extra and secondary x axes, axis-line / tick / minor-tick / split-area options, grid insets, inverse axes, pictorial symbol layout and the `lines` series. None of them was reachable from `<Chart>`; the generated native engines shrink by the same amount.
+  - `<FunnelChart echarts>` is removed; `funnel` covers sorting and alignment.
+  - `<GaugeChart dial>` takes a spec built with the new `gaugeDial({ data, … })`, every part defaulted. On iOS and Android `dial` now warns and draws the half-circle track.
+  - `visualMap` on `<HeatmapChart>`, `<CalendarChart>` and `<MapChart>` takes a spec built with the new `visualMap({ domain, … })`, which also lowers to native.
+  - `<CandlestickChart zoom>` takes a `CandlestickZoom` whose fields are all optional (`inside`, `slider`, `window`, `lock`, `minSpan`, `maxSpan`).
+  - `ChartHandle` loses the timeline (`step`, `playing`, `timelineChange`, `timelinePlayChange`), which only an option chart had; the native `PyreonChartHandle` follows.
+  - `tweenCmds` passes `clip` / `unclip` through instead of dropping them.
+
+  The native compiler drops the `<OptionChart>` and `<ChartWebView>` lowering. `pyreon/no-web-only-import-in-portable` no longer flags `@pyreon/charts`, which draws natively.
+
+- [#3691](https://github.com/pyreon/pyreon/pull/3691) [`99ed841`](https://github.com/pyreon/pyreon/commit/99ed8417ee2541158b92ff6c105ce96d9a959524) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation accuracy pass over the five CLI packages — no runtime changes. `@pyreon/cli`'s README was missing the `check`/`plain`/`add`/`new`/`mcp`/`atlas`/`loom`/`lathe` commands entirely and undercounted `doctor`'s gates (8/10 instead of 13/15); rewritten against the current source, and the docs site gained `pyreon plain`/`pyreon loom`/`pyreon lathe` sections plus the `dependency-fabric` gate that two reference tables had dropped. `@pyreon/zero-cli`'s docs described `zero create` as a broken, prompt-less "copy the default template" shortcut (its actual pre-fix behavior, per the source's own history comment) instead of the full `@pyreon/create-zero` delegate it is today, and were missing `zero doctor --full` / `zero dev --routes`. `@pyreon/create-zero`'s README was missing the `monorepo` template, the `isr` render mode, `--preset`, the `--with-<feature>`/`--no-<feature>` flags, and `--typed-routes`. `@pyreon/create-multiplatform`'s docs never mentioned `--dir`/`--help`, the kebab-case project-name validation, the non-empty-target-dir refusal, or the generated `lint`/`release:keystore`/`release:android` scripts. `@pyreon/native-cli`'s README still claimed `"private": true` and "not published to npm", which stopped being true when the package started publishing; rewritten to document its full `build`/`check`/`assets`/`stage-web`/`wire` command surface.
+
+- [#3714](https://github.com/pyreon/pyreon/pull/3714) [`4188e73`](https://github.com/pyreon/pyreon/commit/4188e73e27514dcc22c7f1e05fbaee08a5dae426) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Drop the `@clack/prompts` dependency (and its transitive `@clack/core`, `sisteransi`, `fast-wrap-ansi`, `fast-string-width`, `fast-string-truncated-width`): the scaffolder's prompts are now a small first-party module with the same call shapes. In a terminal it is the same keyboard UI — ↑/↓ to move, space to toggle, `a` to toggle all, y/n or ←/→ for yes/no, Enter to submit, Ctrl-C or Esc to cancel. When stdin is NOT a terminal (piped answers, a script, CI) it now reads one answer per line — an empty line takes the default, a select accepts the option value or its number, a multiselect accepts a comma-separated list or `-` for none — and end of input cancels. Previously piped input drove clack's terminal UI, which could not be submitted and hung. `--yes` and the explicit flags are unchanged.
+
+- [#3121](https://github.com/pyreon/pyreon/pull/3121) [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Closes every open finding from the lint audit, and adds the leak class nothing
+  caught.
+
+  **The 280 `querySelector(…) as HTMLX` casts are gone.** They were ratcheted
+  because 92 files across 12 packages is not a safe hand-edit; a codemod with
+  paren-balancing did it, and the conversion is verified rather than assumed —
+  `query()` THROWS where a cast silently returned null, so a wrong conversion
+  fails loudly. Typecheck clean across all 17 packages, node tests green, and
+  **476 browser tests in real Chromium** covering the sites that only exist
+  there. The doctor grade goes **F → A**, the ratchet drops **284 → 9**, and
+  `no-query-selector-cast-in-test` is back at `error` rather than the `warn` it
+  was demoted to in order to fire at all.
+
+  **A ReDoS I introduced, caught by CodeQL.** `js/polynomial-redos`, high
+  severity: `/(?:^|\/)routes\/(.+)$/` backtracks on paths with many `/routes/a`
+  repetitions, and a linter is handed whatever paths its caller has. Replaced
+  with linear string slicing — which also fixed a real misclassification, since
+  the greedy regex anchored on the FIRST `/routes/` and mis-resolved nested
+  paths. Both halves are pinned.
+
+  **New rule — `pyreon/no-unguarded-async-signal-write`** (opt-in), for memory
+  leak class F, which the catalog lists as caught by nothing. A slow earlier
+  response resolves last and overwrites newer data: not a crash, not visible in
+  a heap snapshot, just the wrong answer intermittently. Precision came from
+  measuring — 42 findings became 9 after two narrowings the corpus taught:
+  tests and benches cannot race with themselves, and `Map.set(key, value)` takes
+  two arguments where a signal write takes one.
+
+  It found two real bugs, both fixed: `<Mermaid>` and `<Math>` wrote their
+  rendered output after an await with no cancellation, so unmounting mid-render
+  kept the whole closure alive for a signal nothing reads.
+
+  **Two rules stopped keying on what a thing is NAMED.** `no-mutate-store-state`
+  fired only when a variable name contained "store" — renaming `cartStore` to
+  `cart` disabled it silently. It now tracks the binding. `toast-a11y` exempted
+  the literal spelling `Toaster`, so `import { Toaster as AppToast }` was
+  reported for missing a11y it already has; the exemption follows the import.
+
+  **`<Icon svg>` now states its contract.** It renders raw and cannot sanitize —
+  the sanitized `innerHTML` prop needs a `DOMParser` and so cannot run during
+  SSR, which an icon must. Rather than change that, the prop documents that it
+  takes markup you control, and the new lint rule flags misuse in consumer code.
+
+  **A bundle-budget failure now explains itself.** gzip differs between macOS and
+  the ubuntu runner — measured ~177 B on a 16.5 KB package — so a budget with
+  less headroom than that fails on CI while passing locally. The overage message
+  now says when it is inside that band.
+
+  Also fixes an untimed `fetch()` in `lathe pull` that could hang the CLI
+  forever against a server that accepts and never answers.
+
+  **The ratchet is now empty.** Every advisory finding is resolved rather than
+  carried:
+
+  - The five leak-class-F sites got real guards, and three were genuine
+    concurrency bugs rather than style issues: `useWakeLock` and
+    `useAudioRecorder` both checked their "already running" flag BEFORE the
+    await, so two calls arriving during it each acquired a resource and orphaned
+    the first — a wake lock held with nothing able to release it, a microphone
+    stream left open. `useDeviceMotion` would attach its listener twice.
+    `useClipboard` and atlas's source viewer could land a stale value.
+  - `<CodeBlock>`'s line-number gutter no longer builds an HTML string at all. It
+    was a workaround for a compiler bug that has since been fixed, so it was a
+    raw sink in a component that never needed one; it renders real nodes now.
+  - The three remaining sinks cannot be routed through the sanitized `innerHTML`
+    prop, and that is verified rather than assumed: the allowlist deliberately
+    excludes `foreignObject` and `<style>` (which mermaid emits for labels and
+    theming) and does not cover MathML at all (which is all KaTeX emits), so
+    sanitizing would strip working output. They are hardened at the library
+    layer instead — `securityLevel: 'strict'` for mermaid, `trust: false` for
+    KaTeX — and exempted with that reasoning recorded at each call site.
+
+  The rule that found them also learned two things from being wrong: an in-flight
+  promise shared between callers is a staleness guard just as much as a version
+  counter, and a guard may live one scope out from the `async` function that
+  writes.
+
+- [#3121](https://github.com/pyreon/pyreon/pull/3121) [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Role-aware rule tiers — one config now covers server, client, isomorphic and
+  multiplatform code, with no glob `overrides`.
+
+  A general-purpose linter splits backend from frontend with hand-written globs
+  the user keeps in sync. A framework does not have to guess: an fs-router API
+  route, a `node:` import, an `island()` call and an entry file each PROVE where
+  a file runs. `resolveFileRole()` reads them, strongest signal first, and
+  defaults to `shared` — the strict answer, because an isomorphic file must
+  satisfy both sides and guessing either one silently disables the other's rules.
+
+  **This was already happening, badly.** Two rules classified server files with
+  `filePath.includes('server')`, and `observer` contains `server` — so
+  `use-intersection-observer.ts`, a client hook, was treated as a server file by
+  both. Reproduced against `lintFile`, then fixed. A third rule re-implemented
+  `isTestFile` inline, omitting `/__tests__/`.
+
+  **Eleven new rules across five new groups** (113 rules, 25 categories,
+  10 groups). Every one gated by the RUNNER via `appliesTo`, never by the rule —
+  `exemptPaths` was opt-in per rule and 55 of 102 silently ignored it, and a role
+  gate written rule-by-rule would repeat that exactly.
+
+  - **`isomorphic`** — `no-locale-dependent-format`, `no-timezone-dependent-date`,
+    `no-unstable-render-id`, `no-node-builtin-in-component`. Hydration mismatches
+    that are correct in every unit test and wrong for some users in production.
+  - **`backend`** — `no-sync-fs-in-request-path`, `no-floating-promise-in-handler`.
+  - **`web-perf`** — `prefer-passive-listener`, `no-unbounded-raf-loop`.
+  - **`portable`** — `no-out-of-subset-construct`, `no-platform-branch-without-fallback`.
+    PMTC warns about these too, but only for files a native app's entry graph
+    reaches; the catalog names that gap directly ("a feature no example uses is
+    one no gate ever compiles"). These fire at authoring time instead.
+  - **`js`** — `require-error-cause`.
+
+  **Precision came from measurement, not taste.** Run unscoped against this repo
+  the first cut produced **over 5,000 findings**; reading them produced five
+  narrowings, and the final count is **11**:
+
+  | finding              | cause                                                            | narrowing                                                |
+  | -------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+  | 4,388 subset         | web-only internals are entitled to the whole language            | fires only where `portablePaths` says a file must travel |
+  | 469 floating promise | a shared util is not a request handler                           | the file must EXPORT a handler                           |
+  | 149 sync fs          | Vite plugins and the compiler are server-role, not request paths | same handler gate                                        |
+  | 14 raf               | a one-shot frame is ordinary                                     | must schedule ITSELF                                     |
+  | 1 raf                | a double-rAF terminates                                          | self-REFERENCE, not merely nested                        |
+  | 11 locale            | benches print to a console                                       | `bench/` and `e2e/` are build role                       |
+  | 2 timezone           | `new Date(y, m, d).getDate()` is timezone-independent arithmetic | only Dates representing an INSTANT                       |
+  | 2 error-cause        | a custom error class has no options slot                         | built-in error constructors only                         |
+
+  **Two real bugs found and fixed by the new rules.** The scaffolded dashboard
+  template formatted money and dates with no locale in 14 places — every
+  generated app shipped a hydration mismatch on its own front page. Fixed with a
+  `lib/format.ts` that pins locale AND timezone, which is also the pattern users
+  should copy. And five `throw new Error(msg)` sites inside `catch` now pass
+  `{ cause }`, so the stack points at what actually broke.
+
+  Also closes the review finding on `no-unsanitized-inner-html`: a dead
+  assignment was a half-written hop loop, and finishing it fixed a real
+  false positive — a sanitized value that had been renamed once
+  (`const body = clean`) was flagged.
+
+- [#3724](https://github.com/pyreon/pyreon/pull/3724) [`c9e2e3e`](https://github.com/pyreon/pyreon/commit/c9e2e3e44c5f1a1b00cdd2861b8b5bfa48cdded4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Remove the dead `[[redirects]] from = "/*" to = "/.netlify/functions/ssr"` rule from the Netlify adapter's `dist/netlify.toml` and from the root `netlify.toml` that `create-zero` scaffolds for SSR/ISR. The SSR function routes itself via `config.path = "/*"` (with `preferStatic: true`), and Netlify makes a function with a custom `path` unreachable at `/.netlify/functions/<name>`, so the rewrite pointed at nothing. Existing projects can delete that block from their `netlify.toml`; routing is unchanged either way.
+
+- [#3761](https://github.com/pyreon/pyreon/pull/3761) [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode is now production-ready: write reactive code as plain JavaScript (`let count = state(0)`, `count++`, `{count}`) and the compiler emits fine-grained signals.
+
+  - **New markers in `@pyreon/core/plain`.** `signalOf(x)` hands the underlying signal to an API that needs one (it compiles to the bare signal). `state.from(sig)` and `derived.from(sig)` adopt an existing signal (a hook result, a store field) as a plain binding. `derived(() => expr)` is now typed by the thunk's return value.
+  - **Newly supported shapes.** Destructuring assignment onto state (`[a, b] = [b, a]`, with exact JS semantics including defaults and rest). Nested props patterns (`{ user: { name } }` reads `props.user.name` live). A top-level `...rest` in props becomes a reactive `splitProps` copy, so `{...rest}` stays live.
+  - **Project-wide mode.** `pyreon({ plain: true })` compiles every app module as plain with no per-file directive; a `'use classic'` directive opts a file out. `@pyreon/zero` forwards the option to its SSR build.
+  - **Codemod (`pyreon plain --write`).** Converts far more real code and no longer changes behaviour or types:
+    - Arrow handlers that return a write (`() => x.set(v)`) now convert.
+    - Signals passed as values, stored, or used through `.subscribe` now convert via `signalOf`.
+    - Complex `.update` callbacks now convert via `x = (fn)(untrack(() => x))`.
+    - Fixed: an `.update` substitution discarded rewrites inside the callback body. `.update` inside an effect or computed no longer adds a subscription.
+    - Fixed: marker names that collide with a local binding are aliased, and `type` modifiers on kept imports are preserved.
+    - Exported signals now decline, since their importers still call them.
+
+    - `pyreon plain` skips test and spec files unless `--include-tests` is passed. Test runners often run without the `pyreon()` plugin, where plain code can't compile.
+
+    Across this repo's 883 example files: 86 declined before, 0 now.
+
+  - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
+  - **Vite plugin fix.** Dev mode's source-location injection no longer rewrites the text `effect()` or `signal()` inside JSX (for example, prose in a `<Code>` demo) into a broken call. Each match is now confirmed against the AST.
+  - **Plain Mode safety net.**
+    - New `pyreon/plain-mode-footgun` lint rule (on in `recommended`). It reports every Plain Mode compile-time warning, such as mutating shallow state or writing to a `derived` value, as an error in the editor and CI. Before, these only printed in the Vite terminal while the app was silently wrong.
+    - Reactivity lint rules that opt into `meta.plainLowered` also check plain files, by linting their compiled form and reporting at the source line: `no-signal-in-loop`, `no-nested-effect`, `no-unguarded-async-signal-write` and `no-unbatched-updates`. Without this, plain files were invisible to them.
+    - `detectPyreonPatterns`, which backs MCP `validate`, `pyreon check` and doctor, gains a `plain-mode` code for the same warnings.
+    - The "did not compile" runtime error now names the usual cause: a test runner without the `pyreon()` plugin.
+  - **Scaffold.** The `create-zero` counter page is written in Plain Mode.
+
+- [#3641](https://github.com/pyreon/pyreon/pull/3641) [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188) Thanks [@vitbokisch](https://github.com/vitbokisch)! - - `zero create` works again: it runs `@pyreon/create-zero` with every argument forwarded. It used to look for a `templates/default` folder that no longer exists and always failed with "Template not found".
+  - A mistyped command no longer starts a dev server. `zero biuld` used to treat `biuld` as a project directory; it now exits with `[Pyreon] "biuld" is not a zero command or a directory. Did you mean "zero build"?`.
+  - Scaffolded apps: the server entry now passes `apiRoutes` (API routes returned an empty HTML page in production), `tsconfig` includes `vite.config.ts` so `zero()` option typos fail the typecheck, the app template passes its own `doctor:ci`, and the pages point at `bun create @pyreon/zero` instead of an unrelated package.
+
+- [#3662](https://github.com/pyreon/pyreon/pull/3662) [`b263f82`](https://github.com/pyreon/pyreon/commit/b263f82effa16d780f47f5d87f8d4a7a2f77602e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correctness and DX fixes for `@pyreon/zero`:
+
+  - `useLocale()` resolves the locale from the URL in production SSR, SSG and on the client (it returned `'en'` outside the dev middleware, so dev hydrated with a mismatch). Region locales such as `en-US` round-trip, and `setLocale()` keeps the base, query string and hash.
+  - A page's own `error` export applies without a directory `_error.tsx`.
+  - Windows backslash route paths are normalized to posix, so nested routes and generated imports work.
+  - SSG redirect targets must be relative or `http(s):` (a `javascript:` target is rejected). `vercelAdapter.revalidate()` sends the secret as `Authorization: Bearer`; `vercelRevalidateHandler` still accepts `?secret=` with a deprecation warning.
+  - Dotted URLs (`/api/export.csv`) reach dev API routes and the dev i18n middleware.
+  - Route scans are memoized per build, and `.server.*` siblings come from the same walk.
+  - `vite dev` runs the production request pipeline: the server entry's middleware, route middleware, `/_pyreon/data`, `/_zero/actions/*` and server islands (new `@pyreon/zero/pipeline` subpath).
+  - `zero({...})` options are validated with did-you-mean suggestions. A missing `pyreon()` plugin, a default-only layout and a literal `loader` each fail with one error that names the file; a route file with no default export warns. Dev SSR errors are logged to the terminal.
+  - A `getStaticPaths` export no longer defeats the route's code splitting (removes the `INEFFECTIVE_DYNAMIC_IMPORT` warning).
+  - `zero preview` runs the built node/bun server for SSR/ISR builds, and CLI errors are `[Pyreon]`-prefixed with the stack kept.
+  - `create-zero` refuses `--mode` a template cannot honor and `--adapter static` with an SSR mode, and `--pm` no longer aliases `--packages`.
+
+- [#3640](https://github.com/pyreon/pyreon/pull/3640) [`1339dbc`](https://github.com/pyreon/pyreon/commit/1339dbc85dc7e3fd87493932dde724cee59fbaac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security and production-correctness fixes for zero's server runtime.
+
+  - **Route middleware can no longer be bypassed.** It is matched on the pathname (a query string used to skip it), with `base` and the i18n locale prefix removed, and the `/_pyreon/data` endpoint now runs the middleware of the page whose data it returns (it used to run none, so client-side navigation exposed server-loader data behind an auth middleware). `_layout.tsx` middleware is now applied to the pages under that layout; it was silently ignored.
+  - **Middleware runs before the framework endpoints.** App-wide and route middleware now run before API routes, server actions, the data endpoint and island fragments, so auth, rate limits, CORS and security headers apply to them.
+  - **`zero({...})` settings reach the production server.** The serializable config (`mode`, `base`, `ssr`, `isr`, `routeRules`, `i18n`) is injected into the server build and merged under the entry's own `config`. ISR, `base` and route rules previously had no effect in production. Code-valued options (`middleware`, custom ISR store or `cacheKey` function) print a build warning when there is no `src/entry-server.ts` to carry them. `ssr.mode` defaults to `'string'`; streaming is opt-in with `ssr: { mode: 'stream' }`.
+  - **ISR caches page renders only.** Non-HTML responses (API JSON), responses with a per-response CSP nonce, and responses that vary on headers outside the cache key are no longer cached; cached entries keep their own content type (JSON was replayed as `text/html`). API routes and framework endpoints bypass ISR entirely. Concurrent cold misses for the same key render once (never for credentialed requests), a cold render no longer repopulates an entry invalidated while it ran, and revalidation failures are logged.
+  - **Node adapter server:** request bodies are forwarded (POSTs arrived empty), the request origin comes from `Host` (server actions failed their same-origin check), a throwing handler returns 500 instead of exiting the process, and the client address is passed to `ctx.locals.remoteAddress` so rate limiting keys per client. The Bun runner also passes the client address and no longer runs `Bun.serve` in development mode.
+  - The server bundle is built with `NODE_ENV=production`, and the scaffolded Dockerfiles set it and run as a non-root user; `wrangler.toml` sets it too.
+  - `@pyreon/server`: a throwing middleware returns 500 instead of rejecting, server errors are always logged, and adapters can supply the client address via `Symbol.for('pyreon.remoteAddress')`.
+  - `cacheMiddleware` no longer marks a page `public` for a request carrying a Cookie or Authorization header. API routes answer `HEAD` with their `GET` handler, and actions/rate-limit/logger match on the pathname.
+
+  Upgrade: manual — app and route middleware now run before API routes, actions and the data endpoint, and `_layout.tsx` middleware now applies to its pages, so review middleware that assumed it never saw those requests; streaming SSR is opt-in via `ssr: { mode: 'stream' }`.
+
 ## 0.51.0
 
 ### Patch Changes
@@ -303,8 +518,8 @@ properties of undefined (reading 'label')`. The `state` and `ui` feature
 
   ```ts
   // scaffold output — broken
-  const sidebarOpen = app.store.sidebarOpen; // app is undefined
-  const toggleSidebar = app.store.toggleSidebar; // app is undefined
+  const sidebarOpen = app.store.sidebarOpen // app is undefined
+  const toggleSidebar = app.store.toggleSidebar // app is undefined
   ```
 
   These threw `ReferenceError` at render time, the error was caught by the
@@ -364,7 +579,6 @@ properties of undefined (reading 'label')`. The `state` and `ui` feature
   implementation.
 
   ## Tests
-
   - `@pyreon/zero` — 998 tests pass, 1 skipped (no regressions)
   - `examples/hn-clone` — all 7 routes render correctly in real Chromium
   - W4 verified: `/throw` test route surfaces "Intentional test error..."
@@ -504,7 +718,6 @@ query` has zero `app.store.` or `useAppStore` references
 - ## @pyreon/zero
 
   ### New Features
-
   - **API routes** — file-based `.ts` handlers in `src/routes/api/` with HTTP method exports (GET, POST, PUT, DELETE)
   - **Server actions** — `defineAction()` with automatic client/server boundary detection (direct execution on server, fetch on client)
   - **Per-route middleware** — route files export `middleware` dispatched via `virtual:zero/route-middleware`
@@ -517,7 +730,6 @@ query` has zero `app.store.` or `useAppStore` references
   - **Dev route table** — `zero dev` prints page + API routes on startup
 
   ### Improvements
-
   - Bumped all @pyreon/\* core deps to ^0.5.4
   - Added `./actions`, `./api-routes`, `./cors`, `./rate-limit`, `./compression`, `./testing` subpath exports
   - Fixed static adapter build skip for SSG mode
@@ -526,19 +738,16 @@ query` has zero `app.store.` or `useAppStore` references
   ## @pyreon/zero-cli
 
   ### New Commands
-
   - `zero doctor` — detect React patterns (proxies @pyreon/cli)
   - `zero context` — generate AI project context
   - `zero create <name>` — scaffold a new project
 
   ### Improvements
-
   - Dev server prints route table on startup (page routes + API routes)
 
   ## @pyreon/create-zero
 
   ### New Features
-
   - **Interactive scaffolding** with @clack/prompts — pick rendering mode, features, AI toolchain
   - Generates customized package.json, vite.config.ts, entry files based on selections
   - AI toolchain opt-in: .mcp.json, CLAUDE.md, doctor scripts
@@ -546,12 +755,10 @@ query` has zero `app.store.` or `useAppStore` references
   ## @pyreon/meta
 
   ### New Packages
-
   - `@pyreon/machine` — reactive state machines (`createMachine`)
   - `@pyreon/permissions` — reactive permissions (`createPermissions`, `usePermissions`)
 
   ### Updates
-
   - All fundamentals: query ^0.5.0, virtual ^0.5.0
   - All UI system: ^0.1.1 (styler, hooks, elements, coolgrid, kinetic, etc.)
   - 75 export verification tests

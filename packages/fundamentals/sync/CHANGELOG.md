@@ -1,5 +1,284 @@
 # @pyreon/sync
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3207](https://github.com/pyreon/pyreon/pull/3207) [`78b3423`](https://github.com/pyreon/pyreon/commit/78b3423b830ec4c5d60034ae8f468eec111cacf2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CRDT: a map handle on both native runtimes, so the ordinary `doc.getMap(name)` shape lowers
+
+  The web `CrdtDoc` hands you a `CrdtMap` you hold and call — `doc.getMap('room').set('title', v)`.
+  Both native runtimes only had the flat form, where the map name is a first argument
+  (`doc.set('room', 'title', v)`), and PMTC lowers these calls verbatim: shared source written
+  against the documented web API emitted a call to a `getMap` that did not exist, with **no
+  warning**, so the failure surfaced as a swiftc/kotlinc error inside a generated file rather
+  than as a diagnostic naming the call.
+
+  `PyreonCrdtMap` now exists on both runtimes with the full web surface — `get`, `set`, `has`,
+  `keys`, `observe` — plus `set` overloads for the scalar types, because `PyreonScalar` is a
+  sealed/enum type and requiring the wrapper at every call site would put platform constructors
+  into files that must also compile as TypeScript.
+
+  The validation stubs were a **subset** of the runtime they claim to mirror, which is the
+  inverse defect and just as costly: a narrower stub rejects correct emit. The Swift stub was
+  missing `has`/`keys`/`applyOps`/`encodeState`/`encodeMessage`/`applyMessage`/`onLocalOps`, and
+  the Kotlin stub was additionally missing `PyreonScalar.Null` — while its own comment already
+  claimed to mirror the surface. Both now do.
+
+  `CrdtDoc.transact` and `CrdtDoc.destroy` are still absent on native — but they no longer
+  fail silently. PMTC now WARNS by name when shared source calls a `CrdtDoc`/`CrdtMap` member
+  that has no native counterpart, saying what will happen (the call is reproduced verbatim, so
+  the native build fails on a method you never wrote in that language) and what to do instead.
+
+  The classification behind that warning is TOTAL over the web contract rather than a
+  hand-maintained list: a test parses `CrdtDoc`/`CrdtMap` out of `@pyreon/sync`'s own
+  `crdt/types.ts` and fails if any member is unclassified. A list checked in one direction rots
+  the moment the interface grows a member, and the rot is invisible — an unclassified member
+  simply never warns.
+
+  Also: `PyreonCrdtDoc.applyOps`'s `origin` parameter now defaults to `REMOTE_ORIGIN`, which its
+  own docblock has always claimed. It was required, so the documented call shape did not compile
+  — and that mattered beyond tidiness, because the native runtimes take `applyOps(ops)` with one
+  argument, so shared multiplatform source could not write a call valid on both platforms. Every
+  existing caller already passes the origin explicitly, so the default is purely additive.
+
+- [#3755](https://github.com/pyreon/pyreon/pull/3755) [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Finish the Kotlin `Int` to `Long` move for the runtime APIs emitted code reaches. `PyreonToast.maxToasts`, `PyreonSortable.moveIndex`, `PyreonRateLimit` delays and scheduler, `PyreonSizedMap` (`maxEntries`, `size`), `PyreonScreenOrientation.angle`, `PyreonStream` (`maxEvents`, reconnect `attempts`) and the chart web-view selection indices now use `Long`, and the emit adds the `L` suffix to the literals it passes them. `PyreonChartPoints` takes `Long` counts, which fixes a real `gradle assembleDebug` failure in every chart-bearing Android example. `syncedSignal` and `PyreonCrdtMap.set` now accept `Long` (a `Long` signal previously threw `unsupported value type`).
+
+- [#2846](https://github.com/pyreon/pyreon/pull/2846) [`f882cba`](https://github.com/pyreon/pyreon/commit/f882cbabc8bb06323ff5f9a7c85d67881a7bab55) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native `PyreonSyncedSignal` (iOS + Android) now writes create-if-missing seeds into a separate `"<map>:defaults"` map, mirroring web [#2519](https://github.com/pyreon/pyreon/issues/2519). Reads resolve real map → defaults map → `initial`, so a fresh peer's default can never clobber real data on an actor tie-break. Residual (same as web): two fresh peers seeding an empty room with different defaults still tie-break, but among defaults only — peers converge (harmless), they never diverge and a real value is never lost.
+
+- [#2846](https://github.com/pyreon/pyreon/pull/2846) [`f882cba`](https://github.com/pyreon/pyreon/commit/f882cbabc8bb06323ff5f9a7c85d67881a7bab55) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add a native sync transport (`PyreonSyncTransport` on iOS + Android) — the native equivalent of the web `connectPyreonSync(doc, channel)`, wiring a `PyreonCrdtDoc` to a peer over a string-duplex `PyreonSyncChannel` for real-time cross-device collaboration.
+
+- [#2855](https://github.com/pyreon/pyreon/pull/2855) [`6d09d13`](https://github.com/pyreon/pyreon/commit/6d09d13f4abb307e81d7c36e5d3fb8823f65b4bb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add real WebSocket channels for native cross-device CRDT sync: `PyreonSyncWebSocketChannel` (Swift, URLSessionWebSocketTask) and its Android OkHttp twin, both implementing `PyreonSyncChannel` so `PyreonSyncTransport` can converge two devices over a live socket relay.
+
+- [#2835](https://github.com/pyreon/pyreon/pull/2835) [`7ee508e`](https://github.com/pyreon/pyreon/commit/7ee508efc3f5ed559a5ecfd7bbbefd8bb6785fc2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lower `@pyreon/sync`'s `syncedSignal` to native (iOS + Android).
+
+  `const doc = new PyreonCrdtDoc()` + `const title = syncedSignal({ doc, key, initial })`
+  in shared `.tsx` now compile to a native `PyreonSyncedSignal` over a shared
+  `PyreonCrdtDoc` — scalar `string`/`number`/`boolean`, `title()` read + `title.set(v)`
+  write flowing 1:1 to the facade.
+
+  - **Swift**: the doc + signals are typed `@State` seeded in a GENERATED component
+    `init()` (`_title = State(initialValue: PyreonSyncedSignal(doc: doc, …))`),
+    because a synced signal's `@State` initializer references the doc and one
+    `@State` cannot reference another at property init. Props thread through the
+    init as parameters, so a component can still take props.
+  - **Kotlin**: sequential `remember { }` blocks (no init needed).
+
+  `@pyreon/sync` leaves `WEB_ONLY_PACKAGES` and declares a `nativeFrontend` (the
+  Yjs engine + IndexedDB/WebSocket transports stay web; cross-device transport is
+  tracked). Verified end-to-end: the emit type-checks against the real SwiftUI SDK
+  - the real facade on macOS, and against the Swift/Kotlin validate stubs.
+
+- [#2833](https://github.com/pyreon/pyreon/pull/2833) [`2e12add`](https://github.com/pyreon/pyreon/commit/2e12addb54586212dce479699d7ea70f084d1a7e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship `@pyreon/sync`'s native ports, and add the `PyreonSyncedSignal` facade.
+
+  Two things:
+
+  - **Fix: the native CRDT port was built but never published.** Every other
+    co-located package lists `native/swift` + `native/kotlin` in its `files`
+    array; `@pyreon/sync` did not, so its `PyreonCrdt` port (the LWW-CRDT engine)
+    shipped to npm missing — a native app installing `@pyreon/sync` could not
+    find it. Added the two entries so the ports actually reach a scaffolded
+    iOS/Android app (the `pyreon.native` field was already declared).
+
+  - **New: `PyreonSyncedSignal`** — the native `Signal<T>` facade over a shared
+    `PyreonCrdtDoc`, the iOS/Android counterpart to `syncedSignal({ doc, key,
+initial })`. Scalar values (`String` / `Double` / `Bool`), local-first
+    create-if-missing, and CRDT-backed reactivity: a remote op applied to the doc
+    updates the signal's value through the doc observer (so a remote edit repaints
+    the UI with no diff). Behaviourally byte-aligned across web/iOS/Android and
+    verified by the co-source gate (compiled + run).
+
+  The compiler lowering that emits this from a plain `syncedSignal()` call in
+  shared `.tsx`, and the cross-device WebSocket transport bridge, are the tracked
+  follow-ups.
+
+- [#2824](https://github.com/pyreon/pyreon/pull/2824) [`83ec20c`](https://github.com/pyreon/pyreon/commit/83ec20cd59afd57928cb35ef56ae35b8356d64e1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(sync): multiplatform LWW CRDT — dependency-free JS engine + transport + native iOS/Android ports (wire-compatible, converging)
+
+  The foundation for 1:1 multiplatform sync. A pure last-writer-wins CRDT engine implementing the engine-neutral `CrdtAdapter` seam, with **no `yjs`** — shipped as THREE wire-compatible engines that converge with each other:
+
+  - **Web/JS** (`pyreonAdapter`) + a pure-JS client transport (`connectPyreonSync`, JSON ops over any string duplex) + a `NativeSyncHost` bridge contract. `syncedSignal` runs over it end-to-end.
+  - **iOS** (`PyreonCrdt.swift`) and **Android** (`PyreonCrdt.kt`) native ports — same `{ ops: [{ map, key, value, clock, actor }] }` wire format, same deterministic LWW merge (higher Lamport clock wins; equal clock → higher actor id), hand-written JSON codec (compiles against the minimal native stubs).
+
+  All three converge: concurrent-offline writes resolve to the same winner on every peer, higher-clock-wins, order/duplicate-insensitive, no echo. Verified end to end — JS suite (bisect-covered specs) + the native co-source gate compiles and RUNS the Swift + Kotlin convergence tests (including decoding a web-format message). Scope matches the v1 seam: flat key → scalar registers; rich `Y.Text`/`Y.Array` stay on `@pyreon/sync/yjs`.
+
+  PMTC compiles UI + signals, not engine logic, so a CRDT engine can't cross by source compilation — hence real native ports behind the seam (the `PyreonWebSocket`/`PyreonHttp` pattern), giving an iOS/Android/web peer 1:1 convergence over one protocol. Remaining: the reactive UI binding (`@Observable`/`mutableStateOf`) + `PyreonWebSocket` transport wiring + a device convergence test.
+
+- [#3643](https://github.com/pyreon/pyreon/pull/3643) [`f7a38fb`](https://github.com/pyreon/pyreon/commit/f7a38fbd9fb731bbd5434a915ca0ddd07fcf241e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Harden the sync relay and transports.
+
+  - **Relay no longer loses frames sent during an async `authorize`.** The client sends its state vector the moment the socket opens; the relay only started listening after `authorize` resolved, so with any async check the frame was dropped, the relay never answered it, and the client's `synced()` stayed `false` forever. Frames are now buffered and replayed on allow, discarded on reject (a socket that sends more than 256 frames before the verdict is closed with 1008). A client that disconnects during `authorize` no longer leaks a room.
+  - **Heartbeat.** New `heartbeatIntervalMs` option (default `30_000`, `0` disables): the relay pings every socket and terminates one that missed the previous ping, so half-open connections no longer keep their presence and room alive forever.
+  - **Presence spoofing refused.** An awareness update naming a clientId owned by another connection is dropped — a client could previously overwrite a peer's presence, and by being recorded as its owner, get the peer's presence purged on its own disconnect.
+  - **New limits:** `maxPayload` (forwarded to `ws`) and `maxRooms` (a connection that would open a room past the cap is closed with 1013). A per-socket protocol error (e.g. an oversized frame) no longer crashes the relay process.
+  - **Read-only clients:** `authorize` may return `'read'` — the client receives the document and presence but its document updates are dropped. `AuthorizeResult` is exported.
+  - **Awareness created after connecting now syncs.** `connectViaWebSocket` and `connectViaBroadcastChannel` looked up the doc's awareness once at connect, so a `syncedAwareness` created later was never sent or received. They now wire it whenever it is created.
+  - **Behaviour change:** `whenSynced()` now REJECTS when the relay refuses the connection (4401) or after `disconnect()`, instead of never settling.
+  - **`PyreonCrdtDoc.applyOps` validates inbound ops.** An op whose clock is not a non-negative safe integer, or whose map/key/actor is not a string, is dropped (dev warning) — `Infinity`/`1e308`/string clocks previously out-ranked every future local write permanently. The Swift and Kotlin ports drop negative and overflowing clocks too.
+  - `syncedSignal.set(v)` skips the CRDT write when the real map already holds `v` (Yjs emitted and broadcast an update for every equal set).
+
+- [#2821](https://github.com/pyreon/pyreon/pull/2821) [`d9c0267`](https://github.com/pyreon/pyreon/commit/d9c026751c7a98037b9f6cdd72ca4e738f5895fc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(sync): `ws` is now an OPTIONAL peer dependency — the client path is dependency-free
+
+  `ws` was a hard runtime dependency, but it is used ONLY by the server-only relay (`@pyreon/sync/server`, `WebSocketServer`). The **client** sync transport (`connectViaWebSocket`) already uses `globalThis.WebSocket` (browsers + Node 21+) with an injectable `WebSocketImpl`, and `useWebSocket` already lowers to the native `PyreonWebSocket` on iOS/Android — so a client consumer never needs `ws`. Making it an optional peer means the client (and native) dependency graph is `@pyreon/*` + platform WebSocket only, with no external `ws` install.
+
+  **Action for `@pyreon/sync/server` (relay) users**: add `ws` to your own dependencies. Client-only / native users need no change. (`ws` remains in `@pyreon/sync`'s devDependencies for its own relay tests.)
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#3753](https://github.com/pyreon/pyreon/pull/3753) [`6bf2770`](https://github.com/pyreon/pyreon/commit/6bf2770d8d25e02aa853ac249b6c07923dac001d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh to latest. `@pyreon/dnd` moves to `@atlaskit/pragmatic-drag-and-drop` 4 and `-hitbox` 3 (the auto-scroll adapter already required core 4, so v3 core would have been installed twice). Runtime deps of the other packages move to their latest in-major releases (`oxc-parser` 0.152, `magic-string`, `@tanstack/query-*` 5.104, CodeMirror, tiptap, `yjs`, `sharp`, `vite`, …).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#2998](https://github.com/pyreon/pyreon/pull/2998) [`5867cca`](https://github.com/pyreon/pyreon/commit/5867cca15becbf4811effac32e81bdb3dc0a0d86) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party dependencies to their latest compatible releases.
+
+  Runtime dependencies that reach consumers: `oxc-parser` / `oxc-transform`
+  0.144 → 0.147 (`@pyreon/compiler`, `@pyreon/native-compiler`), the CodeMirror 6
+  family (`@pyreon/code`), TipTap 3.29 → 3.30 (`@pyreon/rich-text`), TanStack
+  Query 5.101 → 5.102 (`@pyreon/query`), the
+  pragmatic-drag-and-drop auto-scroll/hitbox companions (`@pyreon/dnd`),
+  `y-protocols` (`@pyreon/sync`), `oxlint` 1.78 → 1.80 (`@pyreon/lint`), and the
+  shiki / remark / unist chain (`@pyreon/zero-content`).
+
+  No API surface changes. Held deliberately, each for a stated reason: TypeScript
+  stays capped `<7.0.0` (TS7 removed the classic Compiler API), and
+  `@changesets/cli` v3, `@atlaskit/pragmatic-drag-and-drop` v3, and `ky` v2 are
+  majors that need their own PRs.
+
+- [#2850](https://github.com/pyreon/pyreon/pull/2850) [`02cae6a`](https://github.com/pyreon/pyreon/commit/02cae6a420ef0d35f4300e907734415010493b9b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two reactivity/correctness fixes found by running `pyreon doctor` against the
+  framework itself, plus the rule-option support that made the remaining reports
+  resolvable.
+
+  - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
+    three branches (rubber-band / drag-end / connection-drop) are sequential and
+    can co-occur, and the rubber-band branch calls `clearSelection()` plus
+    `selectNode()` once per hit node — so a band over 100 nodes fired 100+ cycles
+    and re-rendered the canvas each time. One pointerup is now one transition.
+
+  - **`createActorId`'s fallback could collide.** The doc comment states two live
+    peers must not share an id, but the non-`crypto.randomUUID` path was
+    `Date.now()` + `Math.random()`, which repeats within a millisecond and is a
+    birthday risk besides. It now prefers `crypto.getRandomValues` (far more widely
+    available than `randomUUID`, which requires a secure context) and its last
+    resort mixes in a per-process monotonic counter, so two ids from one process
+    can never collide by construction and the random field only has to separate
+    processes.
+
+  - **`exemptPaths` on six rules that documented the convention but never read it.**
+    `toast-a11y`, `no-href-navigation`, `no-inline-style-object`,
+    `prefer-use-is-active`, `no-effect-in-mount` and `prefer-field-array` all
+    inspect a call site, so the file that _implements_ the thing being recommended
+    reports against itself — `link.tsx` renders the `<a href>` that `<Link>`
+    wraps, and the toast row computes `role` from severity in its definition
+    rather than at the `<ToastItem>` call site. Resolving that in-rule needs the
+    parent chain, which oxc's visitor does not provide, so these now honour the
+    documented `exemptPaths` option instead. Each still fires normally everywhere
+    else.
+
+- [#3515](https://github.com/pyreon/pyreon/pull/3515) [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: closes five README/manifest gaps against shipped 0.52-cycle APIs, found by auditing every package README against its real exports.
+
+  - **`@pyreon/core`** — `<Async>`, `use()` (already in the manifest but undocumented in the README) and `elementRef()` (missing from BOTH the README and the manifest) are now documented. `elementRef` gets a new manifest `api[]` entry with a real `mistakes` catalog, and the package `longExample` now demonstrates all three primitives so they surface in `llms-full.txt` / the MCP `api-reference` (the manifest's `longExample`, not `api[].example`, is what drives that section).
+  - **`@pyreon/sync`** — the multiplatform pure-TS CRDT engine (`pyreonAdapter`, `PyreonCrdtAdapter`, `PyreonCrdtDoc`, `createActorId`, `connectPyreonSync`, `webSocketChannel`, `createNativeSyncHost`) shipped via [#2824](https://github.com/pyreon/pyreon/issues/2824)/[#3207](https://github.com/pyreon/pyreon/issues/3207) and was undocumented everywhere — the README's own roadmap table still implied only the Yjs engine had landed. Adds a "Multiplatform engine" README section, 7 new manifest `api[]` entries, and a roadmap row.
+  - **`@pyreon/table`** — `createTableState` (the dependency-free, PMTC-lowerable table-state core) was documented in the manifest but absent from the README, which reads as TanStack-only. Adds a full section + a comparison table + a gotcha distinguishing it from `useTable`.
+  - **`@pyreon/router`** — `safeRedirectLocation` / `classifyRedirectTarget` (public open-redirect-guard exports) get a short "Redirect-target security" subsection under `notFound() / redirect()`.
+  - **`@pyreon/hooks`** — the README's "full surface" table-count line said "55 hooks across 7 categories" against a real 65 (the prose line three lines above it was correct and already guarded by `check-doc-claims`; this second, unguarded restatement of the same number silently drifted on its own). The table itself listed three hooks that do not exist (`useRootSize`, `useSpacing`, `useThemeValue`) and was missing 19 real ones across Interaction/Data (`useBluetooth`, `useSafeArea`, `useScreenOrientation`, `useDeviceMotion`, `useSpeech`, `useDeviceInfo`, `useCamera`, `useAudioRecorder`, `useWakeLock`, `useAppState`, `useCrashReporter`, `useAuth`, `useDatabase`, `useGeolocation`, `useMap`, `useWebSocket`, `useSecureStorage`, `usePush`, `usePayments`). The table is now a verified 1:1 match against `src/index.ts`'s real exports (programmatically diffed).
+  - **`@pyreon/cli`** — `check-doc-claims` gains a guarded claim site for the hooks README's table-count line, closing the exact gap that let it drift silently: `packages/tools/cli/src/doctor/gates/doc-claims.ts`'s `hook export count` check previously only watched the prose line in that file, not this second restatement a few lines below it. Bisect-verified: reverting the new claim spec makes the new regression test fail with `expected +0 to be 1` (drift undetected); restored, it passes.
+  - **`@pyreon/mcp`** — `api-reference.ts` regenerated (`bun run gen-docs`) from the `@pyreon/core` / `@pyreon/sync` manifest edits above; no hand edits.
+
+  No runtime behavior changes in any package.
+
+- [#3653](https://github.com/pyreon/pyreon/pull/3653) [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `onCleanup()` called synchronously in a component body now belongs to that component: it runs exactly once, when the component unmounts. Previously it only registered while an effect run was open, so a root-mounted component's setup-time cleanups never ran (listeners, sockets and watches leaked), and a component mounted inside `<For>` / `<Show>` / a routed page handed its cleanups to that boundary's effect, whose re-runs fired them while the component was still mounted (adding a `<For>` row tore down the listeners of every existing row).
+
+  `EffectScope.runInScope(fn)` now owns `onCleanup()` calls made in `fn` the same way, running them on `stop()`. This also makes `onCleanup()` inside `onMount()` run on unmount (it was silently dropped), and keeps a store first created inside a component from handing its setup cleanups to that component.
+
+  Behaviour change: code that relied on setup-time `onCleanup` never firing will now see it fire on unmount. `onCleanup` inside `effect()` is unchanged.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3099](https://github.com/pyreon/pyreon/pull/3099) [`bde583a`](https://github.com/pyreon/pyreon/commit/bde583a1f92de105bdc8145a74a5d8ea4d78f9cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: single-observer fast path in the CRDT adapter's commit/op notify
+
+  `PyreonCrdtDoc`'s `_notify` (fired per transaction commit) and its op-listener
+  broadcast both snapshotted their subscriber set with `[...set]` before iterating.
+  The keyed dispatcher installs exactly ONE observer per map, so that snapshot was
+  a throwaway array on every commit; one op-listener is likewise the common case.
+
+  Fast-path `set.size === 1`: capture the sole subscriber and fire it (matching the
+  snapshot's "subscribers present at notify start" semantics) without the array allocation.
+  The `[...set]` snapshot is kept for the multi-subscriber case. Completes the
+  subscriber-snapshot class fixed in the CRDT dispatcher ([#3087](https://github.com/pyreon/pyreon/issues/3087)).
+
+  Bisect-verified: no-op'ing the fast path fails a single-observer fire spec
+  (`expected +0 to be 1`); the multi-observer snapshot path still fires everyone.
+
+  Stated precisely, because the obvious reading is wrong: this is not
+  zero-allocation. Reading the sole entry via `values().next()` still allocates a
+  Set iterator plus its result object, and V8 does not escape-analyze those away
+  (measured in [#2973](https://github.com/pyreon/pyreon/issues/2973)). One allocation of three is removed, not three of three.
+
+- [#2770](https://github.com/pyreon/pyreon/pull/2770) [`43304b6`](https://github.com/pyreon/pyreon/commit/43304b6a515969efe8c3cb54e971b18c94d1212b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two hot-path optimizations, each locked by new bench cells in `scripts/bench/core/sync.ts`:
+
+  - `syncedText.set` no longer re-materializes the whole document (`ytext.toString()`, an O(docLen) tree walk + allocation) to compute `prev` on every keystroke — it reads the base signal's mirror (`base.peek()`), which the Y.Text observer already materialized at the last transaction end. Guarded: falls back to `toString()` inside an outer `doc.transact` (observers deferred), during the observer/cleanup phase (a sibling observer may run before ours), and after `dispose()` (observer detached) — the three windows where the mirror premise does not hold, each locked by a premise test.
+  - The WebSocket transport's inbound handler now decodes + applies already-binary frames (ArrayBuffer / Node Buffer — every frame in practice, since the transport sets `binaryType = 'arraybuffer'`) synchronously via the new `toBytesSync` fast path, removing a promise allocation + microtask hop per remote op; Blob / fragmented frames keep the async normalization.
+
+- [#3087](https://github.com/pyreon/pyreon/pull/3087) [`2c38a13`](https://github.com/pyreon/pyreon/commit/2c38a1385b1b5f0422423d369beffbb134f137ee) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: skip the snapshot-array allocation in the single-handler CRDT dispatch path
+
+  `observeMapKey`'s dispatch loop snapshotted each changed key's handler set with
+  `[...set]` before invoking. That runs once per committed CRDT transaction (every
+  synced-field write, local and remote) — the hottest per-update path in sync — and
+  the dominant shape is exactly one handler per key (one `syncedSignal` bound to a
+  key), where there is no sibling to protect and the array is pure garbage.
+
+  Fast-path `set.size === 1`: capture the sole handler and fire it, preserving the
+  snapshot's exact "handlers present at dispatch start" semantics (fires once even
+  if the handler disposes or re-registers itself mid-dispatch) without allocating.
+  The `[...set]` snapshot is kept for the multi-handler case, where it protects
+  against a handler disposing a SIBLING mid-iteration.
+
+  Bisect-verified: a naive bare `for (const h of set) h()` fast path fires a sibling
+  re-registered mid-dispatch and fails the parity spec; the capture does not.
+
+- [#3511](https://github.com/pyreon/pyreon/pull/3511) [`214097a`](https://github.com/pyreon/pyreon/commit/214097ae90b62dcc59d5b098b027fb5c39055c74) Thanks [@vitbokisch](https://github.com/vitbokisch)! - sync: say so at startup when the relay accepts every connection
+
+  `createSyncServer` without an `authorize` hook accepts every connection, so any
+  client that can reach the port can join any room and read and rewrite its
+  document. That default is for local development, and it was documented as such —
+  but only in a doc comment, which is read while writing the first call and not
+  while promoting it to production.
+
+  The relay now warns once per server instance when `authorize` is absent, naming
+  the option. The warning fires in production as well as development: an open
+  relay is a live misconfiguration an operator has to see, not a developer-time
+  nicety. Supplying `authorize` silences it.
+
+- [#3050](https://github.com/pyreon/pyreon/pull/3050) [`ce8832f`](https://github.com/pyreon/pyreon/commit/ce8832fe44e53a006a207fe1ae098e1b7c9dceb7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `syncedSignal` / `syncedStore` now share ONE engine observer per (doc, map) instead of attaching two raw observers per field. A 20-field `syncedStore` previously installed 40 `Y.Map` observers (one on the data map and one on the defaults map per field), every committed transaction invoking all of them just to filter `changedKeys.has(key)`; the new per-(doc, map) dispatcher (`crdt/map-dispatch.ts`) installs 2 and routes each transaction's changed keys to the affected field handlers by key-indexed lookup — O(changed keys) instead of O(fields) per write.
+
+  The native host (`createNativeSyncHost().observe`) — the same per-key filtering pattern — routes through the dispatcher too, so N native signals over one map also share one engine observer.
+
+  Behavior is unchanged: handlers still fire synchronously at transaction commit for local and remote origins alike (the dispatcher never inspects origin — loop prevention stays in the transport plus the base signal's `Object.is` echo no-op), disposal is refcounted so two stores over one doc share an observer and disposing one never unhooks the other, and a `syncedSignal` created after a store routes through the existing dispatcher.
+
+  Measured (20-field store on the real Yjs engine, ratios over absolutes — machine under load, adjacent A/B arms, two samples each): ~1.47× faster per write (−32%, ~2.3µs → ~1.6µs) for both local sets and remote-origin applies, engine observers 40 → 2. An honest note on scale: the per-write win is O(N)-proportional — at a handful of fields it is small; the structural win (constant observer count per map) is the durable part.
+
+- Updated dependencies [[`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

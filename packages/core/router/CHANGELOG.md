@@ -1,5 +1,372 @@
 # @pyreon/router
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3070](https://github.com/pyreon/pyreon/pull/3070) [`0e434c8`](https://github.com/pyreon/pyreon/commit/0e434c89a2d317a2862d56cc8d1e623a68d9b332) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix redirect target handling: cross-origin redirects now actually work on the
+  client, and client + server agree on what a target means.
+
+  Two defects were tangled together. **Functional**: `redirect()`'s docs promised
+  cross-origin support (`redirect('https://provider.com/oauth')`), but the client
+  router rewrote EVERY absolute URL to `/` via `sanitizePath` — so a cross-origin
+  redirect silently failed to `/` on an SPA navigation (breaking e.g. an OAuth
+  hand-off), while the SSR handler emitted it verbatim. **Security**: that same
+  client/server disagreement meant a guard a developer verified on the client (which
+  blocks absolute URLs) did not hold on the server (which emitted them raw).
+
+  A single shared classifier — `classifyRedirectTarget` (exported) — now drives
+  BOTH paths:
+
+  - **`external`** (an explicit `http(s)://` URL): a real `window.location`
+    navigation on the client (was silently `/`), a `Location:` header on the server.
+    The target is trusted to the caller — validate an untrusted `?next=` value
+    against an allowlist, exactly as with any framework (Remix/Next model); the
+    `redirect()` JSDoc now says so.
+  - **`block`** (protocol-relative `//host`, or a non-`http(s)` scheme like
+    `javascript:` / `data:` / `mailto:`): refused and routed to `/`, on both the
+    client redirect application and the server `Location:` (`safeRedirectLocation`).
+  - **`internal`** (a same-origin path): an in-router SPA navigation, unchanged.
+
+  Bisect-verified: reverting the client external branch fails a cross-origin
+  redirect (no real navigation); reverting the server sanitizer emits
+  `javascript:alert(1)` as the raw `Location`. Full `@pyreon/router` 758/758 +
+  `@pyreon/server` 256/256, typecheck + lint + budgets clean. `push`/`replace` of a
+  string path and route-config redirects keep their same-origin-only behavior.
+
+- [#3635](https://github.com/pyreon/pyreon/pull/3635) [`db410a0`](https://github.com/pyreon/pyreon/commit/db410a0c599fde5df971c2d4ba3d95e18f7f62fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Router loaders can now be compiled out of the bundle. Defining `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time removes the loader engine (cache, in-flight dedup, stale-while-revalidate, server-loader single-fetch) and the loader render path (pending components, loader-data provider, link prefetch). Leaving it undefined changes nothing.
+
+  `@pyreon/zero` sets it for you in production builds: `false` when its scan of `src/routes` finds no `loader` export and no `.server.ts` sibling, `true` otherwise. Measured on real apps, initial JS drops by 1,020 B gz (ui-showcase) and 891 B gz (kanban); an app with loaders changes by 1 B. `zero dev` never sets it. A value you define yourself always wins.
+
+  A route passed to `startClient`/`createApp` by hand is outside the scan. If such a route has a loader while loaders are compiled out, the app now throws a `[Pyreon]` error at startup naming the fix, instead of rendering without its data. `pyreon doctor diagnose` explains it.
+
+### Patch Changes
+
+- [#3192](https://github.com/pyreon/pyreon/pull/3192) [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three defects found auditing the changes since 0.51.0.
+
+  **`safeRedirectLocation` failed open to an open redirect and to `javascript:`
+  XSS.** The guard classified the RAW target while a browser classifies a
+  PREPROCESSED one, and the gap is one character wide. The WHATWG URL parser
+  strips leading/trailing C0 controls and space, and removes ALL ASCII tab and
+  newline from anywhere in the input; `String.prototype.trim()` covers the first
+  only partially and the second not at all, because that character sits in the
+  middle. So `"/<TAB>/evil.example"` was classified `internal` and resolves to
+  `https://evil.example/`, and `"java<TAB>script:alert(1)"` was classified
+  `internal` and resolves to a live `javascript:` URL — both verified against the
+  platform's own URL parser, which is the oracle the regression test uses. The
+  `internal` branch also returned the ORIGINAL string rather than the one it had
+  inspected, so even a correct verdict handed back bytes that produce a different
+  one. The target is now normalised the way the parser does, before classifying,
+  and the normalised value is what ships.
+
+  **`@pyreon/lathe`'s YAML reader replaced an object's prototype instead of
+  setting a key.** Both mapping paths assigned `map[key] = value`, and for
+  `__proto__` that runs the inherited accessor: the key vanishes from the parsed
+  document while its value's properties leak into every later member read on that
+  object. A spec reaches this parser over the network — `lathe pull <url>` fetches
+  one and writes it to disk — and the IR it produces is what the emitters turn
+  into source, so a silently-dropped field is a missing field in a generated
+  client and a silently-added one is a generator input nobody wrote. The `.json`
+  half of the same reader was always correct, because `JSON.parse` defines the
+  property rather than assigning it; the two formats disagreed about the same
+  document. Fixed by doing what `JSON.parse` does.
+
+  **The three file pickers leaked their `<input>` when neither `change` nor
+  `cancel` fired.** `useCamera` / `useFilePicker` / `useImagePicker` each appended
+  a hidden input to `document.body` and removed it inside `settle`, under a
+  comment promising that "a browser that fires neither event must not leak the
+  node". The `settled` flag cannot provide that: with no event `settle` never
+  runs, so neither does `input.remove()`, and the document then holds the node,
+  its listeners and the `resolve` closure for the life of the page — once per
+  pick, unbounded. `cancel` is the event that would have fired, and the same
+  comments describe it as "not universal across older browsers". The three
+  implementations were byte-identical and are now one helper, whose `onCleanup`
+  settles any pick still open when the component unmounts.
+
+- [#3174](https://github.com/pyreon/pyreon/pull/3174) [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party dependencies to their latest compatible releases,
+  extending [#3174](https://github.com/pyreon/pyreon/issues/3174)'s sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.agents/guides/benchmarks/README.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3418](https://github.com/pyreon/pyreon/pull/3418) [`96426be`](https://github.com/pyreon/pyreon/commit/96426bef7ac3c86cf60ab898813dde449b1b0954) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Detector findings can be suppressed inline, with the comment `@pyreon/lint` already uses
+
+  `detectPyreonPatterns` / `detectReactPatterns` are pattern matchers without a
+  type checker, so a small number of their findings are correct code the pattern
+  cannot tell apart. `@pyreon/router`'s `RouterView` is the standing example: it
+  ends on `child as unknown as VNodeChild`, where `child` is `VNodeChild | null`
+  — a union no `h()` overload accepts in rest position, so removing the cast is a
+  TS2769. A comment beside it had argued exactly that since the detector shipped,
+  and the finding was reported on every `pyreon doctor` and MCP `validate` run
+  regardless.
+
+  A detector with no local escape hatch leaves two options and both are bad: carry
+  a permanent false positive, or change correct code to quiet a tool. So a
+  `// pyreon-lint-ignore <code>` on the line above now silences one — the SAME
+  convention `@pyreon/lint` has always used, rather than a second one, so a reader
+  does not need to know which matcher produced a finding. Both the bare code and
+  the prefixed id the doctor prints (`pyreon-patterns/as-unknown-as-vnodechild`)
+  are accepted; a different code, a typo, or a comment two lines up do not
+  suppress.
+
+- [#2759](https://github.com/pyreon/pyreon/pull/2759) [`a6e9c1a`](https://github.com/pyreon/pyreon/commit/a6e9c1a428aaec7de6d6ecd76e7601d2c7f41b48) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Test-infrastructure only — no runtime or consumer-facing behavior change. The happy-dom spec-parity `hashchange`-echo guard (happy-dom fires a deferred synthetic `hashchange` for hash-changing `history.pushState`/`replaceState`; real browsers never do) was extracted from `@pyreon/router`'s test setup into the shared internal `@pyreon/test-utils` and installed in every suite that drives a real router in happy-dom: router (unchanged behavior), a11y (fixes a load-dependent CI flake where a stale echo made the route announcer fire for a traversal the test never made, plus a deterministic regression spec), and testing's own suite (internal devDep on the private `@pyreon/test-utils`; the shipped `/vitest` setup module is unchanged).
+
+- [#3048](https://github.com/pyreon/pyreon/pull/3048) [`ce819ca`](https://github.com/pyreon/pyreon/commit/ce819cadd41f50af25200da1cc130a35c52ab523) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security: harden the SSR loader/store-state serializer against inline-`<script>` context injection.
+
+  `stringifyLoaderData` — the shared helper that serializes `window.__PYREON_LOADER_DATA__` and `window.__PYREON_STORE_STATE__` into inline `<script>` bodies — previously escaped only `</`. That is insufficient: the HTML tokenizer enters the script-data-double-escaped state on `<!--` followed by `<script` (neither token contains a slash), so a loader/store value like `<!--<script>` survived verbatim and could corrupt the script boundary (hydration DoS; XSS-adjacent). Raw U+2028/U+2029 in a JSON string were also emitted unescaped and are `SyntaxError`s inside a `<script>`.
+
+  The serializer now neutralises the whole `<` class (`<` — makes `</script`, `<!--`, and `<script` all unformable, superseding the old `</`-only escape) plus U+2028/U+2029. Escaped forms parse back to the original characters under `JSON.parse`, so hydrated data is byte-identical — only the serialized representation is neutralised. Both embed sites (loader data and store state) route through this one helper, so both are covered.
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#3515](https://github.com/pyreon/pyreon/pull/3515) [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: closes five README/manifest gaps against shipped 0.52-cycle APIs, found by auditing every package README against its real exports.
+
+  - **`@pyreon/core`** — `<Async>`, `use()` (already in the manifest but undocumented in the README) and `elementRef()` (missing from BOTH the README and the manifest) are now documented. `elementRef` gets a new manifest `api[]` entry with a real `mistakes` catalog, and the package `longExample` now demonstrates all three primitives so they surface in `llms-full.txt` / the MCP `api-reference` (the manifest's `longExample`, not `api[].example`, is what drives that section).
+  - **`@pyreon/sync`** — the multiplatform pure-TS CRDT engine (`pyreonAdapter`, `PyreonCrdtAdapter`, `PyreonCrdtDoc`, `createActorId`, `connectPyreonSync`, `webSocketChannel`, `createNativeSyncHost`) shipped via [#2824](https://github.com/pyreon/pyreon/issues/2824)/[#3207](https://github.com/pyreon/pyreon/issues/3207) and was undocumented everywhere — the README's own roadmap table still implied only the Yjs engine had landed. Adds a "Multiplatform engine" README section, 7 new manifest `api[]` entries, and a roadmap row.
+  - **`@pyreon/table`** — `createTableState` (the dependency-free, PMTC-lowerable table-state core) was documented in the manifest but absent from the README, which reads as TanStack-only. Adds a full section + a comparison table + a gotcha distinguishing it from `useTable`.
+  - **`@pyreon/router`** — `safeRedirectLocation` / `classifyRedirectTarget` (public open-redirect-guard exports) get a short "Redirect-target security" subsection under `notFound() / redirect()`.
+  - **`@pyreon/hooks`** — the README's "full surface" table-count line said "55 hooks across 7 categories" against a real 65 (the prose line three lines above it was correct and already guarded by `check-doc-claims`; this second, unguarded restatement of the same number silently drifted on its own). The table itself listed three hooks that do not exist (`useRootSize`, `useSpacing`, `useThemeValue`) and was missing 19 real ones across Interaction/Data (`useBluetooth`, `useSafeArea`, `useScreenOrientation`, `useDeviceMotion`, `useSpeech`, `useDeviceInfo`, `useCamera`, `useAudioRecorder`, `useWakeLock`, `useAppState`, `useCrashReporter`, `useAuth`, `useDatabase`, `useGeolocation`, `useMap`, `useWebSocket`, `useSecureStorage`, `usePush`, `usePayments`). The table is now a verified 1:1 match against `src/index.ts`'s real exports (programmatically diffed).
+  - **`@pyreon/cli`** — `check-doc-claims` gains a guarded claim site for the hooks README's table-count line, closing the exact gap that let it drift silently: `packages/tools/cli/src/doctor/gates/doc-claims.ts`'s `hook export count` check previously only watched the prose line in that file, not this second restatement a few lines below it. Bisect-verified: reverting the new claim spec makes the new regression test fail with `expected +0 to be 1` (drift undetected); restored, it passes.
+  - **`@pyreon/mcp`** — `api-reference.ts` regenerated (`bun run gen-docs`) from the `@pyreon/core` / `@pyreon/sync` manifest edits above; no hand edits.
+
+  No runtime behavior changes in any package.
+
+- [#3192](https://github.com/pyreon/pyreon/pull/3192) [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a polynomial ReDoS introduced by the redirect-normalisation hardening in
+  this same PR.
+
+  The normalisation used an anchored alternation quantified over an AMBIGUOUS
+  character class: the `U+0000`-`U+0020` range already contains everything `\s`
+  adds below U+0080, so on a long run of matching characters the engine retries
+  the `$`-anchored branch from every position. Measured: 5k chars 13.5ms, 20k
+  204ms, 80k **3,563ms**. Clean quadratic.
+
+  `redirect()` targets can come straight from a `?next=` parameter, and this guard
+  runs on every SSR redirect, so it was reachable rather than theoretical - an
+  attacker sending 80k spaces burns 3.5 seconds of server CPU per request.
+
+  Replaced with an index walk: linear, no backtracking, and closer to the spec.
+  `<= 0x20` is exactly the "C0 control or space" set the URL parser strips, so
+  dropping `\s` makes it MORE faithful - a leading U+00A0 is not stripped by a
+  browser either, so it correctly stays part of the path.
+
+  Found by CodeQL on the PR that introduced it.
+
+- [#2885](https://github.com/pyreon/pyreon/pull/2885) [`80e2ce2`](https://github.com/pyreon/pyreon/commit/80e2ce2a77551338b3bf58c5bb6ef88236e5e285) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a rapid double-Back silently losing a history entry.
+
+  A BROWSER-initiated traversal (popstate/hashchange) has already moved the URL — the browser owns it, and the router's commit is only catching the app up. `commitNavigation` nonetheless ran `syncBrowserUrl(path, replace)` for it, which is redundant in the happy path and actively wrong once a newer traversal has moved the history: the write lands on whatever entry is current NOW, stamping the older navigation's URL onto it.
+
+  The observable failure is pressing Back twice quickly. Back [#1](https://github.com/pyreon/pyreon/issues/1) starts an async navigate; Back [#2](https://github.com/pyreon/pyreon/issues/2) fires while it is still in flight and is dropped by the same-path guard (which compares against a `currentPath` that [#1](https://github.com/pyreon/pyreon/issues/1) has not yet updated); [#1](https://github.com/pyreon/pyreon/issues/1) then commits and `replaceState`s its URL over the entry the browser had already moved to. The second Back is silently undone.
+
+  A browser-initiated commit now writes nothing. Cancellation remains the one case where the router legitimately rewrites a browser-initiated URL, and `handleBrowserNav` already owns that path.
+
+- [#3127](https://github.com/pyreon/pyreon/pull/3127) [`6b84f8a`](https://github.com/pyreon/pyreon/commit/6b84f8aeca2303abb29e4a70b35cc664f790d256) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A rapid second browser Back landing on the ORIGINAL path is no longer dropped. The popstate echo guard compared the incoming traversal against `currentPath` — which the first (still in-flight) browser navigation had not updated yet — so the second traversal read as an echo and was silently discarded, leaving the router's path/query state diverged from the real URL (stale `currentRoute().query` and search readers) until the next navigation. The guard now compares against the in-flight browser navigation's target (`_pendingBrowserTarget`, identity-guarded on settle), so the second traversal runs the full pipeline and supersedes the first. This is the other half of the race [#2885](https://github.com/pyreon/pyreon/issues/2885) fixed (the URL-clobber half).
+
+- [#3150](https://github.com/pyreon/pyreon/pull/3150) [`a0611c4`](https://github.com/pyreon/pyreon/commit/a0611c4d5a9afa2472502f5d932e1ac152861e1e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A malformed percent-escape in a URL no longer 500s an SSR app
+
+  `decodeURIComponent` throws `URIError` on a lone `%`, `%zz`, or a truncated multi-byte escape. Every decode in `@pyreon/router`'s matcher is applied to attacker-supplied text — a path segment, a query key, a query value — and the matcher is reached PRE-AUTH from `router.preload` inside the SSR handler. So `GET /?q=%` was an unauthenticated 500 on every server-rendered Pyreon app: one character, no auth, and a STATIC route, because the QUERY parser decodes too and no dynamic parameter is needed.
+
+  The matcher is a pure function with no HTTP context, so it cannot answer 400; an undecodable segment now resolves to its literal text, which keeps matching total and leaks nothing. Well-formed encoding is untouched (`/posts/a%20b` still yields `a b`) — this is a guard, not a retreat from decoding. A host that wants to reject malformed URLs should validate before routing.
+
+  `@pyreon/zero`'s server-islands fragment endpoint (`GET /_pyreon/fragment/<name>`) had the same unguarded decode on the same pre-auth path; unlike the matcher it HAS a request context and already answers 400 for a malformed name, so a malformed escape joins that branch rather than falling through as raw text.
+
+  The adapters (`bun.ts`) and `url-guard.ts` already guarded this, so the unguarded sites were an oversight rather than a policy.
+
+- [#3149](https://github.com/pyreon/pyreon/pull/3149) [`b030408`](https://github.com/pyreon/pyreon/commit/b0304087973b540fa75fc0d627fd3a1dd120d1c1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<RouterLink>` composes the consumer's `onClick` / `onMouseEnter` / `onFocus` instead of overwriting them
+
+  `onClick: handleClick` was spread AFTER `...rest` in the internal `h('a', …)` call, so any handler the consumer passed was silently dropped — the same defect `class` had already been fixed for ("overriding the user's class silently dropped any conditional class"). Fixing one prop and leaving the events is folklore rather than a fix, so the class stayed open.
+
+  The shipped instance is the docs search overlay, which closes itself in `onClick`: on pyreon.dev a search result navigated correctly and left the modal dialog covering the destination page. Its unit test passed throughout, because it mocks `RouterLink` with a stub that does call `onClick` — a mock that is more correct than the component.
+
+  The user's handler runs FIRST, so `e.preventDefault()` in it suppresses navigation: `handleClick` already bails on `defaultPrevented`, which is what makes user-first the composable order rather than a race.
+
+- [#3634](https://github.com/pyreon/pyreon/pull/3634) [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<RouterLink>` now forwards signal-driven attributes live. It destructured its props, which read every getter-backed prop once at setup, so a reactive `aria-label`, `title`, `class` or any other attribute on a link froze at its first value. It now carves its own props with `splitProps` and forwards the rest with `mergeProps`, keeping each attribute a live binding on the `<a>`.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3389](https://github.com/pyreon/pyreon/pull/3389) [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close five correctness holes on the compiled path and the redirect boundary, two of them security-relevant.
+
+  **The compiled template path skipped `setStaticProp` branches it never re-stated.** The compiler routes each attribute by name straight to `_setAttr` / `_setValue` / `_setStyle`, so every branch `setStaticProp` runs _above_ that dispatch point is one the compiled path skips. Three shipped that way: `_setAttr` had no URL guard, so a compiled `<a href={u}>` wrote `javascript:alert(1)` while `h()` dropped it and SSR omitted it (an XSS in every compiled app, and a hydration mismatch); `_setValue` had no nullish branch, so `<input value={undefined}>` displayed the literal text `undefined`; and `_setStyle` cleared an object style on a nullish flip but never a string one. The shared branch is now one predicate both paths call, locked by a differential test over {attribute} × {payload} × {compiled, `h()`, SSR}.
+
+  **A namespaced JSX attribute reached every template name-reader as the empty string.** `xlink:href` parses as `JSXNamespacedName`, and the readers test for `JSXIdentifier`. Neither backend errored: the JS backend baked malformed HTML (`<use ="/static">`), the Rust backend dropped the attribute — so `<use xlink:href="#icon">`, the SVG sprite idiom, rendered nothing in every compiled app, differently per backend, for static and dynamic values alike. Both backends now bail the element to `h()`, where the runtime sets the qualified name and guards it.
+
+  **`\` is an authority delimiter, so blocking only `//host` left three bypasses.** The URL parser resolves `\\evil.com`, `/\evil.com` and `\/evil.com` off-origin exactly as `//evil.com` does, but the router's redirect boundary — whose verdict is emitted as a raw `Location:` header — classified all three as internal. Fixed as the class (any leading run of two or more `[/\]`), in the redirect boundary and in `classifyHref`, where an `internal` verdict renders a real `href` that a ctrl-click resolves without ever reaching the click handler. A blocked target now says so in dev instead of silently landing on `/`.
+
+  **A subscriber could be skipped when the tier promoted mid-notify.** `createSelector`'s `notifyBucket` snapshotted both inline subscribers, then asked whether the second was still subscribed using an identity compare against the inline tiers only — so when the first registered a third subscriber and `addSubscriber` promoted both slots into a Set, the second matched neither and was silently dropped. The check now covers every shape the two-tier store can be in.
+
+  Also: the hydration adoption marker is removed on final dispose, and the fuzz gate's timeout is derived from its seed count so the documented high-seed command can finish.
+
+- [#3511](https://github.com/pyreon/pyreon/pull/3511) [`214097a`](https://github.com/pyreon/pyreon/commit/214097ae90b62dcc59d5b098b027fb5c39055c74) Thanks [@vitbokisch](https://github.com/vitbokisch)! - url-state: ask the router which part of the URL owns the route
+
+  `useUrlState` read `location.search` and wrote `${location.pathname}?${search}`
+  unconditionally. `@pyreon/router` defaults to `mode: 'hash'`, where the whole
+  route — query included — lives in the fragment (`#/products?page=3`) and
+  `location.search` is empty. So under the documented `setUrlRouter(useRouter())`
+  bridge, a single `page.set(3)` handed the router `/?page=3`, which it wrote as
+  `#/?page=3`: the app left `#/products` on the first filter change, and the value
+  never read back.
+
+  Three fixes, all from the same wrong assumption:
+
+  - **Hash mode** — the query is now read from, and written into, the fragment
+    beside the route path, so a param update keeps the app where it is.
+  - **The fragment is preserved** on history-mode writes (router and raw-history
+    alike). `/docs#installation` used to become `/docs?page=2`, jumping the reader
+    back to the top of the page on every change.
+  - **A sub-path deploy** gets a base-relative path: the router prepends `base`
+    itself, so passing `location.pathname` produced `/app/app/products?page=2`.
+
+  `UrlRouter` gained optional `mode` and `_base` fields; `useRouter()` satisfies
+  both structurally, so nothing changes at the call site. A router without `mode`
+  (hand-rolled) still means history mode, and without a registered router
+  url-state owns `location.search` exactly as before.
+
+  In `@pyreon/router`, `mode` moves from the internal `RouterInstance` type onto
+  the public `Router` type. It was always present on the router object — only the
+  public type omitted it, which is what let the wrong assumption look correct.
+
+- [#3661](https://github.com/pyreon/pyreon/pull/3661) [`dc580fc`](https://github.com/pyreon/pyreon/commit/dc580fc13327c7a1ca1f23dc0ee5c25921470d1e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - - `@pyreon/router`: `stringifyLoaderData` serializes with native `JSON.stringify` and only walks the data for cycles when serialization fails. Output is byte-identical (checked against the previous implementation over 2,000 seeded payloads) and it is ~3.7× faster on a 200-item payload; the named circular-reference error is unchanged. It runs on every loader-backed SSR request, every SSG page and every data-endpoint call.
+  - `@pyreon/zero`: apps that are SPA everywhere no longer ship hydration code (−6.6 KB gz, −10.6% of initial JS on the kanban example). A production build defines `__ZERO_HYDRATE__` from the app mode, `routeRules` and route files; anything that could be server-rendered keeps hydration.
+  - `@pyreon/zero`: `<Link>`'s `aria-current="page"` now follows client-side navigation (it was set once and never moved).
+  - `@pyreon/zero`: SSG fails the build when two different route files produce the same URL (the check never ran for auto-detected paths), and a `_redirects` file shipped in `public/` is kept, with build-time loader redirects appended after it, instead of being overwritten.
+  - `@pyreon/zero`: new `@pyreon/zero/app` subpath exporting `createApp`; dev SSR loads it instead of the whole server package.
+  - `@pyreon/runtime-server`: `renderToStream` accepts `nonce`, which it puts on every inline `<script>`/`<style>` it emits. `@pyreon/server` passes the request's CSP nonce to it and to the streamed loader-data script, so streaming SSR works under a strict nonce CSP.
+
+  Upgrade: none
+
+- [#3662](https://github.com/pyreon/pyreon/pull/3662) [`b263f82`](https://github.com/pyreon/pyreon/commit/b263f82effa16d780f47f5d87f8d4a7a2f77602e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server functions for `@pyreon/zero`: a route's `action` export (a `defineAction()`) now handles a plain HTML form POST to its page WITHOUT JavaScript — the server runs it, then answers `303 See Other` for a `redirect()` or re-renders the page with the result. New `<Form>` renders that form and enhances it to `fetch` when JavaScript runs; new `useSubmission(action)` exposes `pending`, the optimistic `input`, `result`, `status` and `error`, and re-runs the current route's loaders after a successful mutation (`revalidate: false` or a list of loader keys to target). New `fail(status, data)` returns an expected failure with its HTTP status. Page form posts share the actions endpoint's same-origin check, and every action request is now capped at 1 MiB (`createServer({ actions: { bodyLimit } })`, `413` above it). A build-time action manifest lets a fresh server answer any action (JSON endpoint or form post) by loading its module on demand — previously every action 404'd until a render had loaded its module. Form actions run the same way under `vite dev`, and dev SSR now passes the page query to the router (it rendered every page as if its query were empty). A `redirect()` from an action called directly now navigates instead of failing with 500.
+
+  `@pyreon/router`: `router.revalidate()` now re-renders the current page with the fresh loader data; previously the data was refreshed but the leaf kept rendering the old `useLoaderData()` value.
+
+- Updated dependencies [[`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`5b93f4c`](https://github.com/pyreon/pyreon/commit/5b93f4cb70a6e210325aca3c79678b62383bc773), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -764,7 +1131,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -1296,7 +1662,6 @@
 ### Minor Changes
 
 - ### @pyreon/router
-
   - `go(n)` and `forward()` for history navigation
   - Named `replace()` — navigate by route name
   - Optional params (`:id?`) with compile-time type inference
@@ -1311,14 +1676,12 @@
   - Stale-while-revalidate loaders
 
   ### @pyreon/head
-
   - Cached resolve with dirty flag (30M+ ops/sec cached path)
   - Single-pass HTML escaping (regex + lookup table)
   - DOM element tracking via Map (avoids querySelectorAll per sync)
   - 7-9.5x faster SSR serialization than Unhead (Vue/Nuxt)
 
   ### @pyreon/server
-
   - Pre-compiled template splits at handler creation (17x faster on real templates)
   - Pre-built client entry tag avoids per-request string construction
   - `buildScriptsFast` skips array allocation
@@ -1348,7 +1711,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1362,7 +1724,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics

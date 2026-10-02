@@ -1,5 +1,135 @@
 # @pyreon/storage
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2793](https://github.com/pyreon/pyreon/pull/2793) [`dfdb7f4`](https://github.com/pyreon/pyreon/commit/dfdb7f4952d6f61dfe22fadab1e7bc31175d619f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Co-locate the @pyreon/storage native runtime.
+
+  Moves the storage-specific Swift/Kotlin runtimes (PyreonStorage,
+  PyreonSecureStorage + the Android impls) out of the monolith into
+  `@pyreon/storage/native/{swift,kotlin}`. `PyreonStorageBackends.kt` — the
+  shared persistence primitive (backend interface / registry / file backend /
+  codec, also used by PyreonCrashReporter) — deliberately STAYS in the base
+  monolith runtime; the co-located storage group references it via a new
+  `@base/<File>.kt` companion in the co-source gate.
+
+  Gate work (reusable for future batches): `verify-kotlin --files=<set>`
+  (per-service-group compile) + a companion-suppression filter that drops the
+  monolith companion append while keeping explicitly-listed `@base/` files;
+  `check-native-cosource` grows a `pyreon.native.kotlinServices` map (each group
+  compiles under one `--service` stub bundle) and a `@base/` prefix for
+  framework-base companions. The `PyreonSecureStorageAndroid` stub service now
+  also writes the compose-ui LocalContext stub so the whole storage graph
+  verifies as one group.
+
+  The six example apps whose shared source uses `useStorage`/`useSecureStorage`
+  (finance, router-demo, todomvc × android+ios) gain the co-located storage
+  source roots. No public API change — a native-source relocation.
+
+- [#3646](https://github.com/pyreon/pyreon/pull/3646) [`5a52b2b`](https://github.com/pyreon/pyreon/commit/5a52b2be1759fbb4fc5f2fb368217adf5ac6070a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **@pyreon/storage**
+
+  - Cross-tab sync no longer writes back. An inbound `storage` event updates this tab's signal without re-persisting it, so a removal in another tab is no longer undone here, and two tabs on different `version`s no longer re-serialize each other's value. An inbound value also cancels this tab's pending debounced write of an older value.
+  - `localStorage.clear()` in another tab (a `storage` event with `key === null`) now resets every `useStorage` signal to its default, instead of leaving values such as auth tokens alive in memory. Events for a different storage area are ignored. **Behaviour change.**
+  - `useIndexedDB`: a `.set()` / `.remove()` made before the initial async read settles is no longer overwritten by that read. Several `storeName`s in one `dbName` now work — a missing store is created by upgrading the database version (previously every read/write to a second store failed). An open connection now closes when another tab upgrades the database.
+  - `useIndexedDB` returns an `IndexedDBSignal<T>` with `ready()` (reactive), `whenReady()` and `flush()`, and flushes a pending debounced write on `pagehide` / `beforeunload`.
+  - `useCookie`: cookie names that need URI encoding (spaces, `;`, `=`, non-ASCII) now read back. `secure` now defaults to `true` on `https:` pages and for `sameSite: 'none'` (browsers reject `SameSite=None` without it); an explicit `secure` still wins. **Behaviour change.** Dev warnings for `sameSite: 'none'` + `secure: false`, for cookies over ~4 KB, and for a `.set()` on the server (which sends no `Set-Cookie`).
+  - Dev warning when a same-key call passes a different default or options than the call that created the shared signal (those are ignored).
+
+  **@pyreon/query**
+
+  - `useSubscription` / `useSSE`: the reconnect backoff is now capped (`maxReconnectDelay`, default 30 s) and jittered. Uncapped, unlimited attempts overflowed the `setTimeout` limit after ~31 failures and reconnected immediately in a loop. When attempts run out, `status()` is the new `'failed'` state, and a browser `online` event restarts the connection. **Behaviour change:** the status unions gain `'failed'`.
+  - `useSSE`: a `parse` failure now surfaces on `error()` (keeping the last good `data()`) instead of being swallowed; `error` is typed `Signal<Event | Error | null>`. A throwing `onMessage` (both hooks) is reported with `console.error` in dev.
+  - `useQuery` / `useSuspenseQuery` take TanStack's generic order `<TQueryFnData, TError, TData = TQueryFnData, TQueryKey>`, so `select` can change the result type without casts. A single explicit generic still means the data type. **Breaking** only for callers passing three explicit generics (the third was the key type, now `TData`).
+  - `useQueries` infers each entry's result type from its `queryFn` (or annotated `select`); a tuple of queries gives a tuple of typed results. New exported types `UseQueriesInput`, `QueriesResults`, `QueriesEntryData`.
+  - Every observer-backed hook evaluates its `options()` builder once per run instead of twice at mount.
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#3080](https://github.com/pyreon/pyreon/pull/3080) [`24178cc`](https://github.com/pyreon/pyreon/commit/24178cce182d38a6c58d4165222627a008d63976) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(storage): a malformed cookie no longer breaks all cookie reads
+
+  `parseCookies` (behind every `useCookie` read) called `decodeURIComponent(value)`
+  on each cookie value with no guard. `decodeURIComponent` throws `URIError` on a
+  malformed percent-escape (a bare `%`, or `%` not followed by two hex digits), so
+  a SINGLE bad entry anywhere in `document.cookie` threw out of `parseCookies` and
+  broke EVERY cookie read app-wide.
+
+  `document.cookie` mixes in cookies set by any code on the origin — third-party
+  scripts, a server reflecting user input un-encoded, subdomains — so this is
+  realistically reachable and is an availability (DoS-shaped) bug, not just a
+  theoretical edge. Pyreon's own write side encodes correctly, so it only bites on
+  cookies set by other code, which is exactly what the jar mixes in.
+
+  The decode is now wrapped: a malformed value falls back to its raw string so
+  every other cookie still reads. Bisect-verified: without the guard, a jar with
+  one incomplete escape throws `URI malformed` and the good cookies read their
+  defaults; with it, they read their real values.
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#2922](https://github.com/pyreon/pyreon/pull/2922) [`8aeffe0`](https://github.com/pyreon/pyreon/commit/8aeffe09bf62ea08af1278c45ecdaf26d1a04cb6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship the MIT LICENSE file in the package tarball
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- [#3512](https://github.com/pyreon/pyreon/pull/3512) [`6b1ff6b`](https://github.com/pyreon/pyreon/commit/6b1ff6bc64f0c8e285f61fd7e0a8790c18694818) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Isolate the `@pyreon/storage` and `@pyreon/state-tree` key-addressed registries per SSR request
+
+  Both packages kept a module-level registry keyed by a user-chosen key — correct in a browser, where one process serves one user, and a cross-request state bleed on a server, where one process serves everyone.
+
+  - `@pyreon/storage`'s registry cached the resolved SIGNAL per `backend:key`, so a second concurrent request's `useCookie('session')` was handed the signal the first request created, holding the first user's value. `setCookieSource`'s accessor form exists for exactly this case; the cache sat above it and short-circuited the read, so the accessor was consulted on the first request and never again. `useMemoryStorage`'s byte store had the same shape one layer down and is now request-scoped too.
+  - `@pyreon/state-tree`'s `asHook(id)` was a process-global singleton, so two concurrent requests calling `Cart.asHook('cart')()` shared one instance.
+
+  Both now mirror the `@pyreon/store` seam: a registry provider plus a `globalThis` setter that `@pyreon/runtime-server` picks up automatically inside `renderToString` / `renderToStream` / `runWithRequestContext`. No application wiring is required, and no package imports another. Client behaviour is unchanged — outside a request scope the provider answers `undefined` and the process-wide registry is used, so the storage refcount contract and the `asHook` singleton contract both hold exactly as before.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3429](https://github.com/pyreon/pyreon/pull/3429) [`073a94f`](https://github.com/pyreon/pyreon/commit/073a94f64f84da0d391a47d4fb3b769368455c0b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Same-key consumers are refcounted on EVERY backend, not just localStorage
+
+  `useStorage` was taught ([#725](https://github.com/pyreon/pyreon/issues/725)/[#729](https://github.com/pyreon/pyreon/issues/729)) that same-key consumers share one signal and
+  one registry entry, so that a single consumer's `.remove()` does not destroy the
+  entry its siblings still hold. The registry's own docstring states the contract —
+  "per-consumer `.remove()` goes through `releaseEntry`" — and four of the five
+  backends kept the pre-fix shape:
+
+  - `useSessionStorage` never RETAINED yet always RELEASED (it shares
+    `createStorageSignal` with localStorage), so the count went 1 → 0 on whichever
+    consumer removed first;
+  - `useCookie`, `useIndexedDB` and `createStorage(...)` called `removeEntry`
+    directly, bypassing the refcount entirely.
+
+  The consequence was the same in each: the first `.remove()` orphaned every
+  sibling. `removeStorage`/`clearStorage` stopped seeing their signal, and the next
+  call for that key minted a SECOND, independent one — so two live consumers of one
+  storage key silently stopped agreeing.
+
+  `.remove()` still clears the stored value and resets the shared signal every
+  time; only the registry entry is refcounted, matching what `createStorageSignal`
+  already did for local and session.
+
+- Updated dependencies [[`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -525,7 +655,6 @@
   Code-verified at source; no dedicated regression test in this PR (requires either mocked dynamic-import infra for charts, or a fake-indexeddb harness for storage — separable follow-ups).
 
   ### Audit byproducts (NOT fixed in this PR)
-
   - `@pyreon/code` `<CodeEditor>` component does not call `instance.dispose()` on unmount. Could be a design choice (user owns lifecycle since `instance` is an external prop) OR a documentation gap. Worth deciding deliberately, not bundled here.
   - `@pyreon/state-tree` `_hookRegistry` accepts dynamic IDs without bound — would leak if app generates IDs at runtime (uncommon — typical usage is static IDs).
   - `@pyreon/url-state` per-instance popstate listeners (no shared registry like storage has) — inefficient at scale but not a leak.
@@ -720,7 +849,6 @@
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -734,7 +862,6 @@
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

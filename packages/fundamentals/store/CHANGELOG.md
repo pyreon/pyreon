@@ -1,5 +1,130 @@
 # @pyreon/store
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2790](https://github.com/pyreon/pyreon/pull/2790) [`ed6518a`](https://github.com/pyreon/pyreon/commit/ed6518a68ec678e546713abf4e2551a3297a794f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Co-locate native runtimes into their own packages.
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+- [#3645](https://github.com/pyreon/pyreon/pull/3645) [`05ad36a`](https://github.com/pyreon/pyreon/commit/05ad36acb9e3dfe6b4f9ee8b012fc9919f8cd219) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **@pyreon/state-tree**
+
+  - Replacing a field-nested model (`app.profile.set(Profile.create())`) now rewires patch/snapshot propagation: the new child's writes reach the parent's `onPatch` / `onSnapshot` / `getSnapshot`, and the detached old child can no longer emit phantom `/profile/...` patches on its former parent. `destroy(parent)` tears down exactly the children currently held.
+  - `applyPatch` over a model-typed field reconciles the snapshot into the live instance instead of writing a plain object over it, so replaying recorded patches (undo/redo, time-travel, sync) no longer breaks with `profile().name is not a function`.
+  - A node removed from its parent (array/object container removal, field replacement, overwriting a bare model in a plain field) now has its parent pointer cleared — `getParent` / `getRoot` / `getPath` no longer report a stale ancestor. A node moved to another parent keeps its new parent.
+  - Schema-mode `reset()` deep-clones its baseline with `structuredClone` instead of a JSON round-trip: `Date`, `Map`, `Set`, `bigint` and `undefined` fields now reset correctly (bigint used to throw).
+  - `applySnapshot` with `null` for a nested-model key writes `null` instead of throwing a `TypeError`; a non-object top-level snapshot throws a `[Pyreon]` error.
+  - **Behaviour change:** every error message now uses the `[Pyreon] state-tree <fn>:` prefix; the remaining `[@pyreon/state-tree]` messages (`onPatch`, `applyPatch`, `getSnapshot`, `applySnapshot`, `addMiddleware`) changed. Code matching on the old text must update.
+
+  **@pyreon/store**
+
+  - New per-store SSR opt-out: `defineStore(id, setup, { ssr: false })` (schema stores: `ssr: false` in the config). Such a store is never serialized into the page's `window.__PYREON_STORE_STATE__`, and on the client it ignores any server snapshot. Use it for sessions, tokens and other user-private state.
+  - `api.dispose()` only removes the registry entry while it still belongs to that instance — a stale handle disposed after `resetStore(id)` + re-create no longer evicts the new, live store.
+  - SSR hydration reads only OWN keys of the snapshot, so a store id such as `valueOf` / `toString` is no longer "seeded" from `Object.prototype` (which threw).
+  - **Behaviour change:** `reset()` with `subscribe()` listeners emits ONE `patch` mutation carrying every changed field instead of one `direct` notification per field.
+  - `addStorePlugin(plugin)` now returns an unregister function (idempotent).
+
+### Patch Changes
+
+- [#3417](https://github.com/pyreon/pyreon/pull/3417) [`61e0482`](https://github.com/pyreon/pyreon/commit/61e0482b7fa532d439af670066b8928fe121a53c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Built-artifact specs no longer skip silently
+
+  Test-only hardening; no runtime change. Seven specs across `@pyreon/charts`,
+  `@pyreon/store` and `@pyreon/lint` guarded themselves on `existsSync(lib/…)`
+  because they measure BUILT output — the plot families' tree-shaking, the store's
+  dev-gate stripping, and the proof that `pyreon-lint`'s published bin actually
+  invokes the CLI, a spec that exists because that bin was once a total no-op in
+  every published version.
+
+  That guard is right locally (a fresh worktree has no `lib/`) and wrong in CI,
+  where the test cells restore the bootstrap and a skip means the suite proved
+  nothing while reporting green. Four of the seven had no loud counterpart at all.
+
+  `hasBuiltLib(path, what)` now names what it skipped and why, and throws under
+  `PYREON_REQUIRE_BUILT_LIB=1` — the contract `PYREON_REQUIRE_NATIVE_VALIDATE=1`
+  already has for the native toolchains. `check-skip-guards` keeps the quiet form
+  from coming back.
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3155](https://github.com/pyreon/pyreon/pull/3155) [`26e1837`](https://github.com/pyreon/pyreon/commit/26e1837c562b35887a5b3866fc0251f086f32063) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct four documentation claims that contradicted the shipped code
+
+  - **`dehydrateStores`'s `@example` taught an XSS.** It showed a bare `JSON.stringify` interpolated into an inline `<script>`, and store state is by definition user data. Framework code is clean — every embed site routes through a script-safe serializer — but this example propagates into `llms.txt` and the MCP api reference, so an assistant reproduces it. A doc is a call site. It now shows the escaping (the `<` class plus U+2028/U+2029) and says why.
+  - **`canonical-primitives.ts` — the file the codebase treats as the single source of truth on the question — said 6 of 16 primitives were wired and named the rest as falling through to generic emit.** All 16 are wired: 15 have a dedicated per-target emit function and `Inline` deliberately shares `Stack`'s with a row default. It also listed nine names as ten and labelled a five-item group as four.
+  - **`@pyreon/state-tree`'s README said live model instances "self-register".** `registerInstance` has no caller outside its own tests, so `getActiveModels()` returns `[]` forever and the snippet as written could never work. Registration is explicit by design — only the caller can name an instance — which is what the function's own docstring already said. The README now matches, and notes that the registry holds `WeakRef`s so registering never keeps an instance alive.
+  - **The multiplatform matrix scored crash reporting `0.0 / "ABSENT — no vocabulary at all. No useCrashReporter"`** while `useCrashReporter()` shipped, was exported from `@pyreon/hooks`, and was wired in both emitters. The row is 0.2 now with an honest account: capture, persistence, and next-launch rehydration exist on all three platforms and the emit auto-starts them, but there is no device test on either target, symbolication is absent, and signal/NDK crashes are out of v1 scope. The matrix gate only checks that the headline equals the column sum, so it is structurally unable to catch a row that misdescribes itself.
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#2752](https://github.com/pyreon/pyreon/pull/2752) [`e0e0dc0`](https://github.com/pyreon/pyreon/commit/e0e0dc066470e92066652ccbd739ae0d6e518c58) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Eight README examples are now typechecked in CI.
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#2808](https://github.com/pyreon/pyreon/pull/2808) [`adb5897`](https://github.com/pyreon/pyreon/commit/adb58970bc878291bfd892927ee15cb8a4ca87a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(store): a NESTED `patch()` (an effect calling `patch()` during an outer `patch()`) now merges into the outermost patch's SINGLE notification, instead of emitting its own and closing the shared window mid-outer
+
+  The subscribed `patch()` fast path detaches each field's change-detector, writes, re-attaches, and drains in a `batch()` — a user effect fired by that drain can call `patch()` again. The inner patch's own `finally` cleared `patchInProgress` (mid-outer) and emitted a SECOND `'patch'` notification, so one logical mutation surfaced as two events; worse, the prematurely-cleared flag meant a later re-entrant DIRECT write's event was silently buffered-and-dropped.
+
+  A `patchDepth` nesting counter (both the object-form and functional-form paths) makes only the OUTERMOST patch close the window, merge the buffered nested events, and emit once — decremented FIRST in the `finally` (before the emit) so a throwing subscriber can't wedge the depth or the flag. Bisect-verified; full `@pyreon/store` suite (213) green.
+
+- [#3192](https://github.com/pyreon/pyreon/pull/3192) [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Per-request store isolation is now automatic; it used to be opt-in, and
+  nothing opted in.**
+
+  `@pyreon/store`'s registry is a module-level `Map`, and `@pyreon/runtime-server`
+  exposed `configureStoreIsolation(setter)` to swap in an AsyncLocalStorage-backed
+  provider. That was documented everywhere — README, manifest, generated docs all
+  said "call once at startup or concurrent requests share one global store
+  registry". Nothing called it.
+
+  The seam takes a _setter_ as an argument for a reason: `@pyreon/server` and
+  `@pyreon/zero` own the server and neither depends on `@pyreon/store`, so neither
+  _can_ wire it. That left the application author, reached only through a
+  paragraph in a package they never import. Verified on the default path — two
+  `runWithRequestContext` calls, which is exactly what two concurrent SSR renders
+  are, and the second read the first's store value.
+
+  `@pyreon/store` now publishes its setter on a `globalThis` seam when it loads on
+  a server, and the renderer picks it up at its render choke point — the same
+  shape as `__PYREON_STYLER_COLLECT__`, and for the same reason. No import in
+  either direction; the browser pays nothing.
+
+  `configureStoreIsolation` keeps working and still wins, but it is now the
+  override rather than the switch: reach for it to supply a custom provider (a
+  shared build-time cache across SSG pages, a test double). An app that already
+  calls it is unaffected.
+
+  **Behaviour change worth knowing about:** an SSG build that deliberately relied
+  on one registry persisting across page renders now gets a fresh one per render.
+  That was already a bug in the other direction — page 2 could ship page 1's state
+  — but if you want the old behaviour, pass your own provider.
+
+- Updated dependencies [[`443a646`](https://github.com/pyreon/pyreon/commit/443a646875093e1987fbf4be56ffac934ba60c17), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`b1f9914`](https://github.com/pyreon/pyreon/commit/b1f991412dbd53cb2e943678aadbe89a6dfdb513), [`e56b865`](https://github.com/pyreon/pyreon/commit/e56b865f08946b7f848906bf2562911fa7f95066), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`cf64ac7`](https://github.com/pyreon/pyreon/commit/cf64ac738115998ade80f3c8ed984a2d109cbc17), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -467,33 +592,33 @@
   ## API
 
   ```ts
-  import { zodSchema } from "@pyreon/validation";
-  import { defineStore, computed } from "@pyreon/store";
-  import { z } from "zod";
+  import { zodSchema } from '@pyreon/validation'
+  import { defineStore, computed } from '@pyreon/store'
+  import { z } from 'zod'
 
   const UserSchema = zodSchema(
     z.object({
       name: z.string().min(1),
       age: z.number(),
-    })
-  );
+    }),
+  )
 
-  const useUser = defineStore("user", {
+  const useUser = defineStore('user', {
     schema: UserSchema,
-    initial: { name: "", age: 0 },
+    initial: { name: '', age: 0 },
     setup: ({ state, set, patch, reset }) => ({
       // state.name: Signal<string>   ← inferred from schema
       // state.age:  Signal<number>
       greet: computed(() => `Hello, ${state.name()}`),
     }),
-  });
+  })
 
-  const u = useUser();
-  u.store.name(); // Signal<string> read
-  u.store.greet(); // computed
-  u.set({ name: "Alice", age: 30 }); // full replace + validate
-  u.patch({ age: 31 }); // partial merge + validate
-  u.store.age.set(-1); // direct write — bypasses validation (escape hatch)
+  const u = useUser()
+  u.store.name() // Signal<string> read
+  u.store.greet() // computed
+  u.set({ name: 'Alice', age: 30 }) // full replace + validate
+  u.patch({ age: 31 }) // partial merge + validate
+  u.store.age.set(-1) // direct write — bypasses validation (escape hatch)
   ```
 
   ## Library support
@@ -521,7 +646,6 @@
   `TypedSchemaAdapter` gains an optional `parse` method that returns the **coerced parsed value** (not just errors). This is what schema-stores need so that `z.string().default('Alice')` / `z.transform(...)` actually write the transformed value to signals. The existing `validator` field is unchanged — `@pyreon/form` consumers see no behavior change. The three first-party adapters (`zodSchema`, `valibotSchema`, `arktypeSchema`) all gained sync `parse` implementations.
 
   ## Validation contract
-
   - **`set(full)` and `patch(partial)` validate.** Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
   - **Initial is validated once at defineStore-time.** Bad initial throws immediately (fail-fast). Schema defaults + transforms apply.
   - **Direct signal writes bypass validation.** `store.fieldName.set(v)` is an escape hatch for hot paths (~50-200µs per zod parse). For guaranteed validation, route through `set`/`patch`.
@@ -529,7 +653,6 @@
   - **Reserved key check.** Schema fields cannot collide with reserved `StoreApi` method names (`set`, etc.) — throws at construction with named key.
 
   ## What this PR does NOT do
-
   - Existing `defineStore(id, setupFn)` API is **unchanged**. Schema mode is a purely additive overload.
   - No new package dependency (`@pyreon/store` keeps its existing `@pyreon/reactivity`-only dep tree). Schema detection is duck-typed at runtime — `'_infer' in schema` for Tier A.1, `'~standard' in schema` for Tier A.2. The type-level `InferSchema<S>` helper has no runtime cost.
   - Top-level fields only get signals. Nested objects stay as values inside the parent signal (use `patch({ nested: {...} })` to mutate) — recursive signal-ization would require library-specific introspection.
@@ -552,12 +675,12 @@
     state: { count: 0 },
     views: (self) => ({ doubled: () => self.count() * 2 }),
     actions: (self) => ({ inc: () => self.count.update((n) => n + 1) }),
-  });
+  })
 
   // After
   model({ state: { count: 0 } })
     .views((self) => ({ doubled: () => self.count() * 2 }))
-    .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }));
+    .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }))
   ```
 
   Migration is mechanical: `state` stays inside `model(...)`; `views` and `actions` keys move to chained `.views(...)` / `.actions(...)` calls verbatim. Behavior of each factory is unchanged. Empty `views: () => ({})` can be dropped.
@@ -571,11 +694,11 @@
   Schema-mode instances expose **five validated mutation helpers** with bare names matching `@pyreon/store`'s `SchemaStoreApi`:
 
   ```ts
-  u.set({ ...full }); // full replace, validated
-  u.patch({ name: "Bob" }); // shallow merge, validated
-  u.deepPatch({ prefs: { theme: "dark" } }); // recursive merge — keeps siblings
-  u.update("items", (items) => items.filter((x) => x.id !== id)); // transform one field
-  u.reset(); // restore parsed initial
+  u.set({ ...full }) // full replace, validated
+  u.patch({ name: 'Bob' }) // shallow merge, validated
+  u.deepPatch({ prefs: { theme: 'dark' } }) // recursive merge — keeps siblings
+  u.update('items', (items) => items.filter((x) => x.id !== id)) // transform one field
+  u.reset() // restore parsed initial
   ```
 
   Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
@@ -874,7 +997,6 @@
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -888,7 +1010,6 @@
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages
