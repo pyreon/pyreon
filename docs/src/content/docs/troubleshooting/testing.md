@@ -184,6 +184,12 @@ Use `bun run test` (runs vitest via package scripts)
 
 ---
 
+### Counting regions does not prove gaps stay blank
+
+A band emitted two polygons but closed the second against the first region's lower edge. Pair boundaries by their shared gap-mask run index, including singleton runs, and resolve both once per frame; rescanning a channel inside the region loop costs O(rows × regions). Assert every polygon's coordinates and pixels inside the missing interval. Keyed geometry must use the renderer's finite predicate too: a transform can overflow after accessor normalisation. References: `charts/src/engine/band-runs.test.ts`, `band-runs.browser.test.tsx`, `keyed-morph-gaps.browser.test.tsx`.
+
+---
+
 ### Missing cleanup
 
 Always clean up mounted components, dispose effects
