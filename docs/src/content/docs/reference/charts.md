@@ -66,27 +66,27 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`Chart`](#chart) | component | The chart — `<Chart data x>` with MARK CHILDREN, from `@pyreon/charts`. |
-| [`Sma`](#sma) | component | The INDICATOR marks, from `@pyreon/charts`: `<Sma y window>` (simple moving average), `<Ema y window>` (exponential), `&lt; |
-| [`PlotChart`](#plotchart) | component | The array form of `<Chart>`, from `@pyreon/charts/engine`: the same engine, with marks passed as a `marks={[…]}` array o |
-| [`ChartThemeProvider`](#chartthemeprovider) | component | Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then `theme`  |
-| [`BoxplotChart`](#boxplotchart) | component | A boxplot per category from RAW SAMPLES: `values={(d) => d.samples}` is reduced with `fiveNumber` (min, q1, median, q3,  |
-| [`sma`](#sma) | function | Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: `sm |
-| [`chartToSvg`](#charttosvg) | function | Render a chart to a standalone `<svg>` STRING. |
-| [`Arc`](#arc) | component | The pie and donut mark: `<Chart data><Arc value label /></Chart>`. |
-| [`Candle`](#candle) | component | The candlestick mark: `<Chart data x><Candle open high low close /></Chart>`, one period per row, the chart's `x` labell |
-| [`Cell`](#cell) | component | The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third |
-| [`RadarChart`](#radarchart) | component | Radar (spider) chart from `@pyreon/charts` — one polygon per datum over shared spokes. |
-| [`TreemapChart`](#treemapchart) | component | The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. |
-| [`MapChart`](#mapchart) | component | GeoJSON regions filled by value. |
-| [`GanttChart`](#ganttchart) | component | The Gantt family — one row per task on a calendar-aligned time axis. |
-| [`createChartHandle`](#createcharthandle) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`  |
-| [`createChartLink`](#createchartlink) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group u |
-| [`sonifyValues`](#sonifyvalues) | function | A series as sound: each value maps linearly to a pitch between `minHz` and `maxHz` (`valueToHz` — a FINITE value outside |
+| [`Chart`](#chart-component) | component | The chart — `<Chart data x>` with MARK CHILDREN, from `@pyreon/charts`. |
+| [`Sma`](#sma-component) | component | The INDICATOR marks, from `@pyreon/charts`: `<Sma y window>` (simple moving average), `<Ema y window>` (exponential), `&lt; |
+| [`PlotChart`](#plotchart-component) | component | The array form of `<Chart>`, from `@pyreon/charts/engine`: the same engine, with marks passed as a `marks={[…]}` array o |
+| [`ChartThemeProvider`](#chartthemeprovider-component) | component | Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then `theme`  |
+| [`BoxplotChart`](#boxplotchart-component) | component | A boxplot per category from RAW SAMPLES: `values={(d) => d.samples}` is reduced with `fiveNumber` (min, q1, median, q3,  |
+| [`sma`](#sma-function) | function | Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: `sm |
+| [`chartToSvg`](#charttosvg-function) | function | Render a chart to a standalone `<svg>` STRING. |
+| [`Arc`](#arc-component) | component | The pie and donut mark: `<Chart data><Arc value label /></Chart>`. |
+| [`Candle`](#candle-component) | component | The candlestick mark: `<Chart data x><Candle open high low close /></Chart>`, one period per row, the chart's `x` labell |
+| [`Cell`](#cell-component) | component | The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third |
+| [`RadarChart`](#radarchart-component) | component | Radar (spider) chart from `@pyreon/charts` — one polygon per datum over shared spokes. |
+| [`TreemapChart`](#treemapchart-component) | component | The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. |
+| [`MapChart`](#mapchart-component) | component | GeoJSON regions filled by value. |
+| [`GanttChart`](#ganttchart-component) | component | The Gantt family — one row per task on a calendar-aligned time axis. |
+| [`createChartHandle`](#createcharthandle-function) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`  |
+| [`createChartLink`](#createchartlink-function) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group u |
+| [`sonifyValues`](#sonifyvalues-function) | function | A series as sound: each value maps linearly to a pitch between `minHz` and `maxHz` (`valueToHz` — a FINITE value outside |
 
 ## API
 
-### Chart `component`
+### `Chart` `component`
 
 ```ts
 <T>(props: ChartProps<T>) => VNode
@@ -128,7 +128,7 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 
 ---
 
-### Sma `component`
+### `Sma` `component`
 
 ```ts
 <T>(props: AverageProps<T>) => VNode | null  // also Ema; Trend (no window); Bollinger (window, k?)
@@ -161,7 +161,7 @@ const candles: Candle[] = [{ day: 'Mon', close: 101 }, { day: 'Tue', close: 104 
 
 ---
 
-### PlotChart `component`
+### `PlotChart` `component`
 
 ```ts
 <T>(props: PlotChartProps<T>) => VNodeChild
@@ -209,7 +209,7 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
 
 ---
 
-### ChartThemeProvider `component`
+### `ChartThemeProvider` `component`
 
 ```ts
 (props: { theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); light?: Partial<ChartTheme>; dark?: Partial<ChartTheme>; children? }) => VNodeChild
@@ -251,7 +251,7 @@ const dark = signal(true) // <PyreonUI mode> sets the mode in a UI-system app
 
 ---
 
-### BoxplotChart `component`
+### `BoxplotChart` `component`
 
 ```ts
 <T>(props: BoxplotChartProps<T>) => VNodeChild
@@ -279,7 +279,7 @@ const groups: Group[] = [{ name: 'eu', samples: [12, 15, 14, 30, 11] }, { name: 
 
 ---
 
-### sma `function`
+### `sma` `function`
 
 ```ts
 <T>(y: Accessor<T>, window: number, options?: MarkOptions) => Mark<T>
@@ -310,7 +310,7 @@ const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000,
 
 ---
 
-### chartToSvg `function`
+### `chartToSvg` `function`
 
 ```ts
 <T>(options: ChartToSvgOptions<T>) => string
@@ -348,7 +348,7 @@ const svg = chartToSvg({
 
 ---
 
-### Arc `component`
+### `Arc` `component`
 
 ```ts
 <T>(props: ArcProps<T>) => VNode | null
@@ -384,7 +384,7 @@ const cpu = signal(42)
 
 ---
 
-### Candle `component`
+### `Candle` `component`
 
 ```ts
 <T>(props: CandleProps<T>) => VNode | null
@@ -416,7 +416,7 @@ const days: Day[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }, { day: 'Tue', o:
 
 ---
 
-### Cell `component`
+### `Cell` `component`
 
 ```ts
 <T>(props: CellProps<T>) => VNode | null
@@ -449,7 +449,7 @@ const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }, { day: 'Tue', hour:
 
 ---
 
-### RadarChart `component`
+### `RadarChart` `component`
 
 ```ts
 <T>(props: RadarChartProps<T>) => VNodeChild
@@ -484,7 +484,7 @@ const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
 
 ---
 
-### TreemapChart `component`
+### `TreemapChart` `component`
 
 ```ts
 (props: TreemapChartProps) => VNode
@@ -518,7 +518,7 @@ const repo: TreeNode[] = [
 
 ---
 
-### MapChart `component`
+### `MapChart` `component`
 
 ```ts
 (props: MapChartProps) => VNode
@@ -555,7 +555,7 @@ const euShapes: GeoShape[] = geoShapes(euGeoJson)
 
 ---
 
-### GanttChart `component`
+### `GanttChart` `component`
 
 ```ts
 (props: GanttChartProps) => VNode
@@ -589,7 +589,7 @@ const tasks: GanttTask[] = [
 
 ---
 
-### createChartHandle `function`
+### `createChartHandle` `function`
 
 ```ts
 () => ChartHandle
@@ -623,7 +623,7 @@ chart.dispatch({ type: 'restore' })
 
 ---
 
-### createChartLink `function`
+### `createChartLink` `function`
 
 ```ts
 () => ChartLink
@@ -655,7 +655,7 @@ const link = createChartLink()
 
 ---
 
-### sonifyValues `function`
+### `sonifyValues` `function`
 
 ```ts
 (values: number[], options?: SonifyOptions) => Sonification

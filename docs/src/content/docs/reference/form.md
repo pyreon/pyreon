@@ -147,23 +147,23 @@ if (!(await form.validate())) form.focusFirstError()
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useForm`](#useform) | hook | Create a signal-based form. |
-| [`useField`](#usefield) | hook | Extract a single field's state and helpers from a form instance — avoids passing the entire `FormState` to leaf componen |
-| [`useFieldArray`](#usefieldarray) | hook | Manage a dynamic array of form fields with stable keys. |
-| [`useWatch`](#usewatch) | hook | Typed overloads for reactively watching form field values. |
-| [`useFormState`](#useformstate) | hook | Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). |
-| [`FormProvider`](#formprovider) | component | Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. |
-| [`useFormContext`](#useformcontext) | hook | Read the nearest `FormProvider` form from context. |
-| [`Form`](#form) | component | A thin `<form>` wrapper that combines `FormProvider` (so descendants can call `useField`/`useFormContext` without prop-d |
-| [`Submit`](#submit) | component | A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the button |
-| [`FormValues`](#formvalues) | type | Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (` |
-| [`FieldNames`](#fieldnames) | type | The field-name union of a form. |
-| [`FieldValue`](#fieldvalue) | type | The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. |
-| [`NestValues`](#nestvalues) | type | Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`) t |
+| [`useForm`](#useform-hook) | hook | Create a signal-based form. |
+| [`useField`](#usefield-hook) | hook | Extract a single field's state and helpers from a form instance — avoids passing the entire `FormState` to leaf componen |
+| [`useFieldArray`](#usefieldarray-hook) | hook | Manage a dynamic array of form fields with stable keys. |
+| [`useWatch`](#usewatch-hook) | hook | Typed overloads for reactively watching form field values. |
+| [`useFormState`](#useformstate-hook) | hook | Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). |
+| [`FormProvider`](#formprovider-component) | component | Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. |
+| [`useFormContext`](#useformcontext-hook) | hook | Read the nearest `FormProvider` form from context. |
+| [`Form`](#form-component) | component | A thin `<form>` wrapper that combines `FormProvider` (so descendants can call `useField`/`useFormContext` without prop-d |
+| [`Submit`](#submit-component) | component | A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the button |
+| [`FormValues`](#formvalues-type) | type | Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (` |
+| [`FieldNames`](#fieldnames-type) | type | The field-name union of a form. |
+| [`FieldValue`](#fieldvalue-type) | type | The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. |
+| [`NestValues`](#nestvalues-type) | type | Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`) t |
 
 ## API
 
-### useForm `hook`
+### `useForm` `hook`
 
 ```ts
 <TValues extends Record<string, unknown>>(options: UseFormOptions<TValues>) => FormState<TValues>
@@ -202,7 +202,7 @@ const form = useForm({
 
 ---
 
-### useField `hook`
+### `useField` `hook`
 
 ```ts
 <TValues, K extends keyof TValues & string>(form: FormState<TValues>, name: K) => UseFieldResult<TValues[K]>
@@ -233,7 +233,7 @@ function EmailField({ form }: { form: FormState<{ email: string }> }) {
 
 ---
 
-### useFieldArray `hook`
+### `useFieldArray` `hook`
 
 ```ts
 <T>(initial?: T[]) => UseFieldArrayResult<T>
@@ -266,7 +266,7 @@ tags.remove(0)
 
 ---
 
-### useWatch `hook`
+### `useWatch` `hook`
 
 ```ts
 (form, name) => Signal<TValues[K]> | (form, names[]) => Signal<T>[] | (form) => Computed<TValues>
@@ -293,7 +293,7 @@ effect(() => { preview.set(`Hello ${email()}`) })
 
 ---
 
-### useFormState `hook`
+### `useFormState` `hook`
 
 ```ts
 <TValues, T>(form: FormState<TValues>, selector?: (s: FormStateSummary) => T) => Computed<T>
@@ -316,7 +316,7 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.is
 
 ---
 
-### FormProvider `component`
+### `FormProvider` `component`
 
 ```ts
 <TValues>(props: { form: FormState<TValues>; children: VNodeChild }) => VNode
@@ -345,7 +345,7 @@ const form = useFormContext<typeof values>()
 
 ---
 
-### useFormContext `hook`
+### `useFormContext` `hook`
 
 ```ts
 <TValues>() => FormState<TValues>
@@ -369,7 +369,7 @@ const field = useField(form, 'email')
 
 ---
 
-### Form `component`
+### `Form` `component`
 
 ```ts
 <TValues>(props: { of: FormState<TValues>; children?: VNodeChild; class?: string; disabled?: boolean | (() => boolean); readOnly?: boolean | (() => boolean) }) => VNodeChild
@@ -398,7 +398,7 @@ const form = useForm({ initialValues: { email: '' }, onSubmit: (values) => api.l
 
 ---
 
-### Submit `component`
+### `Submit` `component`
 
 ```ts
 (props: { children?: VNodeChild; class?: string }) => VNodeChild
@@ -425,7 +425,7 @@ A `<button type="submit">` that auto-disables while `form.isSubmitting()` is tru
 
 ---
 
-### FormValues `type`
+### `FormValues` `type`
 
 ```ts
 type FormValues<F> // FormState<V> | UseFormOptions<V> → V
@@ -449,7 +449,7 @@ type Values = FormValues<typeof form> // { email: string; age: number }
 
 ---
 
-### FieldNames `type`
+### `FieldNames` `type`
 
 ```ts
 type FieldNames<F> = keyof FormValues<F> & string
@@ -472,7 +472,7 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }
 
 ---
 
-### FieldValue `type`
+### `FieldValue` `type`
 
 ```ts
 type FieldValue<F, K extends FieldNames<F>>
@@ -494,7 +494,7 @@ type Age = FieldValue<typeof form, 'age'> // number
 
 ---
 
-### NestValues `type`
+### `NestValues` `type`
 
 ```ts
 type NestValues<T extends Record<string, unknown>> // flat dot-path shape → nested payload shape

@@ -32,32 +32,32 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`defineTheme`](#definetheme) | function | Declare the app's design tokens. |
-| [`styled`](#styled) | function | Component factory. |
-| [`css`](#css) | function | Tagged-template that returns a LAZY `CSSResult` — it is NOT a class name or a CSS string until resolved by `styled()`, ` |
-| [`keyframes`](#keyframes) | function | Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation  |
-| [`createGlobalStyle`](#createglobalstyle) | function | Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-ef |
-| [`useCSS`](#usecss) | hook | Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. |
-| [`useTheme`](#usetheme) | hook | Returns the current theme as a SNAPSHOT at call time. |
-| [`useThemeAccessor`](#usethemeaccessor) | hook | Returns the raw `() => T` theme accessor (not a snapshot). |
-| [`ThemeProvider`](#themeprovider) | component | Provides a theme to the reactive `ThemeContext`. |
-| [`ThemeContext`](#themecontext) | constant | The reactive context backing the theme. |
-| [`createSheet`](#createsheet) | function | Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton ` |
-| [`StyleSheet`](#stylesheet) | class | The CSS injection engine: FNV-1a content hashing, a dedup cache (identical CSS → one rule), and SSR support (collect rul |
-| [`sheet`](#sheet) | constant | The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by defau |
-| [`resolve`](#resolve) | function | Low-level: resolve a tagged-template (strings + interpolations) against a `props` object into a final CSS string (functi |
-| [`normalizeCSS`](#normalizecss) | function | Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key a |
-| [`resolveValue`](#resolvevalue) | function | Resolves a SINGLE interpolation against `props`: invokes function interpolations with `props`, flattens nested `CSSResul |
-| [`clearNormCache`](#clearnormcache) | function | Clears the `normalizeCSS` memo cache. |
-| [`buildProps`](#buildprops) | function | Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, a |
-| [`filterProps`](#filterprops) | function | Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist); `$ |
-| [`isDynamic`](#isdynamic) | function | True when an interpolation is a function (signal accessor / props reader) — i.e. |
-| [`hash / hashUpdate / hashFinalize / HASH_INIT`](#hash-hashupdate-hashfinalize-hash-init) | function | The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. |
-| [`setStyleExtraction`](#setstyleextraction) | function | Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). |
+| [`defineTheme`](#definetheme-function) | function | Declare the app's design tokens. |
+| [`styled`](#styled-function) | function | Component factory. |
+| [`css`](#css-function) | function | Tagged-template that returns a LAZY `CSSResult` — it is NOT a class name or a CSS string until resolved by `styled()`, ` |
+| [`keyframes`](#keyframes-function) | function | Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation  |
+| [`createGlobalStyle`](#createglobalstyle-function) | function | Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-ef |
+| [`useCSS`](#usecss-hook) | hook | Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. |
+| [`useTheme`](#usetheme-hook) | hook | Returns the current theme as a SNAPSHOT at call time. |
+| [`useThemeAccessor`](#usethemeaccessor-hook) | hook | Returns the raw `() => T` theme accessor (not a snapshot). |
+| [`ThemeProvider`](#themeprovider-component) | component | Provides a theme to the reactive `ThemeContext`. |
+| [`ThemeContext`](#themecontext-constant) | constant | The reactive context backing the theme. |
+| [`createSheet`](#createsheet-function) | function | Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton ` |
+| [`StyleSheet`](#stylesheet-class) | class | The CSS injection engine: FNV-1a content hashing, a dedup cache (identical CSS → one rule), and SSR support (collect rul |
+| [`sheet`](#sheet-constant) | constant | The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by defau |
+| [`resolve`](#resolve-function) | function | Low-level: resolve a tagged-template (strings + interpolations) against a `props` object into a final CSS string (functi |
+| [`normalizeCSS`](#normalizecss-function) | function | Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key a |
+| [`resolveValue`](#resolvevalue-function) | function | Resolves a SINGLE interpolation against `props`: invokes function interpolations with `props`, flattens nested `CSSResul |
+| [`clearNormCache`](#clearnormcache-function) | function | Clears the `normalizeCSS` memo cache. |
+| [`buildProps`](#buildprops-function) | function | Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, a |
+| [`filterProps`](#filterprops-function) | function | Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist); `$ |
+| [`isDynamic`](#isdynamic-function) | function | True when an interpolation is a function (signal accessor / props reader) — i.e. |
+| [`hash / hashUpdate / hashFinalize / HASH_INIT`](#hash-hashupdate-hashfinalize-hash_init-function) | function | The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. |
+| [`setStyleExtraction`](#setstyleextraction-function) | function | Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). |
 
 ## API
 
-### defineTheme `function`
+### `defineTheme` `function`
 
 ```ts
 defineTheme<T extends object>(theme: T): T
@@ -91,7 +91,7 @@ const Card = styled(Stack)`
 
 ---
 
-### styled `function`
+### `styled` `function`
 
 ```ts
 styled: ((tag: Tag, options?: StyledOptions) => TagTemplateFn) & { div: TagTemplateFn; span: TagTemplateFn; /* …all HTML tags via Proxy */ }
@@ -122,7 +122,7 @@ const Button = styled("button")`
 
 ---
 
-### css `function`
+### `css` `function`
 
 ```ts
 css(strings: TemplateStringsArray, ...values: Interpolation[]): CSSResult
@@ -151,7 +151,7 @@ function Card(props) {
 
 ---
 
-### keyframes `function`
+### `keyframes` `function`
 
 ```ts
 keyframes(strings: TemplateStringsArray, ...values: Interpolation[]): KeyframesResult
@@ -178,7 +178,7 @@ const Spinner = styled("div")`animation: ${spin} 1s linear infinite;`
 
 ---
 
-### createGlobalStyle `function`
+### `createGlobalStyle` `function`
 
 ```ts
 createGlobalStyle(strings: TemplateStringsArray, ...values: Interpolation[]): ComponentFn
@@ -208,7 +208,7 @@ const GlobalReset = createGlobalStyle`
 
 ---
 
-### useCSS `hook`
+### `useCSS` `hook`
 
 ```ts
 useCSS(template: CSSResult, props?: Record<string, any>, boost?: boolean): string
@@ -238,7 +238,7 @@ function Box(props) {
 
 ---
 
-### useTheme `hook`
+### `useTheme` `hook`
 
 ```ts
 useTheme<T extends object = Theme>(): T
@@ -266,7 +266,7 @@ function Badge() {
 
 ---
 
-### useThemeAccessor `hook`
+### `useThemeAccessor` `hook`
 
 ```ts
 useThemeAccessor<T extends object = Theme>(): () => T
@@ -293,7 +293,7 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap
 
 ---
 
-### ThemeProvider `component`
+### `ThemeProvider` `component`
 
 ```ts
 ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null
@@ -322,7 +322,7 @@ import { ThemeProvider } from "@pyreon/styler"
 
 ---
 
-### ThemeContext `constant`
+### `ThemeContext` `constant`
 
 ```ts
 ThemeContext: ReactiveContext<Theme>
@@ -347,7 +347,7 @@ const themeAccessor = useContext(ThemeContext) // () => Theme
 
 ---
 
-### createSheet `function`
+### `createSheet` `function`
 
 ```ts
 createSheet(options?: StyleSheetOptions): StyleSheet
@@ -372,7 +372,7 @@ const shadowSheet = createSheet({ /* StyleSheetOptions */ })
 
 ---
 
-### StyleSheet `class`
+### `StyleSheet` `class`
 
 ```ts
 class StyleSheet { constructor(options?: StyleSheetOptions) }
@@ -396,7 +396,7 @@ const s = new StyleSheet({ /* options */ })
 
 ---
 
-### sheet `constant`
+### `sheet` `constant`
 
 ```ts
 sheet: StyleSheet
@@ -415,7 +415,7 @@ import { sheet } from "@pyreon/styler"
 
 ---
 
-### resolve `function`
+### `resolve` `function`
 
 ```ts
 resolve(strings: TemplateStringsArray, values: Interpolation[], props: Record<string, any>): string
@@ -435,7 +435,7 @@ const cssText = resolve(strings, values, { theme, $compact: true })
 
 ---
 
-### normalizeCSS `function`
+### `normalizeCSS` `function`
 
 ```ts
 normalizeCSS(css: string): string
@@ -455,7 +455,7 @@ normalizeCSS("color:  red ;") // canonical form, dedup-stable
 
 ---
 
-### resolveValue `function`
+### `resolveValue` `function`
 
 ```ts
 resolveValue(value: Interpolation, props: Record<string, any>): string
@@ -475,7 +475,7 @@ resolveValue((p) => p.theme.colors.primary, { theme })
 
 ---
 
-### clearNormCache `function`
+### `clearNormCache` `function`
 
 ```ts
 clearNormCache(): void
@@ -495,7 +495,7 @@ afterEach(() => clearNormCache())
 
 ---
 
-### buildProps `function`
+### `buildProps` `function`
 
 ```ts
 buildProps(rawProps: Record<string, any>, generatedCls: string, isDOM: boolean, customFilter?: (prop: string) => boolean): Record<string, any>
@@ -521,7 +521,7 @@ const forwarded = buildProps(rawProps, "sc-abc123", true)
 
 ---
 
-### filterProps `function`
+### `filterProps` `function`
 
 ```ts
 filterProps(props: Record<string, unknown>): Record<string, unknown>
@@ -541,7 +541,7 @@ const domSafe = filterProps(props)
 
 ---
 
-### isDynamic `function`
+### `isDynamic` `function`
 
 ```ts
 isDynamic(v: Interpolation): boolean
@@ -562,7 +562,7 @@ isDynamic("12px")          // false → static, cached
 
 ---
 
-### hash / hashUpdate / hashFinalize / HASH_INIT `function`
+### `hash / hashUpdate / hashFinalize / HASH_INIT` `function`
 
 ```ts
 hash(str: string) => string — hashUpdate(state: number, str: string) => number — hashFinalize(state: number) => string — HASH_INIT: number
@@ -587,7 +587,7 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
 
 ---
 
-### setStyleExtraction `function`
+### `setStyleExtraction` `function`
 
 ```ts
 setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void

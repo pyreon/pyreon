@@ -354,7 +354,7 @@ An `info → error` update also upgrades the live-region urgency, because `role`
 
 ## Animation
 
-Toasts animate on both enter and leave via CSS transitions — no external animation library. A new toast fades + slides in (`entering → visible`, promoted on the next frame). A dismissed toast fades and collapses in place (`--exiting`, `max-height → 0`) for ~200ms before it is removed, so its siblings reflow up smoothly rather than snapping. The store owns this timing (`dismiss` schedules the removal), so the leave still completes even without a mounted animation runtime. Use [`toast.remove()`](#dismissing--toastdismiss-soft-and-toastremove-hard) to skip the animation.
+Toasts animate on both enter and leave via CSS transitions — no external animation library. A new toast fades + slides in (`entering → visible`, promoted on the next frame). A dismissed toast fades and collapses in place (`--exiting`, `max-height → 0`) for ~200ms before it is removed, so its siblings reflow up smoothly rather than snapping. The store owns this timing (`dismiss` schedules the removal), so the leave still completes even without a mounted animation runtime. Use [`toast.remove()`](#dismissing-toastdismiss-soft-and-toastremove-hard) to skip the animation.
 
 ## Scope — deliberate non-goals
 

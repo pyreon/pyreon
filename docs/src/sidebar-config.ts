@@ -42,6 +42,7 @@ export const SIDEBAR: SidebarGroup[] = [
     tier: 'Learn',
     items: [
       { text: 'Overview', slug: '' },
+      { text: 'Package Catalog', slug: 'package-catalog' },
       { text: 'Why Pyreon', slug: 'why-pyreon' },
       { text: 'Quickstart', slug: 'quickstart' },
       { text: 'Getting Started', slug: 'getting-started' },

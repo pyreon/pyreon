@@ -109,28 +109,28 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createFlow`](#createflow) | function | Create a reactive flow instance. |
-| [`useFlow`](#useflow) | hook | Component-scoped wrapper around `createFlow` — identical shape plus an implicit `onUnmount(() => flow.dispose())`. |
-| [`Flow`](#flow) | component | Main flow container. |
-| [`Background`](#background) | component | Grid background inside a `<Flow>`. |
-| [`Controls`](#controls) | component | Zoom / fit-view button cluster plus a live zoom-level readout. |
-| [`MiniMap`](#minimap) | component | Overview minimap of the full graph. |
-| [`Handle`](#handle) | component | Connection handle on a custom node — exposes a connectable point that edges attach to. |
-| [`Panel`](#panel) | component | Overlay panel positioned absolutely relative to the flow viewport. |
-| [`NodeResizer`](#noderesizer) | component | Render drag handles inside a custom node to resize it. |
-| [`NodeToolbar`](#nodetoolbar) | component | A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). |
-| [`flowStyles`](#flowstyles) | constant | The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fall |
-| [`EdgeLabelRenderer`](#edgelabelrenderer) | component | HTML edge labels for CUSTOM edges. |
-| [`BaseEdge`](#baseedge) | component | The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). |
-| [`EdgeText`](#edgetext) | component | A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). |
-| [`ViewportPortal`](#viewportportal) | component | Renders arbitrary HTML in flow coordinates: the children pan and zoom with the graph (React Flow `<ViewportPortal>`). |
-| [`MarkerType / Position`](#markertype-position) | constant | The two flow enums. |
-| [`edge-path-helpers`](#edge-path-helpers) | function | SVG-path builders for CUSTOM edge components. |
-| [`computeLayout`](#computelayout) | function | Auto-layout from the built-in engine. |
+| [`createFlow`](#createflow-function) | function | Create a reactive flow instance. |
+| [`useFlow`](#useflow-hook) | hook | Component-scoped wrapper around `createFlow` — identical shape plus an implicit `onUnmount(() => flow.dispose())`. |
+| [`Flow`](#flow-component) | component | Main flow container. |
+| [`Background`](#background-component) | component | Grid background inside a `<Flow>`. |
+| [`Controls`](#controls-component) | component | Zoom / fit-view button cluster plus a live zoom-level readout. |
+| [`MiniMap`](#minimap-component) | component | Overview minimap of the full graph. |
+| [`Handle`](#handle-component) | component | Connection handle on a custom node — exposes a connectable point that edges attach to. |
+| [`Panel`](#panel-component) | component | Overlay panel positioned absolutely relative to the flow viewport. |
+| [`NodeResizer`](#noderesizer-component) | component | Render drag handles inside a custom node to resize it. |
+| [`NodeToolbar`](#nodetoolbar-component) | component | A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). |
+| [`flowStyles`](#flowstyles-constant) | constant | The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fall |
+| [`EdgeLabelRenderer`](#edgelabelrenderer-component) | component | HTML edge labels for CUSTOM edges. |
+| [`BaseEdge`](#baseedge-component) | component | The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). |
+| [`EdgeText`](#edgetext-component) | component | A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). |
+| [`ViewportPortal`](#viewportportal-component) | component | Renders arbitrary HTML in flow coordinates: the children pan and zoom with the graph (React Flow `<ViewportPortal>`). |
+| [`MarkerType / Position`](#markertype-position-constant) | constant | The two flow enums. |
+| [`edge-path-helpers`](#edge-path-helpers-function) | function | SVG-path builders for CUSTOM edge components. |
+| [`computeLayout`](#computelayout-function) | function | Auto-layout from the built-in engine. |
 
 ## API
 
-### createFlow `function`
+### `createFlow` `function`
 
 ```ts
 <TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>
@@ -193,7 +193,7 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 
 ---
 
-### useFlow `hook`
+### `useFlow` `hook`
 
 ```ts
 <TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>
@@ -229,7 +229,7 @@ const MyDiagram = () => {
 
 ---
 
-### Flow `component`
+### `Flow` `component`
 
 ```ts
 (props: FlowComponentProps) => VNodeChild
@@ -272,7 +272,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
 
 ---
 
-### Background `component`
+### `Background` `component`
 
 ```ts
 (props?: { variant?: "dots" | "lines" | "cross"; gap?: number; size?: number; color?: string }) => VNodeChild
@@ -292,7 +292,7 @@ Grid background inside a `<Flow>`. Place as a direct child. `variant` is `"dots"
 
 ---
 
-### Controls `component`
+### `Controls` `component`
 
 ```ts
 (props?: { showZoomIn?: boolean; showZoomOut?: boolean; showFitView?: boolean; showLock?: boolean; position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) => VNodeChild
@@ -312,7 +312,7 @@ Zoom / fit-view button cluster plus a live zoom-level readout. Renders absolutel
 
 ---
 
-### MiniMap `component`
+### `MiniMap` `component`
 
 ```ts
 (props?: { nodeColor?: string | ((node: FlowNode) => string); maskColor?: string; width?: number; height?: number; style?: string; class?: string }) => VNodeChild
@@ -332,7 +332,7 @@ Overview minimap of the full graph. `nodeColor` is a flat color string OR a per-
 
 ---
 
-### Handle `component`
+### `Handle` `component`
 
 ```ts
 (props: { type: "source" | "target"; position: Position; id?: string; offset?: number; style?: string; class?: string }) => VNodeChild
@@ -370,7 +370,7 @@ flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })
 
 ---
 
-### Panel `component`
+### `Panel` `component`
 
 ```ts
 (props: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; style?: string; class?: string; children?: VNodeChild }) => VNodeChild
@@ -393,7 +393,7 @@ Overlay panel positioned absolutely relative to the flow viewport. Use for toolb
 
 ---
 
-### NodeResizer `component`
+### `NodeResizer` `component`
 
 ```ts
 NodeResizer(props: { nodeId: string; instance: FlowInstance; minWidth?: number; minHeight?: number; handleSize?: number; showEdgeHandles?: boolean }) => VNodeChild
@@ -423,7 +423,7 @@ const ResizableNode = (props) => (
 
 ---
 
-### NodeToolbar `component`
+### `NodeToolbar` `component`
 
 ```ts
 NodeToolbar(props: { nodeId?: string; position?: 'top' | 'bottom' | 'left' | 'right'; align?: 'start' | 'center' | 'end'; offset?: number; showOnSelect?: boolean; selected?: boolean | (() => boolean); style?: string; class?: string; children?: VNodeChild }) => VNodeChild
@@ -455,7 +455,7 @@ const NodeWithToolbar = (props) => (
 
 ---
 
-### flowStyles `constant`
+### `flowStyles` `constant`
 
 ```ts
 flowStyles: string
@@ -484,7 +484,7 @@ import { flowStyles } from '@pyreon/flow'
 
 ---
 
-### EdgeLabelRenderer `component`
+### `EdgeLabelRenderer` `component`
 
 ```ts
 EdgeLabelRenderer(props: { children?: VNodeChild }) => VNodeChild
@@ -522,7 +522,7 @@ function LabeledEdge(props: EdgeComponentProps) {
 
 ---
 
-### BaseEdge `component`
+### `BaseEdge` `component`
 
 ```ts
 BaseEdge(props: BaseEdgeProps) => VNodeChild
@@ -549,7 +549,7 @@ function Wire(props: EdgeComponentProps) {
 
 ---
 
-### EdgeText `component`
+### `EdgeText` `component`
 
 ```ts
 EdgeText(props: { x: number; y: number; label: string; style?: string }) => VNodeChild
@@ -571,7 +571,7 @@ A text label at a point in flow coordinates, in the built-in edge-label style (1
 
 ---
 
-### ViewportPortal `component`
+### `ViewportPortal` `component`
 
 ```ts
 ViewportPortal(props: { children?: VNodeChild }) => VNodeChild
@@ -597,7 +597,7 @@ Renders arbitrary HTML in flow coordinates: the children pan and zoom with the g
 
 ---
 
-### MarkerType / Position `constant`
+### `MarkerType / Position` `constant`
 
 ```ts
 enum MarkerType { Arrow = 'arrow', ArrowClosed = 'arrowclosed' } · enum Position { Top = 'top', Right = 'right', Bottom = 'bottom', Left = 'left' }
@@ -618,7 +618,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b',
 
 ---
 
-### edge-path-helpers `function`
+### `edge-path-helpers` `function`
 
 ```ts
 getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getEffectiveDimensions / getFloatingEndpoints / getNodeIntersection / getSmartHandlePositions / resolveHandleAnchor (anchoring) · collectEdgeMarkers / resolveEdgeMarkers / resolveMarker / markerId / DEFAULT_MARKER_END (markers) · DEFAULT_NODE_WIDTH / DEFAULT_NODE_HEIGHT · getHandlePosition / getSmartHandlePositions
@@ -649,7 +649,7 @@ const MyEdge = (props) => {
 
 ---
 
-### computeLayout `function`
+### `computeLayout` `function`
 
 ```ts
 computeLayout<TData>(nodes: FlowNode<TData>[], edges: FlowEdge[], algorithm?: 'layered' | 'force' | 'stress' | 'tree' | 'radial' | 'box' | 'rectpacking', options?: { direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'; nodeSpacing?: number; layerSpacing?: number; edgeRouting?: 'orthogonal' | 'splines' | 'polyline' }) => Promise<Array<{ id: string; position: { x: number; y: number } }>>

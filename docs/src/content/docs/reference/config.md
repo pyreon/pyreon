@@ -54,13 +54,13 @@ export default defineConfig({
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`defineConfig`](#defineconfig) | function | Identity helper that gives a config file types and editor completion without the author writing `satisfies PyreonConfig` |
-| [`CONFIG_FILENAMES`](#config-filenames) | constant | The filenames a loader tries, in order. |
-| [`sectionFrom`](#sectionfrom) | function | Read one tool's section out of a loaded config module, accepting either a default export or a named one. |
+| [`defineConfig`](#defineconfig-function) | function | Identity helper that gives a config file types and editor completion without the author writing `satisfies PyreonConfig` |
+| [`CONFIG_FILENAMES`](#config_filenames-constant) | constant | The filenames a loader tries, in order. |
+| [`sectionFrom`](#sectionfrom-function) | function | Read one tool's section out of a loaded config module, accepting either a default export or a named one. |
 
 ## API
 
-### defineConfig `function`
+### `defineConfig` `function`
 
 ```ts
 defineConfig(config: PyreonConfig): PyreonConfig
@@ -89,7 +89,7 @@ export default defineConfig({
 
 ---
 
-### CONFIG_FILENAMES `constant`
+### `CONFIG_FILENAMES` `constant`
 
 ```ts
 CONFIG_FILENAMES: readonly ['pyreon.config.ts', 'pyreon.config.tsx', 'pyreon.config.mjs', 'pyreon.config.js']
@@ -114,7 +114,7 @@ const found = CONFIG_FILENAMES.map((n) => resolve(cwd, n)).find(existsSync)
 
 ---
 
-### sectionFrom `function`
+### `sectionFrom` `function`
 
 ```ts
 sectionFrom(module: Record<string, unknown>, tool: string): unknown

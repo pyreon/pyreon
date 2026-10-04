@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findManifests } from '../../packages/internals/manifest/src/discovery'
+import { dedupeSlug, slugify } from '../../packages/zero/zero-content/src/pipeline/emit-jsx'
 import { escFlow, fence, yaml } from './_md-safe'
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -32,8 +33,6 @@ const OUT_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs', 'reference')
 const NAV_FILE = join(REPO_ROOT, 'docs', 'src', 'reference-nav.generated.ts')
 
 const slugOf = (name: string) => name.replace(/^@pyreon\//, '')
-/** Anchor a symbol name the way the markdown renderer slugifies headings. */
-const anchor = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 const KIND_LABEL: Record<string, string> = {
   function: 'function',
@@ -79,7 +78,9 @@ function renderEntry(e: any): string {
       : e.stability === 'experimental'
         ? ' — **experimental**'
         : ''
-  parts.push(`### ${e.name} \`${kind}\`${stab}`)
+  // API identifiers are literal code: surrounding underscores must not be
+  // parsed as Markdown emphasis (e.g. __PYREON_DEVTOOLS__).
+  parts.push(`### \`${e.name}\` \`${kind}\`${stab}`)
   if (e.deprecated?.replacement) {
     parts.push(`> **Deprecated** — use \`${e.deprecated.replacement}\` instead.`)
   }
@@ -132,6 +133,18 @@ const TIER_LABEL: Record<string, string> = {
 function renderPage(m: any): string {
   const slug = slugOf(m.name)
   const api = Array.isArray(m.api) ? m.api : []
+  // Headings include the kind/stability label. Slugging only the symbol name
+  // made every Exports index link point at a nonexistent heading. Share the
+  // renderer's Unicode/punctuation/deduplication rules rather than reimplementing them.
+  const usedAnchors = new Set<string>()
+  const apiAnchors = api.map((entry: any) => {
+    const status = entry.stability === 'deprecated' ? ' — deprecated'
+      : entry.stability === 'experimental' ? ' — experimental' : ''
+    const base = slugify(`${entry.name} ${KIND_LABEL[entry.kind] ?? entry.kind}${status}`) || 'section'
+    const id = dedupeSlug(base, usedAnchors)
+    usedAnchors.add(id)
+    return id
+  })
   const out: string[] = []
   out.push('---')
   out.push(`title: ${yaml(`${m.title ?? m.name} — API Reference`)}`)
@@ -195,13 +208,13 @@ function renderPage(m: any): string {
     out.push('')
     out.push('| Symbol | Kind | Summary |')
     out.push('| --- | --- | --- |')
-    for (const e of api) {
+    for (const [index, e] of api.entries()) {
       // Table cells are plain-text flow content: escape `<`/`>` (the MDX-ish
       // pipeline would otherwise read `Signal<T>` as a JSX tag and choke on
       // the `|` cell delimiter) and the pipe itself.
       const raw = String(e.summary ?? '').split(/(?<=\.)\s/)[0].slice(0, 120)
       const oneLine = escFlow(raw).replace(/\|/g, '\\|').replace(/\n/g, ' ')
-      out.push(`| [\`${e.name}\`](#${anchor(e.name)}) | ${KIND_LABEL[e.kind] ?? e.kind} | ${oneLine} |`)
+      out.push(`| [\`${e.name}\`](#${apiAnchors[index]}) | ${KIND_LABEL[e.kind] ?? e.kind} | ${oneLine} |`)
     }
     out.push('')
   }

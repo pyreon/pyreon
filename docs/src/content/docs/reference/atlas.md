@@ -83,22 +83,22 @@ export const scenarios = {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`atlas scan`](#atlas-scan) | function | Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each  |
-| [`atlas check`](#atlas-check) | function | Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but  |
-| [`atlas verify`](#atlas-verify) | function | Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent i |
-| [`VerifyFinding`](#verifyfinding) | type | One thing a verify check found — catalog `version: 2`. |
-| [`atlas dev`](#atlas-dev) | function | Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by d |
-| [`atlas build`](#atlas-build) | function | Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for P |
-| [`atlas verify-browser`](#atlas-verify-browser) | function | The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). |
-| [`createAtlas`](#createatlas) | function | The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. |
-| [`defineAtlas`](#defineatlas) | function | Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (au |
-| [`atlas init`](#atlas-init) | function | Writes the config the workspace already implies — the ONE file you author by hand. |
-| [`AtlasConfig.projects (monorepo — one site, several packages)`](#atlasconfig-projects-monorepo-one-site-several-packages) | type | Scan several packages into ONE catalog, each filed under its own `name` (the sidebar reads `Core/Forms/Button`). |
-| [`AtlasConfig.scenarios (authored scenarios + play)`](#atlasconfig-scenarios-authored-scenarios-play) | function | Authored scenarios in `atlas.config.ts`, keyed by component name. |
+| [`atlas scan`](#atlas-scan-function) | function | Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each  |
+| [`atlas check`](#atlas-check-function) | function | Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but  |
+| [`atlas verify`](#atlas-verify-function) | function | Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent i |
+| [`VerifyFinding`](#verifyfinding-type) | type | One thing a verify check found — catalog `version: 2`. |
+| [`atlas dev`](#atlas-dev-function) | function | Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by d |
+| [`atlas build`](#atlas-build-function) | function | Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for P |
+| [`atlas verify-browser`](#atlas-verify-browser-function) | function | The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). |
+| [`createAtlas`](#createatlas-function) | function | The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. |
+| [`defineAtlas`](#defineatlas-function) | function | Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (au |
+| [`atlas init`](#atlas-init-function) | function | Writes the config the workspace already implies — the ONE file you author by hand. |
+| [`AtlasConfig.projects (monorepo — one site, several packages)`](#atlasconfigprojects-monorepo-one-site-several-packages-type) | type | Scan several packages into ONE catalog, each filed under its own `name` (the sidebar reads `Core/Forms/Button`). |
+| [`AtlasConfig.scenarios (authored scenarios + play)`](#atlasconfigscenarios-authored-scenarios-play-function) | function | Authored scenarios in `atlas.config.ts`, keyed by component name. |
 
 ## API
 
-### atlas scan `function`
+### `atlas scan` `function`
 
 ```ts
 atlas scan [dir] [--no-mount] [--check]
@@ -133,7 +133,7 @@ atlas: 2 failing scenario(s):
 
 ---
 
-### atlas check `function`
+### `atlas check` `function`
 
 ```ts
 atlas check <Component> ['{"prop":"value"}'] [--cwd <dir>]
@@ -162,7 +162,7 @@ Input: 1 problem(s):
 
 ---
 
-### atlas verify `function`
+### `atlas verify` `function`
 
 ```ts
 atlas verify [Component] [--cwd <dir>] [--json] [--check]
@@ -198,7 +198,7 @@ atlas verify Button: 1 component(s), 15 scenario(s)
 
 ---
 
-### VerifyFinding `type`
+### `VerifyFinding` `type`
 
 ```ts
 interface VerifyFinding { code: FindingCode; message: string; fix?: string }
@@ -226,7 +226,7 @@ One thing a verify check found — catalog `version: 2`. `code` is a STABLE iden
 
 ---
 
-### atlas dev `function`
+### `atlas dev` `function`
 
 ```ts
 atlas dev [dir] [--port=5210]
@@ -250,7 +250,7 @@ atlas dev: 10 component(s) → http://localhost:5210/
 
 ---
 
-### atlas build `function`
+### `atlas build` `function`
 
 ```ts
 atlas build [dir] [--out <dir>] [--title <text>] [--base <path>]
@@ -278,7 +278,7 @@ atlas build: 10 component(s) → /repo/docs/components
 
 ---
 
-### atlas verify-browser `function`
+### `atlas verify-browser` `function`
 
 ```ts
 atlas verify-browser [dir] [--update-snapshots]
@@ -304,7 +304,7 @@ atlas verify-browser: 26 scenario(s) — coverage measured on 26, 0 baseline(s) 
 
 ---
 
-### createAtlas `function`
+### `createAtlas` `function`
 
 ```ts
 (options?: { plugins?: AtlasPlugin[]; preset?: "recommended" | "none" }) => Atlas
@@ -330,7 +330,7 @@ graph.search('button')                 // Catalog Graph queries
 
 ---
 
-### defineAtlas `function`
+### `defineAtlas` `function`
 
 ```ts
 defineAtlas(config: AtlasConfig): AtlasConfig
@@ -355,7 +355,7 @@ const graph = await createAtlas(options).build()
 
 ---
 
-### atlas init `function`
+### `atlas init` `function`
 
 ```ts
 atlas init [dir] [--force] [--dry-run] [--title <text>]
@@ -382,7 +382,7 @@ $ atlas init --force     # overwrite an existing config
 
 ---
 
-### AtlasConfig.projects (monorepo — one site, several packages) `type`
+### `AtlasConfig.projects (monorepo — one site, several packages)` `type`
 
 ```ts
 projects?: { name: string; dir: string }[]
@@ -415,7 +415,7 @@ export default {
 
 ---
 
-### AtlasConfig.scenarios (authored scenarios + play) `function`
+### `AtlasConfig.scenarios (authored scenarios + play)` `function`
 
 ```ts
 Record<string, { name: string; args?: Record<string, unknown>; play?: PlayFn }[]>

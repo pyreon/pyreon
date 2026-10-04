@@ -231,7 +231,7 @@ Pass these inside `isr: { ... }` on `createServer({ config })`. `revalidate` is 
 | --------------------- | ----------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------ |
 | `revalidate`          | `number`                                        | — (required)          | Seconds before a cached entry is considered stale                                    |
 | `maxEntries`          | `number`                                        | `1000`                | LRU cap on the default in-memory store (ignored when `store` is set)                 |
-| `cacheKey`            | `(req) => string`                               | `pathname + search`   | Cache-key derivation (see [Cache key](#cache-key--two-trade-offs))                   |
+| `cacheKey`            | `(req) => string`                               | `pathname + search`   | Cache-key derivation (see [Cache key](#cache-key-two-trade-offs))                   |
 | `store`               | `ISRStore`                                       | in-memory `Map`       | Pluggable backing store (Redis / KV / filesystem)                                    |
 | `tagsForRequest`      | `(req) => string[] \| Promise<string[]>`        | none                  | Tags recorded at cache-set time for `revalidateTag` group invalidation               |
 | `revalidateTimeoutMs` | `number`                                        | `30000`               | Max wall-time for one background revalidation before it's abandoned + aborted        |
@@ -465,7 +465,7 @@ export default function NotFound() {
 ```
 
 :::info{title="Framework auto-injects noindex"}
-The framework injects `<meta name="robots" content="noindex, nofollow">` into every emitted 404 HTML — runtime AND build-time. The `<Meta>` component's default of `'index, follow'` is correct for regular pages but wrong on a 404. A deliberate `<Meta robots="noindex, ...">` in your `_404.tsx` is preserved. See [SSG → 404 handling](/docs/ssg#_404-tsx-convention) for the host-routing requirement under prefixed URLs.
+The framework injects `<meta name="robots" content="noindex, nofollow">` into every emitted 404 HTML — runtime AND build-time. The `<Meta>` component's default of `'index, follow'` is correct for regular pages but wrong on a 404. A deliberate `<Meta robots="noindex, ...">` in your `_404.tsx` is preserved. See [SSG → 404 handling](/docs/ssg#_404tsx-host-routing) for the host-routing requirement under prefixed URLs.
 :::
 
 ## Adapter dispatch

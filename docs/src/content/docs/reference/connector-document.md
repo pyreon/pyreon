@@ -71,20 +71,20 @@ const styles = resolveStyles({ fontSize: '1.5rem', color: '#222', padding: '12px
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`extractDocumentTree`](#extractdocumenttree) | function | Walk a Pyreon VNode tree and extract a `DocNode` tree for `@pyreon/document`. |
-| [`resolveStyles`](#resolvestyles) | function | Convert a rocketstyle `$rocketstyle` theme object into a `ResolvedStyles` object compatible with `@pyreon/document`. |
-| [`parseCssDimension`](#parsecssdimension) | function | Parse a CSS dimension to a number: numbers pass through, `"14px"` → 14, `"1.5rem"` / `"1.5em"` → 1.5 × rootSize, `"12pt" |
-| [`parseBoxModel`](#parseboxmodel) | function | Parse a CSS padding/margin shorthand to the document tuple format: `8` → `8`, `"8px 16px"` → `[8, 16]`, the 3-value shor |
-| [`parseFontWeight`](#parsefontweight) | function | Parse a CSS font-weight: numbers pass through, the keywords `"normal"` / `"bold"` pass through AS STRINGS, numeric strin |
-| [`parseLineHeight`](#parselineheight) | function | Parse a CSS line-height to a plain number: numbers pass through (a unitless ratio like `1.5` stays `1.5`), dimension str |
-| [`ExtractOptions`](#extractoptions) | type | Options for `extractDocumentTree`. |
-| [`VarResolver`](#varresolver) | type | Maps a style value to a render-target-evaluable one. |
-| [`DocumentMarker`](#documentmarker) | type | Marker interface: components carrying `_documentType` are extractable. |
-| [`DocNode`](#docnode) | type | The format-agnostic document node — re-exported from `@pyreon/document` (along with `DocChild = DocNode \| string`, the ` |
+| [`extractDocumentTree`](#extractdocumenttree-function) | function | Walk a Pyreon VNode tree and extract a `DocNode` tree for `@pyreon/document`. |
+| [`resolveStyles`](#resolvestyles-function) | function | Convert a rocketstyle `$rocketstyle` theme object into a `ResolvedStyles` object compatible with `@pyreon/document`. |
+| [`parseCssDimension`](#parsecssdimension-function) | function | Parse a CSS dimension to a number: numbers pass through, `"14px"` → 14, `"1.5rem"` / `"1.5em"` → 1.5 × rootSize, `"12pt" |
+| [`parseBoxModel`](#parseboxmodel-function) | function | Parse a CSS padding/margin shorthand to the document tuple format: `8` → `8`, `"8px 16px"` → `[8, 16]`, the 3-value shor |
+| [`parseFontWeight`](#parsefontweight-function) | function | Parse a CSS font-weight: numbers pass through, the keywords `"normal"` / `"bold"` pass through AS STRINGS, numeric strin |
+| [`parseLineHeight`](#parselineheight-function) | function | Parse a CSS line-height to a plain number: numbers pass through (a unitless ratio like `1.5` stays `1.5`), dimension str |
+| [`ExtractOptions`](#extractoptions-type) | type | Options for `extractDocumentTree`. |
+| [`VarResolver`](#varresolver-type) | type | Maps a style value to a render-target-evaluable one. |
+| [`DocumentMarker`](#documentmarker-type) | type | Marker interface: components carrying `_documentType` are extractable. |
+| [`DocNode`](#docnode-type) | type | The format-agnostic document node — re-exported from `@pyreon/document` (along with `DocChild = DocNode \| string`, the ` |
 
 ## API
 
-### extractDocumentTree `function`
+### `extractDocumentTree` `function`
 
 ```ts
 (vnode: unknown, options?: ExtractOptions) => DocNode
@@ -138,7 +138,7 @@ const freshTree = extractDocumentTree(vnode)
 
 ---
 
-### resolveStyles `function`
+### `resolveStyles` `function`
 
 ```ts
 (source: Record<string, unknown>, rootSize?: number, resolveVar?: VarResolver) => ResolvedStyles
@@ -185,7 +185,7 @@ const styles = resolveStyles(
 
 ---
 
-### parseCssDimension `function`
+### `parseCssDimension` `function`
 
 ```ts
 (value: string | number | null | undefined, rootSize?: number) => number | undefined
@@ -212,7 +212,7 @@ parseCssDimension('50%')       // undefined
 
 ---
 
-### parseBoxModel `function`
+### `parseBoxModel` `function`
 
 ```ts
 (value: string | number | undefined, rootSize?: number) => number | [number, number] | [number, number, number, number] | undefined
@@ -237,7 +237,7 @@ parseBoxModel('0.5rem 1rem', 16)   // [8, 16]
 
 ---
 
-### parseFontWeight `function`
+### `parseFontWeight` `function`
 
 ```ts
 (value: string | number | undefined) => 'normal' | 'bold' | number | undefined
@@ -262,7 +262,7 @@ parseFontWeight('bolder') // undefined
 
 ---
 
-### parseLineHeight `function`
+### `parseLineHeight` `function`
 
 ```ts
 (value: string | number | undefined, rootSize?: number) => number | undefined
@@ -288,7 +288,7 @@ parseLineHeight('normal')     // undefined
 
 ---
 
-### ExtractOptions `type`
+### `ExtractOptions` `type`
 
 ```ts
 interface ExtractOptions { rootSize?: number; includeStyles?: boolean; resolveVar?: VarResolver }
@@ -314,7 +314,7 @@ const tree = extractDocumentTree(vnode, {
 
 ---
 
-### VarResolver `type`
+### `VarResolver` `type`
 
 ```ts
 type VarResolver = (value: unknown) => unknown
@@ -335,7 +335,7 @@ const styles = resolveStyles(rocketstyleTheme, 16, resolveVar)
 
 ---
 
-### DocumentMarker `type`
+### `DocumentMarker` `type`
 
 ```ts
 interface DocumentMarker { _documentType: NodeType }
@@ -363,7 +363,7 @@ Callout._documentType = 'section'
 
 ---
 
-### DocNode `type`
+### `DocNode` `type`
 
 ```ts
 interface DocNode { type: NodeType; props: Record<string, unknown>; children: DocChild[]; styles?: ResolvedStyles }

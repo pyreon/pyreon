@@ -92,14 +92,14 @@ const AdminPanel = () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createPermissions`](#createpermissions) | function | Create a reactive permissions instance. |
-| [`can.assert`](#can-assert) | function | Throw if a permission is NOT granted — the imperative companion to the reactive `can()` check, for route loaders, naviga |
-| [`PermissionsProvider`](#permissionsprovider) | component | Context provider that makes a permissions instance available to descendant components via `usePermissions()`. |
-| [`usePermissions`](#usepermissions) | hook | Consume the nearest `PermissionsProvider` value. |
+| [`createPermissions`](#createpermissions-function) | function | Create a reactive permissions instance. |
+| [`can.assert`](#canassert-function) | function | Throw if a permission is NOT granted — the imperative companion to the reactive `can()` check, for route loaders, naviga |
+| [`PermissionsProvider`](#permissionsprovider-component) | component | Context provider that makes a permissions instance available to descendant components via `usePermissions()`. |
+| [`usePermissions`](#usepermissions-hook) | hook | Consume the nearest `PermissionsProvider` value. |
 
 ## API
 
-### createPermissions `function`
+### `createPermissions` `function`
 
 ```ts
 <T extends PermissionMap>(initial?: T) => Permissions
@@ -135,7 +135,7 @@ can.patch({ 'posts.delete': true })  // merge
 
 ---
 
-### can.assert `function`
+### `can.assert` `function`
 
 ```ts
 can.assert(key: string, context?: unknown, message?: string) => void
@@ -160,7 +160,7 @@ await deletePost(post)
 
 ---
 
-### PermissionsProvider `component`
+### `PermissionsProvider` `component`
 
 ```ts
 (props: { value: Permissions; children: VNodeChild }) => VNodeChild
@@ -180,7 +180,7 @@ Context provider that makes a permissions instance available to descendant compo
 
 ---
 
-### usePermissions `hook`
+### `usePermissions` `hook`
 
 ```ts
 () => Permissions

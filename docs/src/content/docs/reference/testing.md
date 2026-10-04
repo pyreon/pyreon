@@ -79,31 +79,31 @@ test('effect re-runs only when its dep changes', () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`render`](#render) | function | Mount a Pyreon VNode into an isolated container (a fresh `<div>` appended to `baseElement`, default `document.body`) via |
-| [`cleanup`](#cleanup) | function | Unmount every live `render()` result (each `unmount()` disposes the tree + removes its container). |
-| [`renderHook`](#renderhook) | function | Test a hook in isolation. |
-| [`expectSignal`](#expectsignal) | function | Assert how many times a signal/computed fired, by reading its node's `fires` count from Pyreon's reactive graph (`getRea |
-| [`expectEffect`](#expecteffect) | function | Assert whether an effect re-runs in response to an action. |
-| [`expectGarbageCollected`](#expectgarbagecollected) | function | ASYNC. |
-| [`expectNoReactiveLeak`](#expectnoreactiveleak) | function | ASYNC. |
-| [`Testing Library re-exports`](#testing-library-re-exports) | function | The full `@testing-library/dom` surface is re-exported VERBATIM — same functions, same signatures, same ARIA + accessibl |
-| [`renderForm`](#renderform) | function | renderHook-style harness for `useForm` — runs your setup inside a probe component (no hand-written form component) and r |
-| [`fillForm`](#fillform) | function | Fill a REAL rendered form by ACCESSIBLE LABEL: keys are `getByLabelText` matchers (register()'s `labelProps()` wires the |
-| [`submitForm`](#submitform) | function | Submit a REAL rendered form: locates the `<form>` element (scope itself, a descendant, or an ancestor via `closest`) and |
-| [`expectForm`](#expectform) | function | Fluent assertions over a `FormState` (the package's `expectSignal` convention — no `expect.extend`). |
-| [`renderWithTheme`](#renderwiththeme) | function | Render `ui` wrapped in `<PyreonUI theme mode>` so rocketstyle / styler / ui-components resolve a real theme. |
-| [`expectComputedStyle`](#expectcomputedstyle) | function | Computed-style assertion with VALUE NORMALIZATION on both sides: each value round-trips through `getComputedStyle` on a  |
-| [`renderWithRouter`](#renderwithrouter) | function | ASYNC render harness for `@pyreon/router`. |
-| [`expectRouter`](#expectrouter) | function | Fluent current-route assertion. |
-| [`installStoreReset`](#installstorereset) | function | Registers `afterEach(resetAllStores)` for the current test file (or suite-wide from a vitest `setupFiles` module): every |
-| [`withFreshStore`](#withfreshstore) | function | Scoped isolation for ONE store: disposes any pre-existing instance with the same id, hands `fn` a GUARANTEED-FRESH insta |
-| [`renderWithI18n`](#renderwithi18n) | function | Render `ui` under `<I18nProvider>` — pass `locale` + `messages` (any `createI18n` option flows through) or a pre-built ` |
-| [`expectToast`](#expecttoast) | function | Toast assertions against the STORE (`toast()` works headless, so these work with OR without a mounted `<Toaster>` — no p |
-| [`renderWithQueryClient`](#renderwithqueryclient) | function | Render `ui` under `<QueryClientProvider>` with a FRESH ISOLATED test client per call (the TanStack testing convention):  |
+| [`render`](#render-function) | function | Mount a Pyreon VNode into an isolated container (a fresh `<div>` appended to `baseElement`, default `document.body`) via |
+| [`cleanup`](#cleanup-function) | function | Unmount every live `render()` result (each `unmount()` disposes the tree + removes its container). |
+| [`renderHook`](#renderhook-function) | function | Test a hook in isolation. |
+| [`expectSignal`](#expectsignal-function) | function | Assert how many times a signal/computed fired, by reading its node's `fires` count from Pyreon's reactive graph (`getRea |
+| [`expectEffect`](#expecteffect-function) | function | Assert whether an effect re-runs in response to an action. |
+| [`expectGarbageCollected`](#expectgarbagecollected-function) | function | ASYNC. |
+| [`expectNoReactiveLeak`](#expectnoreactiveleak-function) | function | ASYNC. |
+| [`Testing Library re-exports`](#testing-library-re-exports-function) | function | The full `@testing-library/dom` surface is re-exported VERBATIM — same functions, same signatures, same ARIA + accessibl |
+| [`renderForm`](#renderform-function) | function | renderHook-style harness for `useForm` — runs your setup inside a probe component (no hand-written form component) and r |
+| [`fillForm`](#fillform-function) | function | Fill a REAL rendered form by ACCESSIBLE LABEL: keys are `getByLabelText` matchers (register()'s `labelProps()` wires the |
+| [`submitForm`](#submitform-function) | function | Submit a REAL rendered form: locates the `<form>` element (scope itself, a descendant, or an ancestor via `closest`) and |
+| [`expectForm`](#expectform-function) | function | Fluent assertions over a `FormState` (the package's `expectSignal` convention — no `expect.extend`). |
+| [`renderWithTheme`](#renderwiththeme-function) | function | Render `ui` wrapped in `<PyreonUI theme mode>` so rocketstyle / styler / ui-components resolve a real theme. |
+| [`expectComputedStyle`](#expectcomputedstyle-function) | function | Computed-style assertion with VALUE NORMALIZATION on both sides: each value round-trips through `getComputedStyle` on a  |
+| [`renderWithRouter`](#renderwithrouter-function) | function | ASYNC render harness for `@pyreon/router`. |
+| [`expectRouter`](#expectrouter-function) | function | Fluent current-route assertion. |
+| [`installStoreReset`](#installstorereset-function) | function | Registers `afterEach(resetAllStores)` for the current test file (or suite-wide from a vitest `setupFiles` module): every |
+| [`withFreshStore`](#withfreshstore-function) | function | Scoped isolation for ONE store: disposes any pre-existing instance with the same id, hands `fn` a GUARANTEED-FRESH insta |
+| [`renderWithI18n`](#renderwithi18n-function) | function | Render `ui` under `<I18nProvider>` — pass `locale` + `messages` (any `createI18n` option flows through) or a pre-built ` |
+| [`expectToast`](#expecttoast-function) | function | Toast assertions against the STORE (`toast()` works headless, so these work with OR without a mounted `<Toaster>` — no p |
+| [`renderWithQueryClient`](#renderwithqueryclient-function) | function | Render `ui` under `<QueryClientProvider>` with a FRESH ISOLATED test client per call (the TanStack testing convention):  |
 
 ## API
 
-### render `function`
+### `render` `function`
 
 ```ts
 render(ui: VNodeChild, options?: { container?: HTMLElement; baseElement?: HTMLElement }) => RenderResult
@@ -129,7 +129,7 @@ unmount()
 
 ---
 
-### cleanup `function`
+### `cleanup` `function`
 
 ```ts
 cleanup() => void
@@ -153,7 +153,7 @@ afterEach(cleanup)
 
 ---
 
-### renderHook `function`
+### `renderHook` `function`
 
 ```ts
 renderHook<Result, Props = undefined>(hook: (props: () => Props) => Result, options?: { initialProps?: Props }) => { result: { readonly current: Result }; rerender: (props: Props) => void; unmount: () => void }
@@ -178,7 +178,7 @@ rerender(3) // updates the props signal; the hook re-reads it only if it reads p
 
 ---
 
-### expectSignal `function`
+### `expectSignal` `function`
 
 ```ts
 expectSignal(target: unknown) => { toHaveChangedTimes(n: number): void; toHaveRecomputedTimes(n: number): void }
@@ -206,7 +206,7 @@ expectSignal(total).toHaveRecomputedTimes(1)
 
 ---
 
-### expectEffect `function`
+### `expectEffect` `function`
 
 ```ts
 expectEffect(handle: unknown) => { toReRunWhen(action: () => void): void; notToReRunWhen(action: () => void): void }
@@ -232,7 +232,7 @@ expectEffect(e).notToReRunWhen(() => unrelated.set(1))
 
 ---
 
-### expectGarbageCollected `function`
+### `expectGarbageCollected` `function`
 
 ```ts
 expectGarbageCollected(factory: () => object) => Promise<void>
@@ -260,7 +260,7 @@ await expectGarbageCollected(() => {
 
 ---
 
-### expectNoReactiveLeak `function`
+### `expectNoReactiveLeak` `function`
 
 ```ts
 expectNoReactiveLeak(action: () => void | Promise<void>) => Promise<void>
@@ -287,7 +287,7 @@ await expectNoReactiveLeak(async () => {
 
 ---
 
-### Testing Library re-exports `function`
+### `Testing Library re-exports` `function`
 
 ```ts
 screen, fireEvent, waitFor, waitForElementToBeRemoved, within, getByRole, getByText, getByTestId, getBy*/queryBy*/findBy*, prettyDOM, configure, getConfig, getRoles, logRoles, isInaccessible, createEvent, … (verbatim from @testing-library/dom)
@@ -313,7 +313,7 @@ await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Saved')
 
 ---
 
-### renderForm `function`
+### `renderForm` `function`
 
 ```ts
 renderForm<TValues>(setup: () => FormState<TValues>) => { form: FormState<TValues>; fill: (values: Partial<TValues>) => void; submit: () => Promise<void>; unmount: () => void } (from '@pyreon/testing/form')
@@ -346,7 +346,7 @@ expectForm(form).toBeValid()
 
 ---
 
-### fillForm `function`
+### `fillForm` `function`
 
 ```ts
 fillForm(scope: HTMLElement, values: Record<string, string | number | boolean | File | File[]>) => void (from '@pyreon/testing/form')
@@ -373,7 +373,7 @@ await submitForm(document.body)
 
 ---
 
-### submitForm `function`
+### `submitForm` `function`
 
 ```ts
 submitForm(scope: HTMLElement) => Promise<void> (from '@pyreon/testing/form')
@@ -398,7 +398,7 @@ await submitForm(container)
 
 ---
 
-### expectForm `function`
+### `expectForm` `function`
 
 ```ts
 expectForm(form: FormState) => { toBeValid(); toBeInvalid(); toHaveFieldError(field, match?); toHaveNoFieldError(field); toBeDirty(); toBePristine(); toHaveValues(partial) } (from '@pyreon/testing/form')
@@ -425,7 +425,7 @@ expectForm(form).toHaveValues({ email: 'ada@lovelace.dev' })
 
 ---
 
-### renderWithTheme `function`
+### `renderWithTheme` `function`
 
 ```ts
 renderWithTheme(ui: VNodeChild, options?: { theme?; mode?: 'light' | 'dark' | 'system'; wrapper?; container?; baseElement? }) => RenderResult & { setMode(mode): void; mode(): ThemeModeInput } (from '@pyreon/testing/ui')
@@ -450,7 +450,7 @@ setMode('dark') // reactive re-style — same element, new classes
 
 ---
 
-### expectComputedStyle `function`
+### `expectComputedStyle` `function`
 
 ```ts
 expectComputedStyle(element: Element, expected: Record<string, string | number>) => void — plus normalizeCssValue(property, value) (from '@pyreon/testing/ui')
@@ -474,7 +474,7 @@ expectComputedStyle(button, { color: 'red', fontWeight: 700 })
 
 ---
 
-### renderWithRouter `function`
+### `renderWithRouter` `function`
 
 ```ts
 renderWithRouter(ui: VNodeChild | null, options: { routes?: RouteRecord[]; route?: string; mode?: 'hash' | 'history'; router?: Router; wrapper?; container?; baseElement? }) => Promise<RenderResult & { router: Router; navigate(path): Promise<NavigationResult> }> (from '@pyreon/testing/router')
@@ -505,7 +505,7 @@ await navigate('/posts/2')
 
 ---
 
-### expectRouter `function`
+### `expectRouter` `function`
 
 ```ts
 expectRouter(router: Router) => { toBeAt(expected: string): void; notToBeAt(expected: string): void } (from '@pyreon/testing/router')
@@ -529,7 +529,7 @@ expectRouter(router).notToBeAt('/login')
 
 ---
 
-### installStoreReset `function`
+### `installStoreReset` `function`
 
 ```ts
 installStoreReset() => void (from '@pyreon/testing/store')
@@ -556,7 +556,7 @@ test('b', () => { /* fresh cart here */ })
 
 ---
 
-### withFreshStore `function`
+### `withFreshStore` `function`
 
 ```ts
 withFreshStore<TStore extends { id: string }, TReturn>(useStore: () => TStore, fn: (store: TStore) => TReturn) => TReturn (from '@pyreon/testing/store')
@@ -583,7 +583,7 @@ await withFreshStore(useCart, async (cart) => {
 
 ---
 
-### renderWithI18n `function`
+### `renderWithI18n` `function`
 
 ```ts
 renderWithI18n(ui: VNodeChild, options: { locale?; messages?; fallbackLocale?; i18n?: I18nInstance; wrapper?; container?; baseElement? }) => RenderResult & { i18n: I18nInstance; t: I18nInstance['t']; setLocale(locale): void } (from '@pyreon/testing/i18n')
@@ -612,7 +612,7 @@ getByText(t('home')) // 'Domů'
 
 ---
 
-### expectToast `function`
+### `expectToast` `function`
 
 ```ts
 expectToast(match?: string | RegExp, options?: { type?: ToastType; includeExiting?: boolean }) => Toast — plus findToast(match?, options?) => Promise<Toast>, getToasts(options?) => Toast[], clearToasts() => void (from '@pyreon/testing/toast')
@@ -640,7 +640,7 @@ afterEach(clearToasts)
 
 ---
 
-### renderWithQueryClient `function`
+### `renderWithQueryClient` `function`
 
 ```ts
 renderWithQueryClient(ui: VNodeChild, options?: { client?: QueryClient; wrapper?; container?; baseElement? }) => RenderResult & { client: QueryClient; setQueryData: QueryClient['setQueryData'] } — plus createTestQueryClient(config?) => QueryClient (from '@pyreon/testing/query')

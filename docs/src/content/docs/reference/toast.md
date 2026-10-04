@@ -88,12 +88,12 @@ toast.remove()          // hard-remove all
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`toast`](#toast) | function | Create a toast notification imperatively. |
-| [`Toaster`](#toaster) | component | Render container for toast notifications. |
+| [`toast`](#toast-function) | function | Create a toast notification imperatively. |
+| [`Toaster`](#toaster-component) | component | Render container for toast notifications. |
 
 ## API
 
-### toast `function`
+### `toast` `function`
 
 ```ts
 (message: string, options?: ToastOptions) => string
@@ -143,7 +143,7 @@ toast.dismiss()    // all
 
 ---
 
-### Toaster `component`
+### `Toaster` `component`
 
 ```ts
 (props?: ToasterProps) => VNodeChild

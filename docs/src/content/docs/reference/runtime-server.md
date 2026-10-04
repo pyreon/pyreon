@@ -32,15 +32,15 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`renderToString`](#rendertostring) | function | Render a VNode tree to a single HTML string. |
-| [`renderToStream`](#rendertostream) | function | Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediat |
-| [`runWithRequestContext`](#runwithrequestcontext) | function | Run an async function inside a fresh, isolated ALS context stack (and its own store registry). |
-| [`configureStoreIsolation`](#configurestoreisolation) | function | OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. |
-| [`decodeKeyFromMarker`](#decodekeyfrommarker) | function | Inverse of the internal For-list key encoder. |
+| [`renderToString`](#rendertostring-function) | function | Render a VNode tree to a single HTML string. |
+| [`renderToStream`](#rendertostream-function) | function | Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediat |
+| [`runWithRequestContext`](#runwithrequestcontext-function) | function | Run an async function inside a fresh, isolated ALS context stack (and its own store registry). |
+| [`configureStoreIsolation`](#configurestoreisolation-function) | function | OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. |
+| [`decodeKeyFromMarker`](#decodekeyfrommarker-function) | function | Inverse of the internal For-list key encoder. |
 
 ## API
 
-### renderToString `function`
+### `renderToString` `function`
 
 ```ts
 renderToString(root: VNode | null): Promise<string>
@@ -66,7 +66,7 @@ const html = await renderToString(<App />)
 
 ---
 
-### renderToStream `function`
+### `renderToStream` `function`
 
 ```ts
 renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string }): ReadableStream<string>
@@ -99,7 +99,7 @@ return new Response(renderToStream(<App />, {
 
 ---
 
-### runWithRequestContext `function`
+### `runWithRequestContext` `function`
 
 ```ts
 runWithRequestContext<T>(fn: () => Promise<T>): Promise<T>
@@ -127,7 +127,7 @@ const data = await runWithRequestContext(async () => {
 
 ---
 
-### configureStoreIsolation `function`
+### `configureStoreIsolation` `function`
 
 ```ts
 configureStoreIsolation(setStoreRegistryProvider: (fn: () => Map<string, unknown>) => void): void
@@ -155,7 +155,7 @@ configureStoreIsolation(setStoreRegistryProvider)
 
 ---
 
-### decodeKeyFromMarker `function`
+### `decodeKeyFromMarker` `function`
 
 ```ts
 decodeKeyFromMarker(encoded: string): string

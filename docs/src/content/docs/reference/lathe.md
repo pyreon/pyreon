@@ -89,20 +89,20 @@ lathe / Bookshelf 1.2.0
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`generate`](#generate) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
-| [`generateAsync`](#generateasync) | function | `generate`, awaiting plugin hooks that return promises — what the CLI and the Vite plugin run. |
-| [`resolveConfig`](#resolveconfig) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
-| [`definePlugin`](#defineplugin) | function | Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. |
-| [`formatFiles`](#formatfiles) | function | Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest |
-| [`verifyNative`](#verifynative) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
-| [`contractDiff`](#contractdiff) | function | The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT' |
-| [`loadOpenApi`](#loadopenapi) | function | Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. |
-| [`resolveProjects`](#resolveprojects) | function | The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a on |
-| [`resolveTransform / worstVerdict`](#resolvetransform-worstverdict) | function | `resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) —  |
+| [`generate`](#generate-function) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
+| [`generateAsync`](#generateasync-function) | function | `generate`, awaiting plugin hooks that return promises — what the CLI and the Vite plugin run. |
+| [`resolveConfig`](#resolveconfig-function) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
+| [`definePlugin`](#defineplugin-function) | function | Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. |
+| [`formatFiles`](#formatfiles-function) | function | Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest |
+| [`verifyNative`](#verifynative-function) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
+| [`contractDiff`](#contractdiff-function) | function | The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT' |
+| [`loadOpenApi`](#loadopenapi-function) | function | Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. |
+| [`resolveProjects`](#resolveprojects-function) | function | The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a on |
+| [`resolveTransform / worstVerdict`](#resolvetransform-worstverdict-function) | function | `resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) —  |
 
 ## API
 
-### generate `function`
+### `generate` `function`
 
 ```ts
 generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult
@@ -132,7 +132,7 @@ for (const [id, r] of reach) {
 
 ---
 
-### generateAsync `function`
+### `generateAsync` `function`
 
 ```ts
 generateAsync(specText: string, config: ResolvedConfig, options?: LoadOptions): Promise<GenerateResult>
@@ -163,7 +163,7 @@ const { files } = await generateAsync(specText, resolveConfig({ input: './openap
 
 ---
 
-### resolveConfig `function`
+### `resolveConfig` `function`
 
 ```ts
 resolveConfig(section: LatheSection | undefined): ResolvedConfig
@@ -198,7 +198,7 @@ const { files } = generate(specText, config)
 
 ---
 
-### definePlugin `function`
+### `definePlugin` `function`
 
 ```ts
 definePlugin<P extends LathePlugin>(plugin: P): P  // LathePlugin = { name, requires?, setup?(ctx), transformDocument?(doc, ctx), emit?(ctx) }
@@ -234,7 +234,7 @@ export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client'
 
 ---
 
-### formatFiles `function`
+### `formatFiles` `function`
 
 ```ts
 formatFiles(files: GeneratedFile[], format: ((code: string, path: string) => string | Promise<string>) | undefined): Promise<GeneratedFile[]>
@@ -259,7 +259,7 @@ const files = await formatFiles(generate(specText, config).files, config.format)
 
 ---
 
-### verifyNative `function`
+### `verifyNative` `function`
 
 ```ts
 verifyNative(files: GeneratedFile[], transform: TransformFn | undefined, compile?: NativeCompilers): VerifyReport
@@ -289,7 +289,7 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1
 
 ---
 
-### contractDiff `function`
+### `contractDiff` `function`
 
 ```ts
 contractDiff(before: ApiSurface, after: ApiSurface): ContractDiff
@@ -317,7 +317,7 @@ if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))
 
 ---
 
-### loadOpenApi `function`
+### `loadOpenApi` `function`
 
 ```ts
 loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }
@@ -345,7 +345,7 @@ for (const note of doc.notes) console.warn(note.code, note.at, note.message)
 
 ---
 
-### resolveProjects `function`
+### `resolveProjects` `function`
 
 ```ts
 resolveProjects(section: LatheSection | undefined): ResolvedConfig[]
@@ -379,7 +379,7 @@ for (const config of projects) {
 
 ---
 
-### resolveTransform / worstVerdict `function`
+### `resolveTransform / worstVerdict` `function`
 
 ```ts
 resolveTransform(): Promise<TransformFn | undefined> · worstVerdict(report: VerifyReport): "lowers" | "web-only" | "broken" | "skipped"

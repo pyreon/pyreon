@@ -1,0 +1,7 @@
+[
+  { "id": 1, "name": "Ada Lovelace", "email": "ada@example.test", "company": { "name": "Analytical Engines" } },
+  { "id": 2, "name": "Grace Hopper", "email": "grace@example.test", "company": { "name": "Compiler Studio" } },
+  { "id": 3, "name": "Margaret Hamilton", "email": "margaret@example.test", "company": { "name": "Mission Control" } },
+  { "id": 4, "name": "Alan Turing", "email": "alan@example.test", "company": { "name": "Computing Lab" } },
+  { "id": 5, "name": "Katherine Johnson", "email": "katherine@example.test", "company": { "name": "Orbital Systems" } }
+]

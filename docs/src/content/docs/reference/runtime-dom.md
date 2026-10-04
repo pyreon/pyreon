@@ -80,20 +80,20 @@ const TabExample = () => (
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`mount`](#mount) | function | Mount a VNode tree into a container element. |
-| [`render`](#render) | function | Alias for `mount`. |
-| [`hydrateRoot`](#hydrateroot) | function | Hydrate server-rendered HTML. |
-| [`Transition`](#transition) | component | CSS-based enter/leave animation wrapper. |
-| [`TransitionGroup`](#transitiongroup) | component | Animate list item additions and removals with CSS transitions. |
-| [`KeepAlive`](#keepalive) | component | Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`displa |
-| [`_tpl`](#tpl) | function | Compiler-internal: instantiate a cached template and run its bindings. |
-| [`_bindText`](#bindtext) | function | Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment, re |
-| [`sanitizeHtml`](#sanitizehtml) | function | Sanitize an HTML string. |
-| [`__PYREON_DEVTOOLS__`](#pyreon-devtools) | constant | Browser devtools hook, installed automatically on the first `mount()` (no-op on the server). |
+| [`mount`](#mount-function) | function | Mount a VNode tree into a container element. |
+| [`render`](#render-function) | function | Alias for `mount`. |
+| [`hydrateRoot`](#hydrateroot-function) | function | Hydrate server-rendered HTML. |
+| [`Transition`](#transition-component) | component | CSS-based enter/leave animation wrapper. |
+| [`TransitionGroup`](#transitiongroup-component) | component | Animate list item additions and removals with CSS transitions. |
+| [`KeepAlive`](#keepalive-component) | component | Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`displa |
+| [`_tpl`](#_tpl-function) | function | Compiler-internal: instantiate a cached template and run its bindings. |
+| [`_bindText`](#_bindtext-function) | function | Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment, re |
+| [`sanitizeHtml`](#sanitizehtml-function) | function | Sanitize an HTML string. |
+| [`__PYREON_DEVTOOLS__`](#__pyreon_devtools__-constant) | constant | Browser devtools hook, installed automatically on the first `mount()` (no-op on the server). |
 
 ## API
 
-### mount `function`
+### `mount` `function`
 
 ```ts
 mount(root: VNodeChild, container: Element): () => void
@@ -123,7 +123,7 @@ dispose()
 
 ---
 
-### render `function`
+### `render` `function`
 
 ```ts
 render(root: VNodeChild, container: Element): () => void
@@ -146,7 +146,7 @@ render(<App />, document.getElementById("app")!)
 
 ---
 
-### hydrateRoot `function`
+### `hydrateRoot` `function`
 
 ```ts
 hydrateRoot(container: Element, root: VNodeChild): () => void
@@ -171,7 +171,7 @@ hydrateRoot(document.getElementById("app")!, <App />)
 
 ---
 
-### Transition `component`
+### `Transition` `component`
 
 ```ts
 <Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>
@@ -205,7 +205,7 @@ const visible = signal(true)
 
 ---
 
-### TransitionGroup `component`
+### `TransitionGroup` `component`
 
 ```ts
 <TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />
@@ -242,7 +242,7 @@ const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
 
 ---
 
-### KeepAlive `component`
+### `KeepAlive` `component`
 
 ```ts
 <KeepAlive active={() => boolean}>{children}</KeepAlive>
@@ -270,7 +270,7 @@ Mount children ONCE and keep them alive when hidden — when `active()` returns 
 
 ---
 
-### _tpl `function`
+### `_tpl` `function`
 
 ```ts
 _tpl(html: string, bind: (root: Element) => (() => void) | undefined): NativeItem
@@ -299,7 +299,7 @@ _tpl("<div class=\"box\"> </div>", (__root) => {
 
 ---
 
-### _bindText `function`
+### `_bindText` `function`
 
 ```ts
 _bindText(source: Signal-like, node: Text, caller?: () => unknown, receiver?: object): () => void
@@ -329,7 +329,7 @@ _tpl("<div> </div>", (__root) => {
 
 ---
 
-### sanitizeHtml `function`
+### `sanitizeHtml` `function`
 
 ```ts
 sanitizeHtml(html: string): string
@@ -357,7 +357,7 @@ const clean = sanitizeHtml(userInput)
 
 ---
 
-### __PYREON_DEVTOOLS__ `constant`
+### `__PYREON_DEVTOOLS__` `constant`
 
 ```ts
 window.__PYREON_DEVTOOLS__: { version; getComponentTree(); getAllComponents(); highlight(id); onComponentMount(cb); onComponentUnmount(cb); enableOverlay(); disableOverlay(); reactive: PyreonReactiveDevtools }

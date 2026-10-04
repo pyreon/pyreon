@@ -89,19 +89,19 @@ useHotkey('escape', () => closeModal(), { enableOnInputs: true })
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useHotkey`](#usehotkey) | hook | Register a keyboard shortcut that auto-unregisters when the component unmounts. |
-| [`useHotkeyScope`](#usehotkeyscope) | hook | Activate a hotkey scope for the lifetime of the current component. |
-| [`registerHotkey`](#registerhotkey) | function | Imperative hotkey registration for non-component contexts (stores, global setup). |
-| [`getHotkeyConflicts`](#gethotkeyconflicts) | function | Detect registered shortcuts that would fire on the SAME keystroke within the SAME scope. |
-| [`enableScope / disableScope / getActiveScopes`](#enablescope-disablescope-getactivescopes) | function | The reference-counted scope-activation API. |
-| [`getRegisteredHotkeys`](#getregisteredhotkeys) | function | Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitte |
-| [`trigger`](#trigger) | function | Programmatically fire the handlers bound to `shortcut` (window-target bindings), as if the user pressed it — command pal |
-| [`getPressedKeys / isKeyPressed`](#getpressedkeys-iskeypressed) | function | Live held-key introspection. |
-| [`parseShortcut / matchesCombo / formatCombo / splitShortcutList`](#parseshortcut-matchescombo-formatcombo-splitshortcutlist) | function | The combo utilities. |
+| [`useHotkey`](#usehotkey-hook) | hook | Register a keyboard shortcut that auto-unregisters when the component unmounts. |
+| [`useHotkeyScope`](#usehotkeyscope-hook) | hook | Activate a hotkey scope for the lifetime of the current component. |
+| [`registerHotkey`](#registerhotkey-function) | function | Imperative hotkey registration for non-component contexts (stores, global setup). |
+| [`getHotkeyConflicts`](#gethotkeyconflicts-function) | function | Detect registered shortcuts that would fire on the SAME keystroke within the SAME scope. |
+| [`enableScope / disableScope / getActiveScopes`](#enablescope-disablescope-getactivescopes-function) | function | The reference-counted scope-activation API. |
+| [`getRegisteredHotkeys`](#getregisteredhotkeys-function) | function | Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitte |
+| [`trigger`](#trigger-function) | function | Programmatically fire the handlers bound to `shortcut` (window-target bindings), as if the user pressed it — command pal |
+| [`getPressedKeys / isKeyPressed`](#getpressedkeys-iskeypressed-function) | function | Live held-key introspection. |
+| [`parseShortcut / matchesCombo / formatCombo / splitShortcutList`](#parseshortcut-matchescombo-formatcombo-splitshortcutlist-function) | function | The combo utilities. |
 
 ## API
 
-### useHotkey `hook`
+### `useHotkey` `hook`
 
 ```ts
 (shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void
@@ -133,7 +133,7 @@ useHotkey('escape', () => close(), { enableOnInputs: true })
 
 ---
 
-### useHotkeyScope `hook`
+### `useHotkeyScope` `hook`
 
 ```ts
 (scope: string) => void
@@ -163,7 +163,7 @@ useHotkey('escape', () => close(), { scope: 'modal' })
 
 ---
 
-### registerHotkey `function`
+### `registerHotkey` `function`
 
 ```ts
 (shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => () => void
@@ -193,7 +193,7 @@ unregister()
 
 ---
 
-### getHotkeyConflicts `function`
+### `getHotkeyConflicts` `function`
 
 ```ts
 () => ReadonlyArray<{ scope: string; shortcuts: string[]; descriptions: Array<string | undefined> }>
@@ -215,7 +215,7 @@ getHotkeyConflicts()
 
 ---
 
-### enableScope / disableScope / getActiveScopes `function`
+### `enableScope / disableScope / getActiveScopes` `function`
 
 ```ts
 enableScope(scope: string) => void · disableScope(scope: string) => void · getActiveScopes() => Signal<Set<string>>
@@ -246,7 +246,7 @@ const isModalActive = () => active().has('modal')
 
 ---
 
-### getRegisteredHotkeys `function`
+### `getRegisteredHotkeys` `function`
 
 ```ts
 getRegisteredHotkeys() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>
@@ -270,7 +270,7 @@ getRegisteredHotkeys()
 
 ---
 
-### trigger `function`
+### `trigger` `function`
 
 ```ts
 (shortcut: string, options?: { scope?: string }) => number
@@ -290,7 +290,7 @@ trigger('ctrl+z', { scope: 'editor' }) // fire an inactive scope's binding expli
 
 ---
 
-### getPressedKeys / isKeyPressed `function`
+### `getPressedKeys / isKeyPressed` `function`
 
 ```ts
 getPressedKeys(): Signal<Set<string>>; isKeyPressed(key: string): boolean
@@ -315,7 +315,7 @@ if (isKeyPressed('shift')) extendSelection()
 
 ---
 
-### parseShortcut / matchesCombo / formatCombo / splitShortcutList `function`
+### `parseShortcut / matchesCombo / formatCombo / splitShortcutList` `function`
 
 ```ts
 parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string · splitShortcutList(list: string) => string[]

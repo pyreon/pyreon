@@ -40,6 +40,13 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    pattern: /useLoaderData(?:\(\))?.*(?:undefined|empty).*first.*loader.*(?:resolved|finished|completed)|first.*loader.*(?:resolved|finished|completed).*useLoaderData(?:\(\))?.*(?:undefined|empty)/i,
+    diagnose: () => ({
+      cause: 'On older @pyreon/router versions, a leaf route without a pendingComponent ignored its first loader-data arrival. Its component kept the initial undefined LoaderDataContext snapshot even after the loader completed.',
+      fix: 'Upgrade @pyreon/router to include the first-loader-arrival fix. RouterView now renders the resolved data when no pendingComponent is configured, while PendingLoader retains its minimum display interval when configured. Also check that your loader returns its data.',
+    }),
+  },
+  {
     // `analyzeValidate` marks a `@pyreon/validate` schema shape it cannot
     // compile FAITHFULLY as an `unsupported` node, and the emitters throw on
     // one. Some bails are option-dependent rather than method-dependent:

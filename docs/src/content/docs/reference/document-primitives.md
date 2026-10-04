@@ -74,32 +74,32 @@ await download(tree, 'resume.md')
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`extractDocNode`](#extractdocnode) | function | 18 primitives: `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocIm |
-| [`createDocumentExport`](#createdocumentexport) | function | Wrapper around `extractDocNode`. |
-| [`DocDocument`](#docdocument) | component | Root container for a document tree — produces a `_documentType: "document"` node. |
-| [`DocPage`](#docpage) | component | A page boundary inside a `DocDocument`. |
-| [`DocSection`](#docsection) | component | Semantic grouping inside a page. |
-| [`DocRow`](#docrow) | component | Horizontal layout container — children flow inline with a fixed 8px gap. |
-| [`DocColumn`](#doccolumn) | component | A column inside a row layout. |
-| [`DocHeading`](#docheading) | component | Heading text — `level` (`"h1"` through `"h6"`) controls both visual size and the semantic level emitted to outputs (HTML |
-| [`DocText`](#doctext) | component | Paragraph / inline text. |
-| [`DocLink`](#doclink) | component | Hyperlink within text. |
-| [`DocImage`](#docimage) | component | An image embedded in the document. |
-| [`DocTable`](#doctable) | component | Tabular data. |
-| [`DocList`](#doclist) | component | Bulleted (default) or numbered (`ordered`) list. |
-| [`DocListItem`](#doclistitem) | component | Single item inside a `DocList`. |
-| [`DocCode`](#doccode) | component | Monospace code block. |
-| [`DocDivider`](#docdivider) | component | Horizontal rule — visual section separator. |
-| [`DocSpacer`](#docspacer) | component | Vertical whitespace — adds a blank vertical gap. |
-| [`DocButton`](#docbutton) | component | Call-to-action button. |
-| [`DocQuote`](#docquote) | component | Block quote — sets off a quoted passage with an indented left border. |
-| [`DocPageBreak`](#docpagebreak) | component | Explicit page boundary inside a `DocPage`. |
-| [`DocumentPreview`](#documentpreview) | component | A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray  |
-| [`documentTheme`](#documenttheme) | constant | The default theme object for document styling/export — a plain nested config of `colors` (primary / text / background /  |
+| [`extractDocNode`](#extractdocnode-function) | function | 18 primitives: `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocIm |
+| [`createDocumentExport`](#createdocumentexport-function) | function | Wrapper around `extractDocNode`. |
+| [`DocDocument`](#docdocument-component) | component | Root container for a document tree — produces a `_documentType: "document"` node. |
+| [`DocPage`](#docpage-component) | component | A page boundary inside a `DocDocument`. |
+| [`DocSection`](#docsection-component) | component | Semantic grouping inside a page. |
+| [`DocRow`](#docrow-component) | component | Horizontal layout container — children flow inline with a fixed 8px gap. |
+| [`DocColumn`](#doccolumn-component) | component | A column inside a row layout. |
+| [`DocHeading`](#docheading-component) | component | Heading text — `level` (`"h1"` through `"h6"`) controls both visual size and the semantic level emitted to outputs (HTML |
+| [`DocText`](#doctext-component) | component | Paragraph / inline text. |
+| [`DocLink`](#doclink-component) | component | Hyperlink within text. |
+| [`DocImage`](#docimage-component) | component | An image embedded in the document. |
+| [`DocTable`](#doctable-component) | component | Tabular data. |
+| [`DocList`](#doclist-component) | component | Bulleted (default) or numbered (`ordered`) list. |
+| [`DocListItem`](#doclistitem-component) | component | Single item inside a `DocList`. |
+| [`DocCode`](#doccode-component) | component | Monospace code block. |
+| [`DocDivider`](#docdivider-component) | component | Horizontal rule — visual section separator. |
+| [`DocSpacer`](#docspacer-component) | component | Vertical whitespace — adds a blank vertical gap. |
+| [`DocButton`](#docbutton-component) | component | Call-to-action button. |
+| [`DocQuote`](#docquote-component) | component | Block quote — sets off a quoted passage with an indented left border. |
+| [`DocPageBreak`](#docpagebreak-component) | component | Explicit page boundary inside a `DocPage`. |
+| [`DocumentPreview`](#documentpreview-component) | component | A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray  |
+| [`documentTheme`](#documenttheme-constant) | constant | The default theme object for document styling/export — a plain nested config of `colors` (primary / text / background /  |
 
 ## API
 
-### extractDocNode `function`
+### `extractDocNode` `function`
 
 ```ts
 extractDocNode(templateFn: () => VNode, options?: ExtractOptions): DocNode
@@ -140,7 +140,7 @@ await download(tree, 'report.docx')
 
 ---
 
-### createDocumentExport `function`
+### `createDocumentExport` `function`
 
 ```ts
 createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }
@@ -163,7 +163,7 @@ const tree = helper.getDocNode()
 
 ---
 
-### DocDocument `component`
+### `DocDocument` `component`
 
 ```ts
 (props: { title?: string | (() => string); author?: string | (() => string); subject?: string | (() => string); children: VNodeChild }) => VNodeChild
@@ -194,7 +194,7 @@ Root container for a document tree — produces a `_documentType: "document"` no
 
 ---
 
-### DocPage `component`
+### `DocPage` `component`
 
 ```ts
 (props: { size?: string; orientation?: 'portrait' | 'landscape'; children: VNodeChild }) => VNodeChild
@@ -219,7 +219,7 @@ A page boundary inside a `DocDocument`. Paginated outputs (PDF, DOCX) treat each
 
 ---
 
-### DocSection `component`
+### `DocSection` `component`
 
 ```ts
 (props: { direction?: 'column' | 'row'; children: VNodeChild }) => VNodeChild
@@ -242,7 +242,7 @@ Semantic grouping inside a page. Default `direction` is `"column"` (children sta
 
 ---
 
-### DocRow `component`
+### `DocRow` `component`
 
 ```ts
 (props: { children: VNodeChild }) => VNodeChild
@@ -263,7 +263,7 @@ Horizontal layout container — children flow inline with a fixed 8px gap. Use f
 
 ---
 
-### DocColumn `component`
+### `DocColumn` `component`
 
 ```ts
 (props: { width?: number | string; children: VNodeChild }) => VNodeChild
@@ -288,7 +288,7 @@ A column inside a row layout. Optional `width` controls the column\'s share of t
 
 ---
 
-### DocHeading `component`
+### `DocHeading` `component`
 
 ```ts
 (props: { level?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'; children: VNodeChild }) => VNodeChild
@@ -308,7 +308,7 @@ Heading text — `level` (`"h1"` through `"h6"`) controls both visual size and t
 
 ---
 
-### DocText `component`
+### `DocText` `component`
 
 ```ts
 (props: { children: VNodeChild }) => VNodeChild
@@ -329,7 +329,7 @@ Paragraph / inline text. The most common primitive — wraps any text content fo
 
 ---
 
-### DocLink `component`
+### `DocLink` `component`
 
 ```ts
 (props: { href?: string; children: VNodeChild }) => VNodeChild
@@ -351,7 +351,7 @@ Hyperlink within text. `href` is the URL — defaults to `"#"`. Outputs that sup
 
 ---
 
-### DocImage `component`
+### `DocImage` `component`
 
 ```ts
 (props: { src: string; alt?: string; width?: number; height?: number; caption?: string }) => VNodeChild
@@ -375,7 +375,7 @@ An image embedded in the document. `src` is the image URL or data URI. `alt` is 
 
 ---
 
-### DocTable `component`
+### `DocTable` `component`
 
 ```ts
 (props: { columns: TableColumn[]; rows: TableRow[]; headerStyle?: object; striped?: boolean; bordered?: boolean; caption?: string }) => VNodeChild
@@ -412,7 +412,7 @@ Tabular data. `columns` defines the header cells (label, key, optional alignment
 
 ---
 
-### DocList `component`
+### `DocList` `component`
 
 ```ts
 (props: { ordered?: boolean; children: VNodeChild }) => VNodeChild
@@ -443,7 +443,7 @@ Bulleted (default) or numbered (`ordered`) list. Children are typically `DocList
 
 ---
 
-### DocListItem `component`
+### `DocListItem` `component`
 
 ```ts
 (props: { children: VNodeChild }) => VNodeChild
@@ -470,7 +470,7 @@ Single item inside a `DocList`. Children may be plain text, `DocText`, nested `D
 
 ---
 
-### DocCode `component`
+### `DocCode` `component`
 
 ```ts
 (props: { language?: string; children: VNodeChild }) => VNodeChild
@@ -493,7 +493,7 @@ Monospace code block. Optional `language` hint enables syntax highlighting in ou
 
 ---
 
-### DocDivider `component`
+### `DocDivider` `component`
 
 ```ts
 (props: { color?: string; thickness?: number }) => VNodeChild
@@ -513,7 +513,7 @@ Horizontal rule — visual section separator. `color` controls the line color (a
 
 ---
 
-### DocSpacer `component`
+### `DocSpacer` `component`
 
 ```ts
 (props: { height?: number }) => VNodeChild
@@ -537,7 +537,7 @@ Vertical whitespace — adds a blank vertical gap. `height` is in pixels (defaul
 
 ---
 
-### DocButton `component`
+### `DocButton` `component`
 
 ```ts
 (props: { href?: string; children: VNodeChild }) => VNodeChild
@@ -557,7 +557,7 @@ Call-to-action button. Renders as a styled clickable element in HTML / email out
 
 ---
 
-### DocQuote `component`
+### `DocQuote` `component`
 
 ```ts
 (props: { borderColor?: string; children: VNodeChild }) => VNodeChild
@@ -578,7 +578,7 @@ Block quote — sets off a quoted passage with an indented left border. `borderC
 
 ---
 
-### DocPageBreak `component`
+### `DocPageBreak` `component`
 
 ```ts
 () => VNodeChild
@@ -601,7 +601,7 @@ Explicit page boundary inside a `DocPage`. Forces the renderer to start a new pa
 
 ---
 
-### DocumentPreview `component`
+### `DocumentPreview` `component`
 
 ```ts
 DocumentPreview(props: { size?: 'A4' | 'A3' | 'A5' | 'letter' | 'legal'; showPageBreaks?: boolean; children }) => VNode
@@ -630,7 +630,7 @@ A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the D
 
 ---
 
-### documentTheme `constant`
+### `documentTheme` `constant`
 
 ```ts
 documentTheme: { colors; fonts; sizes; spacing }  // type DocumentTheme = typeof documentTheme

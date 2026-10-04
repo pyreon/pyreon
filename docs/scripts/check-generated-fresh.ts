@@ -21,6 +21,8 @@ const GENERATED = [
   'docs/src/content/docs/troubleshooting',
   'docs/src/content/docs/troubleshooting.md',
   'docs/src/content/docs/examples.md',
+  'docs/src/content/docs/package-catalog.md',
+  'docs/src/package-catalog.generated.ts',
   // Only the table between the gen:lathe-config markers is generated; the
   // rest of the page is hand-written, so an edit there never trips this.
   'docs/src/content/docs/lathe.md',

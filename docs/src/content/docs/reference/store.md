@@ -88,26 +88,26 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`defineStore`](#definestore) | function | Define a composition-style store. |
-| [`defineStore (schema mode)`](#definestore-schema-mode) | function | Schema-driven `defineStore` overload. |
-| [`SchemaStoreApi`](#schemastoreapi) | type | Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. |
-| [`DeepPartial`](#deeppartial) | type | Recursive partial — every property optional at every depth. |
-| [`SchemaStoreConfig`](#schemastoreconfig) | type | Config object passed as the 2nd arg of the schema-mode `defineStore` overload. |
-| [`SchemaStoreContext`](#schemastorecontext) | type | Argument passed to the schema-mode `setup` function. |
-| [`StoreApi`](#storeapi) | type | The object the `defineStore` hook returns. |
-| [`addStorePlugin`](#addstoreplugin) | function | Register a global store plugin. |
-| [`setStoreRegistryProvider`](#setstoreregistryprovider) | function | Replace the default global store registry with a provider function. |
-| [`resetStore`](#resetstore) | function | Remove ONE store from the registry by ID. |
-| [`resetAllStores`](#resetallstores) | function | Clear the ENTIRE store registry. |
-| [`dehydrateStores`](#dehydratestores) | function | SERVER side of the SSR store-hydration handshake (the `@pyreon/store` analogue of TanStack Query `dehydrate`). |
-| [`hydrateStores`](#hydratestores) | function | CLIENT side of the SSR store-hydration handshake. |
-| [`StoreState`](#storestate) | type | Derive the UNWRAPPED per-field value shape of a store from its api object — the inverse of `SignalsOf`. |
-| [`StoreActions`](#storeactions) | type | Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema stores |
-| [`signal`](#signal) | function | Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a sto |
+| [`defineStore`](#definestore-function) | function | Define a composition-style store. |
+| [`defineStore (schema mode)`](#definestore-schema-mode-function) | function | Schema-driven `defineStore` overload. |
+| [`SchemaStoreApi`](#schemastoreapi-type) | type | Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. |
+| [`DeepPartial`](#deeppartial-type) | type | Recursive partial — every property optional at every depth. |
+| [`SchemaStoreConfig`](#schemastoreconfig-type) | type | Config object passed as the 2nd arg of the schema-mode `defineStore` overload. |
+| [`SchemaStoreContext`](#schemastorecontext-type) | type | Argument passed to the schema-mode `setup` function. |
+| [`StoreApi`](#storeapi-type) | type | The object the `defineStore` hook returns. |
+| [`addStorePlugin`](#addstoreplugin-function) | function | Register a global store plugin. |
+| [`setStoreRegistryProvider`](#setstoreregistryprovider-function) | function | Replace the default global store registry with a provider function. |
+| [`resetStore`](#resetstore-function) | function | Remove ONE store from the registry by ID. |
+| [`resetAllStores`](#resetallstores-function) | function | Clear the ENTIRE store registry. |
+| [`dehydrateStores`](#dehydratestores-function) | function | SERVER side of the SSR store-hydration handshake (the `@pyreon/store` analogue of TanStack Query `dehydrate`). |
+| [`hydrateStores`](#hydratestores-function) | function | CLIENT side of the SSR store-hydration handshake. |
+| [`StoreState`](#storestate-type) | type | Derive the UNWRAPPED per-field value shape of a store from its api object — the inverse of `SignalsOf`. |
+| [`StoreActions`](#storeactions-type) | type | Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema stores |
+| [`signal`](#signal-function) | function | Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a sto |
 
 ## API
 
-### defineStore `function`
+### `defineStore` `function`
 
 ```ts
 <T extends Record<string, unknown>>(id: string, setup: () => T) => () => StoreApi<T>
@@ -147,7 +147,7 @@ patch({ count: 42 })
 
 ---
 
-### defineStore (schema mode) `function`
+### `defineStore (schema mode)` `function`
 
 ```ts
 <S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>
@@ -200,7 +200,7 @@ u.store.age.set(-1)                         // direct write — bypasses validat
 
 ---
 
-### SchemaStoreApi `type`
+### `SchemaStoreApi` `type`
 
 ```ts
 interface SchemaStoreApi<TRaw, TStore = SignalsOf<TRaw>> extends Omit<StoreApi<TStore>, "state" | "patch"> { readonly state: TRaw; set(next: TRaw): void; patch(partial: Partial<TRaw>): void; deepPatch(partial: DeepPartial<TRaw>): void; update<K extends keyof TRaw>(key: K, fn: (current: TRaw[K]) => TRaw[K]): void }
@@ -232,7 +232,7 @@ u.update('items', items => items.filter(x => x.id !== 1))  // transform single f
 
 ---
 
-### DeepPartial `type`
+### `DeepPartial` `type`
 
 ```ts
 type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T
@@ -260,7 +260,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
 
 ---
 
-### SchemaStoreConfig `type`
+### `SchemaStoreConfig` `type`
 
 ```ts
 interface SchemaStoreConfig<S, U> { schema: S; initial: InferSchema<S>; setup?: (ctx: SchemaStoreContext<InferSchema<S>>) => U; onValidationError?: (issues: SchemaIssue[], op: "set" | "patch" | "init") => void }
@@ -291,7 +291,7 @@ defineStore('user', {
 
 ---
 
-### SchemaStoreContext `type`
+### `SchemaStoreContext` `type`
 
 ```ts
 interface SchemaStoreContext<T> { state: SignalsOf<T>; set: (next: T) => void; patch: (partial: Partial<T>) => void; reset: () => void }
@@ -321,7 +321,7 @@ defineStore('counter', {
 
 ---
 
-### StoreApi `type`
+### `StoreApi` `type`
 
 ```ts
 interface StoreApi<T> { store: T; id: string; state: Snapshot<T>; patch(p: Partial|fn): void; subscribe(cb): () => void; onAction(cb): () => void; reset(): void; dispose(): void }
@@ -355,7 +355,7 @@ dispose()    // teardown + registry removal
 
 ---
 
-### addStorePlugin `function`
+### `addStorePlugin` `function`
 
 ```ts
 (plugin: StorePlugin) => void  // StorePlugin: (api) => void | (() => void)
@@ -387,7 +387,7 @@ addStorePlugin((api) => {
 
 ---
 
-### setStoreRegistryProvider `function`
+### `setStoreRegistryProvider` `function`
 
 ```ts
 (provider: () => Map<string, StoreApi<any>>) => void
@@ -413,7 +413,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
 ---
 
-### resetStore `function`
+### `resetStore` `function`
 
 ```ts
 (id: string) => void
@@ -438,7 +438,7 @@ resetStore('counter') // next useCounter() call builds a fresh store
 
 ---
 
-### resetAllStores `function`
+### `resetAllStores` `function`
 
 ```ts
 () => void
@@ -463,7 +463,7 @@ afterEach(() => resetAllStores()) // canonical test isolation
 
 ---
 
-### dehydrateStores `function`
+### `dehydrateStores` `function`
 
 ```ts
 (filter?: (id: string) => boolean) => Record<string, Record<string, unknown>>
@@ -501,7 +501,7 @@ html = html.replace('</head>',
 
 ---
 
-### hydrateStores `function`
+### `hydrateStores` `function`
 
 ```ts
 (data: Record<string, Record<string, unknown>>) => void
@@ -526,7 +526,7 @@ hydrateStores(window.__PYREON_STORE_STATE__ ?? {})
 
 ---
 
-### StoreState `type`
+### `StoreState` `type`
 
 ```ts
 type StoreState<Api> // SchemaStoreApi<TRaw, TStore> → TRaw; StoreApi<T> → unwrapped signal fields of T
@@ -558,7 +558,7 @@ type CartState = StoreState<ReturnType<typeof useCart>>
 
 ---
 
-### StoreActions `type`
+### `StoreActions` `type`
 
 ```ts
 type StoreActions<Api> // plain function fields of the store shape (signals + computeds excluded)
@@ -583,7 +583,7 @@ function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<Ca
 
 ---
 
-### signal `function`
+### `signal` `function`
 
 ```ts
 re-exported verbatim from @pyreon/reactivity: signal, computed, effect, batch

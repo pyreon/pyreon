@@ -36,37 +36,37 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`syncedSignal`](#syncedsignal) | function | Bind a Signal&lt;T&gt; to a single scalar entry in a CRDT map. |
-| [`syncedStore`](#syncedstore) | function | Build a flat store of synced fields from a plain initial object — the ergonomic layer over syncedSignal. |
-| [`SyncedSignal`](#syncedsignal) | type | A Signal&lt;T&gt; bound to a CRDT entry. |
-| [`SyncedStore`](#syncedstore) | type | A mapped type — each key of the initial object becomes a SyncedSignal of that field's type, plus a store-level `dispose( |
-| [`CrdtAdapter`](#crdtadapter) | type | The engine-neutral seam. |
-| [`LOCAL_ORIGIN`](#local-origin) | constant | Transaction-origin tag for a LOCAL write (a `.set` originating on this client). |
-| [`REMOTE_ORIGIN`](#remote-origin) | constant | Transaction-origin tag for a REMOTE-applied update (received from a peer/relay). |
-| [`FakeCrdtAdapter`](#fakecrdtadapter) | class | An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without standing up a real engine. |
-| [`connectFakeDocs`](#connectfakedocs) | function | Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. |
-| [`pyreonAdapter`](#pyreonadapter) | function | Convenience factory for the pure-TS LWW (last-writer-wins) engine — the MULTIPLATFORM counterpart to the Yjs adapter. |
-| [`PyreonCrdtAdapter`](#pyreoncrdtadapter) | class | The pure-TS LWW engine's CrdtAdapter implementation — usually reached through the `pyreonAdapter()` factory rather than  |
-| [`PyreonCrdtDoc`](#pyreoncrdtdoc) | class | A state-based (CvRDT) LWW register-map document. |
-| [`createActorId`](#createactorid) | function | Mint a per-peer actor id — the LWW tie-breaker `PyreonCrdtDoc` uses to deterministically resolve a concurrent write. |
-| [`connectPyreonSync`](#connectpyreonsync) | function | Wire a `PyreonCrdtDoc` to a peer over a `SyncChannel` — the pure-TS engine's transport, JSON-over-any-string-duplex with |
-| [`webSocketChannel`](#websocketchannel) | function | The WebSocket implementation of `SyncChannel` for `connectPyreonSync`. |
-| [`createNativeSyncHost`](#createnativesynchost) | function | The JS side of the contract a native runtime host (iOS JavaScriptCore, an Android JS engine) drives to make a native app |
-| [`createYjsDoc`](#createyjsdoc) | function | Create a CrdtDoc backed by a real Yjs Y.Doc (or wrap an existing one). |
-| [`syncedText`](#syncedtext) | function | Bind a Signal&lt;string&gt; to a Yjs Y.Text — a COLLABORATIVE string with character-level CRDT merge. |
-| [`syncedList`](#syncedlist) | function | Bind a Signal&lt;T[]&gt; to a Yjs Y.Array — a COLLABORATIVE list with positional CRDT merge. |
-| [`syncedAwareness`](#syncedawareness) | function | Reactive EPHEMERAL presence — who's online + their live cursor — over the Yjs awareness protocol, a SEPARATE channel fro |
-| [`SyncedAwareness`](#syncedawareness) | type | The reactive presence handle from syncedAwareness. |
-| [`PeerState`](#peerstate) | type | One peer's presence entry: its awareness `clientId` (use it as the `<For>` key), its published `state`, and `isLocal` (w |
-| [`connectViaBroadcastChannel`](#connectviabroadcastchannel) | function | Same-origin CROSS-TAB sync over BroadcastChannel — edits in one tab appear in another tab of the same origin, no server. |
-| [`connectViaWebSocket`](#connectviawebsocket) | function | Sync a YjsCrdtDoc to a relay over WebSocket — the CROSS-DEVICE transport. |
-| [`persistViaIndexedDB`](#persistviaindexeddb) | function | Persist a YjsCrdtDoc to IndexedDB so edits survive a reload and the app works offline (thin wrapper over y-indexeddb). |
-| [`createSyncServer`](#createsyncserver) | function | Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. |
-| [`AuthorizeContext`](#authorizecontext) | type | Context passed to the relay's `authorize` hook: the `room` parsed from the URL path, the `token` query-string param (bro |
+| [`syncedSignal`](#syncedsignal-function) | function | Bind a Signal&lt;T&gt; to a single scalar entry in a CRDT map. |
+| [`syncedStore`](#syncedstore-function) | function | Build a flat store of synced fields from a plain initial object — the ergonomic layer over syncedSignal. |
+| [`SyncedSignal`](#syncedsignal-type) | type | A Signal&lt;T&gt; bound to a CRDT entry. |
+| [`SyncedStore`](#syncedstore-type) | type | A mapped type — each key of the initial object becomes a SyncedSignal of that field's type, plus a store-level `dispose( |
+| [`CrdtAdapter`](#crdtadapter-type) | type | The engine-neutral seam. |
+| [`LOCAL_ORIGIN`](#local_origin-constant) | constant | Transaction-origin tag for a LOCAL write (a `.set` originating on this client). |
+| [`REMOTE_ORIGIN`](#remote_origin-constant) | constant | Transaction-origin tag for a REMOTE-applied update (received from a peer/relay). |
+| [`FakeCrdtAdapter`](#fakecrdtadapter-class) | class | An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without standing up a real engine. |
+| [`connectFakeDocs`](#connectfakedocs-function) | function | Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. |
+| [`pyreonAdapter`](#pyreonadapter-function) | function | Convenience factory for the pure-TS LWW (last-writer-wins) engine — the MULTIPLATFORM counterpart to the Yjs adapter. |
+| [`PyreonCrdtAdapter`](#pyreoncrdtadapter-class) | class | The pure-TS LWW engine's CrdtAdapter implementation — usually reached through the `pyreonAdapter()` factory rather than  |
+| [`PyreonCrdtDoc`](#pyreoncrdtdoc-class) | class | A state-based (CvRDT) LWW register-map document. |
+| [`createActorId`](#createactorid-function) | function | Mint a per-peer actor id — the LWW tie-breaker `PyreonCrdtDoc` uses to deterministically resolve a concurrent write. |
+| [`connectPyreonSync`](#connectpyreonsync-function) | function | Wire a `PyreonCrdtDoc` to a peer over a `SyncChannel` — the pure-TS engine's transport, JSON-over-any-string-duplex with |
+| [`webSocketChannel`](#websocketchannel-function) | function | The WebSocket implementation of `SyncChannel` for `connectPyreonSync`. |
+| [`createNativeSyncHost`](#createnativesynchost-function) | function | The JS side of the contract a native runtime host (iOS JavaScriptCore, an Android JS engine) drives to make a native app |
+| [`createYjsDoc`](#createyjsdoc-function) | function | Create a CrdtDoc backed by a real Yjs Y.Doc (or wrap an existing one). |
+| [`syncedText`](#syncedtext-function) | function | Bind a Signal&lt;string&gt; to a Yjs Y.Text — a COLLABORATIVE string with character-level CRDT merge. |
+| [`syncedList`](#syncedlist-function) | function | Bind a Signal&lt;T[]&gt; to a Yjs Y.Array — a COLLABORATIVE list with positional CRDT merge. |
+| [`syncedAwareness`](#syncedawareness-function) | function | Reactive EPHEMERAL presence — who's online + their live cursor — over the Yjs awareness protocol, a SEPARATE channel fro |
+| [`SyncedAwareness`](#syncedawareness-type) | type | The reactive presence handle from syncedAwareness. |
+| [`PeerState`](#peerstate-type) | type | One peer's presence entry: its awareness `clientId` (use it as the `<For>` key), its published `state`, and `isLocal` (w |
+| [`connectViaBroadcastChannel`](#connectviabroadcastchannel-function) | function | Same-origin CROSS-TAB sync over BroadcastChannel — edits in one tab appear in another tab of the same origin, no server. |
+| [`connectViaWebSocket`](#connectviawebsocket-function) | function | Sync a YjsCrdtDoc to a relay over WebSocket — the CROSS-DEVICE transport. |
+| [`persistViaIndexedDB`](#persistviaindexeddb-function) | function | Persist a YjsCrdtDoc to IndexedDB so edits survive a reload and the app works offline (thin wrapper over y-indexeddb). |
+| [`createSyncServer`](#createsyncserver-function) | function | Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. |
+| [`AuthorizeContext`](#authorizecontext-type) | type | Context passed to the relay's `authorize` hook: the `room` parsed from the URL path, the `token` query-string param (bro |
 
 ## API
 
-### syncedSignal `function`
+### `syncedSignal` `function`
 
 ```ts
 <T>(options: SyncedSignalOptions<T>) => SyncedSignal<T>
@@ -97,7 +97,7 @@ title.dispose()      // detach observer (auto on onCleanup inside a scope)
 
 ---
 
-### syncedStore `function`
+### `syncedStore` `function`
 
 ```ts
 <T extends Record<string, unknown>>(initial: T, options: SyncedStoreOptions) => SyncedStore<T>
@@ -125,7 +125,7 @@ store.dispose()          // tear down all fields (or rely on onCleanup in-scope)
 
 ---
 
-### SyncedSignal `type`
+### `SyncedSignal` `type`
 
 ```ts
 interface SyncedSignal<T> extends Signal<T> { dispose(): void }
@@ -143,7 +143,7 @@ const s: SyncedSignal<number> = syncedSignal({ doc, key: "n", initial: 0 })
 
 ---
 
-### SyncedStore `type`
+### `SyncedStore` `type`
 
 ```ts
 type SyncedStore<T> = { readonly [K in keyof T]: SyncedSignal<T[K]> } & { dispose(): void }
@@ -161,7 +161,7 @@ const store: SyncedStore<{ title: string }> = syncedStore({ title: "x" }, { doc 
 
 ---
 
-### CrdtAdapter `type`
+### `CrdtAdapter` `type`
 
 ```ts
 interface CrdtAdapter { createDoc(): CrdtDoc }  // + CrdtDoc.getMap → CrdtMap, CrdtMap.observe/transact
@@ -182,7 +182,7 @@ function bindTitle(adapter: CrdtAdapter) {
 
 ---
 
-### LOCAL_ORIGIN `constant`
+### `LOCAL_ORIGIN` `constant`
 
 ```ts
 const LOCAL_ORIGIN: unique symbol
@@ -200,7 +200,7 @@ doc.getMap("m").transact(() => map.set("k", v), LOCAL_ORIGIN)
 
 ---
 
-### REMOTE_ORIGIN `constant`
+### `REMOTE_ORIGIN` `constant`
 
 ```ts
 const REMOTE_ORIGIN: unique symbol
@@ -218,7 +218,7 @@ doc.yDoc.transact(() => Y.applyUpdate(doc.yDoc, bytes), REMOTE_ORIGIN)
 
 ---
 
-### FakeCrdtAdapter `class`
+### `FakeCrdtAdapter` `class`
 
 ```ts
 class FakeCrdtAdapter implements CrdtAdapter { createDoc(): CrdtDoc }
@@ -249,7 +249,7 @@ sa.set(5) // sb() becomes 5
 
 ---
 
-### connectFakeDocs `function`
+### `connectFakeDocs` `function`
 
 ```ts
 (a: FakeCrdtDoc, b: FakeCrdtDoc) => { disconnect(): void }
@@ -268,7 +268,7 @@ link.disconnect() // simulate offline
 
 ---
 
-### pyreonAdapter `function`
+### `pyreonAdapter` `function`
 
 ```ts
 (actor?: string) => PyreonCrdtAdapter
@@ -296,7 +296,7 @@ title.set("Roadmap")
 
 ---
 
-### PyreonCrdtAdapter `class`
+### `PyreonCrdtAdapter` `class`
 
 ```ts
 class PyreonCrdtAdapter implements CrdtAdapter { constructor(actor: string); createDoc(): CrdtDoc }
@@ -315,7 +315,7 @@ const doc = adapter.createDoc()
 
 ---
 
-### PyreonCrdtDoc `class`
+### `PyreonCrdtDoc` `class`
 
 ```ts
 class PyreonCrdtDoc implements CrdtDoc { constructor(actor: string); readonly actor: string; getMap(name): CrdtMap; transact(fn, origin?): void; applyOps(ops, origin?): void; encodeState(): PyreonCrdtOp[]; destroy(): void }
@@ -342,7 +342,7 @@ const state = doc.encodeState() // ship this to a fresh peer to seed it
 
 ---
 
-### createActorId `function`
+### `createActorId` `function`
 
 ```ts
 () => string
@@ -369,7 +369,7 @@ const adapter = pyreonAdapter(actor)
 
 ---
 
-### connectPyreonSync `function`
+### `connectPyreonSync` `function`
 
 ```ts
 (doc: PyreonCrdtDoc, channel: SyncChannel) => { disconnect(): void }
@@ -396,7 +396,7 @@ disconnect()
 
 ---
 
-### webSocketChannel `function`
+### `webSocketChannel` `function`
 
 ```ts
 (url: string, WebSocketImpl?: WebSocketCtor) => SyncChannel
@@ -420,7 +420,7 @@ connectPyreonSync(doc, channel)
 
 ---
 
-### createNativeSyncHost `function`
+### `createNativeSyncHost` `function`
 
 ```ts
 (options: { actor: string; url?: string; WebSocketImpl?: WebSocketCtor }) => NativeSyncHost
@@ -448,7 +448,7 @@ host.destroy() // tears down the transport + document
 
 ---
 
-### createYjsDoc `function`
+### `createYjsDoc` `function`
 
 ```ts
 (yDoc?: Y.Doc) => YjsCrdtDoc
@@ -469,7 +469,7 @@ connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")
 
 ---
 
-### syncedText `function`
+### `syncedText` `function`
 
 ```ts
 (doc: YjsCrdtDoc, key: string) => SyncedText
@@ -495,7 +495,7 @@ body.delete(0, 6)
 
 ---
 
-### syncedList `function`
+### `syncedList` `function`
 
 ```ts
 <T>(doc: YjsCrdtDoc, key: string) => SyncedList<T>
@@ -522,7 +522,7 @@ items.delete(1, 1)
 
 ---
 
-### syncedAwareness `function`
+### `syncedAwareness` `function`
 
 ```ts
 <T extends Record<string, unknown>>(doc: YjsCrdtDoc, initial?: T) => SyncedAwareness<T>
@@ -558,7 +558,7 @@ connectViaWebSocket(doc, "wss://sync.example.com/room?token=abc")
 
 ---
 
-### SyncedAwareness `type`
+### `SyncedAwareness` `type`
 
 ```ts
 interface SyncedAwareness<T> { setLocal(s: T): void; setLocalField<K extends keyof T>(k: K, v: T[K]): void; local: Signal<T | null>; others: Signal<PeerState<T>[]>; states: Signal<PeerState<T>[]>; awareness: Awareness; dispose(): void }
@@ -577,7 +577,7 @@ p.others()  // PeerState<{ name: string }>[] — other people here
 
 ---
 
-### PeerState `type`
+### `PeerState` `type`
 
 ```ts
 interface PeerState<T> { clientId: number; state: T; isLocal: boolean }
@@ -597,7 +597,7 @@ One peer's presence entry: its awareness `clientId` (use it as the `<For>` key),
 
 ---
 
-### connectViaBroadcastChannel `function`
+### `connectViaBroadcastChannel` `function`
 
 ```ts
 (doc: YjsCrdtDoc, channelName: string) => { disconnect(): void }
@@ -622,7 +622,7 @@ link.disconnect()
 
 ---
 
-### connectViaWebSocket `function`
+### `connectViaWebSocket` `function`
 
 ```ts
 (doc: YjsCrdtDoc, url: string, options?: WebSocketTransportOptions) => WebSocketTransport
@@ -653,7 +653,7 @@ t.disconnect()            // close + stop reconnecting
 
 ---
 
-### persistViaIndexedDB `function`
+### `persistViaIndexedDB` `function`
 
 ```ts
 (doc: YjsCrdtDoc, dbName: string) => YjsPersistence
@@ -679,7 +679,7 @@ const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
 
 ---
 
-### createSyncServer `function`
+### `createSyncServer` `function`
 
 ```ts
 (options: SyncServerOptions) => Promise<SyncServer>
@@ -708,7 +708,7 @@ const relay = await createSyncServer({
 
 ---
 
-### AuthorizeContext `type`
+### `AuthorizeContext` `type`
 
 ```ts
 interface AuthorizeContext { room: string; token: string | null; req: IncomingMessage }

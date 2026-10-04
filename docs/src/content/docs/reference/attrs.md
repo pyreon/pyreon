@@ -75,17 +75,17 @@ isAttrsComponent(Button)                        // true (IS_ATTRS marker)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`attrs`](#attrs) | function | Factory entry (default + named export). |
-| [`.attrs()`](#attrs) | function | Add default props. |
-| [`.config()`](#config) | function | Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). |
-| [`.compose()`](#compose) | function | Attach named higher-order components. |
-| [`.statics()`](#statics) | function | Attach arbitrary metadata, readable on the component's `.meta` object. |
-| [`.getDefaultAttrs()`](#getdefaultattrs) | function | Resolve the accumulated `.attrs()` chain for a given props bag — every callback in the chain runs against `props` and th |
-| [`isAttrsComponent`](#isattrscomponent) | function | Runtime type guard — `true` when a value was created by `attrs()` (checks the own `IS_ATTRS` marker). |
+| [`attrs`](#attrs-function) | function | Factory entry (default + named export). |
+| [`.attrs()`](#attrs-function-2) | function | Add default props. |
+| [`.config()`](#config-function) | function | Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). |
+| [`.compose()`](#compose-function) | function | Attach named higher-order components. |
+| [`.statics()`](#statics-function) | function | Attach arbitrary metadata, readable on the component's `.meta` object. |
+| [`.getDefaultAttrs()`](#getdefaultattrs-function) | function | Resolve the accumulated `.attrs()` chain for a given props bag — every callback in the chain runs against `props` and th |
+| [`isAttrsComponent`](#isattrscomponent-function) | function | Runtime type guard — `true` when a value was created by `attrs()` (checks the own `IS_ATTRS` marker). |
 
 ## API
 
-### attrs `function`
+### `attrs` `function`
 
 ```ts
 <C extends ElementType>({ name, component }: { name: string; component: C }) => AttrsComponent
@@ -122,7 +122,7 @@ const Button = attrs({ name: 'Button', component: Element })
 
 ---
 
-### .attrs() `function`
+### `.attrs()` `function`
 
 ```ts
 <P>(attrs: object | ((props) => object), opts?: { priority?: boolean; filter?: string[] }) => AttrsComponent
@@ -158,7 +158,7 @@ const Small = Base.attrs({ size: 'sm' })     // → size: 'sm'
 
 ---
 
-### .config() `function`
+### `.config()` `function`
 
 ```ts
 (opts: { name?: string; component?: ElementType; DEBUG?: boolean }) => AttrsComponent
@@ -190,7 +190,7 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' })
 
 ---
 
-### .compose() `function`
+### `.compose()` `function`
 
 ```ts
 (hocs: Record<string, ((c: ComponentFn) => ComponentFn) | null | false>) => AttrsComponent
@@ -221,7 +221,7 @@ const NoTracking = Enhanced.compose({ withTracking: null })
 
 ---
 
-### .statics() `function`
+### `.statics()` `function`
 
 ```ts
 (meta: Record<string, unknown>) => AttrsComponent
@@ -250,7 +250,7 @@ Btn.meta.sizes      // ['sm', 'md', 'lg']
 
 ---
 
-### .getDefaultAttrs() `function`
+### `.getDefaultAttrs()` `function`
 
 ```ts
 (props: TObj) => TObj
@@ -278,7 +278,7 @@ Button.getDefaultAttrs({ primary: true })   // { ..., kind: 'primary' }
 
 ---
 
-### isAttrsComponent `function`
+### `isAttrsComponent` `function`
 
 ```ts
 <T>(component: T) => boolean

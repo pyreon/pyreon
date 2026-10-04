@@ -84,56 +84,56 @@ effect(() => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`signal`](#signal) | function | Create a reactive signal. |
-| [`isServer`](#isserver) | constant | Canonical runtime environment flag — `true` when there is no DOM (`typeof document === 'undefined'`), i.e. |
-| [`isClient`](#isclient) | constant | Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== 'undefined'`). |
-| [`computed`](#computed) | function | Create a derived value that caches its result and recomputes lazily. |
-| [`effect`](#effect) | function | Run a side effect that auto-tracks signal dependencies and re-runs when they change. |
-| [`renderEffect`](#rendereffect) | function | DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectSco |
-| [`batch`](#batch) | function | Group multiple signal writes so subscribers fire only once — after the batch completes. |
-| [`nextTick`](#nexttick) | function | Returns a promise that resolves after the next microtask. |
-| [`onCleanup`](#oncleanup) | function | Register a cleanup with the CURRENT OWNER. |
-| [`watch`](#watch) | function | Explicit reactive watcher — tracks `source` and fires `callback` when it changes. |
-| [`createSelector`](#createselector) | function | Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-s |
-| [`cell`](#cell) | function | Lightweight reactive primitive — class-based alternative to `signal()`. |
-| [`createStore`](#createstore) | function | Create a deeply reactive proxy-based object. |
-| [`createResource`](#createresource) | function | Async data primitive. |
-| [`reconcile`](#reconcile) | function | Surgically diff a new value into an existing `createStore` proxy. |
-| [`isStore`](#isstore) | function | Type guard — returns `true` if the value is a `createStore` proxy (recognized via an internal symbol marker). |
-| [`shallowReactive`](#shallowreactive) | function | Create a SHALLOW reactive store — only top-level mutations trigger updates. |
-| [`markRaw`](#markraw) | function | Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. |
-| [`untrack`](#untrack) | function | Execute a function reading signals WITHOUT subscribing to them. |
-| [`effectScope`](#effectscope) | function | Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and dispo |
-| [`onScopeDispose`](#onscopedispose) | function | Register a callback to run when the current `EffectScope` stops. |
-| [`getCurrentScope`](#getcurrentscope) | function | Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is ac |
-| [`setCurrentScope`](#setcurrentscope) | function | **Low-level escape hatch** — directly set the ambient `EffectScope`. |
-| [`onSignalUpdate`](#onsignalupdate) | function | Register a global trace listener that fires on every signal write. |
-| [`inspectSignal`](#inspectsignal) | function | Inspect a signal — pretty-prints its current value, name, and subscriber count to the console (in a `console.group`) and |
-| [`why`](#why) | function | Toggle a global "why-did-it-update?" tracer that logs every signal write between consecutive calls. |
-| [`getReactiveTrace`](#getreactivetrace) | function | Returns the last ~50 signal writes (chronological, oldest → newest) from a bounded dev-only ring buffer — the causal SEQ |
-| [`setErrorHandler`](#seterrorhandler) | function | Register a global handler for unhandled errors thrown inside `effect()` / `computed()` / `renderEffect()`. |
-| [`activateReactiveDevtools`](#activatereactivedevtools) | function | Opt-in lifecycle for the reactive-devtools bridge — the live signal/computed/effect graph the `@pyreon/devtools` Signals |
-| [`getReactiveGraph`](#getreactivegraph) | function | Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. |
-| [`describeReactiveGraph`](#describereactivegraph) | function | Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, pl |
-| [`getUpdateCause`](#getupdatecause) | function | Answers "why did this node just update?" at the SOURCE LINE, along the exact causal chain — the thing React DevTools' wh |
-| [`wrapSignal`](#wrapsignal) | function | Create a signal facade over a base signal with custom write behavior. |
-| [`WrapSignalOptions`](#wrapsignaloptions) | type | Configuration object for `wrapSignal()`. |
-| [`startReactiveCoverage`](#startreactivecoverage) | function | Begin a Reactive Coverage session (from the `@pyreon/reactivity/coverage` subpath). |
-| [`takeReactiveCoverage`](#takereactivecoverage) | function | Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `&#123; total, covered, uncovered, percent,  |
-| [`formatReactiveCoverage`](#formatreactivecoverage) | function | Render a `ReactiveCoverageReport` as a dependency-free, human-readable text block: a headline (`Reactive Coverage — 42.9 |
-| [`SignalValue`](#signalvalue) | type | Unwrap the VALUE type of a `Signal<T>`, `Computed<T>`, `ReadonlySignal<T>`, or any zero-arg accessor — `SignalValue&lt;type |
-| [`ComputedValue`](#computedvalue) | type | Unwrap the value type of a `Computed<T>` — intent-revealing alias of `SignalValue` (every Pyreon reactive read is a zero |
-| [`MaybeAccessor`](#maybeaccessor) | type | The standard "static value OR reactive accessor" parameter shape used across Pyreon APIs (`<Show when>`, hook options). |
-| [`AccessorReturn`](#accessorreturn) | type | Resolve a `MaybeAccessor` (or any accessor) to its VALUE type — unwraps the `() => T` arm and passes plain values throug |
-| [`registerSingleton`](#registersingleton) | function | Fail-loud detection of duplicate framework instances. |
-| [`defineCrossModuleState`](#definecrossmodulestate) | function | A globalThis-keyed singleton, for state that must be shared even across a genuine dual-instance situation (as opposed to |
-| [`getContextOwner`](#getcontextowner) | function | Read the currently active CONTEXT OWNER — the `EffectScope` that `@pyreon/core`'s `provide()`/`useContext()` resolve aga |
-| [`runWithContextOwner`](#runwithcontextowner) | function | Run `fn` with `owner` as the active context owner, then restore whatever was active before — the safe, try/finally-guard |
-| [`setContextOwner`](#setcontextowner) | function | **Low-level escape hatch** — directly set the active context owner, returning the PREVIOUS one (for a manual restore). |
+| [`signal`](#signal-function) | function | Create a reactive signal. |
+| [`isServer`](#isserver-constant) | constant | Canonical runtime environment flag — `true` when there is no DOM (`typeof document === 'undefined'`), i.e. |
+| [`isClient`](#isclient-constant) | constant | Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== 'undefined'`). |
+| [`computed`](#computed-function) | function | Create a derived value that caches its result and recomputes lazily. |
+| [`effect`](#effect-function) | function | Run a side effect that auto-tracks signal dependencies and re-runs when they change. |
+| [`renderEffect`](#rendereffect-function) | function | DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectSco |
+| [`batch`](#batch-function) | function | Group multiple signal writes so subscribers fire only once — after the batch completes. |
+| [`nextTick`](#nexttick-function) | function | Returns a promise that resolves after the next microtask. |
+| [`onCleanup`](#oncleanup-function) | function | Register a cleanup with the CURRENT OWNER. |
+| [`watch`](#watch-function) | function | Explicit reactive watcher — tracks `source` and fires `callback` when it changes. |
+| [`createSelector`](#createselector-function) | function | Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-s |
+| [`cell`](#cell-function) | function | Lightweight reactive primitive — class-based alternative to `signal()`. |
+| [`createStore`](#createstore-function) | function | Create a deeply reactive proxy-based object. |
+| [`createResource`](#createresource-function) | function | Async data primitive. |
+| [`reconcile`](#reconcile-function) | function | Surgically diff a new value into an existing `createStore` proxy. |
+| [`isStore`](#isstore-function) | function | Type guard — returns `true` if the value is a `createStore` proxy (recognized via an internal symbol marker). |
+| [`shallowReactive`](#shallowreactive-function) | function | Create a SHALLOW reactive store — only top-level mutations trigger updates. |
+| [`markRaw`](#markraw-function) | function | Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. |
+| [`untrack`](#untrack-function) | function | Execute a function reading signals WITHOUT subscribing to them. |
+| [`effectScope`](#effectscope-function) | function | Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and dispo |
+| [`onScopeDispose`](#onscopedispose-function) | function | Register a callback to run when the current `EffectScope` stops. |
+| [`getCurrentScope`](#getcurrentscope-function) | function | Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is ac |
+| [`setCurrentScope`](#setcurrentscope-function) | function | **Low-level escape hatch** — directly set the ambient `EffectScope`. |
+| [`onSignalUpdate`](#onsignalupdate-function) | function | Register a global trace listener that fires on every signal write. |
+| [`inspectSignal`](#inspectsignal-function) | function | Inspect a signal — pretty-prints its current value, name, and subscriber count to the console (in a `console.group`) and |
+| [`why`](#why-function) | function | Toggle a global "why-did-it-update?" tracer that logs every signal write between consecutive calls. |
+| [`getReactiveTrace`](#getreactivetrace-function) | function | Returns the last ~50 signal writes (chronological, oldest → newest) from a bounded dev-only ring buffer — the causal SEQ |
+| [`setErrorHandler`](#seterrorhandler-function) | function | Register a global handler for unhandled errors thrown inside `effect()` / `computed()` / `renderEffect()`. |
+| [`activateReactiveDevtools`](#activatereactivedevtools-function) | function | Opt-in lifecycle for the reactive-devtools bridge — the live signal/computed/effect graph the `@pyreon/devtools` Signals |
+| [`getReactiveGraph`](#getreactivegraph-function) | function | Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. |
+| [`describeReactiveGraph`](#describereactivegraph-function) | function | Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, pl |
+| [`getUpdateCause`](#getupdatecause-function) | function | Answers "why did this node just update?" at the SOURCE LINE, along the exact causal chain — the thing React DevTools' wh |
+| [`wrapSignal`](#wrapsignal-function) | function | Create a signal facade over a base signal with custom write behavior. |
+| [`WrapSignalOptions`](#wrapsignaloptions-type) | type | Configuration object for `wrapSignal()`. |
+| [`startReactiveCoverage`](#startreactivecoverage-function) | function | Begin a Reactive Coverage session (from the `@pyreon/reactivity/coverage` subpath). |
+| [`takeReactiveCoverage`](#takereactivecoverage-function) | function | Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `&#123; total, covered, uncovered, percent,  |
+| [`formatReactiveCoverage`](#formatreactivecoverage-function) | function | Render a `ReactiveCoverageReport` as a dependency-free, human-readable text block: a headline (`Reactive Coverage — 42.9 |
+| [`SignalValue`](#signalvalue-type) | type | Unwrap the VALUE type of a `Signal<T>`, `Computed<T>`, `ReadonlySignal<T>`, or any zero-arg accessor — `SignalValue&lt;type |
+| [`ComputedValue`](#computedvalue-type) | type | Unwrap the value type of a `Computed<T>` — intent-revealing alias of `SignalValue` (every Pyreon reactive read is a zero |
+| [`MaybeAccessor`](#maybeaccessor-type) | type | The standard "static value OR reactive accessor" parameter shape used across Pyreon APIs (`<Show when>`, hook options). |
+| [`AccessorReturn`](#accessorreturn-type) | type | Resolve a `MaybeAccessor` (or any accessor) to its VALUE type — unwraps the `() => T` arm and passes plain values throug |
+| [`registerSingleton`](#registersingleton-function) | function | Fail-loud detection of duplicate framework instances. |
+| [`defineCrossModuleState`](#definecrossmodulestate-function) | function | A globalThis-keyed singleton, for state that must be shared even across a genuine dual-instance situation (as opposed to |
+| [`getContextOwner`](#getcontextowner-function) | function | Read the currently active CONTEXT OWNER — the `EffectScope` that `@pyreon/core`'s `provide()`/`useContext()` resolve aga |
+| [`runWithContextOwner`](#runwithcontextowner-function) | function | Run `fn` with `owner` as the active context owner, then restore whatever was active before — the safe, try/finally-guard |
+| [`setContextOwner`](#setcontextowner-function) | function | **Low-level escape hatch** — directly set the active context owner, returning the PREVIOUS one (for a manual restore). |
 
 ## API
 
-### signal `function`
+### `signal` `function`
 
 ```ts
 <T>(initialValue: T, options?: { name?: string }) => Signal<T>
@@ -179,7 +179,7 @@ items.trigger()           // force subscribers to re-run
 
 ---
 
-### isServer `constant`
+### `isServer` `constant`
 
 ```ts
 const isServer: boolean
@@ -205,7 +205,7 @@ window.addEventListener('resize', onResize)
 
 ---
 
-### isClient `constant`
+### `isClient` `constant`
 
 ```ts
 const isClient: boolean
@@ -229,7 +229,7 @@ const initial = isClient ? navigator.onLine : true
 
 ---
 
-### computed `function`
+### `computed` `function`
 
 ```ts
 <T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>
@@ -269,7 +269,7 @@ doubled()  // 10
 
 ---
 
-### effect `function`
+### `effect` `function`
 
 ```ts
 (fn: () => (() => void) | void) => () => void
@@ -314,7 +314,7 @@ effect(() => {
 
 ---
 
-### renderEffect `function`
+### `renderEffect` `function`
 
 ```ts
 (fn: () => void) => () => void
@@ -353,7 +353,7 @@ const dispose = renderEffect(() => {
 
 ---
 
-### batch `function`
+### `batch` `function`
 
 ```ts
 (fn: () => void) => void
@@ -390,7 +390,7 @@ batch(() => {
 
 ---
 
-### nextTick `function`
+### `nextTick` `function`
 
 ```ts
 () => Promise<void>
@@ -419,7 +419,7 @@ expect(node.textContent).toBe('5')
 
 ---
 
-### onCleanup `function`
+### `onCleanup` `function`
 
 ```ts
 (fn: () => void) => void
@@ -465,7 +465,7 @@ function Clock() {
 
 ---
 
-### watch `function`
+### `watch` `function`
 
 ```ts
 <T>(source: () => T, callback: (next: T, prev: T) => void, options?: WatchOptions) => () => void
@@ -501,7 +501,7 @@ watch(() => count(), (next, prev) => {
 
 ---
 
-### createSelector `function`
+### `createSelector` `function`
 
 ```ts
 <T>(source: () => T) => (value: T) => boolean
@@ -541,7 +541,7 @@ const isSelected = createSelector(() => selectedId())
 
 ---
 
-### cell `function`
+### `cell` `function`
 
 ```ts
 <T>(value: T) => Cell<T>
@@ -581,7 +581,7 @@ label.listen(() => console.log('changed'))
 
 ---
 
-### createStore `function`
+### `createStore` `function`
 
 ```ts
 <T extends object>(initial: T) => T
@@ -611,7 +611,7 @@ store.todos.push({ text: 'Build app', done: false })  // array methods work
 
 ---
 
-### createResource `function`
+### `createResource` `function`
 
 ```ts
 <T, P>(source: () => P, fetcher: (param: P) => Promise<T>) => Resource<T>
@@ -649,7 +649,7 @@ user.dispose()           // stop tracking, discard in-flight response
 
 ---
 
-### reconcile `function`
+### `reconcile` `function`
 
 ```ts
 <T extends object>(source: T, target: T) => void
@@ -681,7 +681,7 @@ reconcile(
 
 ---
 
-### isStore `function`
+### `isStore` `function`
 
 ```ts
 (value: unknown) => boolean
@@ -708,7 +708,7 @@ isStore(null)  // false (null-safe)
 
 ---
 
-### shallowReactive `function`
+### `shallowReactive` `function`
 
 ```ts
 <T extends object>(initial: T) => T
@@ -736,7 +736,7 @@ store.user = { name: 'Bob' }     // triggers user effect (reference replacement)
 
 ---
 
-### markRaw `function`
+### `markRaw` `function`
 
 ```ts
 <T extends object>(value: T) => T
@@ -766,7 +766,7 @@ store.editor.someMethod()           // works — class methods see real receiver
 
 ---
 
-### untrack `function`
+### `untrack` `function`
 
 ```ts
 (fn: () => T) => T
@@ -791,7 +791,7 @@ effect(() => {
 
 ---
 
-### effectScope `function`
+### `effectScope` `function`
 
 ```ts
 () => EffectScope
@@ -826,7 +826,7 @@ count.set(10)  // no log — effect was disposed
 
 ---
 
-### onScopeDispose `function`
+### `onScopeDispose` `function`
 
 ```ts
 (fn: () => void) => void
@@ -854,7 +854,7 @@ scope.runInScope(() => {
 
 ---
 
-### getCurrentScope `function`
+### `getCurrentScope` `function`
 
 ```ts
 () => EffectScope | null
@@ -888,7 +888,7 @@ function myReactiveResource() {
 
 ---
 
-### setCurrentScope `function`
+### `setCurrentScope` `function`
 
 ```ts
 (scope: EffectScope | null) => void
@@ -920,7 +920,7 @@ myScope.runInScope(() => doWork())
 
 ---
 
-### onSignalUpdate `function`
+### `onSignalUpdate` `function`
 
 ```ts
 (listener: (event: { signal, name, prev, next, stack, timestamp }) => void) => () => void
@@ -951,7 +951,7 @@ dispose()      // remove listener
 
 ---
 
-### inspectSignal `function`
+### `inspectSignal` `function`
 
 ```ts
 <T>(sig: Signal<T>) => SignalDebugInfo<T>
@@ -978,7 +978,7 @@ inspectSignal(count)
 
 ---
 
-### why `function`
+### `why` `function`
 
 ```ts
 () => void
@@ -1005,7 +1005,7 @@ why()         // disarm + dump transcript:
 
 ---
 
-### getReactiveTrace `function`
+### `getReactiveTrace` `function`
 
 ```ts
 () => Array<{ name: string | undefined; prev: string; next: string; timestamp: number }>
@@ -1035,7 +1035,7 @@ clearReactiveTrace()  // → []
 
 ---
 
-### setErrorHandler `function`
+### `setErrorHandler` `function`
 
 ```ts
 (fn: (err: unknown) => void) => void
@@ -1067,7 +1067,7 @@ count.set(101)  // logs/reports via handler instead of crashing
 
 ---
 
-### activateReactiveDevtools `function`
+### `activateReactiveDevtools` `function`
 
 ```ts
 activateReactiveDevtools(): void  ·  deactivateReactiveDevtools(): void  ·  isReactiveDevtoolsActive(): boolean
@@ -1099,7 +1099,7 @@ deactivateReactiveDevtools() // → registry cleared
 
 ---
 
-### getReactiveGraph `function`
+### `getReactiveGraph` `function`
 
 ```ts
 getReactiveGraph(): { nodes: ReactiveNode[]; edges: { from: number; to: number }[] }  ·  getReactiveFires(): { id: number; ts: number }[]
@@ -1131,7 +1131,7 @@ getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)
 
 ---
 
-### describeReactiveGraph `function`
+### `describeReactiveGraph` `function`
 
 ```ts
 describeReactiveGraph(graph?: ReactiveGraph): GraphDescription  ·  formatGraphDescription(desc): string
@@ -1164,7 +1164,7 @@ console.log(formatGraphDescription(describeReactiveGraph()))
 
 ---
 
-### getUpdateCause `function`
+### `getUpdateCause` `function`
 
 ```ts
 getUpdateCause(nodeId: number): UpdateCause | null  ·  formatUpdateCause(cause: UpdateCause): string
@@ -1198,7 +1198,7 @@ console.log(formatUpdateCause(getUpdateCause(effectId)))
 
 ---
 
-### wrapSignal `function`
+### `wrapSignal` `function`
 
 ```ts
 <T>(base: Signal<T>, options: WrapSignalOptions<T>) => Signal<T>
@@ -1232,7 +1232,7 @@ console.log(wrapped())  // 5 (reads from base)
 
 ---
 
-### WrapSignalOptions `type`
+### `WrapSignalOptions` `type`
 
 ```ts
 interface WrapSignalOptions<T> { set: (value: T) => void; update?: (fn: (current: T) => T) => void }
@@ -1268,7 +1268,7 @@ const wrapped = wrapSignal(countSig, {
 
 ---
 
-### startReactiveCoverage `function`
+### `startReactiveCoverage` `function`
 
 ```ts
 () => void
@@ -1297,7 +1297,7 @@ console.log(formatReactiveCoverage(report))
 
 ---
 
-### takeReactiveCoverage `function`
+### `takeReactiveCoverage` `function`
 
 ```ts
 () => ReactiveCoverageReport
@@ -1317,7 +1317,7 @@ for (const e of report.uncoveredEntries) console.log(e.reason, e.name, e.loc)
 
 ---
 
-### formatReactiveCoverage `function`
+### `formatReactiveCoverage` `function`
 
 ```ts
 (report: ReactiveCoverageReport, opts?: { showCovered?: boolean; limit?: number }) => string
@@ -1338,7 +1338,7 @@ console.log(formatReactiveCoverage(report, { showCovered: true, limit: 20 }))
 
 ---
 
-### SignalValue `type`
+### `SignalValue` `type`
 
 ```ts
 type SignalValue<S> = S extends () => infer T ? T : never
@@ -1365,7 +1365,7 @@ function save(next: SignalValue<typeof user>) { user.set(next) }
 
 ---
 
-### ComputedValue `type`
+### `ComputedValue` `type`
 
 ```ts
 type ComputedValue<C> = C extends () => infer T ? T : never
@@ -1389,7 +1389,7 @@ type Total = ComputedValue<typeof total> // number
 
 ---
 
-### MaybeAccessor `type`
+### `MaybeAccessor` `type`
 
 ```ts
 type MaybeAccessor<T> = T | (() => T)
@@ -1419,7 +1419,7 @@ useTitle(() => pageTitle())
 
 ---
 
-### AccessorReturn `type`
+### `AccessorReturn` `type`
 
 ```ts
 type AccessorReturn<A> = A extends () => infer T ? T : A
@@ -1443,7 +1443,7 @@ type C = AccessorReturn<MaybeAccessor<boolean>>  // boolean
 
 ---
 
-### registerSingleton `function`
+### `registerSingleton` `function`
 
 ```ts
 (pkg: string, version: string, location: string) => void
@@ -1472,7 +1472,7 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 ---
 
-### defineCrossModuleState `function`
+### `defineCrossModuleState` `function`
 
 ```ts
 <T extends object>(key: string, init: () => T) => T
@@ -1499,7 +1499,7 @@ const registry = defineCrossModuleState('my-lib:widget-registry', () => new Map<
 
 ---
 
-### getContextOwner `function`
+### `getContextOwner` `function`
 
 ```ts
 () => EffectScope | null
@@ -1526,7 +1526,7 @@ scheduleLater(() => {
 
 ---
 
-### runWithContextOwner `function`
+### `runWithContextOwner` `function`
 
 ```ts
 <T>(owner: EffectScope | null, fn: () => T) => T
@@ -1557,7 +1557,7 @@ onIdle(() => {
 
 ---
 
-### setContextOwner `function`
+### `setContextOwner` `function`
 
 ```ts
 (owner: EffectScope | null) => EffectScope | null

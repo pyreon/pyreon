@@ -1,11 +1,25 @@
 ---
 title: "Examples"
-description: "A gallery of 107 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 110 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 107 examples across 42 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 110 examples across 43 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+
+## Shared state and effects
+
+### Bridge Counter Button
+
+<Example file="./examples/bridge-counter-button" />
+
+### Bridge Counter Readout
+
+<Example file="./examples/bridge-counter-readout" />
+
+### Effects Log
+
+<Example file="./examples/effects-log" />
 
 ## A11y
 

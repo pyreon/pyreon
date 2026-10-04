@@ -99,37 +99,37 @@ const $sameResult = parseReactive(sameSchema, $email)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`withField`](#withfield) | function | Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standar |
-| [`getMeta`](#getmeta) | function | Read the Pyreon field metadata attached via withField(). |
-| [`resolveMetaField`](#resolvemetafield) | function | Read a metadata field through optional i18n. |
-| [`parseReactive`](#parsereactive) | function | Reactively parse `source` through `schema`. |
-| [`parseReactiveAsync`](#parsereactiveasync) | function | Async variant of parseReactive. |
-| [`watchValid`](#watchvalid) | function | Subscribe to validity transitions. |
-| [`formatError`](#formaterror) | function | Resolve a single issue to a human-readable string. |
-| [`formatErrors`](#formaterrors) | function | Resolve an array of issues to strings via the same per-issue logic as formatError. |
-| [`formatErrorsByPath`](#formaterrorsbypath) | function | Build a per-field error map keyed by the issue's path joined with `.`. |
-| [`toFormValidator`](#toformvalidator) | function | Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a `(values) =&gt; Record&lt;field, errorMessag |
-| [`toJsonSchema`](#tojsonschema) | function | Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints, ed |
-| [`serverCheck`](#servercheck) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique- |
-| [`registerServerCheck`](#registerservercheck) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
-| [`catch`](#catch) | function | On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing  |
-| [`readonly`](#readonly) | function | Freeze the parsed output and mark it `Readonly<T>` at the type level (Zod's `.readonly`). |
-| [`array`](#array) | function | Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())` (Zod's `.array`). |
-| [`or`](#or) | function | Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). |
-| [`and`](#and) | function | Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)` (Zod's `.and`). |
-| [`pipe`](#pipe) | function | Validate with this schema, then feed the (validated, transformed) output into `target` (Zod's `.pipe`). |
-| [`superRefine`](#superrefine) | function | Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for cro |
-| [`preprocess`](#preprocess) | function | Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen |
-| [`nonoptional`](#nonoptional) | function | Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. |
-| [`stringbool`](#stringbool) | function | Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). |
-| [`never`](#never) | function | Accepts NO value (Zod's `z.never`) — every input is a validation error, including `undefined`. |
-| [`custom`](#custom) | function | Escape-hatch validated by a user predicate (Zod's `z.custom<T>`). |
-| [`instanceof`](#instanceof) | function | Asserts `input instanceof Ctor` (Zod's `z.instanceof`). |
-| [`nativeEnum`](#nativeenum) | function | Validate a VALUE of a TS native `enum` (or a `const` value-object) — Zod's `z.nativeEnum`. |
+| [`withField`](#withfield-function) | function | Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standar |
+| [`getMeta`](#getmeta-function) | function | Read the Pyreon field metadata attached via withField(). |
+| [`resolveMetaField`](#resolvemetafield-function) | function | Read a metadata field through optional i18n. |
+| [`parseReactive`](#parsereactive-function) | function | Reactively parse `source` through `schema`. |
+| [`parseReactiveAsync`](#parsereactiveasync-function) | function | Async variant of parseReactive. |
+| [`watchValid`](#watchvalid-function) | function | Subscribe to validity transitions. |
+| [`formatError`](#formaterror-function) | function | Resolve a single issue to a human-readable string. |
+| [`formatErrors`](#formaterrors-function) | function | Resolve an array of issues to strings via the same per-issue logic as formatError. |
+| [`formatErrorsByPath`](#formaterrorsbypath-function) | function | Build a per-field error map keyed by the issue's path joined with `.`. |
+| [`toFormValidator`](#toformvalidator-function) | function | Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a `(values) =&gt; Record&lt;field, errorMessag |
+| [`toJsonSchema`](#tojsonschema-function) | function | Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints, ed |
+| [`serverCheck`](#servercheck-function) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique- |
+| [`registerServerCheck`](#registerservercheck-function) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
+| [`catch`](#catch-function) | function | On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing  |
+| [`readonly`](#readonly-function) | function | Freeze the parsed output and mark it `Readonly<T>` at the type level (Zod's `.readonly`). |
+| [`array`](#array-function) | function | Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())` (Zod's `.array`). |
+| [`or`](#or-function) | function | Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). |
+| [`and`](#and-function) | function | Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)` (Zod's `.and`). |
+| [`pipe`](#pipe-function) | function | Validate with this schema, then feed the (validated, transformed) output into `target` (Zod's `.pipe`). |
+| [`superRefine`](#superrefine-function) | function | Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for cro |
+| [`preprocess`](#preprocess-function) | function | Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen |
+| [`nonoptional`](#nonoptional-function) | function | Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. |
+| [`stringbool`](#stringbool-function) | function | Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). |
+| [`never`](#never-function) | function | Accepts NO value (Zod's `z.never`) — every input is a validation error, including `undefined`. |
+| [`custom`](#custom-function) | function | Escape-hatch validated by a user predicate (Zod's `z.custom<T>`). |
+| [`instanceof`](#instanceof-function) | function | Asserts `input instanceof Ctor` (Zod's `z.instanceof`). |
+| [`nativeEnum`](#nativeenum-function) | function | Validate a VALUE of a TS native `enum` (or a `const` value-object) — Zod's `z.nativeEnum`. |
 
 ## API
 
-### withField `function`
+### `withField` `function`
 
 ```ts
 <S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>
@@ -158,7 +158,7 @@ const emailSchema = withField(z.string().email(), {
 
 ---
 
-### getMeta `function`
+### `getMeta` `function`
 
 ```ts
 <S extends StandardSchemaV1>(schema: S) => FieldMeta | undefined
@@ -184,7 +184,7 @@ const label = meta?.label ?? humanize(fieldName)
 
 ---
 
-### resolveMetaField `function`
+### `resolveMetaField` `function`
 
 ```ts
 <S extends StandardSchemaV1>(
@@ -207,7 +207,7 @@ const label = resolveMetaField(emailSchema, 'label', t)
 
 ---
 
-### parseReactive `function`
+### `parseReactive` `function`
 
 ```ts
 <S extends StandardSchemaV1>(
@@ -242,7 +242,7 @@ $email.set('foo@bar.com')  // $result re-derives
 
 ---
 
-### parseReactiveAsync `function`
+### `parseReactiveAsync` `function`
 
 ```ts
 <S extends StandardSchemaV1>(
@@ -276,7 +276,7 @@ watch($result, async (current) => {
 
 ---
 
-### watchValid `function`
+### `watchValid` `function`
 
 ```ts
 <S extends StandardSchemaV1>(
@@ -302,7 +302,7 @@ onUnmount(stop)
 
 ---
 
-### formatError `function`
+### `formatError` `function`
 
 ```ts
 (issue: StandardSchemaIssue | PyreonIssue, t?: TFn) => string
@@ -323,7 +323,7 @@ const message = formatError(issue, t)
 
 ---
 
-### formatErrors `function`
+### `formatErrors` `function`
 
 ```ts
 (issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn) => string[]
@@ -350,7 +350,7 @@ const messages = formatErrors(result.issues ?? [], t)
 
 ---
 
-### formatErrorsByPath `function`
+### `formatErrorsByPath` `function`
 
 ```ts
 (issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>
@@ -369,7 +369,7 @@ const errorMap = formatErrorsByPath(result.issues ?? [], t)
 
 ---
 
-### toFormValidator `function`
+### `toFormValidator` `function`
 
 ```ts
 <TValues>(schema: Schema<TValues>, t?: TFn) => (values: TValues) => Record<string, string>
@@ -399,7 +399,7 @@ const form = useForm({
 
 ---
 
-### toJsonSchema `function`
+### `toJsonSchema` `function`
 
 ```ts
 (schema: Schema<unknown>, options?: { unrepresentable?: 'throw' | 'any' }) => JsonSchema
@@ -430,7 +430,7 @@ toJsonSchema(s.object({ name: s.string().min(2), age: s.number().int().optional(
 
 ---
 
-### serverCheck `function`
+### `serverCheck` `function`
 
 ```ts
 (key: string, opts?: { message?: string; code?: string; key?: string; params?: Record<string, unknown>; fallback?: string }) => this
@@ -467,7 +467,7 @@ const verdict = await signup.parseAsync(formData, { context: { db } })
 
 ---
 
-### registerServerCheck `function`
+### `registerServerCheck` `function`
 
 ```ts
 (key: string, fn: (value: unknown, context?: unknown) => boolean | Promise<boolean>) => void
@@ -491,7 +491,7 @@ registerServerCheck('email-unique', async (value, ctx) => {
 
 ---
 
-### catch `function`
+### `catch` `function`
 
 ```ts
 (value: T | ((input: unknown) => T)) => this
@@ -519,7 +519,7 @@ s.string().catch((input) => String(input)) // fallback derived from the raw inpu
 
 ---
 
-### readonly `function`
+### `readonly` `function`
 
 ```ts
 () => Schema<ShallowReadonly<T>>
@@ -539,7 +539,7 @@ const r = cfg.parse({ port: 80 })
 
 ---
 
-### array `function`
+### `array` `function`
 
 ```ts
 () => ArraySchema<T>
@@ -557,7 +557,7 @@ s.string().array().parse(['a', 'b']) // → { ok: true, value: ['a', 'b'] }
 
 ---
 
-### or `function`
+### `or` `function`
 
 ```ts
 <U>(other: Schema<U>) => UnionSchema<readonly [Schema<T>, Schema<U>]>
@@ -582,7 +582,7 @@ s.string().or(s.number()) // Schema<string | number>
 
 ---
 
-### and `function`
+### `and` `function`
 
 ```ts
 <U>(other: Schema<U>) => IntersectionSchema<T, U>
@@ -600,7 +600,7 @@ s.object({ a: s.string() }).and(s.object({ b: s.number() })) // { a } & { b }
 
 ---
 
-### pipe `function`
+### `pipe` `function`
 
 ```ts
 <U>(target: Schema<U>) => Schema<U>
@@ -618,7 +618,7 @@ s.string().transform(Number).pipe(s.number().positive())
 
 ---
 
-### superRefine `function`
+### `superRefine` `function`
 
 ```ts
 (fn: (value: T, ctx: SuperRefineCtx) => void) => Schema<T>
@@ -646,7 +646,7 @@ s.object({ pw: s.string(), confirm: s.string() }).superRefine((v, ctx) => {
 
 ---
 
-### preprocess `function`
+### `preprocess` `function`
 
 ```ts
 <TOut>(fn: (input: unknown) => unknown, schema: Schema<TOut>) => Schema<TOut>
@@ -670,7 +670,7 @@ s.preprocess((v) => String(v).trim(), s.string().min(1))
 
 ---
 
-### nonoptional `function`
+### `nonoptional` `function`
 
 ```ts
 (message?: string) => Schema<Exclude<T, undefined>>
@@ -694,7 +694,7 @@ s.string().optional().nonoptional() // rejects undefined again
 
 ---
 
-### stringbool `function`
+### `stringbool` `function`
 
 ```ts
 (opts?: { truthy?: string[]; falsy?: string[]; message?: string }) => StringBoolSchema
@@ -721,7 +721,7 @@ s.stringbool({ truthy: ['si'], falsy: ['no'] })
 
 ---
 
-### never `function`
+### `never` `function`
 
 ```ts
 () => Schema<never>
@@ -740,7 +740,7 @@ s.object({ a: s.string() }).extend({ legacy: s.never().optional() })
 
 ---
 
-### custom `function`
+### `custom` `function`
 
 ```ts
 <T = unknown>(check?: (value: unknown) => boolean, message?: string) => Schema<T>
@@ -759,7 +759,7 @@ s.custom<MyType>() // accept anything as MyType
 
 ---
 
-### instanceof `function`
+### `instanceof` `function`
 
 ```ts
 <T>(ctor: new (...args: any[]) => T, message?: string) => Schema<T>
@@ -784,7 +784,7 @@ s.instanceof(Date, 'need a Date')
 
 ---
 
-### nativeEnum `function`
+### `nativeEnum` `function`
 
 ```ts
 <E extends Record<string, string | number>>(enumObject: E) => Schema<E[keyof E]>

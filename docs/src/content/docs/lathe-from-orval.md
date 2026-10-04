@@ -36,7 +36,7 @@ what it would write.
 | `output.mock: true` | `plugins: [..., 'mocks', 'faker']` |
 | `output.baseUrl` (string) | `baseUrl` |
 | `output.mode`, `output.schemas`, `output.clean` | built in: one module per tag, `schemas/`, stale files pruned |
-| `output.override.mutator` | runtime middleware — see [Auth](#auth-and-a-custom-instance) |
+| `output.override.mutator` | runtime middleware — see [Auth](#5-auth-and-a-custom-instance) |
 | `hooks`, `prettier` | chain your formatter after `lathe generate` in the script |
 
 Several APIs in one `orval.config.ts` become `projects`. Anything init cannot

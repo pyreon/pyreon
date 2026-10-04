@@ -80,37 +80,37 @@ const docs = await getCollection('docs')
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`defineConfig`](#defineconfig) | function | Top-level configuration helper. |
-| [`defineCollection`](#definecollection) | function | Per-collection definition. |
-| [`defineComponents`](#definecomponents) | function | Wrap a map of MDX components. |
-| [`getCollection`](#getcollection) | function | Runtime query — returns every entry in a collection. |
-| [`getEntry`](#getentry) | function | Sibling of `getCollection` for a SINGLE known slug instead of the whole collection — returns `undefined` (never throws)  |
-| [`getEntries`](#getentries) | function | Batch sibling of `getEntry` — resolves multiple entries by slug in parallel. |
-| [`Callout`](#callout) | component | Built-in callout box. |
-| [`CodeGroup`](#codegroup) | component | Tabbed code blocks. |
-| [`CodeBlock`](#codeblock) | component | Wrapper around a Shiki-rendered code block. |
-| [`Example`](#example) | component | The Pyreon-native replacement for iframe-sandboxed `<Playground>`. |
-| [`registerExamples`](#registerexamples) | function | Register the consumer's example files for `<Example file="./...">` lookups. |
-| [`getOrCreateSharedSignal`](#getorcreatesharedsignal) | function | Module-level registry of `Signal<T>` instances keyed by string. |
-| [`Details`](#details) | component | Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. |
-| [`Tabs`](#tabs) | component | A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and p |
-| [`PropTable`](#proptable) | component | Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so th |
-| [`APICard`](#apicard) | component | Renders a heading + signature + short description block for ONE API surface entry — the inline structural block authors  |
-| [`CompatMatrix`](#compatmatrix) | component | Renders a feature × platform compatibility table — one status cell per intersection: ✓ supported, ✗ unsupported, 🚧 part |
-| [`PackageBadge`](#packagebadge) | component | A static panel showing a package name, optional version, and one or more per-package-manager install commands. |
-| [`Mermaid`](#mermaid) | component | Renders a mermaid diagram source string as an SVG. |
-| [`Math`](#math) | component | Renders a LaTeX expression via KaTeX. |
-| [`Sidebar`](#sidebar) | component | Collection-driven navigation. |
-| [`Breadcrumbs`](#breadcrumbs) | component | Renders a `Home › Section › Page` crumb trail derived from the current URL. |
-| [`PrevNext`](#prevnext) | component | Renders "← Previous" / "Next →" links derived from a flattened entry list and the current path — `entries` is typically  |
-| [`Toc`](#toc) | component | Page table-of-contents with scroll-spy: renders a flat list of headings (level 2–3 by default) and tracks which is curre |
-| [`Playground`](#playground) | component | DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-docs` lint rule. |
-| [`Search / useSearch`](#search-usesearch) | hook | `useSearch` is the headless search state — build a custom search UI on top of it. |
-| [`generateSitemap / generateRssFeed / generateLlmsTxt`](#generatesitemap-generaterssfeed-generatellmstxt) | function | DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equiva |
+| [`defineConfig`](#defineconfig-function) | function | Top-level configuration helper. |
+| [`defineCollection`](#definecollection-function) | function | Per-collection definition. |
+| [`defineComponents`](#definecomponents-function) | function | Wrap a map of MDX components. |
+| [`getCollection`](#getcollection-function) | function | Runtime query — returns every entry in a collection. |
+| [`getEntry`](#getentry-function) | function | Sibling of `getCollection` for a SINGLE known slug instead of the whole collection — returns `undefined` (never throws)  |
+| [`getEntries`](#getentries-function) | function | Batch sibling of `getEntry` — resolves multiple entries by slug in parallel. |
+| [`Callout`](#callout-component) | component | Built-in callout box. |
+| [`CodeGroup`](#codegroup-component) | component | Tabbed code blocks. |
+| [`CodeBlock`](#codeblock-component) | component | Wrapper around a Shiki-rendered code block. |
+| [`Example`](#example-component) | component | The Pyreon-native replacement for iframe-sandboxed `<Playground>`. |
+| [`registerExamples`](#registerexamples-function) | function | Register the consumer's example files for `<Example file="./...">` lookups. |
+| [`getOrCreateSharedSignal`](#getorcreatesharedsignal-function) | function | Module-level registry of `Signal<T>` instances keyed by string. |
+| [`Details`](#details-component) | component | Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. |
+| [`Tabs`](#tabs-component) | component | A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and p |
+| [`PropTable`](#proptable-component) | component | Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so th |
+| [`APICard`](#apicard-component) | component | Renders a heading + signature + short description block for ONE API surface entry — the inline structural block authors  |
+| [`CompatMatrix`](#compatmatrix-component) | component | Renders a feature × platform compatibility table — one status cell per intersection: ✓ supported, ✗ unsupported, 🚧 part |
+| [`PackageBadge`](#packagebadge-component) | component | A static panel showing a package name, optional version, and one or more per-package-manager install commands. |
+| [`Mermaid`](#mermaid-component) | component | Renders a mermaid diagram source string as an SVG. |
+| [`Math`](#math-component) | component | Renders a LaTeX expression via KaTeX. |
+| [`Sidebar`](#sidebar-component) | component | Collection-driven navigation. |
+| [`Breadcrumbs`](#breadcrumbs-component) | component | Renders a `Home › Section › Page` crumb trail derived from the current URL. |
+| [`PrevNext`](#prevnext-component) | component | Renders "← Previous" / "Next →" links derived from a flattened entry list and the current path — `entries` is typically  |
+| [`Toc`](#toc-component) | component | Page table-of-contents with scroll-spy: renders a flat list of headings (level 2–3 by default) and tracks which is curre |
+| [`Playground`](#playground-component) | component | DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-docs` lint rule. |
+| [`Search / useSearch`](#search-usesearch-hook) | hook | `useSearch` is the headless search state — build a custom search UI on top of it. |
+| [`generateSitemap / generateRssFeed / generateLlmsTxt`](#generatesitemap-generaterssfeed-generatellmstxt-function) | function | DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equiva |
 
 ## API
 
-### defineConfig `function`
+### `defineConfig` `function`
 
 ```ts
 defineConfig(config: ContentConfig): ContentConfig
@@ -144,7 +144,7 @@ export default defineConfig({
 
 ---
 
-### defineCollection `function`
+### `defineCollection` `function`
 
 ```ts
 defineCollection<TSchema>({ type, path?, schema, components?, searchable? }): CollectionDefinition<TSchema>
@@ -174,7 +174,7 @@ defineCollection({
 
 ---
 
-### defineComponents `function`
+### `defineComponents` `function`
 
 ```ts
 defineComponents<T extends Record<string, ComponentFn>>(components: T): T & ComponentsRegistry
@@ -198,7 +198,7 @@ export default defineComponents({ Playground, APIReference })
 
 ---
 
-### getCollection `function`
+### `getCollection` `function`
 
 ```ts
 getCollection<K extends keyof CollectionSchemas>(name: K): Promise<CollectionEntry<CollectionSchemas[K]>[]>
@@ -228,7 +228,7 @@ for (const post of posts) {
 
 ---
 
-### getEntry `function`
+### `getEntry` `function`
 
 ```ts
 getEntry<K>(name: K, slug: string): Promise<CollectionEntry<CollectionSchemas[K]> | undefined>
@@ -252,7 +252,7 @@ if (post) console.log(post.data.title)
 
 ---
 
-### getEntries `function`
+### `getEntries` `function`
 
 ```ts
 getEntries<K>(name: K, slugs: string[]): Promise<CollectionEntry<CollectionSchemas[K]>[]>
@@ -275,7 +275,7 @@ const related = await getEntries('blog', ['post-a', 'post-b', 'post-c'])
 
 ---
 
-### Callout `component`
+### `Callout` `component`
 
 ```ts
 <Callout type="tip"|"warning"|"note"|"danger"|"info" title? children?>
@@ -303,7 +303,7 @@ Use **signals** for fine-grained reactivity. See [reactivity rules](/docs/reacti
 
 ---
 
-### CodeGroup `component`
+### `CodeGroup` `component`
 
 ```ts
 <CodeGroup labels={["npm","bun","pnpm"]} initial? children>
@@ -333,7 +333,7 @@ bun add @pyreon/zero
 
 ---
 
-### CodeBlock `component`
+### `CodeBlock` `component`
 
 ```ts
 <CodeBlock lang? filename? dangerouslySetInnerHTML={{ __html }}>
@@ -359,7 +359,7 @@ Wrapper around a Shiki-rendered code block. Emitted automatically when highlight
 
 ---
 
-### Example `component`
+### `Example` `component`
 
 ```ts
 <Example file="./path/to/example" share?="key" shareInitial?={value} title?="…" class?="…">
@@ -399,7 +399,7 @@ registerExamples(import.meta.glob('./examples/⁎⁎/⁎.tsx'))
 
 ---
 
-### registerExamples `function`
+### `registerExamples` `function`
 
 ```ts
 registerExamples(glob: Record<string, () => Promise<unknown>>): void
@@ -428,7 +428,7 @@ registerExamples(
 
 ---
 
-### getOrCreateSharedSignal `function`
+### `getOrCreateSharedSignal` `function`
 
 ```ts
 getOrCreateSharedSignal<T>(key: string, initial: T): Signal<T>
@@ -458,7 +458,7 @@ console.log(a()) // 5
 
 ---
 
-### Details `component`
+### `Details` `component`
 
 ```ts
 <Details summary?="…" open? class? children>
@@ -486,7 +486,7 @@ The full explanation goes here.
 
 ---
 
-### Tabs `component`
+### `Tabs` `component`
 
 ```ts
 <Tabs labels={string[]} children? | items={{ label, content }[]} initial?=0 class?>
@@ -515,7 +515,7 @@ A generic tab strip with one active panel at a time — distinct from `<CodeGrou
 
 ---
 
-### PropTable `component`
+### `PropTable` `component`
 
 ```ts
 <PropTable rows={PropRow[]} class?> — PropRow: { name, type, default?, required?, description? }
@@ -541,7 +541,7 @@ Renders a Markdown-style props reference table from a STATIC, author-supplied ro
 
 ---
 
-### APICard `component`
+### `APICard` `component`
 
 ```ts
 <APICard name="…" signature?="…" summary?="…" stability?="stable"|"experimental"|"deprecated" since?="…" id?="…" children?>
@@ -569,7 +569,7 @@ Renders a heading + signature + short description block for ONE API surface entr
 
 ---
 
-### CompatMatrix `component`
+### `CompatMatrix` `component`
 
 ```ts
 <CompatMatrix features={string[]} platforms={string[]} cells={Record<feature, Record<platform, CompatCellValue>>}>
@@ -597,7 +597,7 @@ Renders a feature × platform compatibility table — one status cell per inters
 
 ---
 
-### PackageBadge `component`
+### `PackageBadge` `component`
 
 ```ts
 <PackageBadge name="…" version?="…" description?="…" managers?={Partial<Record<"bun"|"npm"|"pnpm"|"yarn"|"deno", string>>} hideInstall?>
@@ -621,7 +621,7 @@ A static panel showing a package name, optional version, and one or more per-pac
 
 ---
 
-### Mermaid `component`
+### `Mermaid` `component`
 
 ```ts
 <Mermaid class? id?>{diagramSource}</Mermaid>
@@ -650,7 +650,7 @@ graph TD
 
 ---
 
-### Math `component`
+### `Math` `component`
 
 ```ts
 <Math inline? class?>{latexSource}</Math>
@@ -678,7 +678,7 @@ E = mc^2
 
 ---
 
-### Sidebar `component`
+### `Sidebar` `component`
 
 ```ts
 <Sidebar entries?={SidebarEntry[]} config?={SidebarConfig} currentPath={() => string}> — SidebarEntry: { title, url, group?, order?, badge? }
@@ -707,7 +707,7 @@ Collection-driven navigation. In the default (auto-grouping) mode, reads each en
 
 ---
 
-### Breadcrumbs `component`
+### `Breadcrumbs` `component`
 
 ```ts
 <Breadcrumbs currentPath={() => string} homeLabel?="Home" homeUrl?="/" entries?={SidebarEntry[]}>
@@ -729,7 +729,7 @@ Renders a `Home › Section › Page` crumb trail derived from the current URL. 
 
 ---
 
-### PrevNext `component`
+### `PrevNext` `component`
 
 ```ts
 <PrevNext entries={SidebarEntry[]} currentPath={() => string} labels?={{ previous?, next? }}>
@@ -751,7 +751,7 @@ Renders "← Previous" / "Next →" links derived from a flattened entry list an
 
 ---
 
-### Toc `component`
+### `Toc` `component`
 
 ```ts
 <Toc headings={Heading[]} class? minLevel?=2 maxLevel?=3 activeSlug?={() => string | null} smoothScroll?=true scrollOffset?=0>
@@ -771,7 +771,7 @@ Page table-of-contents with scroll-spy: renders a flat list of headings (level 2
 
 ---
 
-### Playground `component`
+### `Playground` `component`
 
 ```ts
 <Playground title? html? css? js? tabs?=false height?=240 class?>
@@ -795,7 +795,7 @@ DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-d
 
 ---
 
-### Search / useSearch `hook`
+### `Search / useSearch` `hook`
 
 ```ts
 useSearch(options?: UseSearchOptions) => UseSearchResult · <Search catalogUrl? debounceMs?=150 maxResults?=8 minQueryLength?=2> — UseSearchResult: { open, query, results, status: 'idle'|'searching'|'ready', toggle, close }
@@ -823,7 +823,7 @@ search.query.set('signal')
 
 ---
 
-### generateSitemap / generateRssFeed / generateLlmsTxt `function`
+### `generateSitemap / generateRssFeed / generateLlmsTxt` `function`
 
 ```ts
 generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string

@@ -93,31 +93,31 @@ shared.add('Persisted item')
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`model`](#model) | function | Define a reactive model via a chainable builder. |
-| [`SchemaModelHelpers`](#schemamodelhelpers) | type | The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode  |
-| [`DeepPartial`](#deeppartial) | type | Recursive partial — every property optional at every depth. |
-| [`ModelDefinition`](#modeldefinition) | type | The chainable builder returned by `model()`. |
-| [`getSnapshot`](#getsnapshot) | function | Recursively serialize a model instance into a plain JSON-safe snapshot. |
-| [`applySnapshot`](#applysnapshot) | function | Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent  |
-| [`onPatch`](#onpatch) | function | Subscribe to JSON patches emitted by state mutations on a model instance. |
-| [`applyPatch`](#applypatch) | function | Apply one or more JSON patches to a model instance. |
-| [`addMiddleware`](#addmiddleware) | function | Add an action interception middleware to a model instance. |
-| [`destroy`](#destroy) | function | Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested chi |
-| [`isAlive`](#isalive) | function | Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). |
-| [`clone`](#clone) | function | Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from th |
-| [`getType`](#gettype) | function | Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` f |
-| [`volatile`](#volatile) | function | Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLU |
-| [`onSnapshot`](#onsnapshot) | function | Subscribe to snapshot changes. |
-| [`onAction`](#onaction) | function | Observe every action call on an instance (logging, analytics, devtools). |
-| [`getParent`](#getparent) | function | Tree-traversal helpers. |
-| [`identifier`](#identifier) | function | Declare a state field as a model's IDENTIFIER — the field a `reference()` resolves against. |
-| [`reference`](#reference) | function | Declare a state field as a normalized REFERENCE to another model by its identifier. |
-| [`resolveIdentifier`](#resolveidentifier) | function | Find the model instance of `Type` whose identifier equals `id`, searching `root`'s subtree (depth-first, cycle-safe; rea |
-| [`resetHook`](#resethook) | function | Destroy `.asHook(id)` singletons. |
+| [`model`](#model-function) | function | Define a reactive model via a chainable builder. |
+| [`SchemaModelHelpers`](#schemamodelhelpers-type) | type | The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode  |
+| [`DeepPartial`](#deeppartial-type) | type | Recursive partial — every property optional at every depth. |
+| [`ModelDefinition`](#modeldefinition-type) | type | The chainable builder returned by `model()`. |
+| [`getSnapshot`](#getsnapshot-function) | function | Recursively serialize a model instance into a plain JSON-safe snapshot. |
+| [`applySnapshot`](#applysnapshot-function) | function | Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent  |
+| [`onPatch`](#onpatch-function) | function | Subscribe to JSON patches emitted by state mutations on a model instance. |
+| [`applyPatch`](#applypatch-function) | function | Apply one or more JSON patches to a model instance. |
+| [`addMiddleware`](#addmiddleware-function) | function | Add an action interception middleware to a model instance. |
+| [`destroy`](#destroy-function) | function | Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested chi |
+| [`isAlive`](#isalive-function) | function | Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). |
+| [`clone`](#clone-function) | function | Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from th |
+| [`getType`](#gettype-function) | function | Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` f |
+| [`volatile`](#volatile-function) | function | Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLU |
+| [`onSnapshot`](#onsnapshot-function) | function | Subscribe to snapshot changes. |
+| [`onAction`](#onaction-function) | function | Observe every action call on an instance (logging, analytics, devtools). |
+| [`getParent`](#getparent-function) | function | Tree-traversal helpers. |
+| [`identifier`](#identifier-function) | function | Declare a state field as a model's IDENTIFIER — the field a `reference()` resolves against. |
+| [`reference`](#reference-function) | function | Declare a state field as a normalized REFERENCE to another model by its identifier. |
+| [`resolveIdentifier`](#resolveidentifier-function) | function | Find the model instance of `Type` whose identifier equals `id`, searching `root`'s subtree (depth-first, cycle-safe; rea |
+| [`resetHook`](#resethook-function) | function | Destroy `.asHook(id)` singletons. |
 
 ## API
 
-### model `function`
+### `model` `function`
 
 ```ts
 model({ state }) | model({ schema, initial?, onValidationError? }) → ModelDefinition; chain .views(f).actions(f) then .create(initial?) or .asHook(id)
@@ -171,7 +171,7 @@ u.reset()                // back to initial
 
 ---
 
-### SchemaModelHelpers `type`
+### `SchemaModelHelpers` `type`
 
 ```ts
 interface SchemaModelHelpers<TState> { set, patch, deepPatch, update<K>, reset }
@@ -201,7 +201,7 @@ u.reset()                                                                       
 
 ---
 
-### DeepPartial `type`
+### `DeepPartial` `type`
 
 ```ts
 type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T
@@ -229,7 +229,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
 
 ---
 
-### ModelDefinition `type`
+### `ModelDefinition` `type`
 
 ```ts
 class ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile> { views(f), actions(f), volatile(f), lifecycle(f), create(initial?), asHook(id) }
@@ -256,7 +256,7 @@ const M = model({ schema })
 
 ---
 
-### getSnapshot `function`
+### `getSnapshot` `function`
 
 ```ts
 (instance: ModelInstance) => Snapshot
@@ -279,7 +279,7 @@ const snap = getSnapshot(counter) // { count: 10 }
 
 ---
 
-### applySnapshot `function`
+### `applySnapshot` `function`
 
 ```ts
 (instance: ModelInstance, snapshot: Partial<Snapshot>) => void
@@ -304,7 +304,7 @@ applySnapshot(app, { title: 'New' })      // merge — profile is left unchanged
 
 ---
 
-### onPatch `function`
+### `onPatch` `function`
 
 ```ts
 (instance: ModelInstance, listener: PatchListener) => () => void
@@ -324,7 +324,7 @@ const dispose = onPatch(counter, (patch) => {
 
 ---
 
-### applyPatch `function`
+### `applyPatch` `function`
 
 ```ts
 (instance: ModelInstance, patch: Patch | Patch[]) => void
@@ -347,7 +347,7 @@ applyPatch(counter, { op: 'replace', path: '/count', value: 0 })
 
 ---
 
-### addMiddleware `function`
+### `addMiddleware` `function`
 
 ```ts
 (instance: ModelInstance, middleware: MiddlewareFn) => () => void
@@ -368,7 +368,7 @@ addMiddleware(counter, (call, next) => {
 
 ---
 
-### destroy `function`
+### `destroy` `function`
 
 ```ts
 (instance: ModelInstance) => void
@@ -394,7 +394,7 @@ isAlive(clock)   // false
 
 ---
 
-### isAlive `function`
+### `isAlive` `function`
 
 ```ts
 (instance: ModelInstance) => boolean
@@ -418,7 +418,7 @@ if (isAlive(counter)) counter.inc()
 
 ---
 
-### clone `function`
+### `clone` `function`
 
 ```ts
 <T>(instance: T) => T
@@ -442,7 +442,7 @@ draft.title.set('edited')        // does not touch original
 
 ---
 
-### getType `function`
+### `getType` `function`
 
 ```ts
 (instance: object) => unknown
@@ -464,7 +464,7 @@ const sibling = Def?.create()
 
 ---
 
-### volatile `function`
+### `volatile` `function`
 
 ```ts
 .volatile(self => ({ ...initialValues })) → ModelDefinition (chainable)
@@ -495,7 +495,7 @@ model({ state: { items: [] as string[] } })
 
 ---
 
-### onSnapshot `function`
+### `onSnapshot` `function`
 
 ```ts
 (instance: ModelInstance, listener: (snapshot) => void) => () => void
@@ -520,7 +520,7 @@ const dispose = onSnapshot(store, (snap) => {
 
 ---
 
-### onAction `function`
+### `onAction` `function`
 
 ```ts
 (instance: ModelInstance, listener: (call: ActionCall) => void) => () => void
@@ -542,7 +542,7 @@ const unsub = onAction(store, (call) => analytics.track(call.name, call.args))
 
 ---
 
-### getParent `function`
+### `getParent` `function`
 
 ```ts
 <T>(node) => T | undefined; also getRoot / getPath / isRoot / hasParent
@@ -572,7 +572,7 @@ isRoot(list)      // true
 
 ---
 
-### identifier `function`
+### `identifier` `function`
 
 ```ts
 identifier<T extends string | number>(default?: T) => T
@@ -592,7 +592,7 @@ const User2 = model({ schema: s.object({ id: s.string(), name: s.string() }), id
 
 ---
 
-### reference `function`
+### `reference` `function`
 
 ```ts
 reference(TargetModel) => ReferenceField<TargetInstance>
@@ -620,7 +620,7 @@ post.author.id()   // 'u-42'
 
 ---
 
-### resolveIdentifier `function`
+### `resolveIdentifier` `function`
 
 ```ts
 <T>(root, Type, id) => T | undefined
@@ -638,7 +638,7 @@ const user = resolveIdentifier(store, User, 'u-42')
 
 ---
 
-### resetHook `function`
+### `resetHook` `function`
 
 ```ts
 resetHook(id: string) => void; resetAllHooks() => void

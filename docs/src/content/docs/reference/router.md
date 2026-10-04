@@ -97,40 +97,40 @@ const User = () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`runServerLoaders`](#runserverloaders) | function | The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). |
-| [`createRouter`](#createrouter) | function | Create a router instance with route records, guards, middleware, and mode configuration. |
-| [`RouterProvider`](#routerprovider) | component | Provide the router instance to the component tree via `RouterContext`. |
-| [`RouterView`](#routerview) | component | Render the matched route's component. |
-| [`RouterLink`](#routerlink) | component | Declarative navigation link that renders an `<a>` element. |
-| [`useRouter`](#userouter) | hook | Access the router instance for programmatic navigation. |
-| [`useRoute`](#useroute) | hook | Access the current resolved route as a reactive accessor. |
-| [`useIsActive`](#useisactive) | hook | Returns a reactive boolean for whether a path matches the current route. |
-| [`useTypedSearchParams`](#usetypedsearchparams) | hook | Type-safe search params with auto-coercion from URL strings. |
-| [`useTransition`](#usetransition) | hook | Returns a reactive accessor for route transition state. |
-| [`useMiddlewareData`](#usemiddlewaredata) | hook | Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. |
-| [`useLoaderData`](#useloaderdata) | hook | Access the data returned by the current route's `loader` function. |
-| [`redirect`](#redirect) | function | Throw inside a route loader to redirect the navigation BEFORE the layout renders. |
-| [`isRedirectError`](#isredirecterror) | function | Type guard for errors thrown by `redirect()`. |
-| [`getRedirectInfo`](#getredirectinfo) | function | Extract the redirect URL and status from a thrown RedirectError. |
-| [`useSearchParams`](#usesearchparams) | hook | Access and update URL search params as a reactive tuple. |
-| [`useBlocker`](#useblocker) | hook | Block navigations while a condition holds. |
-| [`onBeforeRouteLeave`](#onbeforerouteleave) | function | Register a per-component navigation guard that fires when leaving the current route. |
-| [`onBeforeRouteUpdate`](#onbeforerouteupdate) | function | Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g.,  |
-| [`useNavigate`](#usenavigate) | function | Returns an imperative navigate function. |
-| [`useParams`](#useparams) | function | Returns a SNAPSHOT map of the current route's path params (`{ id: '42' }` for `/user/:id`). |
-| [`useValidatedSearch`](#usevalidatedsearch) | function | Returns a REACTIVE ACCESSOR `() => T` for the current route's VALIDATED search params. |
-| [`notFound / NotFoundBoundary`](#notfound-notfoundboundary) | function | The Next.js-style 404 pair. |
-| [`lazy`](#lazy) | function | Code-split a route component. |
-| [`LoaderData`](#loaderdata) | type | Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData&lt;LoaderData&lt;typeof  |
-| [`getActiveRouter / setActiveRouter`](#getactiverouter-setactiverouter) | function | The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. |
-| [`classifyHref / toRouterPath`](#classifyhref-torouterpath) | function | The classification `<RouterLink>` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for  |
-| [`classifyRedirectTarget / safeRedirectLocation`](#classifyredirecttarget-saferedirectlocation) | function | The open-redirect guard `redirect()` runs its target through. |
-| [`serializeLoaderData / stringifyLoaderData / hydrateLoaderData`](#serializeloaderdata-stringifyloaderdata-hydrateloaderdata) | function | The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. |
-| [`resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery`](#resolveroute-buildpath-findroutebyname-parsequery-parsequerymulti-stringifyquery) | function | Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route TRE |
+| [`runServerLoaders`](#runserverloaders-function) | function | The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). |
+| [`createRouter`](#createrouter-function) | function | Create a router instance with route records, guards, middleware, and mode configuration. |
+| [`RouterProvider`](#routerprovider-component) | component | Provide the router instance to the component tree via `RouterContext`. |
+| [`RouterView`](#routerview-component) | component | Render the matched route's component. |
+| [`RouterLink`](#routerlink-component) | component | Declarative navigation link that renders an `<a>` element. |
+| [`useRouter`](#userouter-hook) | hook | Access the router instance for programmatic navigation. |
+| [`useRoute`](#useroute-hook) | hook | Access the current resolved route as a reactive accessor. |
+| [`useIsActive`](#useisactive-hook) | hook | Returns a reactive boolean for whether a path matches the current route. |
+| [`useTypedSearchParams`](#usetypedsearchparams-hook) | hook | Type-safe search params with auto-coercion from URL strings. |
+| [`useTransition`](#usetransition-hook) | hook | Returns a reactive accessor for route transition state. |
+| [`useMiddlewareData`](#usemiddlewaredata-hook) | hook | Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. |
+| [`useLoaderData`](#useloaderdata-hook) | hook | Access the data returned by the current route's `loader` function. |
+| [`redirect`](#redirect-function) | function | Throw inside a route loader to redirect the navigation BEFORE the layout renders. |
+| [`isRedirectError`](#isredirecterror-function) | function | Type guard for errors thrown by `redirect()`. |
+| [`getRedirectInfo`](#getredirectinfo-function) | function | Extract the redirect URL and status from a thrown RedirectError. |
+| [`useSearchParams`](#usesearchparams-hook) | hook | Access and update URL search params as a reactive tuple. |
+| [`useBlocker`](#useblocker-hook) | hook | Block navigations while a condition holds. |
+| [`onBeforeRouteLeave`](#onbeforerouteleave-function) | function | Register a per-component navigation guard that fires when leaving the current route. |
+| [`onBeforeRouteUpdate`](#onbeforerouteupdate-function) | function | Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g.,  |
+| [`useNavigate`](#usenavigate-function) | function | Returns an imperative navigate function. |
+| [`useParams`](#useparams-function) | function | Returns a SNAPSHOT map of the current route's path params (`{ id: '42' }` for `/user/:id`). |
+| [`useValidatedSearch`](#usevalidatedsearch-function) | function | Returns a REACTIVE ACCESSOR `() => T` for the current route's VALIDATED search params. |
+| [`notFound / NotFoundBoundary`](#notfound-notfoundboundary-function) | function | The Next.js-style 404 pair. |
+| [`lazy`](#lazy-function) | function | Code-split a route component. |
+| [`LoaderData`](#loaderdata-type) | type | Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData&lt;LoaderData&lt;typeof  |
+| [`getActiveRouter / setActiveRouter`](#getactiverouter-setactiverouter-function) | function | The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. |
+| [`classifyHref / toRouterPath`](#classifyhref-torouterpath-function) | function | The classification `<RouterLink>` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for  |
+| [`classifyRedirectTarget / safeRedirectLocation`](#classifyredirecttarget-saferedirectlocation-function) | function | The open-redirect guard `redirect()` runs its target through. |
+| [`serializeLoaderData / stringifyLoaderData / hydrateLoaderData`](#serializeloaderdata-stringifyloaderdata-hydrateloaderdata-function) | function | The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. |
+| [`resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery`](#resolveroute-buildpath-findroutebyname-parsequery-parsequerymulti-stringifyquery-function) | function | Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route TRE |
 
 ## API
 
-### runServerLoaders `function`
+### `runServerLoaders` `function`
 
 ```ts
 router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>
@@ -154,7 +154,7 @@ return json({ data: result.data }) // keyed by matched-chain index
 
 ---
 
-### createRouter `function`
+### `createRouter` `function`
 
 ```ts
 createRouter(options: RouterOptions | RouteRecord[]): Router
@@ -185,7 +185,7 @@ const router = createRouter([
 
 ---
 
-### RouterProvider `component`
+### `RouterProvider` `component`
 
 ```ts
 <RouterProvider router={router}>{children}</RouterProvider>
@@ -208,7 +208,7 @@ const App = () => (
 
 ---
 
-### RouterView `component`
+### `RouterView` `component`
 
 ```ts
 <RouterView />
@@ -244,7 +244,7 @@ const Admin = () => (
 
 ---
 
-### RouterLink `component`
+### `RouterLink` `component`
 
 ```ts
 <RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>
@@ -271,7 +271,7 @@ Declarative navigation link that renders an `<a>` element. Applies `activeClass`
 
 ---
 
-### useRouter `hook`
+### `useRouter` `hook`
 
 ```ts
 useRouter(): Router
@@ -302,7 +302,7 @@ router.go(-2)
 
 ---
 
-### useRoute `hook`
+### `useRoute` `hook`
 
 ```ts
 useRoute<TPath extends string>(): () => ResolvedRoute<ExtractParams<TPath>>
@@ -333,7 +333,7 @@ route().meta
 
 ---
 
-### useIsActive `hook`
+### `useIsActive` `hook`
 
 ```ts
 useIsActive(path: string, exact?: boolean): () => boolean
@@ -362,7 +362,7 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
 
 ---
 
-### useTypedSearchParams `hook`
+### `useTypedSearchParams` `hook`
 
 ```ts
 useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]
@@ -388,7 +388,7 @@ setParams({ page: 2 })  // updates URL via router.replace
 
 ---
 
-### useTransition `hook`
+### `useTransition` `hook`
 
 ```ts
 useTransition(): () => boolean
@@ -410,7 +410,7 @@ const isTransitioning = useTransition()
 
 ---
 
-### useMiddlewareData `hook`
+### `useMiddlewareData` `hook`
 
 ```ts
 useMiddlewareData(): () => Record<string, unknown>
@@ -435,7 +435,7 @@ const data = useMiddlewareData()
 
 ---
 
-### useLoaderData `hook`
+### `useLoaderData` `hook`
 
 ```ts
 useLoaderData<T>(): T
@@ -466,7 +466,7 @@ const User = () => {
 
 ---
 
-### redirect `function`
+### `redirect` `function`
 
 ```ts
 redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never
@@ -505,7 +505,7 @@ export async function loader(ctx: LoaderContext) {
 
 ---
 
-### isRedirectError `function`
+### `isRedirectError` `function`
 
 ```ts
 isRedirectError(err: unknown): boolean
@@ -531,7 +531,7 @@ import { isRedirectError } from "@pyreon/router"
 
 ---
 
-### getRedirectInfo `function`
+### `getRedirectInfo` `function`
 
 ```ts
 getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null
@@ -557,7 +557,7 @@ try {
 
 ---
 
-### useSearchParams `hook`
+### `useSearchParams` `hook`
 
 ```ts
 useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]
@@ -586,7 +586,7 @@ setSearch({ page: "2" })
 
 ---
 
-### useBlocker `hook`
+### `useBlocker` `hook`
 
 ```ts
 useBlocker(fn: BlockerFn): Blocker
@@ -614,7 +614,7 @@ blocker.remove()
 
 ---
 
-### onBeforeRouteLeave `function`
+### `onBeforeRouteLeave` `function`
 
 ```ts
 onBeforeRouteLeave(guard: NavigationGuard): () => void
@@ -640,7 +640,7 @@ onBeforeRouteLeave((to, from) => {
 
 ---
 
-### onBeforeRouteUpdate `function`
+### `onBeforeRouteUpdate` `function`
 
 ```ts
 onBeforeRouteUpdate(guard: NavigationGuard): () => void
@@ -662,7 +662,7 @@ onBeforeRouteUpdate((to, from) => {
 
 ---
 
-### useNavigate `function`
+### `useNavigate` `function`
 
 ```ts
 useNavigate() => (path: string) => void
@@ -688,7 +688,7 @@ const goHome = () => navigate('/')
 
 ---
 
-### useParams `function`
+### `useParams` `function`
 
 ```ts
 useParams<T extends Record<string, string> = Record<string, string>>() => T
@@ -715,7 +715,7 @@ const route = useRoute<'/user/:id'>()
 
 ---
 
-### useValidatedSearch `function`
+### `useValidatedSearch` `function`
 
 ```ts
 useValidatedSearch<T extends Record<string, unknown> = Record<string, unknown>>() => () => T
@@ -742,7 +742,7 @@ const page = () => search().page
 
 ---
 
-### notFound / NotFoundBoundary `function`
+### `notFound / NotFoundBoundary` `function`
 
 ```ts
 notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild
@@ -776,7 +776,7 @@ const app = (
 
 ---
 
-### lazy `function`
+### `lazy` `function`
 
 ```ts
 lazy(loader: () => Promise<ComponentFn | { default: ComponentFn }>, options?: { loading?: ComponentFn; error?: ComponentFn; hmrId?: string }) => LazyComponent
@@ -801,7 +801,7 @@ const routes = [
 
 ---
 
-### LoaderData `type`
+### `LoaderData` `type`
 
 ```ts
 type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never
@@ -830,7 +830,7 @@ function PostsPage() {
 
 ---
 
-### getActiveRouter / setActiveRouter `function`
+### `getActiveRouter / setActiveRouter` `function`
 
 ```ts
 getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void
@@ -858,7 +858,7 @@ if (router) router.push('/dashboard')
 
 ---
 
-### classifyHref / toRouterPath `function`
+### `classifyHref / toRouterPath` `function`
 
 ```ts
 classifyHref(to: string, config?: LinkConfig) => 'internal' | 'external' | 'hash' | 'protocol' · toRouterPath(to: string) => string
@@ -885,7 +885,7 @@ toRouterPath('https://example.com/about?tab=1')  // '/about?tab=1'
 
 ---
 
-### classifyRedirectTarget / safeRedirectLocation `function`
+### `classifyRedirectTarget / safeRedirectLocation` `function`
 
 ```ts
 classifyRedirectTarget(target: string) => RedirectClass · safeRedirectLocation(target: string) => string
@@ -911,7 +911,7 @@ safeRedirectLocation('javascript:alert(1)')  // '/' — blocked
 
 ---
 
-### serializeLoaderData / stringifyLoaderData / hydrateLoaderData `function`
+### `serializeLoaderData / stringifyLoaderData / hydrateLoaderData` `function`
 
 ```ts
 serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void
@@ -943,7 +943,7 @@ mount(h(App, null), document.getElementById('app')!)
 
 ---
 
-### resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery `function`
+### `resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery` `function`
 
 ```ts
 resolveRoute(rawPath, routes) => ResolvedRoute · buildPath(pattern, params) => string · findRouteByName(name, routes) => RouteRecord | null · parseQuery(qs) => Record<string, string> · parseQueryMulti(qs) => Record<string, string | string[]> · stringifyQuery(query) => string

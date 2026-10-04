@@ -70,35 +70,35 @@ export function App() {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`Stack`](#stack) | component | Primary layout container. |
-| [`Inline`](#inline) | component | Horizontal row — sugar for `<Stack direction="row">`. |
-| [`Layer`](#layer) | component | Stacked / overlay container. |
-| [`Scroll`](#scroll) | component | Scrollable region, vertical unless `axis="horizontal"`. |
-| [`Spacer`](#spacer) | component | Flexible gap that pushes siblings apart. |
-| [`Text`](#text) | component | Inline text. |
-| [`Heading`](#heading) | component | Heading text. |
-| [`Image`](#image) | component | Image. |
-| [`Audio`](#audio) | component | Sound playback, and deliberately NON-VISUAL — the one place it does not mirror `<Video>`. |
-| [`Video`](#video) | component | Video playback. |
-| [`Icon`](#icon) | component | Icon by canonical name. |
-| [`Button`](#button) | component | Styled CTA. |
-| [`Press`](#press) | component | Unstyled tap target (no chrome). |
-| [`Link`](#link) | component | Navigation link. |
-| [`Field`](#field) | component | Text input. |
-| [`Toggle`](#toggle) | component | Boolean switch/checkbox. |
-| [`Modal`](#modal) | component | Modal/sheet. |
-| [`Transition`](#transition) | component | The MULTIPLATFORM animation vocabulary — animate a subtree in and out of view. |
-| [`TransitionGroup`](#transitiongroup) | component | A container that animates its own SIZE as rows enter and leave the keyed list inside it. |
-| [`WebView`](#webview) | component | Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). |
-| [`connectWebHost`](#connectwebhost) | function | The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. |
-| [`webHostDocument`](#webhostdocument) | function | Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the WebView-h |
-| [`Web / NativeIOS / NativeAndroid`](#web-nativeios-nativeandroid) | component | The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders pe |
-| [`defineNativeModule / useNativeModule`](#definenativemodule-usenativemodule) | function | The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a pa |
-| [`init / resetPrimitivesConfig`](#init-resetprimitivesconfig) | function | One-time app-boot configuration for `@pyreon/primitives`. |
+| [`Stack`](#stack-component) | component | Primary layout container. |
+| [`Inline`](#inline-component) | component | Horizontal row — sugar for `<Stack direction="row">`. |
+| [`Layer`](#layer-component) | component | Stacked / overlay container. |
+| [`Scroll`](#scroll-component) | component | Scrollable region, vertical unless `axis="horizontal"`. |
+| [`Spacer`](#spacer-component) | component | Flexible gap that pushes siblings apart. |
+| [`Text`](#text-component) | component | Inline text. |
+| [`Heading`](#heading-component) | component | Heading text. |
+| [`Image`](#image-component) | component | Image. |
+| [`Audio`](#audio-component) | component | Sound playback, and deliberately NON-VISUAL — the one place it does not mirror `<Video>`. |
+| [`Video`](#video-component) | component | Video playback. |
+| [`Icon`](#icon-component) | component | Icon by canonical name. |
+| [`Button`](#button-component) | component | Styled CTA. |
+| [`Press`](#press-component) | component | Unstyled tap target (no chrome). |
+| [`Link`](#link-component) | component | Navigation link. |
+| [`Field`](#field-component) | component | Text input. |
+| [`Toggle`](#toggle-component) | component | Boolean switch/checkbox. |
+| [`Modal`](#modal-component) | component | Modal/sheet. |
+| [`Transition`](#transition-component) | component | The MULTIPLATFORM animation vocabulary — animate a subtree in and out of view. |
+| [`TransitionGroup`](#transitiongroup-component) | component | A container that animates its own SIZE as rows enter and leave the keyed list inside it. |
+| [`WebView`](#webview-component) | component | Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). |
+| [`connectWebHost`](#connectwebhost-function) | function | The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. |
+| [`webHostDocument`](#webhostdocument-function) | function | Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the WebView-h |
+| [`Web / NativeIOS / NativeAndroid`](#web-nativeios-nativeandroid-component) | component | The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders pe |
+| [`defineNativeModule / useNativeModule`](#definenativemodule-usenativemodule-function) | function | The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a pa |
+| [`init / resetPrimitivesConfig`](#init-resetprimitivesconfig-function) | function | One-time app-boot configuration for `@pyreon/primitives`. |
 
 ## API
 
-### Stack `component`
+### `Stack` `component`
 
 ```ts
 (props: { direction?: 'column' | 'row'; align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode
@@ -122,7 +122,7 @@ Primary layout container. Web → `<div style="display:flex;flex-direction:colum
 
 ---
 
-### Inline `component`
+### `Inline` `component`
 
 ```ts
 (props: { align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode
@@ -145,7 +145,7 @@ Horizontal row — sugar for `<Stack direction="row">`. Web flex-row; iOS `HStac
 
 ---
 
-### Layer `component`
+### `Layer` `component`
 
 ```ts
 (props: { align?: Align; padding?: Space; children }) => VNode
@@ -167,7 +167,7 @@ Stacked / overlay container. Web → `position:relative` single-cell grid (`alig
 
 ---
 
-### Scroll `component`
+### `Scroll` `component`
 
 ```ts
 (props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode
@@ -189,7 +189,7 @@ Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto
 
 ---
 
-### Spacer `component`
+### `Spacer` `component`
 
 ```ts
 () => VNode
@@ -211,7 +211,7 @@ Flexible gap that pushes siblings apart. Web → flex spacer; iOS → `Spacer`; 
 
 ---
 
-### Text `component`
+### `Text` `component`
 
 ```ts
 (props: { color?: ColorToken; size?: 'xs'|'sm'|'md'|'lg'|'xl'; weight?: 'regular'|'medium'|'bold'; truncate?: boolean; children }) => VNode
@@ -234,7 +234,7 @@ Inline text. Web `<span>`; iOS/Android `Text`. Read signals directly in children
 
 ---
 
-### Heading `component`
+### `Heading` `component`
 
 ```ts
 (props: { level?: 1|2|3|4|5|6; color?: ColorToken; children }) => VNode
@@ -256,7 +256,7 @@ Heading text. Web `<h1>`–`<h6>` by `level`; iOS/Android a sized/weighted `Text
 
 ---
 
-### Image `component`
+### `Image` `component`
 
 ```ts
 (props: { src: string; alt: string; fit?: 'cover'|'contain'|'fill'|'none'; width?: number|string; height?: number|string }) => VNode
@@ -278,7 +278,7 @@ Image. Web `<img>`; iOS `Image`; Android `AsyncImage` (Coil). `src` + `alt` REQU
 
 ---
 
-### Audio `component`
+### `Audio` `component`
 
 ```ts
 (props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; volume?: number; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode
@@ -302,7 +302,7 @@ Sound playback, and deliberately NON-VISUAL — the one place it does not mirror
 
 ---
 
-### Video `component`
+### `Video` `component`
 
 ```ts
 (props: { src: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; controls?: boolean; width?: number|string; height?: number|string; onStatusChange?: (status: 'waiting'|'playing'|'paused') => void }) => VNode
@@ -325,7 +325,7 @@ Video playback. Web `<video playsinline>`; iOS AVKit `VideoPlayer` over `AVPlaye
 
 ---
 
-### Icon `component`
+### `Icon` `component`
 
 ```ts
 (props: { name: string; size?: 'sm'|'md'|'lg'; color?: ColorToken }) => VNode
@@ -347,7 +347,7 @@ Icon by canonical name. Web → svg; iOS → SF Symbol (`Image(systemName:)`); A
 
 ---
 
-### Button `component`
+### `Button` `component`
 
 ```ts
 (props: { onPress: () => void; disabled?: boolean; variant?: 'primary'|'secondary'|'ghost'|'danger'; children }) => VNode
@@ -370,7 +370,7 @@ Styled CTA. Web `<button>`; iOS/Android `Button`. Handler is `onPress` (NOT `onC
 
 ---
 
-### Press `component`
+### `Press` `component`
 
 ```ts
 (props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode
@@ -392,7 +392,7 @@ Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (pla
 
 ---
 
-### Link `component`
+### `Link` `component`
 
 ```ts
 (props: { to: string; external?: boolean; children }) => VNode
@@ -416,7 +416,7 @@ Navigation link. Web → a real `<a href>`; the package has NO router dependency
 
 ---
 
-### Field `component`
+### `Field` `component`
 
 ```ts
 (props: { value: string | (() => string); onChangeText: (next: string) => void; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; placeholder?: string; disabled?: boolean; onSubmit?: () => void }) => VNode
@@ -439,7 +439,7 @@ Text input. Web `<input>`; iOS/Android `TextField`. Handler is `onChangeText(nex
 
 ---
 
-### Toggle `component`
+### `Toggle` `component`
 
 ```ts
 (props: { value: boolean | (() => boolean); onChange: (next: boolean) => void; disabled?: boolean }) => VNode
@@ -461,7 +461,7 @@ Boolean switch/checkbox. Web checkbox; iOS `Toggle`; Android `Switch`. `onChange
 
 ---
 
-### Modal `component`
+### `Modal` `component`
 
 ```ts
 (props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode
@@ -483,7 +483,7 @@ Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, ba
 
 ---
 
-### Transition `component`
+### `Transition` `component`
 
 ```ts
 (props: { show: boolean | (() => boolean); name?: 'fade' | 'scale-in' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right'; duration?: number; easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'; enterDuration?: number; leaveDuration?: number; enterEasing?: TransitionEasing; leaveEasing?: TransitionEasing; children }) => VNode
@@ -509,7 +509,7 @@ The MULTIPLATFORM animation vocabulary — animate a subtree in and out of view.
 
 ---
 
-### TransitionGroup `component`
+### `TransitionGroup` `component`
 
 ```ts
 (props: { children }) => VNode
@@ -532,7 +532,7 @@ A container that animates its own SIZE as rows enter and leave the keyed list in
 
 ---
 
-### WebView `component`
+### `WebView` `component`
 
 ```ts
 (props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode
@@ -555,7 +555,7 @@ Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe 
 
 ---
 
-### connectWebHost `function`
+### `connectWebHost` `function`
 
 ```ts
 connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void; joinGroup(group: string): void; leaveGroup(): void; relay(message: string): void; onRelay(cb: (message: string) => void): () => void }
@@ -580,7 +580,7 @@ bar.onclick = () => host.emit(String(bar.dataset.id))
 
 ---
 
-### webHostDocument `function`
+### `webHostDocument` `function`
 
 ```ts
 webHostDocument(options: { script: string; css?: string; rootId?: string; title?: string }) => string
@@ -604,7 +604,7 @@ const html = webHostDocument({ script: BUNDLED_EDITOR_IIFE, css: editorCss })
 
 ---
 
-### Web / NativeIOS / NativeAndroid `component`
+### `Web / NativeIOS / NativeAndroid` `component`
 
 ```ts
 Web(props: { children }) => VNodeChild · NativeIOS(props: { children }) => VNodeChild · NativeAndroid(props: { children }) => VNodeChild
@@ -629,7 +629,7 @@ The Layer-4 per-platform escape hatch — one source carries a platform-specific
 
 ---
 
-### defineNativeModule / useNativeModule `function`
+### `defineNativeModule / useNativeModule` `function`
 
 ```ts
 defineNativeModule<T>(name: string, webImpl: T) => T · useNativeModule<T>(name: string) => T · hasNativeModule(name: string) => boolean
@@ -664,7 +664,7 @@ function Pairing() {
 
 ---
 
-### init / resetPrimitivesConfig `function`
+### `init / resetPrimitivesConfig` `function`
 
 ```ts
 init(options: { navigate?: (to: string) => void }) => void · resetPrimitivesConfig() => void

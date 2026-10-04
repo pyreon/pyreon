@@ -247,12 +247,13 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
         // route unchanged — `router.revalidate()` (mutation-then-refresh)
         // writes fresh data in place, and a leaf held only by `route`
         // identity kept rendering the stale `useLoaderData()` snapshot.
-        // First ARRIVAL (undefined → data) is not a replacement: the pending
-        // machinery (`pendingMs` / `pendingMinMs`) owns that swap.
+        // First ARRIVAL is owned by PendingLoader only when a pending
+        // component is configured. Otherwise the initial component received
+        // an undefined context snapshot and must remount with the loaded data.
         if (isLeaf) {
           return (
             a.route === b.route &&
-            (a.loaderData === undefined || a.loaderData === b.loaderData)
+            ((a.loaderData === undefined && !!b.rec?.pendingComponent) || a.loaderData === b.loaderData)
           )
         }
         return a.loaderData === b.loaderData
