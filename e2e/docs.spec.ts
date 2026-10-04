@@ -180,7 +180,7 @@ test.describe('docs rendering', () => {
     await expect(page).toHaveURL(/\/docs\/package-catalog/)
     for (const group of groups) {
       for (const name of group.names) {
-        await expect(page.locator('.docs-content').getByRole('link', { name, exact: true })).toBeVisible()
+        await expect(page.locator('.docs-content table').getByRole('link', { name, exact: true })).toBeVisible()
       }
     }
   })
