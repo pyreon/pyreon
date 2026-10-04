@@ -88,7 +88,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 - **Diagnose Catalog**: a source change in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` needs an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts`, or the `skip-diagnose-catalog` label. `diagnoseError` + `ERROR_PATTERNS` live in the browser-safe `@pyreon/compiler/diagnose` subpath with no `typescript` import, so the dev error printer can load them client-side. `compiler/src/tests/diagnose.test.ts` bundles the subpath and asserts no TS-API markers.
 - **Release**:
   - Changesets fixed group (all packages share one version).
-  - `check-release-readiness`: `publishConfig.access` + fixed-group coverage.
+  - `check-release-readiness`: `publishConfig.access`, exact provenance repository identity and fixed-group coverage. The publisher shares the repository check and rejects the whole selected plan before any manifest rewrite or publish if its metadata is missing or mismatched.
   - Native coverage allows a cold verdict cache: a 60-minute measurement ceiling inside a 75-minute job, with per-compile and per-test deadlines still enforced. Stub/compiler changes invalidate cached verdicts.
   - `Release Build` and the publishing workflow reject high-severity locked dependency advisories with `bun audit --audit-level=high`. The isolated Verify Modes workerd tool installs with `npm ci` from `scripts/verify-modes-tools/package-lock.json` and audits that tree too; update the lock together with its manifest.
   - `check-published-state`: every publishable package, not sentinels. A partial release where some packages lag the cut version is red and names each lagging package.

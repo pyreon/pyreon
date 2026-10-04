@@ -51,6 +51,7 @@
 
 import { readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { isReleaseRepository } from './release-repository'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const PACKAGES_DIR = join(REPO_ROOT, 'packages')
@@ -187,7 +188,7 @@ function checkRepositoryField(
     if (manifest.private === true) continue
     const repo = manifest.repository
     const url = typeof repo === 'string' ? repo : (repo?.url ?? '')
-    if (url.includes('github.com/pyreon/pyreon')) continue
+    if (isReleaseRepository(repo)) continue
 
     out.push({
       package: manifest.name,

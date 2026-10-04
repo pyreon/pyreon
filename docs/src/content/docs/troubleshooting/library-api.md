@@ -79,7 +79,8 @@ Rules for release tooling:
   1. `check-published-state` sweeps every published package against npm (`classifyLag`); a sample of sentinels is not a measurement.
   2. `publish-retry` retries only evidence-based transient failures (5xx, dropped sockets) — never 404 (missing Trusted Publisher), 403, the cannot-publish-over conflict (already published), or `E422 Error verifying sigstore provenance bundle`, which is deterministic (for example an empty `repository.url` in the tarball manifest).
   3. An idempotent publish still needs a resume trigger: release.yml `resume-detect`/`resume-publish` rebuild from the release tag, never main, and attempt once per version before warning, since a tag-replay cannot fix a release broken by its own tag.
-  Locks: `packages/internals/test-utils/src/tests/{check-published-state,publish-retry}.test.ts`.
+  4. Match the complete, case-sensitive repository identity before publishing, never a substring. `scripts/release-repository.ts` is shared by the readiness gate and the publisher; Phase 1 rejects missing or mismatched metadata across the whole selected plan before any manifest rewrite or npm publish. A fork sharing the repository-name prefix is a different provenance identity.
+  Locks: `packages/internals/test-utils/src/tests/{check-published-state,publish-retry,release-repository,release-provenance-preflight}.test.ts`.
 
 ---
 

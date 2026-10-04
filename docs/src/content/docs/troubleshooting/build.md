@@ -384,7 +384,7 @@ Files in `ENGINE_FILES` pass `tsc` and the web suite but must also compile throu
 
 Sentinel sampling reported `OK` while six native packages lagged a release by a month. Rules:
   - `scripts/check-published-state.ts` compares every published package against npm (`classifyLag`).
-  - `scripts/publish-retry.ts` retries E422 provenance-verification errors, 5xx and dropped sockets. It never retries a 404 (no Trusted Publisher), a 403, or the cannot-publish-over conflict (which is success).
+  - `scripts/publish-retry.ts` retries only 5xx and dropped sockets; E422 provenance-verification errors are deterministic and must not be retried. It never retries a 404 (no Trusted Publisher), a 403, or the cannot-publish-over conflict (which is success).
   - `release.yml` `resume-detect`/`resume-publish` re-run publishing for a lagging version, built from the release tag, never from main.
   - Locks: `packages/internals/test-utils/src/tests/check-published-state.test.ts`, `publish-retry.test.ts`.
 
