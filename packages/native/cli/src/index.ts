@@ -24,9 +24,8 @@ export type {
   ResolveOptions,
 } from './native-sources'
 
-// Re-exported so the published `bin/pyreon-native.js` can call it EXPLICITLY.
-// The bin must never rely on `cli.ts`'s `import.meta.main` guard: that is a
-// Bun-only signal (undefined on Node before 24.2), and a bundler drops the
-// guarded block entirely when building `lib/` — which is exactly how
-// `pyreon-lint` shipped a bin that did nothing in every published version.
-export { main } from './cli'
+// Explicit entries for the published Node binary and programmatic callers.
+export { main, mainWithPlugins } from './cli'
+
+export { check, checkSource, watchCheck } from './check'
+export type { CheckOptions, CheckSourceOptions, CheckResult, CheckFinding } from './check'

@@ -25,6 +25,33 @@ pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [
 
 Exit codes: `0` success, `1` usage error, `2` the command failed — a compiler error on a source file for `build`/`check`, a failed copy for `assets`/`stage-web`, or, for `wire`, a package that declares native sources whose directory is missing.
 
+## Compiler plugins
+
+Load local ESM modules with a default `CompilerPlugin` export. Paths resolve
+from the working directory; quote paths containing spaces. Repeat `--plugin`
+in the desired registration order. Modules are loaded once before compilation.
+Use compiled JavaScript (`.mjs` or ESM `.js`) for the published Node binary.
+
+```sh
+pyreon-native build --target=all --source=./src --out=./generated --plugin=./plugins/native.mjs
+pyreon-native check --source=./src --plugin=./plugins/native.mjs
+pyreon-native check --source=./src --watch --plugin=./plugins/native.mjs
+pyreon-native check --lsp --plugin=./plugins/native.mjs
+```
+
+Use the same plugin list for build and check/editor commands. The CLI supports
+Swift/Kotlin outputs; additional backend targets are available through
+`createCompiler()` in `@pyreon/native-compiler`. To use an installed plugin,
+import and default-export it from a local adapter module. Plugin loading is
+explicit; the CLI does not discover modules automatically.
+
+Programmatic `build`, `check`, `checkSource`, and `watchCheck` accept a
+`compiler` created by `createCompiler({ plugins })`. The synchronous `main()`
+entry remains available; `mainWithPlugins(argv)` loads modules asynchronously
+and returns the exit code. Loader or plugin errors exit with code 2, including
+watch/LSP setup failures. Unsupported check target flags exit with a usage
+error (code 1); omit the flag or choose iOS/Android, Swift/Kotlin, or `all`. See the [compiler plugin contract](../compiler/README.md#compiler-plugins-experimental-api-v1).
+
 ## `check` is the one to reach for while authoring
 
 `build` needs somewhere to write and is bound to a platform toolchain; `check` needs neither. It's the fast inner loop: "does this file lower to both targets, and what does it warn about?", without leaving the editor.

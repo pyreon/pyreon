@@ -21,7 +21,7 @@
 // less today (a tracked follow-up); errors that carry a `file:line:col`
 // get a precise range.
 
-import type { TargetLanguage } from '@pyreon/native-compiler'
+import type { NativeCompiler, TargetLanguage } from '@pyreon/native-compiler'
 import { checkSource, type CheckFinding } from './check'
 
 interface JsonRpcMessage {
@@ -81,9 +81,9 @@ export function findingsToDiagnostics(findings: CheckFinding[]): LspDiagnostic[]
  * slow + macOS-only, wrong for the keystroke path). A web-only entry
  * yields no diagnostics (nothing to compile natively).
  */
-export function diagnosticsForDocument(text: string, fileName: string): LspDiagnostic[] {
+export function diagnosticsForDocument(text: string, fileName: string, compiler?: Pick<NativeCompiler, 'transform'>): LspDiagnostic[] {
   const targets: TargetLanguage[] = ['swift', 'kotlin']
-  const { webEntry, findings } = checkSource(text, fileName, { targets })
+  const { webEntry, findings } = checkSource(text, fileName, { targets, compiler })
   return webEntry ? [] : findingsToDiagnostics(findings)
 }
 
@@ -111,8 +111,8 @@ export function _uriToFilePath(uri: string): string {
   return uri.startsWith('file://') ? decodeURIComponent(uri.slice('file://'.length)) : uri
 }
 
-function publishDiagnostics(uri: string, text: string): void {
-  const diagnostics = diagnosticsForDocument(text, _uriToFilePath(uri))
+function publishDiagnostics(uri: string, text: string, compiler?: Pick<NativeCompiler, 'transform'>): void {
+  const diagnostics = diagnosticsForDocument(text, _uriToFilePath(uri), compiler)
   _notify('textDocument/publishDiagnostics', { uri, diagnostics })
 }
 
@@ -124,7 +124,7 @@ function publishDiagnostics(uri: string, text: string): void {
  * Returns a response message for requests (`initialize`, `shutdown`) or
  * `null` for notifications.
  */
-export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
+export function _handleMessage(msg: JsonRpcMessage, compiler?: Pick<NativeCompiler, 'transform'>): JsonRpcMessage | null {
   if (msg.method === 'initialize') {
     return {
       jsonrpc: '2.0',
@@ -142,7 +142,7 @@ export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
   if (msg.method === 'textDocument/didOpen') {
     const { uri, text } = msg.params.textDocument
     openDocuments.set(uri, text)
-    publishDiagnostics(uri, text)
+    publishDiagnostics(uri, text, compiler)
     return null
   }
   if (msg.method === 'textDocument/didChange') {
@@ -150,14 +150,14 @@ export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
     const text: string | undefined = msg.params.contentChanges[0]?.text
     if (text != null) {
       openDocuments.set(uri, text)
-      publishDiagnostics(uri, text)
+      publishDiagnostics(uri, text, compiler)
     }
     return null
   }
   if (msg.method === 'textDocument/didSave') {
     const uri: string = msg.params.textDocument.uri
     const text = openDocuments.get(uri)
-    if (text != null) publishDiagnostics(uri, text)
+    if (text != null) publishDiagnostics(uri, text, compiler)
     return null
   }
   if (msg.method === 'textDocument/didClose') {
@@ -181,7 +181,7 @@ function sendMessage(msg: JsonRpcMessage): void {
  * publish notifications to stdout. Never returns (the editor owns the
  * lifetime; `exit` tears the process down).
  */
-export function startLspServer(): void {
+export function startLspServer(compiler?: Pick<NativeCompiler, 'transform'>): void {
   _setNotify((method, params) => sendMessage({ jsonrpc: '2.0', method, params }))
   // The buffer is a Buffer, and stdin is deliberately NOT set to a string
   // encoding: `Content-Length` is a count of BYTES, while a decoded chunk is a
@@ -211,7 +211,7 @@ export function startLspServer(): void {
       const body = buffer.subarray(bodyStart, bodyStart + contentLength).toString('utf-8')
       buffer = buffer.subarray(bodyStart + contentLength)
       try {
-        const response = _handleMessage(JSON.parse(body) as JsonRpcMessage)
+        const response = _handleMessage(JSON.parse(body) as JsonRpcMessage, compiler)
         if (response) sendMessage(response)
       } catch {
         // Malformed JSON frame — ignore (the client will resend).

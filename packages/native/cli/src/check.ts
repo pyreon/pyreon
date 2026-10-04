@@ -23,10 +23,12 @@ import {
   validateSwiftTypecheck,
   isSwiftUIAvailable,
   type TargetLanguage,
+  type NativeCompiler,
 } from '@pyreon/native-compiler'
 import { findTsxFiles, isWebOnlyEntry } from './build'
 
 export interface CheckOptions {
+  compiler?: Pick<NativeCompiler, 'transform'> | undefined
   /** A `.tsx` file OR a directory to walk. */
   source: string
   /** Targets to check. Defaults to both `swift` + `kotlin`. */
@@ -135,6 +137,7 @@ function isRuntimeModuleMiss(error: string): boolean {
 }
 
 export interface CheckSourceOptions {
+  compiler?: Pick<NativeCompiler, 'transform'> | undefined
   /** Targets to check (e.g. `['swift', 'kotlin']`). */
   targets: TargetLanguage[]
   /** Also run `swiftc -typecheck` on the Swift emit (macOS-only). */
@@ -174,7 +177,7 @@ export function checkSource(
   for (const target of options.targets) {
     let emitted: string | undefined
     try {
-      const result = transform(code, { target, filename: fileName })
+      const result = (options.compiler ?? { transform }).transform(code, { target, filename: fileName })
       emitted = result.code
       for (const w of result.warnings) {
         findings.push({ file: fileName, target, kind: 'warning', message: w })
@@ -228,6 +231,7 @@ export function check(options: CheckOptions): CheckResult {
     const code = readFileSync(file, 'utf8')
     const result = checkSource(code, file, {
       targets,
+      compiler: options.compiler,
       ...(options.typecheck ? { typecheck: true } : {}),
     })
     if (result.webEntry) {

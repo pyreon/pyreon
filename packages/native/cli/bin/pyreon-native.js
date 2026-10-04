@@ -1,22 +1,20 @@
 #!/usr/bin/env node
 // Hand-written, never bundled.
 //
-// This bin CALLS main() explicitly rather than importing the entry and hoping
-// a self-run guard fires. `cli.ts` gates its own invocation on
-// `import.meta.main`, which is Bun-only (undefined on Node < 24.2) AND is
-// dropped by the bundler when `lib/` is built — the exact combination that
-// shipped `pyreon-lint` as a silent no-op in every published version.
+// Load explicit compiler plugins before starting build/check/watch/LSP.
+// Calling the entry directly keeps published Node execution independent of
+// Bun-only self-run guards and bundler transformations.
 //
 // The scaffolded builds invoke this through `npx pyreon-native build …`
 // (scripts/build-ios.sh, scripts/build-android.sh), so Node — not Bun — is
 // the runtime that has to work.
-import { main } from '../lib/index.js'
+import { mainWithPlugins } from '../lib/index.js'
 
 const argv = process.argv.slice(2)
-const code = main(argv)
+const code = await mainWithPlugins(argv)
 
 // Long-running modes keep themselves alive via their own listeners; exiting
-// here would tear them down. Mirrors the guard block in src/cli.ts.
-if (!argv.includes('--lsp') && !argv.includes('--watch')) {
+// here would tear them down. Setup failures must still exit unsuccessfully.
+if (code !== 0 || (!argv.includes('--lsp') && !argv.includes('--watch'))) {
   process.exit(code)
 }
