@@ -125,9 +125,14 @@ public struct PyreonSseParser {
     private var type = ""
     private var id: String
     private var retry: Int?
+    /// Committed at a blank line, even when there is no data to dispatch.
+    public private(set) var committedId: String
+    /// Retry fields apply immediately, including control-only blocks.
+    public var reconnectDelay: Int? { retry }
 
     public init(lastEventId: String = "") {
         self.id = lastEventId
+        self.committedId = lastEventId
     }
 
     /// An event has `data` but has not been dispatched yet.
@@ -136,6 +141,7 @@ public struct PyreonSseParser {
     /// Feed one line; returns the event it dispatched, if any.
     public mutating func line(_ bytes: [UInt8]) -> PyreonSseMessage? {
         if bytes.isEmpty {
+            committedId = id
             defer {
                 data = []
                 type = ""
@@ -552,7 +558,8 @@ public final class PyreonStream<E> {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 200
                 guard (200..<300).contains(code) else { throw PyreonStreamError.badStatus(code) }
                 if code == 204 {
-                    ended = true
+                    if live() { status = "closed" }
+                    return
                 } else {
                     if !live() { return }
                     status = "open"
@@ -561,11 +568,13 @@ public final class PyreonStream<E> {
                     var lines = PyreonNdjsonLines()
                     let handle = { (line: [UInt8]) throws in
                         if let onSse {
-                            guard let msg = parser.line(line) else { return }
-                            if !msg.id.isEmpty { lastId = msg.id }
-                            if let r = msg.retry, policy != nil { delay = r }
-                            guard let event = try onSse(msg) else { return }
+                            let msg = parser.line(line)
+                            lastId = parser.committedId.isEmpty ? nil : parser.committedId
+                            if let r = parser.reconnectDelay, policy != nil { delay = r }
+                            guard let msg else { return }
+                            // Filtered events still prove the connection recovered.
                             failures = 0
+                            guard let event = try onSse(msg) else { return }
                             self.push(event)
                             // After the state write, like the web's
                             // `options.onEvent?.(event, queryClient)`.
