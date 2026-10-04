@@ -4,14 +4,32 @@ import { waitForHydration } from '../hydration-barrier'
 /**
  * Functional smoke for the 8 demos added to fundamentals-playground in
  * the coverage-extension PR (dnd, flow, hooks, rx, toast, url-state,
- * validate, feature). The existing `playground.spec.ts` nav-sweep covers
- * mount + zero-error for every route in TAB_PATHS; these specs assert
+ * validate, feature). The `playground.spec.ts` route boot checks cover
+ * mount + zero-error for every navigation destination; these specs assert
  * that each demo's **primary interactive flow** actually works
  * end-to-end (not just that the route renders).
  *
  * With `feature` covered (CRUD against an in-memory mock fetcher), all
  * 23 `@pyreon/fundamentals/*` packages now have a live FP demo.
  */
+
+// These specs prove interactive contracts, not source updates. Cold imports
+// in another worker can reload any of their pages and discard live state.
+// Keep Vite's real client/events/socket, filtering only its update messages.
+// Source-update behavior is covered by the separate zero-hmr gate.
+test.beforeEach(async ({ page }) => {
+  await page.routeWebSocket('**', (socket) => {
+    const server = socket.connectToServer()
+    if (!socket.protocols().includes('vite-hmr')) return
+    server.onMessage((message) => {
+      if (typeof message === 'string') {
+        const { type } = JSON.parse(message) as { type?: string }
+        if (type === 'update' || type === 'full-reload') return
+      }
+      socket.send(message)
+    })
+  })
+})
 
 test.describe('Rx demo — pipe + filter + aggregations', () => {
   test('inStock filter and avg both render', async ({ page }) => {
@@ -124,20 +142,6 @@ test.describe('Hooks demo — useToggle + useClipboard', () => {
   })
 
   test('typing into debounced input updates live + debounced', async ({ page }) => {
-    // Other workers can make Vite discover dependencies and reload this page.
-    // Keep the real client module and runtime events; this functional contract
-    // does not exercise source updates. Filter only the HMR update protocol.
-    await page.routeWebSocket('**', (socket) => {
-      const server = socket.connectToServer()
-      if (!socket.protocols().includes('vite-hmr')) return
-      server.onMessage((message) => {
-        if (typeof message === 'string') {
-          const { type } = JSON.parse(message) as { type?: string }
-          if (type === 'update' || type === 'full-reload') return
-        }
-        socket.send(message)
-      })
-    })
     // Install before navigation so the app never mixes native and controlled
     // timers. Quiet-period behavior must not depend on hosted timer delivery.
     await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') })
@@ -412,11 +416,14 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
       timeout: 5000,
     })
+    const hydratedDocument = await page.evaluateHandle(() => document)
     // Seeded task ids are '1' / '2' / '3'.
     await page.locator('[data-testid=feature-delete-1]').click()
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(2, {
       timeout: 5000,
     })
+    expect(await hydratedDocument.evaluate((original) => original === document)).toBe(true)
+    await hydratedDocument.dispose()
   })
 
   test('useUpdate toggles a task done state via PUT', async ({ page }) => {
