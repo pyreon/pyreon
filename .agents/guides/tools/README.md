@@ -20,7 +20,7 @@ Derives a verified, machine-readable component catalog from source. You write no
 
 ### Scan and scenarios
 
-- Controls come from props; scenarios from variant axes, including rocketstyle dimensions.
+- Controls come from props; scenarios from variant axes, including rocketstyle dimensions. Distinct same-named components retain separate file identities in both discovery passes; runtime re-exports deduplicate only when both the export name and component value match. Static claims are file-qualified, so they cannot suppress a different chain sharing the name.
 - Variant scenarios fan one axis at a time (`Σ|axis|`). `matrix: 'full'` opts into the full `Π|axis|` product.
 - Every component gets a `Default` scenario. An authored `Default` in `atlas.config.ts` is the base for every derived scenario, and its args stay live (render-prop children and `h()` trees reach the canvas intact).
 - Edge cases target a content prop.
@@ -63,7 +63,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 
 ### Input
 
-- First-party parsing, including a YAML reader that refuses anchors, merge keys, explicit tags and tab indentation (with a line number).
+- YAML 1.2 core through the `yaml` package: anchors and merge keys resolve; duplicate keys, multi-document streams, custom tags and non-JSON values are refused with a line number.
 - Anything the IR cannot represent becomes a `note` with a stable code and JSON pointer.
 - Output is deterministic; an unchanged spec regenerates byte-identically.
 
@@ -80,9 +80,9 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - It runs the real native compiler over its output and asserts the positive markers (`PyreonQuery<`, `PyreonStream<`, `PyreonZodSchema_`) and no leaked web-only symbols. Zero warnings is not evidence. A `does NOT compile` warning counts as broken; an absent compiler skips loudly.
 - Per-operation reach is reported in spec terms (`lathe/src/core/generate.ts`):
   - a relative or missing `baseUrl` makes every operation `web-only` (PMTC bakes the request URL at compile time);
-  - non-GET operations are `web-only` (PMTC does not lower mutations);
+  - non-stream non-GET operations are `web-only` (PMTC does not lower mutations);
   - GET operations with path parameters reach native — the param becomes a component prop and lowers through `useQuery`;
-  - a stream-only GET (SSE / NDJSON) with a typed event, or SSE read as text, reaches native through a generated `<Op>Stream` component (`useStream` over `@pyreon/http/stream` → the native `PyreonStream` runtime); an untyped stream stays `web-only` and names the missing event type. The reach report and the emitter ask ONE predicate (`hasNativeStreamComponent`).
+  - a stream-only operation (SSE / NDJSON) with a typed event, or SSE read as text, reaches native through a generated `<Op>Stream` component (`useStream` over `@pyreon/http/stream` → the native `PyreonStream` runtime). Non-GET streams are triggered with `enabled` and a `json` body prop; an untyped stream stays `web-only` and names the missing event type. The reach report and the emitter ask ONE predicate (`hasNativeStreamComponent`).
 - A non-Pyreon `--client` with `target: 'multiplatform'` is refused.
 
 ## `@pyreon/loom` — dependency observatory

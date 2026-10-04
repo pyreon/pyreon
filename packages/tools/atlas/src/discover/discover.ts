@@ -134,8 +134,9 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
  *
  * With a `rocketstyle` loader it ALSO loads each file and emits the rocketstyle
  * components the static scan structurally cannot see. Both halves live in ONE
- * plugin so the "first occurrence of a name wins" rule has a single owner —
- * across two plugins the pipeline would happily emit the same component twice.
+ * plugin so export identity has a single owner — across two plugins the
+ * pipeline would happily emit the same component twice. Static claims are
+ * file-qualified; an unrelated component sharing the name must survive.
  */
 export function fileDiscoveryPlugin(
   options: DiscoverOptions & { rocketstyle?: RocketstyleDiscoveryOptions } = {},
@@ -150,7 +151,7 @@ export function fileDiscoveryPlugin(
       const extra = await discoverRocketstyle(
         listComponentFiles(resolved),
         rocketstyle,
-        new Set(scanned.map((c) => c.name)),
+        new Set(scanned.map((c) => `${c.name}@${c.source}`)),
       )
       // A pass that found NOTHING while every file it tried failed to load is
       // not an empty package — it is a broken one, and the two are
