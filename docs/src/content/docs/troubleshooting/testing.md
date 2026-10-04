@@ -7,6 +7,12 @@ description: "Common testing mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A controlled clock cannot preserve state across a dev reload
+
+Parallel cold imports can make Vite reset a hydrated document mid-assertion. Keep `@vite/client` for real event delegation; filter only update/reload messages on its HMR socket for functional tests. Forward other traffic, assert document identity (history events can repeat), and bisect with a real Vite reload message. Reference: `e2e/fundamentals/new-demos.spec.ts`.
+
+---
+
 ### A debounce assertion measures runner scheduling instead of the quiet period
 
 Install the real browser's Playwright clock before navigation and pause after hydration. Advance to just before and at the deadline; type again to prove timer cancellation and restart. A wall-clock poll can fail under load and cannot catch an immediate update. Reference: `e2e/fundamentals/new-demos.spec.ts`.

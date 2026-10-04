@@ -153,6 +153,8 @@ test.beforeEach(async ({ context }) => {
 - References: `e2e/fundamentals/storage.spec.ts` (suppressed, no clicks) vs `e2e/fundamentals/storage-hydration.spec.ts` (clicks, no suppression).
 - The race is load-dependent and does not reproduce locally; the structural argument is the proof.
 
+A clock-driven functional test can also lose component state when another worker's cold imports trigger a dev reload. Keep `@vite/client` loaded for input/click delegation. Use `page.routeWebSocket` before navigation, connect to the real server, and filter only `update` / `full-reload` messages on the `vite-hmr` subprotocol; forward other messages and leave application sockets untouched. Scope this to functional contracts, never HMR proofs. Bisect with a real `server.ws.send({ type: 'full-reload', path: '*' })` message and assert the document stays stable. Reference: the debounce test in `e2e/fundamentals/new-demos.spec.ts`.
+
 ## The native compile-validation suite is verdict-cached
 
 `@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc`/`kotlinc`. Verdicts are content-addressed on disk (`validate-cache.ts`), keyed on validator kind, compiler version, exact stub text and the exact bytes compiled. The full suite runs about 397s uncached and about 6s warm.

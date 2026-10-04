@@ -443,6 +443,8 @@ This file is also the source of the MCP `get_anti_patterns` tool and the docs si
 
 ## Testing Mistakes
 
+- **A controlled clock cannot preserve state across a dev reload**: parallel cold imports can make Vite reset a hydrated document mid-assertion. Keep `@vite/client` for real event delegation; filter only update/reload messages on its HMR socket for functional tests. Forward other traffic, assert document identity (history events can repeat), and bisect with a real Vite reload message. Reference: `e2e/fundamentals/new-demos.spec.ts`.
+
 - **A debounce assertion measures runner scheduling instead of the quiet period**: install the real browser's Playwright clock before navigation and pause after hydration. Advance to just before and at the deadline; type again to prove timer cancellation and restart. A wall-clock poll can fail under load and cannot catch an immediate update. Reference: `e2e/fundamentals/new-demos.spec.ts`.
 
 - **A build-time network fallback without a download deadline never runs on a stall**: bound the whole download operation with one abort signal, keep it active through response-body consumption, and clear its timer in `finally`. Per-file budgets multiply with the asset count; a `Promise.race` alone leaves requests alive. CI command deadlines must leave time for phase-log uploads before the job backstop, and `tee` must preserve producer failures. Test stalled headers and bodies through real HTTP and the real build. Reference: `zero/src/font.ts`, `tests/integration/font-download-deadline.test.ts`, `.github/workflows/docs.yml`.

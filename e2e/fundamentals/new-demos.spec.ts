@@ -124,12 +124,27 @@ test.describe('Hooks demo — useToggle + useClipboard', () => {
   })
 
   test('typing into debounced input updates live + debounced', async ({ page }) => {
+    // Other workers can make Vite discover dependencies and reload this page.
+    // Keep the real client module and runtime events; this functional contract
+    // does not exercise source updates. Filter only the HMR update protocol.
+    await page.routeWebSocket('**', (socket) => {
+      const server = socket.connectToServer()
+      if (!socket.protocols().includes('vite-hmr')) return
+      server.onMessage((message) => {
+        if (typeof message === 'string') {
+          const { type } = JSON.parse(message) as { type?: string }
+          if (type === 'update' || type === 'full-reload') return
+        }
+        socket.send(message)
+      })
+    })
     // Install before navigation so the app never mixes native and controlled
     // timers. Quiet-period behavior must not depend on hosted timer delivery.
     await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') })
     await page.goto('/hooks')
     await waitForHydration(page)
     await page.clock.pauseAt(new Date('2026-01-01T00:01:00Z'))
+    const hydratedDocument = await page.evaluateHandle(() => document)
     const input = page.locator('[data-testid=hooks-debounce-input]')
     const debounced = page.locator('[data-testid=hooks-debounced]')
     await input.fill('abc')
@@ -148,6 +163,9 @@ test.describe('Hooks demo — useToggle + useClipboard', () => {
     await expect(debounced).toHaveText('abc')
     await page.clock.runFor(1)
     await expect(debounced).toHaveText('last')
+    // Same-document history updates are valid; a replaced document is not.
+    expect(await hydratedDocument.evaluate((original) => original === document)).toBe(true)
+    await hydratedDocument.dispose()
   })
 })
 
