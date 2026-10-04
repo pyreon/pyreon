@@ -1,12 +1,14 @@
 ---
 title: Package catalog
-description: Every public Pyreon workspace package, with links to its guide or source.
+description: Public Pyreon framework packages, with links to their guides or source.
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
 # Package catalog
 
-76 public workspace packages across 6 categories. This inventory describes the current source tree; see each package on npm for the published version.
+76 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
+
+The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.
 
 Explore the [live examples](/docs/examples) and the [UI component workbench](/atlas/). The component library is a separate, private workspace and is not included in the public package count.
 

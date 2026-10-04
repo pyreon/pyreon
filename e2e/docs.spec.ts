@@ -155,7 +155,7 @@ test.describe('docs rendering', () => {
     expect(external).toEqual([])
   })
 
-  test('homepage and catalog represent every public workspace package', async ({ page }) => {
+  test('homepage and catalog represent every public framework package', async ({ page }) => {
     const root = resolve(__dirname, '..')
     const groups: { category: string; names: string[] }[] = []
     for (const category of readdirSync(resolve(root, 'packages'))) {
