@@ -137,50 +137,82 @@ function barCmd(g: KeyedGeo, rect: Rect, datum: number): DrawCmd {
   return rectCmd(rect, fill, corners, grad.stops.length === 0 ? undefined : grad, s.pattern)
 }
 
-/** The morphing series' commands at eased progress `e` (0 = the old frame, 1 = the new). */
-export function keyedMorphCmds(from: KeyedGeo[], to: KeyedGeo[], e: Double): DrawCmd[] {
-  const out: DrawCmd[] = []
-  for (let s = 0; s < to.length; s++) {
-    const b = to[s]!
+/** The displayed geometry at eased progress `e`, retained for an interrupted update. */
+export function keyedMorphGeometry(from: KeyedGeo[], to: KeyedGeo[], e: Double): KeyedGeo[] {
+  return to.map((b, s) => {
     const a = from[s]
+    const points = new Map<string, Pt>()
+    const rects = new Map<string, Rect>()
+    const index = new Map<string, number>()
+    const keys: string[] = []
     if (b.kind === 'line') {
-      // A gap (a row with no finite value) breaks the line into runs, exactly
-      // as the renderer does — bridging it mid-morph would draw a segment
-      // across the gap that snaps away when the morph lands.
-      const runs: Pt[][] = [[]]
       for (const k of b.keys) {
+        keys.push(k)
         const p = b.points.get(k)
+        if (p === undefined) continue
+        const old = a?.points.get(k)
+        points.set(k, old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
+        index.set(k, b.index.get(k) ?? -1)
+      }
+    } else {
+      // Exiting first, so survivors sliding over them paint on top. Keep
+      // exits in the snapshot too: a retarget must not drop a visible bar.
+      if (a !== undefined) {
+        for (const k of a.keys) {
+          const r = a.rects.get(k)
+          if (r === undefined || b.rects.has(k)) continue
+          keys.push(k)
+          rects.set(k, mixRect(r, growEdgeRect(r, a.dom, a.plot, a.horizontal), e))
+          index.set(k, -1)
+        }
+      }
+      for (const k of b.keys) {
+        const r = b.rects.get(k)
+        if (r === undefined) continue
+        keys.push(k)
+        const old = a?.rects.get(k)
+        rects.set(k, mixRect(old ?? growEdgeRect(r, b.dom, b.plot, b.horizontal), r, e))
+        index.set(k, b.index.get(k) ?? -1)
+      }
+    }
+    return { ...b, keys, rects, points, index }
+  })
+}
+
+/** Draw a displayed keyed snapshot, using the target series' styling. */
+export function keyedGeoCmds(geo: KeyedGeo[]): DrawCmd[] {
+  const out: DrawCmd[] = []
+  for (const g of geo) {
+    if (g.kind === 'line') {
+      const runs: Pt[][] = [[]]
+      for (const k of g.keys) {
+        const p = g.points.get(k)
         if (p === undefined) {
           if (runs[runs.length - 1]!.length > 0) runs.push([])
           continue
         }
-        const old = a?.points.get(k)
-        runs[runs.length - 1]!.push(old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
+        runs[runs.length - 1]!.push(p)
       }
       for (const run of runs) {
-        const shaped = b.series.curve === undefined ? run : b.series.curve(run)
+        const shaped = g.series.curve === undefined ? run : g.series.curve(run)
         if (shaped.length < 2) continue
-        out.push(b.series.dash === undefined
-          ? { kind: 'polyline', points: shaped, stroke: b.series.color, width: b.series.width }
-          : { kind: 'polyline', points: shaped, stroke: b.series.color, width: b.series.width, dash: b.series.dash })
+        out.push(g.series.dash === undefined
+          ? { kind: 'polyline', points: shaped, stroke: g.series.color, width: g.series.width }
+          : { kind: 'polyline', points: shaped, stroke: g.series.color, width: g.series.width, dash: g.series.dash })
       }
-      continue
-    }
-    // Exiting first, so the survivors sliding over them paint on top.
-    if (a !== undefined) {
-      for (const k of a.keys) {
-        const r = a.rects.get(k)
-        if (r !== undefined && !b.rects.has(k)) out.push(barCmd(b, mixRect(r, growEdgeRect(r, a.dom, a.plot, a.horizontal), e), -1))
+    } else {
+      for (const k of g.keys) {
+        const r = g.rects.get(k)
+        if (r !== undefined) out.push(barCmd(g, r, g.index.get(k) ?? -1))
       }
-    }
-    for (const k of b.keys) {
-      const r = b.rects.get(k)
-      if (r === undefined) continue
-      const old = a?.rects.get(k)
-      out.push(barCmd(b, mixRect(old ?? growEdgeRect(r, b.dom, b.plot, b.horizontal), r, e), b.index.get(k) ?? -1))
     }
   }
   return out
+}
+
+/** The morphing series' commands at eased progress `e` (0 = the old frame, 1 = the new). */
+export function keyedMorphCmds(from: KeyedGeo[], to: KeyedGeo[], e: Double): DrawCmd[] {
+  return keyedGeoCmds(keyedMorphGeometry(from, to, e))
 }
 
 /**

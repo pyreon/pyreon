@@ -532,6 +532,9 @@ Seven classes seen in framework code. This catalog names the shape and fix so a 
 
 **Common root cause**: module-level mutable state with an imperfect cleanup contract. A/C/D are eviction failures; F is overwrite without invalidation; H is retention by held reference; I is a timer not cleared on the success path. Compiler metadata keyed by a local name must also match its lexical scope: build hook kind, bounds and initial value together from the current component and release them at component exit. A file-wide name map makes unrelated same-named hooks overwrite each other; an initial-value map left between transforms retains prior source metadata. References: `native/compiler/src/pure-state.ts:pureStateBindings`; `native/compiler/src/tests/native-pure-state-scope.test.ts`.
 
+- **Confusing an animation's target with its displayed frame**: a new plot update mid-tween interpolated from the original start, jumped on receipt, then replayed the superseded target at completion. Track the latest target on every update and retarget from displayed values, keyed geometry (including exits), or the active command morph. Only one animation owns a frame; cancelling updates cancels its scheduled callback. Assert continuity and an empty frame queue after settling through real canvas output. Reference: `charts/src/engine/update-retarget.browser.test.tsx`.
+
+
 **The 3 questions to ask before introducing a new module-level cache / stack / registry**:
 
 1. What's the eviction trigger?

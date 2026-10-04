@@ -14,7 +14,7 @@ import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
 import { getFrameSerializer } from './frame-seam'
-import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph, morphMatches } from './keyed-morph'
+import { canKeyMorph, keyedGeometry, keyedGeoCmds, keyedMorphGeometry, maskForMorph, morphMatches } from './keyed-morph'
 import type { KeyedGeo } from './keyed-morph'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { placeLegend } from './legend'
@@ -614,8 +614,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   /** The row keys (`by`) behind `lastValues`, and behind the spec being built. */
   let lastKeys: string[] | null = null
   let builtKeys: string[] | null = null
-  // Keyed GEOMETRY morph (`keyed-morph.ts`): the last settled frame's bar /
-  // line geometry by key, and the frame a running morph starts from.
+  // Keyed GEOMETRY morph (`keyed-morph.ts`): the displayed bar / line
+  // geometry by key, and the frame a running morph starts from.
   let geoSnap: KeyedGeo[] | null = null
   let morphFrom: KeyedGeo[] | null = null
   let tweenFrom: Double[][] | null = null
@@ -648,42 +648,59 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // per-index correspondence. Set by `tweened` below, read once per frame by
   // `draw` to decide whether to hand off to the command-level morph.
   let shapeChangedThisFrame = false
+  const stopTween = (): void => {
+    if (tweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(tweenFrame)
+    tweenFrame = 0.0
+    tweenT = 1.0
+    tweenFrom = null
+    morphFrom = null
+  }
+  const updateEnabled = (): boolean => props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
   /** The spec actually painted: mid-tween values when a data update is animating. */
   const tweened = (spec: ChartSpec): ChartSpec => {
     const cur = spec.series.map((x) => x.values)
-    shapeChangedThisFrame = false
     const keys = builtKeys
-    if (tweenT >= 1.0 || tweenFrom === null) {
-      const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
-      // Keyed: realign the previous values to the new rows, so the shape
-      // always matches and each row tweens from its own old value.
-      if (enabled && lastValues !== null && keys !== null && lastKeys !== null && lastValues.length === cur.length && !sameKeys(lastKeys, keys)) {
-        // Morphable (bars, lines, stacks, groups): slide, grow in and shrink out by key.
-        if (geoSnap !== null && canKeyMorph(spec) && morphMatches(geoSnap, spec)) {
+    const enabled = updateEnabled()
+    shapeChangedThisFrame = false
+    const keysChanged = keys !== null && lastKeys !== null && !sameKeys(lastKeys, keys)
+    const changed = lastValues !== null && (!sameValues(lastValues, cur) || keysChanged)
+    if (!enabled || (morphFrom !== null && !morphMatches(morphFrom, spec))) stopTween()
+    if (changed) {
+      // frameCache holds the values actually painted, while geoSnap holds
+      // their displayed positions (including entering and exiting bars).
+      // lastValues/lastKeys track the TARGET, so settling never replays a
+      // superseded update. A new target may arrive on any animation frame.
+      const prev = frameCache?.spec.series.map((x) => x.values) ?? lastValues!
+      const prevKeys = frameCache?.spec.rowKeys ?? lastKeys
+      lastValues = cur
+      lastKeys = keys
+      if (enabled) {
+        // A command morph already owns the displayed frame. Hand it the
+        // new target directly rather than starting a concurrent value tween.
+        if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) return spec
+        if (keys !== null && prevKeys !== null && geoSnap !== null && canKeyMorph(spec) && morphMatches(geoSnap, spec) && (keysChanged || morphFrom !== null)) {
           morphFrom = geoSnap
-          lastValues = cur
-          lastKeys = keys
+          tweenFrom = null
           startTween()
           return spec
         }
-        tweenFrom = alignByKey(lastValues, lastKeys, keys, spec.series.map((x) => x.kind))
-        lastValues = cur
-        lastKeys = keys
+        morphFrom = null
+        if (keysChanged && keys !== null && prevKeys !== null && prev.length === cur.length) {
+          tweenFrom = alignByKey(prev, prevKeys, keys, spec.series.map((x) => x.kind))
+        } else if (sameShape(prev, cur)) {
+          tweenFrom = prev
+        } else {
+          stopTween()
+          shapeChangedThisFrame = true
+          return spec
+        }
         startTween()
-        return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
       }
-      lastKeys = keys
-      if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
-        tweenFrom = lastValues
-        lastValues = cur
-        startTween()
-        // The first tween frame is painted synchronously at t = 0.
-        return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
-      }
-      if (enabled && lastValues !== null && !sameShape(lastValues, cur)) shapeChangedThisFrame = true
+    } else if (lastValues === null) {
       lastValues = cur
-      return spec
+      lastKeys = keys
     }
+    if (tweenT >= 1.0 || tweenFrom === null) return spec
     const frame = tweenValues(tweenFrom, cur, tweenT)
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
   }
@@ -730,9 +747,21 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    * `universalTransition` is on.
    */
   const coreCmdsFor = (cmds: DrawCmd[]): DrawCmd[] => {
-    if (props.universalTransition !== true) return cmds
+    if (props.universalTransition !== true || !updateEnabled()) {
+      if (coreTweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coreTweenFrame)
+      coreTweenFrame = 0.0
+      coreTweenT = 1.0
+      coreTweenFrom = null
+      coreTweenTo = null
+      return cmds
+    }
     if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) {
       const out = universalTweenCmds(coreTweenFrom, coreTweenTo, easeOutCubic(coreTweenT))
+      if (!cmdsEqual(coreTweenTo, cmds)) {
+        coreTweenFrom = out
+        coreTweenTo = cmds
+        startCoreTween()
+      }
       lastCoreCmds = cmds
       return out
     }
@@ -1097,15 +1126,13 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const tba = features.toolbox
     const spec = tba === undefined ? built : tba.applyBrushSelection(built, tba.brushOnlySeries(tba.brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
     frameCache = { spec, layout: l, w, hgt }
-    const morphing = morphFrom !== null && tweenT < 1.0 && builtKeys !== null && canKeyMorph(spec)
+    const targetGeo = props.by !== undefined && builtKeys !== null && canKeyMorph(spec) ? keyedGeometry(spec, l, builtKeys) : null
+    const morphing = morphFrom !== null && tweenT < 1.0 && targetGeo !== null
+    geoSnap = morphing ? keyedMorphGeometry(morphFrom!, targetGeo!, easeOutCubic(tweenT)) : targetGeo
     const plotCmds = morphing
-      ? [...renderChartIn(maskForMorph(spec), measure, l), ...keyedMorphCmds(morphFrom!, keyedGeometry(spec, l, builtKeys!), easeOutCubic(tweenT))]
+      ? [...renderChartIn(maskForMorph(spec), measure, l), ...keyedGeoCmds(geoSnap!)]
       : renderChartIn(spec, measure, l)
-    if (!morphing) {
-      morphFrom = null
-      // Only a keyed chart pays for the snapshot.
-      geoSnap = props.by !== undefined && builtKeys !== null && canKeyMorph(spec) ? keyedGeometry(spec, l, builtKeys) : null
-    }
+    if (!morphing) morphFrom = null
     const cmds = coreCmdsFor(plotCmds)
     const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
     if (navRect !== null && legendLeft !== 0.0) navRect = { ...navRect, x: navRect.x + legendLeft }

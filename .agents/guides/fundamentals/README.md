@@ -38,3 +38,9 @@ Read only the file for the package you are changing. Packages with a detail file
 | `@pyreon/url-state` | `useUrlState` with schema mode and type coercion; SSR-safe. |
 | `@pyreon/dnd` | Wraps `@atlaskit/pragmatic-drag-and-drop`; every teardown goes through `onCleanup`, and `useSortable` disposes item and container registrations on ref `null`. |
 | `@pyreon/a11y` | `announce()`, `<VisuallyHidden>`, `<LiveRegion>`, `<SkipLink>`, `createA11yId`. |
+
+Chart animation state separates the latest target from the displayed frame.
+Retarget values from `frameCache` and keyed positions from `geoSnap`, including
+visible entering/exiting bars. A running universal transition owns its draw
+list; feed it new targets without starting a concurrent value tween. Cancelling
+updates must release either animation's pending frame.
