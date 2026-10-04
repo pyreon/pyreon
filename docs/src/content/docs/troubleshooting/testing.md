@@ -202,6 +202,12 @@ Test public API behavior, not implementation details
 
 ---
 
+### Confusing an animation's target with its displayed frame
+
+A new plot update mid-tween interpolated from the original start, jumped on receipt, then replayed the superseded target at completion. Track the latest target on every update and retarget from displayed values, keyed geometry (including exits), or the active command morph. Only one animation owns a frame; cancelling updates cancels its scheduled callback. Assert continuity and an empty frame queue after settling through real canvas output. Reference: `charts/src/engine/update-retarget.browser.test.tsx`.
+
+---
+
 ### DOM tests without happy-dom
 
 Packages with DOM need `environment: "happy-dom"` in vitest config
