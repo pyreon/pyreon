@@ -18,6 +18,7 @@ import { PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_MS, isTransientPublishError } from '.
 import { topoSortByWorkspaceDeps } from './publish-order'
 import { runPool } from './run-pool'
 import { classifyPublishFailure } from './publish-classify'
+import { isReleaseRepository, RELEASE_REPOSITORY_URL } from './release-repository'
 import {
   packageBuildsToLib,
   stripBunCondition,
@@ -338,6 +339,16 @@ for (const dir of packageDirs) {
     continue
   }
 
+  // Validate every selected manifest before Phase 2 can publish ANY package.
+  // npm rejects missing or mismatched repository identity deterministically;
+  // discovering that inside the publish loop creates an immutable partial release.
+  if (!isReleaseRepository(pkg.repository)) {
+    resolveErrors.push(
+      `${pkg.name}: repository.url is missing or does not identify ${RELEASE_REPOSITORY_URL} — ` +
+        `npm provenance rejects this metadata. Set repository.url to git+${RELEASE_REPOSITORY_URL}.git`,
+    )
+  }
+
   const resolved = {
     ...pkg,
     // Strip the `bun` condition from `exports` AND `src` from `files`
@@ -433,10 +444,9 @@ const publishOrder = topoSortByWorkspaceDeps(
 const blocked: string[] = []
 
 // Phase 2 (continued). Every manifest here is guaranteed `workspace:`-free.
-// The only failures possible now are network / npm-side (transient) —
-// reported via `failed[]` + exit 1, and a re-run resumes (skip-if-published).
-// The deterministic manifest-resolution bug class can no longer cause a
-// partial release.
+// Local manifest-resolution and repository-identity errors have already been
+// rejected. Remaining registry/authorization failures are reported via
+// `failed[]` + exit 1; a re-run resumes (skip-if-published).
 for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
   // Dangling-constraint guard. Topo order guarantees every workspace dep was
   // PROCESSED before this package — so if a dep landed in `failed` /
