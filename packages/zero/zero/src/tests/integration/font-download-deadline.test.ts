@@ -9,7 +9,9 @@ const FONT_CSS =
   '@font-face{font-family:"Inter";src:url(https://fonts.gstatic.com/test.woff2);font-weight:400}'
 
 // Real HTTP and Vite: only redirect the provider's URLs to the fixture server
-// and shorten the production deadline. Headers and response bodies still go
+// and trigger the deadline once a request has actually stalled. Healthy
+// requests keep the production budget, including on a slow CI runner.
+// Headers and response bodies still go
 // through fetch's real abort machinery, including socket teardown.
 async function fixture(context: { onTestFinished: (fn: () => Promise<void>) => void }) {
   const root = mkdtempSync(join(tmpdir(), 'zero-font-deadline-'))
@@ -19,7 +21,21 @@ async function fixture(context: { onTestFinished: (fn: () => Promise<void>) => v
   const signals: Array<AbortSignal | null | undefined> = []
   const timers: Array<ReturnType<typeof setTimeout>> = []
   const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
   const realFetch = globalThis.fetch
+  let expireDownload = () => {}
+  const cleared = vi.spyOn(globalThis, 'clearTimeout')
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn, delay, ...args) => {
+    const timer = realSetTimeout(fn, delay, ...args)
+    if (delay === 60_000) {
+      timers.push(timer)
+      expireDownload = () => {
+        if (!cleared.mock.calls.some(([id]) => id === timer) && typeof fn === 'function')
+          fn(...args)
+      }
+    }
+    return timer
+  })
   const server = createServer((req, res) => {
     const css = req.url === '/css'
     if (
@@ -41,6 +57,7 @@ async function fixture(context: { onTestFinished: (fn: () => Promise<void>) => v
       res.on('close', () => {
         closed++
       })
+      if (stalled === 'headers') queueMicrotask(() => expireDownload())
       return
     }
     res.end(css ? FONT_CSS : Buffer.from('complete-font-bytes'))
@@ -51,15 +68,21 @@ async function fixture(context: { onTestFinished: (fn: () => Promise<void>) => v
   const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     signals.push(init?.signal)
     const css = String(input).startsWith('https://fonts.googleapis.com/')
-    return realFetch(`http://127.0.0.1:${address.port}/${css ? 'css' : 'font'}`, init)
+    return realFetch(`http://127.0.0.1:${address.port}/${css ? 'css' : 'font'}`, init).then(
+      (response) => {
+        // Run after headers have resolved and the plugin has started consuming
+        // the body. A timer wrongly cleared at headers will not fire here.
+        if ((css && stalled === 'css-body') || (!css && stalled === 'font-body')) {
+          setImmediate(() => expireDownload())
+        }
+        return response
+      },
+    )
   })
-  vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn, delay, ...args) =>
-    realSetTimeout(fn, delay === 60_000 ? 100 : delay, ...args),
-  )
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   context.onTestFinished(async () => {
     vi.restoreAllMocks()
-    for (const timer of timers) clearTimeout(timer)
+    for (const timer of timers) realClearTimeout(timer)
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
     rmSync(root, { recursive: true, force: true })
@@ -78,6 +101,7 @@ async function fixture(context: { onTestFinished: (fn: () => Promise<void>) => v
     warn,
     runBuild,
     closed: () => closed,
+    expireDownload: () => expireDownload(),
     stall: (stage: typeof stalled) => {
       stalled = stage
     },
@@ -128,7 +152,7 @@ describe('font download deadline through a real Vite build', () => {
     await f.runBuild()
     const signal = f.signals[0]
     expect(signal).toBeInstanceOf(AbortSignal)
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    f.expireDownload()
     expect(signal?.aborted).toBe(false)
     f.fetchSpy.mockClear()
     f.fetchSpy.mockRejectedValue(new Error('warm builds must not fetch'))
