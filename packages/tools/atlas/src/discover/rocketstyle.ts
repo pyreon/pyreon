@@ -143,10 +143,10 @@ export function readDimensions(value: unknown, theme: unknown): VariantAxis[] | 
 /**
  * Load each file and emit intelligence for its rocketstyle exports.
  *
- * `skip` carries the names the static scanner already claimed. A rocketstyle
- * component wrapped in an exported function is found by BOTH, and emitting it
- * twice would put two entries with the same name in the sidebar and double
- * every scenario it generates.
+ * `skip` accepts export names (exclude that name everywhere) or `name@file`
+ * identities (exclude the static claim and re-exports of its runtime value).
+ * Different components may legitimately export the same name; only the same
+ * export name AND runtime value are duplicates across files.
  */
 export async function discoverRocketstyle(
   files: readonly string[],
@@ -154,7 +154,13 @@ export async function discoverRocketstyle(
   skip: ReadonlySet<string> = new Set(),
 ): Promise<ComponentIntelligence[]> {
   const out: ComponentIntelligence[] = []
-  const seen = new Set(skip)
+  const seen = new Map<string, Set<unknown>>()
+  const claimed = new Map<string, Set<unknown>>()
+  const remember = (map: Map<string, Set<unknown>>, name: string, value: unknown): void => {
+    let values = map.get(name)
+    if (!values) map.set(name, (values = new Set()))
+    values.add(value)
+  }
 
   // Serial on purpose. Issuing the loads concurrently (bounded at 12, results
   // still consumed in file order so `seen` stays deterministic) was measured
@@ -205,10 +211,17 @@ export async function discoverRocketstyle(
       continue
     }
     for (const [name, value] of Object.entries(mod)) {
-      if (seen.has(name) || !/^[A-Z]/.test(name)) continue
+      if (skip.has(name) || !/^[A-Z]/.test(name)) continue
+      if (skip.has(`${name}@${file}`)) {
+        // A barrel may have appeared before this defining file. Record the
+        // claimed value and remove its earlier re-export after all files load.
+        remember(claimed, name, value)
+        continue
+      }
+      if (seen.get(name)?.has(value)) continue
       const axes = readDimensions(value, options.theme)
       if (!axes) continue
-      seen.add(name)
+      remember(seen, name, value)
       // Dimensions say how the component can LOOK; they never say what it
       // renders WITH. Without this every derived scenario mounted an empty
       // `<button>` / `<h2>` / `<div>` — see `core/content.ts`.
@@ -227,5 +240,5 @@ export async function discoverRocketstyle(
       })
     }
   }
-  return out
+  return out.filter((c) => !claimed.get(c.name)?.has(c.component))
 }

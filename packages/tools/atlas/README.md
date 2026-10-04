@@ -251,8 +251,11 @@ rather than picking one:
 Authored `scenarios` and `pages` accept either form — `'Core/Button'` to target
 one package, or a bare `'Button'` when it is unambiguous.
 
-Single-package projects set no `project`, so every derived key, id and group is
-byte-identical to before this existed.
+Single-package projects set no `project`. Unique names keep their existing keys
+and scenario ids. Distinct same-named components in different files also survive,
+including rocketstyle chains and a chain sharing a plain component's name; use
+the qualified keys listed by the ambiguity diagnostic. A barrel re-export of
+the same component under the same export name adds no duplicate entry.
 
 ## `atlas check` — the catalog as a guardrail
 

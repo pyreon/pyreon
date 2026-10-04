@@ -79,6 +79,10 @@ describe('fileDiscoveryPlugin — one owner for both passes', () => {
   it('emits a component found by BOTH passes exactly once', async () => {
     // Two entries under one name would double every scenario it generates.
     const { root, chainFile } = project()
+    // Both passes claim the SAME export in the SAME file. A same-named export
+    // in another file is a different component and must remain in the catalog.
+    rmSync(join(root, 'src/Button.tsx'))
+    writeFileSync(chainFile, 'export function Button(props: { label: string }) { return null }')
     const plugin = fileDiscoveryPlugin({
       cwd: root,
       rocketstyle: { loader: loaderFor(chainFile, { Button: rocketstyleChain, Chain: rocketstyleChain }) },
