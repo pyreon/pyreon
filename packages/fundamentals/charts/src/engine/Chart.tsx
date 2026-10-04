@@ -49,6 +49,9 @@ import type { Domain, DrawCmd, Double, MeasureText, Rect } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
+function cancelFrame(frame: Double): void {
+  if (frame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
+}
 
 export interface PlotChartProps<T> {
   /** The rows. An accessor makes it reactive; a plain array is static. */
@@ -631,7 +634,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     const duration = props.updateDuration ?? theme().updateMs
     let start = -1.0
-    if (tweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(tweenFrame)
+    cancelFrame(tweenFrame)
     const tick = (now: number): void => {
       if (start < 0.0) start = now
       tweenT = Math.min(1.0, (now - start) / duration)
@@ -649,7 +652,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // `draw` to decide whether to hand off to the command-level morph.
   let shapeChangedThisFrame = false
   const stopTween = (): void => {
-    if (tweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(tweenFrame)
+    cancelFrame(tweenFrame)
     tweenFrame = 0.0
     tweenT = 1.0
     tweenFrom = null
@@ -663,22 +666,22 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const enabled = updateEnabled()
     shapeChangedThisFrame = false
     const keysChanged = keys !== null && lastKeys !== null && !sameKeys(lastKeys, keys)
-    const changed = lastValues !== null && (!sameValues(lastValues, cur) || keysChanged)
+    const changed = lastValues === null || !sameValues(lastValues, cur) || keysChanged
     if (!enabled || (morphFrom !== null && !morphMatches(morphFrom, spec))) stopTween()
     if (changed) {
       // frameCache holds the values actually painted, while geoSnap holds
       // their displayed positions (including entering and exiting bars).
       // lastValues/lastKeys track the TARGET, so settling never replays a
       // superseded update. A new target may arrive on any animation frame.
-      const prev = frameCache?.spec.series.map((x) => x.values) ?? lastValues!
+      const prev = frameCache?.spec.series.map((x) => x.values) ?? lastValues
       const prevKeys = frameCache?.spec.rowKeys ?? lastKeys
       lastValues = cur
       lastKeys = keys
-      if (enabled) {
+      if (enabled && prev !== null) {
         // A command morph already owns the displayed frame. Hand it the
         // new target directly rather than starting a concurrent value tween.
         if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) return spec
-        if (keys !== null && prevKeys !== null && geoSnap !== null && canKeyMorph(spec) && morphMatches(geoSnap, spec) && (keysChanged || morphFrom !== null)) {
+        if (keys !== null && geoSnap !== null && canKeyMorph(spec) && morphMatches(geoSnap, spec) && (keysChanged || morphFrom !== null)) {
           morphFrom = geoSnap
           tweenFrom = null
           startTween()
@@ -696,9 +699,6 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         }
         startTween()
       }
-    } else if (lastValues === null) {
-      lastValues = cur
-      lastKeys = keys
     }
     if (tweenT >= 1.0 || tweenFrom === null) return spec
     const frame = tweenValues(tweenFrom, cur, tweenT)
@@ -724,7 +724,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     const duration = props.updateDuration ?? theme().updateMs
     let start = -1.0
-    if (coreTweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coreTweenFrame)
+    cancelFrame(coreTweenFrame)
     const tick = (now: number): void => {
       if (start < 0.0) start = now
       coreTweenT = Math.min(1.0, (now - start) / duration)
@@ -748,7 +748,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    */
   const coreCmdsFor = (cmds: DrawCmd[]): DrawCmd[] => {
     if (props.universalTransition !== true || !updateEnabled()) {
-      if (coreTweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coreTweenFrame)
+      cancelFrame(coreTweenFrame)
       coreTweenFrame = 0.0
       coreTweenT = 1.0
       coreTweenFrom = null
@@ -1988,11 +1988,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       stopDprWatch()
       if (el === null) {
         // Unmounted mid-animation: no frame may keep the closure alive.
-        if (typeof cancelAnimationFrame === 'function') {
-          if (entranceFrame !== 0.0) cancelAnimationFrame(entranceFrame)
-          if (tweenFrame !== 0.0) cancelAnimationFrame(tweenFrame)
-          if (coreTweenFrame !== 0.0) cancelAnimationFrame(coreTweenFrame)
-        }
+        cancelFrame(entranceFrame)
+        cancelFrame(tweenFrame)
+        cancelFrame(coreTweenFrame)
         entranceFrame = 0.0
         tweenFrame = 0.0
         coreTweenFrame = 0.0

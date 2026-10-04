@@ -1,7 +1,6 @@
 // The keyed geometry morph: survivors slide between slots, entering bars
 // grow from the baseline in their new slot, exiting bars shrink out in their
 // old one — the full data join, not just a value tween.
-import { describe, expect, it } from 'vitest'
 import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph, morphMatches } from './keyed-morph'
 import { defaultTheme, layoutChart, renderChartIn } from './render'
 import type { ChartSpec, Series } from './render'
@@ -124,7 +123,9 @@ describe('keyed morph uses the renderer\'s own geometry in every frame', () => {
     const to = keyedGeometry(spec, l, cats)
     const c = rects(keyedMorphCmds(from, to, 0)).find((r) => r.w === 0)!
     expect(c.h).toBeGreaterThan(0)
-    expect(c.x).toBeCloseTo(to[0]!.baseline, 5)
+    // This fixture's fixed domain starts at zero: the baseline is the
+    // plot's left edge, independently of the snapshot implementation.
+    expect(c.x).toBeCloseTo(l.plot.x, 5)
   })
 
   it('a frame whose series kinds or orientation changed does not morph', () => {
@@ -146,4 +147,3 @@ describe('keyed morph uses the renderer\'s own geometry in every frame', () => {
     expect((polys[0] as { points: unknown[] }).points).toHaveLength(2)
   })
 })
-

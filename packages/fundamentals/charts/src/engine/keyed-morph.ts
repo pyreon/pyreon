@@ -22,7 +22,6 @@ import { layoutSeriesPoints } from './layout'
 import type { PlotLayout } from './layout'
 import { barsLaid, barsLaidH, geometrySpec, growEdgeRect, hasRightAxis, logBounds, resolveY2Domain, resolveYDomain, seriesDomain, setLaid, setLaidH, stateFill, themeCorners } from './render'
 import type { ChartSpec, Series } from './render'
-import { scaleLinear } from './scale'
 import type { Domain, DrawCmd, Double, Pt, Rect } from './types'
 
 type MorphKind = 'bars' | 'line' | 'stacked' | 'grouped'
@@ -37,8 +36,6 @@ export interface KeyedGeo {
   /** The datum index each rect / point was drawn from, for per-datum fills. */
   index: Map<string, number>
   points: Map<string, Pt>
-  /** The pixel of the value axis' zero (or its floor) — y when vertical, x when horizontal. Bars grow from and shrink to it. */
-  baseline: Double
   /** The value domain this series scales against — what `growEdgeRect` collapses its bars toward. */
   dom: Domain
   /** The plot, for gradients laid across it. */
@@ -48,24 +45,14 @@ export interface KeyedGeo {
 }
 
 function morphKind(s: Series): MorphKind | null {
-  if (s.kind === 'bars') return s.symbol === undefined ? 'bars' : null
-  if (s.kind === 'line') return s.symbol === undefined ? 'line' : null
+  if (s.kind === 'bars' || s.kind === 'line') return s.symbol === undefined ? s.kind : null
   if (s.kind === 'stacked' || s.kind === 'grouped') return s.kind
   return null
 }
 
 /** True when every series of `spec` can be morphed by key (and there is at least one). */
 export function canKeyMorph(spec: ChartSpec): boolean {
-  if (spec.series.length === 0) return false
-  if ((spec.xValues ?? []).length > 0) return false
-  for (const s of spec.series) if (morphKind(s) === null) return false
-  return true
-}
-
-/** The zero line (or the domain's floor/ceiling when zero is outside it), in pixels along the value axis. */
-function zeroPixel(dom: Domain, plot: Rect, horizontal: boolean): Double {
-  const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
-  return horizontal ? scaleLinear(dom, plot.x, plot.x + plot.w, zero) : scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+  return spec.series.length > 0 && !spec.xValues?.length && spec.series.every((s) => morphKind(s) !== null)
 }
 
 /** Each series' geometry by key, laid out exactly as `renderChartIn` lays it out. */
@@ -75,11 +62,11 @@ export function keyedGeometry(raw: ChartSpec, l: PlotLayout, keys: string[]): Ke
   const plot = l.plot
   const yDomain = resolveYDomain(spec)
   const y2Domain = hasRightAxis(spec) ? resolveY2Domain(spec) : yDomain
-  const sets = new Map<string, { seg: Rect; seriesIndex: number; datumIndex: number }[]>()
+  const sets = new Map<string, ReturnType<typeof setLaid>>()
   const setOf = (kind: 'stacked' | 'grouped') => {
     let got = sets.get(kind)
     if (got === undefined) {
-      got = (horizontal ? setLaidH(spec, kind, plot, yDomain) : setLaid(spec, kind, plot, yDomain)).map((s) => ({ seg: s.rect, seriesIndex: s.seriesIndex, datumIndex: s.datumIndex }))
+      got = horizontal ? setLaidH(spec, kind, plot, yDomain) : setLaid(spec, kind, plot, yDomain)
       sets.set(kind, got)
     }
     return got
@@ -104,7 +91,7 @@ export function keyedGeometry(raw: ChartSpec, l: PlotLayout, keys: string[]): Ke
       withinKind.set(kind, local + 1)
       for (const seg of setOf(kind)) {
         if (seg.seriesIndex !== local || seg.datumIndex >= keys.length || !finite(seg.datumIndex)) continue
-        rects.set(keys[seg.datumIndex]!, seg.seg)
+        rects.set(keys[seg.datumIndex]!, seg.rect)
         index.set(keys[seg.datumIndex]!, seg.datumIndex)
       }
     } else if (!horizontal) {
@@ -116,7 +103,7 @@ export function keyedGeometry(raw: ChartSpec, l: PlotLayout, keys: string[]): Ke
         index.set(keys[i]!, i)
       }
     }
-    return { kind, series: s, horizontal, keys, rects, index, points, baseline: zeroPixel(dom, plot, horizontal), dom, plot, radius: spec.theme.radius }
+    return { kind, series: s, horizontal, keys, rects, index, points, dom, plot, radius: spec.theme.radius }
   })
 }
 
@@ -141,18 +128,15 @@ function barCmd(g: KeyedGeo, rect: Rect, datum: number): DrawCmd {
 export function keyedMorphGeometry(from: KeyedGeo[], to: KeyedGeo[], e: Double): KeyedGeo[] {
   return to.map((b, s) => {
     const a = from[s]
-    const points = new Map<string, Pt>()
-    const rects = new Map<string, Rect>()
-    const index = new Map<string, number>()
-    const keys: string[] = []
+    // Copy target geometry once. Its index map stays immutable and can be
+    // shared; missing keys already mean an exit (-1).
+    const points = new Map(b.points)
+    const rects = new Map(b.rects)
+    const exits: string[] = []
     if (b.kind === 'line') {
-      for (const k of b.keys) {
-        keys.push(k)
-        const p = b.points.get(k)
-        if (p === undefined) continue
+      for (const [k, p] of b.points) {
         const old = a?.points.get(k)
-        points.set(k, old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
-        index.set(k, b.index.get(k) ?? -1)
+        if (old !== undefined) points.set(k, { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
       }
     } else {
       // Exiting first, so survivors sliding over them paint on top. Keep
@@ -161,21 +145,17 @@ export function keyedMorphGeometry(from: KeyedGeo[], to: KeyedGeo[], e: Double):
         for (const k of a.keys) {
           const r = a.rects.get(k)
           if (r === undefined || b.rects.has(k)) continue
-          keys.push(k)
+          exits.push(k)
           rects.set(k, mixRect(r, growEdgeRect(r, a.dom, a.plot, a.horizontal), e))
-          index.set(k, -1)
         }
       }
-      for (const k of b.keys) {
-        const r = b.rects.get(k)
-        if (r === undefined) continue
-        keys.push(k)
-        const old = a?.rects.get(k)
-        rects.set(k, mixRect(old ?? growEdgeRect(r, b.dom, b.plot, b.horizontal), r, e))
-        index.set(k, b.index.get(k) ?? -1)
+      for (const [k, r] of b.rects) {
+        const old = a?.rects.get(k) ?? growEdgeRect(r, b.dom, b.plot, b.horizontal)
+        rects.set(k, mixRect(old, r, e))
       }
     }
-    return { ...b, keys, rects, points, index }
+    const keys = exits.concat(b.keys)
+    return { ...b, keys, rects, points }
   })
 }
 
@@ -194,11 +174,9 @@ export function keyedGeoCmds(geo: KeyedGeo[]): DrawCmd[] {
         runs[runs.length - 1]!.push(p)
       }
       for (const run of runs) {
-        const shaped = g.series.curve === undefined ? run : g.series.curve(run)
+        const shaped = g.series.curve?.(run) ?? run
         if (shaped.length < 2) continue
-        out.push(g.series.dash === undefined
-          ? { kind: 'polyline', points: shaped, stroke: g.series.color, width: g.series.width }
-          : { kind: 'polyline', points: shaped, stroke: g.series.color, width: g.series.width, dash: g.series.dash })
+        out.push({ kind: 'polyline', points: shaped, stroke: g.series.color, width: g.series.width, dash: g.series.dash })
       }
     } else {
       for (const k of g.keys) {
@@ -223,11 +201,7 @@ export function keyedMorphCmds(from: KeyedGeo[], to: KeyedGeo[], e: Double): Dra
  */
 export function morphMatches(from: KeyedGeo[], spec: ChartSpec): boolean {
   if (from.length !== spec.series.length) return false
-  const horizontal = spec.horizontal === true
-  for (let i = 0; i < from.length; i++) {
-    if (from[i]!.kind !== morphKind(spec.series[i]!) || from[i]!.horizontal !== horizontal) return false
-  }
-  return true
+  return from.every((g, i) => g.kind === morphKind(spec.series[i]!) && g.horizontal === (spec.horizontal === true))
 }
 
 /**
