@@ -200,6 +200,12 @@ With the same internal and outer theme, return the previous render. The `themeCa
 
 ---
 
+### Hiding a broken mobile menu also removes primary navigation
+
+When desktop links collapse, every route needs a functioning replacement, including the homepage and 404. Share destinations between desktop and mobile; include the section sidebar only on its routes. Verify phone widths, keyboard/dismissal behavior and desktop layout in real browsers, rather than asserting the trigger is absent. Reference: `docs/src/components/PrimaryNavigation.tsx`, `e2e/docs.spec.ts`.
+
+---
+
 ### Conditionally emitting CSS in responsive style callbacks
 
 `${t.block && 'align-self: stretch;'}` emits nothing for `block: false` at a larger breakpoint, and the delta optimizer cannot synthesize a reset, so the xs value cascades. Always emit both branches: `align-self: ${t.block ? 'stretch' : 'auto'};`. The optimizer drops unchanged values, so this is free. Applies to any responsive boolean/enum (`block`, `equalCols`, `alignY === 'block'`). Reference: `packages/ui-system/elements/src/helpers/Wrapper/styled.ts:styles`; test `elements/src/__tests__/wrapper-block-cascade.test.ts`.

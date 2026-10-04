@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from './hydration-barrier'
 
 // docs parity gate. Five specs map to the five categories of
 // rollout risk: landing rendering, navigation, scroll-spy, 404, and
@@ -71,11 +72,80 @@ test.describe('docs rendering', () => {
     await expect(drawer).toBeHidden()
   })
 
-  test('landing page does not expose a non-functional hamburger', async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 568 })
+  for (const width of [320, 375, 768]) {
+    test(`mobile primary navigation works from the homepage at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 812 })
+      await page.goto('/')
+      await waitForHydration(page)
+      const hamburger = page.locator('.docs-header__hamburger')
+      const drawer = page.locator('#docs-navigation-drawer')
+      const docs = drawer.getByRole('link', { name: 'Docs', exact: true })
+      const components = drawer.getByRole('link', { name: 'Components', exact: true })
+      await expect(hamburger).toBeVisible()
+      await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
+      await expect(drawer).toBeHidden()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+
+      await hamburger.click()
+      await expect(drawer).toBeInViewport()
+      await expect(hamburger).toHaveAttribute('aria-expanded', 'true')
+      await expect(docs).toBeVisible()
+      await expect(docs).toBeFocused()
+      await expect(components).toHaveAttribute('href', '/atlas/')
+      await expect(components).toHaveAttribute('data-allow-reload', '')
+      await page.keyboard.press('Tab')
+      await expect(components).toBeFocused()
+      await page.keyboard.press('Tab')
+      await expect(hamburger).toBeFocused()
+      await page.keyboard.press('Escape')
+      await expect(drawer).toBeHidden()
+      await expect(hamburger).toBeFocused()
+      await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
+
+      await hamburger.click()
+      await page.locator('.docs-drawer-backdrop').click({ position: { x: width - 8, y: 80 } })
+      await expect(drawer).toBeHidden()
+      await expect(hamburger).toBeFocused()
+
+      await hamburger.click()
+      await docs.click()
+      await expect(page).toHaveURL(/\/docs\/getting-started\/?$/)
+      await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
+      await expect(drawer).toBeHidden()
+      await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
+      await hamburger.click()
+      await expect(components).toBeVisible()
+      await expect(drawer.locator('.pyreon-sidebar')).toBeVisible()
+      await page.setViewportSize({ width: 1024, height: 812 })
+      await expect(hamburger).toBeHidden()
+      await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
+      await expect(page.locator('.docs-mobile-nav')).toBeHidden()
+    })
+  }
+
+  test('mobile primary navigation is available on the 404 page', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.goto('/missing-mobile-navigation-page')
+    await waitForHydration(page)
+    await expect(page.locator('.docs-header__hamburger')).toBeVisible()
+    await page.locator('.docs-header__hamburger').click()
+    const docs = page.locator('#docs-navigation-drawer').getByRole('link', { name: 'Docs', exact: true })
+    await expect(docs).toBeVisible()
+    await docs.click()
+    await expect(page).toHaveURL(/\/docs\/getting-started\/?$/)
+  })
+
+  test('desktop homepage keeps a full-width layout and visible primary links', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
-    await expect(page.locator('.docs-header__hamburger')).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+    await waitForHydration(page)
+    await expect(page.locator('.docs-header__hamburger')).toBeHidden()
+    await expect(page.locator('.docs-header__nav').getByRole('link', { name: 'Docs', exact: true })).toBeVisible()
+    await expect(page.locator('.docs-header__nav').getByRole('link', { name: 'Components', exact: true })).toBeVisible()
+    await expect(page.locator('#docs-navigation-drawer')).toBeHidden()
+    const main = await page.locator('.docs-main').boundingBox()
+    expect(main?.x).toBe(0)
+    expect(main?.width).toBe(1440)
   })
 
   test('landing page renders the PyreonLanding component (real signal counter)', async ({
