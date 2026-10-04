@@ -36,7 +36,7 @@ export interface FontConfig {
   display?: FontDisplay
   /** Preload critical fonts. Default: true */
   preload?: boolean
-  /** Self-host Google Fonts at build time. Default: true */
+  /** Self-host Google Fonts at build time. Shared 60s download deadline; warns and uses CDN on failure. Default: true */
   selfHost?: boolean
   /**
    * Restrict self-hosted Google Font subsets to this allowlist, e.g.
@@ -367,8 +367,9 @@ function preloadTags(fonts: LocalFont[]): string {
 /**
  * Download Google Fonts CSS with woff2 user agent.
  */
-async function downloadGoogleFontsCSS(url: string): Promise<string> {
+async function downloadGoogleFontsCSS(url: string, signal: AbortSignal): Promise<string> {
   const response = await fetch(url, {
+    signal,
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -383,8 +384,8 @@ async function downloadGoogleFontsCSS(url: string): Promise<string> {
 /**
  * Download a font file.
  */
-async function downloadFontFile(url: string): Promise<Buffer> {
-  const response = await fetch(url)
+async function downloadFontFile(url: string, signal: AbortSignal): Promise<Buffer> {
+  const response = await fetch(url, { signal })
   if (!response.ok) throw new Error(`[Pyreon] Failed to download font: ${url}`)
   const arrayBuffer = await response.arrayBuffer()
   return Buffer.from(arrayBuffer)
@@ -507,6 +508,7 @@ async function selfHostFonts(
   cssUrl: string,
   fontsSubDir: string,
   root: string,
+  signal: AbortSignal,
   allowedSubsets?: string[],
 ): Promise<{
   css: string
@@ -531,7 +533,7 @@ async function selfHostFonts(
     // No cache — download fresh
   }
 
-  const rawCss = await downloadGoogleFontsCSS(cssUrl)
+  const rawCss = await downloadGoogleFontsCSS(cssUrl, signal)
   // Filter BEFORE extracting URLs: dropped subset blocks never get
   // downloaded, never get emitted, and never appear in the inlined CSS.
   const css =
@@ -546,7 +548,7 @@ async function selfHostFonts(
   for (const url of fontUrls) {
     const urlParts = url.split('/')
     const fileName = urlParts.at(-1)?.split('?')[0] ?? 'font'
-    const content = await downloadFontFile(url)
+    const content = await downloadFontFile(url, signal)
 
     fontFiles.push({ name: fileName, content })
     rewrittenCss = rewrittenCss.replace(url, `/${fontsSubDir}/${fileName}`)
@@ -615,11 +617,29 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
     async buildStart() {
       if (isBuild && shouldSelfHost && googleFamilies.length > 0) {
         const cssUrl = googleFontsUrl(googleFamilies, display)
+        // One deadline for CSS + every font body, rather than a fresh budget
+        // per file. Abort the actual requests so a stalled download cannot
+        // keep CI alive after the documented CDN fallback should have run.
+        const controller = new AbortController()
+        const timeoutError = new Error(
+          '[Pyreon] Google Fonts self-hosting exceeded its 60s download budget',
+        )
+        const deadline = setTimeout(() => controller.abort(timeoutError), 60_000)
         try {
-          const result = await selfHostFonts(cssUrl, 'assets/fonts', root, config.subsets)
+          const result = await selfHostFonts(
+            cssUrl,
+            'assets/fonts',
+            root,
+            controller.signal,
+            config.subsets,
+          )
           selfHostedCSS = result.css
           selfHostedFontFiles = result.fontFiles
         } catch (err) {
+          const cause = controller.signal.reason === timeoutError ? timeoutError : err
+          // An HTTP error can arrive before an unfinished error body. Abort
+          // that body too, before clearing the deadline and using the CDN.
+          controller.abort(cause)
           // Self-hosting failed — fall back to the CDN link so the build
           // never breaks over a network blip. But say so LOUDLY: silently
           // regressing to two cross-origin connections + Google's
@@ -630,10 +650,12 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
           console.warn(
             '[Pyreon] fontPlugin: self-hosting Google Fonts FAILED — falling back to the fonts.googleapis.com CDN <link>.\n' +
               '  The built site will make cross-origin font requests (slower first paint, IP shared with Google).\n' +
-              `  Cause: ${err instanceof Error ? err.message : String(err)}\n` +
+              `  Cause: ${cause instanceof Error ? cause.message : String(cause)}\n` +
               '  Fix: check network access from the build machine (node_modules/.cache/zero-fonts caches prior downloads),\n' +
               '  or set `font: { selfHost: false }` to make the CDN fallback explicit and silence this warning.',
           )
+        } finally {
+          clearTimeout(deadline)
         }
       }
 

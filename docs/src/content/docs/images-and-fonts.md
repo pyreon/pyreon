@@ -155,6 +155,8 @@ At build time the plugin:
 - Adds `font-display: swap` to prevent Flash of Invisible Text (FOIT)
 - Auto-computes size-adjusted fallback `@font-face`s (default on) to **eliminate** font-swap CLS — see [`fallbackAdjust`](#eliminating-font-swap-cls-fallbackadjust)
 
+Google Fonts downloads share one 60-second budget across the CSS and every font response body. A stalled or failed download is aborted, logs a warning, and uses the CDN fallback. Only complete downloads are cached; use local fonts for builds without provider access.
+
 Local fonts:
 
 ```ts
