@@ -530,7 +530,7 @@ Seven classes seen in framework code. This catalog names the shape and fix so a 
 | **I** — Orphaned timers from `Promise.race + setTimeout` | `Promise.race([work, new Promise((_, reject) => setTimeout(reject, MS))])` with no `clearTimeout`; success leaves the timer and its closure pinned for MS ms. | Capture the timer id outside the constructor; `clearTimeout(timerId)` in `finally`. | `pyreon/promise-race-needs-cleartimeout` |
 | **B / E** | Subscriber retention after dispose / disposed objects kept in collections. No instances in shipped code (`signal.subscribe` returns a working unsubscribe). | — | — |
 
-**Common root cause**: module-level mutable state with an imperfect cleanup contract. A/C/D are eviction failures; F is overwrite without invalidation; H is retention by held reference; I is a timer not cleared on the success path.
+**Common root cause**: module-level mutable state with an imperfect cleanup contract. A/C/D are eviction failures; F is overwrite without invalidation; H is retention by held reference; I is a timer not cleared on the success path. Compiler metadata keyed by a local name must also match its lexical scope: build hook kind, bounds and initial value together from the current component and release them at component exit. A file-wide name map makes unrelated same-named hooks overwrite each other; an initial-value map left between transforms retains prior source metadata. References: `native/compiler/src/pure-state.ts:pureStateBindings`; `native/compiler/src/tests/native-pure-state-scope.test.ts`.
 
 **The 3 questions to ask before introducing a new module-level cache / stack / registry**:
 

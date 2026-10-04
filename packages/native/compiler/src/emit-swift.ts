@@ -120,7 +120,7 @@ import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from '.
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
-import { clampExpr } from './pure-state'
+import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
@@ -1435,10 +1435,6 @@ export function emitSwift(
       if (d.kind === 'speech') _speechSwift.add(d.name)
       if (d.kind === 'audio-recorder') _recorderSwift.add(d.name)
       if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
-      if (d.kind === 'pure-state') {
-        _pureStateSwift.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
-        _pureStateInitialSwift.set(d.name, d.initial)
-      }
     }
   }
   // State fields + views are READ (`counter.count()` on web, since a state
@@ -1569,7 +1565,7 @@ let _structDefs: StructIR[] = []
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
 let _modelInstances: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
-let _pureStateSwift: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+let _pureStateSwift: ReturnType<typeof pureStateBindings> = new Map()
 /** `useBluetooth()` bindings — its reactive reads drop their parens. */
 let _bluetoothSwift: Set<string> = new Set()
 /** `useWakeLock()` bindings — its reactive reads drop their parens. */
@@ -1586,8 +1582,6 @@ let _motionSwift: Set<string> = new Set()
 let _speechSwift: Set<string> = new Set()
 /** `useAudioRecorder()` bindings — reads are properties/state. */
 let _recorderSwift: Set<string> = new Set()
-/** Initial values, so `reset()` restores exactly what the web's does. */
-let _pureStateInitialSwift: Map<string, number | boolean> = new Map()
 /**
  * `useDebouncedValue` bindings → the SOURCE signal's own initial expression.
  *
@@ -2517,6 +2511,9 @@ function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
 }
 
 function emitSwiftComponent(c: ComponentIR): string {
+  // Local binding names may repeat in unrelated components. Seed the kind,
+  // bounds and reset value together, and release them with this component.
+  _pureStateSwift = pureStateBindings(c.decls)
   _activeComponentName = c.name
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
@@ -3404,6 +3401,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A handle's series count comes from the chart bound to it, known only once the body has emitted.
   const joined = lines.join('\n').replace(/__PYREON_HANDLE_SERIES_(\w+)__/g, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
   _chartHandleSeries.clear()
+  _pureStateSwift = new Map()
   return joined
 }
 
@@ -6949,7 +6947,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
           if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
           if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
-          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialSwift.get(binding) ?? 0))}`
+          if (m === 'reset') return `${field} = ${clamp(String(info.initial))}`
         }
       }
       // useClipboard's reactive reads. On the web `copied` and `text` are

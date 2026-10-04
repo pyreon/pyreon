@@ -103,7 +103,7 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
-import { clampExpr } from './pure-state'
+import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
@@ -1041,7 +1041,6 @@ export function emitKotlin(
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   _pureStateKotlin = new Map()
   _bluetoothKotlin = new Set()
-  _pureStateInitialKotlin = new Map()
   _clipboardKotlin = new Set()
   for (const c of components) {
     for (const d of c.decls ?? []) {
@@ -1054,10 +1053,6 @@ export function emitKotlin(
       if (d.kind === 'speech') _speechKotlin.add(d.name)
       if (d.kind === 'audio-recorder') _recorderKotlin.add(d.name)
       if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
-      if (d.kind === 'pure-state') {
-        _pureStateKotlin.set(d.name, d.bounds ? { hook: d.hook, bounds: d.bounds } : { hook: d.hook })
-        _pureStateInitialKotlin.set(d.name, d.initial)
-      }
     }
   }
   // Mirror of the Swift registries: state fields + views are READ (a state
@@ -1184,7 +1179,7 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
-let _pureStateKotlin: Map<string, { hook: 'useToggle' | 'useCounter'; bounds?: { min?: number; max?: number } }> = new Map()
+let _pureStateKotlin: ReturnType<typeof pureStateBindings> = new Map()
 /** `useBluetooth()` bindings — its reactive reads become `.value`. */
 let _bluetoothKotlin: Set<string> = new Set()
 /** `useWakeLock()` bindings — `active` is MutableState, `supported` plain. */
@@ -1201,8 +1196,6 @@ let _motionKotlin: Set<string> = new Set()
 let _speechKotlin: Set<string> = new Set()
 /** `useAudioRecorder()` bindings — reads are properties/state. */
 let _recorderKotlin: Set<string> = new Set()
-/** Initial values, so `reset()` restores exactly what the web's does. */
-let _pureStateInitialKotlin: Map<string, number | boolean> = new Map()
 /** `useClipboard()` bindings — its reactive reads become `.value`. */
 let _clipboardKotlin: Set<string> = new Set()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
@@ -2095,6 +2088,9 @@ function kotlinModifierPredicate(mods: readonly HotkeyModifier[]): string {
 }
 
 function emitKotlinComponent(c: ComponentIR): string {
+  // Local binding names may repeat in unrelated components. Seed the kind,
+  // bounds and reset value together, and release them with this component.
+  _pureStateKotlin = pureStateBindings(c.decls)
   _activeComponentName = c.name
   // Component-scope const literals → static-attr resolution (mirror of Swift).
   _componentConstMapKotlin = buildComponentConstMap(c.decls)
@@ -2646,6 +2642,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _mapNames = new Set()
   _authNames = new Set()
   _routerRoutes = new Map()
+  _pureStateKotlin = new Map()
   return lines.join('\n')
 }
 
@@ -5931,7 +5928,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1L'}`)}`
           if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1L'}`)}`
           if (m === 'set') return `${field} = ${clamp(arg ?? '0L')}`
-          if (m === 'reset') return `${field} = ${clamp(((n: number | boolean) => (typeof n === 'number' && Number.isInteger(n) ? `${n}L` : String(n)))(_pureStateInitialKotlin.get(binding) ?? 0))}`
+          if (m === 'reset') return `${field} = ${clamp(((n: number | boolean) => (typeof n === 'number' && Number.isInteger(n) ? `${n}L` : String(n)))(info.initial))}`
         }
       }
       // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a
