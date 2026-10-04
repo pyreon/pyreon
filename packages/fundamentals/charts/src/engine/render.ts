@@ -1413,19 +1413,25 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // when BOTH bounds are finite, because half a bound is not a region.
       const lows = s.values2 ?? []
       const paired: Double[] = []
+      const loRun: Double[] = []
       for (let i = 0; i < s.values.length; i++) {
         const lo = i < lows.length ? lows[i]! : 0.0 / 0.0
-        paired.push(isFiniteValue(s.values[i]!) && isFiniteValue(lo) ? s.values[i]! : 0.0 / 0.0)
+        const valid = isFiniteValue(s.values[i]!) && isFiniteValue(lo)
+        paired.push(valid ? s.values[i]! : 0.0 / 0.0)
+        loRun.push(valid ? lo : 0.0 / 0.0)
       }
-      for (const run of splitRuns(paired, place)) {
-        const upper = reveal(curveFn(run))
+      // Both boundaries have the SAME gap mask, so their runs correspond by
+      // index, including singletons. Resolve them once: scanning the whole
+      // lower channel per region both costs O(rows * regions) and closes
+      // every later region against the first region's lower edge.
+      const upperRuns = splitRuns(paired, place)
+      const lowerRuns = splitRuns(loRun, place)
+      for (let r = 0; r < upperRuns.length; r++) {
+        const upper = reveal(curveFn(upperRuns[r]!))
         if (upper.length < 2) continue
         // The lower edge is placed through the SAME pipeline (curve, reveal)
         // so a smoothed band's two edges cannot drift apart.
-        const loRun: Double[] = []
-        for (let i = 0; i < paired.length; i++) loRun.push(isFiniteValue(paired[i]!) ? (i < lows.length ? lows[i]! : 0.0 / 0.0) : 0.0 / 0.0)
-        const lowerRuns = splitRuns(loRun, place)
-        const lower = lowerRuns.length > 0 ? reveal(curveFn(lowerRuns[0]!)) : []
+        const lower = reveal(curveFn(lowerRuns[r]!))
         const poly: Pt[] = []
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
