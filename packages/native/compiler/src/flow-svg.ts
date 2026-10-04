@@ -54,14 +54,19 @@ function attrValue(e: JsxElement, ...names: string[]): ExprIR | undefined {
 function numberAttr(e: JsxElement, name: string, warnings: string[]): FlowSvgNumber | undefined {
   const value = attrValue(e, name)
   if (value === undefined) return undefined
-  if (value.kind === 'literal') {
-    if (typeof value.value === 'number') return { kind: 'literal', value: value.value }
-    if (typeof value.value === 'string') {
-      const m = /^\s*(-?\d*\.?\d+(?:e[-+]?\d+)?)\s*(px)?\s*$/i.exec(value.value)
-      if (m) return { kind: 'literal', value: Number(m[1]) }
-      warnings.push(`<${e.tag} ${name}="${value.value}"> is not a plain number, which is all a native Flow <svg> lowers; the default was used.`)
-      return undefined
+  if (value.kind === 'literal' && (typeof value.value === 'number' || typeof value.value === 'string')) {
+    let numeric = value.value
+    if (typeof numeric === 'string') {
+      // Strip whitespace and the optional unit in separate linear scans.
+      // Two digit runs separated by an OPTIONAL dot, or two whitespace runs
+      // around an OPTIONAL unit, can backtrack quadratically on invalid input.
+      let text = numeric.trim()
+      if (text.slice(-2).toLowerCase() === 'px') text = text.slice(0, -2).trimEnd()
+      numeric = /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:e[-+]?\d+)?$/i.test(text) ? Number(text) : NaN
     }
+    if (Number.isFinite(numeric)) return { kind: 'literal', value: numeric }
+    warnings.push(`<${e.tag} ${name}="${value.value}"> is not a plain number, which is all a native Flow <svg> lowers; the default was used.`)
+    return undefined
   }
   return { kind: 'expr', expr: value }
 }
