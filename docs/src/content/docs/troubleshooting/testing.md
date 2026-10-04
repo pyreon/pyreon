@@ -7,6 +7,24 @@ description: "Common testing mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A controlled clock cannot preserve state across a dev reload
+
+Parallel cold imports can make Vite reset a hydrated document mid-assertion. Keep `@vite/client` for real event delegation; filter only update/reload messages on its HMR socket for functional tests. Forward other traffic, assert document identity (history events can repeat), and bisect with a real Vite reload message. Reference: `e2e/fundamentals/new-demos.spec.ts`.
+
+---
+
+### A debounce assertion measures runner scheduling instead of the quiet period
+
+Install the real browser's Playwright clock before navigation and pause after hydration. Advance to just before and at the deadline; type again to prove timer cancellation and restart. A wall-clock poll can fail under load and cannot catch an immediate update. Reference: `e2e/fundamentals/new-demos.spec.ts`.
+
+---
+
+### A build-time network fallback without a download deadline never runs on a stall
+
+Bound the whole download operation with one abort signal, keep it active through response-body consumption, and clear its timer in `finally`. Per-file budgets multiply with the asset count; a `Promise.race` alone leaves requests alive. CI command deadlines must leave time for phase-log uploads before the job backstop, and `tee` must preserve producer failures. Test stalled headers and bodies through real HTTP and the real build. Reference: `zero/src/font.ts`, `tests/integration/font-download-deadline.test.ts`, `.github/workflows/docs.yml`.
+
+---
+
 ### A mounted canvas is not proof its first frame has painted
 
 Polling the canvas count and then reading pixels once races the first draw. Poll the complete verdict together: every expected canvas exists, has positive dimensions, and contains painted pixels. Keep one readiness budget for the count and pixel checks, and include the canvas label and observed dimensions in failures. A delayed real-paint control must pass; a canvas that remains blank must still fail. Reference: `e2e/app-showcase-charts.spec.ts`.

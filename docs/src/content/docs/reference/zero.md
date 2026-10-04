@@ -1819,7 +1819,7 @@ usePreloadFont('/fonts/auth-required.woff2', { crossorigin: 'use-credentials' })
 function fontPlugin(config: FontConfig = {}): Plugin
 ```
 
-Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `/assets/fonts/` with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`.
+Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `/assets/fonts/` with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`.
 
 **Example**
 

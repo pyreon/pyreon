@@ -114,6 +114,10 @@ Before gating a rule or forcing a fix, read its findings. Several rules that loo
 - **Reactive conditional rendering:** `return (() => { if (!cond()) return null; return <div>...</div> })`, not a top-level `if (!cond()) return null`. Components run once.
 - **No `as unknown as VNodeChild`:** a VNode is already assignable to `VNodeChild`.
 
+## Responsive navigation
+
+When desktop primary links collapse, the mobile trigger and its destinations must remain available on every route. Share the links between header and drawer; add a section sidebar only where applicable. A mobile-only drawer must not reserve a desktop layout column. Verify homepage, section pages and 404 at narrow widths, including focus, Escape/backdrop dismissal, route changes and resize cleanup. Reference: the docs site's `PrimaryNavigation` and `e2e/docs.spec.ts`.
+
 ## Dead Code
 
 - Remove dead code rather than commenting it out

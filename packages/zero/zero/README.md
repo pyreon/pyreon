@@ -153,6 +153,8 @@ import hero from './hero.jpg?optimize'
 
 **Resource hints & fonts.** `usePreconnect` / `useDnsPrefetch` / `usePreload` emit typed `<link rel>` hints; `usePreloadFont(href)` preloads a critical font; the `?font` import (`import Inter from './Inter.woff2?font'`) auto-emits an `@font-face` + hashed-URL descriptor. See [docs/images-and-fonts](https://pyreon.dev/images-and-fonts).
 
+Google Fonts self-hosting has one 60-second download budget for the CSS and all font response bodies. Failure aborts active requests, warns, and uses the existing CDN fallback; completed downloads are cached for subsequent builds. Use local fonts when builds must work without provider access.
+
 ## Vite plugins (server-only)
 
 ```ts

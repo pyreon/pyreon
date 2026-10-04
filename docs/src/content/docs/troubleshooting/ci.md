@@ -7,6 +7,12 @@ description: "Common ci / build gate mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A green retry report hides which spec flaked
+
+Playwright's dot reporter lists names after its `N flaky` summary without `(retry #N)` markers. Parse anchored count lines and their bounded title block, retain names without inventing retry indices, and merge them with explicit retry titles. Inspect artifacts even when jobs pass. Reference: `scripts/ci-flake-report.ts`, `ci-flake-report.test.ts`.
+
+---
+
 ### Archiving a live compiler cache after cancellation silently loses completed work
 
 Native workers can outlive the cancelled test step and keep renaming verdicts. GNU tar then reports `file changed as we read it`; `actions/cache/save` warns and stays green without uploading anything. Snapshot complete atomic verdict/probe JSON records to a separate directory before saving, and hydrate the live directory on restore. Exclude temporary files, binaries and symlinks; keep the archived path identical in every lane. Verify an actual saved key/cache entry, not the step conclusion. Reference: `scripts/snapshot-native-verdict-cache.ts`; regression: `packages/internals/test-utils/src/tests/snapshot-native-verdict-cache.test.ts` archives and restores a stable snapshot while a real writer continues.

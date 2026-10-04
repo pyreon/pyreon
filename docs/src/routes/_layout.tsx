@@ -3,6 +3,7 @@ import { computed, signal } from '@pyreon/reactivity'
 import { RouterView, useRoute } from '@pyreon/router'
 import { Search } from '@pyreon/zero-content'
 import { Header } from '../components/Header'
+import { PrimaryNavigation } from '../components/PrimaryNavigation'
 import { Sidebar } from '../components/Sidebar'
 
 /**
@@ -16,7 +17,7 @@ import { Sidebar } from '../components/Sidebar'
  *     header's search button — the button injects a synthetic Cmd+K
  *     event so the Search component's own keyboard handler does the
  *     toggle, keeping all open/close state inside the component)
- *   - Mobile drawer support — same `<Sidebar>` slides in on mobile
+ *   - Mobile drawer on every route, with primary links and the docs sidebar
  *
  * Landing page (`/`) renders WITHOUT the sidebar; docs pages render
  * WITH it. Both share the same top header chrome, so navigation
@@ -67,7 +68,9 @@ export function layout() {
     setPageScrollLocked(next)
     if (next && typeof document !== 'undefined') {
       requestAnimationFrame(() => {
-        document.querySelector<HTMLElement>('#docs-navigation-drawer a, #docs-navigation-drawer button')?.focus()
+        document
+          .querySelector<HTMLElement>('#docs-navigation-drawer a, #docs-navigation-drawer button')
+          ?.focus()
       })
     }
   }
@@ -81,8 +84,7 @@ export function layout() {
   // Search component.
   const openSearch = () => {
     if (typeof window === 'undefined') return
-    const isMac =
-      typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
+    const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
     const evt = new KeyboardEvent('keydown', {
       key: 'k',
       metaKey: isMac,
@@ -105,8 +107,11 @@ export function layout() {
       if (e.key !== 'Tab' || !drawerOpen() || typeof document === 'undefined') return
       const drawer = document.querySelector<HTMLElement>('#docs-navigation-drawer')
       const hamburger = document.querySelector<HTMLElement>('.docs-header__hamburger')
-      const focusable = [hamburger, ...(drawer?.querySelectorAll<HTMLElement>('a, button') ?? [])].filter(
-        (element): element is HTMLElement => Boolean(element && element.offsetParent !== null),
+      const focusable = [
+        hamburger,
+        ...(drawer?.querySelectorAll<HTMLElement>('a, button') ?? []),
+      ].filter((element): element is HTMLElement =>
+        Boolean(element && element.offsetParent !== null),
       )
       if (focusable.length === 0) return
       const first = focusable[0]!
@@ -136,40 +141,29 @@ export function layout() {
   })
 
   return (
-    <div
-      class={() =>
-        drawerOpen() ? 'docs-shell docs-shell--drawer-open' : 'docs-shell'
-      }
-    >
+    <div class={() => (drawerOpen() ? 'docs-shell docs-shell--drawer-open' : 'docs-shell')}>
       <Header
         onOpenSearch={openSearch}
         onHamburgerToggle={toggleDrawer}
         drawerOpen={() => drawerOpen()}
-        showHamburger={() => isDocsPath()}
       />
 
-      {() =>
-        isDocsPath() ? (
-          <>
-            <aside
-              id="docs-navigation-drawer"
-              class={() =>
-                drawerOpen()
-                  ? 'docs-aside docs-aside--drawer-open'
-                  : 'docs-aside'
-              }
-            >
-              <Sidebar onNavigate={() => closeDrawer()} />
-            </aside>
-            {/* Mobile backdrop — tap to close the drawer. */}
-            <div
-              class="docs-drawer-backdrop"
-              onClick={() => closeDrawer(true)}
-              aria-hidden="true"
-            />
-          </>
-        ) : null
-      }
+      <aside
+        id="docs-navigation-drawer"
+        class={() => {
+          const base = isDocsPath() ? 'docs-aside' : 'docs-mobile-drawer'
+          return drawerOpen() ? `${base} docs-aside--drawer-open` : base
+        }}
+      >
+        <PrimaryNavigation
+          class="docs-mobile-nav"
+          label="Mobile primary"
+          onNavigate={() => closeDrawer()}
+        />
+        {() => (isDocsPath() ? <Sidebar onNavigate={() => closeDrawer()} /> : null)}
+      </aside>
+      {/* Mobile backdrop — tap to close the drawer. */}
+      <div class="docs-drawer-backdrop" onClick={() => closeDrawer(true)} aria-hidden="true" />
 
       <main class="docs-main">
         <RouterView />

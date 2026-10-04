@@ -63,6 +63,8 @@ Specs can assert broken behaviour (a `??` that swallowed an explicit `null`; an 
 
 ## Timeouts and CI-only failures
 
+- For browser debounce/quiet-period contracts, install Playwright's clock before navigation, pause after hydration, and advance the exact delay. Assert the pre-deadline state and timer restart on a later input. A generous wall-clock assertion still depends on hosted timer delivery; increasing it does not prove cancellation or the quiet period. Run reliability controls with `--retries=0`.
+
 Reference: `packages/fundamentals/sync/src/tests/ws-relay.test.ts`.
 
 - A stream-resume fixture must wait for the consumer to receive its first complete event before dropping the socket. A fixed disconnect timer races receipt and may never exercise `Last-Event-ID` resume under load. Register the stream's cleanup with the test context's `onTestFinished` so even a test timeout closes it.
@@ -102,6 +104,10 @@ Mandatory for every regression test:
 5. Run the test; it must pass.
 
 If step 3 passes, the test is not load-bearing (for example, a minifier can fold dead code regardless of the gate under test). Record the result in the PR description: "Bisect-verified: reverted to broken, test failed with `<error>`, restored, test passed."
+
+### Route sweeps need independent budgets
+
+Parameterize direct-route boot checks as one test per navigation destination. A loop over every cold route shares one test timeout; longer per-navigation timeouts and retry backoffs cannot extend it. Use the real navigation list, fresh pages, the hydration barrier and visible route content before checking captured page errors. Keep client-side navigation contracts in their own interaction tests. Reference: `e2e/fundamentals/playground.spec.ts`.
 
 ### Dev-server e2e
 
@@ -150,6 +156,8 @@ test.beforeEach(async ({ context }) => {
 - Do not apply it to click-driven specs: suppressing `@vite/client` also breaks click delegation in the fundamentals-playground dev build. `networkidle` suffices for single-tab read-and-update.
 - References: `e2e/fundamentals/storage.spec.ts` (suppressed, no clicks) vs `e2e/fundamentals/storage-hydration.spec.ts` (clicks, no suppression).
 - The race is load-dependent and does not reproduce locally; the structural argument is the proof.
+
+Any functional test can lose component state when another worker's cold imports trigger a dev reload. Keep `@vite/client` loaded for input/click delegation. Use `page.routeWebSocket` before navigation, connect to the real server, and filter only `update` / `full-reload` messages on the `vite-hmr` subprotocol; forward other messages and leave application sockets untouched. Scope this to functional contracts, never HMR proofs. Bisect with a real `server.ws.send({ type: 'full-reload', path: '*' })` message and assert the document stays stable. Apply the filter before navigation for the whole functional spec file, rather than rediscovering the same reload race one assertion at a time. References: the shared hook, debounce and Feature-delete checks in `e2e/fundamentals/new-demos.spec.ts`.
 
 ## The native compile-validation suite is verdict-cached
 
