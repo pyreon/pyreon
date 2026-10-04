@@ -92,7 +92,9 @@ jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 10m install + 8m docs + 3m Atlas + checkout/diagnostic upload headroom.
+    # Inner deadlines fail normally, leaving time to preserve their logs.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,9 +108,13 @@ jobs:
           bun-version-file: .bun-version
 
       - name: Install workspace deps
-        run: bun install --frozen-lockfile
+        shell: bash
+        run: |
+          mkdir -p .cache/docs-ci
+          timeout --verbose --signal=KILL 10m bun install --frozen-lockfile 2>&1 | tee .cache/docs-ci/install.log
 
       - name: Build docs
+        shell: bash
         # ROOT base (no `--base` flag → Vite defaults to `/`) because the
         # site now serves at the apex `pyreon.dev`, not the `/pyreon/`
         # project-pages subpath. The custom domain is pinned by
@@ -116,7 +122,7 @@ jobs:
         # across deploys.
         run: |
           cd docs
-          bunx vite build
+          timeout --verbose --signal=KILL 8m bunx vite build 2>&1 | tee ../.cache/docs-ci/docs.log
 
       - name: No SSG render errors
         # The SSG plugin is deliberately non-fatal on a per-path render
@@ -136,6 +142,7 @@ jobs:
           fi
 
       - name: Build the Atlas workbench site
+        shell: bash
         # Publishes the workbench at pyreon.dev/atlas, against the REAL
         # `@pyreon/ui-components` catalog — 108 components derived from source,
         # not a hand-written demo. That distinction is the whole pitch: a
@@ -159,10 +166,22 @@ jobs:
         # `packages/ui/components/docs/dist/atlas` and the upload would ship a
         # docs site with no /atlas in it.
         run: |
-          bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
+          timeout --verbose --signal=KILL 3m bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
             --out "$GITHUB_WORKSPACE/docs/dist/atlas" \
             --base /atlas/ \
-            --title "Pyreon UI"
+            --title "Pyreon UI" 2>&1 | tee .cache/docs-ci/atlas.log
+
+      - name: Preserve build diagnostics
+        if: always()
+        timeout-minutes: 2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-build-logs-${{ github.run_attempt }}
+          path: |
+            .cache/docs-ci/*.log
+            docs/dist/_pyreon-ssg-errors.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload pages artifact
         # Only the main-push build feeds the deploy; a PR build is

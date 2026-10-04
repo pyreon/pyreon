@@ -4,14 +4,32 @@ import { waitForHydration } from '../hydration-barrier'
 /**
  * Functional smoke for the 8 demos added to fundamentals-playground in
  * the coverage-extension PR (dnd, flow, hooks, rx, toast, url-state,
- * validate, feature). The existing `playground.spec.ts` nav-sweep covers
- * mount + zero-error for every route in TAB_PATHS; these specs assert
+ * validate, feature). The `playground.spec.ts` route boot checks cover
+ * mount + zero-error for every navigation destination; these specs assert
  * that each demo's **primary interactive flow** actually works
  * end-to-end (not just that the route renders).
  *
  * With `feature` covered (CRUD against an in-memory mock fetcher), all
  * 23 `@pyreon/fundamentals/*` packages now have a live FP demo.
  */
+
+// These specs prove interactive contracts, not source updates. Cold imports
+// in another worker can reload any of their pages and discard live state.
+// Keep Vite's real client/events/socket, filtering only its update messages.
+// Source-update behavior is covered by the separate zero-hmr gate.
+test.beforeEach(async ({ page }) => {
+  await page.routeWebSocket('**', (socket) => {
+    const server = socket.connectToServer()
+    if (!socket.protocols().includes('vite-hmr')) return
+    server.onMessage((message) => {
+      if (typeof message === 'string') {
+        const { type } = JSON.parse(message) as { type?: string }
+        if (type === 'update' || type === 'full-reload') return
+      }
+      socket.send(message)
+    })
+  })
+})
 
 test.describe('Rx demo — pipe + filter + aggregations', () => {
   test('inStock filter and avg both render', async ({ page }) => {
@@ -124,15 +142,34 @@ test.describe('Hooks demo — useToggle + useClipboard', () => {
   })
 
   test('typing into debounced input updates live + debounced', async ({ page }) => {
+    // Install before navigation so the app never mixes native and controlled
+    // timers. Quiet-period behavior must not depend on hosted timer delivery.
+    await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') })
     await page.goto('/hooks')
     await waitForHydration(page)
-    await page.locator('[data-testid=hooks-debounce-input]').fill('abc')
+    await page.clock.pauseAt(new Date('2026-01-01T00:01:00Z'))
+    const hydratedDocument = await page.evaluateHandle(() => document)
+    const input = page.locator('[data-testid=hooks-debounce-input]')
+    const debounced = page.locator('[data-testid=hooks-debounced]')
+    await input.fill('abc')
     // Live updates immediately
     await expect(page.locator('[data-testid=hooks-live]')).toHaveText('abc')
-    // Debounced lags 300ms — wait for it to catch up
-    await expect(page.locator('[data-testid=hooks-debounced]')).toHaveText('abc', {
-      timeout: 1500,
-    })
+    await page.clock.runFor(299)
+    await expect(debounced).toHaveText('(empty)')
+    await page.clock.runFor(1)
+    await expect(debounced).toHaveText('abc')
+
+    // A later input must restart the quiet period and cancel the earlier value.
+    await input.fill('first')
+    await page.clock.runFor(200)
+    await input.fill('last')
+    await page.clock.runFor(299)
+    await expect(debounced).toHaveText('abc')
+    await page.clock.runFor(1)
+    await expect(debounced).toHaveText('last')
+    // Same-document history updates are valid; a replaced document is not.
+    expect(await hydratedDocument.evaluate((original) => original === document)).toBe(true)
+    await hydratedDocument.dispose()
   })
 })
 
@@ -379,11 +416,14 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
       timeout: 5000,
     })
+    const hydratedDocument = await page.evaluateHandle(() => document)
     // Seeded task ids are '1' / '2' / '3'.
     await page.locator('[data-testid=feature-delete-1]').click()
     await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(2, {
       timeout: 5000,
     })
+    expect(await hydratedDocument.evaluate((original) => original === document)).toBe(true)
+    await hydratedDocument.dispose()
   })
 
   test('useUpdate toggles a task done state via PUT', async ({ page }) => {

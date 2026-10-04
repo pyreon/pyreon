@@ -9,6 +9,8 @@ export interface FlakeReport {
   sourceAvailable: boolean
   flakyCount: number
   retries: { title: string; retry: number }[]
+  /** Summary names, including dot reporters that omit retry numbers. */
+  flakyTitles?: string[]
 }
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g')
@@ -24,13 +26,24 @@ export function escapeHtml(value: string): string {
 
 export function parsePlaywrightFlakes(output: string, suite: string): FlakeReport {
   const lines = output.replace(ANSI, '').split(/\r?\n/)
-  const flakyCount = lines.reduce((sum, line) => {
-    const match = /(?:^|\s)(\d+)\s+flaky\b/.exec(line)
-    return sum + (match ? Number(match[1]) : 0)
-  }, 0)
+  let flakyCount = 0
+  let remainingTitles = 0
+  const flakyTitles = new Set<string>()
   const seen = new Set<string>()
   const retries: FlakeReport['retries'] = []
   for (const raw of lines) {
+    const count = /^\s*(\d+)\s+flaky\s*$/.exec(raw)
+    if (count) {
+      remainingTitles = Number(count[1])
+      flakyCount += remainingTitles
+    } else if (remainingTitles > 0 && raw.trim()) {
+      if (/^\s*\[[^\]]+\]\s+›/.test(raw)) {
+        flakyTitles.add(raw.trim())
+        remainingTitles--
+      } else {
+        remainingTitles = 0
+      }
+    }
     const match = /\(retry #(\d+)\)/.exec(raw)
     if (!match) continue
     const title = raw.trim()
@@ -39,7 +52,14 @@ export function parsePlaywrightFlakes(output: string, suite: string): FlakeRepor
     seen.add(key)
     retries.push({ title, retry: Number(match[1]) })
   }
-  return { version: 1, suite, sourceAvailable: true, flakyCount, retries }
+  return {
+    version: 1,
+    suite,
+    sourceAvailable: true,
+    flakyCount,
+    retries,
+    flakyTitles: [...flakyTitles],
+  }
 }
 
 export function flakeSummary(report: FlakeReport): string {
@@ -50,9 +70,15 @@ export function flakeSummary(report: FlakeReport): string {
     `Playwright reported ${report.flakyCount || report.retries.length} flaky spec(s) that passed only after a retry.`,
     '',
   ]
-  if (report.retries.length > 0) {
-    for (const item of report.retries) lines.push(`- <code>${escapeHtml(item.title)}</code>`)
-  } else {
+  const baseTitle = (title: string) =>
+    title.replace(/^\d+\)\s*/, '').replace(/\s*\(retry #\d+\)\s*$/, '')
+  const retryTitles = new Set(report.retries.map((item) => baseTitle(item.title)))
+  for (const item of report.retries) lines.push(`- <code>${escapeHtml(item.title)}</code>`)
+  const summaryTitles = (report.flakyTitles ?? []).filter(
+    (title) => !retryTitles.has(baseTitle(title)),
+  )
+  for (const title of summaryTitles) lines.push(`- <code>${escapeHtml(title)}</code>`)
+  if (report.retries.length === 0 && summaryTitles.length === 0) {
     lines.push('- The reporter emitted a flaky count but no retry title.')
   }
   lines.push('')
@@ -71,7 +97,14 @@ async function main(): Promise<number> {
   const sourceAvailable = existsSync(input)
   const report = sourceAvailable
     ? parsePlaywrightFlakes(readFileSync(input, 'utf8'), suite)
-    : { version: 1 as const, suite, sourceAvailable: false, flakyCount: 0, retries: [] }
+    : {
+        version: 1 as const,
+        suite,
+        sourceAvailable: false,
+        flakyCount: 0,
+        retries: [],
+        flakyTitles: [],
+      }
   mkdirSync(dirname(output), { recursive: true })
   writeFileSync(output, JSON.stringify(report, null, 2) + '\n')
 
