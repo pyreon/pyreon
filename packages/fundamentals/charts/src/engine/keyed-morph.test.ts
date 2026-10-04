@@ -1,7 +1,7 @@
 // The keyed geometry morph: survivors slide between slots, entering bars
 // grow from the baseline in their new slot, exiting bars shrink out in their
 // old one — the full data join, not just a value tween.
-import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph, morphMatches } from './keyed-morph'
+import { canKeyMorph, keyedGeometry, keyedGeoCmds, keyedMorphCmds, keyedMorphGeometry, maskForMorph, morphMatches } from './keyed-morph'
 import { defaultTheme, layoutChart, renderChartIn } from './render'
 import type { ChartSpec, Series } from './render'
 import type { DrawCmd, Rect } from './types'
@@ -43,6 +43,22 @@ describe('keyed geometry morph', () => {
     expect(r[1]!.x).toBeCloseTo((bOld.x + bNew.x) / 2, 6)
     expect(r[0]!.h).toBeCloseTo(from[0]!.rects.get('a')!.h / 2, 6)
     expect(r[3]!.h).toBeCloseTo(to[0]!.rects.get('d')!.h / 2, 6)
+  })
+
+  it.each([Number.NaN, Infinity, -Infinity])('draws a bar becoming a gap only once (%s)', (missing) => {
+    const target = specOf([1, missing, 3], ['a', 'b', 'c'])
+    const targetGeo = keyedGeometry(target, layoutChart(target, measure), target.categories)
+    const frame = keyedMorphGeometry(from, targetGeo, 0.5)
+    expect(frame[0]!.keys).toEqual(['b', 'a', 'c'])
+    expect(rects(keyedGeoCmds(frame))).toHaveLength(3)
+    const exiting = frame[0]!.rects.get('b')!
+    expect(exiting.h).toBeCloseTo(from[0]!.rects.get('b')!.h / 2, 6)
+    // Another target received before the exit finishes must retain that
+    // one displayed bar, without duplicating its missing target key.
+    const interrupted = keyedMorphGeometry(frame, targetGeo, 0)
+    expect(interrupted[0]!.keys).toEqual(['b', 'a', 'c'])
+    expect(rects(keyedGeoCmds(interrupted))).toHaveLength(3)
+    expect(interrupted[0]!.rects.get('b')).toEqual(exiting)
   })
 
   it('bars, lines, stacks and groups morph in any frame; areas, bands, symbols and numeric x do not', () => {

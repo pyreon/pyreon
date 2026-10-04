@@ -133,7 +133,9 @@ export function keyedMorphGeometry(from: KeyedGeo[], to: KeyedGeo[], e: Double):
     // shared; missing keys already mean an exit (-1).
     const points = new Map(b.points)
     const rects = new Map(b.rects)
-    const exits: string[] = []
+    // Lines retain gap slots to break runs. Bars list only drawn geometry,
+    // so a key becoming a gap appears once as an exit, never as a target.
+    const keys: string[] = b.kind === 'line' ? b.keys : []
     if (b.kind === 'line') {
       for (const [k, p] of b.points) {
         const old = a?.points.get(k)
@@ -146,16 +148,16 @@ export function keyedMorphGeometry(from: KeyedGeo[], to: KeyedGeo[], e: Double):
         for (const k of a.keys) {
           const r = a.rects.get(k)
           if (r === undefined || b.rects.has(k)) continue
-          exits.push(k)
+          keys.push(k)
           rects.set(k, mixRect(r, growEdgeRect(r, a.dom, a.plot, a.horizontal), e))
         }
       }
       for (const [k, r] of b.rects) {
+        keys.push(k)
         const old = a?.rects.get(k) ?? growEdgeRect(r, b.dom, b.plot, b.horizontal)
         rects.set(k, mixRect(old, r, e))
       }
     }
-    const keys = exits.concat(b.keys)
     return { ...b, keys, rects, points }
   })
 }
