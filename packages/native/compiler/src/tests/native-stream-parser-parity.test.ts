@@ -154,7 +154,8 @@ function ndjsonCase(r: () => number): Uint8Array {
   for (let i = 0; i < lines; i++) {
     const k = r()
     if (k < 0.6) parts.push(enc.encode(NDJSON_VALUES[Math.floor(r() * NDJSON_VALUES.length)]!))
-    else if (k < 0.93) parts.push(enc.encode(NDJSON_BLANKS[Math.floor(r() * NDJSON_BLANKS.length)]!))
+    else if (k < 0.93)
+      parts.push(enc.encode(NDJSON_BLANKS[Math.floor(r() * NDJSON_BLANKS.length)]!))
     else parts.push(enc.encode('nope'))
     if (i < lines - 1 || r() < 0.7) parts.push(enc.encode(EOLS[Math.floor(r() * EOLS.length)]!))
   }
@@ -306,10 +307,7 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
 
 /** A JDK to RUN the jar — commonly installed off PATH under Homebrew. */
 function jvmPath(): string | undefined {
-  for (const c of [
-    '/opt/homebrew/opt/openjdk/bin/java',
-    '/opt/homebrew/opt/openjdk@17/bin/java',
-  ]) {
+  for (const c of ['/opt/homebrew/opt/openjdk/bin/java', '/opt/homebrew/opt/openjdk@17/bin/java']) {
     if (existsSync(c)) return c
   }
   try {
@@ -405,7 +403,9 @@ describe('native stream parsers — byte-for-byte parity with @pyreon/http/strea
     // A generator that silently stopped producing a shape would make the
     // parity below prove less than it says.
     const all = corpus.map((c) => Buffer.concat(c.chunks.map((x) => Buffer.from(x))))
-    expect(all.some((b) => b.includes(Buffer.from([0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf])))).toBe(true)
+    expect(all.some((b) => b.includes(Buffer.from([0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf])))).toBe(
+      true,
+    )
     expect(all.some((b) => b.includes(Buffer.from([0xed, 0xa0, 0x80])))).toBe(true)
     expect(all.some((b) => b.includes(Buffer.from('\r\n')))).toBe(true)
     expect(corpus.some((c) => c.chunks.some((x) => x.length === 0))).toBe(true)
@@ -413,21 +413,30 @@ describe('native stream parsers — byte-for-byte parity with @pyreon/http/strea
     expect(corpus.filter((c) => c.format === 'ndjson').length).toBeGreaterThan(300)
   })
 
-  it.skipIf(!isSwiftcAvailable())('the SHIPPED Swift parsers match, executed', async () => {
-    const expected = await Promise.all(corpus.map(webRender))
-    const got = withTempDir('pyreon-stream-parity-swift-', (dir) => {
-      const casesPath = join(dir, 'cases.txt')
-      writeFileSync(casesPath, casesFile(corpus))
-      writeFileSync(join(dir, 'main.swift'), `import Foundation\n\n${pureRegion(SWIFT_SRC)}\n${SWIFT_WIRE_MAIN(casesPath)}`)
-      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], { stdio: 'pipe' })
-      return splitCases(execFileSync(join(dir, 'run'), { encoding: 'utf8', maxBuffer: 64 << 20 }))
-    })
-    expect(got.length).toBe(corpus.length)
-    const diffs = corpus
-      .map((c, i) => ({ i, want: expected[i], got: nativeRender(c, got[i]!) }))
-      .filter((d) => JSON.stringify(d.want) !== JSON.stringify(d.got))
-    expect(diffs.slice(0, 5)).toEqual([])
-  }, 600_000)
+  it.skipIf(!isSwiftcAvailable())(
+    'the SHIPPED Swift parsers match, executed',
+    async () => {
+      const expected = await Promise.all(corpus.map(webRender))
+      const got = withTempDir('pyreon-stream-parity-swift-', (dir) => {
+        const casesPath = join(dir, 'cases.txt')
+        writeFileSync(casesPath, casesFile(corpus))
+        writeFileSync(
+          join(dir, 'main.swift'),
+          `import Foundation\n\n${pureRegion(SWIFT_SRC)}\n${SWIFT_WIRE_MAIN(casesPath)}`,
+        )
+        execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], {
+          stdio: 'pipe',
+        })
+        return splitCases(execFileSync(join(dir, 'run'), { encoding: 'utf8', maxBuffer: 64 << 20 }))
+      })
+      expect(got.length).toBe(corpus.length)
+      const diffs = corpus
+        .map((c, i) => ({ i, want: expected[i], got: nativeRender(c, got[i]!) }))
+        .filter((d) => JSON.stringify(d.want) !== JSON.stringify(d.got))
+      expect(diffs.slice(0, 5)).toEqual([])
+    },
+    600_000,
+  )
 
   it.skipIf(!isKotlincAvailable() || jvmPath() === undefined)(
     'the SHIPPED Kotlin parsers match, executed',
@@ -436,10 +445,17 @@ describe('native stream parsers — byte-for-byte parity with @pyreon/http/strea
       const got = withTempDir('pyreon-stream-parity-kotlin-', (dir) => {
         const casesPath = join(dir, 'cases.txt')
         writeFileSync(casesPath, casesFile(corpus))
-        writeFileSync(join(dir, 'Main.kt'), `${pureRegion(KOTLIN_SRC)}\n${KOTLIN_WIRE_MAIN(casesPath)}`)
-        execFileSync('kotlinc', [join(dir, 'Main.kt'), '-include-runtime', '-d', join(dir, 'out.jar')], {
-          stdio: 'pipe',
-        })
+        writeFileSync(
+          join(dir, 'Main.kt'),
+          `${pureRegion(KOTLIN_SRC)}\n${KOTLIN_WIRE_MAIN(casesPath)}`,
+        )
+        execFileSync(
+          'kotlinc',
+          [join(dir, 'Main.kt'), '-include-runtime', '-d', join(dir, 'out.jar')],
+          {
+            stdio: 'pipe',
+          },
+        )
         return splitCases(
           execFileSync(jvmPath() as string, ['-jar', join(dir, 'out.jar')], {
             encoding: 'utf8',
@@ -465,12 +481,24 @@ describe('native stream parsers — byte-for-byte parity with @pyreon/http/strea
  * `Last-Event-ID: 2`, gets an event of a filtered-out type and id 4, and ends
  * cleanly, which (no `onEnd`) closes the stream.
  */
-function streamServer(): { server: Server; seen: (string | null)[] } {
+function streamServer(script?: readonly (number | string)[]): {
+  server: Server
+  seen: (string | null)[]
+} {
   const seen: (string | null)[] = []
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const n = seen.length
     const id = req.headers['last-event-id']
     seen.push(typeof id === 'string' ? id : null)
+    if (script) {
+      const step = script[n] ?? 401 // A terminal guard exposes unwanted reconnects.
+      if (typeof step === 'number') {
+        res.writeHead(step).end()
+        return
+      }
+      res.writeHead(200, { 'content-type': 'text/event-stream' }).end(step)
+      return
+    }
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
     if (n === 0) {
       res.write('retry: 20\n\nid: 1\ndata: {"n":1}\n\n')
@@ -492,7 +520,7 @@ interface LoopResult {
 
 const run = promisify(execFile)
 
-const SWIFT_LOOP_MAIN = (url: string): string => `
+const SWIFT_LOOP_MAIN = (url: string, onEnd = false, attempts = 3): string => `
 struct Row: Decodable { var n: Int }
 
 @main
@@ -501,7 +529,7 @@ struct Main {
         let s = PyreonStream<PyreonSseEvent<Row>>()
         await s.runSse(
             PyreonStreamRequest(url: ${JSON.stringify(url)}),
-            options: PyreonSseOptions(events: ["message"], reconnect: PyreonStreamReconnect(attempts: 3, delay: 20, maxDelay: 100)),
+            options: PyreonSseOptions(events: ["message"], reconnect: PyreonStreamReconnect(attempts: ${attempts}, delay: 20, maxDelay: 100, onEnd: ${onEnd})),
             // Thread.isMainThread: the web runs onEvent on its one thread,
             // so the native callback must be on the main thread too.
             onEvent: { e in print("O \\(e.id) \\(Thread.isMainThread ? "main" : "off-main")") },
@@ -520,7 +548,11 @@ private class Box<T>(override var value: T) : MutableState<T>
 fun <T> mutableStateOf(value: T): MutableState<T> = Box(value)
 `
 
-const KOTLIN_LOOP_MAIN = (url: string): string => `package com.pyreon.runtime
+const KOTLIN_LOOP_MAIN = (
+  url: string,
+  onEnd = false,
+  attempts = 3,
+): string => `package com.pyreon.runtime
 fun main() {
     // A single named thread standing in for the main looper — the emit passes
     // PyreonStreamMain, which needs an Android Looper this JVM does not have.
@@ -528,7 +560,7 @@ fun main() {
     val s = PyreonStream<PyreonSseEvent<Int>>(main = main)
     s.startSse(
         PyreonStreamRequest(url = ${JSON.stringify(url)}),
-        PyreonSseOptions(events = listOf("message"), reconnect = PyreonStreamReconnect(attempts = 3, delay = 20, maxDelay = 100)),
+        PyreonSseOptions(events = listOf("message"), reconnect = PyreonStreamReconnect(attempts = ${attempts}, delay = 20, maxDelay = 100, onEnd = ${onEnd})),
         onEvent = { e -> println("O \${e.id} \${if (Thread.currentThread().name == "main") "main" else "off-main"}") },
     ) { m -> PyreonSseEvent(m.type, Regex("\\\\d+").find(m.data)!!.value.toInt(), m.id) }
     val deadline = System.currentTimeMillis() + 20_000
@@ -550,13 +582,17 @@ function parseLoopOutput(stdout: string): { events: string[]; status: string; on
 }
 
 /** The ids `onEvent` must have seen — one per delivered event, in order, each ON THE MAIN THREAD. */
-const expectedOnEvent = (events: string[]): string[] => events.map((e) => `${e.split(' ')[1]!} main`)
+const expectedOnEvent = (events: string[]): string[] =>
+  events.map((e) => `${e.split(' ')[1]!} main`)
 
 describe('native stream loop — reconnect + Last-Event-ID parity over a real server', () => {
   let web: LoopResult
 
-  const withServer = async <T>(fn: (url: string) => Promise<T>): Promise<{ out: T; seen: (string | null)[] }> => {
-    const { server, seen } = streamServer()
+  const withServer = async <T>(
+    fn: (url: string) => Promise<T>,
+    script?: readonly (string | number)[],
+  ): Promise<{ out: T; seen: (string | null)[] }> => {
+    const { server, seen } = streamServer(script)
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/events`
     try {
@@ -612,7 +648,13 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
         const result = await withServer(async (url) => {
           writeFileSync(join(dir, 'PyreonStream.swift'), readFileSync(SWIFT_SRC, 'utf8'))
           writeFileSync(join(dir, 'main.swift'), `import Foundation\n${SWIFT_LOOP_MAIN(url)}`)
-          await run('swiftc', ['-parse-as-library', join(dir, 'PyreonStream.swift'), join(dir, 'main.swift'), '-o', join(dir, 'run')])
+          await run('swiftc', [
+            '-parse-as-library',
+            join(dir, 'PyreonStream.swift'),
+            join(dir, 'main.swift'),
+            '-o',
+            join(dir, 'run'),
+          ])
           const { stdout } = await run(join(dir, 'run'), [], { timeout: 30_000 })
           return parseLoopOutput(stdout)
         })
@@ -643,12 +685,130 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
             '-d',
             join(dir, 'out.jar'),
           ])
-          const { stdout } = await run(jvmPath() as string, ['-jar', join(dir, 'out.jar')], { timeout: 30_000 })
+          const { stdout } = await run(jvmPath() as string, ['-jar', join(dir, 'out.jar')], {
+            timeout: 30_000,
+          })
           return parseLoopOutput(stdout)
         })
         const { onEvent, ...out } = result.out
         expect({ ...out, seen: result.seen }).toEqual(web)
         expect(onEvent).toEqual(expectedOnEvent(web.events))
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    600_000,
+  )
+  const controlCases = [
+    {
+      name: 'empty id and terminal 204',
+      script: ['id: old\ndata: {"n":1}\n\nid:\n\n', 204],
+      seen: [null, null],
+      events: ['message old 1'],
+    },
+    {
+      name: 'id-only block and terminal 204',
+      script: ['id: new\n\nretry: 0\n', 204],
+      seen: [null, 'new'],
+      events: [],
+    },
+    {
+      name: 'filtered event resets the failure budget',
+      script: [503, 'id: a\nevent: skip\ndata: {"n":1}\n\nretry: 0\n', 503, 204],
+      seen: [null, null, 'a', 'a'],
+      events: [],
+    },
+  ]
+
+  it.each(controlCases)('the web loop respects $name', async ({ script, seen, events }) => {
+    const result = await withServer(async (url) => {
+      const got: string[] = []
+      let status = 'connecting'
+      for await (const ev of openEventStream<{ n: number }>(
+        async (ctx) => {
+          const res = await fetch(url, { signal: ctx.signal, headers: ctx.headers })
+          if (!res.ok) throw Object.assign(new Error('HTTP failure'), { status: res.status })
+          return res.body
+        },
+        {
+          events: ['message'],
+          reconnect: { attempts: 1, delay: 20, onEnd: true },
+          onStatus: (s) => {
+            status = s
+          },
+        },
+      )) {
+        got.push(`${ev.type} ${ev.id} ${ev.data.n}`)
+      }
+      return { events: got, status }
+    }, script)
+    expect({ ...result.out, seen: result.seen }).toEqual({ events, seen, status: 'closed' })
+  })
+
+  it.skipIf(!isKotlincAvailable() || jvmPath() === undefined)(
+    'the shipped Kotlin loop respects control-only blocks, filtered events and 204',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-controls-kotlin-'))
+      try {
+        writeFileSync(join(dir, 'PyreonStream.kt'), readFileSync(KOTLIN_SRC, 'utf8'))
+        writeFileSync(join(dir, 'Compose.kt'), COMPOSE_STUB)
+        const main = KOTLIN_LOOP_MAIN('runtime-url', true, 1)
+          .replace('fun main() {', 'fun main(args: Array<String>) {')
+          .replace(JSON.stringify('runtime-url'), 'args[0]')
+        writeFileSync(join(dir, 'Main.kt'), main)
+        await run('kotlinc', [
+          join(dir, 'PyreonStream.kt'),
+          join(dir, 'Compose.kt'),
+          join(dir, 'Main.kt'),
+          '-include-runtime',
+          '-d',
+          join(dir, 'out.jar'),
+        ])
+        for (const { name, script, seen, events } of controlCases) {
+          const result = await withServer(async (url) => {
+            const { stdout } = await run(jvmPath() as string, ['-jar', join(dir, 'out.jar'), url], {
+              timeout: 30_000,
+            })
+            return parseLoopOutput(stdout)
+          }, script)
+          expect
+            .soft({ ...result.out, seen: result.seen }, name)
+            .toEqual({ events, seen, status: 'closed', onEvent: expectedOnEvent(events) })
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    600_000,
+  )
+
+  it.skipIf(!isSwiftcAvailable() || process.platform !== 'darwin')(
+    'the shipped Swift loop respects control-only blocks, filtered events and 204',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-controls-swift-'))
+      try {
+        writeFileSync(join(dir, 'PyreonStream.swift'), readFileSync(SWIFT_SRC, 'utf8'))
+        const main = SWIFT_LOOP_MAIN('runtime-url', true, 1).replace(
+          JSON.stringify('runtime-url'),
+          'CommandLine.arguments[1]',
+        )
+        writeFileSync(join(dir, 'main.swift'), `import Foundation\n${main}`)
+        await run('swiftc', [
+          '-parse-as-library',
+          join(dir, 'PyreonStream.swift'),
+          join(dir, 'main.swift'),
+          '-o',
+          join(dir, 'run'),
+        ])
+        for (const { name, script, seen, events } of controlCases) {
+          const result = await withServer(async (url) => {
+            const { stdout } = await run(join(dir, 'run'), [url], { timeout: 30_000 })
+            return parseLoopOutput(stdout)
+          }, script)
+          expect
+            .soft({ ...result.out, seen: result.seen }, name)
+            .toEqual({ events, seen, status: 'closed', onEvent: expectedOnEvent(events) })
+        }
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }

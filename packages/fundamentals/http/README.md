@@ -144,7 +144,18 @@ for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, heade
 ```
 
 A dropped connection, 408, 429 or 5xx reconnects with backoff, resuming with
-`Last-Event-ID` (a server `retry:` sets the delay; other 4xx are final).
+`Last-Event-ID` (a server `retry:` sets the delay, including a block without
+`data`; other 4xx are final). A blank-line-terminated `id:` commits even without
+`data`, and an empty id clears the resume header. Filtered valid events reset
+the retry budget. A no-body response (204) ends the stream even with
+`reconnect: { onEnd: true }`.
+
+`close()` and `options.signal` settle pending iteration even if `connect` or an
+async payload parser ignores cancellation. The owned body reader is cancelled,
+a late connection's body is discarded, and an external signal listener is
+released even when the stream was never iterated. Closing is idempotent.
+Large rows split across chunks are scanned once per chunk and joined once per
+line; existing CR/LF, UTF-8 and BOM behavior is preserved.
 `openNdjsonStream` yields one value per line and never reconnects.
 `readEventStream` / `readNdjson` are the bare parsers (WHATWG grammar: line
 ends split across chunks, multi-line `data`, comments, BOM). Zero dependencies.

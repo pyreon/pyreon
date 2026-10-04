@@ -47,6 +47,7 @@
  */
 async function* readLines(
   stream: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<{ line: string; final: boolean }> {
   const reader = stream.getReader()
   // `ignoreBOM: true` keeps the decoder from consuming a BOM itself, so the
@@ -54,11 +55,17 @@ async function* readLines(
   // BOM and the check below ate a second — a stream opening with two lost a
   // content character, where the spec strips exactly one.
   const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
-  let buffer = ''
+  let fragments: string[] = []
   // A `\r` that ended the previous chunk: its line is already yielded, and a
   // `\n` opening the next chunk belongs to it rather than ending an empty line.
   let pendingCr = false
   let first = true
+  // Cancelling the reader settles read() even if connect ignored its signal.
+  const cancel = (): void => {
+    void reader.cancel().catch(() => undefined)
+  }
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted) cancel()
   try {
     for (;;) {
       const { done, value } = await reader.read()
@@ -76,27 +83,35 @@ async function* readLines(
       if (text.length === 0) continue
       if (pendingCr && text.startsWith('\n')) text = text.slice(1)
       pendingCr = false
-      buffer += text
       let start = 0
-      for (let i = 0; i < buffer.length; i++) {
-        const c = buffer.charCodeAt(i)
+      // Scan ONLY this chunk; a long unfinished row must not be scanned or
+      // copied again on each read. Join its fragments once at the terminator.
+      for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i)
         if (c !== 10 && c !== 13) continue
-        yield { line: buffer.slice(start, i), final: false }
+        fragments.push(text.slice(start, i))
+        const line = fragments.join('')
+        fragments = []
+        yield { line, final: false }
         if (c === 13) {
-          if (i + 1 === buffer.length) pendingCr = true
-          else if (buffer.charCodeAt(i + 1) === 10) i++
+          if (i + 1 === text.length) pendingCr = true
+          else if (text.charCodeAt(i + 1) === 10) i++
         }
         start = i + 1
       }
-      buffer = buffer.slice(start)
+      if (start < text.length) fragments.push(text.slice(start))
     }
-    buffer += decoder.decode()
-    if (buffer.length > 0) yield { line: buffer, final: true }
+    fragments.push(decoder.decode())
+    const tail = fragments.join('')
+    if (tail.length > 0) yield { line: tail, final: true }
   } finally {
     // Cancelling (rather than only releasing) tells the transport the body
     // is abandoned, so a consumer that `break`s out of a live stream closes
     // the socket instead of leaving the server writing into nothing.
-    await reader.cancel().catch(() => undefined)
+    signal?.removeEventListener('abort', cancel)
+    // The underlying cancel hook can itself be asynchronous. Releasing the
+    // lock and finishing iteration must not wait for a stalled transport.
+    cancel()
     reader.releaseLock()
   }
 }
@@ -135,17 +150,29 @@ export interface SseMessage {
  * }
  * ```
  */
-export async function* readEventStream(
+export function readEventStream(
   stream: ReadableStream<Uint8Array>,
   initialLastEventId = '',
+): AsyncGenerator<SseMessage> {
+  return parseEventStream(stream, initialLastEventId)
+}
+
+async function* parseEventStream(
+  stream: ReadableStream<Uint8Array>,
+  initialLastEventId: string,
+  signal?: AbortSignal,
+  onId?: (id: string) => void,
+  onRetry?: (delay: number) => void,
 ): AsyncGenerator<SseMessage> {
   let data: string[] = []
   let type = ''
   let id = initialLastEventId
   let retry: number | undefined
-  for await (const { line, final } of readLines(stream)) {
+  for await (const { line, final } of readLines(stream, signal)) {
     if (final) break
     if (line === '') {
+      // The id buffer commits at every blank line, including id-only blocks.
+      onId?.(id)
       if (data.length > 0) {
         yield { type: type || 'message', data: data.join('\n'), id, retry }
       }
@@ -169,7 +196,10 @@ export async function* readEventStream(
         if (!value.includes('\0')) id = value
         break
       case 'retry':
-        if (/^\d+$/.test(value)) retry = Number(value)
+        if (/^\d+$/.test(value)) {
+          retry = Number(value)
+          onRetry?.(retry)
+        }
         break
       default:
         // Unknown fields are ignored, per spec.
@@ -211,12 +241,20 @@ export class StreamParseError extends Error {
  * for await (const row of readNdjson(response.body)) rows.push(row)
  * ```
  */
-export async function* readNdjson(
+export function readNdjson(
   stream: ReadableStream<Uint8Array>,
   parseJson: (text: string) => unknown = JSON.parse,
 ): AsyncGenerator<unknown> {
+  return parseNdjson(stream, parseJson)
+}
+
+async function* parseNdjson(
+  stream: ReadableStream<Uint8Array>,
+  parseJson: (text: string) => unknown = JSON.parse,
+  signal?: AbortSignal,
+): AsyncGenerator<unknown> {
   let n = 0
-  for await (const { line } of readLines(stream)) {
+  for await (const { line } of readLines(stream, signal)) {
     n++
     if (line.trim() === '') continue
     let value: unknown
@@ -246,7 +284,10 @@ export type StreamItem<S> = S extends AsyncIterable<infer E> ? E : never
  * ```
  */
 export function streamHeaders(
-  base: HeadersInit | Readonly<Record<string, string | number | bigint | boolean | null | undefined>> | undefined,
+  base:
+    | HeadersInit
+    | Readonly<Record<string, string | number | bigint | boolean | null | undefined>>
+    | undefined,
   extra: Readonly<Record<string, string>>,
 ): Record<string, string> {
   const out: Record<string, string> = {}
@@ -403,13 +444,15 @@ export function isRetryableStreamError(error: unknown): boolean {
 
 function isAbort(error: unknown): boolean {
   return (
-    typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError'
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { name?: unknown }).name === 'AbortError'
   )
 }
 
 /** A delay that ends early (and cleanly) on abort — no orphaned timer. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  // Never called with an already-aborted signal: every caller checks first.
+  if (signal.aborted) return Promise.resolve()
   return new Promise((resolve) => {
     const onAbort = (): void => {
       clearTimeout(timer)
@@ -420,6 +463,37 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
       resolve()
     }, ms)
     signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/** Await user work without retaining an abort listener after either result. */
+function abortable<T>(
+  work: Promise<T>,
+  signal: AbortSignal,
+  onLateValue?: (value: T) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let aborted = false
+    const onAbort = (): void => {
+      aborted = true
+      signal.removeEventListener('abort', onAbort)
+      reject(new DOMException('The stream was closed', 'AbortError'))
+    }
+    // Observe both settlements even after abort: a late rejection must not
+    // become unhandled, and a late response body still needs cancellation.
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        if (aborted) onLateValue?.(value)
+        else resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        if (!aborted) reject(error)
+      },
+    )
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 
@@ -447,6 +521,7 @@ interface Driver<E> {
   read(
     body: ReadableStream<Uint8Array>,
     state: { lastEventId: string | undefined; delay: number; received: boolean },
+    signal: AbortSignal,
   ): AsyncGenerator<E>
 }
 
@@ -457,18 +532,28 @@ function createStream<E>(
 ): EventStream<E> {
   const controller = new AbortController()
   const external = options.signal
-  const onExternalAbort = (): void => controller.abort()
-  if (external) {
-    if (external.aborted) controller.abort()
-    else external.addEventListener('abort', onExternalAbort, { once: true })
-  }
   const state = {
     lastEventId: options.lastEventId,
     delay: driver.policy?.delay ?? 0,
     received: false,
   }
   let started = false
-  const emit = (s: StreamStatus): void => options.onStatus?.(s)
+  let iterator: AsyncGenerator<E> | undefined
+  let terminal = false
+  const emit = (s: StreamStatus): void => {
+    if (terminal) return
+    if (s === 'closed' || s === 'error') terminal = true
+    options.onStatus?.(s)
+  }
+  const stop = (): void => {
+    if (controller.signal.aborted) return
+    external?.removeEventListener('abort', stop)
+    controller.abort()
+    emit('closed')
+    if (iterator) void iterator.return(undefined).catch(() => undefined)
+  }
+  if (external?.aborted) stop()
+  else external?.addEventListener('abort', stop, { once: true })
 
   async function* run(): AsyncGenerator<E> {
     let attempt = 0
@@ -477,32 +562,46 @@ function createStream<E>(
       for (;;) {
         if (controller.signal.aborted) return
         emit(attempt === 0 ? 'connecting' : 'reconnecting')
+        if (controller.signal.aborted) return
         const headers: Record<string, string> = { accept: driver.accept }
-        if (driver.format === 'sse' && state.lastEventId) headers['last-event-id'] = state.lastEventId
+        if (driver.format === 'sse' && state.lastEventId)
+          headers['last-event-id'] = state.lastEventId
         state.received = false
         let error: unknown
         let ended = false
         try {
-          const body = await connect({
-            signal: controller.signal,
-            headers,
-            lastEventId: state.lastEventId,
-            attempt,
-          })
-          if (!body) {
-            ended = true
-          } else {
-            emit('open')
-            for await (const event of driver.read(body, state)) {
-              if (state.received) failures = 0
-              yield event
-            }
-            ended = true
+          const body = await abortable(
+            connect({
+              signal: controller.signal,
+              headers,
+              lastEventId: state.lastEventId,
+              attempt,
+            }),
+            controller.signal,
+            (late) => {
+              void late?.cancel().catch(() => undefined)
+            },
+          )
+          // A no-body response (204) is terminal even with onEnd enabled.
+          if (!body) return
+          if (controller.signal.aborted) {
+            void body.cancel().catch(() => undefined)
+            return
           }
+          emit('open')
+          for await (const event of driver.read(body, state, controller.signal)) {
+            if (controller.signal.aborted) return
+            if (state.received) failures = 0
+            yield event
+          }
+          ended = true
         } catch (e) {
           if (controller.signal.aborted || isAbort(e)) return
           error = e
         }
+        // A valid event counts even when filtered out before the first yield.
+        if (state.received) failures = 0
+        if (controller.signal.aborted) return
         const policy = driver.policy
         if (ended && !(policy?.onEnd ?? false)) {
           emit('closed')
@@ -516,17 +615,20 @@ function createStream<E>(
           failures++
         }
         // A clean end with `onEnd` waits the base delay; a failure backs off.
-        const wait = error === undefined ? state.delay : Math.min(state.delay * 2 ** (failures - 1), policy?.maxDelay ?? 0)
+        const wait =
+          error === undefined
+            ? state.delay
+            : Math.min(state.delay * 2 ** (failures - 1), policy?.maxDelay ?? 0)
         attempt++
         await sleep(wait, controller.signal)
       }
     } finally {
-      external?.removeEventListener('abort', onExternalAbort)
+      external?.removeEventListener('abort', stop)
       if (!controller.signal.aborted) controller.abort()
+      emit('closed')
     }
   }
 
-  let iterator: AsyncGenerator<E> | undefined
   return {
     [Symbol.asyncIterator](): AsyncIterator<E> {
       if (started) {
@@ -538,16 +640,14 @@ function createStream<E>(
       iterator = run()
       return iterator
     },
-    close(): void {
-      controller.abort()
-      if (iterator) void iterator.return(undefined)
-      else emit('closed')
-    },
+    close: stop,
     lastEventId: () => state.lastEventId,
   }
 }
 
-function resolvePolicy(reconnect: EventStreamOptions<unknown>['reconnect']): Driver<unknown>['policy'] {
+function resolvePolicy(
+  reconnect: EventStreamOptions<unknown>['reconnect'],
+): Driver<unknown>['policy'] {
   if (reconnect === false) return null
   const p: ReconnectPolicy = reconnect === true || reconnect === undefined ? {} : reconnect
   return {
@@ -597,10 +697,18 @@ export function openEventStream<T = unknown>(
     format: 'sse',
     accept: 'text/event-stream',
     policy,
-    async *read(body, state) {
-      for await (const msg of readEventStream(body, state.lastEventId ?? '')) {
-        state.lastEventId = msg.id === '' ? state.lastEventId : msg.id
-        if (msg.retry !== undefined && policy) state.delay = msg.retry
+    async *read(body, state, signal) {
+      for await (const msg of parseEventStream(
+        body,
+        state.lastEventId ?? '',
+        signal,
+        (id) => {
+          state.lastEventId = id === '' ? undefined : id
+        },
+        (delay) => {
+          if (policy) state.delay = delay
+        },
+      )) {
         state.received = true
         if (allowed && !allowed.has(msg.type)) continue
         let value: unknown = msg.data
@@ -611,7 +719,11 @@ export function openEventStream<T = unknown>(
             throw new StreamEventError(msg.data, cause)
           }
         }
-        yield { type: msg.type, data: await decodePayload(value, options.parse), id: msg.id }
+        yield {
+          type: msg.type,
+          data: await abortable(decodePayload(value, options.parse), signal),
+          id: msg.id,
+        }
       }
     },
   })
@@ -641,10 +753,10 @@ export function openNdjsonStream<T = unknown>(
     format: 'ndjson',
     accept: 'application/x-ndjson',
     policy: null,
-    async *read(body, state) {
-      for await (const value of readNdjson(body, options.parseJson)) {
+    async *read(body, state, signal) {
+      for await (const value of parseNdjson(body, options.parseJson, signal)) {
         state.received = true
-        yield await decodePayload(value, options.parse)
+        yield await abortable(decodePayload(value, options.parse), signal)
       }
     },
   })

@@ -183,10 +183,16 @@ public class PyreonSseParser(lastEventId: String = "") {
     private var type = ""
     private var id = lastEventId
     private var retry: Long? = null
+    /** Commits at a blank line, including a block without data. */
+    public var committedId: String = lastEventId
+        private set
+    /** Retry fields apply immediately, including control-only blocks. */
+    public val reconnectDelay: Long? get() = retry
 
     /** Feed one line; returns the event it dispatched, if any. */
     public fun line(bytes: ByteArray): PyreonSseMessage? {
         if (bytes.isEmpty()) {
+            committedId = id
             val msg = if (data.isEmpty()) {
                 null
             } else {
@@ -547,7 +553,8 @@ public class PyreonStream<E>(
                     val body = res.body
                     if (res.status == 204 || body == null) {
                         res.close()
-                        ended = true
+                        post { status.value = "closed" }
+                        return
                     } else {
                         post { status.value = "open" }
                         val splitter = PyreonStreamLineSplitter()
@@ -556,13 +563,14 @@ public class PyreonStream<E>(
                         val handle = { line: ByteArray ->
                             if (onSse != null) {
                                 val msg = parser.line(line)
+                                lastId = parser.committedId.takeIf { it.isNotEmpty() }
+                                val r = parser.reconnectDelay
+                                if (r != null && policy != null) delay = r
                                 if (msg != null) {
-                                    if (msg.id.isNotEmpty()) lastId = msg.id
-                                    val r = msg.retry
-                                    if (r != null && policy != null) delay = r
+                                    // Filtered events still reset the failure budget.
+                                    failures = 0
                                     val event = onSse(msg)
                                     if (event != null && live()) {
-                                        failures = 0
                                         // One block, so `onEvent` runs right
                                         // after its own push — the web's
                                         // `options.onEvent?.(event, queryClient)`
