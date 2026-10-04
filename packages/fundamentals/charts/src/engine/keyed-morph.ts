@@ -22,6 +22,7 @@ import { layoutSeriesPoints } from './layout'
 import type { PlotLayout } from './layout'
 import { barsLaid, barsLaidH, geometrySpec, growEdgeRect, hasRightAxis, logBounds, resolveY2Domain, resolveYDomain, seriesDomain, setLaid, setLaidH, stateFill, themeCorners } from './render'
 import type { ChartSpec, Series } from './render'
+import { isFiniteNumber } from './scale'
 import type { Domain, DrawCmd, Double, Pt, Rect } from './types'
 
 type MorphKind = 'bars' | 'line' | 'stacked' | 'grouped'
@@ -78,7 +79,7 @@ export function keyedGeometry(raw: ChartSpec, l: PlotLayout, keys: string[]): Ke
     const rects = new Map<string, Rect>()
     const points = new Map<string, Pt>()
     const index = new Map<string, number>()
-    const finite = (i: number): boolean => i < s.values.length && s.values[i] === s.values[i]
+    const finite = (i: number): boolean => i < s.values.length && isFiniteNumber(s.values[i]!)
     if (kind === 'bars') {
       const rs = horizontal ? barsLaidH(spec, k, plot, dom) : barsLaid(spec, k, plot, dom)
       for (let i = 0; i < rs.length && i < keys.length; i++) {

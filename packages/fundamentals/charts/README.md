@@ -95,6 +95,12 @@ family) or `step` (holds each value to the next datum — the honest shape for
 prices). Under the hood a curve is a `(points) => points` densifier, which is
 why it costs zero new backend work on any platform.
 
+`<Band low="low" high="high" />` fills the interval between two channels.
+A missing or non-finite bound breaks both edges at that row; each finite
+region closes against its own lower edge, including with curves and a
+continuous x axis. `NaN` and either infinity remain gaps during keyed updates,
+including when a mark's whole-series transform produces them.
+
 **Annotations** are dashed rules, translucent bands and point-to-point
 segments (`x1`/`y1`/`x2`/`y2`, in data units) with optional labels, placed by
 the same scale the axis is labelled with. **Markers** anchor a point at a

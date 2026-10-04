@@ -3954,21 +3954,21 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (s.kind == "band") {
               val lows = (s.values2 ?: listOf())
               val paired: MutableList<Double> = mutableListOf()
+              val loRun: MutableList<Double> = mutableListOf()
               for (i in 0L until s.values.length) {
                 val lo = if (i < lows.length) lows[(i).toInt()] else (0.0).toDouble() / (0.0).toDouble()
-                paired.add(if (isFiniteValue(s.values[(i).toInt()]) && isFiniteValue(lo)) s.values[(i).toInt()] else (0.0).toDouble() / (0.0).toDouble())
+                val valid = isFiniteValue(s.values[(i).toInt()]) && isFiniteValue(lo)
+                paired.add(if (valid) s.values[(i).toInt()] else (0.0).toDouble() / (0.0).toDouble())
+                loRun.add(if (valid) lo else (0.0).toDouble() / (0.0).toDouble())
               }
-              for (run in splitRuns(paired, place)) {
-                var upper = reveal(curveFn(run))
+              val upperRuns = splitRuns(paired, place)
+              val lowerRuns = splitRuns(loRun, place)
+              for (r in 0L until upperRuns.length) {
+                var upper = reveal(curveFn(upperRuns[(r).toInt()]))
                 if (upper.length < 2L) {
                   continue
                 }
-                val loRun: MutableList<Double> = mutableListOf()
-                for (i in 0L until paired.length) {
-                  loRun.add(if (isFiniteValue(paired[(i).toInt()])) (if (i < lows.length) lows[(i).toInt()] else (0.0).toDouble() / (0.0).toDouble()) else (0.0).toDouble() / (0.0).toDouble())
-                }
-                val lowerRuns = splitRuns(loRun, place)
-                var lower = if (lowerRuns.length > 0L) reveal(curveFn(lowerRuns[0])) else listOf()
+                var lower = reveal(curveFn(lowerRuns[(r).toInt()]))
                 val poly: MutableList<PyreonChartPt> = mutableListOf()
                 for (p in upper) {
                   poly.add(p)

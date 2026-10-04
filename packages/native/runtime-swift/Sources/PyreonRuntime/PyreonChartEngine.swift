@@ -6586,21 +6586,21 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if s.kind == "band" {
               let lows = (s.values2 ?? [])
               var paired: [Double] = []
+              var loRun: [Double] = []
               for i in 0..<s.values.count {
                 let lo = i < lows.count ? lows[i] : 0.0 / 0.0
-                paired.append(isFiniteValue(s.values[i]) && isFiniteValue(lo) ? s.values[i] : 0.0 / 0.0)
+                let valid = isFiniteValue(s.values[i]) && isFiniteValue(lo)
+                paired.append(valid ? s.values[i] : 0.0 / 0.0)
+                loRun.append(valid ? lo : 0.0 / 0.0)
               }
-              for run in splitRuns(paired, place) {
-                var upper = reveal(curveFn(run))
+              let upperRuns = splitRuns(paired, place)
+              let lowerRuns = splitRuns(loRun, place)
+              for r in 0..<upperRuns.count {
+                var upper = reveal(curveFn(upperRuns[r]))
                 if upper.count < 2 {
                   continue
                 }
-                var loRun: [Double] = []
-                for i in 0..<paired.count {
-                  loRun.append(isFiniteValue(paired[i]) ? (i < lows.count ? lows[i] : 0.0 / 0.0) : 0.0 / 0.0)
-                }
-                let lowerRuns = splitRuns(loRun, place)
-                var lower = lowerRuns.count > 0 ? reveal(curveFn(lowerRuns[0])) : []
+                var lower = reveal(curveFn(lowerRuns[r]))
                 var poly: [PyreonChartPt] = []
                 for p in upper {
                   poly.append(p)
