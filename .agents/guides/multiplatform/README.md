@@ -81,7 +81,9 @@ Charts use a built-in preparation plugin and parsed import declarations.
 
 Keep plugin registration instance-owned; do not add process-global registries,
 source regex import detection, or emitter-specific positional arguments to the
-driver. Custom callbacks receive isolated IR. Legacy emitter state remains
+driver. Custom callbacks receive isolated IR. Read filename, target and fonts from the
+invocation snapshot throughout the pipeline; callbacks can mutate caller-owned
+options through closures and must not change synthesized type namespaces. Legacy emitter state remains
 scoped and is not generally reentrant; hooks execute outside emission. Prove
 extensions with real Swift/Kotlin typechecking and cross-call isolation tests.
 Native CLI build/check/watch/LSP accept the same explicit local ESM `--plugin`

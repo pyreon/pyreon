@@ -154,6 +154,36 @@ describe('instance-owned compiler plugins', () => {
     expect(options.fonts).toEqual({ Font: 'Font-Regular' })
     expect(pass).toHaveBeenCalledOnce()
   })
+  it.each(['swift', 'kotlin'] as const)(
+    'keeps %s namespace and options stable when a pass mutates caller options',
+    (target) => {
+      const source =
+        'export function Example() { const rows = Array.from({ length: 3 }, (_, i) => ({ id: i, label: `Row ${i}` })); return <For each={rows} by={(r) => r.id}>{(r) => <Text>{r.label}</Text>}</For> }'
+      const options: {
+        target: 'swift' | 'kotlin'
+        filename?: string
+        fonts: Record<string, string>
+      } = { target, filename: 'Outer.tsx', fonts: { Brand: 'Original' } }
+      const baseline = transform(source, options)
+      const compiler = createCompiler({
+        plugins: [
+          plugin({
+            transformIR(_module, context) {
+              delete options.filename
+              options.target = target === 'swift' ? 'kotlin' : 'swift'
+              options.fonts.Brand = 'Changed'
+              expect(context.options.filename).toBe('Outer.tsx')
+              expect(context.options.target).toBe(target)
+              expect(context.options.fonts).toEqual({ Brand: 'Original' })
+            },
+          }),
+        ],
+      })
+      const actual = compiler.transform(source, options)
+      expect(baseline.code).toMatch(/__Obj0_[a-z0-9]+/)
+      expect(actual).toEqual(baseline)
+    },
+  )
   it('isolates cached plugin IR from subsequent passes and compilers', () => {
     const shared = parsePyreon(APP)
     const compiler = createCompiler({

@@ -169,17 +169,16 @@ export function createCompiler<Target extends string = never>(
   return Object.freeze({
     targets,
     transform(source: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
-      const backend = backends.get(options.target)
+      const resolvedOptions = { ...options }
+      if (resolvedOptions.fonts) resolvedOptions.fonts = Object.freeze({ ...resolvedOptions.fonts })
+      Object.freeze(resolvedOptions)
+      const backend = backends.get(resolvedOptions.target)
       if (!backend) {
         throw new Error(
-          `[Pyreon] Unknown native compiler target "${options.target}". Available targets: ${targets.join(', ')}. Register a backend plugin or choose an available target.`,
+          `[Pyreon] Unknown native compiler target "${resolvedOptions.target}". Available targets: ${targets.join(', ')}. Register a backend plugin or choose an available target.`,
         )
       }
-      const resolvedOptions = Object.freeze({
-        ...options,
-        ...(options.fonts ? { fonts: Object.freeze({ ...options.fonts }) } : {}),
-      })
-      let module = parsePyreon(source, options.filename)
+      let module = parsePyreon(source, resolvedOptions.filename)
       const warnings: string[] = []
       const context = (owner: string): CompilerContext =>
         Object.freeze({
@@ -212,7 +211,7 @@ export function createCompiler<Target extends string = never>(
       }
       runPasses('transformIR')
       // Runtime-provided external declarations don't alter module identity.
-      const suffix = options.filename === undefined ? '' : `_${moduleTag(module)}`
+      const suffix = resolvedOptions.filename === undefined ? '' : `_${moduleTag(module)}`
       runPasses('prepareIR')
       const emitted = withSynthStructSuffix(suffix, () =>
         invoke(backend.owner, 'emit', () => {

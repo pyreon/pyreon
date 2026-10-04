@@ -53,7 +53,9 @@ const result = compiler.transform(
 frontend subset; new TypeScript syntax still requires frontend support. Passes
 may mutate their input or return
 a complete replacement. `context.source` and frozen `context.options` describe
-the invocation; `context.warn(message)` adds an attributed diagnostic. Passes
+the invocation; `context.warn(message)` adds an attributed diagnostic. The
+filename, target and font mapping come from one invocation snapshot, even if a
+callback changes caller-owned options through a closure. Passes
 and backend `emit(module, context)` are synchronous. Load asynchronous resources
 before `createCompiler()`. Returning a promise is an error.
 
