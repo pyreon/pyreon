@@ -2,6 +2,7 @@ import { onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { RouterLink } from '@pyreon/router'
 import { ThemeToggle } from './ThemeToggle'
+import { PrimaryNavigation } from './PrimaryNavigation'
 
 interface HeaderProps {
   /** Called when the user clicks the search trigger button. */
@@ -9,8 +10,6 @@ interface HeaderProps {
   onHamburgerToggle?: () => void
   /** Reactive accessor — drives the hamburger's aria-expanded state. */
   drawerOpen?: () => boolean
-  /** Only docs routes own a navigation drawer. */
-  showHamburger?: () => boolean
 }
 
 /**
@@ -57,10 +56,7 @@ export function Header(props: HeaderProps) {
   // `__ZERO_BASE__` is set by zero's plugin `config()` hook AND
   // `configResolved` sync (PR #1395), so it always reflects the final
   // resolved base in both the outer build and the inner SSR build.
-  const base =
-    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'
-      ? __ZERO_BASE__
-      : '/'
+  const base = typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/' ? __ZERO_BASE__ : '/'
 
   return (
     <header class="docs-header">
@@ -110,33 +106,13 @@ export function Header(props: HeaderProps) {
               <path d="M21 21l-4.35-4.35" />
             </svg>
             <span class="docs-header__search-label">Search docs…</span>
-            <kbd class="docs-header__search-kbd">
-              {() => (isMac() ? '⌘' : 'Ctrl')}K
-            </kbd>
+            <kbd class="docs-header__search-kbd">{() => (isMac() ? '⌘' : 'Ctrl')}K</kbd>
           </button>
         </div>
 
         {/* RIGHT: nav links + theme + GitHub + mobile hamburger */}
         <div class="docs-header__controls">
-          <nav class="docs-header__nav" aria-label="Primary">
-            <RouterLink to="/docs/getting-started" class="docs-header__link">
-              Docs
-            </RouterLink>
-            {/*
-              A plain anchor, deliberately — NOT a RouterLink.
-
-              `/atlas` is same-origin but it is a SEPARATE static site emitted
-              by `atlas build` into the same Pages artifact; it is not in this
-              app's route table. A RouterLink would try to resolve it
-              client-side and land on the 404 page. `data-allow-reload` is the
-              router's documented opt-out for an intentional same-origin full
-              load, and without it the dev build warns about exactly this
-              anchor.
-            */}
-            <a href="/atlas/" class="docs-header__link" data-allow-reload>
-              Components
-            </a>
-          </nav>
+          <PrimaryNavigation class="docs-header__nav" label="Primary" />
 
           <ThemeToggle />
 
@@ -156,24 +132,18 @@ export function Header(props: HeaderProps) {
             </svg>
           </a>
 
-          {() =>
-            props.showHamburger?.() ? (
-              <button
-                type="button"
-                class="docs-header__hamburger"
-                onClick={() => props.onHamburgerToggle?.()}
-                aria-label={() =>
-                  drawerOpen() ? 'Close documentation navigation' : 'Open documentation navigation'
-                }
-                aria-controls="docs-navigation-drawer"
-                aria-expanded={() => (drawerOpen() ? 'true' : 'false')}
-              >
-                <span />
-                <span />
-                <span />
-              </button>
-            ) : null
-          }
+          <button
+            type="button"
+            class="docs-header__hamburger"
+            onClick={() => props.onHamburgerToggle?.()}
+            aria-label={() => (drawerOpen() ? 'Close navigation' : 'Open navigation')}
+            aria-controls="docs-navigation-drawer"
+            aria-expanded={() => (drawerOpen() ? 'true' : 'false')}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
         </div>
       </div>
     </header>

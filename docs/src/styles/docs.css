@@ -2455,7 +2455,9 @@ a.px-footer-item:hover {
   grid-column: -2 / -1;
   min-width: 0;
 }
-.docs-drawer-backdrop { display: none; }
+.docs-drawer-backdrop,
+.docs-mobile-drawer,
+.docs-mobile-nav { display: none; }
 
 /* Sidebar group title now a button — restore handoff treatment.
    Mono UPPERCASE 11px letter-spacing 0.12em color text-dim. */
@@ -2709,7 +2711,21 @@ a.px-footer-item:hover {
     min-width: 40px;
     min-height: 40px;
   }
-  .docs-aside {
+  .docs-mobile-drawer { display: block; padding: 1rem 1.25rem; overflow-y: auto; }
+  .docs-mobile-nav {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+  }
+  .docs-mobile-nav .docs-header__link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .docs-aside,
+  .docs-mobile-drawer {
     position: fixed;
     top: 56px;
     left: 0;
@@ -2744,6 +2760,7 @@ a.px-footer-item:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .docs-aside,
+  .docs-mobile-drawer,
   .docs-header__hamburger span { transition: none; }
 }
 
