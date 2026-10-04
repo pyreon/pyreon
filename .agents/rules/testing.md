@@ -105,6 +105,10 @@ Mandatory for every regression test:
 
 If step 3 passes, the test is not load-bearing (for example, a minifier can fold dead code regardless of the gate under test). Record the result in the PR description: "Bisect-verified: reverted to broken, test failed with `<error>`, restored, test passed."
 
+### Route sweeps need independent budgets
+
+Parameterize direct-route boot checks as one test per navigation destination. A loop over every cold route shares one test timeout; longer per-navigation timeouts and retry backoffs cannot extend it. Use the real navigation list, fresh pages, the hydration barrier and visible route content before checking captured page errors. Keep client-side navigation contracts in their own interaction tests. Reference: `e2e/fundamentals/playground.spec.ts`.
+
 ### Dev-server e2e
 
 Vite's config bundler resolves plugin packages (`@pyreon/vite-plugin`, `@pyreon/zero`) through the `node` condition, i.e. `lib/`. A source edit to plugin code is invisible to a running dev server until `lib/` is rebuilt (user-runtime code loaded through `ssrLoadModule` does reload from `src/`). Locally, `reuseExistingServer` also reuses a stale server.

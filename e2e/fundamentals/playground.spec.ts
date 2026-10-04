@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test'
+import { tabs } from '../../examples/fundamentals-playground/src/nav'
+import { waitForHydration } from '../hydration-barrier'
 
 /**
  * Fundamentals-playground e2e — boot, navigation, no-error sweep.
@@ -12,33 +14,6 @@ import { expect, test } from '@playwright/test'
  * appear EXACTLY once on the page, locking the post-fix shape against
  * any future regression that would silently re-introduce duplicates.
  */
-
-const TAB_PATHS = [
-  '/',
-  '/store',
-  '/state-tree',
-  '/form',
-  '/validation',
-  '/validate',
-  '/i18n',
-  '/query',
-  '/table',
-  '/virtual',
-  '/charts',
-  '/code',
-  '/document',
-  '/flow',
-  '/storage',
-  '/url-state',
-  '/hooks',
-  '/hotkeys',
-  '/permissions',
-  '/machine',
-  '/rx',
-  '/toast',
-  '/dnd',
-  '/feature',
-] as const
 
 test.describe('Playground', () => {
   test.beforeEach(async ({ page }) => {
@@ -81,66 +56,25 @@ test.describe('Playground', () => {
     await page.waitForTimeout(1000)
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
+})
 
-  // Multi-route SWEEP — visit every demo route via direct goto and
-  // verify no JS pageerrors. Was previously `test.fixme()`'d due to
-  // `net::ERR_ABORTED` on heavy lazy-loading routes (`/code`,
-  // `/document`, `/charts`) under cold-cache navigation in CI.
-  //
-  // Diagnosis (PR closing this fixme): the abort is NOT a server-side
-  // 500 — Vite's dev server returns 200 in <100ms for every route in
-  // local cold-cache repro. The abort is a CHROME-LEVEL navigation
-  // race: when `page.goto(B)` fires while the prior page (`A`) is
-  // still loading its client JS modules under Vite's on-demand
-  // bundling, Chrome's in-flight resource fetches for A get cancelled,
-  // and the navigation to B can be aborted as part of the cleanup.
-  // Cold-cache only because Vite bundles modules on first request;
-  // warm-cache repro never reproduces.
-  //
-  // Fix: retry on `ERR_ABORTED` once after a short backoff. The retry
-  // succeeds because the prior page's modules are now fully cached,
-  // so the next navigation doesn't race with bundling. This is the
-  // same shape Playwright recommends for transient navigation aborts.
-  // Cap retries at 1 — a real failure (e.g. SSR error returning 500)
-  // would still surface deterministically.
-  async function gotoWithRetry(page: import('@playwright/test').Page, path: string) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 })
-        return
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        // Only retry on the cold-cache race signature. Any other error
-        // bubbles up to the test as a real failure.
-        if (attempt === 0 && /ERR_ABORTED/.test(msg)) {
-          await page.waitForTimeout(500)
-          continue
-        }
-        throw err
-      }
-    }
+// Each direct route load owns the normal test budget and a fresh document.
+// One sweep previously squeezed every cold import into a single 30s budget,
+// and its ERR_ABORTED retry could outlive that budget. Derive destinations
+// from the real navigation so a new tab cannot silently miss this gate.
+test.describe('Playground — route boot', () => {
+  for (const { path } of tabs) {
+    test(`loads ${path} without JavaScript errors`, async ({ page }) => {
+      const errors: string[] = []
+      page.on('pageerror', (err) => errors.push(err.message))
+      await page.goto(path, { waitUntil: 'domcontentloaded' })
+      await waitForHydration(page)
+      await expect(page.locator('nav.sidebar')).toHaveCount(1)
+      await expect(page.locator('main.content')).toHaveCount(1)
+      await expect(page.locator('main.content h2').first()).toBeVisible()
+      expect(errors, `${path}: ${errors.join('\n')}`).toHaveLength(0)
+    })
   }
-
-  test('navigates through every tab without errors', async ({ page }) => {
-    const errors: string[] = []
-    page.on('pageerror', (err) => errors.push(err.message))
-
-    for (const path of TAB_PATHS) {
-      // `waitUntil: 'domcontentloaded'` instead of the default `load`:
-      // some routes (`/code`, `/charts`, `/document`) lazy-load heavy
-      // bundles (CodeMirror, ECharts, document renderers) whose `load`
-      // event can exceed Playwright's default 30s under cold CI load.
-      // We only need the route to mount and not throw; we don't need
-      // every async chunk to settle.
-      await gotoWithRetry(page, path)
-      // Wait for SPA navigation + initial mount.
-      await page.locator('nav.sidebar').waitFor()
-      await page.waitForTimeout(150)
-    }
-
-    expect(errors, errors.join('\n')).toHaveLength(0)
-  })
-
 })
 
 // Locks in two fixes that combined to break the layout's `<RouterLink
@@ -174,12 +108,9 @@ test.describe('Playground — RouterLink reactive `to` + active class', () => {
   })
 })
 
-// Locks in CodeDemo's CodeEditor mount post-fix. The fundamentals
-// `/code` route is `test.fixme()`d in the multi-route SWEEP above
-// because direct SSR navigation to `/code` was historically aborting
-// on cold CI runners (#383). This spec sidesteps that by visiting
-// a lightweight route first then client-side navigating to `/code` —
-// no SSR cold-start under load. Combined with the post-fix demo
+// Locks in CodeDemo's CodeEditor mount through client-side navigation,
+// complementing the independent direct-route boot checks above.
+// Combined with the post-fix demo
 // (using `<CodeEditor instance={editor}>` instead of a one-shot ref),
 // CodeMirror mounts deterministically and `.cm-editor` becomes visible.
 //
