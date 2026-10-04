@@ -63,6 +63,8 @@ Specs can assert broken behaviour (a `??` that swallowed an explicit `null`; an 
 
 ## Timeouts and CI-only failures
 
+- For browser debounce/quiet-period contracts, install Playwright's clock before navigation, pause after hydration, and advance the exact delay. Assert the pre-deadline state and timer restart on a later input. A generous wall-clock assertion still depends on hosted timer delivery; increasing it does not prove cancellation or the quiet period. Run reliability controls with `--retries=0`.
+
 Reference: `packages/fundamentals/sync/src/tests/ws-relay.test.ts`.
 
 - A stream-resume fixture must wait for the consumer to receive its first complete event before dropping the socket. A fixed disconnect timer races receipt and may never exercise `Last-Event-ID` resume under load. Register the stream's cleanup with the test context's `onTestFinished` so even a test timeout closes it.

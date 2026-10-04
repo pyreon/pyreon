@@ -29,7 +29,55 @@ describe('parsePlaywrightFlakes', () => {
       sourceAvailable: true,
       flakyCount: 0,
       retries: [],
+      flakyTitles: [],
     })
+  })
+
+  it('records dot-reporter summary titles without inventing a retry number', () => {
+    // Shape emitted by hosted core E2E on 2026-10-04. The dot reporter
+    // prints a flaky summary but does not print `(retry #N)` lines.
+    const title =
+      '[fundamentals] › e2e/fundamentals/new-demos.spec.ts:126:7 › Hooks demo › typing into debounced input'
+    const report = parsePlaywrightFlakes(
+      [
+        '  1) [fundamentals] › earlier assertion failure',
+        '    Error: expected "abc", received "(empty)"',
+        '  1 flaky',
+        `    ${title}`,
+        '  140 passed (1.5m)',
+        '  [fundamentals] › unrelated output after the summary',
+      ].join('\n'),
+      'core',
+    )
+    expect(report.flakyCount).toBe(1)
+    expect(report.retries).toEqual([])
+    expect(report.flakyTitles).toEqual([title])
+    expect(flakeSummary(report)).toContain(title)
+    expect(flakeSummary(report)).not.toContain('no retry title')
+  })
+
+  it('preserves names from mixed reporters and excludes incidental count text', () => {
+    const first = '[chromium] › a.spec.ts:4:1 › opens menu'
+    const second = '[chromium] › b.spec.ts:8:1 › saves'
+    const report = parsePlaywrightFlakes(
+      [
+        'the example text says 99 flaky problems',
+        `${first} (retry #2)`,
+        '  1 flaky',
+        first,
+        '  2 passed',
+        '  1 flaky',
+        second,
+        '  8 passed',
+      ].join('\n'),
+      'batch',
+    )
+    expect(report.flakyCount).toBe(2)
+    expect(report.flakyTitles).toEqual([first, second])
+    const summary = flakeSummary(report)
+    expect(summary).toContain(`${first} (retry #2)`)
+    expect(summary).toContain(second)
+    expect(summary.split(first)).toHaveLength(2)
   })
 })
 

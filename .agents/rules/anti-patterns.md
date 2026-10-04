@@ -443,6 +443,8 @@ This file is also the source of the MCP `get_anti_patterns` tool and the docs si
 
 ## Testing Mistakes
 
+- **A debounce assertion measures runner scheduling instead of the quiet period**: install the real browser's Playwright clock before navigation and pause after hydration. Advance to just before and at the deadline; type again to prove timer cancellation and restart. A wall-clock poll can fail under load and cannot catch an immediate update. Reference: `e2e/fundamentals/new-demos.spec.ts`.
+
 - **A build-time network fallback without a download deadline never runs on a stall**: bound the whole download operation with one abort signal, keep it active through response-body consumption, and clear its timer in `finally`. Per-file budgets multiply with the asset count; a `Promise.race` alone leaves requests alive. CI command deadlines must leave time for phase-log uploads before the job backstop, and `tee` must preserve producer failures. Test stalled headers and bodies through real HTTP and the real build. Reference: `zero/src/font.ts`, `tests/integration/font-download-deadline.test.ts`, `.github/workflows/docs.yml`.
 
 - **A mounted canvas is not proof its first frame has painted**: polling the canvas count and then reading pixels once races the first draw. Poll the complete verdict together: every expected canvas exists, has positive dimensions, and contains painted pixels. Keep one readiness budget for the count and pixel checks, and include the canvas label and observed dimensions in failures. A delayed real-paint control must pass; a canvas that remains blank must still fail. Reference: `e2e/app-showcase-charts.spec.ts`.
@@ -761,6 +763,8 @@ If any answer is "the GC will handle it" or "the user will dispose it manually",
   - Reference: `packages/tools/lathe/src/input/openapi.ts:normalizeUnions`, `src/core/walk.ts` (one exhaustive child walk).
 
 ## CI / Build Gate Mistakes
+
+- **A green retry report hides which spec flaked**: Playwright's dot reporter lists names after its `N flaky` summary without `(retry #N)` markers. Parse anchored count lines and their bounded title block, retain names without inventing retry indices, and merge them with explicit retry titles. Inspect artifacts even when jobs pass. Reference: `scripts/ci-flake-report.ts`, `ci-flake-report.test.ts`.
 
 - **Archiving a live compiler cache after cancellation silently loses completed work**: native workers can outlive the cancelled test step and keep renaming verdicts. GNU tar then reports `file changed as we read it`; `actions/cache/save` warns and stays green without uploading anything. Snapshot complete atomic verdict/probe JSON records to a separate directory before saving, and hydrate the live directory on restore. Exclude temporary files, binaries and symlinks; keep the archived path identical in every lane. Verify an actual saved key/cache entry, not the step conclusion. Reference: `scripts/snapshot-native-verdict-cache.ts`; regression: `packages/internals/test-utils/src/tests/snapshot-native-verdict-cache.test.ts` archives and restores a stable snapshot while a real writer continues.
 
