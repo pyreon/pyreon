@@ -48,6 +48,7 @@ On web, `@pyreon/primitives` runs the real DOM implementation. On iOS/Android PM
 ## Native runtime code
 
 - `@pyreon/native-runtime-swift` / `-kotlin` hold only the shared core (reactivity, HTTP, JSON, tokens, the chart engine/canvas). `@pyreon/native-router-swift` / `-kotlin` hold the router (`PyreonRouter`, guards, nested routes, per-route loaders).
+- Pure-state hook metadata (`useCounter` / `useToggle`) is component-scoped. Kind, bounds and reset seed live in one declaration map built by `pureStateBindings(c.decls)`, cleared at component exit; unrelated components may reuse a local binding name and may appear in either order. Never collect component-local metadata into a file-wide name map. `native-pure-state-scope.test.ts` compares standalone and combined output and compiles mixed-hook collisions through both toolchains.
 - Each cross-platform package ships its own native code beside `src/`, under `native/{swift,kotlin}/`, declared by the `pyreon.native` field in its `package.json` (for example `packages/fundamentals/storage/native/`, `packages/fundamentals/hooks/native/`). `pyreon-native wire` aggregates them into an app build.
 - `scripts/check-native-cosource.ts` typechecks and smoke-runs the co-located sources; every Kotlin file must be declared or listed in `kotlinSdkOnly`.
 

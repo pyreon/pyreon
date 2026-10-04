@@ -32,6 +32,11 @@ Also exported: `isSwiftcAvailable()`, `isSwiftUIAvailable()`, `isKotlincAvailabl
 
 The subset of TypeScript/JSX this compiler lowers — components, `signal`/`computed`/`effect`, `<For>`/`<Show>`, hooks, `@pyreon/store`/`form`/`query`/`table`/`flow`/…, HTTP + fetch, WebView bridging, and what it explicitly refuses — is documented in full at [PMTC Supported TypeScript](https://pyreon.dev/docs/pmtc-supported-typescript), not duplicated here. [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) covers the architecture and the primitive vocabulary end to end.
 
+`useCounter` and `useToggle` lower to component-local state. Components may
+reuse the same local hook name: each keeps its own hook kind, bounds and reset
+value, regardless of declaration order or earlier compiler calls. The compiler
+releases this metadata after each component.
+
 ## Build / test locally
 
 Pure TypeScript — `bun run test` runs the compiler's own suite (parse/emit fixtures, native-equivalence checks, the differential fuzzer). The `validate.ts` tests additionally spawn `swiftc`/`kotlinc` when present and skip gracefully otherwise (`PYREON_REQUIRE_NATIVE_VALIDATE=1` turns an absent toolchain into a hard failure instead, for CI environments where it's expected to exist).

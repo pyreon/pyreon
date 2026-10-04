@@ -1,3 +1,5 @@
+import type { DeclIR } from './types'
+
 /**
  * The member surface of a `useToggle` / `useCounter` binding, rewritten at
  * each use site. Shared so the two targets cannot answer differently — the
@@ -8,6 +10,17 @@ export interface PureStateMembers {
   field: string
   hook: 'useToggle' | 'useCounter'
   bounds?: { min?: number; max?: number }
+}
+
+/** Resolve hook metadata within one component's lexical scope. */
+export function pureStateBindings(
+  decls: readonly DeclIR[],
+): Map<string, Extract<DeclIR, { kind: 'pure-state' }>> {
+  const bindings = new Map<string, Extract<DeclIR, { kind: 'pure-state' }>>()
+  for (const decl of decls) {
+    if (decl.kind === 'pure-state') bindings.set(decl.name, decl)
+  }
+  return bindings
 }
 
 /**
