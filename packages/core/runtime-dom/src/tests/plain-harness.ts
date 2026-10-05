@@ -14,7 +14,7 @@ import * as CoreNs from '@pyreon/core'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import * as DomNs from '../index'
 import * as ReactivityNs from '@pyreon/reactivity'
-import { _bind, computed, createStore, effect, signal } from '@pyreon/reactivity'
+import { _bind, computed, createStore, effect, signal, renderEffect } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt, _textSlot } from '../template'
 import {
   _applyProps,
@@ -39,6 +39,7 @@ export const RUNTIME_DEPS = {
   ...underscoreHelpers(DomNs as Record<string, unknown>),
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _textSlot,

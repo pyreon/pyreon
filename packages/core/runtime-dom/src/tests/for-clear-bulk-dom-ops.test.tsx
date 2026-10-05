@@ -44,7 +44,7 @@
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, For, h, _rp, _rpd, cx } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mountChild, _bindProp} from '../index'
@@ -74,6 +74,7 @@ afterEach(() => {
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

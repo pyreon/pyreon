@@ -24,7 +24,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, renderEffect, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -53,7 +53,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, _bindText, _bindDirect, _applyProps, _setStyle, _setAttr, _setClass,
+  _tpl, _bind, renderEffect, _bindText, _bindDirect, _applyProps, _setStyle, _setAttr, _setClass,
   _mountSlot, _textSlot, _setChild, _setChildAt, _mountChild, _setHtml,
   bindPolymorphicText, h, Fragment, For, signal,
 }
