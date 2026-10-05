@@ -911,6 +911,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   }
 
   const result: ParseResult = {
+    imports: (ast.program.body as AnyNode[])
+      .filter((node) => node.type === 'ImportDeclaration')
+      .map((node) => node.source.value as string),
     components,
     enums,
     structs,

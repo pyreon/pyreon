@@ -175,3 +175,37 @@ See [`@pyreon/native-cli`](https://www.npmjs.com/package/@pyreon/native-cli)'s o
 - [PMTC Library Status & Authoring](/docs/multiplatform-libraries) — which `@pyreon/*` packages cross to native, and how a package declares that it does.
 - [PMTC Per-Target Setup](/docs/pmtc-per-target-setup) — the Xcode and Gradle side in full.
 - [Create Multi-Platform](/docs/create-multiplatform) — the scaffolder that wires all of the above.
+
+## Compiler extensions
+
+PMTC exposes experimental, versioned compiler instances. The frontend parses
+shared source once; ordered `transformIR` passes lower source semantics, then
+`prepareIR` passes supply runtime metadata before backend dispatch. Swift and
+Kotlin are built in. Custom backends register distinct target names; unknown or
+duplicate targets fail explicitly.
+
+```ts
+import { createCompiler, type CompilerPlugin } from '@pyreon/native-compiler'
+
+const diagnostics = {
+  name: 'release-policy', apiVersion: 1,
+  transformIR(module, context) {
+    if (module.components.length === 0) context.warn('No native components found')
+  },
+} satisfies CompilerPlugin<never>
+
+const compiler = createCompiler({ plugins: [diagnostics] })
+const { code, warnings } = compiler.transform(source, {
+  target: 'swift', filename: 'App.tsx',
+})
+```
+
+For application builds, default-export a plugin from a local ESM module and use
+`pyreon-native build --target=all --source=./src --out=./generated --plugin=./native.mjs`.
+Pass the same repeatable `--plugin` flags to `check`, `check --watch`, and
+`check --lsp` so generated code and editor diagnostics share one pipeline.
+The published Node binary loads JavaScript ESM modules; custom backend targets
+are available through the library API. Hooks are synchronous and operate on
+isolated typed IR. Match API version 1 and validate emitted code with the real
+Swift/Kotlin toolchains. See the
+[complete plugin contract](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/README.md#compiler-plugins-experimental-api-v1).

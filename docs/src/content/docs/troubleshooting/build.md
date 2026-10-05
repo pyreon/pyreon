@@ -24,7 +24,7 @@ If the web host and a code generator both have to make a decision, implement it 
 
 ### A user type named like a generated type shadows it silently.
 
-PMTC merges the generated chart engine's struct/enum declarations into every file importing `@pyreon/charts/plot` and constructs them by bare name (`Slice(value:label:)`). A user `interface Slice` shadows the engine's, giving `invalid redeclaration` or type mismatches with no warning. The merge point detects the collision: `packages/native/compiler/scripts/gen-chart-engine.ts` generates `CHART_ENGINE_DECLARED_NAMES` from the same parse as the structs, and `index.ts:chartEngineShadowWarnings` diffs it against user declarations. Only types are listed. Engine functions can overload, and engine constants are `private`, so warning on those would flag working code. Lock: `native/compiler/src/tests/chart-engine-shadow.test.ts` (real-toolchain failure plus the renamed twin passing; a totality spec fails if a struct is missing from the list).
+PMTC merges the generated chart engine's struct/enum declarations into every file importing `@pyreon/charts` or its engine/SVG entry points and constructs them by bare name (`Slice(value:label:)`). A user `interface Slice` shadows the engine's, giving `invalid redeclaration` or type mismatches with no warning. The merge point detects the collision: `packages/native/compiler/scripts/gen-chart-engine.ts` generates `CHART_ENGINE_DECLARED_NAMES` from the same parse as the structs, and `plugins/charts.ts:prepareIR` diffs it against user declarations. Only types are listed. Engine functions can overload, and engine constants are `private`, so warning on those would flag working code. Lock: `native/compiler/src/tests/chart-engine-shadow.test.ts` (real-toolchain failure plus the renamed twin passing; a totality spec fails if a struct is missing from the list).
 
 ---
 
@@ -532,5 +532,17 @@ Vite replaces it only in client builds, and `ssr.noExternal` bundles `@pyreon/*`
   - Test by IMPORTING the generated module over real specs; a string assertion passes on the throwing emit (`tests/corpus.test.ts`).
   - Put nullability and constraints on the type, not the field, or a component model, array item or parameter silently loses them.
   - Reference: `packages/tools/lathe/src/input/openapi.ts:normalizeUnions`, `src/core/walk.ts` (one exhaustive child walk).
+
+---
+
+### Compiler import detection by raw source regex
+
+Comments and strings look like imports; side-effect, escaped, and comment-separated imports are missed. Use parsed import declarations. PMTC records `CompilerModule.imports`; chart preparation uses that list. Test both false positives and valid import spellings (`compiler-driver-regressions.test.ts`).
+
+---
+
+### Process-global compiler plugin registration
+
+Compilations and projects contaminate each other, and registrations grow with watch invocations. Snapshot versioned registrations per `createCompiler()` instance, isolate custom-pass IR, and reject duplicate targets. Source passes precede runtime preparation; use the same instance for build/check/editor diagnostics (`compiler-plugins.test.ts` in native compiler and CLI).
 
 ---

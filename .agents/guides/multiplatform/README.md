@@ -70,3 +70,22 @@ Compile-time checks cannot catch these:
 4. A SwiftUI presentation modifier (`.sheet`) on `EmptyView()` never presents. `<Modal>` anchors to `Color.clear.frame(width: 0, height: 0)`.
 5. A Compose `performClick` does not scroll. On a `<Scroll>` page call `performScrollTo()` before interacting with a node that may be past the fold.
 6. Hardware-accelerated `WebView`s on the SwiftShader emulator (CI's `-gpu swiftshader_indirect`) intermittently leave the WHOLE window unpainted. Every Compose node still reports `displayed=true`, but captures of the root and UiAutomation screenshots are pure white. Pixel waits then fail on whichever chart comes first ("gal-datazoom showed no red bar", "gal-map did not paint"), and the failure reads like a bug in that one chart. Diagnose from the ROOT capture: if the whole window is white, the chart host is not the cause. A longer wait does not help. Instrumented tests on a screen with WebViews set `PyreonWebViewRendering.softwareLayer = true` in `@Before`. Measured on API 33 with fresh boots: 5 of 10 runs failed on hardware WebViews, 0 of 10 with the flag. `-gpu swangle_indirect` did not fix it.
+
+## Compiler extension boundary
+
+`createCompiler({ plugins })` owns a fixed, versioned registration set. Extend
+shared `CompilerModule` IR with synchronous `transformIR`/`prepareIR` callbacks,
+or register a distinct backend target. Source transformations run before all
+runtime preparation; synthesized module identity excludes external declarations.
+Charts use a built-in preparation plugin and parsed import declarations.
+
+Keep plugin registration instance-owned; do not add process-global registries,
+source regex import detection, or emitter-specific positional arguments to the
+driver. Custom callbacks receive isolated IR. Read filename, target and fonts from the
+invocation snapshot throughout the pipeline; callbacks can mutate caller-owned
+options through closures and must not change synthesized type namespaces. Legacy emitter state remains
+scoped and is not generally reentrant; hooks execute outside emission. Prove
+extensions with real Swift/Kotlin typechecking and cross-call isolation tests.
+Native CLI build/check/watch/LSP accept the same explicit local ESM `--plugin`
+list. Protocol and shared IR are experimental API v1; incompatible changes
+require a version bump. See `packages/native/compiler/README.md`.

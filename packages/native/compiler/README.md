@@ -15,6 +15,75 @@ const { code: kotlinSource } = transform(pyreonSource, { target: 'kotlin', filen
 
 `transform(source, options)` returns `{ code: string, warnings: string[] }`. `options.target` is `'swift' | 'kotlin'`; `options.filename` (optional) improves parse-error diagnostics; `options.fonts` (optional, `Record<canonicalName, iOSPostScriptName>`) resolves `<Text font="Brand">` to `.font(.custom(…))` on iOS.
 
+## Compiler plugins (experimental API v1)
+
+The shared frontend parses once. A compiler instance then runs every plugin's
+`transformIR`, computes the module namespace, runs `prepareIR` (the built-in
+chart runtime first), and dispatches the registered backend. Each phase follows
+plugin registration order. Swift/Kotlin remain built in; `transform()` uses a
+fixed default instance with no user plugins.
+
+```ts
+import { createCompiler, type CompilerPlugin } from '@pyreon/native-compiler'
+
+export const releaseBadge = {
+  name: 'release-badge',
+  apiVersion: 1,
+  transformIR(module) {
+    for (const component of module.components) {
+      const expr = component.returnExpr
+      if (expr.kind === 'jsx-element' && expr.tag === 'ReleaseBadge') {
+        component.returnExpr = {
+          kind: 'jsx-element', tag: 'Text', attrs: [],
+          children: [{ kind: 'text', value: 'Ready for release' }],
+        }
+      }
+    }
+  },
+} satisfies CompilerPlugin<never>
+
+const compiler = createCompiler({ plugins: [releaseBadge] })
+const result = compiler.transform(
+  'export function Badge() { return <ReleaseBadge /> }',
+  { target: 'swift', filename: 'Badge.tsx' },
+)
+```
+
+`CompilerModule` is the typed shared IR. Extensions operate within the existing
+frontend subset; new TypeScript syntax still requires frontend support. Passes
+may mutate their input or return
+a complete replacement. `context.source` and frozen `context.options` describe
+the invocation; `context.warn(message)` adds an attributed diagnostic. The
+filename, target and font mapping come from one invocation snapshot, even if a
+callback changes caller-owned options through a closure. Passes
+and backend `emit(module, context)` are synchronous. Load asynchronous resources
+before `createCompiler()`. Returning a promise is an error.
+
+Use `transformIR` for source semantics and `prepareIR` for external/runtime
+metadata. Parsed `module.imports` contains actual import declarations, including
+side-effect and type imports. Runtime declarations added during preparation do
+not change synthesized module names. To add a target, put
+`{ target: 'your-target', emit(module, context) { return { code, warnings } } }`
+in a plugin's `backends`. `swiftBackend` and `kotlinBackend` are exported for
+explicit delegation. Distinct target names are required: overriding built-in
+backends or registering duplicate plugin names/targets is rejected. Unknown
+targets fail before parsing. `compiler.targets` lists the frozen registrations.
+
+Registrations and callback references are snapshotted when an instance is
+created. Custom callbacks receive isolated IR; later passes and emitters cannot
+mutate plugin-owned cached modules or shared chart declarations. This copying
+has a cost only when custom callbacks run. Prefer stateless passes; an instance
+does not reset mutable state captured inside a plugin's own closure. No plugin
+registry grows across calls. Existing emitter internals still contain scoped
+state: callbacks run outside emission, and this API does not promise concurrent
+or recursive emission through the legacy backends.
+
+The plugin protocol and IR are experimental. Match
+`NATIVE_COMPILER_PLUGIN_API_VERSION` (currently `1`); incompatible protocol/IR
+changes require an API version bump. Test extensions by compiling both target
+outputs with the real validators below. The CLI's `--plugin` accepts local ESM
+modules with a default plugin export; CLI target selection remains iOS/Android.
+
 ## Compile-validation
 
 Snapshot tests prove "the emit equals what it equalled last time," not "the emit is valid Swift/Kotlin." [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the real language toolchains, at increasing cost/fidelity:

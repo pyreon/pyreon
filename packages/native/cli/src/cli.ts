@@ -19,10 +19,13 @@ import { scanFontDir } from './fonts'
 import { renderAndroidSrcDirsFile, stageIosWiring, wireApp } from './wire'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import type { TargetLanguage } from '@pyreon/native-compiler'
+import { createCompiler, type CompilerPlugin, type NativeCompiler, type TargetLanguage } from '@pyreon/native-compiler'
+import { pathToFileURL } from 'node:url'
 
 interface ParsedArgs {
   command: string
+  plugins?: string[]
+  compiler?: Pick<NativeCompiler, 'transform'> | undefined
   target?: TargetLanguage
   /** `assets` keeps the raw target token — it ALSO accepts `web`. */
   rawTarget?: string
@@ -83,7 +86,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else {
       continue
     }
-    if (key === 'target') {
+    if (key === 'plugin') (out.plugins ??= []).push(value)
+    else if (key === 'target') {
       out.rawTarget = value
       if (value === 'ios' || value === 'swift') out.target = 'swift'
       else if (value === 'android' || value === 'kotlin') out.target = 'kotlin'
@@ -154,6 +158,7 @@ Targets:
              every target — the "write once, ship everywhere" build)
 
 Options:
+  --plugin=<file.mjs>       Repeatable compiler plugin (build/check, including watch/LSP).
   --target=ios|android|all  Required.
   --source=<dir>            Directory of .tsx files. Required.
   --out=<dir>               Output directory for emitted .swift / .kt. Required.
@@ -163,16 +168,49 @@ Options:
                          is consumed by an Android host that imports it by FQN.
                          Ignored for the Swift target.
 
-This is an internal experimental CLI for the Pyreon Multi-Target
+This is an experimental CLI for the Pyreon Multi-Target
 Compiler (PMTC). See packages/native/cli/README.md for status.`)
 }
 
-export function main(argv: string[]): number {
+/** Loads explicit local ESM plugins once before build/check/watch/LSP.
+ * @example
+ * const exitCode = await mainWithPlugins([
+ *   'check', '--source=./src', '--plugin=./native.mjs',
+ * ])
+ */
+export async function mainWithPlugins(argv: string[]): Promise<number> {
+  if (argv.includes('--help') || argv.includes('-h')) return main(argv)
+  const parsed = parseArgs(argv)
+  if (!parsed.plugins?.length) return main(argv)
+  if (!['build', 'check'].includes(parsed.command)) {
+    console.error('error: --plugin is supported by build and check only')
+    return 1
+  }
+  try {
+    const plugins: CompilerPlugin[] = []
+    for (const path of parsed.plugins) {
+      if (!path || path.startsWith('--')) throw new Error('[Pyreon] --plugin requires a local module path')
+      const module = await import(pathToFileURL(resolve(path)).href)
+      plugins.push(module.default)
+    }
+    return main(argv, createCompiler({ plugins }))
+  } catch (error) {
+    console.error(`[pyreon-native] plugin setup failed: ${error instanceof Error ? error.message : String(error)}`)
+    return 2
+  }
+}
+
+export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'>): number {
   if (argv.includes('--help') || argv.includes('-h')) {
     printUsage('out')
     return 0
   }
   const parsed = parseArgs(argv)
+  parsed.compiler = compiler
+  if (parsed.plugins?.length && !compiler) {
+    console.error('error: use mainWithPlugins() to load --plugin modules')
+    return 1
+  }
   if (parsed.command === 'assets') {
     return runAssets(parsed)
   }
@@ -255,6 +293,7 @@ function executeBuild(parsed: ParsedArgs, target: TargetLanguage, outDir: string
     }
     const result = build({
       target,
+      compiler: parsed.compiler,
       source: parsed.source!,
       out: outDir,
       ...(parsed.kotlinPackage ? { kotlinPackage: parsed.kotlinPackage } : {}),
@@ -491,12 +530,16 @@ function reportCheck(
 }
 
 function runCheck(parsed: ParsedArgs): number {
+  if (parsed.rawTarget !== undefined && !parsed.target && parsed.rawTarget !== 'all') {
+    console.error(`[Pyreon] Unknown check target "${parsed.rawTarget}". Choose ios, android, swift, kotlin, or all.`)
+    return 1
+  }
   // `--lsp` runs a stdio LSP server (editor diagnostics). It reads
   // documents over JSON-RPC, not from `--source`, so it's handled before
   // the source check. The server stays alive on stdin (see the bin entry,
   // which skips process.exit for long-running modes).
   if (parsed.lsp) {
-    startLspServer()
+    startLspServer(parsed.compiler)
     return 0
   }
   if (!parsed.source) {
@@ -509,6 +552,7 @@ function runCheck(parsed: ParsedArgs): number {
   const targets: TargetLanguage[] = parsed.target ? [parsed.target] : ['swift', 'kotlin']
   const checkOpts = {
     source: parsed.source,
+    compiler: parsed.compiler,
     targets,
     ...(parsed.typecheck ? { typecheck: true } : {}),
   }

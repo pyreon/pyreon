@@ -2045,6 +2045,8 @@ export interface ZodSchemaDefnIR {
 }
 
 export interface ParseResult {
+  /** Decoded static import specifiers, collected from the parser's AST. */
+  imports: string[]
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
   enums: EnumIR[]

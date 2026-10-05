@@ -19,10 +19,12 @@
 
 import { readdirSync, readFileSync, mkdirSync, writeFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
-import type { TargetLanguage } from '@pyreon/native-compiler'
+import type { NativeCompiler, TargetLanguage } from '@pyreon/native-compiler'
 import { transform } from '@pyreon/native-compiler'
 
 export interface BuildOptions {
+  /** Configured compiler shared with check/editor diagnostics. */
+  compiler?: Pick<NativeCompiler, 'transform'> | undefined
   /** Directory containing `.tsx` sources to compile. */
   source: string
   /** Directory where emitted native code is written. */
@@ -593,7 +595,7 @@ export function build(options: BuildOptions): BuildResult {
       skippedWebEntries.push(input)
       continue
     }
-    const result = transform(code, {
+    const result = (options.compiler ?? { transform }).transform(code, {
       target: options.target,
       // The real path, so a parse error names the file the user has open
       // rather than the compiler's in-memory default.
