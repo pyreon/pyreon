@@ -108,14 +108,13 @@ describe('parse.ts — arktypeSchema recognizer', () => {
     expect(schemaNames(r.code)).toEqual([])
   })
 
-  it.fails(
-    'KNOWN BUG: a non-identifier field name emits invalid Swift — sanitize the key in the arktype/namespaced walkers (parse.ts:4146 / :4570) or reject it with a warning',
-    () => {
-      const r = swift(AK + `const a = arktypeSchema(type({ 'first-name': 'string' }))`)
-      // Today: `var first-name: String = ""` — not a legal Swift identifier.
-      expect(r.code).not.toMatch(/var [A-Za-z_]\w*-/)
-    },
-  )
+  it('a non-identifier field name is camelCased in the declaration and keeps its JSON key via CodingKeys', () => {
+    const r = swift(AK + `const a = arktypeSchema(type({ 'first-name': 'string' }))`)
+    // Was `var first-name: String` (invalid Swift). Fixed with the reserved-identifier
+    // pass: the declaration is `firstName`, the wire key stays "first-name".
+    expect(r.code).not.toMatch(/var [A-Za-z_]\w*-/)
+    expect(r.code).toContain('case firstName = "first-name"')
+  })
 })
 
 describe('parse.ts — namespaced (zod/valibot) walker: declaration shape', () => {
