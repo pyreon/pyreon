@@ -1,5 +1,9 @@
 # @pyreon/compiler-linux-arm64-gnu
 
+## 0.52.0
+
+No changes in this release.
+
 ## 0.51.0
 
 ## 0.50.0

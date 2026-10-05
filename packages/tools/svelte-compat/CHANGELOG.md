@@ -1,5 +1,150 @@
 # @pyreon/svelte-compat
 
+## 0.52.0
+
+### Patch Changes
+
+- [#3725](https://github.com/pyreon/pyreon/pull/3725) [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compat-layer `lazy()` / `defineAsyncComponent()` now take part in the SSR lazy contract: `renderToString` and `renderToStream` wait for a still-loading chunk (via `__load`) instead of rendering nothing or the `<Suspense>` fallback, and hydration adopts the server content.
+
+  - The compat `jsx()` runtimes wrapped a lazy component, hiding `__loading` / `__load` behind the wrapper — `<Suspense>` never showed its fallback on the client and the server could not see a pending chunk. Compat lazies are now marked `nativeCompat`.
+  - `@pyreon/react-compat` and `@pyreon/preact-compat` previously re-exported `@pyreon/core`'s `lazy`, which mounts the loaded component raw: a lazily-loaded component using hooks threw "Hook called outside of a component render". Their `lazy` now mounts it through the compat wrapper, like `jsx()` does.
+  - `@pyreon/solid-compat`'s `lazy` and `@pyreon/vue-compat`'s `defineAsyncComponent` expose `__load` (settles, never rejects) and keep their load-on-first-use semantics.
+  - `@pyreon/vue-compat`'s `<Suspense>` renders core's `Suspense` as a child vnode instead of calling it, so the server recognises the boundary.
+  - `@pyreon/core`'s `Suspense` is marked `nativeCompat`, so react/preact/vue-compat's `jsx()` no longer wraps it (solid/svelte-compat already routed it natively).
+  - solid/svelte-compat's component wrapper forwards `__load` alongside `__loading`, so a core `lazy()` reaching it is still waited for on the server.
+  - `@pyreon/compiler`: a diagnose-catalog entry for "Hook called outside of a component render" pointing at a core `lazy()` used in a compat app.
+
+- [#3174](https://github.com/pyreon/pyreon/pull/3174) [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party dependencies to their latest compatible releases,
+  extending [#3174](https://github.com/pyreon/pyreon/issues/3174)'s sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.agents/guides/benchmarks/README.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies [[`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -430,7 +575,6 @@
   emit) enforces the link going forward.
 
   ### Validation
-
   - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
     zero skip):
     - `@pyreon/zero` 953/954
@@ -509,13 +653,11 @@
   2/2 pass.
 
   ### Validation
-
   - `@pyreon/svelte-compat` 55/55 tests pass (+2 new)
   - Lint + typecheck clean
   - No public-API surface change
 
   ### Remaining LOWs from [#733](https://github.com/pyreon/pyreon/issues/733)
-
   - `@pyreon/vite-plugin` per-instance caches eviction on file delete —
     separate PR (next phase of the follow-up sweep).
 

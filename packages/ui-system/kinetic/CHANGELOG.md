@@ -1,5 +1,409 @@
 # @pyreon/kinetic
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3055](https://github.com/pyreon/pyreon/pull/3055) [`a2e00f6`](https://github.com/pyreon/pyreon/commit/a2e00f6800cb30a2885fad10912d9f2acfb5aea1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `show` now accepts the two shapes that used to crash it
+
+  A kinetic transition read visibility by calling `show()`, so anything that was
+  not a function died with `TypeError: show is not a function` — an error naming a
+  prop the author may never have written, from inside a component they did not
+  write either.
+
+  Two shapes hit it, and both are ones a consumer reaches for naturally:
+
+  - **Absent.** `<FadeIn>content</FadeIn>` — a preset used for a plain entrance,
+    which is what presets exist for. `show` was optional in the runtime but
+    required in the types, and the runtime cast the `undefined` through anyway.
+  - **A plain boolean.** `show={isOpen}` where `isOpen` is a signal: the compiler
+    auto-calls a known signal in attribute position, so the accessor the author
+    typed arrives already resolved.
+
+  Both now normalize at every entry point (`kinetic()`, `<Transition>`,
+  `<Collapse>`, `<Stagger>`, `useTransitionState`). Absent means unconditionally
+  shown — an element with no `show` is not conditional, and whether it _animates_
+  on mount stays `appear`'s job. This is the same rule `<Show when>` and
+  `<Match when>` already follow: an API that takes an accessor has to take the
+  value too, because the compiler can hand it either.
+
+  Found by running the shared multi-target source in a real browser. `<FadeIn>`
+  with no `show` is the shape the preset docs show, and nothing in the suite had
+  ever mounted it.
+
+### Patch Changes
+
+- [#3174](https://github.com/pyreon/pyreon/pull/3174) [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party dependencies to their latest compatible releases,
+  extending [#3174](https://github.com/pyreon/pyreon/issues/3174)'s sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.agents/guides/benchmarks/README.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3678](https://github.com/pyreon/pyreon/pull/3678) [`a6e97cb`](https://github.com/pyreon/pyreon/commit/a6e97cb4c0ee97dbc405900d4d9655f8fd81937a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct the API documentation (manifests, llms.txt, MCP api-reference, docs reference pages) for rocketstyle, styler, attrs, elements, kinetic and coolgrid so it matches the shipped runtime. Notable corrections: styler's `ThemeProvider` takes an object only (no parent-merging function form) and reads it once; rocketstyle's `Provider` snapshots its parent context and writes only the ui-core context; `.config({ inversed })` inverts only the component itself; `.compose()` wraps user HOCs last-defined-outermost; `keyframes` and static `createGlobalStyle` inject at call time; `useCSS`'s `boost` argument has no effect; `List` renders a fragment unless `rootElement` is set; kinetic's `show` accepts an accessor, a value, or nothing. No runtime changes.
+
+- [#3402](https://github.com/pyreon/pyreon/pull/3402) [`47dfb62`](https://github.com/pyreon/pyreon/commit/47dfb62f7ea49b523dfff216710e0ce6e1f5ec73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Read every kinetic prop from its holder at the point of USE, not once at setup
+
+  `show={isOpen}` rendering permanently invisible was one member of a class, not
+  a one-off. The compiler emits ANY signal-bearing prop in member position as an
+  `_rp` thunk that `makeReactiveProps` installs as a getter on `props`; every
+  kinetic surface then destructured those getters, or copied them into a
+  `callbacks` / `transitionConfig` object, at component setup — one read each,
+  keeping the first value forever. Measured on the previous tree: a swapped
+  `onEnter` never fired while the handler captured at mount did, `enter={sig}`
+  applied the class the signal had already left behind, and `kinetic('div')`'s
+  `kineticProps` destructure froze all ten at once — in a function whose own
+  comment explains that the `splitProps` two lines above exists to keep those
+  getters alive.
+
+  Props that are consumed during an animation cycle — the four callbacks, the
+  class/style/transition config, `timeout`, Collapse's `transition`, `unmount`
+  (which `<Show>` consults on every hide) — are now read per use. Props that are
+  genuinely construction-time keep a plain read and say why at the site: `appear`
+  asks a first-mount question whose latch is spent once the ref wires up, and a
+  stagger `interval` is baked into an already-resolved child array's static style
+  objects.
+
+  Two things this turns up that are worth stating separately. Live must not mean
+  tracked: `watch` runs its callback inside the effect's tracking scope, so a
+  tracked config read subscribes the state machine to its own styling and an
+  easing change mid-flight restarts the animation instead of restyling it — the
+  reads are untracked, and `show` stays the one deliberately tracked prop.
+  And a JSX spread is a plain object spread wherever the Pyreon compiler does not
+  run, which includes the framework's own packages, so `<Transition {...rest}>`
+  in `<Stagger>` / `<TransitionGroup>` was value-copying the descriptors
+  `splitProps` had just preserved; both now use `mergeProps`.
+
+  `useAnimationEnd`'s `timeout` additionally accepts an accessor (`() => number`)
+  — additive, since the deadline is re-armed per cycle and a caller whose own
+  `timeout` prop is getter-backed has to be able to forward the read.
+
+- [#3011](https://github.com/pyreon/pyreon/pull/3011) [`b7b499e`](https://github.com/pyreon/pyreon/commit/b7b499e61d65cdaedeea977a2a1d5daf278353ae) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A `kinetic().preset()` chain now animates on iOS and Android
+
+  The preset is what makes this possible: it NAMES an animation both targets
+  already know, so the box lowers through the same `<Transition>` path the
+  primitive uses — presets, durations and both emitters, all already verified.
+  None of the animation is re-implemented.
+
+  What it needs that a primitive does not is a TRIGGER. Rewriting to
+  `<Transition show={true}>` is the obvious move and is wrong: it compiles and
+  never animates, because `.animation(_:value:)` watches a constant and
+  `AnimatedVisibility(visible = true)` starts visible. So the enter is driven by a
+  synthesized flag that flips on mount, reusing the on-mount harness — which also
+  carries the SwiftUI stable-identity host an `.onAppear` needs.
+
+  ```swift
+  @State private var __kineticIn: Bool = false
+  … .transition(.opacity).animation(.default, value: __kineticIn)
+    .onAppear { __kineticIn = true }
+  ```
+
+  ```kotlin
+  var __kineticIn by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) { __kineticIn = true }
+  AnimatedVisibility(visible = __kineticIn, enter = fadeIn(…))
+  ```
+
+  A chain with NO `.preset()` has no animation vocabulary to carry across, so it
+  still degrades to a plain container and warns by name. `<Transition name>` from
+  `@pyreon/primitives` remains the portable spelling.
+
+  Native app-runtime coverage: 35/37 → 36/37.
+
+- [#2803](https://github.com/pyreon/pyreon/pull/2803) [`67c4a95`](https://github.com/pyreon/pyreon/commit/67c4a950d2a4118723d65d3e317975a4f8dc9410) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(kinetic): `reverseLeave` now actually reverses the leave order (was a no-op in the common mount-visible case)
+
+  `<Stagger reverseLeave>` / `kinetic(...).stagger({ reverseLeave: true })` gated the reversal on `!show()` **evaluated once at mount**. Stagger components run once, so a stagger mounted visible (`show` true — the dominant usage: items appear, then later leave) took the `else` branch and produced a **forward** leave order identical to `reverseLeave: false` — the feature silently did nothing. In the only case the branch fired (`show` false at mount) it reversed the _enter_ order instead, backwards from the prop name.
+
+  The per-item delay is now phase-aware: a forward `--kinetic-delay` (enter) and a mirrored `--kinetic-leave-delay` (leave, when `reverseLeave`), with `setTransition(el, value, 'leave')` applying the reversed delay on the leave phase. Enter stays forward; the last-entered item leaves first. Non-`reverseLeave` staggers set both vars equal, so their behaviour is byte-identical. `onAfterLeave` (already attached to the item that leaves last) now fires correctly because that item genuinely has the largest leave delay.
+
+  The prior mock-vnode tests encoded the bug (one asserted the common case does nothing); they're rewritten to the corrected invariant, plus a `setTransition` phase-picking test.
+
+  Bisect-verified; full `@pyreon/kinetic` suite (274) green.
+
+- [#3593](https://github.com/pyreon/pyreon/pull/3593) [`890f785`](https://github.com/pyreon/pyreon/commit/890f785acfeaed76836d925a2ff61e5169b97789) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Withdraw the published speed comparison with Motion One. The benchmark behind it closed its timing window before kinetic's enter-to state was applied (so part of kinetic's work was never timed), its "enter" scenario revealed one element instead of N, and its plain-CSS baseline never started a transition. The harness is fixed; no replacement figure is published until it has been re-measured on a quiet machine.
+
+- [#2798](https://github.com/pyreon/pyreon/pull/2798) [`e56b865`](https://github.com/pyreon/pyreon/commit/e56b865f08946b7f848906bf2562911fa7f95066) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Derive the native compiler's web-only warning set from the package manifests
+
+  Importing a web-only `@pyreon/*` package into shared source is meant to warn at
+  parse time, naming the `<Web>` escape hatch. Four packages — `@pyreon/url-state`,
+  `@pyreon/head`, `@pyreon/hotkeys` and `@pyreon/feature` — declared
+  `multiplatform: { tier: 'web-only' }` but were absent from the compiler's
+  hand-written `WEB_ONLY_PACKAGES` literal, so importing one produced **no
+  diagnostic at all**: the call emitted verbatim and the native build failed with
+  `cannot find 'x' in scope`, pointing nowhere near the cause.
+
+  The set is now derived from the manifests (`tier === 'web-only'` and no
+  `nativeFrontend`) and regenerated by `check-multiplatform-tier`, which gates that
+  it stays in sync. The hand-written list had already been repaired twice by hand —
+  `@pyreon/sync` and `@pyreon/rich-text` were missing, `@pyreon/toast` went stale
+  the other way once its core lowered — each time with a comment recording the
+  incident rather than closing the class.
+
+  A cross-check test existed but ran in one direction only (every compiler entry
+  must declare web-only), and its comment waved the other direction through as
+  acceptable. That was the direction that shipped the bug; it now asserts equality.
+
+  Two supporting changes:
+
+  - `multiplatform` gains an optional `nativeFrontend` field for packages that
+    lower part of their surface. The three-value tier vocabulary could not express
+    partial crossing, which is what made `@pyreon/toast` go stale. `toast`, `a11y`,
+    `query` and `validation` now declare it.
+  - The blanket warning defers to `UNLOWERED_PYREON_MODULES`, the finer per-symbol
+    mechanism, so packages covered there (`validate`, `validation`, `http`, `rx`)
+    warn exactly once with their specific advice instead of twice.
+
+  `@pyreon/query` and `@pyreon/validation` also had factually stale rationales:
+  query's said native fetching is `useFetch/PyreonFetch` although `PyreonQuery`
+  shipped and `useQuery` is lowered, and validation's said per-validator lowering
+  was "not shipped" although the Gap-4 schema forms emit native validators.
+
+  ## Lower `@pyreon/validate`'s `s` DSL to native validators
+
+  A top-level `const X = s.object({ … })` declaration now emits a Swift `Codable`
+  struct and a Kotlin `data class`, each with `parse` / `safeParse` and real
+  constraint enforcement — from the same source, on both targets. Before this,
+  `@pyreon/validate` had no native story at all: a native app could not validate
+  data, and the schema emitted verbatim.
+
+  It reuses the existing Gap-4 schema pipeline (recognizer → IR → per-target
+  emit) rather than adding a second one. The only structural difference from
+  zod / valibot / arktype is that `s.object({ … })` arrives with no wrapper call —
+  it already IS a Standard Schema — so the shared walker's `schemaFn` became
+  nullable instead of being copied.
+
+  Scope, stated plainly: the DECLARATION form lowers. Inline uses
+  (`s.string().parse(x)`), the JIT, JSON-schema export and the v1/mini compat
+  surfaces stay web, and still warn.
+
+  The recognizer gates on the IMPORT, not the bare name: `zodSchema(...)` is a
+  distinctive wrapper but a lone `s` is not, and claiming it would silently
+  rewrite a user's own binding.
+
+  ## Native router: implement the `query` it has always advertised
+
+  `PyreonRouter`'s header has listed `query` (typed search params) since the C1
+  scaffold on BOTH platforms, and neither implemented it. Worse than missing: a
+  path carrying `?…` was handed to `matchPath` whole, so `/users/42?tab=a`
+  captured `id == "42?tab=a"` and a static route stopped matching altogether.
+  Every deep link with a query string — an OAuth callback, a shared link — hit
+  that, on iOS and Android alike.
+
+  Both routers now parse the query alongside `params`, in the same step, so the
+  two always describe one navigation. New surface, identical on each side:
+  `query`, `setQueryParam(key, value)` (replace semantics — changing a filter must
+  not add a back-stack entry per keystroke), plus `splitPathAndQuery` /
+  `parseQuery` / `serializeQuery`. `parseQuery` follows `URLSearchParams`: a bare
+  key is present-with-empty-value, a repeated key keeps the last. `serializeQuery`
+  sorts, so the rewritten URL is stable. The query survives an unmatched path — a
+  404 page usually needs the parameters it was called with.
+
+  ## `useUrlState` lowers to the native router's search parameters
+
+  `const q = useUrlState('q', 'all')` now binds one search parameter on iOS and
+  Android, from the same source: `q()` reads and `q.set(v)` writes, exactly as on
+  the web. Built on the router `query` support above.
+
+  The helper type is emitted INLINE rather than shipped as a co-located runtime,
+  because it needs the ACTIVE router — a standalone runtime would have to import
+  PyreonRouter and stop being self-contained. Same reasoning as `PyreonSchemaError`.
+
+  Scope: string-valued keys with literal arguments. A non-string default declines
+  WITH a reason rather than coercing silently, and a non-literal key declines
+  because it cannot be baked into the emit — the conservative rule `useFetch`
+  applies to its URL and `useStorage` to its key. History entries, `popstate`,
+  `batchUrlUpdates` and the pluggable serializers stay web.
+
+  ## `<Transition name>` resolves to a native transition instead of always fading
+
+  The native `<Transition>` emit ignored `name` and animated every show/hide as a
+  fade. An author who wrote a slide-up got a fade on device — and because an
+  animation still played, nothing looked broken enough to investigate.
+
+  `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already honours
+  on the web, and `@pyreon/kinetic` ships its presets under the same vocabulary,
+  so it is the one shape an author writes once. `fade` · `scale-in` · `slide-up` ·
+  `slide-down` · `slide-left` · `slide-right` now map to SwiftUI transitions and
+  Compose enter/exit pairs respectively. An unknown name still falls back to a
+  fade — a custom CSS animation has no native translation, and a fade beats
+  refusing to compile — and a `<Transition>` with NO name emits byte-identically
+  to before.
+
+  `kinetic()` itself stays web: the chainable class/style factory has no native
+  model. What crosses is the preset vocabulary.
+
+  ## An unlowered package's diagnostic names ITS alternative
+
+  `@pyreon/table` was told it "renders via the DOM / a browser-only library".
+  TanStack Table is HEADLESS — that claim is simply false — and the message
+  stopped short of naming the native answer this package's own manifest states.
+
+  It now says the real thing: the row model (`getRowModel` / `getVisibleCells` /
+  `flexRender`) is a WEB render surface with no native analogue, while sort and
+  filter state is ordinary logic to hold in signals and render with
+  `<For each={rows}>` + `@pyreon/primitives`.
+
+  The hook arc now reads the same per-package advice, so this improves every
+  package that has an entry (rx, validate, permissions, storage, http, table) —
+  not just the one that surfaced it.
+
+- [#3402](https://github.com/pyreon/pyreon/pull/3402) [`47dfb62`](https://github.com/pyreon/pyreon/commit/47dfb62f7ea49b523dfff216710e0ce6e1f5ec73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three silent-wrong-answer fixes, one per package.
+
+  **`@pyreon/validate` — `.strict()` short-circuited on a key COUNT, which is not a membership test.** Both strict emitters reduced "no unknown keys" to `Object.keys(x).length === N`, on the premise that the field checks had proven all N declared keys present — but a field check reads `x.name`, which walks the prototype chain. So `Object.create({ name, age })` (and any class instance whose fields are prototype getters) had `is()` return `false` while `parse().ok` was `true`, breaking the locked `is() ⇔ parse().ok` invariant; and `{ nmae: 'Ada', age: 36 }` — a typo'd key in place of a real one, keeping the own-key count at N — never reported `Unrecognized key "nmae"`, which is the case `.strict()` exists for. The short-circuit now proves membership in the same set the count came from (`|Object.keys(x)| === N` **and** every declared key is in `Object.keys(x)`, tested with `Object.prototype.propertyIsEnumerable.call`) before skipping the scan; anything else falls through to the interpreter's own per-key predicate. `Object.hasOwn` is deliberately NOT the test: it is true for an own non-enumerable property, which `Object.keys` does not return, and that leaves the same hole one shape over.
+
+  **`@pyreon/kinetic` — `show={signal}` rendered permanently invisible.** Every kinetic surface normalized `props.show` to an accessor at component setup. The compiler emits `show={isOpen}` as an `_rp` getter, so that single read fired the getter outside any tracking scope and froze the "accessor" on a snapshot: the element mounted hidden and never left — silently, since children stay mounted and nothing throws. On the EXPORTED surface the reproduction is `kinetic('div').preset(fade)` with `show={sig}`, or `useTransitionState` passed a getter-bearing options object. `show` is now read from its holder inside the accessor, per call, at all six call sites (`kinetic(tag)`, `useTransitionState`, and the internal `Transition` ×2, `Collapse`, `Stagger`), matching `<Show>`'s `callWhen(props.when)`. Sibling props read at setup off the same holders (`transition`, `timeout`, the callbacks) carry the same freeze and are NOT changed here — the reason `show` is singled out is recorded in `show-accessor.ts`.
+
+  **`@pyreon/styler` — the second streaming SSR request shipped class names with no CSS.** The per-request bag scoped the SSR buffer and its flush watermark, but the className dedup stayed per-instance and `insert()` returned on a cache hit before any buffer push. So a request rendering a class an earlier request had already inserted flushed an empty `<style>`. Buffer dedup is now scoped like the buffer, and every SSR emit path — the scoped insert, both cache-hit returns, `insertKeyframes`, `insertGlobal`, and `injectRules` (collapsed rocketstyle bundles, which had the identical hole through its own per-instance `injectedBundles` dedup) — pushes through one predicate. `getStyleTag()`, the seam `renderPage` collects string-mode SSR through, was affected the same way and is covered.
+
+- [#2944](https://github.com/pyreon/pyreon/pull/2944) [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship `<Transition>` / `<TransitionGroup>` from `@pyreon/primitives` — the animation vocabulary now has an import path that resolves on every target
+
+  PMTC has lowered `<Transition>` and `<TransitionGroup>` to real platform
+  animation since M2.7/M2.8 — SwiftUI `.transition(…)` + `.animation(_:value:)`,
+  Compose `AnimatedVisibility(enter =, exit =)` — with preset mapping, asymmetric
+  enter/leave timing and device proof. But `@pyreon/primitives` exported neither
+  name, and the only runtime export lived in `@pyreon/runtime-dom`, which the
+  compiler correctly flags web-only. So the one import that worked on web warned
+  on native, and the import native accepted did not exist: a fully built
+  capability with no reachable door.
+
+  `@pyreon/primitives` now exports both, with a self-contained web
+  implementation built on `h()` + `renderEffect` alone (no `@pyreon/runtime-dom`
+  dependency — the package keeps its two peer deps, which is what lets it be the
+  multiplatform vocabulary).
+
+  The prop contract mirrors the native emitters exactly: `show`, `name`
+  (`fade` / `scale-in` / `slide-up|down|left|right`, camelCase and kebab-case
+  both accepted), `duration`, `easing`, and the asymmetric
+  `enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` overrides that
+  fall back to the symmetric value. Direction is the direction of travel, so a
+  slide-up rises into place from below — matching `.move(edge: .bottom)` and
+  `slideInVertically { it }`.
+
+  On web the hidden state is `display:none` on the wrapper rather than an unmount,
+  so an animation wrapper never gates its children out of SSR and a hidden
+  `<Transition>` contributes no flex `gap`. Only transition LONGHANDS are ever
+  assigned, so a consumer's own `transition-delay` survives.
+
+  The native emit is unchanged and asserted byte-identical to the bare-tag form.
+  The web-only warnings for `@pyreon/kinetic` and `@pyreon/runtime-dom` now name
+  `@pyreon/primitives` as the import that actually crosses, instead of naming a
+  tag whose only import was broken.
+
+- Updated dependencies [[`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`5b93f4c`](https://github.com/pyreon/pyreon/commit/5b93f4cb70a6e210325aca3c79678b62383bc773), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -616,7 +1020,6 @@
   **Bisect-verified at two layers**: 19 unit specs (10 FIRES + 9 CONTROL + real-world shapes), reverting the rule fails all 10 FIRES; full repo sweep against `packages/**` after library fixes → 0 hits (zero false positives, zero remaining real bugs).
 
   ## Surfaces updated
-
   - `packages/ui-system/kinetic/src/Stagger.tsx` — top-level Stagger fix
   - `packages/ui-system/kinetic/src/Transition.tsx` — top-level Transition fix
   - `packages/ui-system/elements/src/helpers/Iterator/component.tsx` — Iterator fix
@@ -630,7 +1033,6 @@
   - `.claude/rules/anti-patterns.md` — new bug-class entry under Architecture Mistakes
 
   ## Validation
-
   - All 3 library packages pass tests (kinetic 220, elements 463 → +new regression specs)
   - All 650 lint tests pass (19 new specs)
   - `check-doc-claims` clean (count claims locked)
@@ -713,8 +1115,8 @@
   <Transition
     show={() => false}
     enter="transition-all duration-300"
-    enterStyle={{ opacity: 0, transform: "translateY(16px)" }} // ← preset hidden state
-    enterToStyle={{ opacity: 1, transform: "translateY(0)" }}
+    enterStyle={{ opacity: 0, transform: 'translateY(16px)' }} // ← preset hidden state
+    enterToStyle={{ opacity: 1, transform: 'translateY(0)' }}
   >
     ...
   </Transition>

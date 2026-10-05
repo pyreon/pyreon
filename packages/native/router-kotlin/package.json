@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-router-kotlin",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "@pyreon/router's API (RouterProvider, RouterView, PyreonLink, useNavigate, useParams) for Android Jetpack Compose.",
   "license": "MIT",
   "repository": {

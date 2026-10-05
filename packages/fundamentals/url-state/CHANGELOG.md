@@ -1,5 +1,359 @@
 # @pyreon/url-state
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3651](https://github.com/pyreon/pyreon/pull/3651) [`9d6ca3d`](https://github.com/pyreon/pyreon/commit/9d6ca3d705b555a2bb52d6dfd0c5fe231ff69f5c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hardening pass across six fundamentals packages.
+
+  **@pyreon/rx** — `groupBy` / `keyBy` / `countBy` / `mapValues` now build prototype-free records (`Object.create(null)`). A key named `constructor` made `groupBy` throw and `countBy` produce `'function Object() …1'`; a `__proto__` key was written as the result's prototype and vanished. Behaviour change: the results no longer inherit from `Object.prototype` (call `Object.hasOwn(result, k)`, not `result.hasOwnProperty(k)`). `search()` gains signal/plain overloads (a plain call is typed `T[]`, a signal call a computed) instead of `any`.
+
+  **@pyreon/machine** — event and state names are looked up as OWN keys, so `send('toString')` is an unhandled event instead of moving the machine into an undefined state; an initial/target named after an `Object.prototype` member is rejected at creation. A throwing `onExit` / `onEnter` / `onTransition` / `onDone` listener is reported (`console.error`, `[Pyreon]` prefix) and no longer aborts the transition midway. Behaviour change: `send()` called from inside a listener is QUEUED and runs after the current macrostep completes (run-to-completion), instead of running nested in the middle of it; such a call returns the state as it is at that moment.
+
+  **@pyreon/permissions** — behaviour change: `usePermissions([])` is a self-contained deny-all instance; it no longer falls back to the provider's instance (the mode is chosen by the presence of the argument, not its length). The native lowering makes the same choice. The resolve memo is re-enabled once `patch()` replaces the last predicate with a boolean. `can.all` / `can.any` accept an array plus a context (`can.all(['a', 'b'], post)`) so multi-checks reach context-dependent predicates; the rest-args form is unchanged.
+
+  **@pyreon/i18n** — `<Trans>` no longer lets an interpolated value create markup: angle brackets in values are neutralised before tags are parsed, so `x</bold><link>…` renders as text instead of invoking the `link` component. Loader-returned namespaces get the same normalization as `messages` (flat dotted keys expanded, unsafe keys dropped, a store-owned deep copy). Behaviour change: locales resolve along the BCP 47 step-down chain (`en-US` → `en` → `fallbackLocale`, itself stepped down). Key paths, inline format names and custom plural rules are OWN-property lookups (`t('a.constructor.name')` no longer returns `'Object'`). `$t()` nesting no longer re-interpolates a nested result, so a value that looks like `{{x}}` is not substituted twice. The `Intl.PluralRules` cache and the per-instance resolution cache are LRU-bounded (the resolution cache used to stop caching entirely after 2000 keys).
+
+  **@pyreon/url-state** — signals now follow navigations made through the registered router (`router.push('?page=2')`, `<RouterLink>`), including a router registered after the signal was created (`UrlRouter` gains an optional `currentRoute`, which `@pyreon/router` already provides). Behaviour changes: array params keep their element type, inferred from the default's first element (`[0]` → `number[]`), and a `,` inside an element round-trips; a lone custom `serialize` or `deserialize` is honoured (the other half is inferred), and with `arrayFormat: 'repeat'` a custom codec applies per element; `onChange` fires only when the value actually changed; an empty number param (`?page=`) and an unrecognised boolean fall back to the default, and booleans accept `1`/`0`. The native lowering decodes empty numbers and booleans the same way.
+
+  **@pyreon/table** — `flexRenderCell` tracks the cell renderer itself (the lookup stays untracked), so a renderer reading table state such as `info.row.getIsSelected()` updates on that change; data edits still re-run only the edited row. `columnSignature` covers group columns' children and the `cell` / `header` / `footer` renderers (by source text, so an inline column literal stays stable), so a renderer swap re-renders the cells. Cleanup is registered on the owning `EffectScope` instead of `onUnmount`, so `useTable` in a store no longer warns.
+
+  **@pyreon/atlas** — the permission-set recorder wraps the new array form of `can.all` / `can.any` too, so keys passed that way are seeded with the role's policy and recorded as consulted.
+
+- [#2798](https://github.com/pyreon/pyreon/pull/2798) [`e56b865`](https://github.com/pyreon/pyreon/commit/e56b865f08946b7f848906bf2562911fa7f95066) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Derive the native compiler's web-only warning set from the package manifests
+
+  Importing a web-only `@pyreon/*` package into shared source is meant to warn at
+  parse time, naming the `<Web>` escape hatch. Four packages — `@pyreon/url-state`,
+  `@pyreon/head`, `@pyreon/hotkeys` and `@pyreon/feature` — declared
+  `multiplatform: { tier: 'web-only' }` but were absent from the compiler's
+  hand-written `WEB_ONLY_PACKAGES` literal, so importing one produced **no
+  diagnostic at all**: the call emitted verbatim and the native build failed with
+  `cannot find 'x' in scope`, pointing nowhere near the cause.
+
+  The set is now derived from the manifests (`tier === 'web-only'` and no
+  `nativeFrontend`) and regenerated by `check-multiplatform-tier`, which gates that
+  it stays in sync. The hand-written list had already been repaired twice by hand —
+  `@pyreon/sync` and `@pyreon/rich-text` were missing, `@pyreon/toast` went stale
+  the other way once its core lowered — each time with a comment recording the
+  incident rather than closing the class.
+
+  A cross-check test existed but ran in one direction only (every compiler entry
+  must declare web-only), and its comment waved the other direction through as
+  acceptable. That was the direction that shipped the bug; it now asserts equality.
+
+  Two supporting changes:
+
+  - `multiplatform` gains an optional `nativeFrontend` field for packages that
+    lower part of their surface. The three-value tier vocabulary could not express
+    partial crossing, which is what made `@pyreon/toast` go stale. `toast`, `a11y`,
+    `query` and `validation` now declare it.
+  - The blanket warning defers to `UNLOWERED_PYREON_MODULES`, the finer per-symbol
+    mechanism, so packages covered there (`validate`, `validation`, `http`, `rx`)
+    warn exactly once with their specific advice instead of twice.
+
+  `@pyreon/query` and `@pyreon/validation` also had factually stale rationales:
+  query's said native fetching is `useFetch/PyreonFetch` although `PyreonQuery`
+  shipped and `useQuery` is lowered, and validation's said per-validator lowering
+  was "not shipped" although the Gap-4 schema forms emit native validators.
+
+  ## Lower `@pyreon/validate`'s `s` DSL to native validators
+
+  A top-level `const X = s.object({ … })` declaration now emits a Swift `Codable`
+  struct and a Kotlin `data class`, each with `parse` / `safeParse` and real
+  constraint enforcement — from the same source, on both targets. Before this,
+  `@pyreon/validate` had no native story at all: a native app could not validate
+  data, and the schema emitted verbatim.
+
+  It reuses the existing Gap-4 schema pipeline (recognizer → IR → per-target
+  emit) rather than adding a second one. The only structural difference from
+  zod / valibot / arktype is that `s.object({ … })` arrives with no wrapper call —
+  it already IS a Standard Schema — so the shared walker's `schemaFn` became
+  nullable instead of being copied.
+
+  Scope, stated plainly: the DECLARATION form lowers. Inline uses
+  (`s.string().parse(x)`), the JIT, JSON-schema export and the v1/mini compat
+  surfaces stay web, and still warn.
+
+  The recognizer gates on the IMPORT, not the bare name: `zodSchema(...)` is a
+  distinctive wrapper but a lone `s` is not, and claiming it would silently
+  rewrite a user's own binding.
+
+  ## Native router: implement the `query` it has always advertised
+
+  `PyreonRouter`'s header has listed `query` (typed search params) since the C1
+  scaffold on BOTH platforms, and neither implemented it. Worse than missing: a
+  path carrying `?…` was handed to `matchPath` whole, so `/users/42?tab=a`
+  captured `id == "42?tab=a"` and a static route stopped matching altogether.
+  Every deep link with a query string — an OAuth callback, a shared link — hit
+  that, on iOS and Android alike.
+
+  Both routers now parse the query alongside `params`, in the same step, so the
+  two always describe one navigation. New surface, identical on each side:
+  `query`, `setQueryParam(key, value)` (replace semantics — changing a filter must
+  not add a back-stack entry per keystroke), plus `splitPathAndQuery` /
+  `parseQuery` / `serializeQuery`. `parseQuery` follows `URLSearchParams`: a bare
+  key is present-with-empty-value, a repeated key keeps the last. `serializeQuery`
+  sorts, so the rewritten URL is stable. The query survives an unmatched path — a
+  404 page usually needs the parameters it was called with.
+
+  ## `useUrlState` lowers to the native router's search parameters
+
+  `const q = useUrlState('q', 'all')` now binds one search parameter on iOS and
+  Android, from the same source: `q()` reads and `q.set(v)` writes, exactly as on
+  the web. Built on the router `query` support above.
+
+  The helper type is emitted INLINE rather than shipped as a co-located runtime,
+  because it needs the ACTIVE router — a standalone runtime would have to import
+  PyreonRouter and stop being self-contained. Same reasoning as `PyreonSchemaError`.
+
+  Scope: string-valued keys with literal arguments. A non-string default declines
+  WITH a reason rather than coercing silently, and a non-literal key declines
+  because it cannot be baked into the emit — the conservative rule `useFetch`
+  applies to its URL and `useStorage` to its key. History entries, `popstate`,
+  `batchUrlUpdates` and the pluggable serializers stay web.
+
+  ## `<Transition name>` resolves to a native transition instead of always fading
+
+  The native `<Transition>` emit ignored `name` and animated every show/hide as a
+  fade. An author who wrote a slide-up got a fade on device — and because an
+  animation still played, nothing looked broken enough to investigate.
+
+  `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already honours
+  on the web, and `@pyreon/kinetic` ships its presets under the same vocabulary,
+  so it is the one shape an author writes once. `fade` · `scale-in` · `slide-up` ·
+  `slide-down` · `slide-left` · `slide-right` now map to SwiftUI transitions and
+  Compose enter/exit pairs respectively. An unknown name still falls back to a
+  fade — a custom CSS animation has no native translation, and a fade beats
+  refusing to compile — and a `<Transition>` with NO name emits byte-identically
+  to before.
+
+  `kinetic()` itself stays web: the chainable class/style factory has no native
+  model. What crosses is the preset vocabulary.
+
+  ## An unlowered package's diagnostic names ITS alternative
+
+  `@pyreon/table` was told it "renders via the DOM / a browser-only library".
+  TanStack Table is HEADLESS — that claim is simply false — and the message
+  stopped short of naming the native answer this package's own manifest states.
+
+  It now says the real thing: the row model (`getRowModel` / `getVisibleCells` /
+  `flexRender`) is a WEB render surface with no native analogue, while sort and
+  filter state is ordinary logic to hold in signals and render with
+  `<For each={rows}>` + `@pyreon/primitives`.
+
+  The hook arc now reads the same per-package advice, so this improves every
+  package that has an entry (rx, validate, permissions, storage, http, table) —
+  not just the one that surfaced it.
+
+- [#3426](https://github.com/pyreon/pyreon/pull/3426) [`e02b804`](https://github.com/pyreon/pyreon/commit/e02b8045aa4a3e0ffe92335ffb9fe82a337955da) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `replace: false` now produces a history entry through a router, and a malformed URL no longer crashes setup
+
+  **`{ replace: false }` was a silent no-op in router-wired apps.** It asks for a
+  history ENTRY, so the user can press Back to undo a filter change — and the raw
+  history branch honoured it from the start. The router branch called
+  `router.replace()` for both intents, so every such update was downgraded with no
+  error anywhere. `UrlRouter` gains an optional `push(path)`, used when the caller
+  asked to push; `@pyreon/router` already has one, so `setUrlRouter(useRouter())`
+  is fixed with no change at the call site. A router without `push` still works —
+  it falls back to `replace` and dev-warns once, rather than pretending.
+
+  **A URL is untrusted input.** The inferred object serializer is `JSON.parse` and
+  the first read happens at component SETUP, so `?filters={oops` — hand-edited,
+  truncated by a chat client, shared from an older build — threw and took the page
+  down. A value the deserializer cannot read now falls back to the default and
+  dev-warns naming the param, matching what the number serializer already did for
+  `?page=abc`. The guard sits at the untrusted-input boundary rather than inside
+  one inferred serializer, so a custom `deserialize` is covered too.
+
+### Patch Changes
+
+- [#3174](https://github.com/pyreon/pyreon/pull/3174) [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party dependencies to their latest compatible releases,
+  extending [#3174](https://github.com/pyreon/pyreon/issues/3174)'s sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.agents/guides/benchmarks/README.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3511](https://github.com/pyreon/pyreon/pull/3511) [`214097a`](https://github.com/pyreon/pyreon/commit/214097ae90b62dcc59d5b098b027fb5c39055c74) Thanks [@vitbokisch](https://github.com/vitbokisch)! - url-state: ask the router which part of the URL owns the route
+
+  `useUrlState` read `location.search` and wrote `${location.pathname}?${search}`
+  unconditionally. `@pyreon/router` defaults to `mode: 'hash'`, where the whole
+  route — query included — lives in the fragment (`#/products?page=3`) and
+  `location.search` is empty. So under the documented `setUrlRouter(useRouter())`
+  bridge, a single `page.set(3)` handed the router `/?page=3`, which it wrote as
+  `#/?page=3`: the app left `#/products` on the first filter change, and the value
+  never read back.
+
+  Three fixes, all from the same wrong assumption:
+
+  - **Hash mode** — the query is now read from, and written into, the fragment
+    beside the route path, so a param update keeps the app where it is.
+  - **The fragment is preserved** on history-mode writes (router and raw-history
+    alike). `/docs#installation` used to become `/docs?page=2`, jumping the reader
+    back to the top of the page on every change.
+  - **A sub-path deploy** gets a base-relative path: the router prepends `base`
+    itself, so passing `location.pathname` produced `/app/app/products?page=2`.
+
+  `UrlRouter` gained optional `mode` and `_base` fields; `useRouter()` satisfies
+  both structurally, so nothing changes at the call site. A router without `mode`
+  (hand-rolled) still means history mode, and without a registered router
+  url-state owns `location.search` exactly as before.
+
+  In `@pyreon/router`, `mode` moves from the internal `RouterInstance` type onto
+  the public `Router` type. It was always present on the router object — only the
+  public type omitted it, which is what let the wrong assumption look correct.
+
+- [#2943](https://github.com/pyreon/pyreon/pull/2943) [`080752b`](https://github.com/pyreon/pyreon/commit/080752b16be8a67bd0ed51eb25bbe8b3dd134f80) Thanks [@vitbokisch](https://github.com/vitbokisch)! - PMTC: `useUrlState` lowers NUMBER and BOOLEAN defaults, not just strings
+
+  `useUrlState('page', 1)` previously warned and stayed web — only a string
+  default lowered to the native router's query. Number and boolean defaults now
+  lower on both targets, with a codec that mirrors the web's `inferSerializer`
+  rather than deferring to each platform's own string→number initializer.
+
+  That distinction is the substance of the change. The web decodes with `+raw`
+  (JS `ToNumber`), whose grammar neither `Double(_:)` nor `toDoubleOrNull()`
+  matches — `""` is `0` in JS and `nil`/`null` on both targets, `"0b101"` is `5`
+  in JS and unparseable on both, `"inf"` is `NaN` in JS but infinity in Swift,
+  and `"1.5f"` is `NaN` in JS but `1.5` in Kotlin. Since the inputs that expose
+  those cases are exactly the ones this feature exists for — a pasted deep link —
+  the emit reproduces the JS grammar itself, identically on both targets.
+  Booleans decode by exact `'true'` match, as the web does, so `?open=1` is
+  `false` on every platform.
+
+  An integer default lowers to `Int` and a fractional one to `Double`, following
+  the same `inferTypeFromInitial` rule every other PMTC lowering uses, so
+  `` `Page ${page()}` `` renders "Page 1" rather than "Page 1.0". `set` mirrors
+  JS `String(v)`, so a whole `Double` round-trips as `?zoom=1`, not `?zoom=1.0`.
+
+  A file that binds only string parameters emits byte-identically to before —
+  each helper is emitted only when a binding of that type exists.
+
+  Still web, and still warned by name: array and object defaults (the web infers
+  a comma-join and a `JSON.parse`, neither of which has a native type to decode
+  into at this call site), non-literal defaults and keys, and the
+  `clearOnDefault` / `debounce` / custom-serializer options.
+
+- Updated dependencies [[`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

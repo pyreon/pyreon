@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-compiler",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "Pyreon Multi-Target Compiler (PMTC): compiles Pyreon JSX to native Swift (SwiftUI) and Kotlin (Jetpack Compose).",
   "license": "MIT",
   "repository": {

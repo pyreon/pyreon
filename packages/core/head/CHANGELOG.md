@@ -1,5 +1,61 @@
 # @pyreon/head
 
+## 0.52.0
+
+### Patch Changes
+
+- [#3518](https://github.com/pyreon/pyreon/pull/3518) [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Refuse event-handler attributes on every render path, not just one
+
+  An inline `onclick="…"` is executable markup, and the refusal added in [#3432](https://github.com/pyreon/pyreon/issues/3432)
+  reached exactly one of the sinks a prop can travel through. Verified executing in
+  real Chromium, three did not refuse it: the `h()` path wrote it on any SVG /
+  MathML element (its foreign-namespace branch returns before the later checks),
+  the compiled template sink (`_setAttr`) wrote it on plain HTML too — and CALLED a
+  function-valued one to build the string — and the compiled SSR sink
+  (`_ssrAttrGen`) serialized it, because the compiler's own `on*` bail is
+  camelCase-only.
+
+  The name set was HTML-only as well: enumerating the `on*` IDL handlers a shipping
+  browser exposes on the HTML, SVG and Window prototypes found 36 missing,
+  including SVG's SMIL handlers (`onbegin` / `onend` / `onrepeat`) and the
+  vendor-legacy names browsers still compile (`onmousewheel`, `onwebkit*`,
+  `onbeforecopy`, `onsearch`). The set is now a vocabulary union and is ratcheted
+  against a real browser so a new handler reds a gate instead of becoming a sink.
+
+  `@pyreon/head` had no attribute guard at all, in either of its renderers: an
+  attribute NAME went out raw, so a user-keyed object could inject sibling
+  attributes (`{ 'name x="y" onload': 'z' }` serialized as
+  `<meta name x="y" onload="z">`), and `javascript:` URLs on `<link href>` /
+  `<script src>` were emitted verbatim. Head now runs the same guards the element
+  renderer already ran, sharing the predicates rather than re-deriving them.
+
+  Scripted-SVG detection in `data:image/svg+xml` URIs required whitespace before an
+  `on*=` handler; a slash separator, a comment-looking one, and no separator at all
+  (the closing quote of the previous attribute) each produced a live handler and
+  were allowed.
+
+  The documented camelCase props (`onClick`) are unaffected, and attributes that
+  merely start with "on" (`once`, `onyx`, `only`) still render.
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3611](https://github.com/pyreon/pyreon/pull/3611) [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Smaller client bundles: the client no longer ships the ~160-name event-handler list. `runtime-dom` and `@pyreon/head`'s DOM syncer now ask the element which lowercase `on*` names are real handlers (`key in el`, new `isElementEventHandlerAttr` export) — the engine's exact answer — while SSR keeps the list. The template cache is a plain FIFO `Map` (drops the `@pyreon/sized-map` dependency), and a signal's production read closure no longer carries a dev-only rest parameter. The krausest-style table app bundle goes from 16.6 KB to 15.7 KB gzipped.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`fdd4dc2`](https://github.com/pyreon/pyreon/commit/fdd4dc2aef317b1c177f9751fcffb6d88554ff92), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`be6a2a4`](https://github.com/pyreon/pyreon/commit/be6a2a401520331b04f38c894f6ffafe5b454a35), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`cfbb342`](https://github.com/pyreon/pyreon/commit/cfbb3426f12049b86f596bc3337245accf75be5b), [`2486982`](https://github.com/pyreon/pyreon/commit/2486982da2c663375b7825ff23bbd0c16a94684c), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`6b1ff6b`](https://github.com/pyreon/pyreon/commit/6b1ff6bc64f0c8e285f61fd7e0a8790c18694818), [`b67df5e`](https://github.com/pyreon/pyreon/commit/b67df5ede1eed345022f3777968211f3526000c7), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac), [`be6a2a4`](https://github.com/pyreon/pyreon/commit/be6a2a401520331b04f38c894f6ffafe5b454a35), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`ba24de3`](https://github.com/pyreon/pyreon/commit/ba24de3274c315abf9f3f6c90ebe38e8390090bb), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`dc580fc`](https://github.com/pyreon/pyreon/commit/dc580fc13327c7a1ca1f23dc0ee5c25921470d1e)]:
+  - @pyreon/core@0.52.0
+  - @pyreon/runtime-server@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -334,11 +390,11 @@
 
   ```tsx
   // Before — render-blocking by default:
-  useHead({ script: [{ src: "/analytics.js" }] });
+  useHead({ script: [{ src: '/analytics.js' }] })
   // → <script src="/analytics.js"></script>  (blocks parser!)
 
   // After — non-blocking by default:
-  useHead({ script: [{ src: "/analytics.js" }] });
+  useHead({ script: [{ src: '/analytics.js' }] })
   // → <script src="/analytics.js" defer=""></script>
   ```
 
@@ -1018,7 +1074,6 @@
 ### Minor Changes
 
 - ### @pyreon/router
-
   - `go(n)` and `forward()` for history navigation
   - Named `replace()` — navigate by route name
   - Optional params (`:id?`) with compile-time type inference
@@ -1033,14 +1088,12 @@
   - Stale-while-revalidate loaders
 
   ### @pyreon/head
-
   - Cached resolve with dirty flag (30M+ ops/sec cached path)
   - Single-pass HTML escaping (regex + lookup table)
   - DOM element tracking via Map (avoids querySelectorAll per sync)
   - 7-9.5x faster SSR serialization than Unhead (Vue/Nuxt)
 
   ### @pyreon/server
-
   - Pre-compiled template splits at handler creation (17x faster on real templates)
   - Pre-built client entry tag avoids per-request string construction
   - `buildScriptsFast` skips array allocation
@@ -1068,7 +1121,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1082,7 +1134,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics

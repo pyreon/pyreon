@@ -1,5 +1,56 @@
 # @pyreon/elements
 
+## 0.52.0
+
+### Patch Changes
+
+- [#3678](https://github.com/pyreon/pyreon/pull/3678) [`a6e97cb`](https://github.com/pyreon/pyreon/commit/a6e97cb4c0ee97dbc405900d4d9655f8fd81937a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct the API documentation (manifests, llms.txt, MCP api-reference, docs reference pages) for rocketstyle, styler, attrs, elements, kinetic and coolgrid so it matches the shipped runtime. Notable corrections: styler's `ThemeProvider` takes an object only (no parent-merging function form) and reads it once; rocketstyle's `Provider` snapshots its parent context and writes only the ui-core context; `.config({ inversed })` inverts only the component itself; `.compose()` wraps user HOCs last-defined-outermost; `keyframes` and static `createGlobalStyle` inject at call time; `useCSS`'s `boost` argument has no effect; `List` renders a fragment unless `rootElement` is set; kinetic's `show` accepts an accessor, a value, or nothing. No runtime changes.
+
+- [#3074](https://github.com/pyreon/pyreon/pull/3074) [`1f3d974`](https://github.com/pyreon/pyreon/commit/1f3d974dd15cbc1151dab8a3d31c112465bbbd81) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(elements): build the Wrapper props lazily so a plain `<Element>` skips them
+
+  `Element` is mounted on essentially every UI subtree, so its `buildBody` is one
+  of the hottest per-mount paths in the system. It eagerly built `wrapperLayout`
+  (a `computeWrapperLayout` call) **and** `WRAPPER_PROPS` on every mount — but the
+  **dominant** simple fast path (`isSimpleElement && !needsFix`, i.e. a plain
+  `<Element>`) returns via `WrapperStyled` + its own `buildSimpleBundle` and never
+  reads either one. So every plain Element paid:
+
+  - a wasted `computeWrapperLayout(isSimpleElement)` (the fast path recomputes its
+    own layout in `buildSimpleBundle` — layout was computed **twice**), and
+  - a wasted `WRAPPER_PROPS` allocation: a 9-property object literal in the static
+    case, or a `definePropsFromAccessors` with **six** `Object.defineProperty`
+    getters in the reactive-layout case — allocated and thrown away.
+
+  `WRAPPER_PROPS` is now a lazy `buildWrapperProps()` builder, called only by the
+  three paths that consume it (empty / needsFix-simple / compound). All four
+  return paths keep their exact order, so precedence is unchanged and VNode output
+  is byte-identical.
+
+  Notes: the reactive-layout simple path additionally no longer reads the
+  wrapper-layout getters it never used, which on that path also avoids a spurious
+  outer-accessor subscription — a strict behavioural improvement (layout still
+  updates via the styler's class swap), not asserted by a separate new test.
+
+  Verified: full node suite (555) + the real-Chromium reactive suites
+  (slot-reactivity, reactive-prop-through-element, reactive-prop-class-sweep,
+  css-variables — 36 specs) all green; import + bundle budgets within limits
+  (element gz 4439 / budget 4442).
+
+- [#3679](https://github.com/pyreon/pyreon/pull/3679) [`29f1002`](https://github.com/pyreon/pyreon/commit/29f10026097e30e261dcc49ad25ea3928ab7e026) Thanks [@vitbokisch](https://github.com/vitbokisch)! - UI providers are now reactive, and two diagnostics are corrected.
+
+  - `@pyreon/rocketstyle` `Provider` reads its parent context and its own props lazily, so `<Provider inversed>` follows a later parent mode change and a signal-driven `theme`/`mode` prop stays live (it previously froze at mount).
+  - `@pyreon/ui-core`'s low-level `Provider` no longer logs "CoreProvider is internal" on every mount — rocketstyle's public `Provider` delegates to it — and exposes getter-backed props lazily. `@pyreon/unistyle`'s `Provider` re-enriches a changing `theme` prop.
+  - `@pyreon/styler` `ThemeProvider` follows later `theme` prop changes for consumers tracking the reactive `ThemeContext`.
+  - `@pyreon/elements` `Overlay` `trigger` / `children` render-prop callbacks are contextually typed (no implicit `any` under strict TS).
+  - rocketstyle's reserved-dimension error names the clashing key(s) and the reserved set (it printed `[object Object]`).
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`79c1bf1`](https://github.com/pyreon/pyreon/commit/79c1bf13b1d8eb8fd65df9ff2d8fece58bed1aa0), [`c95ea09`](https://github.com/pyreon/pyreon/commit/c95ea0941a5a09cd9b14e817b09c857ce64b1112), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`5b93f4c`](https://github.com/pyreon/pyreon/commit/5b93f4cb70a6e210325aca3c79678b62383bc773), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`a0c4cd7`](https://github.com/pyreon/pyreon/commit/a0c4cd7803dd244b79a8828dca36dff6c34b0b8c), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`195a9dc`](https://github.com/pyreon/pyreon/commit/195a9dc6417f964eb3858772da449a3bc1f1d02a), [`29f1002`](https://github.com/pyreon/pyreon/commit/29f10026097e30e261dcc49ad25ea3928ab7e026), [`968781e`](https://github.com/pyreon/pyreon/commit/968781ea3156803fe79aef5ae11146fce1278986), [`5c175d4`](https://github.com/pyreon/pyreon/commit/5c175d42ddd614a6fd58c1832c36ea4f98898f5a), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -682,7 +733,6 @@
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -714,7 +764,6 @@
   The escape hatch for users who insist on PascalCase-named reactive accessors: pass them as an anonymous wrapper — `beforeContent={() => MyAccessor()}` — or rename to camelCase.
 
   ## Test coverage
-
   - **11 unit tests** in `isPyreonComponent.test.ts`: Tier 1 markers (4 specs), Tier 2 displayName/PascalCase (5 specs), accessor fall-through guards (6 specs covering anonymous, camelCase, `default`, empty-name, digit-prefixed, unicode-letter-prefixed), Tier 1 + Tier 2 coexistence (2 specs)
   - **5 behavioral regression tests** in `slot-bare-component-with-hooks.test.tsx` matching the bokisch.com bug shape: PascalCase bare component routes via `h()`, `displayName`-only routes via `h()`, bare component using `onMount` produces NO "outside component setup" warning, anonymous accessor still takes bare-call path, camelCase helper still takes bare-call path
   - **Bisect-verified-with-restore**: reverting Tier 2 → 8 tests fail (5 unit + 3 behavioral); restored → all 496 elements tests pass
@@ -1013,7 +1062,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   **Bisect-verified at two layers**: 19 unit specs (10 FIRES + 9 CONTROL + real-world shapes), reverting the rule fails all 10 FIRES; full repo sweep against `packages/**` after library fixes → 0 hits (zero false positives, zero remaining real bugs).
 
   ## Surfaces updated
-
   - `packages/ui-system/kinetic/src/Stagger.tsx` — top-level Stagger fix
   - `packages/ui-system/kinetic/src/Transition.tsx` — top-level Transition fix
   - `packages/ui-system/elements/src/helpers/Iterator/component.tsx` — Iterator fix
@@ -1027,7 +1075,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   - `.claude/rules/anti-patterns.md` — new bug-class entry under Architecture Mistakes
 
   ## Validation
-
   - All 3 library packages pass tests (kinetic 220, elements 463 → +new regression specs)
   - All 650 lint tests pass (19 new specs)
   - `check-doc-claims` clean (count claims locked)
