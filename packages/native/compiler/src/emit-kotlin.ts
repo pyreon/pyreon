@@ -6,6 +6,7 @@
 
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { kotlinStr } from './string-literals'
+import { renderKotlinService, serviceFor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -3258,20 +3259,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
     ].join('\n  ')
   }
-  // M3.1: `const h = useHaptics()` → a remembered PyreonHaptics. The
-  // Compose haptic surface is `LocalHapticFeedback` (a composition-
-  // local — NO permission, NO Context, unlike Vibrator). Local reads
-  // can't live inside `remember { … }`'s non-Composable lambda, so
-  // hoist it to a sibling val and inject it (same shape clipboard uses
-  // for LocalContext). Methods (`h.impact("light")`) flow through
-  // unchanged — PyreonHaptics maps the style string internally.
-  if (d.kind === 'haptics') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Haptic = LocalHapticFeedback.current`,
-      `val ${id} = remember { PyreonHaptics(${id}Haptic) }`,
-    ].join('\n  ')
-  }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
   // instance of the APP's own class. A Context is hoisted and injected
   // unconditionally (the same shape clipboard/share/linking use): nearly
@@ -3298,89 +3285,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     _chartHandleNamesKotlin.add(d.name)
     return `val ${kotlinIdent(d.name)} = remember { PyreonChartHandle() }`
   }
-  if (d.kind === 'linking') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonLinking(${id}Ctx) }`,
-    ].join('\n  ')
-  }
-  // M3.3: `const notifs = useNotifications()` → a remembered
-  // PyreonNotifications. Android NotificationManager needs a Context —
-  // hoisted from LocalContext (like share). Methods flow through unchanged.
-  if (d.kind === 'notifications') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonNotifications(${id}Ctx) }`,
-    ].join('\n  ')
-  }
-  // M3.5: `const bio = useBiometrics()` → a remembered PyreonBiometrics. Its
-  // `authenticate(reason)` is a suspend fun, awaited inside a
-  // `pyreonAsyncScope.launch { … }` (the M4.5 async-handler wrap). The v1 Kotlin
-  // runtime needs no Context (the full FragmentActivity-backed BiometricPrompt
-  // wiring is a follow-up); a bare remembered instance suffices to compile.
-  if (d.kind === 'biometrics') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonBiometrics() }`
-  }
-  // M3.4: `const picker = useImagePicker()` → a remembered PyreonImagePicker
-  // PLUS a composable-scope ActivityResult launcher wired into it.
-  //
-  // Why the launcher can't live inside the runtime container (the iOS/Android
-  // asymmetry): Android delivers a picked asset through the ActivityResult
-  // callback, and registering for it requires an ActivityResultCaller at
-  // COMPOSITION time — `rememberLauncherForActivityResult` is a @Composable, so
-  // it MUST be called here at composable scope, not from inside `remember {}`
-  // (registering post-RESUMED throws). The container therefore exposes a
-  // settable `launcher` and bridges callback→suspend internally, so `pick()`
-  // keeps the same `suspend fun (): String?` shape as Swift's `async`.
-  //
-  // The assignment re-runs on recomposition, which is harmless:
-  // rememberLauncherForActivityResult returns the SAME instance across
-  // recompositions, so this re-assigns an identical reference.
-  // `useCamera()` -> PyreonCamera. Android needs the launcher assigned from
-  // the composition (same shape as the image picker); TakePicturePreview
-  // hands back a bitmap the runtime persists, so the callback feeds a URI.
-  if (d.kind === 'camera') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id} = remember { PyreonCamera() }`,
-      `${id}.launch = rememberCameraLauncher { uri -> ${id}.onResult(uri) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'image-picker') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id} = remember { PyreonImagePicker() }`,
-      `${id}.launcher = rememberLauncherForActivityResult(`,
-      `    ActivityResultContracts.PickVisualMedia()`,
-      `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
-    ].join('\n  ')
-  }
-  // M3.8: `const files = useFilePicker()` → a remembered PyreonFilePicker PLUS a
-  // composable-scope ActivityResult launcher over the SAF `OpenDocument`
-  // contract (input `Array<String>` of MIME types → `Uri?`). Same
-  // composition-time-registration rule as the image picker
-  // (rememberLauncherForActivityResult is a @Composable), so the launcher is
-  // wired HERE, not from inside `remember {}`; the container bridges
-  // callback→suspend so `pick()` keeps the Swift `async` shape. The `pick()`
-  // runtime chooses the MIME filter (`arrayOf("*/*")`), so the emit is
-  // contract-registration only.
-  if (d.kind === 'file-picker') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id} = remember { PyreonFilePicker() }`,
-      `${id}.launcher = rememberLauncherForActivityResult(`,
-      `    ActivityResultContracts.OpenDocument()`,
-      `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'share') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonShare(${id}Ctx) }`,
-    ].join('\n  ')
+  // Plain service containers — one generic branch rendered from the
+  // descriptor in services.ts (see `renderKotlinService`).
+  if (d.kind === 'service') {
+    return renderKotlinService(serviceFor(d.hook), kotlinIdent(d.name))
   }
   // Gap 4 PR-3: `const i18n = createI18n({...})` →
   // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
