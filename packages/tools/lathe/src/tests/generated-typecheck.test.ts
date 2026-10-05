@@ -28,6 +28,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const TC_ROOT = join(HERE, '.generated', 'typecheck')
 const CORE = join(HERE, '..', '..', '..', '..', 'core', 'core', 'src', 'index.ts')
 
+// Each fixture runs the real TypeScript compiler over generated clients and
+// their imports. One case crossed the shared 20s limit under pre-push load.
+const TYPECHECK_BUDGET = { timeout: 60_000 }
+
 /**
  * A spec carrying the shapes most likely to produce un-typecheckable output.
  *
@@ -228,6 +232,7 @@ function diagnose(
   plugins: PluginName[] = ['schemas', 'client', 'queries', 'mocks', 'faker'],
   label = `${client}-${validator}`,
   int64: 'number' | 'bigint' = 'number',
+  consumer?: string,
 ): string[] {
   const cfg = resolveConfig({
     input: 'x',
@@ -259,6 +264,7 @@ function diagnose(
   if (spec === INT64 && int64 === 'bigint' && plugins.includes('client')) {
     files.push({ path: 'bigint-params-usage.ts', contents: BIGINT_PARAMS_USAGE })
   }
+  if (consumer !== undefined) files.push({ path: 'consumer-control.ts', contents: consumer })
   const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
@@ -287,9 +293,15 @@ function diagnose(
   }
   const entries = files.map((f) => join(root, f.path))
   const program = ts.createProgram(entries, options)
-  return ts
-    .getPreEmitDiagnostics(program)
-    .filter((d) => d.file?.fileName.startsWith(root) === true)
+  // Only generated-file diagnostics were asserted before. Keep real module
+  // resolution and imported types, without checking every framework source
+  // again for each fixture (the workspace typecheck covers those files).
+  return entries
+    .flatMap((entry) => {
+      const file = program.getSourceFile(entry)
+      if (!file) throw new Error(`TypeScript did not load generated fixture ${entry}`)
+      return [...program.getSyntacticDiagnostics(file), ...program.getSemanticDiagnostics(file)]
+    })
     .map(
       (d) =>
         `${d.file?.fileName.slice(root.length + 1) ?? '?'}: TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`,
@@ -299,7 +311,7 @@ function diagnose(
 const CLIENTS = ['pyreon', 'fetch', 'axios', 'ky'] as const
 const VALIDATORS = ['pyreon', 'zod'] as const
 
-describe('generated output typechecks under strict TypeScript', () => {
+describe('generated output typechecks under strict TypeScript', TYPECHECK_BUDGET, () => {
   for (const client of CLIENTS) {
     for (const validator of VALIDATORS) {
       it(`client=${client} validator=${validator}`, () => {
@@ -476,7 +488,7 @@ components:
         customer: { anyOf: [ { type: string }, { $ref: '#/components/schemas/Customer' } ] }
 `
 
-describe('every plugin typechecks over the shapes that broke on real specs', () => {
+describe('every plugin typechecks over the shapes that broke on real specs', TYPECHECK_BUDGET, () => {
   for (const validator of VALIDATORS) {
     it(`validator=${validator}`, () => {
       const errors = diagnose('pyreon', validator, SHAPES, [...ALL_PLUGINS], `shapes-${validator}`)
@@ -502,7 +514,7 @@ describe('every plugin typechecks over the shapes that broke on real specs', () 
  */
 const PETSTORE3 = readFileSync(join(HERE, 'fixtures', 'petstore3.json'), 'utf8')
 
-describe('Petstore 3 output typechecks under strict TypeScript', () => {
+describe('Petstore 3 output typechecks under strict TypeScript', TYPECHECK_BUDGET, () => {
   for (const validator of VALIDATORS) {
     it(`client=pyreon validator=${validator}`, () => {
       const errors = diagnose('pyreon', validator, PETSTORE3, undefined, `petstore3-${validator}`)
@@ -619,7 +631,7 @@ export async function again(): Promise<void> {
 }
 `
 
-describe("int64: 'bigint' output typechecks under strict TypeScript", () => {
+describe("int64: 'bigint' output typechecks under strict TypeScript", TYPECHECK_BUDGET, () => {
   for (const client of CLIENTS) {
     for (const validator of VALIDATORS) {
       it(`client=${client} validator=${validator} (every plugin)`, () => {
@@ -634,6 +646,15 @@ describe("int64: 'bigint' output typechecks under strict TypeScript", () => {
       expect(errors, errors.join('\n')).toEqual([])
     })
   }
+  it('rejects a consumer that assigns a decoded bigint ID to a string', () => {
+    const errors = diagnose(
+      'fetch', 'zod', INT64, [...ALL_PLUGINS], 'invalid-bigint-consumer', 'bigint',
+      "import type { Entry } from './schemas'\nexport const id: string = ({} as Entry).id\n",
+    )
+    expect(errors).toEqual([
+      "consumer-control.ts: TS2322 Type 'bigint' is not assignable to type 'string'.",
+    ])
+  })
 })
 
 afterAll(() => {
