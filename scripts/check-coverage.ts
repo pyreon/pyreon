@@ -3,7 +3,7 @@
  * Runs test coverage for all packages and reports failures.
  *
  * Usage:
- *   bun scripts/check-coverage.ts              # full coverage (slow, ~200s)
+ *   bun scripts/check-coverage.ts              # all testable packages
  *   bun scripts/check-coverage.ts --floor-only # config check only (~5s)
  *
  * Reads coverage thresholds from each package's vitest.config.ts.
@@ -16,10 +16,9 @@
  * PR-time fast gate (~5s) — proves the floor / exemption invariant holds
  * but does NOT detect actual coverage regressions in a PR's changes.
  *
- * The full run (no flag) is the canonical safety net, executed on
- * `push: main` and `merge_group` only — main is never allowed to
- * regress, but PRs get fast feedback instead of paying the 200s+ cost
- * on every iteration.
+ * The full run (no flag) is the canonical safety net on main and merge
+ * groups. Coverage-infrastructure PRs also execute it; ordinary PRs
+ * measure only their directly changed packages.
  *
  * ## Coverage floor (PR #323 → #324 → #1266 → #1279 → THIS PR)
  *
@@ -684,7 +683,7 @@ export interface PackageSelection<T extends { name: string }> {
  * `--skip` exists so a package whose suite is toolchain-bound
  * (`@pyreon/native-compiler`: hundreds of real swiftc/kotlinc spawns) can be
  * measured in its OWN job with the verdict cache restored and an honest cap,
- * while `Coverage (Full)` keeps its 15-minute budget for the other ~80. Before
+ * while `Coverage (Full)` measures the remaining packages. Before
  * it, that one package sat inside the shared 4-way pool with a cold cache and
  * pinned the whole job at its cap on every main push — a dead gate.
  *
@@ -1052,7 +1051,10 @@ async function runWithConcurrency(
       const pkg = queue.shift()
       if (!pkg) break
 
-      // ONE atomic line per package, written when that package finishes.
+      const started = performance.now()
+      console.log(`  Starting coverage: ${pkg.name}`)
+
+      // Every progress/result line names its package, even with four workers.
       //
       // This was a newline-less `Testing <name>...` followed by the result in
       // a separate log after the await. With four workers that interleaves:
@@ -1062,6 +1064,9 @@ async function runWithConcurrency(
       // `@pyreon/atlas`'s 79.72% appeared beside `@pyreon/zero`, which reads
       // as a real finding about entirely the wrong package.
       const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
+      console.log(
+        `  Finished coverage: ${pkg.name} (${((performance.now() - started) / 1000).toFixed(1)}s)`,
+      )
       if ('statements' in outcome) {
         // Compare the three metrics the gate used to ignore. Done HERE rather
         // than inside runCoverage so the measurement stays a pure function of
@@ -1113,8 +1118,8 @@ async function runWithConcurrency(
 
   // Nested-build packages run AFTER the pool drains, one at a time — see
   // SERIAL_PACKAGES. Partitioning the queue rather than lowering CONCURRENCY
-  // globally keeps the other ~67 packages at full parallelism, so the gate's
-  // wall clock barely moves while the memory peak drops to one heavy suite.
+  // globally keeps the other packages parallel while bounding the memory
+  // peak to one nested-build suite. The job must budget for BOTH phases.
   const serial = queue.filter((p) => SERIAL_PACKAGES.has(p.name))
   const parallel = queue.filter((p) => !SERIAL_PACKAGES.has(p.name))
   queue.length = 0
@@ -1285,7 +1290,7 @@ const isFloorOnly = process.argv.includes('--floor-only')
  * `--only a,b` restricts the run to named packages.
  *
  * This exists so coverage can be enforced at PR time for the packages a PR
- * actually touches. The full run is `push:main`-only, and that cadence is why
+ * actually touches. Full measurement ordinarily lands on main; that cadence is why
  * this gate has now rotted twice inside a month: nothing measures coverage
  * while a change is still reviewable, so drift lands freely and surfaces on
  * main, where a red gate blocks nobody and gets re-run past.
@@ -1338,13 +1343,13 @@ if (floorErrors.length > 0) {
 }
 
 // P3a — floor-only mode: pure config gate, no test execution. Used as
-// the PR-time fast path; full coverage runs on push:main + merge_group.
+// the PR-time fast path; infrastructure PRs also execute the full gate.
 if (isFloorOnly) {
   console.log(
     `\n✅ Floor-config check passed (${packages.length} packages, ` +
       `MINIMUM_FLOOR=${MINIMUM_FLOOR}% / MINIMUM_BRANCH_FLOOR=${MINIMUM_BRANCH_FLOOR}%, ` +
       `${Object.keys(BELOW_FLOOR_EXEMPTIONS).length} exemptions current).\n` +
-      `Full coverage runs on push:main + merge_group.\n`,
+      `Full coverage runs on push:main, merge_group and coverage-infrastructure PRs.\n`,
   )
   process.exit(0)
 }
