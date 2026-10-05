@@ -297,7 +297,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // nothing and reported it as a project with no components. Without a module
   // loader `loadAtlasConfig` falls back to its runtime loader, which is exactly
   // the degradation that path already documents.
-  const loaded = await loadAtlasConfig(cwd, loader)
+  let loaded = await loadAtlasConfig(cwd, loader)
   // A config that declares its OWN aliases has to reach the loader too, and
   // the loader that read the config was built before those were known. So the
   // loader is rebuilt — only when the config actually adds something, which is
@@ -309,6 +309,16 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   if (loader && explicitAlias.length > 0) {
     await loader.close()
     loader = await createModuleLoader(resolve(cwd), packages, alias)
+    // The config is RE-LOADED through the replacement. A module loader owns
+    // its own module graph, so everything the first load returned — `wrapper`,
+    // `theme`, authored `scenarios`, `projects`, presets — was instantiated in
+    // the graph just closed, while the components now load into the new one.
+    // Keeping the old config split every local module the two sides share (a
+    // context a wrapper `provide()`s and a component `useContext()`s became two
+    // different objects), so the provider never reached the components and the
+    // scan reported 0 verified with nothing naming the cause (#3786). The
+    // invariant: nothing loaded through a loader outlives that loader.
+    loaded = await loadAtlasConfig(cwd, loader)
   }
   // Mount with the framework the COMPONENTS were compiled against — see
   // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
@@ -719,11 +729,16 @@ Usage: atlas <command> [dir] [options]
     --no-mount        static checks only, as for scan
   atlas verify-browser [dir]
                       run the browser half of verification in real Chromium —
-                      reactive coverage measured on the client build, and a
-                      per-scenario visual snapshot vs ./atlas-snapshots.
+                      reactive coverage measured on the client build, an
+                      axe-core accessibility run on each scenario's preview,
+                      and a per-scenario visual snapshot vs ./atlas-snapshots.
                       Needs playwright-core (optional peer). Merges verdicts
                       into atlas-catalog.json; exits non-zero on visual diffs
     --update-snapshots  re-baseline: overwrite stored snapshots with current
+    --no-axe          skip the axe-core accessibility run (the a11y verdict
+                      then stays the scan's static name check)
+    --axe-min-impact <minor|moderate|serious|critical>
+                      ignore axe violations below this impact (default minor)
   atlas --help        show this help (also: atlas <command> --help)
   atlas --version     print the installed version
 `
@@ -793,6 +808,7 @@ export function flagValue(args: readonly string[], flag: string): string | undef
  * flag and its value) from `dist` (the directory to scan).
  */
 const VALUE_FLAGS = new Set([
+  '--axe-min-impact',
   '--out',
   '--title',
   '--base',
@@ -851,7 +867,10 @@ const COMMAND_FLAGS: Record<string, { flags: readonly string[]; positionals: num
   scan: { flags: ['--no-mount', '--no-write', '--check', '--json', '--dir'], positionals: 1 },
   build: { flags: ['--out', '--title', '--base', '--dir'], positionals: 1 },
   verify: { flags: ['--json', '--check', '--cwd', '--no-mount'], positionals: 1 },
-  'verify-browser': { flags: ['--update-snapshots'], positionals: 1 },
+  'verify-browser': {
+    flags: ['--update-snapshots', '--no-axe', '--axe-min-impact'],
+    positionals: 1,
+  },
 }
 
 /** Reject unknown flags, missing values and surplus arguments, before any work. */
@@ -1170,14 +1189,29 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   if (cmd === 'verify-browser') {
     const dir = positionalDir(rest)
     const { runBrowserVerify } = await import('../verify-browser/runner')
+    const impactArg = flagValue(rest, '--axe-min-impact')
+    const IMPACTS = ['minor', 'moderate', 'serious', 'critical'] as const
+    if (impactArg !== undefined && !(IMPACTS as readonly string[]).includes(impactArg)) {
+      err(`atlas: --axe-min-impact must be one of ${IMPACTS.join(', ')} (got "${impactArg}")\n`)
+      return 1
+    }
+    const axeImpact = impactArg as (typeof IMPACTS)[number] | undefined
     try {
       const summary = await runBrowserVerify({
         cwd: dir ?? '.',
         ...(rest.includes('--update-snapshots') ? { updateSnapshots: true } : {}),
+        ...(rest.includes('--no-axe')
+          ? { axe: false as const }
+          : axeImpact
+            ? { axe: { minImpact: axeImpact } }
+            : {}),
       })
       out(
         `atlas verify-browser: ${summary.scenarios} scenario(s) — ` +
           `coverage measured on ${summary.coverageMeasured}, ` +
+          (summary.axeChecked > 0
+            ? `axe-core run on ${summary.axeChecked} (${summary.axeFailed} with violations), `
+            : 'axe-core NOT run (a11y stays the static name check), ') +
           `${summary.snapshotsCreated} baseline(s) created, ` +
           `${summary.snapshotsFailed} visual diff(s).\n`,
       )
