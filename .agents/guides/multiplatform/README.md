@@ -79,11 +79,27 @@ PMTC lowers a `useX` call by what the name is BOUND to, not by the bare name. `h
 
 A *plain* service container is a hook whose whole lowering is "hold one runtime container for the component's lifetime" (`useShare`, `useLinking`, `useHaptics`, `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`, `useCamera`): no arguments, no reactive state, no read rewrite, no lifecycle, every call a member method that flows through unchanged. These are DATA in `packages/native/compiler/src/services.ts`, not code in three files.
 
-A `ServiceDescriptor` has exactly three fields: `hook` (what the author calls), `swift` (the initialiser expression placed after `@State private var <id> = `) and `kotlin` (declaration lines, joined with `\n  `, where `{id}` is the Kotlin identifier and a line carries its own extra indentation). The parser lowers any listed hook to the one generic declaration `{ kind: 'service', name, hook }` and both emitters render it from the descriptor; `NATIVE_LOWERED_HOOKS` derives these hooks from `SERVICES`.
+A `ServiceDescriptor` has three core fields: `hook` (what the author calls), `swift` (the initialiser expression placed after `@State private var <id> = `) and `kotlin` (declaration lines, joined with `\n  `, where `{id}` is the Kotlin identifier and a line carries its own extra indentation). The parser lowers any listed hook to the one generic declaration `{ kind: 'service', name, hook }` and both emitters render it from the descriptor; `NATIVE_LOWERED_HOOKS` derives these hooks from `SERVICES`.
 
-To add a plain service, add ONE entry to `SERVICES` (plus the Swift/Kotlin runtime container and the stub entries it needs). Nothing else changes: no `DeclIR` variant, no parser branch, no emit branch, no hook-list edit. `tests/services.test.ts` holds each hook's exact emit shape per target and the descriptor invariants; extend its `EXPECTED` table.
+### Satellite vocabulary
 
-A service with satellite behaviour is NOT plain and stays hand-written until the vocabulary grows: a read-site rewrite (`useOnline` → `.isOnline`, the hardware services keyed by a per-service name set), Kotlin `.value` member rewrites, lifecycle start/stop, a call-site argument that becomes a constructor argument, or a struct-typed generic (`useAuth<T>`, `useFetch<T>`, `useStream<T>`).
+A service that is more than a bare container is still ONE entry: the satellite behaviours are small optional data fields on the same descriptor, resolved through one per-component `binding name -> descriptor` map (`bindServices`, reset at the start of every component — never file-scoped).
+
+| Field | Meaning | Swift | Kotlin |
+| --- | --- | --- | --- |
+| `accessorReads` | members the web reads as accessors (`clip.copied()`) that the container stores as properties | parens drop: `clip.copied` | parens drop; `.value` appended when the member is also in `kotlinState` |
+| `callRead` | the property a BARE call of the container reads (`net()`, `state()`, `s().top`) | `net.isOnline` | `net.isOnline.value` when in `kotlinState`, else bare (`s.insets`) |
+| `kotlinState` | members that are Compose `MutableState` | no rewrite (`@Observable`) | member read AND zero-arg call read append `.value` |
+| `lifecycle` | a reactive monitor that MUST be started or the hook renders its initial value forever (the never-wired class) — `'start'` or `'start-stop'` | `.onAppear { x.start() }` (+ `.onDisappear { x.stop() }`), body hosted in a stable `ZStack` | none at emit time: the descriptor's Kotlin line IS the self-installing `rememberPyreon<Container>()` factory |
+| `destructure` | `const { copy } = useX()` aliases onto the container | | |
+| `optionalFields` | members the runtimes declare optional (typed nullable so the interpolation/condition lowering fires) | | |
+| `legacyKind` | the pre-descriptor decl kind; `moduleTag` hashes a service decl as that kind so synthesized struct names (`__Obj0_<hash>`) do not churn when a hook becomes a descriptor | | |
+
+The Swift lifecycle modifiers are emitted from ONE loop over `SERVICES` (so their relative order is the order of the entries in `SERVICES`, not declaration order). `scripts/check-native-lifecycle-wiring.ts` derives from it: an AUTO registry entry names a `hook`, and the gate fails when that descriptor has no `lifecycle`, when its Kotlin line is not the self-installing factory, when the Swift loop is gone, or when a descriptor declares a `lifecycle` that no registry entry classifies. Do not weaken it.
+
+To add a service, add ONE entry to `SERVICES` (plus the Swift/Kotlin runtime container and the stub entries it needs). Nothing else changes: no `DeclIR` variant, no parser branch, no emit branch, no hook-list edit. `tests/services.test.ts` holds each hook's exact emit shape per target, the accessor/callRead/kotlinState tables (typed by hand from the code the descriptors replaced) and the descriptor invariants; extend its tables.
+
+Still hand-written, with the reason: `useDatabase` (its `insert` object-literal lowering and Swift argument labels are call LOGIC, not data), `useWebSocket` (constructor URL taken from the call, synthesized auto-connect), and the struct-typed generics (`useAuth<T>`, `useFetch<T>`, `useStream<T>`).
 
 ## Compiler extension boundary
 
