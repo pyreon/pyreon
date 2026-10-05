@@ -10,6 +10,7 @@
 
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { swiftStr } from './string-literals'
+import { serviceFor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -4244,14 +4245,6 @@ function emitSwiftDecl(
   if (d.kind === 'clipboard') {
     return `@State private var ${swiftIdent(d.name)} = PyreonClipboard()`
   }
-  // M3.1: `const h = useHaptics()` → an @State PyreonHaptics. Fire-and-
-  // forget: methods (`h.impact("light")`) flow through unchanged (the
-  // runtime container maps the style string to a UIFeedbackGenerator);
-  // no reactive field, no `.value` rewrite, no ctor arg (iOS haptics
-  // need no context).
-  if (d.kind === 'haptics') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonHaptics()`
-  }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → an @State
   // instance of the APP's own class. Identical shape to the built-in
   // fire-and-forget services above — the only difference is that the
@@ -4262,61 +4255,18 @@ function emitSwiftDecl(
   if (d.kind === 'native-module') {
     return `@State private var ${swiftIdent(d.name)} = ${d.moduleName}()`
   }
-  // M3.2: `const share = useShare()` → an @State PyreonShare. Methods
-  // (`share.text("hi")`) flow through unchanged — the runtime container
-  // presents a UIActivityViewController from the key window; no reactive
-  // field, no `.value` rewrite, no ctor arg (iOS grabs the key window
-  // internally).
-  if (d.kind === 'share') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonShare()`
-  }
-  // M3.2b: `const linking = useLinking()` → an @State PyreonLinking.
-  // `linking.openUrl("...")` flows through unchanged — the runtime hands
-  // the URL to `UIApplication.shared.open`; no reactive field, no ctor arg
-  // (iOS uses the shared application).
-  if (d.kind === 'linking') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonLinking()`
+  // Plain service containers (share, linking, haptics, notifications, biometrics,
+  // pickers, camera) — one generic branch rendered from the descriptor in
+  // services.ts. Methods flow through unchanged (no `.value` rewrite, no ctor
+  // arg from the call).
+  if (d.kind === 'service') {
+    return `@State private var ${swiftIdent(d.name)} = ${serviceFor(d.hook).swift}`
   }
   // `const chart = createChartHandle()` → an @Observable PyreonChartHandle; its name is
   // remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
   if (d.kind === 'chart-handle') {
     _chartHandleNames.add(d.name)
     return `@State private var ${swiftIdent(d.name)} = PyreonChartHandle(seriesCount: __PYREON_HANDLE_SERIES_${d.name}__)`
-  }
-  // M3.3: `const notifs = useNotifications()` → an @State
-  // PyreonNotifications. Methods (`notifs.notify("t","b")`) flow through
-  // unchanged — the runtime posts a local notification via
-  // UNUserNotificationCenter; no reactive field, no ctor arg (iOS uses the
-  // shared center).
-  if (d.kind === 'notifications') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonNotifications()`
-  }
-  // M3.5: `const bio = useBiometrics()` → a PyreonBiometrics instance. Its
-  // `authenticate(_:)` is async; consumers `await bio.authenticate(...)` inside
-  // an `async` handler (the M4.5 Task {} wrap). LAContext needs no Context arg.
-  if (d.kind === 'biometrics') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonBiometrics()`
-  }
-  // M3.4: `const picker = useImagePicker()` → an @State PyreonImagePicker.
-  // `pick()` is async (consumers `await picker.pick()` inside an `async`
-  // handler — the M4.5 Task {} wrap). PHPickerViewController presents itself
-  // from the key window, so — unlike Android — the iOS side needs no
-  // launcher/Context plumbing at the call site.
-  // `useCamera()` -> PyreonCamera. Like PHPicker, UIImagePickerController
-  // presents from the key window, so no launcher plumbing at the call site.
-  if (d.kind === 'camera') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonCamera(presenter: UIKitCameraPresenter())`
-  }
-  if (d.kind === 'image-picker') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonImagePicker()`
-  }
-  // M3.8: `const files = useFilePicker()` → an @State PyreonFilePicker.
-  // `pick()` is async (consumers `await files.pick()` inside an `async`
-  // handler — the M4.5 Task {} wrap). UIDocumentPickerViewController presents
-  // itself from the key window, so — like the image picker, unlike Android —
-  // the iOS side needs no launcher/Context plumbing at the call site.
-  if (d.kind === 'file-picker') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonFilePicker()`
   }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
