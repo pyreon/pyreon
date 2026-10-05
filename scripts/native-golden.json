@@ -422,23 +422,23 @@
       "warnings": 0
     },
     "golden-fixture:element-lowering-user.tsx|swift": {
-      "sha": "c5cbf19c36026fc70b5abe556d8fe24dd2a142858cf96d53dd0b70b13d1c2e78",
-      "bytes": 360,
+      "sha": "020962f01e4f1c10f692ef8dc829bae3d0f8eeb4b9a0020df12277d1a791d391",
+      "bytes": 333,
       "warnings": 1
     },
     "golden-fixture:element-lowering-user.tsx|kotlin": {
-      "sha": "a7746dde42dabc6d0268207f1e43461c5272013a70a3c34bd9de566249aa7e57",
-      "bytes": 403,
+      "sha": "cee3524d9d8a61294bfda61a6f795e958dad60421aa89ee3bfe4148db6bf62ee",
+      "bytes": 382,
       "warnings": 1
     },
     "golden-fixture:element-lowering.tsx|swift": {
-      "sha": "c956bb742391e794d2dd8c2823f80a8f1ea29bc055f69ee5ef9ad0c145d8280c",
-      "bytes": 986,
+      "sha": "23aa7000306fe79051d7a88346eeccf184ccbcdf112fd087f92edd986af68b1f",
+      "bytes": 970,
       "warnings": 3
     },
     "golden-fixture:element-lowering.tsx|kotlin": {
-      "sha": "1a70a7255d34f73d4993f7518a9b1743ca17a574c7aadd552268b9ea5bebbb49",
-      "bytes": 1203,
+      "sha": "bc6681e7e1f6f7d375bd07a02bc57f525649d38e2c2d6c7e7b15f248450d82cb",
+      "bytes": 1170,
       "warnings": 3
     },
     "example:native-analytics/AnalyticsApp.tsx|swift": {
