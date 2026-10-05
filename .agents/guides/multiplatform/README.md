@@ -71,6 +71,20 @@ Compile-time checks cannot catch these:
 5. A Compose `performClick` does not scroll. On a `<Scroll>` page call `performScrollTo()` before interacting with a node that may be past the fold.
 6. Hardware-accelerated `WebView`s on the SwiftShader emulator (CI's `-gpu swiftshader_indirect`) intermittently leave the WHOLE window unpainted. Every Compose node still reports `displayed=true`, but captures of the root and UiAutomation screenshots are pure white. Pixel waits then fail on whichever chart comes first ("gal-datazoom showed no red bar", "gal-map did not paint"), and the failure reads like a bug in that one chart. Diagnose from the ROOT capture: if the whole window is white, the chart host is not the cause. A longer wait does not help. Instrumented tests on a screen with WebViews set `PyreonWebViewRendering.softwareLayer = true` in `@Before`. Measured on API 33 with fresh boots: 5 of 10 runs failed on hardware WebViews, 0 of 10 with the flag. `-gpu swangle_indirect` did not fix it.
 
+## Hooks are matched by import binding
+
+PMTC lowers a `useX` call by what the name is BOUND to, not by the bare name. `hook-binding.ts` runs before any recognizer: an aliased framework hook (`import { useOnline as useNet } from '@pyreon/hooks'`) is lowered under its canonical name; a same-named function the author declared, or a hook imported from a non-`@pyreon/` module, is renamed `<name>_` so no recognizer claims it, and a foreign import reports why. A name that is neither imported nor declared still lowers (snippets omit imports). PMTC has no module graph, so a local re-export of a framework hook is not seen through: import it from `@pyreon/hooks`.
+
+## Service descriptors
+
+A *plain* service container is a hook whose whole lowering is "hold one runtime container for the component's lifetime" (`useShare`, `useLinking`, `useHaptics`, `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`, `useCamera`): no arguments, no reactive state, no read rewrite, no lifecycle, every call a member method that flows through unchanged. These are DATA in `packages/native/compiler/src/services.ts`, not code in three files.
+
+A `ServiceDescriptor` has exactly three fields: `hook` (what the author calls), `swift` (the initialiser expression placed after `@State private var <id> = `) and `kotlin` (declaration lines, joined with `\n  `, where `{id}` is the Kotlin identifier and a line carries its own extra indentation). The parser lowers any listed hook to the one generic declaration `{ kind: 'service', name, hook }` and both emitters render it from the descriptor; `NATIVE_LOWERED_HOOKS` derives these hooks from `SERVICES`.
+
+To add a plain service, add ONE entry to `SERVICES` (plus the Swift/Kotlin runtime container and the stub entries it needs). Nothing else changes: no `DeclIR` variant, no parser branch, no emit branch, no hook-list edit. `tests/services.test.ts` holds each hook's exact emit shape per target and the descriptor invariants; extend its `EXPECTED` table.
+
+A service with satellite behaviour is NOT plain and stays hand-written until the vocabulary grows: a read-site rewrite (`useOnline` → `.isOnline`, the hardware services keyed by a per-service name set), Kotlin `.value` member rewrites, lifecycle start/stop, a call-site argument that becomes a constructor argument, or a struct-typed generic (`useAuth<T>`, `useFetch<T>`, `useStream<T>`).
+
 ## Compiler extension boundary
 
 `createCompiler({ plugins })` owns a fixed, versioned registration set. Extend

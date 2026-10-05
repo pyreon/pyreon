@@ -194,6 +194,66 @@ describe('checkSsrParity', () => {
     expect(messages(verdict)).toContain('differs from a fresh client mount')
   })
 
+  describe('attribute ORDER is not a difference (#3799)', () => {
+    // The stand-in runtime from the issue: hydration and a fresh mount produce
+    // the same attribute MAP in different insertion orders, silently.
+    const stub = (hydratedHtml: string, clientHtml: string): MountRuntime => ({
+      ...runtime,
+      renderToString: (async () => hydratedHtml) as unknown as NonNullable<MountRuntime['renderToString']>,
+      onHydrationMismatch: (() => () => {}) as NonNullable<MountRuntime['onHydrationMismatch']>,
+      hydrateRoot: ((container: Element) => {
+        container.innerHTML = hydratedHtml
+        return () => {}
+      }) as NonNullable<MountRuntime['hydrateRoot']>,
+      mount: ((_n: unknown, container: Element) => {
+        container.innerHTML = clientHtml
+        return () => {}
+      }) as unknown as MountRuntime['mount'],
+    })
+    const run = async (hy: string, cl: string) => {
+      const [a, b] = containers()
+      return checkSsrParity(stub(hy, cl), (() => null) as never, {}, a, b)
+    }
+
+    it('PASSES when only the attribute order differs (top level and nested)', async () => {
+      const v = await run(
+        '<canvas role="img" class="chart"><b id="x" title="t"></b></canvas>',
+        '<canvas class="chart" role="img"><b title="t" id="x"></b></canvas>',
+      )
+      expect(v.status).toBe('pass')
+    })
+
+    it('still FAILS when a class VALUE differs', async () => {
+      const v = await run('<i role="img" class="a"></i>', '<i class="b" role="img"></i>')
+      expect(v.status).toBe('fail')
+    })
+
+    it('still FAILS when class token order differs (kept strict deliberately)', async () => {
+      const v = await run('<i class="a b"></i>', '<i class="b a"></i>')
+      expect(v.status).toBe('fail')
+    })
+
+    it('still FAILS on a missing attribute, changed text, or child order', async () => {
+      expect((await run('<i role="img" class="a"></i>', '<i class="a"></i>')).status).toBe('fail')
+      expect((await run('<i class="a">x</i>', '<i class="a">y</i>')).status).toBe('fail')
+      expect((await run('<p></p><i></i>', '<i></i><p></p>')).status).toBe('fail')
+    })
+
+    it('does not mutate the live containers', async () => {
+      const [a, b] = containers()
+      await checkSsrParity(
+        stub('<i role="img" class="c"></i>', '<i class="c" role="img"></i>'),
+        (() => null) as never,
+        {},
+        a,
+        b,
+      )
+      // the mock mount writes b; a was written by hydrate — neither re-sorted
+      expect(a.innerHTML).toBe('<i role="img" class="c"></i>')
+      expect(b.innerHTML).toBe('<i class="c" role="img"></i>')
+    })
+  })
+
   it('FAILS, rather than throws, when the renderer throws', async () => {
     const Boom = () => {
       throw new Error('render exploded')

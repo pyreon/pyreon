@@ -57,6 +57,7 @@ export {
 // `t` in every `.theme()` / dimension callback — with no global `ThemeDefault`
 // augmentation (which would merge into, and silently corrupt, the `t` of any app
 // that also loads @pyreon/ui-theme; see ./ui/theme).
+export { runAxe } from './ui/axe'
 export { el, rs, txt } from './ui/bases'
 export { cx, type InputEl, type T } from './ui/kit'
 export {

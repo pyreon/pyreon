@@ -176,6 +176,10 @@ export type FindingCode =
   | 'hydrated-dom-differs'
   // ── a11y ─────────────────────────────────────────────────────────────────
   | 'missing-accessible-name'
+  /** axe-core (run by `atlas verify-browser`) flagged a rule violation. */
+  | 'axe-violation'
+  /** axe-core could not decide an item automatically — it needs a human. */
+  | 'axe-incomplete'
   // ── leak ─────────────────────────────────────────────────────────────────
   | 'reactive-nodes-retained'
   // ── browser-measured ─────────────────────────────────────────────────────

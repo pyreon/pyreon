@@ -7,6 +7,7 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { kotlinStr } from './string-literals'
+import { renderKotlinService, serviceFor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -107,7 +108,7 @@ import {
 import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
-import { kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
+import { kotlinEnumEntry, kotlinIdent, kotlinMember, localBase, safeIdent } from './identifier-safety'
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
@@ -440,7 +441,7 @@ function kotlinStructCtorArgs(
       const isInt =
         (vt.kind === 'number' && vt.float !== true) ||
         (f.value.kind === 'literal' && typeof f.value.value === 'number' && Number.isInteger(f.value.value) && f.value.float !== true)
-      return `${f.name} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
+      return `${kotlinMember(f.name)} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
     })
     .join(', ')
 }
@@ -1227,9 +1228,9 @@ function emitKotlinStore(s: StoreDefnIR): string {
     // cannot infer T from `mutableStateOf(listOf())` (same shape the
     // component signal emit already handles).
     if (f.type.kind === 'array' && f.initial.kind === 'array' && f.initial.elements.length === 0) {
-      lines.push(`    var ${f.name} by mutableStateOf<${kotlinType(f.type)}>(listOf())`)
+      lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf<${kotlinType(f.type)}>(listOf())`)
     } else {
-      lines.push(`    var ${f.name} by mutableStateOf(${init})`)
+      lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf(${init})`)
     }
   }
   // v2 — computeds + methods on the object (mirror of emitSwiftStore;
@@ -1282,7 +1283,7 @@ function emitKotlinModel(m: ModelDefnIR): string {
   const lines: string[] = []
   lines.push(`object PyreonModel_${m.modelId} : PyreonModelProtocol {`)
   for (const f of m.fields) {
-    lines.push(`    var ${f.name} by mutableStateOf(${emitKotlinExpr(f.initial, 4)})`)
+    lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf(${emitKotlinExpr(f.initial, 4)})`)
   }
   // Views + actions on the object — mirror of emitSwiftModel; see
   // emitKotlinStore for the module-state swap rationale. `selfParam`
@@ -1373,7 +1374,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
           : 'Boolean'
     const initial =
       field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${field.name}: ${t} = ${initial},`)
+    lines.push(`    var ${kotlinMember(field.name)}: ${t} = ${initial},`)
   }
   lines.push(`)`)
   lines.push(``)
@@ -1669,10 +1670,10 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   for (const f of zs.fields) {
     const t = kotlinFieldType(f.type)
     if (f.optional) {
-      lines.push(`    var ${f.name}: ${t}? = null,`)
+      lines.push(`    var ${kotlinMember(f.name)}: ${t}? = null,`)
     } else {
       const initial = kotlinFieldInitial(f.type)
-      lines.push(`    var ${f.name}: ${t} = ${initial},`)
+      lines.push(`    var ${kotlinMember(f.name)}: ${t} = ${initial},`)
     }
   }
   lines.push(`) {`)
@@ -1692,7 +1693,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       const nestedType = `PyreonZodSchema_${f.type.schemaName}`
       if (f.optional) {
         lines.push(
-          `            val ${f.name}Val: ${nestedType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
+          `            val ${localBase(f.name)}Val: ${nestedType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
         )
         lines.push(
           `                val raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(nestedType)})`,
@@ -1701,13 +1702,13 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
         lines.push(`            } else null`)
       } else {
         lines.push(
-          `            val ${f.name}Raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>)`,
+          `            val ${localBase(f.name)}Raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>)`,
         )
         lines.push(
           `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(nestedType)})`,
         )
         lines.push(
-          `            val ${f.name}Val = ${nestedType}.parse(${f.name}Raw)`,
+          `            val ${localBase(f.name)}Val = ${nestedType}.parse(${localBase(f.name)}Raw)`,
         )
       }
       continue
@@ -1723,7 +1724,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       const arrayType = `List<${nestedType}>`
       if (f.optional) {
         lines.push(
-          `            val ${f.name}Val: ${arrayType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
+          `            val ${localBase(f.name)}Val: ${arrayType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
         )
         lines.push(
           `                val raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(arrayType)})`,
@@ -1732,13 +1733,13 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
         lines.push(`            } else null`)
       } else {
         lines.push(
-          `            val ${f.name}Raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>)`,
+          `            val ${localBase(f.name)}Raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>)`,
         )
         lines.push(
           `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(arrayType)})`,
         )
         lines.push(
-          `            val ${f.name}Val = ${f.name}Raw.map { ${nestedType}.parse(it) }`,
+          `            val ${localBase(f.name)}Val = ${localBase(f.name)}Raw.map { ${nestedType}.parse(it) }`,
         )
       }
       continue
@@ -1746,13 +1747,13 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     if (f.optional) {
       // Optional field: missing → null, present-but-wrong-type → throw
       lines.push(
-        `            val ${f.name}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) (input[${kotlinStr(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
+        `            val ${localBase(f.name)}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) (input[${kotlinStr(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
       )
       // Gap 4 v3 — constraints on optional fields apply ONLY when present;
       // the null branch above leaves the field null untouched.
       emitKotlinScalarConstraints(
         lines,
-        `${f.name}Val`,
+        `${localBase(f.name)}Val`,
         f.type,
         f.constraints,
         f.name,
@@ -1763,7 +1764,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       // when the array is present.
       emitKotlinArrayElementConstraints(
         lines,
-        `${f.name}Val`,
+        `${localBase(f.name)}Val`,
         f.type,
         f.name,
         12,
@@ -1772,7 +1773,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       continue
     }
     lines.push(
-      `            val ${f.name}Val = (input[${kotlinStr(f.name)}] as? ${t})`,
+      `            val ${localBase(f.name)}Val = (input[${kotlinStr(f.name)}] as? ${t})`,
     )
     lines.push(
       `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)})`,
@@ -1780,7 +1781,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     // Gap 4 v2.1 — scalar constraints.
     emitKotlinScalarConstraints(
       lines,
-      `${f.name}Val`,
+      `${localBase(f.name)}Val`,
       f.type,
       f.constraints,
       f.name,
@@ -1790,14 +1791,14 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     // Gap 4 v3 — per-element constraints for required array fields.
     emitKotlinArrayElementConstraints(
       lines,
-      `${f.name}Val`,
+      `${localBase(f.name)}Val`,
       f.type,
       f.name,
       12,
       /* nullableTarget */ false,
     )
   }
-  const ctorArgs = zs.fields.map((f) => `${f.name} = ${f.name}Val`).join(', ')
+  const ctorArgs = zs.fields.map((f) => `${kotlinMember(f.name)} = ${localBase(f.name)}Val`).join(', ')
   lines.push(
     `            return PyreonZodSchema_${zs.bindingName}(${ctorArgs})`,
   )
@@ -1891,7 +1892,7 @@ function emitKotlinEnum(e: EnumIR): string {
   // Each entry is a valid Kotlin name: a kebab-case / keyword union member
   // (`'top-left' | 'class'`) is backtick-quoted, which keeps the serialized
   // name byte-identical to the JS string (no `@SerialName` needed).
-  return `enum class ${e.name} { ${e.cases.map(kotlinMember).join(', ')} }`
+  return `enum class ${e.name} { ${e.cases.map(kotlinEnumEntry).join(', ')} }`
 }
 
 /**
@@ -3259,20 +3260,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
     ].join('\n  ')
   }
-  // M3.1: `const h = useHaptics()` → a remembered PyreonHaptics. The
-  // Compose haptic surface is `LocalHapticFeedback` (a composition-
-  // local — NO permission, NO Context, unlike Vibrator). Local reads
-  // can't live inside `remember { … }`'s non-Composable lambda, so
-  // hoist it to a sibling val and inject it (same shape clipboard uses
-  // for LocalContext). Methods (`h.impact("light")`) flow through
-  // unchanged — PyreonHaptics maps the style string internally.
-  if (d.kind === 'haptics') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Haptic = LocalHapticFeedback.current`,
-      `val ${id} = remember { PyreonHaptics(${id}Haptic) }`,
-    ].join('\n  ')
-  }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
   // instance of the APP's own class. A Context is hoisted and injected
   // unconditionally (the same shape clipboard/share/linking use): nearly
@@ -3299,89 +3286,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     _chartHandleNamesKotlin.add(d.name)
     return `val ${kotlinIdent(d.name)} = remember { PyreonChartHandle() }`
   }
-  if (d.kind === 'linking') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonLinking(${id}Ctx) }`,
-    ].join('\n  ')
-  }
-  // M3.3: `const notifs = useNotifications()` → a remembered
-  // PyreonNotifications. Android NotificationManager needs a Context —
-  // hoisted from LocalContext (like share). Methods flow through unchanged.
-  if (d.kind === 'notifications') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonNotifications(${id}Ctx) }`,
-    ].join('\n  ')
-  }
-  // M3.5: `const bio = useBiometrics()` → a remembered PyreonBiometrics. Its
-  // `authenticate(reason)` is a suspend fun, awaited inside a
-  // `pyreonAsyncScope.launch { … }` (the M4.5 async-handler wrap). The v1 Kotlin
-  // runtime needs no Context (the full FragmentActivity-backed BiometricPrompt
-  // wiring is a follow-up); a bare remembered instance suffices to compile.
-  if (d.kind === 'biometrics') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonBiometrics() }`
-  }
-  // M3.4: `const picker = useImagePicker()` → a remembered PyreonImagePicker
-  // PLUS a composable-scope ActivityResult launcher wired into it.
-  //
-  // Why the launcher can't live inside the runtime container (the iOS/Android
-  // asymmetry): Android delivers a picked asset through the ActivityResult
-  // callback, and registering for it requires an ActivityResultCaller at
-  // COMPOSITION time — `rememberLauncherForActivityResult` is a @Composable, so
-  // it MUST be called here at composable scope, not from inside `remember {}`
-  // (registering post-RESUMED throws). The container therefore exposes a
-  // settable `launcher` and bridges callback→suspend internally, so `pick()`
-  // keeps the same `suspend fun (): String?` shape as Swift's `async`.
-  //
-  // The assignment re-runs on recomposition, which is harmless:
-  // rememberLauncherForActivityResult returns the SAME instance across
-  // recompositions, so this re-assigns an identical reference.
-  // `useCamera()` -> PyreonCamera. Android needs the launcher assigned from
-  // the composition (same shape as the image picker); TakePicturePreview
-  // hands back a bitmap the runtime persists, so the callback feeds a URI.
-  if (d.kind === 'camera') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id} = remember { PyreonCamera() }`,
-      `${id}.launch = rememberCameraLauncher { uri -> ${id}.onResult(uri) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'image-picker') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id} = remember { PyreonImagePicker() }`,
-      `${id}.launcher = rememberLauncherForActivityResult(`,
-      `    ActivityResultContracts.PickVisualMedia()`,
-      `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
-    ].join('\n  ')
-  }
-  // M3.8: `const files = useFilePicker()` → a remembered PyreonFilePicker PLUS a
-  // composable-scope ActivityResult launcher over the SAF `OpenDocument`
-  // contract (input `Array<String>` of MIME types → `Uri?`). Same
-  // composition-time-registration rule as the image picker
-  // (rememberLauncherForActivityResult is a @Composable), so the launcher is
-  // wired HERE, not from inside `remember {}`; the container bridges
-  // callback→suspend so `pick()` keeps the Swift `async` shape. The `pick()`
-  // runtime chooses the MIME filter (`arrayOf("*/*")`), so the emit is
-  // contract-registration only.
-  if (d.kind === 'file-picker') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id} = remember { PyreonFilePicker() }`,
-      `${id}.launcher = rememberLauncherForActivityResult(`,
-      `    ActivityResultContracts.OpenDocument()`,
-      `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'share') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonShare(${id}Ctx) }`,
-    ].join('\n  ')
+  // Plain service containers — one generic branch rendered from the
+  // descriptor in services.ts (see `renderKotlinService`).
+  if (d.kind === 'service') {
+    return renderKotlinService(serviceFor(d.hook), kotlinIdent(d.name))
   }
   // Gap 4 PR-3: `const i18n = createI18n({...})` →
   // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
@@ -5238,7 +5146,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // known enum-typed context. Kotlin requires the enum-name
         // qualifier (vs Swift's `.case` type-inferred shorthand).
         if (_activeEnumType !== undefined) {
-          return `${_activeEnumType}.${kotlinMember(e.value)}`
+          return `${_activeEnumType}.${kotlinEnumEntry(e.value)}`
         }
         return kotlinStr(e.value)
       }
@@ -7754,7 +7662,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitKotlinExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+              .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
               .join(', ')
             return `${target}.copy(${overrides})`
           }
@@ -9076,7 +8984,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     if (b.body !== undefined && b.body.kind === 'identifier' && b.params[0] === b.body.name) {
       kotlinKey = 'it'
     } else if (b.body !== undefined && b.body.kind === 'member') {
-      kotlinKey = `it.${b.body.property}`
+      kotlinKey = `it.${kotlinMember(b.body.property)}`
     } else {
       _emitWarnings.push(
         `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a Compose items() key — this by-callback matches neither; emitting key = { it.id } which likely fails to compile. Key on a field or the element itself.`,
@@ -9145,7 +9053,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (isFieldArrayItems) _fieldArrayItemParamsKotlin.pop()
   return (
     `LazyColumn {\n` +
-    `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${param} ->\n` +
+    `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${kotlinIdent(param)} ->\n` +
     `${pad}${bodyText}\n` +
     `${close}}\n` +
     `${outerClose}}`
