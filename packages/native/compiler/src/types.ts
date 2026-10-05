@@ -507,7 +507,6 @@ export type DeclIR =
   | { kind: 'screen-orientation'; name: string }
   | { kind: 'device-motion'; name: string }
   | { kind: 'speech'; name: string }
-  | { kind: 'camera'; name: string }
   | { kind: 'audio-recorder'; name: string }
   /**
    * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
@@ -534,22 +533,6 @@ export type DeclIR =
    * debounce. No runtime and no stored timer handle.
    */
   | { kind: 'debounced-value'; name: string; source: ExprIR; type: TypeIR; delayMs: number }
-  /**
-   * M3.1 — haptic feedback via `const h = useHaptics()` from
-   * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:
-   *   Swift  → @State private var h = PyreonHaptics()
-   *   Kotlin → val hHaptic = LocalHapticFeedback.current
-   *            val h = remember { PyreonHaptics(hHaptic) }
-   *
-   * `useHaptics()` takes no arguments and has NO reactive state. Calls
-   * are member methods (`h.impact("light")` / `h.notification("success")`
-   * / `h.selection()`) whose string arg flows through unchanged — the
-   * runtime container maps the style string to the platform generator
-   * (iOS UIImpactFeedbackGenerator/UINotificationFeedbackGenerator/
-   * UISelectionFeedbackGenerator; Android Compose LocalHapticFeedback,
-   * which is coarser — several styles map to the nearest constant).
-   */
-  | { kind: 'haptics'; name: string }
   /**
    * USER-DEFINED native module via
    * `const bt = useNativeModule<T>('Bluetooth')` from
@@ -578,70 +561,18 @@ export type DeclIR =
    */
   | { kind: 'native-module'; name: string; moduleName: string }
   /**
-   * M3.2 — share sheet via `const share = useShare()` from
-   * `@pyreon/hooks`. Emits the PyreonShare wrapper:
-   *   Swift  → @State private var share = PyreonShare()
-   *   Kotlin → val shareCtx = LocalContext.current
-   *            val share = remember { PyreonShare(shareCtx) }
-   *
-   * `useShare()` takes no arguments and has NO reactive state. Calls are
-   * member methods with STRING args (`share.text("hi")` / `share.url(...)`
-   * / `share.textUrl(t, u)` / `share.canShare()`) that flow through
-   * unchanged — the runtime container presents the platform share sheet
-   * (iOS UIActivityViewController from the key window; Android
-   * Intent.createChooser(ACTION_SEND)). Android needs a Context (hoisted
-   * from LocalContext, like clipboard); iOS grabs the key window itself.
+   * A PLAIN service container (`useShare`, `useLinking`, `useHaptics`,
+   * `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,
+   * `useCamera`) — see `services.ts`. `hook` names the entry in `SERVICES`
+   * that supplies the Swift initialiser and the Kotlin declaration lines, so
+   * adding another plain container is one descriptor and no new variant.
+   * The hook takes no arguments and has NO reactive state; every call is a
+   * member method that flows through unchanged (no `.value` rewrite, no
+   * argument transformation).
    */
-  | { kind: 'share'; name: string }
-  /**
-   * M3.2b — external-URL open via `const linking = useLinking()` from
-   * `@pyreon/hooks`. Emits the PyreonLinking wrapper:
-   *   Swift  → @State private var linking = PyreonLinking()
-   *   Kotlin → val linkingCtx = LocalContext.current
-   *            val linking = remember { PyreonLinking(linkingCtx) }
-   *
-   * `useLinking()` takes no arguments and has NO reactive state.
-   * `linking.openUrl("...")` (string arg) flows through unchanged — the
-   * runtime hands the URL to the OS (iOS `UIApplication.shared.open`;
-   * Android `startActivity(Intent(ACTION_VIEW, Uri.parse(url)))`). Android
-   * needs a Context (hoisted from LocalContext, like share); iOS uses the
-   * shared application.
-   */
-  | { kind: 'linking'; name: string }
+  | { kind: 'service'; name: string; hook: string }
   /** `const chart = createChartHandle()` — a PyreonChartHandle (Swift @Observable class / Kotlin state holder). */
   | { kind: 'chart-handle'; name: string }
-  /**
-   * M3.3 — local notifications via `const notifs = useNotifications()` from
-   * `@pyreon/hooks`. Emits the PyreonNotifications wrapper:
-   *   Swift  → @State private var notifs = PyreonNotifications()
-   *   Kotlin → val notifsCtx = LocalContext.current
-   *            val notifs = remember { PyreonNotifications(notifsCtx) }
-   *
-   * `useNotifications()` takes no arguments and has NO reactive state.
-   * Methods (`notifs.notify("t", "b")` / `notifs.requestPermission()`) flow
-   * through unchanged — the runtime posts a local notification (iOS
-   * UNUserNotificationCenter; Android NotificationManager + a channel).
-   * Android needs a Context (hoisted from LocalContext, like share); iOS
-   * uses the shared notification center. Distinct from usePush (which
-   * RECEIVES remote push).
-   */
-  | { kind: 'notifications'; name: string }
-  /** M3.5 — `const bio = useBiometrics()` → PyreonBiometrics (iOS LAContext /
-   * Android BiometricPrompt). `authenticate(reason?)` is async, awaited in an
-   * `async` handler (the first consumer of the M4.5 `await` lowering). */
-  | { kind: 'biometrics'; name: string }
-  /** M3.4 — `const picker = useImagePicker()` → PyreonImagePicker (iOS
-   * PHPickerViewController / Android PickVisualMedia). `pick()` is async and
-   * resolves a URI string or null (cancelled), awaited in an `async` handler
-   * (the M4.5 `await` lowering). Needs no photo-library permission — both
-   * system pickers run out of process. */
-  | { kind: 'image-picker'; name: string }
-  /** M3.8 — `const files = useFilePicker()` → PyreonFilePicker (iOS
-   * UIDocumentPickerViewController / Android SAF `OpenDocument`). `pick()` is
-   * async and resolves a URI string or null (cancelled), awaited in an `async`
-   * handler (the M4.5 `await` lowering). The document sibling of image-picker;
-   * needs no storage permission — both system pickers run out of process. */
-  | { kind: 'file-picker'; name: string }
   /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode

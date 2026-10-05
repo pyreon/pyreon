@@ -119,6 +119,38 @@ export function normalizeHtml(html: string): string {
 }
 
 /**
+ * Serialize a container's children with every element's attributes in a fixed
+ * (name) order.
+ *
+ * `innerHTML` emits attributes in INSERTION order, and insertion order is not
+ * semantic: adopting server DOM keeps the server's order and then appends a
+ * dynamic attribute the client sets later, while a fresh mount sets that same
+ * attribute earlier. Comparing the strings reports a difference between two
+ * identical attribute MAPS. Sorting is done on a detached CLONE, so the live
+ * container (which the framework still owns) is never touched.
+ *
+ * Only ORDER is canonicalized. Names, values (a `class` string included — its
+ * token order is deliberately still significant), child order and text all
+ * remain compared.
+ */
+export function canonicalInnerHtml(root: Element): string {
+  const clone = root.cloneNode(true) as Element
+  for (const el of Array.from(clone.querySelectorAll('*'))) {
+    const attrs = Array.from(el.attributes)
+    if (attrs.length < 2) continue
+    const sorted = attrs
+      .map((a) => ({ ns: a.namespaceURI, name: a.name, value: a.value }))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    for (const a of attrs) el.removeAttribute(a.name)
+    for (const a of sorted) {
+      if (a.ns) el.setAttributeNS(a.ns, a.name, a.value)
+      else el.setAttribute(a.name, a.value)
+    }
+  }
+  return clone.innerHTML
+}
+
+/**
  * Remove HTML comments, by scanning rather than by regex.
  *
  * The obvious `/<!--[^>]*-->/g` is wrong twice, and CodeQL caught both:
@@ -290,8 +322,8 @@ export async function checkSsrParity(
   let disposeClient: (() => void) | undefined
   try {
     disposeClient = mount(build(), clientContainer)
-    const hydrated = normalizeHtml(container.innerHTML)
-    const client = normalizeHtml(clientContainer.innerHTML)
+    const hydrated = normalizeHtml(canonicalInnerHtml(container))
+    const client = normalizeHtml(canonicalInnerHtml(clientContainer))
     if (hydrated !== client) {
       findings.push(
         finding(

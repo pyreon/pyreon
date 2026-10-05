@@ -33,6 +33,8 @@
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
+ *   - check-native-golden   (the native compiler's emitted Swift/Kotlin changed for the golden corpus)
+ *   - check-compiler-boundary (library knowledge inside a compiler grew above its committed baseline)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
@@ -158,6 +160,10 @@ const GATES: Gate[] = [
   // The published tarballs of the source-shipping native runtimes must be consumable
   // (#3787: a Package.swift testTarget with no shipped Tests/ broke every consumer).
   { name: 'check-native-tarballs', cmd: 'bun scripts/check-native-tarballs.ts' },
+  // Refactor locks for the native compiler: emitted Swift/Kotlin must stay byte-identical across
+  // the boundary refactor (golden), and library knowledge inside either compiler may only shrink.
+  { name: 'check-native-golden', cmd: 'bun scripts/check-native-golden.ts' },
+  { name: 'check-compiler-boundary', cmd: 'bun scripts/check-compiler-boundary.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
   { name: 'check-skip-guards', cmd: 'bun scripts/check-skip-guards.ts' },
   { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },

@@ -58,12 +58,24 @@ export interface BrowserVerifyOptions {
   /** Overwrite every stored baseline with the current render (re-baseline). */
   updateSnapshots?: boolean
   port?: number
+  /**
+   * axe-core accessibility checks, run per scenario against the live preview.
+   * `false` switches them off (the a11y verdict then stays the scan's static
+   * one). `minImpact` drops violations below that axe impact level (default
+   * `minor`: everything); `rules` toggles individual axe rules.
+   */
+  axe?: false | { minImpact?: AxeImpact; rules?: Record<string, { enabled: boolean }> }
 }
+
+export type AxeImpact = 'minor' | 'moderate' | 'serious' | 'critical'
+const IMPACT_ORDER: readonly AxeImpact[] = ['minor', 'moderate', 'serious', 'critical']
 
 export interface ScenarioBrowserResult {
   id: string
   reactivityCoverage: VerifyCheck
   snapshot: VerifyCheck
+  /** Present only when axe was attempted for this scenario. */
+  a11y?: VerifyCheck
 }
 
 export interface BrowserVerifySummary {
@@ -71,6 +83,10 @@ export interface BrowserVerifySummary {
   snapshotsCreated: number
   snapshotsFailed: number
   coverageMeasured: number
+  /** Scenarios axe-core actually ran on (a run that errored is not counted). */
+  axeChecked: number
+  /** Of those, scenarios with at least one violation at/above the impact threshold. */
+  axeFailed: number
   /**
    * Catalog scenarios the workbench could not drive — components living in
    * workbench-HOST files (they import `@pyreon/atlas`, so the dev nav filters
@@ -86,6 +102,83 @@ interface PageCatalog {
   components: { id: string; name: string; scenarios?: { id: string }[] }[]
 }
 
+/** The finding codes axe contributes — stripped before a re-merge so a rerun never stacks stale results. */
+const AXE_CODES = new Set<string>(['axe-violation', 'axe-incomplete'])
+
+/** The page-side shape of `runAxe`'s report (structural: the UI type stays out of Node's graph). */
+export interface AxeReportLike {
+  status: 'ready' | 'running' | 'done' | 'failed'
+  violations: { id: string; impact: string; help: string; target: string; html: string; nodes: number }[]
+  incomplete: number
+  error?: string
+}
+
+/**
+ * Turn an axe report into an a11y check. A run that did not happen is a SKIP
+ * with its reason — never a pass — and `incomplete` items (axe's "needs a
+ * human") are reported on a pass rather than dropped.
+ */
+export function axeReportToCheck(report: AxeReportLike, minImpact: AxeImpact = 'minor'): VerifyCheck {
+  if (report.status !== 'done') {
+    return skipped('not-run', `axe-core did not run: ${report.error ?? `report status "${report.status}"`}`)
+  }
+  const floor = IMPACT_ORDER.indexOf(minImpact)
+  // An impact axe did not classify ('unknown') is KEPT: dropping what cannot
+  // be ranked would hide exactly the findings nobody has triaged.
+  const kept = report.violations.filter((v) => {
+    const at = IMPACT_ORDER.indexOf(v.impact as AxeImpact)
+    return at === -1 || at >= floor
+  })
+  if (kept.length > 0) {
+    return {
+      status: 'fail',
+      findings: kept.map((v) =>
+        finding(
+          'axe-violation',
+          `axe-core ${v.id} (${v.impact}): ${v.help} — ${v.nodes} node(s), first ${v.target || '(no selector)'}: ${v.html}`,
+        ),
+      ),
+    }
+  }
+  return report.incomplete > 0
+    ? {
+        status: 'pass',
+        findings: [
+          finding(
+            'axe-incomplete',
+            `axe-core found no violations but could not decide ${report.incomplete} item(s) automatically — they need a human review`,
+          ),
+        ],
+      }
+    : { status: 'pass' }
+}
+
+/**
+ * Fold axe's verdict into the scenario's existing a11y verdict.
+ *
+ * The static check's REAL result (pass, or a fail with its own findings) is
+ * kept; its "nothing to check statically — run verify-browser" skip is
+ * dropped, because that promise has just been kept or its failure reported.
+ * A failure from either side fails the merged check. Prior axe findings are
+ * stripped first so a re-run replaces them instead of stacking.
+ */
+export function mergeA11y(prev: VerifyCheck | undefined, axe: VerifyCheck): VerifyCheck {
+  const staticFindings = (prev?.findings ?? []).filter((f) => !AXE_CODES.has(f.code))
+  const staticStatus: CheckStatus | 'none' =
+    !prev || prev.status === 'skip' || (prev.status === 'fail' && staticFindings.length === 0)
+      ? 'none'
+      : prev.status
+  const axeFindings = axe.findings ?? []
+  if (staticStatus === 'fail' || axe.status === 'fail') {
+    return {
+      status: 'fail',
+      findings: [...(staticStatus === 'fail' ? staticFindings : []), ...axeFindings],
+    }
+  }
+  const status: CheckStatus = staticStatus === 'pass' || axe.status === 'pass' ? 'pass' : 'skip'
+  return axeFindings.length > 0 ? { status, findings: axeFindings } : { status }
+}
+
 /**
  * Merge browser verdicts into a scenario's existing verify verdict,
  * recomputing `checked`/`ok` exactly the way the pipeline registry does — a
@@ -93,13 +186,14 @@ interface PageCatalog {
  */
 export function mergeBrowserVerdict(
   verify: VerifyVerdict | undefined,
-  result: Pick<ScenarioBrowserResult, 'reactivityCoverage' | 'snapshot'>,
+  result: Pick<ScenarioBrowserResult, 'reactivityCoverage' | 'snapshot' | 'a11y'>,
 ): VerifyVerdict {
   const SKIP: VerifyCheck = { status: 'skip' }
   const next: VerifyVerdict = {
     ok: false,
     checked: 0,
-    a11y: verify?.a11y ?? SKIP,
+    // Axe attempted → fold it in; not attempted (`--no-axe`) → carried as-is.
+    a11y: result.a11y ? mergeA11y(verify?.a11y, result.a11y) : (verify?.a11y ?? SKIP),
     interaction: verify?.interaction ?? SKIP,
     reactivityCoverage: result.reactivityCoverage,
     leak: verify?.leak ?? SKIP,
@@ -180,6 +274,9 @@ export async function runBrowserVerify(
   const notDriven: string[] = []
   const snapshotOutcomes: SnapshotOutcome[] = []
   let coverageMeasured = 0
+  let axeChecked = 0
+  let axeFailed = 0
+  const axeOpts = options.axe === false ? null : (options.axe ?? {})
 
   const browser = await chromium.launch()
   try {
@@ -254,6 +351,30 @@ export async function runBrowserVerify(
           }
         }
 
+        // axe-core against the same live preview. Run in the page, through the
+        // workbench's own vendored axe (`@pyreon/atlas/ui` runAxe), so the DOM
+        // judged is the DOM the coverage pass just exercised.
+        let a11y: VerifyCheck | undefined
+        if (axeOpts) {
+          try {
+            const report = (await page.evaluate(
+              `(async () => {
+                const m = globalThis.__ATLAS_MODEL__
+                const v = globalThis.__ATLAS_VERIFY__
+                if (!v || !v.runAxe) return { status: 'failed', violations: [], incomplete: 0, error: 'this dev build exposes no axe runner' }
+                const surface = m.previewElement()
+                if (!surface) return { status: 'failed', violations: [], incomplete: 0, error: 'no preview surface to audit' }
+                return await v.runAxe(surface, ${JSON.stringify(axeOpts.rules ?? {})})
+              })()`,
+            )) as AxeReportLike
+            a11y = axeReportToCheck(report, axeOpts.minImpact)
+          } catch (err) {
+            a11y = skipped('not-run', `axe-core did not run: ${err instanceof Error ? err.message : String(err)}`)
+          }
+          if (a11y.status !== 'skip') axeChecked += 1
+          if (a11y.status === 'fail') axeFailed += 1
+        }
+
         // Snapshot the preview surface. Counting is derived from the verdict,
         // so every failing path — a thrown screenshot included — reaches the
         // tally the CLI exits on.
@@ -264,7 +385,7 @@ export async function runBrowserVerify(
         })
         snapshotOutcomes.push({ snapshot, created })
 
-        results.push({ id: scenario.id, reactivityCoverage, snapshot })
+        results.push({ id: scenario.id, reactivityCoverage, snapshot, ...(a11y ? { a11y } : {}) })
       }
     }
   } finally {
@@ -305,6 +426,8 @@ export async function runBrowserVerify(
     snapshotsCreated,
     snapshotsFailed,
     coverageMeasured,
+    axeChecked,
+    axeFailed,
     notDriven,
     ...(wrote ? { catalogPath: wrote } : {}),
   }
