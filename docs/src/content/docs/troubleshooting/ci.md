@@ -83,6 +83,7 @@ The batched `bun run --filter=… build` exit code is one boolean for N packages
 
 - A variable referenced outside its loop in a `GITHUB_STEP_SUMMARY` block typechecks as DOM `window.name` and throws only in CI.
   - `scripts/heal-release-chain.ts` must read `failed`/`blocked` from `publish-result.json`; an incomplete publish refuses the GitHub Release (with a `::error::` naming packages) but still tags and dispatches native builds. Its registry retry must catch thrown fetches (DNS, ECONNRESET), not only bad statuses.
+  - A successful npm publish can still be processing: npm recorded native-cli@0.52.0 about 156s after acceptance, but the gate checked after 11s. `check-published-state --wait-for-publish` gives only the current receipt's successfully submitted packages up to 5m to become visible, then runs the full gate. Bound requests and the outer wait; keep daily/resume-detection checks immediate and preserve real missing/lagging failures.
   - `scripts/cap-changeset-bumps.ts` caps `major` in the frontmatter only (`capChangesetText`); matching the whole file rewrites prose like `Impact: major` in the published changelog.
   - `git diff --name-only` quotes non-ASCII paths. Use the NUL-delimited reader `scripts/changed-files.ts` (`-z`).
 
