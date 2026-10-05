@@ -92,7 +92,7 @@ Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, w
 - Strategies: `load`, `idle`, `visible`, `interaction`, `media(query)`, `never` (no registry entry, so zero JS). `interaction` hydrates on `focus`/`click`/`pointerenter`/`touchstart`/`submit` and replays captured clicks and form submits afterwards. `prefetch: 'idle' | 'visible'` warms the chunk before the trigger.
 - `pyreon({ islands: true })` (default) generates the registry consumed by `hydrateIslandsAuto(registry)`.
 - `name` is optional for `const X = island(…)`: the name `X$<fnv1a6(relPath)>` is derived by `deriveIslandName` in `@pyreon/compiler` `island-naming.ts`, shared by the transform, the prescan and the project scanner so marker, registry and audit names cannot disagree. An explicit name wins; the runtime throws with guidance when no name arrives (plugin-less build, bindingless call).
-- `vite dev` runs the islands audit once on boot and prints findings; `pyreon doctor --check-islands` is the project audit. Other rules: the "Islands Mistakes" section of `.agents/rules/anti-patterns.md`.
+- `vite dev` runs the islands audit once on boot and prints findings; deferred audits and context writers are cancelled when the server closes or is replaced. Audits use the nearest package manifest, include author `src/lib`, and compare sibling packages only when explicitly run at the workspace root; `pyreon doctor --check-islands` is the project audit. Other rules: the "Islands Mistakes" section of `.agents/rules/anti-patterns.md`.
 
 ## Dev perf counters
 

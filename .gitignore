@@ -27,6 +27,8 @@ coverage
 .source
 test-results
 .vitest-attachments
+# Vitest's CI JSON reporter writes per-package results here.
+.vitest/
 **/__screenshots__
 scripts/visual-test/current/*.png
 scripts/visual-test/diffs/*.png

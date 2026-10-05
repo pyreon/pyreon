@@ -36,7 +36,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
-import { detectPlain,
+import {
+  detectPlain,
   type CollapsibleSite,
   generateContext,
   scanCollapsibleSites,
@@ -857,6 +858,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // rename). Without this, the next dev request gets the STALE registry
   // and the new island silently fails to hydrate until a manual reload.
   let _devServer: ViteDevServer | undefined
+  let disposeDevWork: (() => void) | undefined
 
   return {
     name: 'pyreon',
@@ -1051,7 +1053,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // monotonically with developer edit activity. Zero in a session
       // with known deletes = the watchChange hook regressed (and the
       // 4 per-instance caches will leak again).
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('vite-plugin.watchChange.delete')
+      if (process.env.NODE_ENV !== 'production')
+        _countSink.__pyreon_count__?.('vite-plugin.watchChange.delete')
 
       const normalized = normalizeModuleId(id)
 
@@ -1087,9 +1090,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       //    in any case (small + finite).
     },
 
-    // Tear down the one programmatic Vite SSR server the collapse
-    // resolver holds (created lazily on first client-graph transform).
+    // Vite calls closeBundle on dev-server shutdown as well as build close.
+    // Release deferred dev work and the lazily-created collapse resolver.
     async closeBundle() {
+      disposeDevWork?.()
       if (collapseResolver) {
         await collapseResolver.dispose()
         collapseResolver = null
@@ -1195,7 +1199,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // user keeps writing the chainable API. Scoped to `.ts` modules (where
       // validation schemas overwhelmingly live), mirroring the compiled-verdict
       // `.ts` early-return: esbuild compiles the rewritten source after us.
-      if (optimizeValidatorsEnabled && isBuild && getExt(id) === '.ts' && code.includes('@pyreon/validate')) {
+      if (
+        optimizeValidatorsEnabled &&
+        isBuild &&
+        getExt(id) === '.ts' &&
+        code.includes('@pyreon/validate')
+      ) {
         const rewritten = optimizeValidators(code, id)
         if (rewritten !== null) return { code: rewritten, map: null }
       }
@@ -1231,7 +1240,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // a `.js`/`.mjs`/`.cjs`/`.cts` plain store used to be skipped here while
       // its `.jsx` sibling was transformed, and the prescan walks `.js`.
       const isPlainTs =
-        (ext === '.ts' || ext === '.mts' || ext === '.cts' || ext === '.js' || ext === '.mjs' || ext === '.cjs') &&
+        (ext === '.ts' ||
+          ext === '.mts' ||
+          ext === '.cts' ||
+          ext === '.js' ||
+          ext === '.mjs' ||
+          ext === '.cjs') &&
         detectPlain(code)
       // ── Scan for exported signal declarations (populate registry) ──────
       // BEFORE the extension gate: a plain `.ts` store module never reaches
@@ -1530,10 +1544,33 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
     // ── SSR dev middleware ───────────────────────────────────────────────────
     configureServer(server: ViteDevServer) {
-      // PR-S12: capture the dev server reference for transform-time
-      // virtual-module invalidation. Reset to undefined when the server
-      // is replaced (next configureServer call).
+      // Each server owns its timers/listener. Replacement invalidates the
+      // previous generation, including an audit awaiting its module import.
+      disposeDevWork?.()
       _devServer = server
+      const serverRoot = projectRoot
+      let disposed = false
+      let auditTimer: ReturnType<typeof setTimeout> | null = null
+      let contextTimer: ReturnType<typeof setTimeout> | null = null
+      const onContextChange = (file: string) => {
+        if (disposed || !/\.(tsx|jsx|ts|js)$/.test(file) || file.includes('node_modules')) return
+        if (contextTimer) clearTimeout(contextTimer)
+        contextTimer = setTimeout(() => {
+          contextTimer = null
+          if (!disposed) generateProjectContext(serverRoot)
+        }, 500)
+      }
+      const dispose = () => {
+        if (disposed) return
+        disposed = true
+        if (auditTimer) clearTimeout(auditTimer)
+        if (contextTimer) clearTimeout(contextTimer)
+        auditTimer = contextTimer = null
+        server.watcher.off('change', onContextChange)
+        if (_devServer === server) _devServer = undefined
+        if (disposeDevWork === dispose) disposeDevWork = undefined
+      }
+      disposeDevWork = dispose
 
       // ── Islands doctor-lite (dev-only, advisory) ─────────────────────
       // The islands audit (duplicate-name / nested-island / dead-island /
@@ -1544,16 +1581,19 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // warnings. Advisory: any failure is swallowed (the audit must never
       // break `vite dev`).
       if (islandsEnabled) {
-        setTimeout(() => {
+        auditTimer = setTimeout(() => {
+          auditTimer = null
+          if (disposed) return
           void (async () => {
             try {
               const { auditIslands, formatIslandAudit } = await import('@pyreon/compiler')
-              const result = auditIslands(projectRoot)
+              if (disposed) return
+              const result = auditIslands(serverRoot)
               if (result.findings.length > 0) {
                 // oxlint-disable-next-line no-console
                 console.warn(
-                  `\n[Pyreon islands] ${result.findings.length} finding(s) — \`pyreon doctor --check-islands\` for details:\n`
-                    + formatIslandAudit(result),
+                  `\n[Pyreon islands] ${result.findings.length} finding(s) — \`pyreon doctor --check-islands\` for details:\n` +
+                    formatIslandAudit(result),
                 )
               }
             } catch {
@@ -1564,16 +1604,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
 
       // Generate .pyreon/context.json for AI tools on dev server start
-      generateProjectContext(projectRoot)
+      generateProjectContext(serverRoot)
 
       // Debounced regeneration on file changes
-      let contextTimer: ReturnType<typeof setTimeout> | null = null
-      server.watcher.on('change', (file) => {
-        if (/\.(tsx|jsx|ts|js)$/.test(file) && !file.includes('node_modules')) {
-          if (contextTimer) clearTimeout(contextTimer)
-          contextTimer = setTimeout(() => generateProjectContext(projectRoot), 500)
-        }
-      })
+      server.watcher.on('change', onContextChange)
 
       // LPIH auto-bridge — accepts POST /__pyreon_lpih__ from the browser
       // client and atomically writes the cache file the LSP auto-discovers.
@@ -2069,7 +2103,8 @@ function injectSignalNames(code: string, moduleId: string): string {
   // the matched identifier gets the injection. `null` (the file did not parse)
   // keeps the regex-only behaviour — the pre-existing conservative default.
   const realCallees = _reactiveCalleeStarts(code, moduleId)
-  const isRealCall = (tokenStart: number): boolean => realCallees === null || realCallees.has(tokenStart)
+  const isRealCall = (tokenStart: number): boolean =>
+    realCallees === null || realCallees.has(tokenStart)
 
   // Pass 1: bound forms — `const X = (signal|computed|effect)(…)`.
   // Extract `X` as the debug name + the reactive primitive kind.
@@ -2164,7 +2199,11 @@ function injectSignalNames(code: string, moduleId: string): string {
 export function _reactiveCalleeStarts(code: string, moduleId: string): Set<number> | null {
   let program: unknown
   try {
-    const lang = /\.tsx?(?:$|\?)/.test(moduleId) ? (moduleId.includes('.tsx') ? 'tsx' : 'ts') : 'jsx'
+    const lang = /\.tsx?(?:$|\?)/.test(moduleId)
+      ? moduleId.includes('.tsx')
+        ? 'tsx'
+        : 'ts'
+      : 'jsx'
     const r = parseSync(moduleId, code, { sourceType: 'module', lang })
     if (r.errors.length > 0) return null
     program = r.program
@@ -2183,7 +2222,9 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
     if (
       node.type === 'CallExpression' &&
       node.callee?.type === 'Identifier' &&
-      (node.callee.name === 'signal' || node.callee.name === 'computed' || node.callee.name === 'effect') &&
+      (node.callee.name === 'signal' ||
+        node.callee.name === 'computed' ||
+        node.callee.name === 'effect') &&
       typeof node.callee.start === 'number'
     ) {
       out.add(node.callee.start)
@@ -2769,7 +2810,6 @@ function _maskSource(code: string, maskStrings: boolean): string {
   return out.join('')
 }
 
-
 /**
  * Mask comments AND string / template literals.
  *
@@ -2791,7 +2831,6 @@ export function _maskCommentsAndStrings(code: string): string {
 export function _maskComments(code: string): string {
   return _maskSource(code, false)
 }
-
 
 /** Collect every name imported via `import { ... }` / `import X` / `import * as X`. */
 export function _collectImportedNames(code: string): Set<string> {
@@ -2833,7 +2872,6 @@ function getExt(id: string): string {
   const dot = clean.lastIndexOf('.')
   return dot >= 0 ? clean.slice(dot) : ''
 }
-
 
 /** Skip Vite-handled asset requests (CSS, images, HMR, etc.) */
 function isAssetRequest(url: string): boolean {

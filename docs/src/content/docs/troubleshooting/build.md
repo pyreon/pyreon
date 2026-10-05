@@ -468,9 +468,15 @@ Middlewares added with `server.middlewares.use()` inside `configureServer` run b
 
 ---
 
+### Dev diagnostics must own their deferred work and project boundary.
+
+A boot audit and debounced context writer belong to one Vite server: cancel their timers, detach the named watcher listener, and check disposal again after an awaited import. `closeBundle` also runs on dev shutdown. Resolve island audits to the nearest `package.json` (or explicit `packages/` workspace marker), so independent apps do not share a hydration registry audit. Exclude `lib`/`dist`/`build` only at package roots; author `src/lib` and workspace packages named `lib` remain source. Regressions: compiler `island-audit-project-root.test.ts` and Vite `dev-work-lifecycle.test.ts`, including a real middleware server shutdown.
+
+---
+
 ### Gate a caching or freezing `transform`-hook precompute on `isBuild`, and announce the dev no-op.
 
-`transform` runs in `serve` and `build`. A precompute that is expensive, caches across the process, or freezes a value derived from HMR-editable source must not run in dev. The rocketstyle-collapse resolver starts a nested Vite SSR server (leaked in dev, since `closeBundle` never fires) and freezes styler classes that ignore theme edits. `@pyreon/vite-plugin` gates it `if (collapseEnabled && isBuild && !isSsr)`, with `isBuild = env.command === 'build'` set in `config()`, and prints one `this.info('[Pyreon] … is build-only …')` per process (`warnedDevCollapse`). Test with a `vi.mock`ed resolver so a missing workspace `lib/` cannot make the gate look irrelevant, and pair a `serve` spec with a `build` spec on the same source. Lock: `vite-plugin/src/tests/rocketstyle-collapse-dev.test.ts`.
+`transform` runs in `serve` and `build`. A precompute that is expensive, caches across the process, or freezes a value derived from HMR-editable source must not run in dev. The rocketstyle-collapse resolver starts a nested Vite SSR server that persists through the dev session and freezes styler classes that ignore theme edits. Vite does call `closeBundle` on dev shutdown; that cleanup does not make a build-only precompute safe during HMR. `@pyreon/vite-plugin` gates it `if (collapseEnabled && isBuild && !isSsr)`, with `isBuild = env.command === 'build'` set in `config()`, and prints one `this.info('[Pyreon] … is build-only …')` per process (`warnedDevCollapse`). Test with a `vi.mock`ed resolver so a missing workspace `lib/` cannot make the gate look irrelevant, and pair a `serve` spec with a `build` spec on the same source. Lock: `vite-plugin/src/tests/rocketstyle-collapse-dev.test.ts`.
 
 ---
 
