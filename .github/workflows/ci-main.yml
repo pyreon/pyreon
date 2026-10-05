@@ -1,9 +1,8 @@
 name: CI (main)
 
-# The main-only half of CI, split out of ci.yml on 2026-09-23. These jobs
-# never run on a pull request, but as jobs INSIDE ci.yml every PR still
-# listed them as "skipping" rows — noise on every PR's check list. Here they
-# only exist where they run.
+# Full coverage, split out of ci.yml on 2026-09-23. Ordinary PRs measure
+# directly changed packages in ci.yml. Changes to this workflow or its
+# coverage infrastructure also run the full gate before merging.
 #
 # They need no `Install` job: setup-pyreon restores node_modules by lockfile
 # key and lib/ by source hash (BOOTSTRAP_KEY below is per-run, so it misses
@@ -18,6 +17,13 @@ on:
   push:
     branches: [main]
   merge_group:
+  pull_request:
+    paths:
+      - .github/workflows/ci-main.yml
+      - .github/actions/setup-pyreon/**
+      - scripts/check-coverage.ts
+      - scripts/coverage-threshold-baseline.json
+      - packages/internals/vitest-config/**
 
 concurrency:
   group: ci-main-${{ github.ref }}
@@ -35,7 +41,7 @@ jobs:
     # P3c — runs the full test suite, same lib/-requiring tests as
     # `test-cell`. Needs Bootstrap.
     #
-    # Scoped to push:main + merge_group ONLY — NOT every PR. The original
+    # Scoped to main, merge_group and coverage-infrastructure PRs. The original
     # "runs on every trigger" claim estimated ~30s added to PR CI; actual
     # CI measurement showed 262s (4.4 min) — 9× the estimate. That's a
     # 262s slice off the PR critical path for a check that only catches
@@ -47,9 +53,7 @@ jobs:
     # 92% to 88% (still above the floor) passes `Coverage` but fails
     # `Coverage (Full)` at merge-queue time. Same safety as before; the
     # signal just lands at merge-time instead of PR-time.
-    # Event-gated to push:main + merge_group only (never runs on PRs), so the
-    # docs-only Layer-2 gate does not apply here — a code change always exists
-    # by the time something lands on main.
+    # Ordinary docs/package PRs retain their affected coverage gate in ci.yml.
     #
     # 2026-07 restoration: this job had gone red-on-arrival (12 packages below
     # their configured thresholds — coverage drifted under feature waves whose
@@ -61,9 +65,12 @@ jobs:
     # red, treat it as a REGRESSION to fix or an honest re-baseline to land
     # immediately — never leave it red (see anti-patterns.md "CI / Build Gate
     # Mistakes": a red-on-arrival gate is a dead gate).
-    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The shared pool alone consumed ~14 minutes in run 37268856046; the
+    # three nested-build suites still had to run serially afterward. The old
+    # 15-minute job killed the run before it could produce a complete table.
+    # Budget up to 6m restore + 25m coverage + 3m diagnostic upload + cleanup.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
@@ -75,6 +82,8 @@ jobs:
           # whatever the runner image happens to ship on PATH that day.
           node-version: '24'
       - name: Run full per-package coverage
+        timeout-minutes: 25
+        shell: bash
         # `@pyreon/native-compiler` is measured by `Coverage (Native)` below.
         # Its suite spawns hundreds of real swiftc/kotlinc processes, and
         # inside this job's 4-way pool — with NO verdict cache restored and
@@ -85,7 +94,19 @@ jobs:
         # packages)` step already drops it for the same reason and says so;
         # the script fails LOUD if this name stops matching a workspace, so
         # the skip cannot rot into a silent re-inclusion.
-        run: bun run coverage -- --skip=@pyreon/native-compiler
+        run: |
+          set -o pipefail
+          mkdir -p .ci-artifacts/coverage
+          bun run coverage -- --skip=@pyreon/native-compiler 2>&1 | tee .ci-artifacts/coverage/full.log
+      - name: Upload full coverage log
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: full-coverage-log
+          path: .ci-artifacts/coverage/full.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   coverage-native:
     name: Coverage (Native)

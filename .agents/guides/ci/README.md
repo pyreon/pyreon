@@ -44,7 +44,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `Test` validates `toJSON(needs)` after its dependencies finish. Install and Fast Gates must succeed; each selected matrix must succeed; only explicitly unselected matrices may skip. Missing, malformed, or contradictory selection outputs fail. Healthy runs make no jobs-API calls. Failed runs request job links once, with a ten-second total deadline; unavailable or stale API data cannot change the failed verdict.
 - `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
   bypassing Fast Gates or a matrix from disabling cancellation.
-- `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue.
+- `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue. Coverage-infrastructure PRs also run `Coverage (Full)`; native coverage retains its main/merge-group scope.
 
 ## Other workflows
 
@@ -76,6 +76,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Gate reference
 
+- **Coverage (Full)**: main and merge groups measure every testable workspace except the native compiler, which retains its separate cached coverage job. Coverage-infrastructure PRs also run the full gate before merging. The four-worker pool is followed by three serial nested-build suites; budget for both phases. The full job has a 35m backstop, a 25m coverage step and a 3m always-run log upload. Each package logs its start and duration, so a partial run identifies work still in flight. No package thresholds are relaxed.
 - **audit-types** (`bun run audit-types --all --strict`): flags public-interface fields with zero non-type references (typed-but-unimplemented). New HIGH findings block. Fix the runtime, or add to `EXEMPT_FIELDS` in `scripts/audit-types.ts` with a rationale.
 - **verify-modes** (`bun run verify-modes`): `vite build` for every example × mode, asserting rendered content, not just a green build. New cells must check content.
 - **check-bundle-budgets** / **check-import-budgets**: gzipped main-entry and minimal-import sizes against `scripts/{bundle,import}-budgets.json`, measured on built `lib/` with a `NODE_ENV=production` define. Rebuild each changed package before measuring locally; source-resolving tests and typechecks can pass while these gates measure yesterday's library. Run both size gates after that rebuild. For intentional growth, `--update` and review the diff.
