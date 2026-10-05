@@ -124,8 +124,8 @@ import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
-import { elementToStack } from './elements-native'
-import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral, DEFAULT_COLUMNS } from './coolgrid-native'
+import { createEmitContext } from './emit-context'
+import { findElementLowering } from './element-lowering'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -9101,13 +9101,36 @@ function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: 
   )
 }
 
+/** The facade element lowerings emit through — closes over this emitter's state. */
+function swiftEmitContext(indent: number) {
+  return createEmitContext(
+    'swift',
+    {
+      emit: emitSwiftJsx,
+      staticAttr: readStaticAttr,
+      stringLiteral: swiftStr,
+      warn: (message) => {
+        _emitWarnings.push(message)
+      },
+    },
+    indent,
+  )
+}
+
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
-  // @pyreon/elements `<Element>` → the canonical `<Stack>` (direction/alignX/
-  // alignY translated), then re-enter dispatch. This is what makes the whole
-  // ui-system (the 67 ui-components = rocketstyle over Element) lower.
-  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) return emitSwiftJsx(elementToStack(e), indent)
+  // Library elements claimed by a registered element lowering (the built-ins
+  // are `@pyreon/elements` Element — what makes the whole ui-system lower — and
+  // the `@pyreon/coolgrid` Container/Row/Col). A lowering either RETAGS to a
+  // canonical element and re-enters dispatch, or emits through the facade.
+  const lowering = findElementLowering(tag, (t, mod) => canAliasIntercept(t, mod))
+  if (lowering !== undefined) {
+    const retagged = lowering.retag?.(e)
+    if (retagged !== undefined) return emitSwiftJsx(retagged, indent)
+    const emitLowered = lowering.emit?.swift
+    if (emitLowered !== undefined) return emitLowered(e, swiftEmitContext(indent))
+  }
 
   // @pyreon/ui-core `<PyreonUI>` (+ its provider alias) is a TRANSPARENT wrapper
   // on native: the theme is compile-time-resolved (theme-native parses the
@@ -9143,28 +9166,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
       `${p}}\n` +
       `${' '.repeat(indent)}}`
     )
-  }
-
-  // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
-  // a fractional span (literal `size`) via containerRelativeFrame, else equal-fill.
-  if ((tag === 'Container' || tag === 'Row') && canAliasIntercept(tag, '@pyreon/coolgrid')) return emitSwiftJsx(coolgridToStack(e), indent)
-  if (tag === 'Col' && canAliasIntercept(tag, '@pyreon/coolgrid')) {
-    const body = emitSwiftJsx(colToStack(e), indent)
-    const size = colSizeLiteral(e)
-    if (size !== null) {
-      // Fractional span of a 12-column grid — iOS 17's native grid-column
-      // primitive (relative to the nearest container; greediness-free, unlike a
-      // GeometryReader). A partial row (cols summing < 12) leaves the rest empty.
-      return `${body}.containerRelativeFrame(.horizontal, count: ${DEFAULT_COLUMNS}, span: ${size}, spacing: 0)`
-    }
-    if (colHasExplicitSize(e)) {
-      // A responsive / non-literal `size` can't resolve to a static span → equal.
-      _emitWarnings.push(
-        `<Col size=…>: only a LITERAL integer span lowers to a fractional width; ` +
-          `a responsive ({ xs, md } / [a,b]) or non-literal size lowers as an EQUAL column.`,
-      )
-    }
-    return `${body}.frame(maxWidth: .infinity)`
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected

@@ -1475,6 +1475,9 @@ export type ExprIR =
    */
   | { kind: 'spread'; argument: ExprIR }
 
+/** A JSX element expression — the unit an element lowering claims and rewrites. */
+export type JsxElementIR = Extract<ExprIR, { kind: 'jsx-element' }>
+
 export type AttrIR =
   /** Regular attribute: `each={items}`, `by={(i) => i.id}`, `when={visible}`. */
   | { kind: 'attr'; name: string; value: ExprIR }

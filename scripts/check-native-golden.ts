@@ -12,6 +12,7 @@
  * (code + warnings) per entry against a committed golden file:
  *
  *   - every `packages/native/compiler/src/fixtures/*.tsx`
+ *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` (shapes that warn by design)
  *   - every shared example source `examples/native-STAR/src/*.tsx` (the
  *     `entry-client.tsx` web bootstraps are not PMTC input)
  *   - every `REGISTRY` snippet in `check-native-coverage.ts` (one per package
@@ -119,6 +120,16 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
       key: `fixture:${f}`,
       source: readFileSync(join(fixtures, f), 'utf8'),
       filename: `fixtures/${f}`,
+    })
+  }
+  // Golden-only sources: shapes that warn by design (non-literal sizes) or lean on
+  // an unresolvable import, so the zero-warning fixtures gate cannot hold them.
+  const goldenOnly = join(root, 'packages/native/compiler/src/golden-fixtures')
+  for (const f of readdirOrEmpty(goldenOnly).filter((n) => n.endsWith('.tsx')).sort()) {
+    out.push({
+      key: `golden-fixture:${f}`,
+      source: readFileSync(join(goldenOnly, f), 'utf8'),
+      filename: `golden-fixtures/${f}`,
     })
   }
   const examples = join(root, 'examples')

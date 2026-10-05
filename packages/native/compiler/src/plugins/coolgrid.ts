@@ -29,17 +29,15 @@
 // parent-relative.
 // ============================================================================
 
-import type { ExprIR } from './types'
+import type { EmitContext } from '../emit-context'
+import type { ElementLowering } from '../element-lowering'
+import type { AttrIR, JsxElementIR } from '../types'
 
-// oxc/emit AST is walked loosely, matching the sibling native frontends.
-// oxlint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyNode = any
-
-/** coolgrid tags this frontend lowers. */
-export const COOLGRID_TAGS = new Set(['Container', 'Row', 'Col'])
+/** coolgrid tags this lowering claims. */
+export const COOLGRID_TAGS = ['Container', 'Row', 'Col'] as const
 
 export function isCoolgridTag(name: string): boolean {
-  return COOLGRID_TAGS.has(name)
+  return (COOLGRID_TAGS as readonly string[]).includes(name)
 }
 
 // coolgrid props with no canonical-Stack equivalent (grid math) — stripped.
@@ -52,15 +50,15 @@ const PX_TO_SPACE_INDEX: Record<number, number> = {
   0: 0, 4: 1, 8: 2, 12: 3, 16: 4, 20: 5, 24: 6, 32: 7, 40: 8, 48: 9,
 }
 
-function litString(value: string): Extract<ExprIR, { kind: 'literal' }> {
-  return { kind: 'literal', value }
+function directionAttr(value: string): AttrIR {
+  return { kind: 'attr', name: 'direction', value: { kind: 'literal', value } }
 }
 
 /** Translate a coolgrid `gap` attr (raw px) to the Stack `gap` (scale index).
- *  A non-scale px value (e.g. 10) has no index → dropped (the caller warns). */
-function translateGap(a: AnyNode): AnyNode | null {
+ *  A non-scale px value (e.g. 10) has no index → dropped. */
+function translateGap(a: Extract<AttrIR, { kind: 'attr' }>): AttrIR | null {
   const v = a.value
-  if (v?.kind !== 'literal' || typeof v.value !== 'number') return a // token/non-literal → pass through
+  if (v.kind !== 'literal' || typeof v.value !== 'number') return a // token/non-literal → pass through
   const idx = PX_TO_SPACE_INDEX[v.value]
   if (idx === undefined) return null // off-scale px → drop
   return { kind: 'attr', name: 'gap', value: { kind: 'literal', value: idx } }
@@ -72,10 +70,10 @@ function translateGap(a: AnyNode): AnyNode | null {
  * is converted to the Stack's scale index; padding/style pass through. (`<Col>`
  * is emitted separately — it needs the equal-fill modifier.)
  */
-export function coolgridToStack(e: AnyNode): AnyNode {
+export function coolgridToStack(e: JsxElementIR): JsxElementIR {
   const dir = e.tag === 'Row' ? 'row' : 'column'
-  const attrs: AnyNode[] = []
-  for (const a of e.attrs as AnyNode[]) {
+  const attrs: AttrIR[] = []
+  for (const a of e.attrs) {
     if (a.kind === 'attr' && STRIP.has(a.name)) continue
     if (a.kind === 'attr' && a.name === 'gap') {
       const translated = translateGap(a)
@@ -84,7 +82,7 @@ export function coolgridToStack(e: AnyNode): AnyNode {
     }
     attrs.push(a)
   }
-  attrs.push({ kind: 'attr', name: 'direction', value: litString(dir) })
+  attrs.push(directionAttr(dir))
   return { ...e, tag: 'Stack', attrs }
 }
 
@@ -95,19 +93,19 @@ export const DEFAULT_COLUMNS = 12
 
 /** True if `<Col size=…>` carries an explicit span (of any shape — literal,
  *  responsive object/array, or non-literal). */
-export function colHasExplicitSize(e: AnyNode): boolean {
-  return (e.attrs as AnyNode[]).some((a) => a.kind === 'attr' && a.name === 'size')
+export function colHasExplicitSize(e: JsxElementIR): boolean {
+  return e.attrs.some((a) => a.kind === 'attr' && a.name === 'size')
 }
 
 /** The `<Col size={n}>` LITERAL integer span (clamped to 1..DEFAULT_COLUMNS), or
  *  null when absent / non-literal / responsive (`{ xs, md }` / `[a,b]`). Only a
  *  plain literal integer gets a fractional width; every other shape falls back
  *  to an equal column (the caller warns on a present-but-non-literal size). */
-export function colSizeLiteral(e: AnyNode): number | null {
-  const a = (e.attrs as AnyNode[]).find((x) => x.kind === 'attr' && x.name === 'size')
-  if (!a) return null
+export function colSizeLiteral(e: JsxElementIR): number | null {
+  const a = e.attrs.find((x) => x.kind === 'attr' && x.name === 'size')
+  if (!a || a.kind !== 'attr') return null
   const v = a.value
-  if (v?.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.value <= 0) {
+  if (v.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.value <= 0) {
     return null
   }
   return Math.min(v.value, DEFAULT_COLUMNS)
@@ -124,14 +122,62 @@ export function colSizeLiteral(e: AnyNode): number | null {
  *  `<Link>` identifier drop: an element you cannot select is an element nobody
  *  can prove works. Swift never had the split — it puts
  *  `.accessibilityIdentifier` and `.containerRelativeFrame` on one node. */
-export function colToStack(e: AnyNode, dropTestId = false): AnyNode {
-  const attrs = (e.attrs as AnyNode[]).filter(
-    (a) =>
-      !(
-        a.kind === 'attr' &&
-        (STRIP.has(a.name) || (dropTestId && a.name === 'data-testid'))
-      ),
+export function colToStack(e: JsxElementIR, dropTestId = false): JsxElementIR {
+  const attrs = e.attrs.filter(
+    (a) => !(a.kind === 'attr' && (STRIP.has(a.name) || (dropTestId && a.name === 'data-testid'))),
   )
-  attrs.push({ kind: 'attr', name: 'direction', value: litString('column') })
+  attrs.push(directionAttr('column'))
   return { ...e, tag: 'Stack', attrs }
 }
+
+function warnNonLiteralSize(e: JsxElementIR, ctx: EmitContext): void {
+  if (colHasExplicitSize(e)) {
+    // A responsive / non-literal `size` can't resolve to a static span → equal.
+    ctx.warn(
+      `<Col size=…>: only a LITERAL integer span lowers to a fractional width; ` +
+        `a responsive ({ xs, md } / [a,b]) or non-literal size lowers as an EQUAL column.`,
+    )
+  }
+}
+
+function emitSwiftCol(e: JsxElementIR, ctx: EmitContext): string {
+  const body = ctx.emit(colToStack(e))
+  const size = colSizeLiteral(e)
+  if (size !== null) {
+    // Fractional span of a 12-column grid — iOS 17's native grid-column
+    // primitive (relative to the nearest container; greediness-free, unlike a
+    // GeometryReader). A partial row (cols summing < 12) leaves the rest empty.
+    return `${body}.containerRelativeFrame(.horizontal, count: ${DEFAULT_COLUMNS}, span: ${size}, spacing: 0)`
+  }
+  warnNonLiteralSize(e, ctx)
+  return `${body}.frame(maxWidth: .infinity)`
+}
+
+function emitKotlinCol(e: JsxElementIR, ctx: EmitContext): string {
+  const p = ctx.pad()
+  // The test id rides the SIZED node (the Box), not the inner stack — see
+  // colToStack's `dropTestId`. The id is emitted here as part of the Box's
+  // modifier chain so exactly one node carries it.
+  const colTestId = ctx.staticAttr(e, 'data-testid')
+  const idMod = typeof colTestId === 'string' ? `.testTag(${ctx.stringLiteral(colTestId)})` : ''
+  const inner = `${ctx.pad(ctx.indent + 2)}${ctx.emit(colToStack(e, true), ctx.indent + 2)}`
+  const size = colSizeLiteral(e)
+  if (size !== null) {
+    // A 12-column span lowers to RowScope `weight`, NOT `fillMaxWidth(n/12)`.
+    // Device-found: a Row measures each child against the REMAINING width, so
+    // fractional fills compound — 3/12 then 9/12 yields 25% + 56%, and the row
+    // never adds up. `weight(3f)` + `weight(9f)` divides the row exactly, which
+    // is what a grid means and what the Swift twin's
+    // `containerRelativeFrame(count:span:)` already did.
+    return `Box(modifier = Modifier.weight(${size}f)${idMod}) {\n${inner}\n${p}}`
+  }
+  warnNonLiteralSize(e, ctx)
+  return `Box(modifier = Modifier.weight(1f)${idMod}) {\n${inner}\n${p}}`
+}
+
+export const coolgridLowering: ElementLowering = Object.freeze({
+  module: '@pyreon/coolgrid',
+  tags: COOLGRID_TAGS,
+  retag: (e: JsxElementIR) => (e.tag === 'Col' ? undefined : coolgridToStack(e)),
+  emit: Object.freeze({ swift: emitSwiftCol, kotlin: emitKotlinCol }),
+})

@@ -119,3 +119,27 @@ extensions with real Swift/Kotlin typechecking and cross-call isolation tests.
 Native CLI build/check/watch/LSP accept the same explicit local ESM `--plugin`
 list. Protocol and shared IR are experimental API v1; incompatible changes
 require a version bump. See `packages/native/compiler/README.md`.
+
+## Element lowering plugins
+
+A library's JSX elements reach native code through `element-lowering.ts`, not through `if (tag === …)` branches in the emitters. An `ElementLowering` is `{ module, tags, retag?, emit?: { swift?, kotlin? }, styleBase? }`:
+
+- **Claim.** Tags are claimed only when the emitters' import guard accepts `(tag, module)` — the same `canAliasIntercept` rule as before: not shadowed by a same-named user / styled / rocketstyle / attrs component, and when the import is tracked it must come from `module` under its own name. `parse.ts` records the import source of every tag any registered lowering names (a scoped sub-path import normalises to the package root), so a plugin's tags get the guard with no parser edit. A user `Row` from `./mine` is never claimed; a renamed import (`Row as R`) is not either, because the claim is on the local tag.
+- **Retag.** `retag(el)` returns another element (usually a canonical `Stack`), which re-enters the emitter's dispatcher; returning `undefined` declines and the element goes to `emit`. A retag must not return a tag it claims itself.
+- **Emit.** `emit.swift` / `emit.kotlin` receive `(el, ctx: EmitContext)` and return target text. A target without a function falls through to the generic component path. All per-target differences live in these functions, never in the facade.
+- **Registration.** `registerElementLowering` throws if a `(module, tag)` pair is already claimed (no load-order precedence). The built-ins (`plugins/elements.ts`, `plugins/coolgrid.ts`) register through it. The registry is process-global, like the emitter state it serves; wiring a plugin's `elements` through `createCompiler({ plugins })` (instance-owned, installed for the duration of a compile) is a follow-up that touches `plugin.ts`/`compiler.ts`.
+- **Boundary.** Files in `plugins/` may import only `../emit-context`, `../element-lowering` (types) and `../types`, never `emit-swift`, `emit-kotlin` or `parse` (`tests/plugin-boundary.test.ts`).
+
+`EmitContext` (`emit-context.ts`) is the only way a plugin emits. It closes over the emitter's module-level state; each emitter builds one per element (`swiftEmitContext` / `kotlinEmitContext`):
+
+| Facade member | Replaces (in the emitter) | Used by |
+| --- | --- | --- |
+| `target` | which of `emitSwiftJsx` / `emitKotlinJsx` is running | all |
+| `indent` | the `indent` argument threaded through every emit function | coolgrid Col |
+| `pad(n?)` | `' '.repeat(n)` indentation strings | coolgrid Col |
+| `emit(el, indent?)` | recursive `emitSwiftJsx(el, indent)` / `emitKotlinJsx(el, indent)` | coolgrid Col |
+| `staticAttr(el, name)` | `readStaticAttr` / `readStaticAttrKotlin` (literal or const-resolved) | coolgrid Col (Kotlin test id) |
+| `stringLiteral(s)` | `swiftStr` / `kotlinStr` | coolgrid Col (Kotlin test id) |
+| `warn(msg)` | `_emitWarnings.push(msg)` | coolgrid Col |
+
+Extend the facade only when a plugin needs it, and add its row here. Not yet exposed (the chart/flow host emitters need them): see the follow-up list in the slice report — child emission (`emitSwiftChild`), expression emission, attribute/modifier emission (`emitSwiftLayoutModifiers`), declaration/state registration, and the chart theme scope.

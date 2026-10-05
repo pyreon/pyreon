@@ -114,8 +114,8 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
-import { elementToStack } from './elements-native'
-import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral } from './coolgrid-native'
+import { createEmitContext } from './emit-context'
+import { findElementLowering } from './element-lowering'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -7539,12 +7539,34 @@ function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: 
   )
 }
 
+/** The facade element lowerings emit through — closes over this emitter's state. */
+function kotlinEmitContext(indent: number) {
+  return createEmitContext(
+    'kotlin',
+    {
+      emit: emitKotlinJsx,
+      staticAttr: readStaticAttrKotlin,
+      stringLiteral: kotlinStr,
+      warn: (message) => {
+        _emitWarnings.push(message)
+      },
+    },
+    indent,
+  )
+}
+
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
-  // @pyreon/elements `<Element>` → the canonical `<Stack>` (mirror of the Swift
-  // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
-  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) return emitKotlinJsx(elementToStack(e), indent)
+  // Library elements claimed by a registered element lowering — see the Swift
+  // dispatcher; the registry and import guard are shared.
+  const lowering = findElementLowering(tag, (t, mod) => canAliasIntercept(t, mod))
+  if (lowering !== undefined) {
+    const retagged = lowering.retag?.(e)
+    if (retagged !== undefined) return emitKotlinJsx(retagged, indent)
+    const emitLowered = lowering.emit?.kotlin
+    if (emitLowered !== undefined) return emitLowered(e, kotlinEmitContext(indent))
+  }
 
   // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
   // compile-time-resolved; dark mode is a system read). Render children directly
@@ -7576,38 +7598,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       `${p}}\n` +
       `${' '.repeat(indent)}}`
     )
-  }
-
-  // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
-  // an EQUAL-fill child (Modifier.weight(1f), valid in the Row scope; a
-  // fractional `size` warns). Swift-dispatcher parity.
-  if ((tag === 'Container' || tag === 'Row') && canAliasIntercept(tag, '@pyreon/coolgrid')) return emitKotlinJsx(coolgridToStack(e), indent)
-  if (tag === 'Col' && canAliasIntercept(tag, '@pyreon/coolgrid')) {
-    const p = ' '.repeat(indent)
-    // The test id rides the SIZED node (the Box), not the inner stack — see
-    // colToStack's `dropTestId`. The id is emitted here as part of the Box's
-    // modifier chain so exactly one node carries it.
-    const colTestId = readStaticAttrKotlin(e, 'data-testid')
-    const idMod = typeof colTestId === 'string' ? `.testTag(${kotlinStr(colTestId)})` : ''
-    const inner = `${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e, true), indent + 2)}`
-    const size = colSizeLiteral(e)
-    if (size !== null) {
-      // A 12-column span lowers to RowScope `weight`, NOT `fillMaxWidth(n/12)`.
-      // Device-found: a Row measures each child against the REMAINING width, so
-      // fractional fills compound — 3/12 then 9/12 yields 25% + 56%, and the row
-      // never adds up. `weight(3f)` + `weight(9f)` divides the row exactly, which
-      // is what a grid means and what the Swift twin's
-      // `containerRelativeFrame(count:span:)` already did.
-      return `Box(modifier = Modifier.weight(${size}f)${idMod}) {\n${inner}\n${p}}`
-    }
-    if (colHasExplicitSize(e)) {
-      // A responsive / non-literal `size` can't resolve to a static span → equal.
-      _emitWarnings.push(
-        `<Col size=…>: only a LITERAL integer span lowers to a fractional width; ` +
-          `a responsive ({ xs, md } / [a,b]) or non-literal size lowers as an EQUAL column.`,
-      )
-    }
-    return `Box(modifier = Modifier.weight(1f)${idMod}) {\n${inner}\n${p}}`
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
