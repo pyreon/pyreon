@@ -38,7 +38,7 @@ but each has its own emitter, so they are listed separately.
 
 The package also exports `init` (router wiring for `<Link>`, see below),
 `defineNativeModule` / `useNativeModule` (add your own Swift/Kotlin code, see
-[Multiplatform → escape hatches](/docs/multiplatform#layer-4--platform-escape-hatches))
+[Multiplatform → escape hatches](/docs/multiplatform#layer-4-platform-escape-hatches))
 and `connectWebHost` (the page-side half of `<WebView>`).
 
 ## Shared props
@@ -834,7 +834,7 @@ export function PlatformNote() {
   `<NativeAndroid>` branch.
 - The children are still ordinary primitives. You cannot write raw Swift or
   Kotlin here. For that, use
-  [`useNativeModule`](/docs/multiplatform#layer-4--platform-escape-hatches).
+  [`useNativeModule`](/docs/multiplatform#layer-4-platform-escape-hatches).
 
 ## When to use `@pyreon/elements` instead
 

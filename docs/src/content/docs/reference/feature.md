@@ -117,18 +117,18 @@ const View = () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`defineFeature`](#definefeature) | function | Define a schema-driven CRUD feature. |
-| [`reference`](#reference) | function | Mark a schema field as a foreign-key reference to another feature. |
-| [`isReference`](#isreference) | function | Type-guard that returns true if a value is a ReferenceSchema produced by `reference()`. |
-| [`Table`](#table) | component | Render the table `useTable()` already computes — thead, tbody, sorting handlers and the sort indicator. |
-| [`Field`](#field) | component | Render ONE schema field — label, typed control and error — from the feature's own `fields`. |
-| [`createFieldComponent / createTableComponent`](#createfieldcomponent-createtablecomponent) | function | The factories `defineFeature` calls internally to build the bound `feature.Field` and `feature.Table` components — every |
-| [`extractFields`](#extractfields) | function | Introspect a schema object and return an array of `FieldInfo` describing each field (name, type, optional, label, plus e |
-| [`defaultInitialValues`](#defaultinitialvalues) | function | Generate sensible default initial values from extracted field info. |
+| [`defineFeature`](#definefeature-function) | function | Define a schema-driven CRUD feature. |
+| [`reference`](#reference-function) | function | Mark a schema field as a foreign-key reference to another feature. |
+| [`isReference`](#isreference-function) | function | Type-guard that returns true if a value is a ReferenceSchema produced by `reference()`. |
+| [`Table`](#table-component) | component | Render the table `useTable()` already computes — thead, tbody, sorting handlers and the sort indicator. |
+| [`Field`](#field-component) | component | Render ONE schema field — label, typed control and error — from the feature's own `fields`. |
+| [`createFieldComponent / createTableComponent`](#createfieldcomponent-createtablecomponent-function) | function | The factories `defineFeature` calls internally to build the bound `feature.Field` and `feature.Table` components — every |
+| [`extractFields`](#extractfields-function) | function | Introspect a schema object and return an array of `FieldInfo` describing each field (name, type, optional, label, plus e |
+| [`defaultInitialValues`](#defaultinitialvalues-function) | function | Generate sensible default initial values from extracted field info. |
 
 ## API
 
-### defineFeature `function`
+### `defineFeature` `function`
 
 ```ts
 <T>(config: FeatureConfig<T>) => Feature<T>
@@ -170,7 +170,7 @@ Posts.useTable(() => items() ?? [], { columns: ['title'] })
 
 ---
 
-### reference `function`
+### `reference` `function`
 
 ```ts
 reference(target: { name: string }) => ReferenceSchema
@@ -202,7 +202,7 @@ reference({ name: 'categories' })             // or pass a plain { name }
 
 ---
 
-### isReference `function`
+### `isReference` `function`
 
 ```ts
 isReference(value: unknown) => value is ReferenceSchema
@@ -229,7 +229,7 @@ isReference('users')                       // false — a bare string is not a r
 
 ---
 
-### Table `component`
+### `Table` `component`
 
 ```ts
 <Feature.Table of={t} cell={{ status: (ctx) => … }} />
@@ -260,7 +260,7 @@ const t = Posts.useTable(rows)
 
 ---
 
-### Field `component`
+### `Field` `component`
 
 ```ts
 <Feature.Field form={form} name="title" />
@@ -292,7 +292,7 @@ const form = Posts.useForm()
 
 ---
 
-### createFieldComponent / createTableComponent `function`
+### `createFieldComponent / createTableComponent` `function`
 
 ```ts
 createFieldComponent<TValues>(fields: FieldInfo[]) => (props: FieldProps<TValues>) => VNodeChild · createTableComponent<TValues>() => (props: TableProps<TValues>) => VNodeChild
@@ -318,7 +318,7 @@ const Table = createTableComponent<MyValues>()
 
 ---
 
-### extractFields `function`
+### `extractFields` `function`
 
 ```ts
 extractFields(schema: unknown) => FieldInfo[]
@@ -356,7 +356,7 @@ const fields = extractFields(schema)
 
 ---
 
-### defaultInitialValues `function`
+### `defaultInitialValues` `function`
 
 ```ts
 defaultInitialValues(fields: FieldInfo[]) => Record<string, unknown>

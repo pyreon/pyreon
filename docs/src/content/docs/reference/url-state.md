@@ -88,13 +88,13 @@ setUrlRouter(router)  // replace() by default; push() honours { replace: false }
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useUrlState`](#useurlstate) | hook | Create a reactive signal synced to a URL search parameter. |
-| [`setUrlRouter`](#seturlrouter) | function | Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. |
-| [`batchUrlUpdates`](#batchurlupdates) | function | Collapse several `useUrlState` writes into ONE history entry. |
+| [`useUrlState`](#useurlstate-hook) | hook | Create a reactive signal synced to a URL search parameter. |
+| [`setUrlRouter`](#seturlrouter-function) | function | Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. |
+| [`batchUrlUpdates`](#batchurlupdates-function) | function | Collapse several `useUrlState` writes into ONE history entry. |
 
 ## API
 
-### useUrlState `hook`
+### `useUrlState` `hook`
 
 ```ts
 <T>(key: string, defaultValue: T, options?: UrlStateOptions) => UrlStateSignal<T>
@@ -133,7 +133,7 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b
 
 ---
 
-### setUrlRouter `function`
+### `setUrlRouter` `function`
 
 ```ts
 (router: UrlRouter) => void
@@ -164,7 +164,7 @@ setUrlRouter(router)
 
 ---
 
-### batchUrlUpdates `function`
+### `batchUrlUpdates` `function`
 
 ```ts
 <T>(fn: () => T) => T

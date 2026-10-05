@@ -17,7 +17,13 @@ const EX_DIR = join(REPO_ROOT, 'docs', 'src', 'examples')
 const OUT = join(REPO_ROOT, 'docs', 'src', 'content', 'docs', 'examples.md')
 
 const titleCase = (s: string) =>
-  s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bApi\b/g, 'API').replace(/\bSsr\b/g, 'SSR').replace(/\bUi\b/g, 'UI').replace(/\bDom\b/g, 'DOM')
+  s
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bApi\b/g, 'API')
+    .replace(/\bSsr\b/g, 'SSR')
+    .replace(/\bUi\b/g, 'UI')
+    .replace(/\bDom\b/g, 'DOM')
 
 const TOPIC_TITLE: Record<string, string> = {
   'runtime-dom': 'Runtime DOM',
@@ -31,6 +37,12 @@ const TOPIC_TITLE: Record<string, string> = {
 
 // Collect topic → example slugs.
 const topics: { topic: string; title: string; examples: string[] }[] = []
+const sharedExamples = readdirSync(EX_DIR)
+  .filter((f) => f.endsWith('.tsx'))
+  .map((f) => f.replace(/\.tsx$/, ''))
+  .sort()
+if (sharedExamples.length)
+  topics.push({ topic: '', title: 'Shared state and effects', examples: sharedExamples })
 for (const topic of readdirSync(EX_DIR).sort()) {
   const dir = join(EX_DIR, topic)
   if (!statSync(dir).isDirectory()) continue
@@ -38,11 +50,18 @@ for (const topic of readdirSync(EX_DIR).sort()) {
     .filter((f) => f.endsWith('.tsx'))
     .map((f) => f.replace(/\.tsx$/, ''))
     .sort()
-  if (examples.length) topics.push({ topic, title: TOPIC_TITLE[topic] ?? titleCase(topic), examples })
+  if (examples.length)
+    topics.push({ topic, title: TOPIC_TITLE[topic] ?? titleCase(topic), examples })
 }
 const total = topics.reduce((n, t) => n + t.examples.length, 0)
 
-const out: string[] = ['---', `title: ${yaml('Examples')}`, `description: ${yaml(`A gallery of ${total} runnable Pyreon examples — every one mounted live on this page, grouped by topic.`)}`, '---', '']
+const out: string[] = [
+  '---',
+  `title: ${yaml('Examples')}`,
+  `description: ${yaml(`A gallery of ${total} runnable Pyreon examples — every one mounted live on this page, grouped by topic.`)}`,
+  '---',
+  '',
+]
 out.push('# Examples')
 out.push('')
 out.push(
@@ -55,9 +74,18 @@ for (const t of topics) {
   for (const ex of t.examples) {
     out.push(`### ${titleCase(ex)}`)
     out.push('')
-    out.push(`<Example file="./examples/${t.topic}/${ex}" />`)
+    const path = t.topic ? `${t.topic}/${ex}` : ex
+    out.push(`<Example file="./examples/${path}" />`)
     out.push('')
   }
 }
-writeFileSync(OUT, out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n')
-console.warn(`[gen-examples-gallery] ${total} examples across ${topics.length} topics → docs/src/content/docs/examples.md`)
+writeFileSync(
+  OUT,
+  out
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd() + '\n',
+)
+console.warn(
+  `[gen-examples-gallery] ${total} examples across ${topics.length} topics → docs/src/content/docs/examples.md`,
+)

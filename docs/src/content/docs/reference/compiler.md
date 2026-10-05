@@ -33,37 +33,37 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`transformJSX`](#transformjsx) | function | The production entry point. |
-| [`transformPlain`](#transformplain) | function | The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend |
-| [`migrateToPlain`](#migratetoplain) | function | The classic → Plain Mode codemod, and the analysis behind the `pyreon plain` readiness report. |
-| [`transformJSX_JS`](#transformjsx-js) | function | The pure-JS reactive pass (parses via `oxc-parser`). |
-| [`analyzeReactivity`](#analyzereactivity) | function | Reactivity-Lens entry point (experimental). |
-| [`formatReactivityLens`](#formatreactivitylens) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
-| [`analyzeValidate`](#analyzevalidate) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a |
-| [`emitValidator`](#emitvalidator) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
-| [`detectReactPatterns`](#detectreactpatterns) | function | AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on i |
-| [`migrateReactCode`](#migratereactcode) | function | One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. |
-| [`migratePyreonCode`](#migratepyreoncode) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
-| [`hasReactPatterns`](#hasreactpatterns) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
-| [`diagnoseError`](#diagnoseerror) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon  |
-| [`detectPyreonPatterns`](#detectpyreonpatterns) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for- |
-| [`hasPyreonPatterns`](#haspyreonpatterns) | function | Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST walker is the precise gate); only has to  |
-| [`auditTestEnvironment`](#audittestenvironment) | function | Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` li |
-| [`formatTestAudit`](#formattestaudit) | function | Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` \| `medium` \| ` |
-| [`auditIslands`](#auditislands) | function | Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registr |
-| [`formatIslandAudit`](#formatislandaudit) | function | Text renderer for an `auditIslands` result — each finding with file path + line/column + an actionable fix suggestion. |
-| [`auditSsg`](#auditssg) | function | Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.ts |
-| [`formatSsgAudit`](#formatssgaudit) | function | Text renderer for an `auditSsg` result — file path + line/column + actionable fix per finding. |
-| [`transformDeferInline`](#transformdeferinline) | function | Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. |
-| [`generateContext`](#generatecontext) | function | Project scanner — walks the source tree and produces a structured `ProjectContext` (routes, islands, components) that `@ |
-| [`filePathToUrlPath`](#filepathtourlpath) | function | The `@pyreon/zero` fs-route convention: extension-stripped route file path → URL pattern (`index` collapses, `[id]` → `: |
-| [`isApiRoute`](#isapiroute) | function | True for a zero file-based API route: a `.ts`/`.js` file inside the TOP-LEVEL `api/` directory of the routes dir (path i |
-| [`apiFilePathToPattern`](#apifilepathtopattern) | function | API route file path → URL pattern, keeping the `api/` prefix (it IS part of the URL): `api/posts.ts` → `/api/posts`, `ap |
-| [`deriveIslandName`](#deriveislandname) | function | The island auto-name derivation: `const X = island(…)` (no explicit `name:`) in file F gets the registry name `X$&lt;fnv1a6 |
+| [`transformJSX`](#transformjsx-function) | function | The production entry point. |
+| [`transformPlain`](#transformplain-function) | function | The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend |
+| [`migrateToPlain`](#migratetoplain-function) | function | The classic → Plain Mode codemod, and the analysis behind the `pyreon plain` readiness report. |
+| [`transformJSX_JS`](#transformjsx_js-function) | function | The pure-JS reactive pass (parses via `oxc-parser`). |
+| [`analyzeReactivity`](#analyzereactivity-function-experimental) | function | Reactivity-Lens entry point (experimental). |
+| [`formatReactivityLens`](#formatreactivitylens-function-experimental) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
+| [`analyzeValidate`](#analyzevalidate-function-experimental) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a |
+| [`emitValidator`](#emitvalidator-function-experimental) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
+| [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on i |
+| [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. |
+| [`migratePyreonCode`](#migratepyreoncode-function) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
+| [`hasReactPatterns`](#hasreactpatterns-function) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
+| [`diagnoseError`](#diagnoseerror-function) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon  |
+| [`detectPyreonPatterns`](#detectpyreonpatterns-function) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for- |
+| [`hasPyreonPatterns`](#haspyreonpatterns-function) | function | Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST walker is the precise gate); only has to  |
+| [`auditTestEnvironment`](#audittestenvironment-function) | function | Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` li |
+| [`formatTestAudit`](#formattestaudit-function) | function | Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` \| `medium` \| ` |
+| [`auditIslands`](#auditislands-function) | function | Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registr |
+| [`formatIslandAudit`](#formatislandaudit-function) | function | Text renderer for an `auditIslands` result — each finding with file path + line/column + an actionable fix suggestion. |
+| [`auditSsg`](#auditssg-function) | function | Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.ts |
+| [`formatSsgAudit`](#formatssgaudit-function) | function | Text renderer for an `auditSsg` result — file path + line/column + actionable fix per finding. |
+| [`transformDeferInline`](#transformdeferinline-function) | function | Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. |
+| [`generateContext`](#generatecontext-function) | function | Project scanner — walks the source tree and produces a structured `ProjectContext` (routes, islands, components) that `@ |
+| [`filePathToUrlPath`](#filepathtourlpath-function) | function | The `@pyreon/zero` fs-route convention: extension-stripped route file path → URL pattern (`index` collapses, `[id]` → `: |
+| [`isApiRoute`](#isapiroute-function) | function | True for a zero file-based API route: a `.ts`/`.js` file inside the TOP-LEVEL `api/` directory of the routes dir (path i |
+| [`apiFilePathToPattern`](#apifilepathtopattern-function) | function | API route file path → URL pattern, keeping the `api/` prefix (it IS part of the URL): `api/posts.ts` → `/api/posts`, `ap |
+| [`deriveIslandName`](#deriveislandname-function) | function | The island auto-name derivation: `const X = island(…)` (no explicit `name:`) in file F gets the registry name `X$&lt;fnv1a6 |
 
 ## API
 
-### transformJSX `function`
+### `transformJSX` `function`
 
 ```ts
 transformJSX(code: string, filename?: string, options?: TransformOptions): TransformResult
@@ -94,7 +94,7 @@ const { code, warnings } = transformJSX(
 
 ---
 
-### transformPlain `function`
+### `transformPlain` `function`
 
 ```ts
 transformPlain(code: string, filename?: string, options?: PlainOptions): PlainTransformResult | null
@@ -128,7 +128,7 @@ export const inc = () => { count = count + 1 }`,
 
 ---
 
-### migrateToPlain `function`
+### `migrateToPlain` `function`
 
 ```ts
 migrateToPlain(code: string, filename?: string): MigrateToPlainResult
@@ -161,7 +161,7 @@ export const inc = () => { count.set(count() + 1) }`,
 
 ---
 
-### transformJSX_JS `function`
+### `transformJSX_JS` `function`
 
 ```ts
 transformJSX_JS(code: string, filename?: string, options?: TransformOptions): TransformResult
@@ -187,7 +187,7 @@ const { code } = transformJSX_JS("<div>{name()}</div>", "x.tsx")
 
 ---
 
-### analyzeReactivity `function` — **experimental**
+### `analyzeReactivity` `function` — **experimental**
 
 ```ts
 analyzeReactivity(code: string, filename?: string, options?: { knownSignals?: string[] }): AnalyzeReactivityResult
@@ -218,7 +218,7 @@ console.log(formatReactivityLens(code, result)) // annotated-source debug view
 
 ---
 
-### formatReactivityLens `function` — **experimental**
+### `formatReactivityLens` `function` — **experimental**
 
 ```ts
 formatReactivityLens(code: string, result: AnalyzeReactivityResult): string
@@ -239,7 +239,7 @@ process.stdout.write(formatReactivityLens(src, r))
 
 ---
 
-### analyzeValidate `function` — **experimental**
+### `analyzeValidate` `function` — **experimental**
 
 ```ts
 analyzeValidate(code: string, filename?: string): ValidateSchemaInfo[]
@@ -260,7 +260,7 @@ info.emittable // true
 
 ---
 
-### emitValidator `function` — **experimental**
+### `emitValidator` `function` — **experimental**
 
 ```ts
 emitValidator(node: ValidateNode): string
@@ -283,7 +283,7 @@ validate("a@b.co").length // 0
 
 ---
 
-### detectReactPatterns `function`
+### `detectReactPatterns` `function`
 
 ```ts
 detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]
@@ -304,7 +304,7 @@ console.log(diags[0]?.code) // "react-use-state"
 
 ---
 
-### migrateReactCode `function`
+### `migrateReactCode` `function`
 
 ```ts
 migrateReactCode(code: string, filename?: string): MigrationResult
@@ -324,7 +324,7 @@ const { code, changes } = migrateReactCode(reactSource, "C.tsx")
 
 ---
 
-### migratePyreonCode `function`
+### `migratePyreonCode` `function`
 
 ```ts
 migratePyreonCode(source: string, filename?: string): PyreonMigrationResult
@@ -344,7 +344,7 @@ const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")
 
 ---
 
-### hasReactPatterns `function`
+### `hasReactPatterns` `function`
 
 ```ts
 hasReactPatterns(code: string): boolean
@@ -364,7 +364,7 @@ if (hasReactPatterns(src)) report(detectReactPatterns(src, file))
 
 ---
 
-### diagnoseError `function`
+### `diagnoseError` `function`
 
 ```ts
 diagnoseError(error: string): ErrorDiagnosis | null
@@ -391,7 +391,7 @@ if (d) console.log(d.cause, d.fix)
 
 ---
 
-### detectPyreonPatterns `function`
+### `detectPyreonPatterns` `function`
 
 ```ts
 detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]
@@ -420,7 +420,7 @@ console.log(diags[0]?.code) // "props-destructured-body"
 
 ---
 
-### hasPyreonPatterns `function`
+### `hasPyreonPatterns` `function`
 
 ```ts
 hasPyreonPatterns(code: string): boolean
@@ -440,7 +440,7 @@ if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))
 
 ---
 
-### auditTestEnvironment `function`
+### `auditTestEnvironment` `function`
 
 ```ts
 auditTestEnvironment(startDir: string): TestAuditResult
@@ -461,7 +461,7 @@ console.log(formatTestAudit(r, { minRisk: "high" }))
 
 ---
 
-### formatTestAudit `function`
+### `formatTestAudit` `function`
 
 ```ts
 formatTestAudit(result: TestAuditResult, options?: AuditFormatOptions): string
@@ -481,7 +481,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))
 
 ---
 
-### auditIslands `function`
+### `auditIslands` `function`
 
 ```ts
 auditIslands(rootDir: string): IslandAuditResult
@@ -502,7 +502,7 @@ for (const f of r.findings) console.log(f.code, f.location.relPath)
 
 ---
 
-### formatIslandAudit `function`
+### `formatIslandAudit` `function`
 
 ```ts
 formatIslandAudit(result: IslandAuditResult, options?: IslandAuditFormatOptions): string
@@ -522,7 +522,7 @@ console.log(formatIslandAudit(auditIslands(".")))
 
 ---
 
-### auditSsg `function`
+### `auditSsg` `function`
 
 ```ts
 auditSsg(rootDir: string): SsgAuditResult
@@ -543,7 +543,7 @@ for (const f of r.findings) console.log(f.code, f.location.relPath)
 
 ---
 
-### formatSsgAudit `function`
+### `formatSsgAudit` `function`
 
 ```ts
 formatSsgAudit(result: SsgAuditResult, options?: SsgAuditFormatOptions): string
@@ -563,7 +563,7 @@ console.log(formatSsgAudit(auditSsg(".")))
 
 ---
 
-### transformDeferInline `function`
+### `transformDeferInline` `function`
 
 ```ts
 transformDeferInline(code: string, filename?: string): DeferInlineResult
@@ -581,7 +581,7 @@ const { code, changed } = transformDeferInline(src, "page.tsx")
 
 ---
 
-### generateContext `function`
+### `generateContext` `function`
 
 ```ts
 generateContext(cwd: string): ProjectContext
@@ -600,7 +600,7 @@ console.log(ctx.routes.length, ctx.islands.length)
 
 ---
 
-### filePathToUrlPath `function`
+### `filePathToUrlPath` `function`
 
 ```ts
 filePathToUrlPath(filePath: string): string
@@ -621,7 +621,7 @@ filePathToUrlPath("(auth)/login")   // "/login"
 
 ---
 
-### isApiRoute `function`
+### `isApiRoute` `function`
 
 ```ts
 isApiRoute(filePath: string): boolean
@@ -648,7 +648,7 @@ isApiRoute("api/page.tsx")    // false — page route
 
 ---
 
-### apiFilePathToPattern `function`
+### `apiFilePathToPattern` `function`
 
 ```ts
 apiFilePathToPattern(filePath: string): string
@@ -668,7 +668,7 @@ apiFilePathToPattern("api/posts/[id].ts") // "/api/posts/:id"
 
 ---
 
-### deriveIslandName `function`
+### `deriveIslandName` `function`
 
 ```ts
 deriveIslandName(varName: string, relPath: string): string

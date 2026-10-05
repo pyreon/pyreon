@@ -136,38 +136,38 @@ const feed = useInfiniteQuery(() => ({
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`QueryClientProvider`](#queryclientprovider) | component | Mounts a `QueryClient` at the root of the component tree via context so every descendant hook (`useQuery`, `useMutation` |
-| [`HydrationBoundary`](#hydrationboundary) | component | Hydrates a server-dehydrated query cache into the nearest `QueryClient`, then renders its children — the ergonomic SSR c |
-| [`useQuery`](#usequery) | hook | Subscribe to a query with fine-grained reactive signals. |
-| [`useMutation`](#usemutation) | hook | Run a mutation (create / update / delete). |
-| [`useMutationState`](#usemutationstate) | hook | Reactively read state from the MutationCache across the whole app — e.g. |
-| [`useInfiniteQuery`](#useinfinitequery) | hook | Paginated / cursor-based query. |
-| [`useQueries`](#usequeries) | hook | Subscribe to multiple queries in parallel. |
-| [`usePrefetchQuery`](#useprefetchquery) | hook | Prefetch a query during component setup so its data is warm before a child's `useQuery` mounts. |
-| [`usePrefetchInfiniteQuery`](#useprefetchinfinitequery) | hook | Infinite-query variant of `usePrefetchQuery` — warms the first page of a paginated query into the cache during setup, on |
-| [`useSubscription`](#usesubscription) | hook | Reactive WebSocket with auto-reconnect and QueryClient cache integration. |
-| [`useSSE`](#usesse) | hook | Reactive Server-Sent Events hook with QueryClient cache integration. |
-| [`useStream`](#usestream) | hook | Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so u |
-| [`useSuspenseQuery`](#usesuspensequery) | hook | Like `useQuery` but `data` is narrowed to `Signal<TData>` (never undefined). |
-| [`useSuspenseInfiniteQuery`](#usesuspenseinfinitequery) | hook | Like `useInfiniteQuery` but `data` is narrowed to `Signal<InfiniteData<TQueryFnData>>` (never undefined) — for use insid |
-| [`useSuspenseQueries`](#usesuspensequeries) | hook | Like `useQueries` but shaped for a `QuerySuspense` boundary: aggregates the array of queries into ONE query-like (`isPen |
-| [`QuerySuspense`](#querysuspense) | component | Pyreon-native Suspense boundary for queries — replaces `<Suspense>` for the query use case with explicit error handling. |
-| [`useIsFetching`](#useisfetching) | hook | Global reactive count of currently-fetching queries. |
-| [`useIsMutating`](#useismutating) | hook | Global reactive count of currently-running mutations (optionally filtered by `MutationFilters`). |
-| [`QueryErrorResetBoundary`](#queryerrorresetboundary) | component | Resets errored queries inside its subtree when a sibling `ErrorBoundary` recovers. |
-| [`useQueryErrorResetBoundary`](#usequeryerrorresetboundary) | hook | Imperative access to the nearest `QueryErrorResetBoundary`. |
-| [`useQueryClient`](#usequeryclient) | hook | Access the nearest `QueryClient` from context. |
-| [`PersistQueryClientProvider`](#persistqueryclientprovider) | component | Drop-in replacement for `<QueryClientProvider>` that ALSO restores the query cache from a persister on mount and keeps i |
-| [`useIsRestoring`](#useisrestoring) | hook | Reactive accessor — `true` while the persisted cache is being restored by `<PersistQueryClientProvider>`. |
-| [`QueryDevtools`](#querydevtools) | component | In-app TanStack Query devtools panel — the SAME panel React / Solid / Vue users see, as a thin shim over `@tanstack/quer |
-| [`Persistence subpath re-exports`](#persistence-subpath-re-exports) | function | The `@pyreon/query/persist` subpath re-exports TanStack's framework-agnostic persist engine (`persistQueryClient` → `[un |
-| [`TanStack core re-exports`](#tanstack-core-re-exports) | function | `@pyreon/query` re-exports the full framework-agnostic TanStack surface (identity-equal to `@tanstack/query-core`) so co |
-| [`QueryData`](#querydata) | type | The RESOLVED data type of a query result — `QueryData<typeof posts>` is `Post[]` for a `useQuery` result, `InfiniteData&lt; |
-| [`QueryError`](#queryerror) | type | The ERROR type of a query result (the `TError` generic — TanStack's `DefaultError`, i.e. |
+| [`QueryClientProvider`](#queryclientprovider-component) | component | Mounts a `QueryClient` at the root of the component tree via context so every descendant hook (`useQuery`, `useMutation` |
+| [`HydrationBoundary`](#hydrationboundary-component) | component | Hydrates a server-dehydrated query cache into the nearest `QueryClient`, then renders its children — the ergonomic SSR c |
+| [`useQuery`](#usequery-hook) | hook | Subscribe to a query with fine-grained reactive signals. |
+| [`useMutation`](#usemutation-hook) | hook | Run a mutation (create / update / delete). |
+| [`useMutationState`](#usemutationstate-hook) | hook | Reactively read state from the MutationCache across the whole app — e.g. |
+| [`useInfiniteQuery`](#useinfinitequery-hook) | hook | Paginated / cursor-based query. |
+| [`useQueries`](#usequeries-hook) | hook | Subscribe to multiple queries in parallel. |
+| [`usePrefetchQuery`](#useprefetchquery-hook) | hook | Prefetch a query during component setup so its data is warm before a child's `useQuery` mounts. |
+| [`usePrefetchInfiniteQuery`](#useprefetchinfinitequery-hook) | hook | Infinite-query variant of `usePrefetchQuery` — warms the first page of a paginated query into the cache during setup, on |
+| [`useSubscription`](#usesubscription-hook) | hook | Reactive WebSocket with auto-reconnect and QueryClient cache integration. |
+| [`useSSE`](#usesse-hook) | hook | Reactive Server-Sent Events hook with QueryClient cache integration. |
+| [`useStream`](#usestream-hook) | hook | Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so u |
+| [`useSuspenseQuery`](#usesuspensequery-hook) | hook | Like `useQuery` but `data` is narrowed to `Signal<TData>` (never undefined). |
+| [`useSuspenseInfiniteQuery`](#usesuspenseinfinitequery-hook) | hook | Like `useInfiniteQuery` but `data` is narrowed to `Signal<InfiniteData<TQueryFnData>>` (never undefined) — for use insid |
+| [`useSuspenseQueries`](#usesuspensequeries-hook) | hook | Like `useQueries` but shaped for a `QuerySuspense` boundary: aggregates the array of queries into ONE query-like (`isPen |
+| [`QuerySuspense`](#querysuspense-component) | component | Pyreon-native Suspense boundary for queries — replaces `<Suspense>` for the query use case with explicit error handling. |
+| [`useIsFetching`](#useisfetching-hook) | hook | Global reactive count of currently-fetching queries. |
+| [`useIsMutating`](#useismutating-hook) | hook | Global reactive count of currently-running mutations (optionally filtered by `MutationFilters`). |
+| [`QueryErrorResetBoundary`](#queryerrorresetboundary-component) | component | Resets errored queries inside its subtree when a sibling `ErrorBoundary` recovers. |
+| [`useQueryErrorResetBoundary`](#usequeryerrorresetboundary-hook) | hook | Imperative access to the nearest `QueryErrorResetBoundary`. |
+| [`useQueryClient`](#usequeryclient-hook) | hook | Access the nearest `QueryClient` from context. |
+| [`PersistQueryClientProvider`](#persistqueryclientprovider-component) | component | Drop-in replacement for `<QueryClientProvider>` that ALSO restores the query cache from a persister on mount and keeps i |
+| [`useIsRestoring`](#useisrestoring-hook) | hook | Reactive accessor — `true` while the persisted cache is being restored by `<PersistQueryClientProvider>`. |
+| [`QueryDevtools`](#querydevtools-component) | component | In-app TanStack Query devtools panel — the SAME panel React / Solid / Vue users see, as a thin shim over `@tanstack/quer |
+| [`Persistence subpath re-exports`](#persistence-subpath-re-exports-function) | function | The `@pyreon/query/persist` subpath re-exports TanStack's framework-agnostic persist engine (`persistQueryClient` → `[un |
+| [`TanStack core re-exports`](#tanstack-core-re-exports-function) | function | `@pyreon/query` re-exports the full framework-agnostic TanStack surface (identity-equal to `@tanstack/query-core`) so co |
+| [`QueryData`](#querydata-type) | type | The RESOLVED data type of a query result — `QueryData<typeof posts>` is `Post[]` for a `useQuery` result, `InfiniteData&lt; |
+| [`QueryError`](#queryerror-type) | type | The ERROR type of a query result (the `TError` generic — TanStack's `DefaultError`, i.e. |
 
 ## API
 
-### QueryClientProvider `component`
+### `QueryClientProvider` `component`
 
 ```ts
 (props: { client: QueryClient; children: VNodeChild }) => VNode
@@ -194,7 +194,7 @@ const client = new QueryClient()
 
 ---
 
-### HydrationBoundary `component`
+### `HydrationBoundary` `component`
 
 ```ts
 (props: { state?: DehydratedState | null; options?: HydrateOptions; children: VNodeChild }) => VNodeChild
@@ -223,7 +223,7 @@ Hydrates a server-dehydrated query cache into the nearest `QueryClient`, then re
 
 ---
 
-### useQuery `hook`
+### `useQuery` `hook`
 
 ```ts
 <TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>) => UseQueryResult<TData, TError>
@@ -254,7 +254,7 @@ const user = useQuery(() => ({
 
 ---
 
-### useMutation `hook`
+### `useMutation` `hook`
 
 ```ts
 <TData, TError, TVars, TCtx>(options: MutationObserverOptions<...>) => UseMutationResult<TData, TError, TVars, TCtx>
@@ -282,7 +282,7 @@ const create = useMutation({
 
 ---
 
-### useMutationState `hook`
+### `useMutationState` `hook`
 
 ```ts
 <TResult>(options?: () => { filters?: MutationFilters; select?: (m: Mutation) => TResult }) => Signal<TResult[]>
@@ -310,7 +310,7 @@ const pending = useMutationState(() => ({
 
 ---
 
-### useInfiniteQuery `hook`
+### `useInfiniteQuery` `hook`
 
 ```ts
 <TQueryFnData, TError>(options: () => InfiniteQueryObserverOptions<...>) => UseInfiniteQueryResult<TQueryFnData, TError>
@@ -338,7 +338,7 @@ const feed = useInfiniteQuery(() => ({
 
 ---
 
-### useQueries `hook`
+### `useQueries` `hook`
 
 ```ts
 <const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>
@@ -364,7 +364,7 @@ const results = useQueries(() =>
 
 ---
 
-### usePrefetchQuery `hook`
+### `usePrefetchQuery` `hook`
 
 ```ts
 <TData, TError, TKey>(options: () => FetchQueryOptions<...>) => void
@@ -389,7 +389,7 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
 
 ---
 
-### usePrefetchInfiniteQuery `hook`
+### `usePrefetchInfiniteQuery` `hook`
 
 ```ts
 <TQueryFnData, TError, TData, TKey, TPageParam>(options: () => FetchInfiniteQueryOptions<...>) => void
@@ -412,7 +412,7 @@ usePrefetchInfiniteQuery(() => ({
 
 ---
 
-### useSubscription `hook`
+### `useSubscription` `hook`
 
 ```ts
 (options: UseSubscriptionOptions) => UseSubscriptionResult
@@ -445,7 +445,7 @@ const sub = useSubscription({
 
 ---
 
-### useSSE `hook`
+### `useSSE` `hook`
 
 ```ts
 <T>(options: UseSSEOptions<T>) => UseSSEResult<T>
@@ -479,7 +479,7 @@ const sse = useSSE({
 
 ---
 
-### useStream `hook`
+### `useStream` `hook`
 
 ```ts
 <T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>
@@ -511,7 +511,7 @@ const feed = useStream((ctx) =>
 
 ---
 
-### useSuspenseQuery `hook`
+### `useSuspenseQuery` `hook`
 
 ```ts
 <TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>
@@ -538,7 +538,7 @@ const user = useSuspenseQuery(() => ({ queryKey: ['user', id()], queryFn: fetchU
 
 ---
 
-### useSuspenseInfiniteQuery `hook`
+### `useSuspenseInfiniteQuery` `hook`
 
 ```ts
 <TQueryFnData, TError>(options: () => InfiniteQueryObserverOptions<...>) => UseSuspenseInfiniteQueryResult<TQueryFnData, TError>
@@ -570,7 +570,7 @@ const feed = useSuspenseInfiniteQuery(() => ({
 
 ---
 
-### useSuspenseQueries `hook`
+### `useSuspenseQueries` `hook`
 
 ```ts
 <TData, TError>(queries: () => UseQueriesOptions[]) => { results: Signal<...[]>; data: Signal<TData[]>; isPending: Signal<boolean>; isError: Signal<boolean>; error: Signal<TError | null> }
@@ -599,7 +599,7 @@ const users = useSuspenseQueries(() =>
 
 ---
 
-### QuerySuspense `component`
+### `QuerySuspense` `component`
 
 ```ts
 (props: QuerySuspenseProps) => VNodeChild
@@ -628,7 +628,7 @@ Pyreon-native Suspense boundary for queries — replaces `<Suspense>` for the qu
 
 ---
 
-### useIsFetching `hook`
+### `useIsFetching` `hook`
 
 ```ts
 (filters?: QueryFilters) => Signal<number>
@@ -647,7 +647,7 @@ const fetching = useIsFetching()
 
 ---
 
-### useIsMutating `hook`
+### `useIsMutating` `hook`
 
 ```ts
 (filters?: MutationFilters) => Signal<number>
@@ -666,7 +666,7 @@ const mutating = useIsMutating()
 
 ---
 
-### QueryErrorResetBoundary `component`
+### `QueryErrorResetBoundary` `component`
 
 ```ts
 (props: QueryErrorResetBoundaryProps) => VNode
@@ -693,7 +693,7 @@ Resets errored queries inside its subtree when a sibling `ErrorBoundary` recover
 
 ---
 
-### useQueryErrorResetBoundary `hook`
+### `useQueryErrorResetBoundary` `hook`
 
 ```ts
 () => { reset: () => void }
@@ -713,7 +713,7 @@ const { reset } = useQueryErrorResetBoundary()
 
 ---
 
-### useQueryClient `hook`
+### `useQueryClient` `hook`
 
 ```ts
 () => QueryClient
@@ -737,7 +737,7 @@ await client.prefetchQuery({ queryKey: ['user', 1], queryFn: fetchUser })
 
 ---
 
-### PersistQueryClientProvider `component`
+### `PersistQueryClientProvider` `component`
 
 ```ts
 (props: { client: QueryClient; persistOptions: Omit<PersistQueryClientOptions, "queryClient">; onSuccess?: () => unknown; onError?: () => unknown; children?: VNodeChild }) => VNodeChild
@@ -766,7 +766,7 @@ const persister = createSyncStoragePersister({ storage: localStorage })
 
 ---
 
-### useIsRestoring `hook`
+### `useIsRestoring` `hook`
 
 ```ts
 () => () => boolean
@@ -789,7 +789,7 @@ const isRestoring = useIsRestoring()
 
 ---
 
-### QueryDevtools `component`
+### `QueryDevtools` `component`
 
 ```ts
 (props: { client?: QueryClient; initialIsOpen?: boolean; buttonPosition?: DevtoolsButtonPosition; position?: DevtoolsPosition; errorTypes?: DevtoolsErrorType[]; shadowDOMTarget?: ShadowRoot }) => VNode
@@ -817,7 +817,7 @@ import { QueryDevtools } from '@pyreon/query/devtools'
 
 ---
 
-### Persistence subpath re-exports `function`
+### `Persistence subpath re-exports` `function`
 
 ```ts
 import { persistQueryClient, persistQueryClientRestore, persistQueryClientSave, persistQueryClientSubscribe, removeOldestQuery, createSyncStoragePersister, createAsyncStoragePersister } from '@pyreon/query/persist'
@@ -839,7 +839,7 @@ await restored // cache is now hydrated from storage
 
 ---
 
-### TanStack core re-exports `function`
+### `TanStack core re-exports` `function`
 
 ```ts
 import { QueryClient, QueryCache, MutationCache, QueryObserver, InfiniteQueryObserver, MutationObserver, QueriesObserver, dehydrate, hydrate, skipToken, keepPreviousData, hashKey, matchQuery, matchMutation, replaceEqualDeep, focusManager, onlineManager, notifyManager, isServer, isCancelledError, CancelledError, defaultShouldDehydrateQuery, defaultShouldDehydrateMutation } from '@pyreon/query'
@@ -868,7 +868,7 @@ useQuery(() => ({ queryKey: ['user', id()], queryFn: id() ? fetchUser : skipToke
 
 ---
 
-### QueryData `type`
+### `QueryData` `type`
 
 ```ts
 type QueryData<R> // UseQueryResult<D> → D; infinite results → InfiniteData<D>
@@ -894,7 +894,7 @@ function render(rows: QueryData<typeof posts>) { /* … */ }
 
 ---
 
-### QueryError `type`
+### `QueryError` `type`
 
 ```ts
 type QueryError<R> // UseQueryResult<D, E> → E

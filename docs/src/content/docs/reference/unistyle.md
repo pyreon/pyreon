@@ -72,24 +72,24 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportion
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`enrichTheme`](#enrichtheme) | function | Merge a partial theme with the full default theme (breakpoints, spacing, unit utilities, fallback colors). |
-| [`breakpoints`](#breakpoints) | constant | The default breakpoint configuration — a constant `{ rootSize, breakpoints }` object, NOT a function. |
-| [`createMediaQueries`](#createmediaqueries) | function | Build a record of media-query tagged-templates keyed by breakpoint name from a `{ breakpoints, rootSize, css }` options  |
-| [`makeItResponsive`](#makeitresponsive) | function | Build a styled-component interpolation from a `styles` callback. |
-| [`styles`](#styles) | function | Generate the CSS for a flat theme object — box-model, typography, spacing, border, and layout declarations resolved from |
-| [`alignContent`](#aligncontent) | function | Resolve `direction` / `alignX` / `alignY` shorthand to the matching flex CSS (`flex-direction`, `align-items`, `justify- |
-| [`extendCss`](#extendcss) | function | Flatten a CSS definition to a string. |
-| [`stripUnit`](#stripunit) | function | Strip the unit suffix from a CSS value and return the numeric part (`"16px"` → `16`, `"1.5rem"` → `1.5`). |
-| [`value`](#value) | function | Convert ONE numeric/string CSS value to its final unit string. |
-| [`themeToCssVars`](#themetocssvars) | function | Autogenerate CSS custom properties from a plain theme JSON. |
-| [`resolveCssVarReferences`](#resolvecssvarreferences) | function | Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for consu |
-| [`values`](#values) | function | Companion to `value()` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in `inputs` (left to right)  |
-| [`cpseRewrite / cpseVarName / extractStyleVar`](#cpserewrite-cpsevarname-extractstylevar) | function | The Custom-Property Style Extraction (CPSE) primitives — the machinery behind `styleExtraction: true` / `cpseStyled`. |
-| [`cpseStyled`](#cpsestyled) | function | The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for signal-dr |
+| [`enrichTheme`](#enrichtheme-function) | function | Merge a partial theme with the full default theme (breakpoints, spacing, unit utilities, fallback colors). |
+| [`breakpoints`](#breakpoints-constant) | constant | The default breakpoint configuration — a constant `{ rootSize, breakpoints }` object, NOT a function. |
+| [`createMediaQueries`](#createmediaqueries-function) | function | Build a record of media-query tagged-templates keyed by breakpoint name from a `{ breakpoints, rootSize, css }` options  |
+| [`makeItResponsive`](#makeitresponsive-function) | function | Build a styled-component interpolation from a `styles` callback. |
+| [`styles`](#styles-function) | function | Generate the CSS for a flat theme object — box-model, typography, spacing, border, and layout declarations resolved from |
+| [`alignContent`](#aligncontent-function) | function | Resolve `direction` / `alignX` / `alignY` shorthand to the matching flex CSS (`flex-direction`, `align-items`, `justify- |
+| [`extendCss`](#extendcss-function) | function | Flatten a CSS definition to a string. |
+| [`stripUnit`](#stripunit-function) | function | Strip the unit suffix from a CSS value and return the numeric part (`"16px"` → `16`, `"1.5rem"` → `1.5`). |
+| [`value`](#value-function) | function | Convert ONE numeric/string CSS value to its final unit string. |
+| [`themeToCssVars`](#themetocssvars-function) | function | Autogenerate CSS custom properties from a plain theme JSON. |
+| [`resolveCssVarReferences`](#resolvecssvarreferences-function) | function | Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for consu |
+| [`values`](#values-function) | function | Companion to `value()` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in `inputs` (left to right)  |
+| [`cpseRewrite / cpseVarName / extractStyleVar`](#cpserewrite-cpsevarname-extractstylevar-function) | function | The Custom-Property Style Extraction (CPSE) primitives — the machinery behind `styleExtraction: true` / `cpseStyled`. |
+| [`cpseStyled`](#cpsestyled-function) | function | The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for signal-dr |
 
 ## API
 
-### enrichTheme `function`
+### `enrichTheme` `function`
 
 ```ts
 enrichTheme(theme: PartialTheme): Theme
@@ -119,7 +119,7 @@ const theme = enrichTheme({
 
 ---
 
-### breakpoints `constant`
+### `breakpoints` `constant`
 
 ```ts
 const breakpoints: { rootSize: number; breakpoints: Record<string, number> }
@@ -140,7 +140,7 @@ breakpoints.rootSize    // 16
 
 ---
 
-### createMediaQueries `function`
+### `createMediaQueries` `function`
 
 ```ts
 createMediaQueries(options: { breakpoints: Record<string, number>; rootSize: number; css: CssFn }): Record<string, (strings: TemplateStringsArray, ...values: unknown[]) => string>
@@ -167,7 +167,7 @@ const queries = createMediaQueries({
 
 ---
 
-### makeItResponsive `function`
+### `makeItResponsive` `function`
 
 ```ts
 makeItResponsive(options: { css: CssFn; styles: MakeItResponsiveStyles; theme?: object; key?: string; normalize?: boolean }): (props) => CSSResult | string
@@ -204,7 +204,7 @@ const responsive = makeItResponsive({ key: '$box', css, styles, normalize: true 
 
 ---
 
-### styles `function`
+### `styles` `function`
 
 ```ts
 styles(options: { theme: InnerTheme; css: CssFn; rootSize?: number; globalTheme?: object }): CSSResult
@@ -227,7 +227,7 @@ const rules = styles({ theme: { padding: '8px', color: '#222' }, css })
 
 ---
 
-### alignContent `function`
+### `alignContent` `function`
 
 ```ts
 alignContent(options: { alignX?: AlignContentAlignXKeys; alignY?: AlignContentAlignYKeys; direction?: AlignContentDirectionKeys }): string | null
@@ -251,7 +251,7 @@ alignContent({ direction: 'inline', alignX: 'spaceBetween', alignY: 'center' })
 
 ---
 
-### extendCss `function`
+### `extendCss` `function`
 
 ```ts
 extendCss(styles: ((css: CssFn) => string) | string | null | undefined): string
@@ -273,7 +273,7 @@ extendCss(undefined)                         // → ''             (nullish → 
 
 ---
 
-### stripUnit `function`
+### `stripUnit` `function`
 
 ```ts
 stripUnit(value: string | number, unitReturn?: boolean): number | string | [number | string, string | undefined]
@@ -297,7 +297,7 @@ stripUnit('auto', true) // → ['auto', undefined]
 
 ---
 
-### value `function`
+### `value` `function`
 
 ```ts
 value(input: string | number | null | undefined, rootSize?: number, outputUnit?: 'rem' | 'px' | '%' | 'em' | 'vh' | 'vw' | string): string | number | null
@@ -323,7 +323,7 @@ value(16, 16, 'px')  // → '16px'   (outputUnit override)
 
 ---
 
-### themeToCssVars `function`
+### `themeToCssVars` `function`
 
 ```ts
 themeToCssVars(theme: object, options?: { prefix?: string; exclude?: readonly string[]; units?: Record<string, CssVarsUnitPolicy>; rootSize?: number }): { vars, css, registry }
@@ -362,7 +362,7 @@ themeToCssVars(theme, { units: { mySizes: 'rem' } })
 
 ---
 
-### resolveCssVarReferences `function`
+### `resolveCssVarReferences` `function`
 
 ```ts
 resolveCssVarReferences<T>(input: T, registry: ReadonlyMap<string, string>): T
@@ -390,7 +390,7 @@ resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'
 
 ---
 
-### values `function`
+### `values` `function`
 
 ```ts
 values(inputs: Array<string | number | null | undefined>, rootSize?: number, outputUnit?: string): string | number | null
@@ -415,7 +415,7 @@ values([null, null, 8])       // → '0.5rem'
 
 ---
 
-### cpseRewrite / cpseVarName / extractStyleVar `function`
+### `cpseRewrite / cpseVarName / extractStyleVar` `function`
 
 ```ts
 extractStyleVar(property, rawValue, rootSize?) → { rule, varName, varValue } · cpseVarName(property, breakpoint?) → string · cpseRewrite(frag, varsOut, breakpoint?) → string
@@ -450,7 +450,7 @@ cpseRewrite('gap: 2.25rem; margin: 1rem 2rem;', vars)
 
 ---
 
-### cpseStyled `function`
+### `cpseStyled` `function`
 
 ```ts
 cpseStyled(tag: string): ComponentFn<{ styles?, rootSize?, breakpoints?, class?, ref?, children? }>

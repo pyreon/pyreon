@@ -62,27 +62,27 @@ console.log(user.name)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createHttp`](#createhttp) | function | Create an HTTP client. |
-| [`HttpClient`](#httpclient) | type | A configured client. |
-| [`endpoint`](#endpoint) | function | Declare a reusable endpoint. |
-| [`encodeForm`](#encodeform) | function | The `application/x-www-form-urlencoded` serializer behind the `form` request option, exported so a transport or a genera |
-| [`HttpMiddleware`](#httpmiddleware) | type | Onion middleware, chosen over axios-style interceptor arrays because it is the only shape that expresses what people act |
-| [`retry`](#retry) | function | Replay a failed request. |
-| [`standardSchema`](#standardschema) | constant | The resolver that enables schema objects in `.json(schema)` and `endpoint({ response })`. |
-| [`runWithRequest`](#runwithrequest) | function | Establish the per-request SSR context, from `@pyreon/http/server`. |
-| [`openEventStream`](#openeventstream) | function | Server-Sent Events over any transport, from `@pyreon/http/stream`. |
-| [`losslessJson`](#losslessjson) | constant | A JSON codec from `@pyreon/http/json` that keeps 64-bit integers exact. |
-| [`RequestError`](#requesterror) | class | The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole f |
-| [`buildUrl`](#buildurl) | function | The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes |
-| [`compose`](#compose) | function | Fold a middleware array (outermost first) over a transport into one callable — what `createHttp({ use })` does internall |
-| [`createFetchTransport`](#createfetchtransport) | function | Build a `fetch`-backed `Transport`. |
-| [`getAmbientRequest`](#getambientrequest) | function | Read the inbound request currently in scope — `undefined` in the browser, and `undefined` on any server that has not opt |
-| [`defineEndpoint`](#defineendpoint) | function | The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper (`(spec, opts) =&gt; defineEndpoint( |
-| [`createMock`](#createmock) | function | Stub responses as middleware, from `@pyreon/http/mock`. |
+| [`createHttp`](#createhttp-function) | function | Create an HTTP client. |
+| [`HttpClient`](#httpclient-type) | type | A configured client. |
+| [`endpoint`](#endpoint-function) | function | Declare a reusable endpoint. |
+| [`encodeForm`](#encodeform-function) | function | The `application/x-www-form-urlencoded` serializer behind the `form` request option, exported so a transport or a genera |
+| [`HttpMiddleware`](#httpmiddleware-type) | type | Onion middleware, chosen over axios-style interceptor arrays because it is the only shape that expresses what people act |
+| [`retry`](#retry-function) | function | Replay a failed request. |
+| [`standardSchema`](#standardschema-constant) | constant | The resolver that enables schema objects in `.json(schema)` and `endpoint({ response })`. |
+| [`runWithRequest`](#runwithrequest-function) | function | Establish the per-request SSR context, from `@pyreon/http/server`. |
+| [`openEventStream`](#openeventstream-function) | function | Server-Sent Events over any transport, from `@pyreon/http/stream`. |
+| [`losslessJson`](#losslessjson-constant) | constant | A JSON codec from `@pyreon/http/json` that keeps 64-bit integers exact. |
+| [`RequestError`](#requesterror-class) | class | The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole f |
+| [`buildUrl`](#buildurl-function) | function | The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes |
+| [`compose`](#compose-function) | function | Fold a middleware array (outermost first) over a transport into one callable — what `createHttp({ use })` does internall |
+| [`createFetchTransport`](#createfetchtransport-function) | function | Build a `fetch`-backed `Transport`. |
+| [`getAmbientRequest`](#getambientrequest-function) | function | Read the inbound request currently in scope — `undefined` in the browser, and `undefined` on any server that has not opt |
+| [`defineEndpoint`](#defineendpoint-function) | function | The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper (`(spec, opts) =&gt; defineEndpoint( |
+| [`createMock`](#createmock-function) | function | Stub responses as middleware, from `@pyreon/http/mock`. |
 
 ## API
 
-### createHttp `function`
+### `createHttp` `function`
 
 ```ts
 (config?: HttpClientConfig) => HttpClient
@@ -112,7 +112,7 @@ const user = await api.get('/users/:id', { params: { id: '1' } }).json()
 
 ---
 
-### HttpClient `type`
+### `HttpClient` `type`
 
 ```ts
 interface HttpClient { get/post/put/patch/delete/head/options(path, options?): HttpResponsePromise; request(method, path, options?); extend(config): HttpClient; endpoint(spec, options?): Endpoint }
@@ -134,7 +134,7 @@ const user = await api.get('/users/1').json() // decoded body
 
 ---
 
-### endpoint `function`
+### `endpoint` `function`
 
 ```ts
 <S, V, I = EndpointInput<path>, K = 'json'>(spec: `${HttpMethod} ${string}`, options?: { response?: V; responseType?: K; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I>
@@ -162,7 +162,7 @@ console.log(options.queryKey)
 
 ---
 
-### encodeForm `function`
+### `encodeForm` `function`
 
 ```ts
 (fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited" | "tabDelimited"; explode?: boolean }>) => URLSearchParams
@@ -189,7 +189,7 @@ body.toString() // "amount=2000&metadata%5Border%5D=A1"
 
 ---
 
-### HttpMiddleware `type`
+### `HttpMiddleware` `type`
 
 ```ts
 (request: HttpRequest, next: Next) => Promise<HttpResponse>
@@ -216,7 +216,7 @@ const logger: HttpMiddleware = async (request, next) => {
 
 ---
 
-### retry `function`
+### `retry` `function`
 
 ```ts
 (options?: RetryOptions) => HttpMiddleware
@@ -238,7 +238,7 @@ const api = createHttp({ use: [retry({ limit: 3 })] })
 
 ---
 
-### standardSchema `constant`
+### `standardSchema` `constant`
 
 ```ts
 SchemaResolver
@@ -262,7 +262,7 @@ const api = createHttp({ schema: standardSchema })
 
 ---
 
-### runWithRequest `function`
+### `runWithRequest` `function`
 
 ```ts
 <T>(request: AmbientRequest, fn: () => T) => T
@@ -287,7 +287,7 @@ export const middleware = (ctx: { req: Request }) =>
 
 ---
 
-### openEventStream `function`
+### `openEventStream` `function`
 
 ```ts
 <T>(connect: (ctx: StreamContext) => Promise<ReadableStream<Uint8Array> | null | undefined>, options?: EventStreamOptions<T>) => EventStream<SseEvent<T>>
@@ -318,7 +318,7 @@ for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, heade
 
 ---
 
-### losslessJson `constant`
+### `losslessJson` `constant`
 
 ```ts
 const losslessJson: JsonCodec  // { parse: parseJsonLossless, stringify: stringifyJsonLossless }
@@ -345,7 +345,7 @@ await api.post('/orders', { json: { id: 9007199254740993n } })
 
 ---
 
-### RequestError `class`
+### `RequestError` `class`
 
 ```ts
 class RequestError extends Error { readonly request: HttpRequest | undefined }  — subclasses: HttpError (+ ClientError/ServerError), TimeoutError, AbortError, NetworkError, ParseError, ResponseValidationError
@@ -376,7 +376,7 @@ try {
 
 ---
 
-### buildUrl `function`
+### `buildUrl` `function`
 
 ```ts
 (baseUrl: string | undefined, path: string, params: PathParams | undefined, query: QueryParams | undefined) => string
@@ -401,7 +401,7 @@ buildUrl('/api', '/users/:id', { id: '1' }, { includeDeleted: true })
 
 ---
 
-### compose `function`
+### `compose` `function`
 
 ```ts
 (middleware: readonly HttpMiddleware[], transport: Transport) => Transport
@@ -429,7 +429,7 @@ const response = await dispatch(request)
 
 ---
 
-### createFetchTransport `function`
+### `createFetchTransport` `function`
 
 ```ts
 (fetchImpl?: typeof fetch) => Transport
@@ -454,7 +454,7 @@ const api = createHttp({ transport: createFetchTransport(myFetchImpl) })
 
 ---
 
-### getAmbientRequest `function`
+### `getAmbientRequest` `function`
 
 ```ts
 () => AmbientRequest | undefined
@@ -480,7 +480,7 @@ const url = resolveAgainstAmbientOrigin('/api/users')  // absolute on the server
 
 ---
 
-### defineEndpoint `function`
+### `defineEndpoint` `function`
 
 ```ts
 (client: HttpClient, spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint
@@ -504,7 +504,7 @@ const getUser = defineEndpoint(api, 'GET /users/:id', { response: UserSchema })
 
 ---
 
-### createMock `function`
+### `createMock` `function`
 
 ```ts
 (routes: readonly MockRoute[]) => MockHandle

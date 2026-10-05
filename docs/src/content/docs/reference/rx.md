@@ -96,21 +96,21 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`rx`](#rx) | constant | Namespaced object exposing all 42 reactive transform functions plus `pipe`. |
-| [`pipe`](#pipe) | function | Thread a value through plain transform functions left-to-right, collapsing the whole chain into ONE computed. |
-| [`filter`](#filter) | function | Filter items by predicate. |
-| [`map`](#map) | function | Transform each item. |
-| [`flatMap`](#flatmap) | function | Map each item to an ARRAY and flatten ONE level (exactly `Array.prototype.flatMap`). |
-| [`sortBy`](#sortby) | function | Sort by a key or key-selector. |
-| [`groupBy`](#groupby) | function | Group items into buckets by key. |
-| [`countBy`](#countby) | function | Count items per key bucket. |
-| [`search`](#search) | function | Case-insensitive **substring** filter across the named fields. |
-| [`debounce`](#debounce) | function | Debounce a SIGNAL value (the whole emitted value, not array items — it is not a collection transform and does not curry  |
-| [`throttle`](#throttle) | function | Throttle a SIGNAL value to at most one emission per `ms`. |
+| [`rx`](#rx-constant) | constant | Namespaced object exposing all 42 reactive transform functions plus `pipe`. |
+| [`pipe`](#pipe-function) | function | Thread a value through plain transform functions left-to-right, collapsing the whole chain into ONE computed. |
+| [`filter`](#filter-function) | function | Filter items by predicate. |
+| [`map`](#map-function) | function | Transform each item. |
+| [`flatMap`](#flatmap-function) | function | Map each item to an ARRAY and flatten ONE level (exactly `Array.prototype.flatMap`). |
+| [`sortBy`](#sortby-function) | function | Sort by a key or key-selector. |
+| [`groupBy`](#groupby-function) | function | Group items into buckets by key. |
+| [`countBy`](#countby-function) | function | Count items per key bucket. |
+| [`search`](#search-function) | function | Case-insensitive **substring** filter across the named fields. |
+| [`debounce`](#debounce-function) | function | Debounce a SIGNAL value (the whole emitted value, not array items — it is not a collection transform and does not curry  |
+| [`throttle`](#throttle-function) | function | Throttle a SIGNAL value to at most one emission per `ms`. |
 
 ## API
 
-### rx `constant`
+### `rx` `constant`
 
 ```ts
 Readonly<{ filter, map, flatMap, sortBy, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, count, sum, min, max, average, reduce, every, some, distinct, scan, combine, zip, merge, debounce, throttle, search, pipe }>
@@ -139,7 +139,7 @@ const grouped = rx.groupBy(users, u => u.department) // Computed<Record<string, 
 
 ---
 
-### pipe `function`
+### `pipe` `function`
 
 ```ts
 <A, B>(source: ReadableSignal<A> | A, ...fns: Array<(value: any) => any>) => Computed<B> | B
@@ -172,7 +172,7 @@ const result = pipe(
 
 ---
 
-### filter `function`
+### `filter` `function`
 
 ```ts
 <T>(source: Signal<T[]> | T[], predicate: (item: T, index: number) => boolean) => Computed<T[]> | T[]
@@ -198,7 +198,7 @@ pipe(items, ns => filter(ns, n => n > 3))            // wrap the 2-arg call in a
 
 ---
 
-### map `function`
+### `map` `function`
 
 ```ts
 <T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]
@@ -223,7 +223,7 @@ pipe(users, us => filter(us, u => u.active), us => map(us, u => u.name)) // wrap
 
 ---
 
-### flatMap `function`
+### `flatMap` `function`
 
 ```ts
 <T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U[]) => Computed<U[]> | U[]
@@ -250,7 +250,7 @@ flatMap([1, 2, 3], n => n % 2 === 0 ? [n] : [])     // [2] — empty arrays drop
 
 ---
 
-### sortBy `function`
+### `sortBy` `function`
 
 ```ts
 <T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<T[]> | T[]
@@ -278,7 +278,7 @@ const desc = pipe(users, us => sortBy(us, 'age'), us => us.slice().reverse()) //
 
 ---
 
-### groupBy `function`
+### `groupBy` `function`
 
 ```ts
 <T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<Record<string, T[]>> | Record<string, T[]>
@@ -305,7 +305,7 @@ for (const [dept, members] of Object.entries(byDept())) { void dept; void member
 
 ---
 
-### countBy `function`
+### `countBy` `function`
 
 ```ts
 <T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<Record<string, number>> | Record<string, number>
@@ -331,7 +331,7 @@ countBy([1, 2, 2, 3], n => n % 2 === 0 ? 'even' : 'odd')     // { odd: 2, even: 
 
 ---
 
-### search `function`
+### `search` `function`
 
 ```ts
 <T>(source: Signal<T[]> | T[], query: Signal<string> | string, keys: (keyof T)[]) => Computed<T[]> | T[]
@@ -359,7 +359,7 @@ const results = search(users, q, ['name', 'email'])  // Computed<User[]>
 
 ---
 
-### debounce `function`
+### `debounce` `function`
 
 ```ts
 <T>(source: Signal<T>, ms: number) => ReadableSignal<T> & { dispose: () => void }
@@ -388,7 +388,7 @@ effect(() => { void debounced() })     // fires 300ms after typing stops
 
 ---
 
-### throttle `function`
+### `throttle` `function`
 
 ```ts
 <T>(source: Signal<T>, ms: number) => ReadableSignal<T> & { dispose: () => void }

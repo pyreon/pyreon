@@ -1,14 +1,10 @@
 import { For, onMount, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { RouterLink } from '@pyreon/router'
+import { PACKAGE_COUNT, PACKAGE_GROUPS } from '../package-catalog.generated'
 import { PyreonHeroMark } from './PyreonHeroMark'
 
-// Verbatim structural port of
-// docs/.vitepress/theme/components/PyreonLanding.vue (898 LOC).
-// Eight sections: Hero · Benchmark · Mechanism · Compat · Zero · AI ·
-// Ecosystem · Footer. Every class name, every section number, every
-// piece of copy matches the Vue source — paraphrasing here would
-// break the CSS bound to those exact names.
+// Signal-powered landing page. Package inventory is generated from workspace manifests.
 
 // Real measured numbers — `BENCHMARKS.md` §1 "DOM row-list suite" (Chromium
 // via Playwright; median of 100 pooled samples, --repeat 5, 2026-09-23 run).
@@ -152,15 +148,6 @@ const RENDER_MODES = [
   { tag: 'SPA', d: 'Client-only. Same component model, no server.' },
 ]
 
-// Real categories/counts from AGENTS.md "Packages" (55 published packages).
-const ECOSYSTEM = [
-  { cat: 'core', count: 8, items: ['reactivity', 'core', 'compiler', 'runtime-dom', 'runtime-server', 'router', 'head', 'server'] },
-  { cat: 'fundamentals', count: 22, items: ['store', 'form', 'query', 'i18n', 'storage', 'hooks', 'machine', 'flow', 'rx', '+13 more'] },
-  { cat: 'tools', count: 10, items: ['cli', 'lint', 'mcp', 'vite-plugin', 'typescript', 'storybook', 'react/preact/vue/solid-compat'] },
-  { cat: 'ui-system', count: 11, items: ['ui-core', 'styler', 'unistyle', 'elements', 'attrs', 'rocketstyle', 'coolgrid', 'kinetic', '+3 more'] },
-  { cat: 'zero', count: 4, items: ['zero', 'zero-cli', 'create-zero', 'meta'] },
-]
-
 // Internal items carry `to` (RouterLink — base-aware + SPA nav);
 // external items carry `href` (plain anchor).
 interface FooterItem {
@@ -184,7 +171,7 @@ const FOOTER: { h: string; items: FooterItem[] }[] = [
       { label: '@pyreon/reactivity', to: '/docs/reactivity' },
       { label: '@pyreon/router', to: '/docs/router' },
       { label: '@pyreon/query', to: '/docs/query' },
-      { label: 'All 62 packages', to: '/docs/' },
+      { label: `All ${PACKAGE_COUNT} packages`, to: '/docs/package-catalog' },
     ],
   },
   {
@@ -546,43 +533,45 @@ export function PyreonLanding() {
       {/* ── 7 · ECOSYSTEM ──────────────────────────────────────── */}
       <section class="px-sec">
         <div class="px-sec-head">
-          <span class="px-mono-label">
-            06 · ecosystem · counted, not exclaimed
-          </span>
+          <span class="px-mono-label">06 · ecosystem · counted, not exclaimed</span>
           <span class="px-rule" />
         </div>
         <h2 class="px-h2">
-          62 packages. Routing, forms, data, devtools — already there.
+          {PACKAGE_COUNT} packages. Routing, forms, data, devtools — already there.
         </h2>
         <p class="px-sub">
-          Everything you'd otherwise stitch together yourself. Every
-          package is signal-aware, type-safe, and tree-shakeable.
+          Routing, state, styling, tooling, and native targets share the same reactive foundation.
         </p>
         <div class="px-grid-3">
-          {ECOSYSTEM.map((g) => (
+          {PACKAGE_GROUPS.map((g) => (
             <div class="px-panel">
               <div class="px-eco-head">
-                <span class="px-eco-cat">{g.cat}</span>
+                <span class="px-eco-cat">{g.category}</span>
                 <span class="px-card-rule" />
-                <span class="px-mono-label">{g.count}</span>
+                <span class="px-mono-label">{g.packages.length}</span>
               </div>
               <div class="px-eco-items">
-                {g.items.map((it, j) => (
+                {g.packages.slice(0, 8).map((pkg, j) => (
                   <span>
                     <span class="px-eco-ns">@pyreon/</span>
-                    <span class="px-eco-pkg">{it}</span>
-                    {j < g.items.length - 1 ? (
+                    <span class="px-eco-pkg">{pkg.slice('@pyreon/'.length)}</span>
+                    {j < Math.min(g.packages.length, 8) - 1 ? (
                       <span class="px-eco-sep"> · </span>
                     ) : null}
                   </span>
                 ))}
+                {g.packages.length > 8 ? (
+                  <RouterLink to="/docs/package-catalog" class="px-eco-pkg">
+                    {' · '}
+                    {g.packages.length - 8} more
+                  </RouterLink>
+                ) : null}
               </div>
             </div>
           ))}
         </div>
         <div class="px-eco-total">
-          total · <strong>62 packages</strong> · 5 categories · all
-          tree-shakeable
+          total · <strong>{PACKAGE_COUNT} packages</strong> · {PACKAGE_GROUPS.length} categories
         </div>
       </section>
 

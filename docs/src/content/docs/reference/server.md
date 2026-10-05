@@ -84,19 +84,19 @@ function useUser() {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createHandler`](#createhandler) | function | Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. |
-| [`renderPage`](#renderpage) | function | The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with |
-| [`island`](#island) | function | Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. |
-| [`serverIsland`](#serverisland) | function | The INVERSE of `island()`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. |
-| [`activateServerIslands`](#activateserverislands) | function | The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT |
-| [`useRequestLocals`](#userequestlocals) | function | Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). |
-| [`hydrateIslands`](#hydrateislands) | function | Client-side counterpart to `island()`. |
-| [`hydrateIslandsAuto`](#hydrateislandsauto) | function | Auto-discovered counterpart to `hydrateIslands()`. |
-| [`prerender`](#prerender) | function | Static-site generator built on `createHandler`. |
+| [`createHandler`](#createhandler-function) | function | Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. |
+| [`renderPage`](#renderpage-function) | function | The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with |
+| [`island`](#island-function) | function | Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. |
+| [`serverIsland`](#serverisland-function) | function | The INVERSE of `island()`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. |
+| [`activateServerIslands`](#activateserverislands-function) | function | The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT |
+| [`useRequestLocals`](#userequestlocals-function) | function | Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). |
+| [`hydrateIslands`](#hydrateislands-function) | function | Client-side counterpart to `island()`. |
+| [`hydrateIslandsAuto`](#hydrateislandsauto-function) | function | Auto-discovered counterpart to `hydrateIslands()`. |
+| [`prerender`](#prerender-function) | function | Static-site generator built on `createHandler`. |
 
 ## API
 
-### createHandler `function`
+### `createHandler` `function`
 
 ```ts
 createHandler(options: HandlerOptions): (req: Request) => Promise<Response>
@@ -128,7 +128,7 @@ export default createHandler({
 
 ---
 
-### renderPage `function`
+### `renderPage` `function`
 
 ```ts
 renderPage(App: ComponentFn, router: RenderablePageRouter, path: string, options?: RenderPageOptions): Promise<RenderPageResult>
@@ -161,7 +161,7 @@ if (result.kind === "html") compose(template, result)
 
 ---
 
-### island `function`
+### `island` `function`
 
 ```ts
 island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy; prefetch?: PrefetchStrategy }): ComponentFn
@@ -205,7 +205,7 @@ const CommandPalette = island(
 
 ---
 
-### serverIsland `function`
+### `serverIsland` `function`
 
 ```ts
 serverIsland(loader: () => Promise<{ default: ComponentFn } | ComponentFn>, options: { name: string; fallback?: VNodeChild; cache?: string }): ComponentFn
@@ -240,7 +240,7 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 
 ---
 
-### activateServerIslands `function`
+### `activateServerIslands` `function`
 
 ```ts
 (base?: string) => () => void
@@ -268,7 +268,7 @@ const stop = activateServerIslands('/my-app') // subpath deploy
 
 ---
 
-### useRequestLocals `function`
+### `useRequestLocals` `function`
 
 ```ts
 useRequestLocals(): Record<string, unknown>
@@ -294,7 +294,7 @@ function Header() {
 
 ---
 
-### hydrateIslands `function`
+### `hydrateIslands` `function`
 
 ```ts
 hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>): () => void
@@ -325,7 +325,7 @@ hydrateIslands({
 
 ---
 
-### hydrateIslandsAuto `function`
+### `hydrateIslandsAuto` `function`
 
 ```ts
 hydrateIslandsAuto(registry: AutoIslandRegistry): () => void
@@ -353,7 +353,7 @@ hydrateIslandsAuto(registry)
 
 ---
 
-### prerender `function`
+### `prerender` `function`
 
 ```ts
 prerender(options: PrerenderOptions): Promise<PrerenderResult>

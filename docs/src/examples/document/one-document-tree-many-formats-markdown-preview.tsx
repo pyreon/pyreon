@@ -1,4 +1,4 @@
-import { onMount } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
 import { Document, Heading, Page, Table, Text, render } from '@pyreon/document'
 import { type Signal, signal } from '@pyreon/reactivity'
 
@@ -43,56 +43,85 @@ export default function OneDocumentTreeManyFormatsMarkdownPreview() {
     }
     rerender()
     const unsubs = [title, revenue, growth, regions].map((s) => s.subscribe(rerender))
-    return () => { for (const u of unsubs) u() }
+    return () => {
+      for (const u of unsubs) u()
+    }
   })
 
-  const textField = (label: string, sig: Signal<string>, flex: number) => (
-    <label class="col" style={{ gap: '4px', flex, minWidth: '0' }}>
-      <span class="muted" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-      <input
-        type="text"
-        style="width: 100%;"
-        value={() => sig()}
-        onInput={(e: Event) => sig.set((e.target as HTMLInputElement).value)}
-      />
-    </label>
-  )
+  const textField = (label: string, sig: Signal<string>, flex: number) =>
+    h(
+      'label',
+      { class: 'col', style: { gap: '4px', flex, minWidth: '0' } },
+      h(
+        'span',
+        {
+          class: 'muted',
+          style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' },
+        },
+        label,
+      ),
+      h('input', {
+        type: 'text',
+        style: 'width: 100%;',
+        value: () => sig(),
+        onInput: (e: Event) => sig.set((e.target as HTMLInputElement).value),
+      }),
+    )
 
-  const numberField = (label: string, sig: Signal<number>, flex: number) => (
-    <label class="col" style={{ gap: '4px', flex, minWidth: '0' }}>
-      <span class="muted" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-      <input
-        type="number"
-        style="width: 100%;"
-        value={() => String(sig())}
-        onInput={(e: Event) => sig.set(Number((e.target as HTMLInputElement).value))}
-      />
-    </label>
-  )
+  const numberField = (label: string, sig: Signal<number>, flex: number) =>
+    h(
+      'label',
+      { class: 'col', style: { gap: '4px', flex, minWidth: '0' } },
+      h(
+        'span',
+        {
+          class: 'muted',
+          style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' },
+        },
+        label,
+      ),
+      h('input', {
+        type: 'number',
+        style: 'width: 100%;',
+        value: () => String(sig()),
+        onInput: (e: Event) => sig.set(Number((e.target as HTMLInputElement).value)),
+      }),
+    )
 
-  return (
-    <div class="col">
-      <div class="row" style={{ alignItems: 'flex-end' }}>
-        {textField('Title', title, 2)}
-        {textField('Revenue', revenue, 1)}
-        {numberField('Growth %', growth, 1)}
-      </div>
-      <div class="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div
-          class="muted"
-          style={{
+  // These helpers take the signal OBJECT. In JSX expressions the compiler
+  // reads known signals as values, so use h() to preserve the signal argument.
+  return h(
+    'div',
+    { class: 'col' },
+    h(
+      'div',
+      { class: 'row', style: { alignItems: 'flex-end' } },
+      textField('Title', title, 2),
+      textField('Revenue', revenue, 1),
+      numberField('Growth %', growth, 1),
+    ),
+    h(
+      'div',
+      { class: 'card', style: { padding: 0, overflow: 'hidden' } },
+      h(
+        'div',
+        {
+          class: 'muted',
+          style: {
             padding: '6px 10px',
             borderBottom: '1px solid var(--border)',
             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
             fontSize: '11px',
             letterSpacing: '0.04em',
             textTransform: 'uppercase',
-          }}
-        >
-          render(doc, 'md')
-        </div>
-        <pre
-          style={{
+          },
+        },
+        "render(doc, 'md')",
+      ),
+      h(
+        'pre',
+        {
+          style: {
             margin: 0,
             padding: '12px',
             whiteSpace: 'pre-wrap',
@@ -101,11 +130,10 @@ export default function OneDocumentTreeManyFormatsMarkdownPreview() {
             lineHeight: '1.6',
             maxHeight: '220px',
             overflow: 'auto',
-          }}
-        >
-          {() => markdown()}
-        </pre>
-      </div>
-    </div>
+          },
+        },
+        () => markdown(),
+      ),
+    ),
   )
 }

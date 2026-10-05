@@ -7,6 +7,17 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains first-loader data that stays empty without diagnosing an in-flight loader', () => {
+    for (const message of [
+      'useLoaderData() is undefined after the first loader resolved',
+      'The first loader completed but useLoaderData() is empty',
+    ]) {
+      const result = diagnoseError(message)
+      expect(result?.cause).toContain('pendingComponent')
+      expect(result?.fix).toContain('first-loader-arrival')
+    }
+    expect(diagnoseError('useLoaderData() is undefined while the first loader is pending')).toBeNull()
+  })
   it('diagnoses a known error pattern (cause + fix)', () => {
     const result = diagnoseError('count is not a function')
     expect(result).not.toBeNull()

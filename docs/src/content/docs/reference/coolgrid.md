@@ -80,15 +80,15 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`Container`](#container) | component | Outermost grid boundary. |
-| [`Row`](#row) | component | Flex-wrap row. |
-| [`Col`](#col) | component | Individual column. |
-| [`Provider`](#provider) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media |
-| [`theme`](#theme) | constant | Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. |
+| [`Container`](#container-component) | component | Outermost grid boundary. |
+| [`Row`](#row-component) | component | Flex-wrap row. |
+| [`Col`](#col-component) | component | Individual column. |
+| [`Provider`](#provider-component) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media |
+| [`theme`](#theme-constant) | constant | Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. |
 
 ## API
 
-### Container `component`
+### `Container` `component`
 
 ```ts
 (props: { columns?: ValueType; size?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; colCss?: ExtraStyles; colComponent?: ComponentFn; rowCss?: ExtraStyles; rowComponent?: ComponentFn; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild
@@ -139,7 +139,7 @@ import { Container, Row, Col } from '@pyreon/coolgrid'
 
 ---
 
-### Row `component`
+### `Row` `component`
 
 ```ts
 (props: { size?: ValueType; columns?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild
@@ -189,7 +189,7 @@ Flex-wrap row. Reads the Container config from context, merges its own props ove
 
 ---
 
-### Col `component`
+### `Col` `component`
 
 ```ts
 (props: { size?: ValueType; padding?: ValueType; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild
@@ -228,7 +228,7 @@ Individual column. Reads `columns` / `gap` / default `size` / `padding` from the
 
 ---
 
-### Provider `component`
+### `Provider` `component`
 
 ```ts
 (props: { theme: PyreonTheme; children?: VNode | null }) => VNode | null
@@ -264,7 +264,7 @@ import { PyreonUI } from '@pyreon/ui-core'
 
 ---
 
-### theme `constant`
+### `theme` `constant`
 
 ```ts
 { rootSize: 16; breakpoints: { xs: 0; sm: 576; md: 768; lg: 992; xl: 1200 }; grid: { columns: 12; container: { xs: '100%'; sm: 540; md: 720; lg: 960; xl: 1140 } } }

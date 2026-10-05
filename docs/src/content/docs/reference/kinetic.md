@@ -96,21 +96,21 @@ const Reveal = kinetic('section').preset(slideUp)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`kinetic`](#kinetic) | function | Create a renderable, chainable animated component in transition mode. |
-| [`presets`](#presets) | constant | The six built-in presets as one map — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — each also a |
-| [`useTransitionState`](#usetransitionstate) | hook | Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated primitiv |
-| [`useAnimationEnd`](#useanimationend) | hook | Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once wh |
-| [`TransitionStage`](#transitionstage) | type | The four lifecycle stages `useTransitionState` moves through. |
-| [`TransitionStateResult`](#transitionstateresult) | type | What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the `ap |
-| [`KineticComponent`](#kineticcomponent) | type | The value `kinetic(tag)` returns — a renderable component intersected with the chain methods. |
-| [`Preset`](#preset) | type | A plain object holding the style-form fields (`enterStyle`/`enterToStyle`/`enterTransition` + leave siblings) and/or the |
-| [`StyleTransitionProps`](#styletransitionprops) | type | Style-form transition definition (the zero-CSS path). |
-| [`ClassTransitionProps`](#classtransitionprops) | type | Class-form transition definition for utility-class CSS (Tailwind, CSS modules). |
-| [`TransitionCallbacks`](#transitioncallbacks) | type | Lifecycle callbacks — attach via `.on(callbacks)` on the chain or pass as props on the rendered component (props overrid |
+| [`kinetic`](#kinetic-function) | function | Create a renderable, chainable animated component in transition mode. |
+| [`presets`](#presets-constant) | constant | The six built-in presets as one map — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — each also a |
+| [`useTransitionState`](#usetransitionstate-hook) | hook | Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated primitiv |
+| [`useAnimationEnd`](#useanimationend-hook) | hook | Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once wh |
+| [`TransitionStage`](#transitionstage-type) | type | The four lifecycle stages `useTransitionState` moves through. |
+| [`TransitionStateResult`](#transitionstateresult-type) | type | What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the `ap |
+| [`KineticComponent`](#kineticcomponent-type) | type | The value `kinetic(tag)` returns — a renderable component intersected with the chain methods. |
+| [`Preset`](#preset-type) | type | A plain object holding the style-form fields (`enterStyle`/`enterToStyle`/`enterTransition` + leave siblings) and/or the |
+| [`StyleTransitionProps`](#styletransitionprops-type) | type | Style-form transition definition (the zero-CSS path). |
+| [`ClassTransitionProps`](#classtransitionprops-type) | type | Class-form transition definition for utility-class CSS (Tailwind, CSS modules). |
+| [`TransitionCallbacks`](#transitioncallbacks-type) | type | Lifecycle callbacks — attach via `.on(callbacks)` on the chain or pass as props on the rendered component (props overrid |
 
 ## API
 
-### kinetic `function`
+### `kinetic` `function`
 
 ```ts
 <Tag extends string>(tag: Tag) => KineticComponent<Tag, 'transition'>
@@ -162,7 +162,7 @@ const AnimatedList = kinetic('ul').preset(fade).group()          // keyed list
 
 ---
 
-### presets `constant`
+### `presets` `constant`
 
 ```ts
 Record<'fade' | 'scaleIn' | 'slideUp' | 'slideDown' | 'slideLeft' | 'slideRight', Preset>
@@ -187,7 +187,7 @@ const SlideBox = kinetic('div').preset(presets.slideUp)   // map access for dyna
 
 ---
 
-### useTransitionState `hook`
+### `useTransitionState` `hook`
 
 ```ts
 (options: { show?: boolean | (() => boolean); appear?: boolean }) => TransitionStateResult
@@ -225,7 +225,7 @@ useAnimationEnd({ ref: elementRef, active: () => stage() === 'entering' || stage
 
 ---
 
-### useAnimationEnd `hook`
+### `useAnimationEnd` `hook`
 
 ```ts
 (options: { ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number | (() => number | undefined) }) => void
@@ -264,7 +264,7 @@ useAnimationEnd({
 
 ---
 
-### TransitionStage `type`
+### `TransitionStage` `type`
 
 ```ts
 type TransitionStage = 'hidden' | 'entering' | 'entered' | 'leaving'
@@ -284,7 +284,7 @@ const isAnimating = (s: TransitionStage) => s === 'entering' || s === 'leaving'
 
 ---
 
-### TransitionStateResult `type`
+### `TransitionStateResult` `type`
 
 ```ts
 type TransitionStateResult = { stage: Signal<TransitionStage>; ref: Ref<HTMLElement> | ((node: HTMLElement | null) => void); shouldMount: () => boolean; complete: () => void }
@@ -306,7 +306,7 @@ function describe(t: TransitionStateResult): string {
 
 ---
 
-### KineticComponent `type`
+### `KineticComponent` `type`
 
 ```ts
 type KineticComponent<Tag extends string, Mode extends KineticMode = 'transition'> = ComponentFn<KineticComponentProps<Tag, Mode>> & KineticChain<Tag, Mode>
@@ -331,7 +331,7 @@ const List: KineticComponent<'ul', 'group'> = kinetic('ul').preset(fade).group()
 
 ---
 
-### Preset `type`
+### `Preset` `type`
 
 ```ts
 type Preset = StyleTransitionProps & ClassTransitionProps
@@ -359,7 +359,7 @@ const Box = kinetic('div').preset(myPreset)
 
 ---
 
-### StyleTransitionProps `type`
+### `StyleTransitionProps` `type`
 
 ```ts
 type StyleTransitionProps = { enterStyle?: CSSProperties; enterToStyle?: CSSProperties; enterTransition?: string; leaveStyle?: CSSProperties; leaveToStyle?: CSSProperties; leaveTransition?: string }
@@ -380,7 +380,7 @@ const SlidePanel = kinetic('aside')
 
 ---
 
-### ClassTransitionProps `type`
+### `ClassTransitionProps` `type`
 
 ```ts
 type ClassTransitionProps = { enter?: string; enterFrom?: string; enterTo?: string; leave?: string; leaveFrom?: string; leaveTo?: string }
@@ -400,7 +400,7 @@ const TailwindFade = kinetic('div')
 
 ---
 
-### TransitionCallbacks `type`
+### `TransitionCallbacks` `type`
 
 ```ts
 type TransitionCallbacks = { onEnter?: () => void; onAfterEnter?: () => void; onLeave?: () => void; onAfterLeave?: () => void }

@@ -67,28 +67,28 @@ const InvertedSection = () => (
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`PyreonUI`](#pyreonui) | component | Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). |
-| [`useMode`](#usemode) | hook | Returns the currently resolved mode as a reactive signal — `'light'` or `'dark'`. |
-| [`useThemeValue`](#usethemevalue) | hook | Deep-reads a dot-path from the styler theme (e.g. |
-| [`useRootSize`](#userootsize) | hook | Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. |
-| [`useSpacing`](#usespacing) | hook | Returns a `spacing(multiplier)` function producing a px string. |
-| [`cssVariablesPrePaintScript`](#cssvariablesprepaintscript) | function | Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE firs |
-| [`init`](#init) | function | The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/` |
-| [`get / set / merge / pick / omit / isEmpty / isEqual`](#get-set-merge-pick-omit-isempty-isequal) | function | Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — `@pyreon/lodash` without the dependenc |
-| [`throttle`](#throttle) | function | Rate-limits `fn` to at most once per `wait` ms. |
-| [`compose`](#compose) | function | Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. |
-| [`resolveSlot`](#resolveslot) | function | Resolves a slot prop (`beforeContent`, `afterContent`, `content` — the pattern `@pyreon/elements`' Element/Text/List use |
-| [`isPyreonComponent`](#ispyreoncomponent) | function | Detects whether a function value is a Pyreon COMPONENT (framework-marked via `IS_ROCKETSTYLE`/`PYREON__COMPONENT`, or us |
-| [`render`](#render) | function | A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) a |
-| [`useStableValue`](#usestablevalue) | hook | Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer  |
-| [`HTML_TAGS / HTML_TEXT_TAGS`](#html-tags-html-text-tags) | constant | The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag (use |
-| [`getThemeEngine / setThemeEngine`](#getthemeengine-setthemeengine) | function | @internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. |
-| [`resolveCssVariables`](#resolvecssvariables) | function | The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's `mod |
-| [`hoistNonReactStatics`](#hoistnonreactstatics) | function | Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent |
+| [`PyreonUI`](#pyreonui-component) | component | Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). |
+| [`useMode`](#usemode-hook) | hook | Returns the currently resolved mode as a reactive signal — `'light'` or `'dark'`. |
+| [`useThemeValue`](#usethemevalue-hook) | hook | Deep-reads a dot-path from the styler theme (e.g. |
+| [`useRootSize`](#userootsize-hook) | hook | Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. |
+| [`useSpacing`](#usespacing-hook) | hook | Returns a `spacing(multiplier)` function producing a px string. |
+| [`cssVariablesPrePaintScript`](#cssvariablesprepaintscript-function) | function | Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE firs |
+| [`init`](#init-function) | function | The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/` |
+| [`get / set / merge / pick / omit / isEmpty / isEqual`](#get-set-merge-pick-omit-isempty-isequal-function) | function | Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — `@pyreon/lodash` without the dependenc |
+| [`throttle`](#throttle-function) | function | Rate-limits `fn` to at most once per `wait` ms. |
+| [`compose`](#compose-function) | function | Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. |
+| [`resolveSlot`](#resolveslot-function) | function | Resolves a slot prop (`beforeContent`, `afterContent`, `content` — the pattern `@pyreon/elements`' Element/Text/List use |
+| [`isPyreonComponent`](#ispyreoncomponent-function) | function | Detects whether a function value is a Pyreon COMPONENT (framework-marked via `IS_ROCKETSTYLE`/`PYREON__COMPONENT`, or us |
+| [`render`](#render-function) | function | A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) a |
+| [`useStableValue`](#usestablevalue-hook) | hook | Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer  |
+| [`HTML_TAGS / HTML_TEXT_TAGS`](#html_tags-html_text_tags-constant) | constant | The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag (use |
+| [`getThemeEngine / setThemeEngine`](#getthemeengine-setthemeengine-function) | function | @internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. |
+| [`resolveCssVariables`](#resolvecssvariables-function) | function | The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's `mod |
+| [`hoistNonReactStatics`](#hoistnonreactstatics-function) | function | Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent |
 
 ## API
 
-### PyreonUI `component`
+### `PyreonUI` `component`
 
 ```ts
 (props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }) => VNodeChild
@@ -125,7 +125,7 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 
 ---
 
-### useMode `hook`
+### `useMode` `hook`
 
 ```ts
 useMode(): Signal<'light' | 'dark'>
@@ -152,7 +152,7 @@ const mode = useMode()
 
 ---
 
-### useThemeValue `hook`
+### `useThemeValue` `hook`
 
 ```ts
 useThemeValue<T = unknown>(path: string) => T | undefined
@@ -174,7 +174,7 @@ const primary = useThemeValue<string>('colors.primary')
 
 ---
 
-### useRootSize `hook`
+### `useRootSize` `hook`
 
 ```ts
 useRootSize() => { rootSize: number; pxToRem: (px: number) => string; remToPx: (rem: number) => number }
@@ -197,7 +197,7 @@ const { pxToRem } = useRootSize()
 
 ---
 
-### useSpacing `hook`
+### `useSpacing` `hook`
 
 ```ts
 useSpacing(base?: number) => (multiplier: number) => string
@@ -220,7 +220,7 @@ const spacing = useSpacing()
 
 ---
 
-### cssVariablesPrePaintScript `function`
+### `cssVariablesPrePaintScript` `function`
 
 ```ts
 cssVariablesPrePaintScript(options?: { attribute?: string; storageKey?: string; fallback?: "light" | "dark" }): string
@@ -247,7 +247,7 @@ import { cssVariablesPrePaintScript } from '@pyreon/ui-core'
 
 ---
 
-### init `function`
+### `init` `function`
 
 ```ts
 init(props: { css?, styled?, keyframes?, component?, textComponent?, createMediaQueries?, cssVariables?: boolean | CssVariablesConfig, styleExtraction?: boolean }): void
@@ -273,7 +273,7 @@ init({ cssVariables: true, styleExtraction: true })
 
 ---
 
-### get / set / merge / pick / omit / isEmpty / isEqual `function`
+### `get / set / merge / pick / omit / isEmpty / isEqual` `function`
 
 ```ts
 get(obj, path, default?) · set(obj, path, value) · merge(target, ...sources) · pick(obj, keys?) · omit(obj, keys?) · isEmpty(value) · isEqual(a, b)
@@ -306,7 +306,7 @@ isEqual({ x: [1] }, { x: [1] })            // true
 
 ---
 
-### throttle `function`
+### `throttle` `function`
 
 ```ts
 throttle(fn, wait?: number = 0, options?: { leading?: boolean; trailing?: boolean }): typeof fn & { cancel: () => void }
@@ -331,7 +331,7 @@ onMount(() => () => onScroll.cancel())
 
 ---
 
-### compose `function`
+### `compose` `function`
 
 ```ts
 compose<T extends ((arg: any) => any)[]>(...fns: T) => (value) => result
@@ -357,7 +357,7 @@ shout('hi') // 'HI!'
 
 ---
 
-### resolveSlot `function`
+### `resolveSlot` `function`
 
 ```ts
 resolveSlot(value: unknown): VNodeChildAtom | VNodeChildAtom[]
@@ -383,7 +383,7 @@ import { resolveSlot } from '@pyreon/ui-core'
 
 ---
 
-### isPyreonComponent `function`
+### `isPyreonComponent` `function`
 
 ```ts
 isPyreonComponent(value: unknown): boolean
@@ -409,7 +409,7 @@ isPyreonComponent(rocketstyle(Element))  // true — IS_ROCKETSTYLE marker
 
 ---
 
-### render `function`
+### `render` `function`
 
 ```ts
 render(content?: ComponentFn | string | VNodeChild | VNodeChild[] | ((props) => VNodeChild), attachProps?): VNodeChild
@@ -432,7 +432,7 @@ import render from '@pyreon/ui-core'
 
 ---
 
-### useStableValue `hook`
+### `useStableValue` `hook`
 
 ```ts
 useStableValue<T>(value: T): T
@@ -459,7 +459,7 @@ const options = useStableValue({ page: page(), size: 20 })
 
 ---
 
-### HTML_TAGS / HTML_TEXT_TAGS `constant`
+### `HTML_TAGS / HTML_TEXT_TAGS` `constant`
 
 ```ts
 HTML_TAGS: readonly string[] · HTML_TEXT_TAGS: readonly string[]
@@ -478,7 +478,7 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text
 
 ---
 
-### getThemeEngine / setThemeEngine `function`
+### `getThemeEngine / setThemeEngine` `function`
 
 ```ts
 getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void
@@ -504,7 +504,7 @@ getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void
 
 ---
 
-### resolveCssVariables `function`
+### `resolveCssVariables` `function`
 
 ```ts
 resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }
@@ -529,7 +529,7 @@ const { enabled, prefix, attribute } = resolveCssVariables()
 
 ---
 
-### hoistNonReactStatics `function`
+### `hoistNonReactStatics` `function`
 
 ```ts
 hoistNonReactStatics<T, S>(target: T, source: S, excludeList?: Record<string, true>): T

@@ -32,20 +32,20 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`Element`](#element) | component | The responsive flexbox block primitive every layout-bearing component renders through. |
-| [`Text`](#text) | component | Inline typography primitive — the text counterpart to `Element`. |
-| [`List`](#list) | component | The Iterator data API with an OPTIONAL container. |
-| [`Overlay`](#overlay) | component | A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. |
-| [`useOverlay`](#useoverlay) | hook | The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. |
-| [`OverlayProvider`](#overlayprovider) | component | Context provider that lets nested overlays coordinate (a child overlay blocks its parent from closing while it is open). |
-| [`Portal`](#portal) | component | Renders children OUTSIDE the parent DOM hierarchy — into a PER-INSTANCE wrapper element (default `<div>`, configurable v |
-| [`Iterator`](#iterator) | component | The data-iteration helper backing `List`, exported as `Iterator` from the package root. |
-| [`Util`](#util) | component | Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via cor |
-| [`Provider`](#provider) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider (marked `@internal` / `@deprecated` in source). |
+| [`Element`](#element-component) | component | The responsive flexbox block primitive every layout-bearing component renders through. |
+| [`Text`](#text-component) | component | Inline typography primitive — the text counterpart to `Element`. |
+| [`List`](#list-component) | component | The Iterator data API with an OPTIONAL container. |
+| [`Overlay`](#overlay-component) | component | A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. |
+| [`useOverlay`](#useoverlay-hook) | hook | The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. |
+| [`OverlayProvider`](#overlayprovider-component) | component | Context provider that lets nested overlays coordinate (a child overlay blocks its parent from closing while it is open). |
+| [`Portal`](#portal-component) | component | Renders children OUTSIDE the parent DOM hierarchy — into a PER-INSTANCE wrapper element (default `<div>`, configurable v |
+| [`Iterator`](#iterator-component) | component | The data-iteration helper backing `List`, exported as `Iterator` from the package root. |
+| [`Util`](#util-component) | component | Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via cor |
+| [`Provider`](#provider-component) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider (marked `@internal` / `@deprecated` in source). |
 
 ## API
 
-### Element `component`
+### `Element` `component`
 
 ```ts
 Element(props: ElementProps): VNodeChild
@@ -88,7 +88,7 @@ import { Element } from "@pyreon/elements"
 
 ---
 
-### Text `component`
+### `Text` `component`
 
 ```ts
 Text(props: TextProps): VNodeChild
@@ -114,7 +114,7 @@ import { Text } from "@pyreon/elements"
 
 ---
 
-### List `component`
+### `List` `component`
 
 ```ts
 List(props: ListProps): VNodeChild
@@ -144,7 +144,7 @@ const items = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
 
 ---
 
-### Overlay `component`
+### `Overlay` `component`
 
 ```ts
 Overlay(props: OverlayProps): VNodeChild
@@ -183,7 +183,7 @@ import { Overlay } from "@pyreon/elements"
 
 ---
 
-### useOverlay `hook`
+### `useOverlay` `hook`
 
 ```ts
 useOverlay(props?: Partial<UseOverlayProps>): { triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, blocked, setBlocked, setUnblocked, setContentPosition, setupListeners, Provider }
@@ -212,7 +212,7 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
 
 ---
 
-### OverlayProvider `component`
+### `OverlayProvider` `component`
 
 ```ts
 OverlayProvider(props?: Partial<OverlayContext> & { children?: VNodeChild }): VNodeChild
@@ -234,7 +234,7 @@ import { OverlayProvider } from "@pyreon/elements"
 
 ---
 
-### Portal `component`
+### `Portal` `component`
 
 ```ts
 Portal(props: PortalProps): VNodeChild
@@ -261,7 +261,7 @@ import { Portal } from "@pyreon/elements"
 
 ---
 
-### Iterator `component`
+### `Iterator` `component`
 
 ```ts
 Iterator<T>(props: IteratorProps<T>): VNodeChild
@@ -295,7 +295,7 @@ const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
 
 ---
 
-### Util `component`
+### `Util` `component`
 
 ```ts
 Util(props: { children: VNodeChild; className?: string | string[]; style?: object }): VNodeChild
@@ -323,7 +323,7 @@ import { Util } from "@pyreon/elements"
 
 ---
 
-### Provider `component`
+### `Provider` `component`
 
 ```ts
 Provider(props: { theme: PyreonTheme; children?: VNode | null }): VNode | null

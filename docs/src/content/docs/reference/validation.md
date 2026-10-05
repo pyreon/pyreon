@@ -89,31 +89,31 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`zodSchema`](#zodschema) | function | Create a typed whole-form schema adapter from a Zod schema. |
-| [`zodField`](#zodfield) | function | Create a per-field validator from a Zod schema. |
-| [`valibotSchema`](#valibotschema) | function | Create a typed whole-form schema adapter from a Valibot schema. |
-| [`valibotField`](#valibotfield) | function | Create a per-field validator from a Valibot schema. |
-| [`arktypeSchema`](#arktypeschema) | function | Create a typed whole-form schema adapter from an ArkType type. |
-| [`arktypeField`](#arktypefield) | function | Create a per-field validator from an ArkType type. |
-| [`standardSchemaToValidator`](#standardschematovalidator) | function | Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@py |
-| [`isStandardSchema`](#isstandardschema) | function | Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `valida |
-| [`isPyreonAdapter`](#ispyreonadapter) | function | Runtime type guard — detect a Pyreon TypedSchemaAdapter (Tier A.1) by its `_infer` brand plus a callable `parse`. |
-| [`wrapStandardSchema`](#wrapstandardschema) | function | Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`&#123; ok: true, value &#125; \| &#123; ok: false |
-| [`extractParseFn`](#extractparsefn) | function | The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon TypedSchemaAdap |
-| [`formatIssues`](#formatissues) | function | Format normalized schema issues into a readable multi-line `[Pyreon] Schema validation failed (<op>): ...` message. |
-| [`issuesToRecord`](#issuestorecord) | function | Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyr |
-| [`flattenIssuePath`](#flattenissuepath) | function | Normalize a Standard-Schema-style issue path (an array of `PropertyKey`s, or of `{ key }` wrappers — libraries emit eith |
-| [`TypedSchemaAdapter`](#typedschemaadapter) | type | The object every `zodSchema()` / `valibotSchema()` / `arktypeSchema()` returns. |
-| [`InferSchema`](#inferschema) | type | Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Sc |
-| [`SchemaValidateFn`](#schemavalidatefn) | type | The whole-object validator contract — maps a values object to a per-key error record (sync or async). |
-| [`ValidateFn`](#validatefn) | type | The single-field validator contract — receives the field value, all current values (for cross-field checks), and an opti |
-| [`ValidationError`](#validationerror) | type | A single field's error value — the message string, or `undefined` for "no error". |
-| [`StandardSchemaLike`](#standardschemalike) | type | The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema |
-| [`ValidationIssue`](#validationissue) | type | The normalized issue shape every adapter produces before calling `issuesToRecord` — a dot-separated field `path` (`addre |
+| [`zodSchema`](#zodschema-function) | function | Create a typed whole-form schema adapter from a Zod schema. |
+| [`zodField`](#zodfield-function) | function | Create a per-field validator from a Zod schema. |
+| [`valibotSchema`](#valibotschema-function) | function | Create a typed whole-form schema adapter from a Valibot schema. |
+| [`valibotField`](#valibotfield-function) | function | Create a per-field validator from a Valibot schema. |
+| [`arktypeSchema`](#arktypeschema-function) | function | Create a typed whole-form schema adapter from an ArkType type. |
+| [`arktypeField`](#arktypefield-function) | function | Create a per-field validator from an ArkType type. |
+| [`standardSchemaToValidator`](#standardschematovalidator-function) | function | Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@py |
+| [`isStandardSchema`](#isstandardschema-function) | function | Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `valida |
+| [`isPyreonAdapter`](#ispyreonadapter-function) | function | Runtime type guard — detect a Pyreon TypedSchemaAdapter (Tier A.1) by its `_infer` brand plus a callable `parse`. |
+| [`wrapStandardSchema`](#wrapstandardschema-function) | function | Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`&#123; ok: true, value &#125; \| &#123; ok: false |
+| [`extractParseFn`](#extractparsefn-function) | function | The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon TypedSchemaAdap |
+| [`formatIssues`](#formatissues-function) | function | Format normalized schema issues into a readable multi-line `[Pyreon] Schema validation failed (<op>): ...` message. |
+| [`issuesToRecord`](#issuestorecord-function) | function | Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyr |
+| [`flattenIssuePath`](#flattenissuepath-function) | function | Normalize a Standard-Schema-style issue path (an array of `PropertyKey`s, or of `{ key }` wrappers — libraries emit eith |
+| [`TypedSchemaAdapter`](#typedschemaadapter-type) | type | The object every `zodSchema()` / `valibotSchema()` / `arktypeSchema()` returns. |
+| [`InferSchema`](#inferschema-type) | type | Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Sc |
+| [`SchemaValidateFn`](#schemavalidatefn-type) | type | The whole-object validator contract — maps a values object to a per-key error record (sync or async). |
+| [`ValidateFn`](#validatefn-type) | type | The single-field validator contract — receives the field value, all current values (for cross-field checks), and an opti |
+| [`ValidationError`](#validationerror-type) | type | A single field's error value — the message string, or `undefined` for "no error". |
+| [`StandardSchemaLike`](#standardschemalike-type) | type | The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema |
+| [`ValidationIssue`](#validationissue-type) | type | The normalized issue shape every adapter produces before calling `issuesToRecord` — a dot-separated field `path` (`addre |
 
 ## API
 
-### zodSchema `function`
+### `zodSchema` `function`
 
 ```ts
 <TValues>(schema: ZodSchema<TValues>) => TypedSchemaAdapter<TValues>
@@ -142,7 +142,7 @@ const form = useForm({
 
 ---
 
-### zodField `function`
+### `zodField` `function`
 
 ```ts
 <T>(schema: ZodSchema<T>) => ValidateFn<T>
@@ -164,7 +164,7 @@ const form = useForm({
 
 ---
 
-### valibotSchema `function`
+### `valibotSchema` `function`
 
 ```ts
 <TValues>(schema: unknown, safeParse: Function) => TypedSchemaAdapter<TValues>
@@ -193,7 +193,7 @@ const form = useForm({
 
 ---
 
-### valibotField `function`
+### `valibotField` `function`
 
 ```ts
 <T>(schema: unknown, safeParse: Function) => ValidateFn<T>
@@ -211,7 +211,7 @@ validators: { email: valibotField(v.pipe(v.string(), v.email()), v.safeParseAsyn
 
 ---
 
-### arktypeSchema `function`
+### `arktypeSchema` `function`
 
 ```ts
 <TValues>(schema: (data: unknown) => unknown) => TypedSchemaAdapter<TValues>
@@ -239,7 +239,7 @@ const form = useForm({
 
 ---
 
-### arktypeField `function`
+### `arktypeField` `function`
 
 ```ts
 <T>(schema: (data: unknown) => unknown) => ValidateFn<T>
@@ -257,7 +257,7 @@ validators: { age: arktypeField(type('number > 18')) }
 
 ---
 
-### standardSchemaToValidator `function`
+### `standardSchemaToValidator` `function`
 
 ```ts
 <TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>
@@ -287,7 +287,7 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 
 ---
 
-### isStandardSchema `function`
+### `isStandardSchema` `function`
 
 ```ts
 (value: unknown) => value is StandardSchemaLike<unknown>
@@ -314,7 +314,7 @@ if (isStandardSchema(schema)) {
 
 ---
 
-### isPyreonAdapter `function`
+### `isPyreonAdapter` `function`
 
 ```ts
 (value: unknown) => value is PyreonAdapterShape<Record<string, unknown>>
@@ -340,7 +340,7 @@ if (isPyreonAdapter(schema)) {
 
 ---
 
-### wrapStandardSchema `function`
+### `wrapStandardSchema` `function`
 
 ```ts
 <T>(schema: StandardSchemaShape<unknown>) => (value: unknown) => SchemaParseResult<T>
@@ -368,7 +368,7 @@ if (r.ok) use(r.value)
 
 ---
 
-### extractParseFn `function`
+### `extractParseFn` `function`
 
 ```ts
 <T>(schema: unknown) => (value: unknown) => SchemaParseResult<T>
@@ -397,7 +397,7 @@ const value = r.value // parsed + coerced
 
 ---
 
-### formatIssues `function`
+### `formatIssues` `function`
 
 ```ts
 (issues: SchemaIssue[], op: string) => string
@@ -419,7 +419,7 @@ throw new Error(formatIssues([{ path: 'email', message: 'Invalid' }], 'set'))
 
 ---
 
-### issuesToRecord `function`
+### `issuesToRecord` `function`
 
 ```ts
 <TValues>(issues: ValidationIssue[]) => Partial<Record<keyof TValues, ValidationError>>
@@ -448,7 +448,7 @@ issuesToRecord([
 
 ---
 
-### flattenIssuePath `function`
+### `flattenIssuePath` `function`
 
 ```ts
 (path: ReadonlyArray<PropertyKey | { key: PropertyKey }> | undefined) => string
@@ -472,7 +472,7 @@ flattenIssuePath(undefined)                     // '' — form-level issue
 
 ---
 
-### TypedSchemaAdapter `type`
+### `TypedSchemaAdapter` `type`
 
 ```ts
 interface TypedSchemaAdapter<TValues> { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues>; readonly parse?: (value: unknown) => ParseResult<TValues> }
@@ -498,7 +498,7 @@ adapter.parse!({ id: 'x' })    // => { ok: true, value: { id: 'x' } }
 
 ---
 
-### InferSchema `type`
+### `InferSchema` `type`
 
 ```ts
 type InferSchema<S> = S["_infer"] /* Tier A.1 */ | S["~standard"]["types"]["output"] /* Tier A.2 */ | Record<string, unknown>
@@ -524,7 +524,7 @@ type Values = InferSchema<typeof schema> // { id: string; n: number }
 
 ---
 
-### SchemaValidateFn `type`
+### `SchemaValidateFn` `type`
 
 ```ts
 type SchemaValidateFn<TValues> = (values: TValues) => Partial<Record<keyof TValues, ValidationError>> | Promise<Partial<Record<keyof TValues, ValidationError>>>
@@ -549,7 +549,7 @@ const validate: SchemaValidateFn<{ email: string }> = (values) =>
 
 ---
 
-### ValidateFn `type`
+### `ValidateFn` `type`
 
 ```ts
 type ValidateFn<T, TValues = Record<string, unknown>> = (value: T, allValues: TValues, signal?: AbortSignal) => ValidationError | Promise<ValidationError>
@@ -574,7 +574,7 @@ const confirm: ValidateFn<string, { password: string }> = (value, all) =>
 
 ---
 
-### ValidationError `type`
+### `ValidationError` `type`
 
 ```ts
 type ValidationError = string | undefined
@@ -594,7 +594,7 @@ const err: ValidationError = isValid ? undefined : 'Required'
 
 ---
 
-### StandardSchemaLike `type`
+### `StandardSchemaLike` `type`
 
 ```ts
 interface StandardSchemaLike<Output = unknown> { readonly "~standard": { readonly types?: { readonly output: Output }; readonly validate: (value: unknown) => StandardSchemaResult | Promise<StandardSchemaResult> } }
@@ -621,7 +621,7 @@ function adapt<T extends Record<string, unknown>>(s: StandardSchemaLike) {
 
 ---
 
-### ValidationIssue `type`
+### `ValidationIssue` `type`
 
 ```ts
 interface ValidationIssue { path: string; message: string }

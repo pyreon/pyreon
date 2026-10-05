@@ -90,24 +90,24 @@ await doc.toNotion()    // Notion blocks
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`render`](#render) | function | Render a document tree to any supported format. |
-| [`createDocument`](#createdocument) | function | Fluent builder API for constructing documents without JSX. |
-| [`Document`](#document) | component | Root primitive for document trees. |
-| [`download`](#download) | function | Browser helper that renders a document node tree and triggers a file download in one call. |
-| [`Heading`](#heading) | component | A heading block. |
-| [`Text`](#text) | component | A paragraph / run of text with inline styling props (bold, italic, underline, strikethrough, size, color, align, lineHei |
-| [`Table`](#table) | component | A data table. |
-| [`List / ListItem`](#list-listitem) | component | A bulleted (default) or numbered list. |
-| [`Code`](#code) | component | A code block. |
-| [`Link`](#link) | component | An inline hyperlink. |
-| [`Image`](#image) | component | An image. |
-| [`Button`](#button) | component | A call-to-action button — a LINK styled as a button (renders as an Outlook-safe 'bulletproof button' in email, a styled  |
-| [`Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak`](#page-section-row-column-divider-spacer-quote-pagebreak) | component | The structural / layout primitives. |
-| [`registerRenderer / unregisterRenderer / isDocNode`](#registerrenderer-unregisterrenderer-isdocnode) | function | The extension + guard API. |
+| [`render`](#render-function) | function | Render a document tree to any supported format. |
+| [`createDocument`](#createdocument-function) | function | Fluent builder API for constructing documents without JSX. |
+| [`Document`](#document-component) | component | Root primitive for document trees. |
+| [`download`](#download-function) | function | Browser helper that renders a document node tree and triggers a file download in one call. |
+| [`Heading`](#heading-component) | component | A heading block. |
+| [`Text`](#text-component) | component | A paragraph / run of text with inline styling props (bold, italic, underline, strikethrough, size, color, align, lineHei |
+| [`Table`](#table-component) | component | A data table. |
+| [`List / ListItem`](#list-listitem-component) | component | A bulleted (default) or numbered list. |
+| [`Code`](#code-component) | component | A code block. |
+| [`Link`](#link-component) | component | An inline hyperlink. |
+| [`Image`](#image-component) | component | An image. |
+| [`Button`](#button-component) | component | A call-to-action button — a LINK styled as a button (renders as an Outlook-safe 'bulletproof button' in email, a styled  |
+| [`Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak`](#page-section-row-column-divider-spacer-quote-pagebreak-component) | component | The structural / layout primitives. |
+| [`registerRenderer / unregisterRenderer / isDocNode`](#registerrenderer-unregisterrenderer-isdocnode-function) | function | The extension + guard API. |
 
 ## API
 
-### render `function`
+### `render` `function`
 
 ```ts
 (node: DocNode | VNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>
@@ -144,7 +144,7 @@ const slack = await render(doc, 'slack')          // Slack Block Kit JSON
 
 ---
 
-### createDocument `function`
+### `createDocument` `function`
 
 ```ts
 (props?: DocumentProps) => DocumentBuilder
@@ -174,7 +174,7 @@ await doc.toDocx()     // Word document
 
 ---
 
-### Document `component`
+### `Document` `component`
 
 ```ts
 (props: DocumentProps) => DocNode
@@ -200,7 +200,7 @@ await render(doc, 'pdf')
 
 ---
 
-### download `function`
+### `download` `function`
 
 ```ts
 (node: DocNode | VNode, filename: string, options?: RenderOptions) => Promise<void>
@@ -226,7 +226,7 @@ await download(doc, 'tree.json')    // renders 'json', downloads
 
 ---
 
-### Heading `component`
+### `Heading` `component`
 
 ```ts
 (props: { level?: 1 | 2 | 3 | 4 | 5 | 6; color?: string; align?: 'left' | 'center' | 'right'; children?: DocChild }) => DocNode
@@ -249,7 +249,7 @@ A heading block. `level` DEFAULTS TO 1 (h1) when omitted — pass 2–6 for h2�
 
 ---
 
-### Text `component`
+### `Text` `component`
 
 ```ts
 (props: { size?: number; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; lineHeight?: number; children?: DocChild }) => DocNode
@@ -267,7 +267,7 @@ A paragraph / run of text with inline styling props (bold, italic, underline, st
 
 ---
 
-### Table `component`
+### `Table` `component`
 
 ```ts
 (props: { columns: (string | TableColumn)[]; rows: (string | number)[][]; headerStyle?: { background?: string; color?: string; bold?: boolean }; striped?: boolean; bordered?: boolean; caption?: string; keepTogether?: boolean }) => DocNode
@@ -295,7 +295,7 @@ A data table. `columns` (headers, each a string or &#123; header, width?, align?
 
 ---
 
-### List / ListItem `component`
+### `List / ListItem` `component`
 
 ```ts
 (List: { ordered?: boolean; children?: DocChild }) => DocNode · (ListItem: { children?: DocChild }) => DocNode
@@ -322,7 +322,7 @@ A bulleted (default) or numbered list. `List` takes `ordered` (unordered when om
 
 ---
 
-### Code `component`
+### `Code` `component`
 
 ```ts
 (props: { language?: string; children?: DocChild }) => DocNode
@@ -340,7 +340,7 @@ A code block. `language` is a hint for syntax highlighting in formats that suppo
 
 ---
 
-### Link `component`
+### `Link` `component`
 
 ```ts
 (props: { href: string; color?: string; children?: DocChild }) => DocNode
@@ -358,7 +358,7 @@ An inline hyperlink. `href` is REQUIRED; children are the visible link text. Pro
 
 ---
 
-### Image `component`
+### `Image` `component`
 
 ```ts
 (props: { src: string; width?: number; height?: number; alt?: string; align?: 'left' | 'center' | 'right'; caption?: string }) => DocNode
@@ -381,7 +381,7 @@ An image. `src` is REQUIRED; `width`/`height` are NUMBERS (pixels), not CSS stri
 
 ---
 
-### Button `component`
+### `Button` `component`
 
 ```ts
 (props: { href: string; background?: string; color?: string; borderRadius?: number; padding?: number | [number, number]; align?: 'left' | 'center' | 'right'; children?: DocChild }) => DocNode
@@ -403,7 +403,7 @@ A call-to-action button — a LINK styled as a button (renders as an Outlook-saf
 
 ---
 
-### Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak `component`
+### `Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak` `component`
 
 ```ts
 Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode | VNode; footer?: DocNode | VNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()
@@ -435,7 +435,7 @@ The structural / layout primitives. `Page` is a page boundary (`size` 'A4'|'A3'|
 
 ---
 
-### registerRenderer / unregisterRenderer / isDocNode `function`
+### `registerRenderer / unregisterRenderer / isDocNode` `function`
 
 ```ts
 registerRenderer(format: string, renderer: DocumentRenderer | (() => Promise<DocumentRenderer>)) => void · unregisterRenderer(format: string) => void · isDocNode(value: unknown) => value is DocNode

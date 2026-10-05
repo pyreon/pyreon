@@ -27,7 +27,8 @@
  */
 import { signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
-import type { ComponentFn } from '@pyreon/core'
+import { h, type ComponentFn } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Example } from '../components/Example'
@@ -154,6 +155,36 @@ describe('<Example> browser — basic mount', () => {
 })
 
 describe('<Example> browser — error states', () => {
+  it('shows a render error without blanking a sibling example', async () => {
+    registerExamples({
+      './examples/counter.tsx': async () => ({ default: Counter as ComponentFn }),
+      './examples/broken.tsx': async () => ({
+        default: () => {
+          throw new Error('broken demo setup')
+        },
+      }),
+    })
+    const { container, unmount } = mountInBrowser(
+      h(
+        'div',
+        null,
+        h(Example, { file: './examples/broken' }),
+        h(Example, { file: './examples/counter' }),
+      ),
+    )
+    try {
+      await expect
+        .poll(() => container.querySelector('.pyreon-example__error')?.textContent)
+        .toContain('broken demo setup')
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('./examples/broken')
+      await expect.poll(() => container.querySelector('.counter-btn')).toBeTruthy()
+      const button = query<HTMLButtonElement>(container, '.counter-btn')
+      button.click()
+      expect(container.querySelector('.counter-value')?.textContent).toBe('1')
+    } finally {
+      unmount()
+    }
+  })
   it('renders a clear error when `file` is not registered', async () => {
     const { container, unmount } = mountInBrowser(
       <Example file="./examples/missing" />,

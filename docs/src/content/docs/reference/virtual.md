@@ -90,13 +90,13 @@ const WindowList = () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useVirtualizer`](#usevirtualizer) | hook | Create an element-scoped virtualizer. |
-| [`useWindowVirtualizer`](#usewindowvirtualizer) | hook | Create a window-scoped virtualizer that uses the browser window as the scroll container. |
-| [`Virtualizer`](#virtualizer) | class | The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for single-impo |
+| [`useVirtualizer`](#usevirtualizer-hook) | hook | Create an element-scoped virtualizer. |
+| [`useWindowVirtualizer`](#usewindowvirtualizer-hook) | hook | Create a window-scoped virtualizer that uses the browser window as the scroll container. |
+| [`Virtualizer`](#virtualizer-class) | class | The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for single-impo |
 
 ## API
 
-### useVirtualizer `hook`
+### `useVirtualizer` `hook`
 
 ```ts
 (options: UseVirtualizerOptions) => UseVirtualizerResult
@@ -133,7 +133,7 @@ const virtualizer = useVirtualizer(() => ({
 
 ---
 
-### useWindowVirtualizer `hook`
+### `useWindowVirtualizer` `hook`
 
 ```ts
 (options: UseWindowVirtualizerOptions) => UseWindowVirtualizerResult
@@ -165,7 +165,7 @@ const virtualizer = useWindowVirtualizer(() => ({
 
 ---
 
-### Virtualizer `class`
+### `Virtualizer` `class`
 
 ```ts
 class Virtualizer<TScrollElement, TItemElement> — plus config primitives: elementScroll, observeElementOffset, observeElementRect, windowScroll, observeWindowOffset, observeWindowRect, measureElement, defaultKeyExtractor, defaultRangeExtractor

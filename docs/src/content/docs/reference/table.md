@@ -107,15 +107,15 @@ const table = useTable(() => ({
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useTable`](#usetable) | hook | Create a reactive TanStack Table v9 instance. |
-| [`flexRender`](#flexrender) | function | Render a TanStack Table column definition template (header, cell, or footer). |
-| [`flexRenderCell`](#flexrendercell) | function | Fine-grained per-cell renderer for live cell values. |
-| [`visibleCells`](#visiblecells) | function | Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a |
-| [`createTableState`](#createtablestate) | function | The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/tab |
+| [`useTable`](#usetable-hook) | hook | Create a reactive TanStack Table v9 instance. |
+| [`flexRender`](#flexrender-function) | function | Render a TanStack Table column definition template (header, cell, or footer). |
+| [`flexRenderCell`](#flexrendercell-function) | function | Fine-grained per-cell renderer for live cell values. |
+| [`visibleCells`](#visiblecells-function) | function | Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a |
+| [`createTableState`](#createtablestate-function) | function | The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/tab |
 
 ## API
 
-### useTable `hook`
+### `useTable` `hook`
 
 ```ts
 <TFeatures extends TableFeatures, TData extends RowData>(options: () => TableOptions<TFeatures, TData>) => Table<TFeatures, TData>
@@ -161,7 +161,7 @@ const table = useTable(() => ({
 
 ---
 
-### flexRender `function`
+### `flexRender` `function`
 
 ```ts
 <TValue>(component: Renderable<TValue>, props: TValue) => unknown
@@ -188,7 +188,7 @@ flexRender(cell.column.columnDef.cell, cell.getContext())
 
 ---
 
-### flexRenderCell `function`
+### `flexRenderCell` `function`
 
 ```ts
 <TFeatures extends TableFeatures, TData extends RowData>(table: Table<TFeatures, TData>, rowId: string, columnId: string) => unknown
@@ -213,7 +213,7 @@ flexRenderCell(table, row.id, columnId)
 
 ---
 
-### visibleCells `function`
+### `visibleCells` `function`
 
 ```ts
 <TFeatures extends TableFeatures, TData extends RowData>(table: Table<TFeatures, TData>, rowId: string) => Cell[]
@@ -244,7 +244,7 @@ Fine-grained visible-cells accessor for a row — the cells-LIST companion to `f
 
 ---
 
-### createTableState `function`
+### `createTableState` `function`
 
 ```ts
 <T>(options: { data: () => readonly T[]; columns?: TableColumn<T>[]; pageSize?: number; rowId?: (row: T, i: number) => string; filterFn?: (row: T, q: string, cols: TableColumn<T>[]) => boolean }) => TableState<T>

@@ -29,12 +29,12 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`SizedMap`](#sizedmap) | class | Bounded `Map<K, V>` that evicts the oldest entry when `maxEntries` is exceeded, relying on the native Map insertion-orde |
-| [`SizedMapOptions`](#sizedmapoptions) | type | Constructor options. |
+| [`SizedMap`](#sizedmap-class) | class | Bounded `Map<K, V>` that evicts the oldest entry when `maxEntries` is exceeded, relying on the native Map insertion-orde |
+| [`SizedMapOptions`](#sizedmapoptions-type) | type | Constructor options. |
 
 ## API
 
-### SizedMap `class`
+### `SizedMap` `class`
 
 ```ts
 new SizedMap<K, V>(opts: SizedMapOptions)
@@ -74,7 +74,7 @@ for (const [k, v] of memo) { /* insertion/recency order */ }
 
 ---
 
-### SizedMapOptions `type`
+### `SizedMapOptions` `type`
 
 ```ts
 interface SizedMapOptions { maxEntries: number; lru?: boolean }

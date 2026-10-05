@@ -236,7 +236,7 @@ The handler receives the raw `KeyboardEvent`, so you can inspect `e.key`, call
 :::warning
 `useHotkey()` (and `useHotkeyScope()`) must be called **inside a component body**. The
 auto-cleanup relies on `onUnmount`, which needs an active component setup context. For
-stores, middleware, or app-init code, use the imperative [`registerHotkey()`](#imperative-api--registerhotkey) instead.
+stores, middleware, or app-init code, use the imperative [`registerHotkey()`](#imperative-api-registerhotkey) instead.
 :::
 
 ### Options
@@ -430,7 +430,7 @@ active until a matching `disableScope`).
 If you register the same combo in two scopes that are active at the same time, **both**
 handlers fire, in registration order. That cross-scope overlap is intentional *layering*.
 A genuine bug is the same combo registered **twice in the same scope** — `getHotkeyConflicts()`
-surfaces exactly those (see [Introspection](#introspection--help-dialogs)).
+surfaces exactly those (see [Introspection](#introspection-help-dialogs)).
 
 ```tsx
 // Intentional layering — both fire if 'editor' and 'modal' are active:

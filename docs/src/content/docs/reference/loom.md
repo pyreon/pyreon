@@ -56,14 +56,14 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`loom scan`](#loom-scan) | function | Read the workspace, analyze the dependency fabric, and report. |
-| [`loom dev`](#loom-dev) | function | The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edge |
-| [`loom build`](#loom-build) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact |
-| [`buildReport`](#buildreport) | function | The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. |
+| [`loom scan`](#loom-scan-function) | function | Read the workspace, analyze the dependency fabric, and report. |
+| [`loom dev`](#loom-dev-function) | function | The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edge |
+| [`loom build`](#loom-build-function) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact |
+| [`buildReport`](#buildreport-function) | function | The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. |
 
 ## API
 
-### loom scan `function`
+### `loom scan` `function`
 
 ```ts
 loom scan [dir] [--strict] [--json] [--no-imports] [--no-write]
@@ -95,7 +95,7 @@ ERROR · 3
 
 ---
 
-### loom dev `function`
+### `loom dev` `function`
 
 ```ts
 loom dev [dir] [--port=5230]
@@ -119,7 +119,7 @@ loom dev: 142 package(s) → http://localhost:5230/
 
 ---
 
-### loom build `function`
+### `loom build` `function`
 
 ```ts
 loom build [dir] [--out=<dir>] [--base=<path>]
@@ -143,7 +143,7 @@ loom: 142 package(s) → dist/observatory
 
 ---
 
-### buildReport `function`
+### `buildReport` `function`
 
 ```ts
 (rootDir: string, options?: { noImports?: boolean }) => LoomReport

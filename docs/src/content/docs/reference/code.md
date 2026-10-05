@@ -93,23 +93,23 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createEditor`](#createeditor) | function | Create a reactive editor instance. |
-| [`bindEditorToSignal`](#bindeditortosignal) | function | Two-way binding between an editor instance and an external Signal&lt;T&gt; (or SignalLike&lt;T&gt;). |
-| [`CodeEditor`](#codeeditor) | component | Mount component for a `createEditor` instance. |
-| [`DiffEditor`](#diffeditor) | component | Diff editor over @codemirror/merge. |
-| [`createTabbedEditor`](#createtabbededitor) | function | Create a reactive multi-file (tabbed) editor instance. |
-| [`TabbedEditor`](#tabbededitor) | component | Mount component for a `createTabbedEditor` instance. |
-| [`openSearchPanel`](#opensearchpanel) | function | Open the find/replace panel on a mounted editor programmatically. |
-| [`loadLanguage`](#loadlanguage) | function | Lazy-load a language grammar and return its CodeMirror `Extension`. |
-| [`registerLanguage`](#registerlanguage) | function | Register (or replace) a language loader in the grammar registry `loadLanguage` reads from. |
-| [`minimapExtension`](#minimapextension) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
-| [`useEditorSignal`](#useeditorsignal) | function | Component hook that two-way-binds an editor to a signal WITH automatic cleanup. |
-| [`getAvailableLanguages`](#getavailablelanguages) | function | Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language  |
-| [`darkTheme / lightTheme / resolveTheme`](#darktheme-lighttheme-resolvetheme) | constant | The built-in editor themes. |
+| [`createEditor`](#createeditor-function) | function | Create a reactive editor instance. |
+| [`bindEditorToSignal`](#bindeditortosignal-function) | function | Two-way binding between an editor instance and an external Signal&lt;T&gt; (or SignalLike&lt;T&gt;). |
+| [`CodeEditor`](#codeeditor-component) | component | Mount component for a `createEditor` instance. |
+| [`DiffEditor`](#diffeditor-component) | component | Diff editor over @codemirror/merge. |
+| [`createTabbedEditor`](#createtabbededitor-function) | function | Create a reactive multi-file (tabbed) editor instance. |
+| [`TabbedEditor`](#tabbededitor-component) | component | Mount component for a `createTabbedEditor` instance. |
+| [`openSearchPanel`](#opensearchpanel-function) | function | Open the find/replace panel on a mounted editor programmatically. |
+| [`loadLanguage`](#loadlanguage-function) | function | Lazy-load a language grammar and return its CodeMirror `Extension`. |
+| [`registerLanguage`](#registerlanguage-function) | function | Register (or replace) a language loader in the grammar registry `loadLanguage` reads from. |
+| [`minimapExtension`](#minimapextension-function) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
+| [`useEditorSignal`](#useeditorsignal-function) | function | Component hook that two-way-binds an editor to a signal WITH automatic cleanup. |
+| [`getAvailableLanguages`](#getavailablelanguages-function) | function | Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language  |
+| [`darkTheme / lightTheme / resolveTheme`](#darktheme-lighttheme-resolvetheme-constant) | constant | The built-in editor themes. |
 
 ## API
 
-### createEditor `function`
+### `createEditor` `function`
 
 ```ts
 (config: EditorConfig) => EditorInstance
@@ -150,7 +150,7 @@ editor.insert('code')
 
 ---
 
-### bindEditorToSignal `function`
+### `bindEditorToSignal` `function`
 
 ```ts
 <T>(options: BindEditorToSignalOptions<T>) => EditorBinding
@@ -185,7 +185,7 @@ const binding = bindEditorToSignal({
 
 ---
 
-### CodeEditor `component`
+### `CodeEditor` `component`
 
 ```ts
 (props: CodeEditorProps) => VNodeChild
@@ -207,7 +207,7 @@ Mount component for a `createEditor` instance. Accepts `instance`, `style`, `cla
 
 ---
 
-### DiffEditor `component`
+### `DiffEditor` `component`
 
 ```ts
 (props: DiffEditorProps) => VNodeChild
@@ -227,7 +227,7 @@ Diff editor over @codemirror/merge. Accepts `original` and `modified` (strings O
 
 ---
 
-### createTabbedEditor `function`
+### `createTabbedEditor` `function`
 
 ```ts
 (config?: TabbedEditorConfig) => TabbedEditorInstance
@@ -261,7 +261,7 @@ tabbed.activeTab()   // Computed<Tab | null>
 
 ---
 
-### TabbedEditor `component`
+### `TabbedEditor` `component`
 
 ```ts
 (props: TabbedEditorProps) => VNodeChild
@@ -284,7 +284,7 @@ const tabbed = createTabbedEditor({ tabs: [{ name: 'a.ts', value: 'export {}' }]
 
 ---
 
-### openSearchPanel `function`
+### `openSearchPanel` `function`
 
 ```ts
 (instance: EditorInstance) => boolean
@@ -307,7 +307,7 @@ const editor = createEditor({ value: code, search: false })
 
 ---
 
-### loadLanguage `function`
+### `loadLanguage` `function`
 
 ```ts
 (language: EditorLanguage) => Promise<Extension>
@@ -326,7 +326,7 @@ const ext = await loadLanguage('python') // the CodeMirror Extension
 
 ---
 
-### registerLanguage `function`
+### `registerLanguage` `function`
 
 ```ts
 (id: string, loader: () => Promise<Extension>) => void
@@ -358,7 +358,7 @@ const editor = createEditor({ value: svelteSource, language: 'svelte' as EditorL
 
 ---
 
-### minimapExtension `function`
+### `minimapExtension` `function`
 
 ```ts
 () => Extension
@@ -377,7 +377,7 @@ const editor = createEditor({ value: longCode, minimap: true })
 
 ---
 
-### useEditorSignal `function`
+### `useEditorSignal` `function`
 
 ```ts
 useEditorSignal<T>(options: BindEditorToSignalOptions<T>) => void
@@ -406,7 +406,7 @@ function MyEditor() {
 
 ---
 
-### getAvailableLanguages `function`
+### `getAvailableLanguages` `function`
 
 ```ts
 getAvailableLanguages() => EditorLanguage[]
@@ -429,7 +429,7 @@ const languages = getAvailableLanguages()
 
 ---
 
-### darkTheme / lightTheme / resolveTheme `constant`
+### `darkTheme / lightTheme / resolveTheme` `constant`
 
 ```ts
 darkTheme: Extension · lightTheme: Extension · resolveTheme(theme: EditorTheme) => Extension

@@ -1,5 +1,41 @@
 import { expect, test } from '@playwright/test'
+import { readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { waitForHydration } from './hydration-barrier'
+
+// Discover the runnable files independently of the gallery generator. A new
+// example gets a real-browser check; a generator omission cannot silently pass.
+const exampleRoot = resolve(__dirname, '../docs/src/examples')
+const examplePaths = readdirSync(exampleRoot, { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith('.tsx'))
+  .map((entry) => resolve(entry.parentPath, entry.name).slice(exampleRoot.length + 1).replace(/\.tsx$/, ''))
+  .sort()
+
+test.describe('complete docs example gallery', () => {
+  for (const path of examplePaths) {
+    test(`${path} loads visible content`, async ({ page }) => {
+      const errors: string[] = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.goto('/docs/examples')
+      await waitForHydration(page)
+      const example = page.locator(`[data-example-file="./examples/${path}"]`)
+      await expect(example).toHaveCount(1)
+      await example.scrollIntoViewIfNeeded()
+      await expect(example.locator('.pyreon-example__loading')).toHaveCount(0, { timeout: 15_000 })
+      await expect(example.locator('.pyreon-example__error')).toHaveCount(0)
+      // Several demos intentionally draw without text. Check rendered area,
+      // so a skeleton disappearing into only comment nodes cannot pass.
+      await expect.poll(() => example.locator('.pyreon-example__surface').evaluate((surface) =>
+        [...surface.querySelectorAll('*')].some((node) => {
+          const box = node.getBoundingClientRect()
+          const style = getComputedStyle(node)
+          return box.width * box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
+        }),
+      )).toBe(true)
+      expect(errors, path).toEqual([])
+    })
+  }
+})
 
 // docs parity gate. Five specs map to the five categories of
 // rollout risk: landing rendering, navigation, scroll-spy, 404, and
@@ -48,6 +84,106 @@ async function revealExamples(page: import('@playwright/test').Page): Promise<vo
 }
 
 test.describe('docs rendering', () => {
+  test('every built internal docs link points to an existing page and heading', async ({ page }) => {
+    const dist = resolve(__dirname, '../docs/dist')
+    const files = readdirSync(dist, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
+    const pages = new Map<string, { ids: string[]; links: string[] }>()
+    for (const file of files) {
+      const path = resolve(file.parentPath, file.name)
+      const route = '/' + path.slice(dist.length + 1).replace(/(^|\/)index\.html$/, '').replace(/\/$/, '')
+      // DOMParser sees the actual static HTML, including entity-decoded hrefs,
+      // without executing its scripts or depending on scroll/layout timing.
+      const parsed = await page.evaluate((html) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html')
+        return {
+          ids: [...doc.querySelectorAll('[id]')].map((el) => el.id),
+          links: [...doc.querySelectorAll('a[href]')].map((el) => el.getAttribute('href')!),
+        }
+      }, readFileSync(path, 'utf8'))
+      pages.set(route, parsed)
+    }
+    const missing: string[] = []
+    for (const [from, { links }] of pages) {
+      for (const href of links) {
+        const url = new URL(href, `https://docs.test${from}`)
+        if (url.origin !== 'https://docs.test' || !/^\/docs(?:\/|$)/.test(url.pathname)) continue
+        const target = pages.get(url.pathname.replace(/\/$/, ''))
+        if (!target || (url.hash && !target.ids.includes(decodeURIComponent(url.hash.slice(1))))) {
+          missing.push(`${from} → ${href}`)
+        }
+      }
+    }
+    expect([...new Set(missing)]).toEqual([])
+  })
+  test('document example renders and edits its real markdown output', async ({ page }) => {
+    await page.goto('/docs/document')
+    await waitForHydration(page)
+    const example = page.locator('.pyreon-example').filter({ hasText: 'One document tree' })
+    await example.scrollIntoViewIfNeeded()
+    const title = example.getByRole('textbox', { name: 'Title', exact: true })
+    await expect(title).toHaveValue('Q4 Sales Report')
+    await expect(example.locator('pre')).toContainText('# Q4 Sales Report')
+    await title.fill('Release readiness')
+    await expect(example.locator('pre')).toContainText('# Release readiness')
+    await expect(example.locator('.pyreon-example__error')).toHaveCount(0)
+  })
+
+  test('query example fetches local data and reuses a fresh cached key', async ({ page }) => {
+    const external: string[] = []
+    await page.route('https://jsonplaceholder.typicode.com/**', async (route) => {
+      external.push(route.request().url())
+      await route.abort()
+    })
+    const requests: string[] = []
+    page.on('request', (request) => {
+      if (request.resourceType() === 'fetch' && /users.*\.json/.test(request.url())) requests.push(request.url())
+    })
+    await page.goto('/docs/query')
+    await waitForHydration(page)
+    const example = page.locator('.pyreon-example').filter({ hasText: 'useQuery — fetch + cache by key' })
+    await example.scrollIntoViewIfNeeded()
+    await expect(example).toContainText('Ada Lovelace')
+    await example.getByRole('button', { name: '#2', exact: true }).click()
+    await expect(example).toContainText('Grace Hopper')
+    await expect(example).toContainText('idle · cached')
+    expect(requests).toHaveLength(2)
+    await example.getByRole('button', { name: '#1', exact: true }).click()
+    await expect(example).toContainText('Ada Lovelace')
+    await expect(example).toContainText('idle · cached')
+    expect(requests).toHaveLength(2)
+    expect(external).toEqual([])
+  })
+
+  test('homepage and catalog represent every public framework package', async ({ page }) => {
+    const root = resolve(__dirname, '..')
+    const groups: { category: string; names: string[] }[] = []
+    for (const category of readdirSync(resolve(root, 'packages'))) {
+      const names = readdirSync(resolve(root, 'packages', category), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .flatMap((entry) => {
+          const pkg = JSON.parse(readFileSync(resolve(root, 'packages', category, entry.name, 'package.json'), 'utf8'))
+          return pkg.private ? [] : [pkg.name as string]
+        })
+      if (names.length) groups.push({ category, names })
+    }
+    const total = groups.reduce((count, group) => count + group.names.length, 0)
+    await page.goto('/')
+    await waitForHydration(page)
+    await expect(page.locator('.px-eco-total')).toContainText(`${total} packages`)
+    await expect(page.locator('.px-eco-total')).toContainText(`${groups.length} categories`)
+    for (const group of groups) {
+      const card = page.locator('.px-panel').filter({ has: page.locator('.px-eco-cat', { hasText: new RegExp(`^${group.category}$`) }) })
+      await expect(card.locator('.px-mono-label')).toHaveText(String(group.names.length))
+    }
+    await page.getByRole('link', { name: `All ${total} packages`, exact: true }).click()
+    await expect(page).toHaveURL(/\/docs\/package-catalog/)
+    for (const group of groups) {
+      for (const name of group.names) {
+        await expect(page.locator('.docs-content table').getByRole('link', { name, exact: true })).toBeVisible()
+      }
+    }
+  })
   test('small-phone header fits and the docs drawer is operable', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 })
     await page.goto('/docs/getting-started')

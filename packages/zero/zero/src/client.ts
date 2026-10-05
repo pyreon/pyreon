@@ -70,6 +70,11 @@ export function startClient(options: StartClientOptions) {
   }
   const container = document.getElementById('app')
   if (!container) throw new Error('[Pyreon] Missing #app container element')
+  // A static host serves the same 404.html at every missing URL. Its SSR tree
+  // belongs to _404, while the client may match a catch-all or a dynamic route.
+  // Render that requested route afresh; adopting a different route's markup
+  // can leave unclaimed server nodes beside the resolved client content.
+  const isStaticFallback = document.querySelector('meta[name="pyreon-ssg-fallback"][content="404"]') !== null
 
   // Read the Vite-injected base so `createRouter({ base })` matches the
   // value Vite used to rewrite asset URLs. `typeof` guard covers the
@@ -92,7 +97,7 @@ export function startClient(options: StartClientOptions) {
   // hydration mismatches and eliminates the flash-of-fallback.
   const ssrLoaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   const hasSSRLoaderData =
-    ssrLoaderData !== undefined && typeof ssrLoaderData === 'object' && ssrLoaderData !== null
+    !isStaticFallback && ssrLoaderData !== undefined && typeof ssrLoaderData === 'object' && ssrLoaderData !== null
   if (hasSSRLoaderData) {
     // `router` is the public Router<> type; hydrateLoaderData uses the
     // internal RouterInstance shape. The cast is safe because they're
@@ -126,7 +131,7 @@ export function startClient(options: StartClientOptions) {
   // ── Mount vs hydrate ───────────────────────────────────────────────────────
   // Ignore comment nodes (Vite injects <!--app-html-->) — only real DOM
   // elements or text nodes count as SSR content worth hydrating.
-  const hasSSRContent = Array.from(container.childNodes).some(
+  const hasSSRContent = !isStaticFallback && Array.from(container.childNodes).some(
     (n) => n.nodeType === 1 || (n.nodeType === 3 && n.textContent!.trim().length > 0),
   )
 
@@ -188,6 +193,7 @@ export function startClient(options: StartClientOptions) {
     // `startClient`'s returned cleanup may be called before pre-resolution
     // settles; do not mount into a container the caller has abandoned.
     if (disposed) return
+    if (isStaticFallback) container.replaceChildren()
     if (hasSSRContent && typeof __ZERO_HYDRATE__ !== 'undefined' && !__ZERO_HYDRATE__) {
       // Built SPA-everywhere, yet the page carries markup (a stale shell, a
       // proxy's error page): mounting beside it would duplicate the app.

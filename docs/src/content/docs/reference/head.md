@@ -77,15 +77,15 @@ const page = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body$
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useHead`](#usehead) | hook | Register head tags from any component in the tree. |
-| [`HeadProvider`](#headprovider) | component | Context provider that collects every `useHead()` call from descendants. |
-| [`renderWithHead`](#renderwithhead) | function | SSR companion to `HeadProvider`, exported from the `@pyreon/head/ssr` subpath (kept out of the client entry). |
-| [`createHeadContext`](#createheadcontext) | function | Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses `renderWithHead |
-| [`ScriptTag`](#scripttag) | type | Standard `<script>` tag attributes passed to `useHead({ script: [...] })`. |
+| [`useHead`](#usehead-hook) | hook | Register head tags from any component in the tree. |
+| [`HeadProvider`](#headprovider-component) | component | Context provider that collects every `useHead()` call from descendants. |
+| [`renderWithHead`](#renderwithhead-function) | function | SSR companion to `HeadProvider`, exported from the `@pyreon/head/ssr` subpath (kept out of the client entry). |
+| [`createHeadContext`](#createheadcontext-function) | function | Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses `renderWithHead |
+| [`ScriptTag`](#scripttag-type) | type | Standard `<script>` tag attributes passed to `useHead({ script: [...] })`. |
 
 ## API
 
-### useHead `hook`
+### `useHead` `hook`
 
 ```ts
 useHead(input: UseHeadInput | (() => UseHeadInput)): void
@@ -118,7 +118,7 @@ useHead(() => ({
 
 ---
 
-### HeadProvider `component`
+### `HeadProvider` `component`
 
 ```ts
 (props: HeadProviderProps) => VNodeChild
@@ -158,7 +158,7 @@ const { html, head } = await renderWithHead(
 
 ---
 
-### renderWithHead `function`
+### `renderWithHead` `function`
 
 ```ts
 renderWithHead(app: VNode): Promise<{ html: string; head: string; htmlAttrs: Record<string, string>; bodyAttrs: Record<string, string> }>
@@ -188,7 +188,7 @@ const doc = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body${
 
 ---
 
-### createHeadContext `function`
+### `createHeadContext` `function`
 
 ```ts
 () => HeadContextValue
@@ -213,7 +213,7 @@ const bodyAttrs = ctx.resolveBodyAttrs()   // Record<string, string>
 
 ---
 
-### ScriptTag `type`
+### `ScriptTag` `type`
 
 ```ts
 interface ScriptTag { src?: string; type?: string; async?: string; defer?: string; crossorigin?: string; integrity?: string; nomodule?: string; referrerpolicy?: string; fetchpriority?: string; children?: string }

@@ -77,19 +77,19 @@ const secret = useEncrypted('api-key', '')
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useStorage`](#usestorage) | hook | Create a reactive signal backed by localStorage. |
-| [`useCookie`](#usecookie) | hook | Reactive signal backed by browser cookies. |
-| [`useSessionStorage`](#usesessionstorage) | hook | Per-tab ephemeral reactive storage. |
-| [`useMemoryStorage`](#usememorystorage) | hook | In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is request |
-| [`setCookieSource`](#setcookiesource) | function | Tell `useCookie` how to read cookies during SSR. |
-| [`useIndexedDB`](#useindexeddb) | hook | Reactive signal backed by IndexedDB for large data. |
-| [`createStorage`](#createstorage) | function | Factory for custom storage backends. |
-| [`removeStorage`](#removestorage) | function | Imperatively remove a single key from storage and RESET its signal to the default value. |
-| [`clearStorage`](#clearstorage) | function | Imperatively clear all storage entries MANAGED by @pyreon/storage for one backend (default `local`) or `all` backends. |
+| [`useStorage`](#usestorage-hook) | hook | Create a reactive signal backed by localStorage. |
+| [`useCookie`](#usecookie-hook) | hook | Reactive signal backed by browser cookies. |
+| [`useSessionStorage`](#usesessionstorage-hook) | hook | Per-tab ephemeral reactive storage. |
+| [`useMemoryStorage`](#usememorystorage-hook) | hook | In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is request |
+| [`setCookieSource`](#setcookiesource-function) | function | Tell `useCookie` how to read cookies during SSR. |
+| [`useIndexedDB`](#useindexeddb-hook) | hook | Reactive signal backed by IndexedDB for large data. |
+| [`createStorage`](#createstorage-function) | function | Factory for custom storage backends. |
+| [`removeStorage`](#removestorage-function) | function | Imperatively remove a single key from storage and RESET its signal to the default value. |
+| [`clearStorage`](#clearstorage-function) | function | Imperatively clear all storage entries MANAGED by @pyreon/storage for one backend (default `local`) or `all` backends. |
 
 ## API
 
-### useStorage `hook`
+### `useStorage` `hook`
 
 ```ts
 <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>
@@ -119,7 +119,7 @@ theme.remove()    // delete from storage, reset to default
 
 ---
 
-### useCookie `hook`
+### `useCookie` `hook`
 
 ```ts
 <T>(key: string, defaultValue: T, options?: CookieOptions) => StorageSignal<T>
@@ -145,7 +145,7 @@ locale.set('fr')
 
 ---
 
-### useSessionStorage `hook`
+### `useSessionStorage` `hook`
 
 ```ts
 <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>
@@ -170,7 +170,7 @@ filter.set({ query: 'pyreon', page: 1 })
 
 ---
 
-### useMemoryStorage `hook`
+### `useMemoryStorage` `hook`
 
 ```ts
 <T>(key: string, defaultValue: T) => StorageSignal<T>
@@ -195,7 +195,7 @@ draft.set('typing...')
 
 ---
 
-### setCookieSource `function`
+### `setCookieSource` `function`
 
 ```ts
 setCookieSource(source: string | (() => string) | null) => void
@@ -224,7 +224,7 @@ const html = await renderToString(<App />)
 
 ---
 
-### useIndexedDB `hook`
+### `useIndexedDB` `hook`
 
 ```ts
 <T>(key: string, defaultValue: T, options?: IndexedDBOptions) => StorageSignal<T>
@@ -250,7 +250,7 @@ draft.set({ title: 'New Article', body: 'Content...' })
 
 ---
 
-### createStorage `function`
+### `createStorage` `function`
 
 ```ts
 (backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>
@@ -279,7 +279,7 @@ const secret = useEncrypted('api-key', '')
 
 ---
 
-### removeStorage `function`
+### `removeStorage` `function`
 
 ```ts
 removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb' }) => void
@@ -307,7 +307,7 @@ removeStorage('locale', { type: 'cookie' })  // deletes the cookie
 
 ---
 
-### clearStorage `function`
+### `clearStorage` `function`
 
 ```ts
 clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => void

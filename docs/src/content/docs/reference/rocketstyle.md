@@ -91,25 +91,25 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`rocketstyle`](#rocketstyle) | function | Factory initializer (default + named export). |
-| [`.withTheme()`](#withtheme) | function | Bind a theme TYPE to the factory `rocketstyle(config)` returns, so every `.theme()` and dimension callback built from it |
-| [`.config()`](#config) | function | Reconfigure the builder: rename (`name` → `displayName`), swap the base (`component`), wire parent-child pseudo-state co |
-| [`.attrs()`](#attrs) | function | Inject default props into the wrapped component. |
-| [`.theme()`](#theme) | function | Always-applied base styles, merged under every dimension slice. |
-| [`.states() / .sizes() / .variants()`](#states-sizes-variants) | function | Single-value dimension definition methods (from the default dimension map). |
-| [`.multiple() / .modifiers()`](#multiple-modifiers) | function | Multi-value dimension definition methods (from the default dimension map). |
-| [`.styles()`](#styles) | function | Raw-CSS escape hatch for what the dimension model can't express. |
-| [`.compose()`](#compose) | function | Wrap the component in named higher-order components. |
-| [`.statics()`](#statics) | function | Attach arbitrary static metadata. |
-| [`Provider`](#provider) | component | Tree-level theme + mode provider. |
-| [`context`](#context) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `&lt;Pyr |
-| [`isRocketComponent`](#isrocketcomponent) | function | Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). |
-| [`resolveTheme`](#resolvetheme) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-acces |
-| [`resolveModeVar`](#resolvemodevar) | function | Under `init({ cssVariables: true })`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties (`var(--px-m |
+| [`rocketstyle`](#rocketstyle-function) | function | Factory initializer (default + named export). |
+| [`.withTheme()`](#withtheme-function) | function | Bind a theme TYPE to the factory `rocketstyle(config)` returns, so every `.theme()` and dimension callback built from it |
+| [`.config()`](#config-function) | function | Reconfigure the builder: rename (`name` → `displayName`), swap the base (`component`), wire parent-child pseudo-state co |
+| [`.attrs()`](#attrs-function) | function | Inject default props into the wrapped component. |
+| [`.theme()`](#theme-function) | function | Always-applied base styles, merged under every dimension slice. |
+| [`.states() / .sizes() / .variants()`](#states-sizes-variants-function) | function | Single-value dimension definition methods (from the default dimension map). |
+| [`.multiple() / .modifiers()`](#multiple-modifiers-function) | function | Multi-value dimension definition methods (from the default dimension map). |
+| [`.styles()`](#styles-function) | function | Raw-CSS escape hatch for what the dimension model can't express. |
+| [`.compose()`](#compose-function) | function | Wrap the component in named higher-order components. |
+| [`.statics()`](#statics-function) | function | Attach arbitrary static metadata. |
+| [`Provider`](#provider-component) | component | Tree-level theme + mode provider. |
+| [`context`](#context-constant) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `&lt;Pyr |
+| [`isRocketComponent`](#isrocketcomponent-function) | function | Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). |
+| [`resolveTheme`](#resolvetheme-function) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-acces |
+| [`resolveModeVar`](#resolvemodevar-function) | function | Under `init({ cssVariables: true })`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties (`var(--px-m |
 
 ## API
 
-### rocketstyle `function`
+### `rocketstyle` `function`
 
 ```ts
 (config?: { dimensions?: Dimensions; useBooleans?: boolean }) => <C>({ name, component }: { name: string; component: C }) => RocketStyleComponent
@@ -149,7 +149,7 @@ const rsCustom = rocketstyle({
 
 ---
 
-### .withTheme() `function`
+### `.withTheme()` `function`
 
 ```ts
 <Tokens extends object>() => RocketstyleFactory<D, UB, ThemeShape<Tokens>>
@@ -184,7 +184,7 @@ const Card = rs({ name: 'Card', component: Element })
 
 ---
 
-### .config() `function`
+### `.config()` `function`
 
 ```ts
 (opts: { name?; component?; provider?: boolean; consumer?: ConsumerCb; inversed?: boolean; passProps?: string[]; DEBUG?: boolean; styled?: boolean }) => RocketStyleComponent
@@ -221,7 +221,7 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
 
 ---
 
-### .attrs() `function`
+### `.attrs()` `function`
 
 ```ts
 (attrs: object | ((props, theme, helpers) => object), opts?: { priority?: boolean; filter?: string[] }) => RocketStyleComponent
@@ -259,7 +259,7 @@ const SubmitButton = rs({ name: 'SubmitButton', component: Element })
 
 ---
 
-### .theme() `function`
+### `.theme()` `function`
 
 ```ts
 (theme: object | ((theme, mode, css) => object)) => RocketStyleComponent
@@ -295,7 +295,7 @@ const Card = rs({ name: 'Card', component: 'div' })
 
 ---
 
-### .states() / .sizes() / .variants() `function`
+### `.states() / .sizes() / .variants()` `function`
 
 ```ts
 (values: Record<string, object> | ((theme, mode, css) => Record<string, object>)) => RocketStyleComponent
@@ -332,7 +332,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 
 ---
 
-### .multiple() / .modifiers() `function`
+### `.multiple() / .modifiers()` `function`
 
 ```ts
 (values: Record<string, object | ((theme) => object)> | ((theme, mode, css) => Record<string, object>)) => RocketStyleComponent
@@ -370,7 +370,7 @@ const Button2 = rs({ name: 'Button2', component: Element })
 
 ---
 
-### .styles() `function`
+### `.styles()` `function`
 
 ```ts
 (cb: (css) => CSSResult) => RocketStyleComponent
@@ -404,7 +404,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 
 ---
 
-### .compose() `function`
+### `.compose()` `function`
 
 ```ts
 (hocs: Record<string, ((c: ComponentFn) => ComponentFn) | null | false>) => RocketStyleComponent
@@ -435,7 +435,7 @@ const Plain = Button.compose({ withTooltip: null })
 
 ---
 
-### .statics() `function`
+### `.statics()` `function`
 
 ```ts
 (meta: Record<string, unknown>) => RocketStyleComponent
@@ -462,7 +462,7 @@ Button.meta.category   // 'action'
 
 ---
 
-### Provider `component`
+### `Provider` `component`
 
 ```ts
 (props: { children: VNodeChild; theme?: Theme; mode?: 'light' | 'dark'; inversed?: boolean; provider?: (props) => VNodeChild }) => VNodeChild
@@ -502,7 +502,7 @@ import { PyreonUI } from '@pyreon/ui-core'
 
 ---
 
-### context `constant`
+### `context` `constant`
 
 ```ts
 context: ReactiveContext<{ theme; mode; isDark; isLight; … }>
@@ -529,7 +529,7 @@ const { mode, isDark } = getCtx()    // call the accessor to read
 
 ---
 
-### isRocketComponent `function`
+### `isRocketComponent` `function`
 
 ```ts
 <T>(component: T) => boolean
@@ -555,7 +555,7 @@ isRocketComponent(() => null) // false — plain functions lack the marker
 
 ---
 
-### resolveTheme `function`
+### `resolveTheme` `function`
 
 ```ts
 <T = Record<string, unknown>>(value: (() => T) | T) => T
@@ -581,7 +581,7 @@ styled(Component)`
 
 ---
 
-### resolveModeVar `function`
+### `resolveModeVar` `function`
 
 ```ts
 (value: unknown, mode?: 'light' | 'dark') => unknown

@@ -2099,7 +2099,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               // passes the HTML through unchanged. Same helper that
               // render404Page uses, so the contract is identical across
               // build-time SSG emit and runtime dev/SSR emit paths.
-              const html = ensureNoindexMeta(injectIntoTemplate(template, result))
+              const rendered = ensureNoindexMeta(injectIntoTemplate(template, result))
+              // The host reuses this HTML at arbitrary missing URLs. Tell the
+              // client it is a fallback, rather than SSR for the requested route.
+              const fallbackMeta = '<meta name="pyreon-ssg-fallback" content="404">'
+              const html = /<\/head>/i.test(rendered)
+                ? rendered.replace(/<\/head>/i, `${fallbackMeta}</head>`)
+                : fallbackMeta + rendered
               const filePath
                 = locale == null
                   ? join(distDir, '404.html')

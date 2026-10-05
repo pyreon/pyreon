@@ -57,7 +57,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 
 **PMTC compiles your component *source* — the 17 canonical primitives, `signal`/`computed`/`effect`, and a fixed set of hooks — to SwiftUI/Compose. It does NOT transpile npm packages to native.** So a package runs on iOS/Android only if it is pure reactive logic **with a Swift/Kotlin runtime port** the compiler recognizes. Anything bound to the DOM, a `<canvas>`, the CSSOM, or a JS-only rendering vendor is **web-only by architecture** — no compiler setting changes that.
 
-**The fixed hook set is not a ceiling on platform capability.** For anything the framework does not ship — Bluetooth, ARKit, a vendor SDK — [`useNativeModule`](#layer-4--platform-escape-hatches) lowers to a Swift/Kotlin class *you* provide, so adding a platform API is an app-level change rather than a framework PR.
+**The fixed hook set is not a ceiling on platform capability.** For anything the framework does not ship — Bluetooth, ARKit, a vendor SDK — [`useNativeModule`](#layer-4-platform-escape-hatches) lowers to a Swift/Kotlin class *you* provide, so adding a platform API is an app-level change rather than a framework PR.
 
 **✅ Runs on web + iOS + Android today** (real runtime ports + compiler emit):
 

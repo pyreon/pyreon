@@ -117,76 +117,76 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useSecureStorage`](#usesecurestorage) | hook | The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through inste |
-| [`useControllableState`](#usecontrollablestate) | hook | Canonical controlled/uncontrolled state pattern. |
-| [`useEventListener`](#useeventlistener) | hook | Register a DOM event listener with automatic cleanup on unmount. |
-| [`useClickOutside`](#useclickoutside) | hook | Fire a callback when the user clicks outside the referenced element. |
-| [`useElementSize`](#useelementsize) | hook | Reactive element size via `ResizeObserver`. |
-| [`useFocusTrap`](#usefocustrap) | hook | Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmat |
-| [`useInertOthers`](#useinertothers) | hook | Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level's sibli |
-| [`useFocusReturn`](#usefocusreturn) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus  |
-| [`useBreakpoint`](#usebreakpoint) | hook | Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. |
-| [`useDebouncedValue`](#usedebouncedvalue) | hook | Returns a debounced signal that only updates after `delayMs` of source-signal idle. |
-| [`useFetch`](#usefetch) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compi |
-| [`useClipboard`](#useclipboard) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (defau |
-| [`useDialog`](#usedialog) | hook | Native `<dialog>` element wrapper. |
-| [`useTimeAgo`](#usetimeago) | hook | Reactive "5 minutes ago" / "in 2 hours" relative-time string. |
-| [`useInfiniteScroll`](#useinfinitescroll) | hook | `IntersectionObserver`-based infinite loading. |
-| [`useMergedRef`](#usemergedref) | hook | Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to th |
-| [`useUpdateEffect`](#useupdateeffect) | hook | Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`' |
-| [`useIsomorphicLayoutEffect`](#useisomorphiclayouteffect) | hook | Runs a layout-phase effect on the client (synchronous, before paint) and a no-op on the server. |
-| [`useCounter`](#usecounter) | hook | Reactive numeric counter — the numeric companion to useToggle. |
-| [`useWindowScroll`](#usewindowscroll) | hook | Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe im |
-| [`useDocumentVisibility`](#usedocumentvisibility) | hook | Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimi |
-| [`useIdle`](#useidle) | hook | Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for ` |
-| [`useToggle`](#usetoggle) | hook | Boolean signal with named controls. |
-| [`useHover`](#usehover) | hook | Track hover state. |
-| [`useFocus`](#usefocus) | hook | Track focus state. |
-| [`useMediaQuery`](#usemediaquery) | hook | Reactive `matchMedia`. |
-| [`useColorScheme`](#usecolorscheme) | hook | Reactive OS color-scheme accessor — `computed` over `(prefers-color-scheme: dark)` (wraps `useMediaQuery`). |
-| [`useSizeClass`](#usesizeclass) | hook | Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`, |
-| [`useReducedMotion`](#usereducedmotion) | hook | Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). |
-| [`useOnline`](#useonline) | hook | Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offlin |
-| [`useDeviceInfo`](#usedeviceinfo) | hook | Describe the device — platform branching, real screen geometry, device context for analytics. |
-| [`useSafeArea`](#usesafearea) | hook | The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. |
-| [`useSpeech`](#usespeech) | hook | Speak text aloud — `speechSynthesis` on the web, `AVSpeechSynthesizer` on iOS, `TextToSpeech` on Android. |
-| [`useDeviceMotion`](#usedevicemotion) | hook | Device motion — shake gestures, tilt controls. |
-| [`useScreenOrientation`](#usescreenorientation) | hook | Which way the display is oriented. |
-| [`useCamera`](#usecamera) | hook | Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIIma |
-| [`useAudioRecorder`](#useaudiorecorder) | hook | Record from the microphone — voice notes, voice messages, dictation. |
-| [`useWakeLock`](#usewakelock) | hook | Keep the screen awake — video, navigation, recipe steps. |
-| [`useBluetooth`](#usebluetooth) | hook | Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. |
-| [`useIntersection`](#useintersection) | hook | IntersectionObserver as a signal. |
-| [`usePrevious`](#useprevious) | hook | Track the previous value of a reactive read. |
-| [`useWindowResize`](#usewindowresize) | hook | Reactive window size accessor (default debounce 200ms). |
-| [`useInterval`](#useinterval) | hook | Declarative `setInterval`. |
-| [`useTimeout`](#usetimeout) | hook | Declarative `setTimeout` that STARTS immediately at setup (fires once after `delay`ms unless `delay` is `null`). |
-| [`useDebouncedCallback`](#usedebouncedcallback) | hook | Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus `.can |
-| [`useThrottledCallback`](#usethrottledcallback) | hook | Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel() |
-| [`useLatest`](#uselatest) | hook | Wraps `value` in a mutable `{ current }` ref object. |
-| [`useKeyboard`](#usekeyboard) | hook | Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `eve |
-| [`useScrollLock`](#usescrolllock) | hook | Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). |
-| [`useHaptics`](#usehaptics) | hook | Imperative haptic feedback. |
-| [`useShare`](#useshare) | hook | Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). |
-| [`useLinking`](#uselinking) | hook | Imperative external-link opener. |
-| [`useNotifications`](#usenotifications) | hook | Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). |
-| [`useFilePicker`](#usefilepicker) | hook | Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` |
-| [`useImagePicker`](#useimagepicker) | hook | Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia |
-| [`useBiometrics`](#usebiometrics) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on t |
-| [`useGeolocation`](#usegeolocation) | hook | Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively  |
-| [`useMap`](#usemap) | hook | Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` contai |
-| [`useWebSocket`](#usewebsocket) | hook | A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field  |
-| [`useAuth`](#useauth) | hook | The device-proven auth-STATE container, shared across web / iOS / Android — mirrors the native `PyreonAuth<User>` field- |
-| [`usePush`](#usepush) | hook | Push-notification STATE + INJECTED REGISTRATION, shared across web / iOS / Android, mirroring the native `PyreonPushNoti |
-| [`usePayments`](#usepayments) | hook | In-app-purchase STATE + INJECTED STORE ACTIONS, shared across web / iOS / Android, mirroring the native `PyreonPayments` |
-| [`useDatabase`](#usedatabase) | hook | A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container ( |
-| [`useCrashReporter`](#usecrashreporter) | hook | The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). |
-| [`useAppState`](#useappstate) | hook | Reactive app lifecycle phase — returns an ACCESSOR (call it in a reactive scope: `state()`), mirroring the native lifecy |
-| [`setCrashTransport`](#setcrashtransport) | function | Register (or clear, with `undefined`) the function that actually uploads a crash report string — the app-wired vendor tr |
+| [`useSecureStorage`](#usesecurestorage-hook) | hook | The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through inste |
+| [`useControllableState`](#usecontrollablestate-hook) | hook | Canonical controlled/uncontrolled state pattern. |
+| [`useEventListener`](#useeventlistener-hook) | hook | Register a DOM event listener with automatic cleanup on unmount. |
+| [`useClickOutside`](#useclickoutside-hook) | hook | Fire a callback when the user clicks outside the referenced element. |
+| [`useElementSize`](#useelementsize-hook) | hook | Reactive element size via `ResizeObserver`. |
+| [`useFocusTrap`](#usefocustrap-hook) | hook | Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmat |
+| [`useInertOthers`](#useinertothers-hook) | hook | Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level's sibli |
+| [`useFocusReturn`](#usefocusreturn-hook) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus  |
+| [`useBreakpoint`](#usebreakpoint-hook) | hook | Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. |
+| [`useDebouncedValue`](#usedebouncedvalue-hook) | hook | Returns a debounced signal that only updates after `delayMs` of source-signal idle. |
+| [`useFetch`](#usefetch-hook) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compi |
+| [`useClipboard`](#useclipboard-hook) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (defau |
+| [`useDialog`](#usedialog-hook) | hook | Native `<dialog>` element wrapper. |
+| [`useTimeAgo`](#usetimeago-hook) | hook | Reactive "5 minutes ago" / "in 2 hours" relative-time string. |
+| [`useInfiniteScroll`](#useinfinitescroll-hook) | hook | `IntersectionObserver`-based infinite loading. |
+| [`useMergedRef`](#usemergedref-hook) | hook | Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to th |
+| [`useUpdateEffect`](#useupdateeffect-hook) | hook | Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`' |
+| [`useIsomorphicLayoutEffect`](#useisomorphiclayouteffect-hook) | hook | Runs a layout-phase effect on the client (synchronous, before paint) and a no-op on the server. |
+| [`useCounter`](#usecounter-hook) | hook | Reactive numeric counter — the numeric companion to useToggle. |
+| [`useWindowScroll`](#usewindowscroll-hook) | hook | Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe im |
+| [`useDocumentVisibility`](#usedocumentvisibility-hook) | hook | Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimi |
+| [`useIdle`](#useidle-hook) | hook | Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for ` |
+| [`useToggle`](#usetoggle-hook) | hook | Boolean signal with named controls. |
+| [`useHover`](#usehover-hook) | hook | Track hover state. |
+| [`useFocus`](#usefocus-hook) | hook | Track focus state. |
+| [`useMediaQuery`](#usemediaquery-hook) | hook | Reactive `matchMedia`. |
+| [`useColorScheme`](#usecolorscheme-hook) | hook | Reactive OS color-scheme accessor — `computed` over `(prefers-color-scheme: dark)` (wraps `useMediaQuery`). |
+| [`useSizeClass`](#usesizeclass-hook) | hook | Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`, |
+| [`useReducedMotion`](#usereducedmotion-hook) | hook | Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). |
+| [`useOnline`](#useonline-hook) | hook | Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offlin |
+| [`useDeviceInfo`](#usedeviceinfo-hook) | hook | Describe the device — platform branching, real screen geometry, device context for analytics. |
+| [`useSafeArea`](#usesafearea-hook) | hook | The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. |
+| [`useSpeech`](#usespeech-hook) | hook | Speak text aloud — `speechSynthesis` on the web, `AVSpeechSynthesizer` on iOS, `TextToSpeech` on Android. |
+| [`useDeviceMotion`](#usedevicemotion-hook) | hook | Device motion — shake gestures, tilt controls. |
+| [`useScreenOrientation`](#usescreenorientation-hook) | hook | Which way the display is oriented. |
+| [`useCamera`](#usecamera-hook) | hook | Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIIma |
+| [`useAudioRecorder`](#useaudiorecorder-hook) | hook | Record from the microphone — voice notes, voice messages, dictation. |
+| [`useWakeLock`](#usewakelock-hook) | hook | Keep the screen awake — video, navigation, recipe steps. |
+| [`useBluetooth`](#usebluetooth-hook) | hook | Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. |
+| [`useIntersection`](#useintersection-hook) | hook | IntersectionObserver as a signal. |
+| [`usePrevious`](#useprevious-hook) | hook | Track the previous value of a reactive read. |
+| [`useWindowResize`](#usewindowresize-hook) | hook | Reactive window size accessor (default debounce 200ms). |
+| [`useInterval`](#useinterval-hook) | hook | Declarative `setInterval`. |
+| [`useTimeout`](#usetimeout-hook) | hook | Declarative `setTimeout` that STARTS immediately at setup (fires once after `delay`ms unless `delay` is `null`). |
+| [`useDebouncedCallback`](#usedebouncedcallback-hook) | hook | Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus `.can |
+| [`useThrottledCallback`](#usethrottledcallback-hook) | hook | Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel() |
+| [`useLatest`](#uselatest-hook) | hook | Wraps `value` in a mutable `{ current }` ref object. |
+| [`useKeyboard`](#usekeyboard-hook) | hook | Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `eve |
+| [`useScrollLock`](#usescrolllock-hook) | hook | Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). |
+| [`useHaptics`](#usehaptics-hook) | hook | Imperative haptic feedback. |
+| [`useShare`](#useshare-hook) | hook | Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). |
+| [`useLinking`](#uselinking-hook) | hook | Imperative external-link opener. |
+| [`useNotifications`](#usenotifications-hook) | hook | Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). |
+| [`useFilePicker`](#usefilepicker-hook) | hook | Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` |
+| [`useImagePicker`](#useimagepicker-hook) | hook | Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia |
+| [`useBiometrics`](#usebiometrics-hook) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on t |
+| [`useGeolocation`](#usegeolocation-hook) | hook | Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively  |
+| [`useMap`](#usemap-hook) | hook | Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` contai |
+| [`useWebSocket`](#usewebsocket-hook) | hook | A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field  |
+| [`useAuth`](#useauth-hook) | hook | The device-proven auth-STATE container, shared across web / iOS / Android — mirrors the native `PyreonAuth<User>` field- |
+| [`usePush`](#usepush-hook) | hook | Push-notification STATE + INJECTED REGISTRATION, shared across web / iOS / Android, mirroring the native `PyreonPushNoti |
+| [`usePayments`](#usepayments-hook) | hook | In-app-purchase STATE + INJECTED STORE ACTIONS, shared across web / iOS / Android, mirroring the native `PyreonPayments` |
+| [`useDatabase`](#usedatabase-hook) | hook | A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container ( |
+| [`useCrashReporter`](#usecrashreporter-hook) | hook | The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). |
+| [`useAppState`](#useappstate-hook) | hook | Reactive app lifecycle phase — returns an ACCESSOR (call it in a reactive scope: `state()`), mirroring the native lifecy |
+| [`setCrashTransport`](#setcrashtransport-function) | function | Register (or clear, with `undefined`) the function that actually uploads a crash report string — the app-wired vendor tr |
 
 ## API
 
-### useSecureStorage `hook`
+### `useSecureStorage` `hook`
 
 ```ts
 () => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }
@@ -219,7 +219,7 @@ const signOut = () => secrets.remove('auth-token')
 
 ---
 
-### useControllableState `hook`
+### `useControllableState` `hook`
 
 ```ts
 <T>(opts: { value: () => T | undefined; defaultValue: T; onChange?: (v: T) => void }) => [() => T, (next: T | ((prev: T) => T)) => void]
@@ -250,7 +250,7 @@ function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange
 
 ---
 
-### useEventListener `hook`
+### `useEventListener` `hook`
 
 ```ts
 <K extends keyof WindowEventMap>(event: K, handler: (e: WindowEventMap[K]) => void, options?: boolean | AddEventListenerOptions, target?: () => EventTarget | null) => void
@@ -279,7 +279,7 @@ useEventListener('click', onDocClick, {}, () => document)
 
 ---
 
-### useClickOutside `hook`
+### `useClickOutside` `hook`
 
 ```ts
 (ref: () => HTMLElement | null, handler: (e: MouseEvent) => void) => void
@@ -301,7 +301,7 @@ useClickOutside(() => panelRef(), () => setOpen(false))
 
 ---
 
-### useElementSize `hook`
+### `useElementSize` `hook`
 
 ```ts
 (ref: () => HTMLElement | null) => Signal<{ width: number; height: number }>
@@ -320,7 +320,7 @@ effect(() => console.log('Box is', size().width, 'x', size().height))
 
 ---
 
-### useFocusTrap `hook`
+### `useFocusTrap` `hook`
 
 ```ts
 (getEl: () => HTMLElement | null, options?: { active?: boolean | (() => boolean); initialFocus?: boolean | string | HTMLElement | (() => HTMLElement | null) } | boolean | (() => boolean)) => void
@@ -351,7 +351,7 @@ useFocusTrap(() => modalRef())
 
 ---
 
-### useInertOthers `hook`
+### `useInertOthers` `hook`
 
 ```ts
 (getEl: () => HTMLElement | null, options?: { active?: boolean | (() => boolean) } | boolean | (() => boolean)) => void
@@ -381,7 +381,7 @@ useFocusReturn(() => isOpen())
 
 ---
 
-### useFocusReturn `hook`
+### `useFocusReturn` `hook`
 
 ```ts
 (isOpen: () => boolean, options?: { returnTo?: () => HTMLElement | null }) => void
@@ -406,7 +406,7 @@ useFocusTrap(() => dialogRef())            // focus is trapped while the dialog 
 
 ---
 
-### useBreakpoint `hook`
+### `useBreakpoint` `hook`
 
 ```ts
 (breakpoints?: Record<string, number>) => () => string
@@ -429,7 +429,7 @@ const bp = useBreakpoint()
 
 ---
 
-### useDebouncedValue `hook`
+### `useDebouncedValue` `hook`
 
 ```ts
 <T>(source: Signal<T> | (() => T), delayMs: number) => Signal<T>
@@ -453,7 +453,7 @@ effect(() => fetchResults(debouncedSearch()))
 
 ---
 
-### useFetch `hook`
+### `useFetch` `hook`
 
 ```ts
 <T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }
@@ -482,7 +482,7 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
 
 ---
 
-### useClipboard `hook`
+### `useClipboard` `hook`
 
 ```ts
 (options?: { timeout?: number }) => { copy: (text: string) => Promise<boolean>; copied: () => boolean; text: () => string }
@@ -505,7 +505,7 @@ const { copy, copied } = useClipboard()
 
 ---
 
-### useDialog `hook`
+### `useDialog` `hook`
 
 ```ts
 (options?: { onClose?: () => void }) => { open: () => boolean; show: () => void; showModal: () => void; close: () => void; toggle: () => void; ref: (el: HTMLDialogElement | null) => void }
@@ -530,7 +530,7 @@ const dialog = useDialog()
 
 ---
 
-### useTimeAgo `hook`
+### `useTimeAgo` `hook`
 
 ```ts
 (date: Date | (() => Date), opts?: UseTimeAgoOptions) => Signal<string>
@@ -549,7 +549,7 @@ const sent = useTimeAgo(message.sentAt)
 
 ---
 
-### useInfiniteScroll `hook`
+### `useInfiniteScroll` `hook`
 
 ```ts
 (onLoadMore: () => void | Promise<void>, opts?: { threshold?: number; loading?: () => boolean; hasMore?: () => boolean; direction?: "up" | "down" }) => { ref: (el: HTMLElement | null) => void; triggered: () => boolean }
@@ -576,7 +576,7 @@ const { ref, triggered } = useInfiniteScroll(loadNextPage, { threshold: 200, loa
 
 ---
 
-### useMergedRef `hook`
+### `useMergedRef` `hook`
 
 ```ts
 <T>(...refs: (Ref<T> | RefCallback<T> | null | undefined)[]) => RefCallback<T>
@@ -596,7 +596,7 @@ const merged = useMergedRef(localRef, props.ref)
 
 ---
 
-### useUpdateEffect `hook`
+### `useUpdateEffect` `hook`
 
 ```ts
 <T>(source: () => T, callback: (newVal: T, oldVal: T | undefined) => void | (() => void)) => void
@@ -615,7 +615,7 @@ useUpdateEffect(() => value(), (val) => api.save(val))
 
 ---
 
-### useIsomorphicLayoutEffect `hook`
+### `useIsomorphicLayoutEffect` `hook`
 
 ```ts
 (fn: () => void | (() => void)) => void
@@ -637,7 +637,7 @@ useIsomorphicLayoutEffect(() => {
 
 ---
 
-### useCounter `hook`
+### `useCounter` `hook`
 
 ```ts
 (initial?: number, opts?: { min?: number; max?: number }) => { count: Signal<number>; inc: (d?: number) => void; dec: (d?: number) => void; set: (v: number) => void; reset: () => void }
@@ -660,7 +660,7 @@ const { count, inc, dec, reset } = useCounter(0, { min: 0, max: 10 })
 
 ---
 
-### useWindowScroll `hook`
+### `useWindowScroll` `hook`
 
 ```ts
 () => { position: () => { x: number; y: number }; scrollTo: (o: { x?: number; y?: number; behavior?: ScrollBehavior }) => void }
@@ -681,7 +681,7 @@ const { position, scrollTo } = useWindowScroll()
 
 ---
 
-### useDocumentVisibility `hook`
+### `useDocumentVisibility` `hook`
 
 ```ts
 () => () => "visible" | "hidden"
@@ -700,7 +700,7 @@ effect(() => { visibility() === 'hidden' ? pausePolling() : resumePolling() })
 
 ---
 
-### useIdle `hook`
+### `useIdle` `hook`
 
 ```ts
 (timeoutMs?: number, opts?: { events?: readonly string[]; initialState?: boolean }) => () => boolean
@@ -723,7 +723,7 @@ effect(() => { if (idle()) showAwayBanner() })
 
 ---
 
-### useToggle `hook`
+### `useToggle` `hook`
 
 ```ts
 useToggle(initial?: boolean) => { value: () => boolean; toggle: () => void; setTrue: () => void; setFalse: () => void }
@@ -748,7 +748,7 @@ const menu = useToggle()
 
 ---
 
-### useHover `hook`
+### `useHover` `hook`
 
 ```ts
 useHover() => { hovered: () => boolean; props: { onMouseEnter: () => void; onMouseLeave: () => void } }
@@ -772,7 +772,7 @@ const h = useHover()
 
 ---
 
-### useFocus `hook`
+### `useFocus` `hook`
 
 ```ts
 useFocus() => { focused: () => boolean; props: { onFocus: () => void; onBlur: () => void } }
@@ -795,7 +795,7 @@ const f = useFocus()
 
 ---
 
-### useMediaQuery `hook`
+### `useMediaQuery` `hook`
 
 ```ts
 useMediaQuery(query: string) => () => boolean
@@ -819,7 +819,7 @@ const isWide = useMediaQuery('(min-width: 768px)')
 
 ---
 
-### useColorScheme `hook`
+### `useColorScheme` `hook`
 
 ```ts
 useColorScheme() => () => 'light' | 'dark'
@@ -844,7 +844,7 @@ const scheme = useColorScheme()
 
 ---
 
-### useSizeClass `hook`
+### `useSizeClass` `hook`
 
 ```ts
 useSizeClass() => () => 'compact' | 'regular'
@@ -868,7 +868,7 @@ const size = useSizeClass()
 
 ---
 
-### useReducedMotion `hook`
+### `useReducedMotion` `hook`
 
 ```ts
 useReducedMotion() => () => boolean
@@ -892,7 +892,7 @@ const reduced = useReducedMotion()
 
 ---
 
-### useOnline `hook`
+### `useOnline` `hook`
 
 ```ts
 useOnline() => () => boolean
@@ -916,7 +916,7 @@ const online = useOnline()
 
 ---
 
-### useDeviceInfo `hook`
+### `useDeviceInfo` `hook`
 
 ```ts
 useDeviceInfo() => { platform: () => 'web' | 'ios' | 'android'; model: () => string; osVersion: () => string; isTouch: () => boolean; screen: () => { width: number; height: number; scale: number } }
@@ -944,7 +944,7 @@ const device = useDeviceInfo()
 
 ---
 
-### useSafeArea `hook`
+### `useSafeArea` `hook`
 
 ```ts
 useSafeArea() => () => { top: number; right: number; bottom: number; left: number }
@@ -969,7 +969,7 @@ const safe = useSafeArea()
 
 ---
 
-### useSpeech `hook`
+### `useSpeech` `hook`
 
 ```ts
 useSpeech() => { supported: () => boolean; speaking: () => boolean; speak: (text: string) => Promise<boolean>; stop: () => void }
@@ -994,7 +994,7 @@ const speech = useSpeech()
 
 ---
 
-### useDeviceMotion `hook`
+### `useDeviceMotion` `hook`
 
 ```ts
 useDeviceMotion() => { supported: () => boolean; active: () => boolean; start: () => Promise<boolean>; stop: () => void; acceleration: () => { x: number; y: number; z: number }; rotation: () => { x: number; y: number; z: number } }
@@ -1020,7 +1020,7 @@ const motion = useDeviceMotion()
 
 ---
 
-### useScreenOrientation `hook`
+### `useScreenOrientation` `hook`
 
 ```ts
 useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }
@@ -1045,7 +1045,7 @@ const o = useScreenOrientation()
 
 ---
 
-### useCamera `hook`
+### `useCamera` `hook`
 
 ```ts
 useCamera() => { capture: () => Promise<string | null>; isAvailable: () => boolean }
@@ -1073,7 +1073,7 @@ const shoot = async () => {
 
 ---
 
-### useAudioRecorder `hook`
+### `useAudioRecorder` `hook`
 
 ```ts
 useAudioRecorder() => { supported: () => boolean; recording: () => boolean; start: () => Promise<boolean>; stop: () => Promise<string | null>; error: () => string }
@@ -1102,7 +1102,7 @@ const done = async () => {
 
 ---
 
-### useWakeLock `hook`
+### `useWakeLock` `hook`
 
 ```ts
 useWakeLock() => { active: () => boolean; supported: () => boolean; request: () => Promise<boolean>; release: () => Promise<void> }
@@ -1129,7 +1129,7 @@ onMount(() => { void wake.request() })
 
 ---
 
-### useBluetooth `hook`
+### `useBluetooth` `hook`
 
 ```ts
 useBluetooth() => { available: () => boolean; scanning: () => boolean; devices: () => BluetoothDevice[]; error: () => string; scan: () => void; stopScan: () => void }
@@ -1157,7 +1157,7 @@ const bt = useBluetooth()
 
 ---
 
-### useIntersection `hook`
+### `useIntersection` `hook`
 
 ```ts
 useIntersection(getEl: () => HTMLElement | null, options?: IntersectionObserverInit) => () => IntersectionObserverEntry | null
@@ -1182,7 +1182,7 @@ const entry = useIntersection(() => el)
 
 ---
 
-### usePrevious `hook`
+### `usePrevious` `hook`
 
 ```ts
 usePrevious<T>(getter: () => T) => () => T | undefined
@@ -1207,7 +1207,7 @@ const prev = usePrevious(() => count())
 
 ---
 
-### useWindowResize `hook`
+### `useWindowResize` `hook`
 
 ```ts
 useWindowResize(debounceMs?: number) => () => { width: number; height: number }
@@ -1231,7 +1231,7 @@ const size = useWindowResize()
 
 ---
 
-### useInterval `hook`
+### `useInterval` `hook`
 
 ```ts
 useInterval(callback: () => void, delay: number | null | (() => number | null)) => void
@@ -1256,7 +1256,7 @@ useInterval(() => tick(), () => paused() ? null : 1000)
 
 ---
 
-### useTimeout `hook`
+### `useTimeout` `hook`
 
 ```ts
 useTimeout(callback: () => void, delay: number | null) => { reset: () => void; clear: () => void }
@@ -1280,7 +1280,7 @@ const t = useTimeout(() => hideToast(), 3000)
 
 ---
 
-### useDebouncedCallback `hook`
+### `useDebouncedCallback` `hook`
 
 ```ts
 useDebouncedCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void; flush: () => void }
@@ -1304,7 +1304,7 @@ const onSearch = useDebouncedCallback((q: string) => fetchResults(q), 300)
 
 ---
 
-### useThrottledCallback `hook`
+### `useThrottledCallback` `hook`
 
 ```ts
 useThrottledCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void }
@@ -1327,7 +1327,7 @@ const onScroll = useThrottledCallback(() => updateParallax(), 16)
 
 ---
 
-### useLatest `hook`
+### `useLatest` `hook`
 
 ```ts
 useLatest<T>(value: T) => { readonly current: T }
@@ -1350,7 +1350,7 @@ const latest = useLatest(props.onSave)
 
 ---
 
-### useKeyboard `hook`
+### `useKeyboard` `hook`
 
 ```ts
 useKeyboard(key: string, handler: (event: KeyboardEvent) => void, options?: { event?: 'keydown' | 'keyup'; target?: EventTarget }) => void
@@ -1373,7 +1373,7 @@ useKeyboard('Escape', () => closeModal())
 
 ---
 
-### useScrollLock `hook`
+### `useScrollLock` `hook`
 
 ```ts
 useScrollLock() => { lock: () => void; unlock: () => void }
@@ -1397,7 +1397,7 @@ onMount(() => { lock(); return unlock })
 
 ---
 
-### useHaptics `hook`
+### `useHaptics` `hook`
 
 ```ts
 useHaptics() => { impact: (style?: 'light' | 'medium' | 'heavy' | 'soft' | 'rigid') => void; notification: (type: 'success' | 'warning' | 'error') => void; selection: () => void }
@@ -1420,7 +1420,7 @@ const haptics = useHaptics()
 
 ---
 
-### useShare `hook`
+### `useShare` `hook`
 
 ```ts
 useShare() => { text: (text: string) => void; url: (url: string) => void; textUrl: (text: string, url: string) => void; canShare: () => boolean }
@@ -1445,7 +1445,7 @@ const share = useShare()
 
 ---
 
-### useLinking `hook`
+### `useLinking` `hook`
 
 ```ts
 useLinking() => { openUrl: (url: string) => void }
@@ -1468,7 +1468,7 @@ const { openUrl } = useLinking()
 
 ---
 
-### useNotifications `hook`
+### `useNotifications` `hook`
 
 ```ts
 useNotifications() => { requestPermission: () => void; notify: (title: string, body: string) => void }
@@ -1493,7 +1493,7 @@ notifications.notify('Done', 'Your export is ready')
 
 ---
 
-### useFilePicker `hook`
+### `useFilePicker` `hook`
 
 ```ts
 useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }
@@ -1526,7 +1526,7 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 
 ---
 
-### useImagePicker `hook`
+### `useImagePicker` `hook`
 
 ```ts
 useImagePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }
@@ -1559,7 +1559,7 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 
 ---
 
-### useBiometrics `hook`
+### `useBiometrics` `hook`
 
 ```ts
 useBiometrics() => { authenticate: (reason: string) => Promise<boolean>; isAvailable: () => boolean }
@@ -1589,7 +1589,7 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
 
 ---
 
-### useGeolocation `hook`
+### `useGeolocation` `hook`
 
 ```ts
 (options?: { enableHighAccuracy?: boolean; timeout?: number; maximumAge?: number }) => { latitude: number | null; longitude: number | null; accuracy: number | null; error: string | null; isTracking: boolean; start(): void; stop(): void }
@@ -1617,7 +1617,7 @@ const geo = useGeolocation({ enableHighAccuracy: true })
 
 ---
 
-### useMap `hook`
+### `useMap` `hook`
 
 ```ts
 () => { camera: PyreonMapCamera; markers: PyreonMapMarker[]; selectedMarkerId: string | null; selectedMarker: PyreonMapMarker | null; setCamera(c): void; moveTo(lat, lng, zoom?): void; setMarkers(m[]): void; addMarker(m): void; removeMarker(id): void; selectMarker(id): void }
@@ -1644,7 +1644,7 @@ map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
 
 ---
 
-### useWebSocket `hook`
+### `useWebSocket` `hook`
 
 ```ts
 (url: string) => { lastMessage: string | null; messages: string[]; isConnected: boolean; error: string | null; connect(): void; send(text): void; close(): void }
@@ -1671,7 +1671,7 @@ onMount(() => ws.connect())
 
 ---
 
-### useAuth `hook`
+### `useAuth` `hook`
 
 ```ts
 <User>() => { status: "signedOut" | "signingIn" | "signedIn" | "error"; user: User | null; error: string | null; isAuthenticated: boolean; isSigningIn: boolean; beginSignIn(): void; signInSucceeded(user): void; signInFailed(failure): void; signOut(): void }
@@ -1705,7 +1705,7 @@ const signIn = async () => {
 
 ---
 
-### usePush `hook`
+### `usePush` `hook`
 
 ```ts
 () => { token: string | null; lastNotification: PyreonPushNotification | null; notifications: PyreonPushNotification[]; isAuthorized: boolean; isRegistered: boolean; error: string | null; tokenReceived(t): void; notificationReceived(n): void; authorize(ok): void; fail(err): void; start(register): () => void; stop(): void }
@@ -1735,7 +1735,7 @@ onMount(() => push.start((handlers) => {
 
 ---
 
-### usePayments `hook`
+### `usePayments` `hook`
 
 ```ts
 () => { products: PyreonProduct[]; ownedProductIds: ReadonlySet<string>; purchasing: string | null; error: string | null; owns(id): boolean; productsLoaded(p[]): void; purchaseStarted(id): void; purchaseSucceeded(id): void; purchaseFailed(err): void; restored(ids): void; connect(actions): void; purchase(id): void; restore(): void }
@@ -1764,7 +1764,7 @@ onMount(() => pay.connect({
 
 ---
 
-### useDatabase `hook`
+### `useDatabase` `hook`
 
 ```ts
 () => { insert(collection, record): void; get(collection, id): PyreonRecord | null; all(collection): PyreonRecord[]; delete(collection, id): boolean; find(collection, field, equals): PyreonRecord[]; count(collection): number }
@@ -1791,7 +1791,7 @@ const open = db.find('notes', 'done', 'false')
 
 ---
 
-### useCrashReporter `hook`
+### `useCrashReporter` `hook`
 
 ```ts
 () => { lastCrash: string; hadCrash: boolean; recordError(message): void; breadcrumb(message): void; clear(): void; start(): void }
@@ -1821,7 +1821,7 @@ crash.recordError(String(err))
 
 ---
 
-### useAppState `hook`
+### `useAppState` `hook`
 
 ```ts
 () => () => "active" | "background" | "inactive"
@@ -1846,7 +1846,7 @@ const state = useAppState()
 
 ---
 
-### setCrashTransport `function`
+### `setCrashTransport` `function`
 
 ```ts
 (send: ((report: string) => void) | undefined) => void

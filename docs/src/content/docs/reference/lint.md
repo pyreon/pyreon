@@ -67,16 +67,16 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`lint`](#lint) | function | 133 rules across 25 categories. |
-| [`lintAsync`](#lintasync) | function | Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large r |
-| [`lintFile`](#lintfile) | function | Low-level single-file API. |
-| [`cli`](#cli) | function | CLI entry. |
-| [`no-process-dev-gate`](#no-process-dev-gate) | constant | The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` i |
-| [`require-browser-smoke-test`](#require-browser-smoke-test) | constant | Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). |
+| [`lint`](#lint-function) | function | 133 rules across 25 categories. |
+| [`lintAsync`](#lintasync-function) | function | Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large r |
+| [`lintFile`](#lintfile-function) | function | Low-level single-file API. |
+| [`cli`](#cli-function) | function | CLI entry. |
+| [`no-process-dev-gate`](#no-process-dev-gate-constant) | constant | The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` i |
+| [`require-browser-smoke-test`](#require-browser-smoke-test-constant) | constant | Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). |
 
 ## API
 
-### lint `function`
+### `lint` `function`
 
 ```ts
 lint(options?: LintOptions): LintResult
@@ -108,7 +108,7 @@ lint({
 
 ---
 
-### lintAsync `function`
+### `lintAsync` `function`
 
 ```ts
 lintAsync(options?: LintOptions): Promise<LintResult>
@@ -137,7 +137,7 @@ console.log(result.totalErrors, result.totalWarnings)
 
 ---
 
-### lintFile `function`
+### `lintFile` `function`
 
 ```ts
 lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache, configDiagnosticsSink?: ConfigDiagnostic[]): LintFileResult
@@ -160,7 +160,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)
 
 ---
 
-### cli `function`
+### `cli` `function`
 
 ```ts
 pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]
@@ -185,7 +185,7 @@ pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundat
 
 ---
 
-### no-process-dev-gate `constant`
+### `no-process-dev-gate` `constant`
 
 ```ts
 rule: pyreon/no-process-dev-gate (architecture, error, auto-fixable)
@@ -217,7 +217,7 @@ if (__DEV__) console.warn('hello')
 
 ---
 
-### require-browser-smoke-test `constant`
+### `require-browser-smoke-test` `constant`
 
 ```ts
 rule: pyreon/require-browser-smoke-test (architecture, error in recommended/strict/lib, off in app)

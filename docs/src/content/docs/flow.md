@@ -959,7 +959,7 @@ function CustomNode(props: NodeComponentProps<MyData>) {
 flow.addEdge({ source: '1', sourceHandle: 'out-a', target: '2' })
 ```
 
-Edges anchor at the dot's **real rendered position** — the renderer measures every `<Handle>`'s center (see [Edge Anchoring & Node Measurement](#edge-anchoring--node-measurement)), so restyling or repositioning a dot via `style` / `class` moves the edge attachment with it. An edge without a `sourceHandle` / `targetHandle` id uses the node's first handle of that type.
+Edges anchor at the dot's **real rendered position** — the renderer measures every `<Handle>`'s center (see [Edge Anchoring & Node Measurement](#edge-anchoring-node-measurement)), so restyling or repositioning a dot via `style` / `class` moves the edge attachment with it. An edge without a `sourceHandle` / `targetHandle` id uses the node's first handle of that type.
 
 :::warning
 Multiple `source` or `target` handles on one node need distinct `id` values, or edges can't disambiguate which handle they connect to (an unknown id anchors at the first handle and dev-warns naming the known ids). Handles must live inside a node renderer — nesting a `<Handle>` in a `<Background>`, `<Panel>`, or other non-node component breaks the connection machinery.
@@ -1191,9 +1191,9 @@ These helpers return an **object** `{ path, labelX, labelY }`, not a tuple. Dest
 | `getEdgePath`              | `(type, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, pathOptions?)` → `EdgePathResult` (dispatches by type, threads [`pathOptions`](#per-edge-path-options)) |
 | `getHandlePosition`        | `(position, nodeX, nodeY, nodeWidth, nodeHeight, handleId?)` → `XYPosition`                  |
 | `getSmartHandlePositions`  | `(sourceNode, targetNode, dims?)` → `{ sourcePosition, targetPosition }` (auto-picks nearest edges) |
-| `getFloatingEndpoints`     | `(sourceNode, targetNode, dims)` → `{ source, target }` perimeter points + sides (the natural-angle [floating endpoints](#edge-anchoring--node-measurement)) |
+| `getFloatingEndpoints`     | `(sourceNode, targetNode, dims)` → `{ source, target }` perimeter points + sides (the natural-angle [floating endpoints](#edge-anchoring-node-measurement)) |
 | `getNodeIntersection`      | `(box, toward)` → `XYPosition` where the ray from `box` center toward a point exits the box perimeter |
-| `resolveHandleAnchor`      | `(node, handleId, type, dims, measurement?)` → `{ x, y, position } \| null` ([handle-anchor priority chain](#edge-anchoring--node-measurement)) |
+| `resolveHandleAnchor`      | `(node, handleId, type, dims, measurement?)` → `{ x, y, position } \| null` ([handle-anchor priority chain](#edge-anchoring-node-measurement)) |
 | `getEffectiveDimensions`   | `(node, measurement?)` → `Dimensions` (explicit → measured → `DEFAULT_NODE_WIDTH`×`DEFAULT_NODE_HEIGHT`) |
 
 ### Marker Helpers
@@ -1373,7 +1373,7 @@ State that lives only in memory, flow graphs included, is lost when the app is c
 | `selectedEdges` | `Computed<string[]>`                  | Selected edge **ids**                      |
 | `nodeMap`       | `Computed<Map<string, FlowNode>>`     | O(1) node lookup (rebuilt per `nodes()` change) |
 | `edgeMap`       | `Computed<Map<string, FlowEdge>>`     | O(1) edge lookup (rebuilt per `edges()` change) |
-| `measurements`  | `Signal<Map<string, NodeMeasurement>>` | Measured node boxes + `<Handle>` dot centers (see [Edge Anchoring](#edge-anchoring--node-measurement)) |
+| `measurements`  | `Signal<Map<string, NodeMeasurement>>` | Measured node boxes + `<Handle>` dot centers (see [Edge Anchoring](#edge-anchoring-node-measurement)) |
 | `config`        | `FlowConfig<TData>`                   | The config the flow was created with       |
 
 ### `FlowInstance` — methods

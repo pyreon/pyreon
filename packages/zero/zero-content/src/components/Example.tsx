@@ -1,4 +1,4 @@
-import { h, onMount } from '@pyreon/core'
+import { ErrorBoundary, h, onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
@@ -194,6 +194,7 @@ export function Example(props: ExampleProps): VNodeChild {
     'div',
     {
       class: props.class ?? 'pyreon-example',
+      'data-example-file': props.file,
       ref: (el: Element | null) => {
         rootEl = el
       },
@@ -239,7 +240,21 @@ export function Example(props: ExampleProps): VNodeChild {
         const childProps = sharedSig !== undefined
           ? { shared: sharedSig }
           : {}
-        return h(Comp as ComponentFn<typeof childProps>, childProps)
+        return h(
+          ErrorBoundary,
+          {
+            fallback: (cause: unknown) =>
+              h(
+                'pre',
+                {
+                  class: 'pyreon-example__error',
+                  role: 'alert',
+                },
+                `Example "${props.file}" failed to render: ${cause instanceof Error ? cause.message : String(cause)}`,
+              ),
+          },
+          h(Comp as ComponentFn<typeof childProps>, childProps),
+        )
       },
     ),
   )

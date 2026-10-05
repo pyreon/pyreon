@@ -70,13 +70,13 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createRichTextEditor`](#createrichtexteditor) | function | Create a reactive WYSIWYG editor instance. |
-| [`RichText`](#richtext) | component | Mount component for a `createRichTextEditor` instance. |
-| [`bindRichTextToSignal`](#bindrichtexttosignal) | function | Two-way binding between an editor instance and an external Signal — the editor mirror of `@pyreon/code`'s `bindEditorToS |
+| [`createRichTextEditor`](#createrichtexteditor-function) | function | Create a reactive WYSIWYG editor instance. |
+| [`RichText`](#richtext-component) | component | Mount component for a `createRichTextEditor` instance. |
+| [`bindRichTextToSignal`](#bindrichtexttosignal-function) | function | Two-way binding between an editor instance and an external Signal — the editor mirror of `@pyreon/code`'s `bindEditorToS |
 
 ## API
 
-### createRichTextEditor `function`
+### `createRichTextEditor` `function`
 
 ```ts
 (config?: RichTextConfig) => RichTextEditor
@@ -114,7 +114,7 @@ editor.chain()?.toggleBold().run()  // run a command
 
 ---
 
-### RichText `component`
+### `RichText` `component`
 
 ```ts
 (props: RichTextProps) => VNodeChild
@@ -132,7 +132,7 @@ Mount component for a `createRichTextEditor` instance. Accepts `instance`, `clas
 
 ---
 
-### bindRichTextToSignal `function`
+### `bindRichTextToSignal` `function`
 
 ```ts
 <T = JSONContent>(options: BindRichTextToSignalOptions<T>) => RichTextBinding

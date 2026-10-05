@@ -265,7 +265,7 @@ The flags `zero` exposes are deliberately minimal — the per-invocation knobs t
 
 ## Gotchas
 
-- **The CLI is a thin Vite wrapper.** For custom plugins, alias maps, or build tuning, edit `vite.config.ts` — don't look for CLI flags that don't exist. The complete flag set is in the [reference table](#command--flag-reference) below.
+- **The CLI is a thin Vite wrapper.** For custom plugins, alias maps, or build tuning, edit `vite.config.ts` — don't look for CLI flags that don't exist. The complete flag set is in the [reference table](#command-flag-reference) below.
 - **`--port` does not always win at the CLI.** It does — but only when you actually pass it. If you omit it, `zero({ port })` from config wins over the `3000` default. Trust the resolution order.
 - **There is no `--mode` flag.** The render mode is `zero({ mode })` in `vite.config.ts` — the plugin instances are constructed from that file, so a CLI flag can't reach them. Change the config to switch modes.
 - **`zero preview` does not build for you** — run `zero build` first. It serves `dist/client/` when a node/bun-adapter build staged it, otherwise your `build.outDir`.

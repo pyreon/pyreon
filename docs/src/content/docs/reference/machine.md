@@ -104,17 +104,17 @@ const Status = () => (
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`createMachine`](#createmachine) | function | Create a reactive state machine. |
-| [`Eventless (always) transitions`](#eventless-always-transitions) | function | A state may declare `always` transitions that fire SYNCHRONOUSLY the moment the state is entered (and for the initial st |
-| [`Machine.onExit / onEnter / onTransition / onDone`](#machine-onexit-onenter-ontransition-ondone) | function | Lifecycle listeners. |
-| [`Final states (final / isFinal / onDone)`](#final-states-final-isfinal-ondone) | function | Mark a terminal state with `final: true`. |
-| [`Machine.matches / nextEvents / reset / dispose`](#machine-matches-nextevents-reset-dispose) | function | The instance query + control surface (all reactive where noted). |
-| [`StateOf`](#stateof) | type | The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object ( |
-| [`EventOf`](#eventof) | type | The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys; |
+| [`createMachine`](#createmachine-function) | function | Create a reactive state machine. |
+| [`Eventless (always) transitions`](#eventless-always-transitions-function) | function | A state may declare `always` transitions that fire SYNCHRONOUSLY the moment the state is entered (and for the initial st |
+| [`Machine.onExit / onEnter / onTransition / onDone`](#machineonexit-onenter-ontransition-ondone-function) | function | Lifecycle listeners. |
+| [`Final states (final / isFinal / onDone)`](#final-states-final-isfinal-ondone-function) | function | Mark a terminal state with `final: true`. |
+| [`Machine.matches / nextEvents / reset / dispose`](#machinematches-nextevents-reset-dispose-function) | function | The instance query + control surface (all reactive where noted). |
+| [`StateOf`](#stateof-type) | type | The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object ( |
+| [`EventOf`](#eventof-type) | type | The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys; |
 
 ## API
 
-### createMachine `function`
+### `createMachine` `function`
 
 ```ts
 <S extends string, E extends string>(config: MachineConfig<S, E>) => Machine<S, E>
@@ -151,7 +151,7 @@ traffic.can('NEXT')  // true
 
 ---
 
-### Eventless (always) transitions `function`
+### `Eventless (always) transitions` `function`
 
 ```ts
 states.<state>.always?: TransitionConfig | TransitionConfig[]
@@ -185,7 +185,7 @@ m() // 'pass' or 'fail' — 'check' is never observed
 
 ---
 
-### Machine.onExit / onEnter / onTransition / onDone `function`
+### `Machine.onExit / onEnter / onTransition / onDone` `function`
 
 ```ts
 onExit(state, cb) | onEnter(state, cb) | onTransition(cb) | onDone(cb) => () => void
@@ -213,7 +213,7 @@ m.onExit('busy', () => cleanup())
 
 ---
 
-### Final states (final / isFinal / onDone) `function`
+### `Final states (final / isFinal / onDone)` `function`
 
 ```ts
 states.<state>.final?: boolean — machine.isFinal(): boolean — machine.onDone(cb)
@@ -242,7 +242,7 @@ m.isFinal()      // true → onDone fired
 
 ---
 
-### Machine.matches / nextEvents / reset / dispose `function`
+### `Machine.matches / nextEvents / reset / dispose` `function`
 
 ```ts
 matches(...states: S[]) => boolean — nextEvents() => E[] — reset() => void — dispose() => void
@@ -270,7 +270,7 @@ m.dispose()                    // drop all listeners
 
 ---
 
-### StateOf `type`
+### `StateOf` `type`
 
 ```ts
 type StateOf<M> // Machine<S, E> → S; raw config → InferStates
@@ -297,7 +297,7 @@ type LightState = StateOf<typeof light> // 'green' | 'yellow' | 'red'
 
 ---
 
-### EventOf `type`
+### `EventOf` `type`
 
 ```ts
 type EventOf<M> // Machine<S, E> → E; raw config → InferEvents

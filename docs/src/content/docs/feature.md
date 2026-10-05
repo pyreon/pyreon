@@ -134,7 +134,7 @@ const tasks = defineFeature({
 | Property        | Type                              | Required | Description                                                                                                |
 | --------------- | --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
 | `name`          | `string`                          | Yes      | Unique feature name. Used as the `@pyreon/store` ID and the query-key namespace.                           |
-| `schema`        | validation schema                 | Yes      | Zod, or any Standard Schema (Valibot / ArkType / `s`) — see [Validators & introspection](#validators--introspection). Zod's `_output` infers the entity type. |
+| `schema`        | validation schema                 | Yes      | Zod, or any Standard Schema (Valibot / ArkType / `s`) — see [Validators & introspection](#validators-introspection). Zod's `_output` infers the entity type. |
 | `api`           | `string`                          | Yes      | REST base path, e.g. `'/api/tasks'`. Endpoint URLs derive from RESTful conventions.                        |
 | `initialValues` | `Partial<TValues>`                | No       | Override the schema-derived defaults used to seed `useForm` create-mode.                                   |
 | `validate`      | `SchemaValidateFn<TValues>`       | No       | Custom validation function. When provided, replaces auto-detection from the schema.                        |

@@ -123,50 +123,50 @@ const Card = () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`h`](#h) | function | Create a VNode from a component function, HTML tag string, or symbol (Fragment, Portal). |
-| [`Fragment`](#fragment) | constant | Symbol used as the type for fragment VNodes that group children without producing a wrapper DOM element. |
-| [`onMount`](#onmount) | function | Register a callback that runs after the component mounts into the DOM. |
-| [`onUnmount`](#onunmount) | function | Register a callback that runs when the component is removed from the DOM. |
-| [`onUpdate`](#onupdate) | function | Register a callback that runs after the component updates (reactive dependencies change and DOM patches complete). |
-| [`onErrorCaptured`](#onerrorcaptured) | function | Register an error handler that captures errors thrown by descendant components. |
-| [`createContext`](#createcontext) | function | Create a static context. |
-| [`createReactiveContext`](#createreactivecontext) | function | Create a reactive context. |
-| [`provide`](#provide) | function | Push a context value for all descendant components. |
-| [`useContext`](#usecontext) | function | Read the nearest provided value for a context. |
-| [`Show`](#show) | component | Reactive conditional rendering. |
-| [`Async`](#async) | component | Renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at a  |
-| [`use`](#use) | function | Composes element behaviours into a single ref. |
-| [`Switch`](#switch) | component | Multi-branch conditional rendering. |
-| [`Match`](#match) | component | A branch inside a `<Switch>`. |
-| [`For`](#for) | component | Keyed reactive list rendering. |
-| [`Suspense`](#suspense) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a |
-| [`ErrorBoundary`](#errorboundary) | component | Catches render errors thrown by descendant components. |
-| [`lazy`](#lazy) | function | Wrap a dynamic import for code splitting. |
-| [`Dynamic`](#dynamic) | component | Renders a component by reference or string tag name. |
-| [`cx`](#cx) | function | Combine a class value into a single string. |
-| [`useControllableState`](#usecontrollablestate) | function | The controlled/uncontrolled state pattern, as one primitive. |
-| [`useColorMode`](#usecolormode) | function | The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow a |
-| [`splitProps`](#splitprops) | function | Split a props object into two parts: the picked keys and the rest. |
-| [`mergeProps`](#mergeprops) | function | Merge multiple props objects with last-source-wins semantics. |
-| [`removeUndefinedProps`](#removeundefinedprops) | function | Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactiv |
-| [`createUniqueId`](#createuniqueid) | function | Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in th |
-| [`Portal`](#portal) | component | Render children into a DOM element outside the component tree (typically `document.body`). |
-| [`mapArray`](#maparray) | function | Low-level reactive array mapping used internally by `<For>`. |
-| [`createRef`](#createref) | function | Create a mutable ref object (`{ current: T \| null }`) for holding DOM element references. |
-| [`elementRef`](#elementref) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`, `use |
-| [`nativeCompat`](#nativecompat) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip t |
-| [`isNativeCompat`](#isnativecompat) | function | Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. |
-| [`NATIVE_COMPAT_MARKER`](#native-compat-marker) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framew |
-| [`Defer`](#defer) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the acces |
-| [`registerErrorHandler / reportError`](#registererrorhandler-reporterror) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component thr |
-| [`isClient / isServer`](#isclient-isserver) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its inv |
-| [`defineComponent`](#definecomponent) | function | An identity wrapper — returns `fn` unchanged. |
-| [`ExtractProps`](#extractprops) | type | Extracts the props type from a `ComponentFn`. |
-| [`HigherOrderComponent`](#higherordercomponent) | type | Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component's own props. |
+| [`h`](#h-function) | function | Create a VNode from a component function, HTML tag string, or symbol (Fragment, Portal). |
+| [`Fragment`](#fragment-constant) | constant | Symbol used as the type for fragment VNodes that group children without producing a wrapper DOM element. |
+| [`onMount`](#onmount-function) | function | Register a callback that runs after the component mounts into the DOM. |
+| [`onUnmount`](#onunmount-function) | function | Register a callback that runs when the component is removed from the DOM. |
+| [`onUpdate`](#onupdate-function) | function | Register a callback that runs after the component updates (reactive dependencies change and DOM patches complete). |
+| [`onErrorCaptured`](#onerrorcaptured-function) | function | Register an error handler that captures errors thrown by descendant components. |
+| [`createContext`](#createcontext-function) | function | Create a static context. |
+| [`createReactiveContext`](#createreactivecontext-function) | function | Create a reactive context. |
+| [`provide`](#provide-function) | function | Push a context value for all descendant components. |
+| [`useContext`](#usecontext-function) | function | Read the nearest provided value for a context. |
+| [`Show`](#show-component) | component | Reactive conditional rendering. |
+| [`Async`](#async-component) | component | Renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at a  |
+| [`use`](#use-function) | function | Composes element behaviours into a single ref. |
+| [`Switch`](#switch-component) | component | Multi-branch conditional rendering. |
+| [`Match`](#match-component) | component | A branch inside a `<Switch>`. |
+| [`For`](#for-component) | component | Keyed reactive list rendering. |
+| [`Suspense`](#suspense-component) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a |
+| [`ErrorBoundary`](#errorboundary-component) | component | Catches render errors thrown by descendant components. |
+| [`lazy`](#lazy-function) | function | Wrap a dynamic import for code splitting. |
+| [`Dynamic`](#dynamic-component) | component | Renders a component by reference or string tag name. |
+| [`cx`](#cx-function) | function | Combine a class value into a single string. |
+| [`useControllableState`](#usecontrollablestate-function) | function | The controlled/uncontrolled state pattern, as one primitive. |
+| [`useColorMode`](#usecolormode-function) | function | The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow a |
+| [`splitProps`](#splitprops-function) | function | Split a props object into two parts: the picked keys and the rest. |
+| [`mergeProps`](#mergeprops-function) | function | Merge multiple props objects with last-source-wins semantics. |
+| [`removeUndefinedProps`](#removeundefinedprops-function) | function | Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactiv |
+| [`createUniqueId`](#createuniqueid-function) | function | Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in th |
+| [`Portal`](#portal-component) | component | Render children into a DOM element outside the component tree (typically `document.body`). |
+| [`mapArray`](#maparray-function) | function | Low-level reactive array mapping used internally by `<For>`. |
+| [`createRef`](#createref-function) | function | Create a mutable ref object (`{ current: T \| null }`) for holding DOM element references. |
+| [`elementRef`](#elementref-function) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`, `use |
+| [`nativeCompat`](#nativecompat-function) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip t |
+| [`isNativeCompat`](#isnativecompat-function) | function | Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. |
+| [`NATIVE_COMPAT_MARKER`](#native_compat_marker-constant) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framew |
+| [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the acces |
+| [`registerErrorHandler / reportError`](#registererrorhandler-reporterror-function) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component thr |
+| [`isClient / isServer`](#isclient-isserver-constant) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its inv |
+| [`defineComponent`](#definecomponent-function) | function | An identity wrapper — returns `fn` unchanged. |
+| [`ExtractProps`](#extractprops-type) | type | Extracts the props type from a `ComponentFn`. |
+| [`HigherOrderComponent`](#higherordercomponent-type) | type | Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component's own props. |
 
 ## API
 
-### h `function`
+### `h` `function`
 
 ```ts
 h<P extends Props>(type: ComponentFn<P> | string | symbol, props: P | null, ...children: VNodeChild[]): VNode
@@ -194,7 +194,7 @@ const vnode = h("div", { class: "container" },
 
 ---
 
-### Fragment `constant`
+### `Fragment` `constant`
 
 ```ts
 Fragment: symbol
@@ -219,7 +219,7 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))
 
 ---
 
-### onMount `function`
+### `onMount` `function`
 
 ```ts
 onMount(fn: () => CleanupFn | void): void
@@ -253,7 +253,7 @@ const Timer = () => {
 
 ---
 
-### onUnmount `function`
+### `onUnmount` `function`
 
 ```ts
 onUnmount(fn: () => void): void
@@ -273,7 +273,7 @@ onUnmount(() => {
 
 ---
 
-### onUpdate `function`
+### `onUpdate` `function`
 
 ```ts
 onUpdate(fn: () => void): void
@@ -293,7 +293,7 @@ onUpdate(() => {
 
 ---
 
-### onErrorCaptured `function`
+### `onErrorCaptured` `function`
 
 ```ts
 onErrorCaptured(fn: (error: unknown) => boolean | void): void
@@ -314,7 +314,7 @@ onErrorCaptured((error) => {
 
 ---
 
-### createContext `function`
+### `createContext` `function`
 
 ```ts
 createContext<T>(defaultValue: T): Context<T>
@@ -350,7 +350,7 @@ const Child = () => {
 
 ---
 
-### createReactiveContext `function`
+### `createReactiveContext` `function`
 
 ```ts
 createReactiveContext<T>(defaultValue: T): ReactiveContext<T>
@@ -381,7 +381,7 @@ const Child = () => {
 
 ---
 
-### provide `function`
+### `provide` `function`
 
 ```ts
 provide<T>(ctx: Context<T> | ReactiveContext<T>, value: T): void
@@ -410,7 +410,7 @@ function App() {
 
 ---
 
-### useContext `function`
+### `useContext` `function`
 
 ```ts
 useContext<T>(ctx: Context<T>): T
@@ -429,7 +429,7 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T
 
 ---
 
-### Show `component`
+### `Show` `component`
 
 ```ts
 <Show when={condition} fallback={alternative}>{children}</Show>
@@ -455,7 +455,7 @@ Reactive conditional rendering. Mounts children when `when` is truthy, unmounts 
 
 ---
 
-### Async `component`
+### `Async` `component`
 
 ```ts
 <Async of={source} pending={…} error={(e) => …} empty={…}>{(data) => …}</Async>
@@ -488,7 +488,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
 
 ---
 
-### use `function`
+### `use` `function`
 
 ```ts
 use<T extends Element>(...directives: DirectiveEntry<T>[]): RefCallback<T>
@@ -519,7 +519,7 @@ const clickOutside = (cb: () => void): Directive => (el) => {
 
 ---
 
-### Switch `component`
+### `Switch` `component`
 
 ```ts
 <Switch fallback={default}>{Match children}</Switch>
@@ -547,7 +547,7 @@ Multi-branch conditional rendering. Renders the first `<Match>` child whose `whe
 
 ---
 
-### Match `component`
+### `Match` `component`
 
 ```ts
 <Match when={condition}>{children}</Match>
@@ -568,7 +568,7 @@ A branch inside a `<Switch>`. Renders its children when `when` is truthy and it 
 
 ---
 
-### For `component`
+### `For` `component`
 
 ```ts
 <For each={items} by={keyFn}>{renderFn}</For>
@@ -600,7 +600,7 @@ const items = signal([
 
 ---
 
-### Suspense `component`
+### `Suspense` `component`
 
 ```ts
 <Suspense fallback={loadingUI}>{children}</Suspense>
@@ -622,7 +622,7 @@ const LazyPage = lazy(() => import("./HeavyPage"))
 
 ---
 
-### ErrorBoundary `component`
+### `ErrorBoundary` `component`
 
 ```ts
 <ErrorBoundary fallback={(err, reset) => VNodeChild}>{children}</ErrorBoundary>
@@ -654,7 +654,7 @@ Catches render errors thrown by descendant components. The `fallback` receives t
 
 ---
 
-### lazy `function`
+### `lazy` `function`
 
 ```ts
 lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent
@@ -677,7 +677,7 @@ const Settings = lazy(() => import("./pages/Settings"))
 
 ---
 
-### Dynamic `component`
+### `Dynamic` `component`
 
 ```ts
 <Dynamic component={comp} {...props} />
@@ -698,7 +698,7 @@ const current = signal("home")
 
 ---
 
-### cx `function`
+### `cx` `function`
 
 ```ts
 cx(value: ClassValue): string
@@ -726,7 +726,7 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 
 ---
 
-### useControllableState `function`
+### `useControllableState` `function`
 
 ```ts
 useControllableState<T>(options: { value: () => T | undefined; defaultValue: T; onChange?: (value: T) => void }): [() => T, (next: T | ((prev: T) => T)) => void]
@@ -759,7 +759,7 @@ const Switch = (props: { checked?: boolean; onChange?: (v: boolean) => void }) =
 
 ---
 
-### useColorMode `function`
+### `useColorMode` `function`
 
 ```ts
 useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()
@@ -793,7 +793,7 @@ const Badge = () => {
 
 ---
 
-### splitProps `function`
+### `splitProps` `function`
 
 ```ts
 splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]
@@ -820,7 +820,7 @@ const Button = (props: { class?: string; onClick: () => void; children: VNodeChi
 
 ---
 
-### mergeProps `function`
+### `mergeProps` `function`
 
 ```ts
 mergeProps<T extends object[]>(...sources: T): MergedProps<T>
@@ -846,7 +846,7 @@ const Button = (props: { size?: string; variant?: string }) => {
 
 ---
 
-### removeUndefinedProps `function`
+### `removeUndefinedProps` `function`
 
 ```ts
 removeUndefinedProps<T>(props: T): { [K in keyof T as T[K] extends undefined ? never : K]: T[K] }
@@ -871,7 +871,7 @@ const merged = mergeProps(defaults, filtered)
 
 ---
 
-### createUniqueId `function`
+### `createUniqueId` `function`
 
 ```ts
 createUniqueId(): string
@@ -897,7 +897,7 @@ const LabeledInput = (props: { label: string }) => {
 
 ---
 
-### Portal `component`
+### `Portal` `component`
 
 ```ts
 <Portal target={element}>{children}</Portal>
@@ -919,7 +919,7 @@ Render children into a DOM element outside the component tree (typically `docume
 
 ---
 
-### mapArray `function`
+### `mapArray` `function`
 
 ```ts
 mapArray<T, U>(source: () => T[], getKey: (item: T) => string | number, map: (item: T) => U): () => U[]
@@ -943,7 +943,7 @@ const doubled = mapArray(() => items(), (item) => item.id, (item) => item.n * 2)
 
 ---
 
-### createRef `function`
+### `createRef` `function`
 
 ```ts
 createRef<T>(): Ref<T>
@@ -963,7 +963,7 @@ return <input ref={inputRef} />
 
 ---
 
-### elementRef `function`
+### `elementRef` `function`
 
 ```ts
 elementRef<T = HTMLElement>(): ElementRef<T>
@@ -995,7 +995,7 @@ function Card() {
 
 ---
 
-### nativeCompat `function`
+### `nativeCompat` `function`
 
 ```ts
 <T>(fn: T) => T
@@ -1022,7 +1022,7 @@ export const RouterView = nativeCompat(function RouterView(props) {
 
 ---
 
-### isNativeCompat `function`
+### `isNativeCompat` `function`
 
 ```ts
 (fn: unknown) => boolean
@@ -1042,7 +1042,7 @@ return wrapCompatComponent(type)(props)
 
 ---
 
-### NATIVE_COMPAT_MARKER `constant`
+### `NATIVE_COMPAT_MARKER` `constant`
 
 ```ts
 symbol
@@ -1063,7 +1063,7 @@ import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
 
 ---
 
-### Defer `component`
+### `Defer` `component`
 
 ```ts
 <Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>
@@ -1095,7 +1095,7 @@ Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided)
 
 ---
 
-### registerErrorHandler / reportError `function`
+### `registerErrorHandler / reportError` `function`
 
 ```ts
 registerErrorHandler(handler: (ctx: ErrorContext) => void) => () => void · reportError(ctx: ErrorContext) => void
@@ -1126,7 +1126,7 @@ registerErrorHandler((ctx) => {
 
 ---
 
-### isClient / isServer `constant`
+### `isClient / isServer` `constant`
 
 ```ts
 isClient: boolean · isServer: boolean
@@ -1153,7 +1153,7 @@ if (isClient) {
 
 ---
 
-### defineComponent `function`
+### `defineComponent` `function`
 
 ```ts
 <P>(fn: ComponentFn<P>) => ComponentFn<P>
@@ -1174,7 +1174,7 @@ const Button = defineComponent((props: { label: string }) => <button>{props.labe
 
 ---
 
-### ExtractProps `type`
+### `ExtractProps` `type`
 
 ```ts
 type ExtractProps<T> = /* matches up to 4 overloads, unions the props */ T extends ComponentFn<infer P> ? P : T
@@ -1201,7 +1201,7 @@ type Props = ExtractProps<typeof Iterator>
 
 ---
 
-### HigherOrderComponent `type`
+### `HigherOrderComponent` `type`
 
 ```ts
 type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>

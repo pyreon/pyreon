@@ -72,22 +72,22 @@ const myPreset: Preset = {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`presets`](#presets) | constant | The full catalog as one `as const` map — 122 entries, every one also available as a named export (`fadeUp`, `bounceIn`,  |
-| [`createFade`](#createfade) | function | Factory for fade presets. |
-| [`createSlide`](#createslide) | function | Factory for slide presets — same shape as `createFade` but `direction` defaults to `'up'` (always includes movement). |
-| [`createScale`](#createscale) | function | Factory for scale presets — enters from `scale(from)` + opacity 0 to `scale(1)` + opacity 1; leave reverses. |
-| [`createRotate`](#createrotate) | function | Factory for rotation presets — enters from `rotate(-degrees)` + opacity 0 to `rotate(0)`; the leave ends at `rotate(+deg |
-| [`createBlur`](#createblur) | function | Factory for blur presets — enters from `blur(amount)` + opacity 0 to `blur(0px)` + opacity 1. |
-| [`compose`](#compose) | function | Merge multiple presets into one. |
-| [`withDuration`](#withduration) | function | Return a copy of the preset with new durations — replaces the FIRST duration token (e.g. |
-| [`withEasing`](#witheasing) | function | Return a copy of the preset with new easing — replaces the TRAILING easing token (`ease`, `ease-in`, `ease-out`, `ease-i |
-| [`withDelay`](#withdelay) | function | Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition strin |
-| [`reverse`](#reverse) | function | Swap the enter and leave phases of a preset — ALL fields are swapped, style-form (`enterStyle` ↔ `leaveStyle`, `enterToS |
-| [`Preset`](#preset) | type | A preset is a plain object with up to 12 optional fields: six style-form (`enterStyle` / `enterToStyle` : `CSSProperties |
+| [`presets`](#presets-constant) | constant | The full catalog as one `as const` map — 122 entries, every one also available as a named export (`fadeUp`, `bounceIn`,  |
+| [`createFade`](#createfade-function) | function | Factory for fade presets. |
+| [`createSlide`](#createslide-function) | function | Factory for slide presets — same shape as `createFade` but `direction` defaults to `'up'` (always includes movement). |
+| [`createScale`](#createscale-function) | function | Factory for scale presets — enters from `scale(from)` + opacity 0 to `scale(1)` + opacity 1; leave reverses. |
+| [`createRotate`](#createrotate-function) | function | Factory for rotation presets — enters from `rotate(-degrees)` + opacity 0 to `rotate(0)`; the leave ends at `rotate(+deg |
+| [`createBlur`](#createblur-function) | function | Factory for blur presets — enters from `blur(amount)` + opacity 0 to `blur(0px)` + opacity 1. |
+| [`compose`](#compose-function) | function | Merge multiple presets into one. |
+| [`withDuration`](#withduration-function) | function | Return a copy of the preset with new durations — replaces the FIRST duration token (e.g. |
+| [`withEasing`](#witheasing-function) | function | Return a copy of the preset with new easing — replaces the TRAILING easing token (`ease`, `ease-in`, `ease-out`, `ease-i |
+| [`withDelay`](#withdelay-function) | function | Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition strin |
+| [`reverse`](#reverse-function) | function | Swap the enter and leave phases of a preset — ALL fields are swapped, style-form (`enterStyle` ↔ `leaveStyle`, `enterToS |
+| [`Preset`](#preset-type) | type | A preset is a plain object with up to 12 optional fields: six style-form (`enterStyle` / `enterToStyle` : `CSSProperties |
 
 ## API
 
-### presets `constant`
+### `presets` `constant`
 
 ```ts
 Record<string, Preset>
@@ -114,7 +114,7 @@ const Dynamic = kinetic('div').preset(presets[userChoice])    // 'fadeUp' | 'sca
 
 ---
 
-### createFade `function`
+### `createFade` `function`
 
 ```ts
 (options?: FadeOptions) => Preset
@@ -142,7 +142,7 @@ createFade({ duration: 500, easing: 'ease-in-out' })
 
 ---
 
-### createSlide `function`
+### `createSlide` `function`
 
 ```ts
 (options?: SlideOptions) => Preset
@@ -169,7 +169,7 @@ createSlide({ duration: 400, leaveDuration: 250 })
 
 ---
 
-### createScale `function`
+### `createScale` `function`
 
 ```ts
 (options?: ScaleOptions) => Preset
@@ -196,7 +196,7 @@ createScale({ from: 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' })  // spri
 
 ---
 
-### createRotate `function`
+### `createRotate` `function`
 
 ```ts
 (options?: RotateOptions) => Preset
@@ -223,7 +223,7 @@ createRotate({ degrees: -90 })  // counter-clockwise enter
 
 ---
 
-### createBlur `function`
+### `createBlur` `function`
 
 ```ts
 (options?: BlurOptions) => Preset
@@ -250,7 +250,7 @@ createBlur({ amount: 8, scale: 0.95 })  // blur + scale
 
 ---
 
-### compose `function`
+### `compose` `function`
 
 ```ts
 (...items: Preset[]) => Preset
@@ -283,7 +283,7 @@ const fancy = compose(fade, scaleIn, blurIn)
 
 ---
 
-### withDuration `function`
+### `withDuration` `function`
 
 ```ts
 (preset: Preset, enterMs: number, leaveMs?: number) => Preset
@@ -318,7 +318,7 @@ const slow = withDuration(fadeUp, 600, 400)
 
 ---
 
-### withEasing `function`
+### `withEasing` `function`
 
 ```ts
 (preset: Preset, enterEasing: string, leaveEasing?: string) => Preset
@@ -351,7 +351,7 @@ const springy = withEasing(scaleIn, 'cubic-bezier(0.34, 1.56, 0.64, 1)')
 
 ---
 
-### withDelay `function`
+### `withDelay` `function`
 
 ```ts
 (preset: Preset, enterDelayMs: number, leaveDelayMs?: number) => Preset
@@ -381,7 +381,7 @@ const delayed = withDelay(fadeUp, 150, 0)
 
 ---
 
-### reverse `function`
+### `reverse` `function`
 
 ```ts
 (preset: Preset) => Preset
@@ -413,7 +413,7 @@ const flipped = reverse(fadeUp)
 
 ---
 
-### Preset `type`
+### `Preset` `type`
 
 ```ts
 type Preset = { enterStyle?: CSSProperties; enterToStyle?: CSSProperties; enterTransition?: string; leaveStyle?: CSSProperties; leaveToStyle?: CSSProperties; leaveTransition?: string; enter?: string; enterFrom?: string; enterTo?: string; leave?: string; leaveFrom?: string; leaveTo?: string }
