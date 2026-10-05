@@ -189,7 +189,7 @@ Behaviour:
 - One run per repository at a time (a lock in the git common dir); a stale lock from a crashed run is reclaimed.
 - Each other step has a 300s timeout (`PYREON_PRE_PUSH_TIMEOUT_SEC`). A timed-out step is killed with guidance.
 - It warns about `vitest` processes older than 10 minutes (possibly from another worktree) but does not kill them.
-- A root-file change (including any `.github/workflows/**` edit, per `scripts/affected.ts:isRootFile`) resolves to `--filter=*` and raises the per-step timeout to 1800s automatically. That run includes `@pyreon/native-compiler`, whose verdict cache is cold in a fresh worktree. A kill shows as `Signaled with code SIGKILL`, which looks like a crashed test. Do not bypass it; rerun (the first run warmed part of the cache).
+- A root-file change (including any `.github/workflows/**` edit, per `scripts/affected.ts:isRootFile`) resolves to `--filter=*`: typecheck keeps its 1800s budget and tests receive 7200s. An affected set containing `@pyreon/native-compiler` also receives the 7200s test budget. Real-SDK fixtures compile outside the verdict cache, so a warm cache does not guarantee a short run; a cold full wall was still compiling after one hour. Explicit `PYREON_PRE_PUSH_TIMEOUT_SEC` overrides every step budget. A clock timeout fails loudly and cleans up only the owned tree; do not bypass tests or confuse SIGTERM/SIGKILL with an assertion failure.
 - No committed changes versus `origin/main`: typecheck and tests are skipped.
 
 Bypass: `PYREON_SKIP_PRE_PUSH=1 git push` (one-off) or `git push --no-verify`. Disable with `git config --unset core.hooksPath`; re-enable with `bun scripts/install-git-hooks.ts`.

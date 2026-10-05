@@ -161,7 +161,7 @@ Any functional test can lose component state when another worker's cold imports 
 
 ## The native compile-validation suite is verdict-cached
 
-`@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc`/`kotlinc`. Verdicts are content-addressed on disk (`validate-cache.ts`), keyed on validator kind, compiler version, exact stub text and the exact bytes compiled. The full suite runs about 397s uncached and about 6s warm.
+`@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc`/`kotlinc`. Verdicts are content-addressed on disk (`validate-cache.ts`), keyed on validator kind, compiler version, exact stub text and the exact bytes compiled. Real-SDK fixtures also invoke the compilers directly, outside that cache; a warm validator cache does not imply a cheap complete suite.
 
 Kotlin cache misses are served by one warm compiler JVM per run (`src/kotlin-daemon.ts`): the package's `globalSetup` starts it and passes its spool directory to workers via `PYREON_KOTLIN_DAEMON_SPOOL`. Every failure path falls back to per-check `kotlinc`; `kotlin-daemon.test.ts` asserts both paths agree on accepted and rejected emits. `PYREON_KOTLIN_DAEMON=0` forces the plain path — use it when you distrust a verdict.
 
