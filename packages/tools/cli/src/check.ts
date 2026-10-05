@@ -117,7 +117,7 @@ function resolveTargets(opts: CheckOptions): { files: string[]; fromGit: boolean
 
 export async function check(opts: CheckOptions): Promise<number> {
   const { detectPyreonPatterns, hasPyreonPatterns, detectReactPatterns, hasReactPatterns, migratePyreonCode, migrateReactCode } =
-    await import('@pyreon/compiler')
+    await import('@pyreon/compiler/analyze')
 
   const { files, fromGit } = resolveTargets(opts)
 

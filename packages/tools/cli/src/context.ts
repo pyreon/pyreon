@@ -7,9 +7,9 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { type ProjectContext, generateContext as scanProject } from '@pyreon/compiler'
+import { type ProjectContext, generateContext as scanProject } from '@pyreon/compiler/audits'
 
-export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from '@pyreon/compiler'
+export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from '@pyreon/compiler/audits'
 
 export interface ContextOptions {
   cwd: string

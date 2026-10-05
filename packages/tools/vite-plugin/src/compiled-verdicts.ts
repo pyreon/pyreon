@@ -9,7 +9,7 @@
 // the codegen lives here, behind a one-file exclusion, while the rest of the
 // plugin stays fully scanned. Correctness is locked instead by the compiler's
 // emit-equivalence gate + the plugin's transform-driven tests.
-import { analyzeValidate, emitValidator } from '@pyreon/compiler'
+import { analyzeValidate, emitValidator } from '@pyreon/compiler/validate'
 
 /**
  * A strict JS identifier. `info.name` is the ONE user-derived value that flows

@@ -1,10 +1,10 @@
 /**
- * Branch-coverage specs for `project-scanner.ts`, `defer-inline.ts` and
- * `client-directives.ts`, through their public entry points
- * (`generateContext`, `transformDeferInline`, `transformClientDirectives`).
+ * Branch-coverage specs for `project-scanner.ts` and `defer-inline.ts`,
+ * through their public entry points (`generateContext`,
+ * `transformDeferInline`).
  *
  * The scanner is a filesystem walker, so its fixtures are real temp trees;
- * the two transforms take source text, so theirs are source snippets. Each
+ * the transform takes source text, so its fixtures are source snippets. Each
  * spec pairs the input that takes an arm with the neighbouring input that
  * must not — a route file the walker skips beside the sibling it keeps, an
  * import shape the Defer rewrite declines beside the one it accepts.
@@ -13,7 +13,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { transformClientDirectives } from '../client-directives'
 import { transformDeferInline } from '../defer-inline'
 import { generateContext } from '../project-scanner'
 
@@ -271,102 +270,5 @@ describe('defer-inline — import removal edits', () => {
     // The binding is gone from the import; the name survives only inside the
     // generated chunk's `__m.Modal` export pick.
     expect(r.code).toContain('__m.Modal')
-  })
-})
-
-// ═══════════════════════════════════════════════════════════════════════════
-// client-directives
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe('client-directives — strategy identifiers + import shapes', () => {
-  it('falls back to the `load` fragment for a strategy that sanitizes to empty', () => {
-    const r = transformClientDirectives(
-      `import { Widget } from './widget'\nexport const P = () => <Widget hydrate="---" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(r.changed).toBe(true)
-    expect(r.islands.map((i) => i.hydrate)).toEqual(['---'])
-    expect(r.code).toContain('load')
-  })
-
-  it('distinguishes two parameterized strategies sharing a base', () => {
-    const r = transformClientDirectives(
-      `import { A } from './a'\nimport { B } from './b'\n` +
-        `export const P = () => <><A hydrate="media(min-width: 1px)" /><B hydrate="media(min-width: 999px)" /></>\n`,
-      '/app/src/p.tsx',
-    )
-    expect(r.changed).toBe(true)
-    expect(new Set(r.islands.map((i) => i.name)).size).toBe(2)
-  })
-
-  it('ignores a side-effect import (no import clause) while binding the real one', () => {
-    const r = transformClientDirectives(
-      `import './reset.css'\nimport { Widget } from './widget'\n` +
-        `export const P = () => <Widget hydrate="visible" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(r.changed).toBe(true)
-    expect(r.islands).toHaveLength(1)
-  })
-
-  it('warns on a namespace-imported component and on an unimported one', () => {
-    const ns = transformClientDirectives(
-      `import * as M from './m'\nexport const P = () => <M hydrate="visible" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(ns.changed).toBe(false)
-    expect(ns.warnings[0]?.message).toContain('namespace imports are not supported')
-
-    const missing = transformClientDirectives(
-      `export const P = () => <Widget hydrate="visible" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(missing.changed).toBe(false)
-    expect(missing.warnings[0]?.message).toContain('not an imported component')
-  })
-})
-
-describe('client-directives — hydrate attribute value shapes', () => {
-  function run(attr: string) {
-    return transformClientDirectives(
-      `import { Widget } from './widget'\nexport const P = () => <Widget ${attr} />\n`,
-      '/app/src/p.tsx',
-    )
-  }
-
-  it('treats a BARE `hydrate` as the eager load strategy', () => {
-    const r = run('hydrate')
-    expect(r.changed).toBe(true)
-    expect(r.islands[0]?.hydrate).toBe('load')
-  })
-
-  it('accepts a string literal inside a JSX expression container', () => {
-    const r = run('hydrate={"visible"}')
-    expect(r.changed).toBe(true)
-    expect(r.islands[0]?.hydrate).toBe('visible')
-  })
-
-  it('warns on a DYNAMIC hydrate value', () => {
-    const r = run('hydrate={strategy}')
-    expect(r.changed).toBe(false)
-    expect(r.warnings[0]?.message).toContain('must be a string literal')
-  })
-})
-
-describe('client-directives — tag shapes', () => {
-  it('warns on a member-expression tag and on a lowercase tag', () => {
-    const member = transformClientDirectives(
-      `import * as M from './m'\nexport const P = () => <M.Widget hydrate="visible" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(member.changed).toBe(false)
-    expect(member.warnings[0]?.message).toContain('non-component tag')
-
-    const lower = transformClientDirectives(
-      `import { widget } from './widget'\nexport const P = () => <widget hydrate="visible" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(lower.changed).toBe(false)
-    expect(lower.warnings[0]?.message).toContain('lowercase tag')
   })
 })

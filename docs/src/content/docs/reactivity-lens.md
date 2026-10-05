@@ -36,7 +36,7 @@ The one to watch is **`static` where you expected `live`**. `<div>{state}</div>`
 
 ## How it works
 
-The Lens is not a linter guess — it's the **actual compiler output**. `analyzeReactivity(code, file)` (from `@pyreon/compiler`) runs the same reactive/static analysis the JSX transform uses to decide what to wrap in a binding, and returns a per-expression verdict. Both compiler backends (Rust + JS) emit a byte-identical `reactivityLens` span sidecar, so the hint you see is exactly what the compiler will do.
+The Lens is not a linter guess — it's the **actual compiler output**. `analyzeReactivity(code, file)` (from `@pyreon/compiler/analyze`) runs the same reactive/static analysis the JSX transform uses to decide what to wrap in a binding, and returns a per-expression verdict. Both compiler backends (Rust + JS) emit a byte-identical `reactivityLens` span sidecar, so the hint you see is exactly what the compiler will do.
 
 `@pyreon/lint`'s LSP server (`pyreon-lint --lsp`) serves those verdicts as [`textDocument/inlayHint`](https://microsoft.github.io/language-server-protocol/) responses — the standard editor protocol for inline type-like annotations.
 

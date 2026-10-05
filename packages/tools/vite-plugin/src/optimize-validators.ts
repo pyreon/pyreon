@@ -19,7 +19,7 @@
  *
  * @module
  */
-import { analyzeValidate, emitSchemaSource } from '@pyreon/compiler'
+import { analyzeValidate, emitSchemaSource } from '@pyreon/compiler/validate'
 
 /** Collision-proof alias prefix for the injected mini imports (`$` keeps it a valid id). */
 const ALIAS_PREFIX = '_pv$'

@@ -24,7 +24,7 @@ import {
   parseContentConfig,
   readFrontmatter,
   readTitleFromFrontmatter,
-} from '@pyreon/compiler'
+} from '@pyreon/compiler/audits'
 
 export interface ContentEntrySummary {
   /** Slug under the collection (`""` for index, `"getting-started"`, etc.) */
