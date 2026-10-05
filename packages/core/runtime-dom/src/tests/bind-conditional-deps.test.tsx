@@ -19,6 +19,7 @@
 import { transformJSX, transformJSX_JS } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { _bind, computed, renderEffect, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot } from '../template'
 import { _applyProps, _setAttr, _setStyle, mountChild, _bindProp } from '../index'
@@ -187,7 +188,7 @@ describe.each(BACKENDS)('#3782 — conditional reads in compiled reactive attrs 
         const pick = (f: () => boolean) => (f() ? s.b() : s.c())
         const util = { pick }
         const { container, dispose } = mountApp(srcFor(tc.expr), { ...s, both, pick, util })
-        const el = container.querySelector('i') as HTMLElement
+        const el = query(container, 'i')
         const r = rng(seed)
         const check = (step: string) => {
           expect(el.getAttribute('data-x'), `${tc.name} seed ${seed} ${step}`).toBe(
@@ -215,7 +216,7 @@ describe.each(BACKENDS)('#3782 — conditional reads in compiled reactive attrs 
       }`,
       { pending, failed },
     )
-    const btn = container.querySelector('button') as HTMLButtonElement
+    const btn = query(container, 'button')
     expect(btn.disabled).toBe(false)
     pending.set(true)
     expect(btn.disabled).toBe(true)
@@ -240,7 +241,7 @@ describe.each(BACKENDS)('#3782 — conditional reads in compiled reactive attrs 
       }`,
       { a, b },
     )
-    const el = container.querySelector('button') as HTMLElement
+    const el = query(container, 'button')
     const want = () => (a() && !b() ? '' : null)
     expect(el.getAttribute('data-x')).toBe(want())
     a.set(true)
