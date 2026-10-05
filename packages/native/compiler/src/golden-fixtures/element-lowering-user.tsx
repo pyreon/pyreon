@@ -2,7 +2,7 @@ import { Row, Col, Element } from './mine'
 import { Container as Grid } from '@pyreon/coolgrid'
 import { Text } from '@pyreon/elements'
 
-function Container(props: { children?: unknown }) {
+function Container() {
   return <Text>local</Text>
 }
 
