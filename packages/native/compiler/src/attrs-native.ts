@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { isCanonicalPrimitive } from './canonical-primitives'
-import { isElementsPrimitive } from './elements-native'
+import { isStyleBasePrimitive } from './element-lowering'
 import { resolveThemeToken, type ThemeTable } from './theme-native'
 import type { AttrsComponentIR, ExprIR } from './types'
 
@@ -124,7 +124,7 @@ export function parseAttrsDefn(
 
   const base = readComponentField(unwrap((head.arguments as AnyNode[])?.[0]), name, warnings)
   if (base === null) return null
-  if (!isCanonicalPrimitive(base) && !isElementsPrimitive(base)) {
+  if (!isCanonicalPrimitive(base) && !isStyleBasePrimitive(base)) {
     warnings.push(
       `attrs(${base}) on '${name}': only a CANONICAL @pyreon/primitives base ` +
         `(Stack/Text/Button/…) or @pyreon/elements Element lowers to native — '${base}' has no native ` +

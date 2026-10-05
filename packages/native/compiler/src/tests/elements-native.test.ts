@@ -7,7 +7,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { elementToStack, isElementsPrimitive } from '../elements-native'
+import { isStyleBasePrimitive as isElementsPrimitive } from '../element-lowering'
+import { elementToStack } from '../plugins/elements'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
