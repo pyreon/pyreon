@@ -212,7 +212,8 @@
   },
   "loom": {
     "devPaths": [
-      "src/manifest.ts"
+      "src/manifest.ts",
+      "src/golden-fixtures/**"
     ],
     "ignore": [
       {
