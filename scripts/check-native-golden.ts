@@ -32,7 +32,7 @@
  *   bun scripts/check-native-golden.ts --dump <dir> # write actual outputs for diffing
  */
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -45,6 +45,16 @@ import { REGISTRY } from './check-native-coverage'
 const REPO_ROOT = resolve(SCRIPT_DIR, '..')
 export const GOLDEN_PATH = join(SCRIPT_DIR, 'native-golden.json')
 const TARGETS: readonly TargetLanguage[] = ['swift', 'kotlin']
+
+/** `readdirSync` that treats a missing directory as empty (no separate exists-then-read race). */
+function readdirOrEmpty(dir: string): string[] {
+  try {
+    return readdirSync(dir)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+}
 
 export interface GoldenEntry {
   sha: string
@@ -114,8 +124,7 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
   const examples = join(root, 'examples')
   for (const dir of readdirSync(examples).filter((n) => n.startsWith('native-')).sort()) {
     const src = join(examples, dir, 'src')
-    if (!existsSync(src)) continue
-    for (const f of readdirSync(src).filter((n) => n.endsWith('.tsx') && n !== 'entry-client.tsx').sort()) {
+    for (const f of readdirOrEmpty(src).filter((n) => n.endsWith('.tsx') && n !== 'entry-client.tsx').sort()) {
       out.push({
         key: `example:${dir}/${f}`,
         source: readFileSync(join(src, f), 'utf8'),
@@ -184,11 +193,15 @@ function main(): number {
     console.log(`[check-native-golden] wrote ${Object.keys(compiled.digests).length} entries to ${GOLDEN_PATH}`)
     return 0
   }
-  if (!existsSync(GOLDEN_PATH)) {
+  let goldenText: string
+  try {
+    goldenText = readFileSync(GOLDEN_PATH, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     console.error('[check-native-golden] no golden file; run with --update')
     return 1
   }
-  const golden = JSON.parse(readFileSync(GOLDEN_PATH, 'utf8')) as GoldenFile
+  const golden = JSON.parse(goldenText) as GoldenFile
   const drift = diffGolden(golden.entries, compiled.digests)
   if (drift.length === 0) {
     console.log(`[check-native-golden] OK — ${Object.keys(compiled.digests).length} entries byte-identical to the golden`)

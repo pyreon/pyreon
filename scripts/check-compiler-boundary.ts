@@ -29,7 +29,7 @@
  *   bun scripts/check-compiler-boundary.ts --json
  *   bun scripts/check-compiler-boundary.ts --update   # tighten the baseline (only DOWN)
  */
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -72,6 +72,19 @@ export interface BoundaryCounts {
   hooks: number
 }
 export type BoundaryBaseline = Record<string, BoundaryCounts>
+
+/**
+ * Read a file that may not exist. A missing file is a read miss, not a separate "does it exist"
+ * check followed by a read (that pair is a time-of-check/time-of-use race). Only ENOENT is swallowed.
+ */
+function readOptional(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
 
 const SPECIFIER = /['"`]@pyreon\/([a-z0-9-]+)/g
 const HOOK_LITERAL = /['"`]use[A-Z][A-Za-z0-9]*['"`]/g
@@ -121,8 +134,14 @@ export function measure(spec: CompilerSpec, root = REPO_ROOT): { counts: Boundar
   const base = join(root, spec.dir)
   const files: FileHit[] = []
   const counts: BoundaryCounts = { packages: {}, hooks: 0 }
-  if (!existsSync(base)) return { counts, files }
-  for (const file of walk(base)) {
+  let sources: string[]
+  try {
+    sources = walk(base)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { counts, files }
+    throw error
+  }
+  for (const file of sources) {
     if (spec.generated.some((g) => file.endsWith(g))) continue
     const c = countSource(readFileSync(file, 'utf8'), spec.contract)
     if (Object.keys(c.packages).length === 0 && c.hooks === 0) continue
@@ -170,9 +189,8 @@ function total(c: BoundaryCounts): number {
 function main(): number {
   const args = process.argv.slice(2)
   const measured = COMPILERS.map((spec) => ({ spec, ...measure(spec) }))
-  const baseline: BoundaryBaseline = existsSync(BASELINE_PATH)
-    ? (JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as BoundaryBaseline)
-    : {}
+  const baselineText = readOptional(BASELINE_PATH)
+  const baseline: BoundaryBaseline = baselineText === null ? {} : (JSON.parse(baselineText) as BoundaryBaseline)
 
   if (args.includes('--update')) {
     const next: BoundaryBaseline = {}
