@@ -66,6 +66,8 @@ export async function runAxe(
   surface: Element,
   importAxe: () => Promise<{ run: AxeRun }> = async () =>
     (await import('axe-core')).default as unknown as { run: AxeRun },
+  /** Per-rule overrides layered over the fragment defaults (`atlas verify-browser --axe-rules`). */
+  ruleOverrides: Record<string, { enabled: boolean }> = {},
 ): Promise<AxeReport> {
   try {
     const axe = await importAxe()
@@ -77,6 +79,7 @@ export async function runAxe(
         region: { enabled: false },
         'page-has-heading-one': { enabled: false },
         'landmark-one-main': { enabled: false },
+        ...ruleOverrides,
       },
     })
     return {
