@@ -5083,10 +5083,6 @@ function registerKotlinSynthClass(
   name: string,
 ): string {
   if (ctx.synthesizedDataClasses.some((s) => s.name === name)) return name
-  if (t.fields.length > 0) {
-    const key = structShapeKey(t.fields)
-    if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, name)
-  }
   // Reserve the name BEFORE recursing so a nested field can't re-derive it.
   const entry: { name: string; fields: { name: string; type: TypeIR }[] } = { name, fields: [] }
   ctx.synthesizedDataClasses.push(entry)
