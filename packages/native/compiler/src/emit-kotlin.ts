@@ -67,7 +67,7 @@ import {
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
-  structShapeKey,
+  structShapeKey as rawStructShapeKey,
   literalShapeKey,
   resolveForElementKey,
   forMissingByWarning,
@@ -251,6 +251,14 @@ let _structTypedKeyToName: Map<string, string> = new Map()
  *  exact field-set index above cannot see a literal that omits an optional
  *  field. */
 let _declaredStructs: readonly StructIR[] = []
+
+/**
+ * Shape key with declared-struct references EXPANDED (see `typeShapeKey`), so an
+ * inline `{ data: { id } }` and the lifted struct that stands for it key alike.
+ */
+function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
+  return rawStructShapeKey(fields, (n) => _declaredStructs.find((s) => s.name === n)?.fields)
+}
 /**
  * Synthesized data classes for ANONYMOUS all-scalar-literal object
  * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
@@ -4966,6 +4974,13 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // rewrite `emitKotlinDataClass` renders the nested object as `Any`,
       // which is NOT `@Serializable` and breaks a real Android build.
       if (!ctx) return 'Any'
+      // A shape the file already names — declared, lifted from a prop, or
+      // synthesized earlier — IS that type. Synthesizing a second class for it
+      // gave one value two nominal types (`GetItemDataData` vs
+      // `GetItemDataChildrenData`), which kotlinc rejects at the first place
+      // the two meet. Mirrors emit-swift's `swiftType` object case.
+      const known = knownKotlinShape(t)
+      if (known !== undefined) return known
       return registerKotlinSynthClass(t, ctx, synthesizeDataClassName(ctx.componentName, signalName))
     }
     case 'null':
@@ -5057,12 +5072,21 @@ function synthesizeDataClassName(componentName: string, signalName?: string): st
  * left un-rewritten degrades to `Any` (not `@Serializable`); the rewrite keeps
  * the whole nested tree serialization-safe. Returns `name`.
  */
+function knownKotlinShape(t: Extract<TypeIR, { kind: 'object' }>): string | undefined {
+  if (t.fields.length === 0) return undefined
+  return _structTypedKeyToName.get(structShapeKey(t.fields))
+}
+
 function registerKotlinSynthClass(
   t: Extract<TypeIR, { kind: 'object' }>,
   ctx: KotlinCtx,
   name: string,
 ): string {
   if (ctx.synthesizedDataClasses.some((s) => s.name === name)) return name
+  if (t.fields.length > 0) {
+    const key = structShapeKey(t.fields)
+    if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, name)
+  }
   // Reserve the name BEFORE recursing so a nested field can't re-derive it.
   const entry: { name: string; fields: { name: string; type: TypeIR }[] } = { name, fields: [] }
   ctx.synthesizedDataClasses.push(entry)
@@ -5090,10 +5114,14 @@ function resolveKotlinSynthFieldType(
   }
   const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
   if (ft.kind === 'object') {
+    const known = knownKotlinShape(ft)
+    if (known !== undefined) return { kind: 'typeRef', name: known, args: [] }
     const nested = registerKotlinSynthClass(ft, ctx, uniqueKotlinClassName(ctx, parentName + suffix))
     return { kind: 'typeRef', name: nested, args: [] }
   }
   if (ft.kind === 'array' && ft.element.kind === 'object') {
+    const known = knownKotlinShape(ft.element)
+    if (known !== undefined) return { kind: 'array', element: { kind: 'typeRef', name: known, args: [] } }
     const singular = suffix.endsWith('s') ? suffix.slice(0, -1) : suffix
     const nested = registerKotlinSynthClass(ft.element, ctx, uniqueKotlinClassName(ctx, parentName + singular))
     return { kind: 'array', element: { kind: 'typeRef', name: nested, args: [] } }

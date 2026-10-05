@@ -32,11 +32,14 @@ import {
   type SurfaceChange,
 } from "../core/surface";
 import {
+  reconcileReach,
   resolveNativeCompiler,
   verifyNative,
   worstVerdict,
 } from "../verify/lower";
 import { closest } from "../core/suggest";
+import { byTag } from "../emit/client";
+import { tagFile } from "../core/naming";
 import {
   CONTRACT_FORMATS,
   contractDiff,
@@ -805,17 +808,26 @@ async function runChecked(
   // `check` and `--dry-run` compute everything and write nothing.
   const writes = argv.command === "generate" && !argv.dryRun;
   const runs: RunOutcome[] = [];
-  for (const { config, result } of generated) {
-    const needsNative = result.files.some((f) =>
+  for (const { config, result: staticResult } of generated) {
+    const needsNative = staticResult.files.some((f) =>
       f.path.endsWith(".native.tsx"),
     );
     if (needsNative) native ??= resolveNativeCompiler();
     const compiler = needsNative ? await native : undefined;
     const verify = verifyNative(
-      result.files,
+      staticResult.files,
       compiler?.transform,
       compiler?.compile,
     );
+    // The static reach says what SHOULD lower; the verifier says what did.
+    const moduleOps = new Map<string, string[]>();
+    for (const [tag, ops] of byTag(staticResult.doc)) {
+      moduleOps.set(`${tagFile(tag)}.native.tsx`, ops.map((o) => o.id));
+    }
+    const result = {
+      ...staticResult,
+      reach: reconcileReach(staticResult.reach, moduleOps, verify),
+    };
 
     // Read the PREVIOUS surface before the write loop overwrites it. This is
     // the only moment both versions exist, and it is what turns "your spec
