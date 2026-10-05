@@ -13,6 +13,7 @@ import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
   typeIsOptional, buildInferenceCtx, buildModuleConstTypes, inferReturnType, inferType, moduleConstType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
+import { canonicalizeHookBindings } from './hook-binding'
 import type {
   AttrIR,
   ChildIR,
@@ -511,6 +512,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // kotlinc emit), so the finding is editor-clickable without new plumbing.
   const fatal = ast.errors.find((e) => e.severity !== 'Warning')
   if (fatal) throw new Error(formatParseError(fatal, filename, source))
+  // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
+  // framework hook is renamed to its canonical export, and a same-named user
+  // function or foreign import stops being claimed (see hook-binding.ts).
+  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, NATIVE_LOWERED_HOOKS))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a

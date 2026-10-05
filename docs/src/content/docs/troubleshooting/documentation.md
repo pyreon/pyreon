@@ -55,6 +55,12 @@ Reactive attributes use `attr={() => …}`. If an attr's type in `packages/core/
 
 ---
 
+### Matching a hook by its bare callee name misclassifies a same-named user function, a foreign import and an aliased import
+
+PMTC compared `callee.name === 'useOnline'` at about sixty sites, so a user's own `useOnline` lowered to the framework container, `import { useOnline } from './my-hooks'` was claimed as `@pyreon/hooks`, and an aliased import matched nothing and dropped the declaration with no warning. Fixed once at the AST seam all sites read: `hook-binding.ts` renames the AST (alias to canonical, non-framework bindings to `<name>_`). A name that is neither imported nor declared still lowers, deliberately, since snippets omit imports. Resolve what a name is bound to before a recognizer keys on it. Reference: `packages/native/compiler/src/hook-binding.ts`; tests `hook-binding.test.ts` and the `check-native-golden` corpus.
+
+---
+
 ### SwiftUI presentation modifiers on `EmptyView()` never present
 
 `EmptyView` is not in the render tree, so `.sheet`/`.alert`/`.popover` attached to it are inert, and it still typechecks. PMTC's `<Modal>` anchors to `Color.clear.frame(width: 0, height: 0).sheet(…)`. Compose composes a `Dialog` node and has no such requirement, so check each target on a device when the mechanisms differ. Reference: `packages/native/compiler/src/emit-swift.ts` (Modal); test `examples/native-counter-ios/iosUITests/PyreonCounterUITests.swift`.
