@@ -107,7 +107,7 @@ import {
 import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
-import { kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
+import { kotlinEnumEntry, kotlinIdent, kotlinMember, localBase, safeIdent } from './identifier-safety'
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
@@ -440,7 +440,7 @@ function kotlinStructCtorArgs(
       const isInt =
         (vt.kind === 'number' && vt.float !== true) ||
         (f.value.kind === 'literal' && typeof f.value.value === 'number' && Number.isInteger(f.value.value) && f.value.float !== true)
-      return `${f.name} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
+      return `${kotlinMember(f.name)} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
     })
     .join(', ')
 }
@@ -1227,9 +1227,9 @@ function emitKotlinStore(s: StoreDefnIR): string {
     // cannot infer T from `mutableStateOf(listOf())` (same shape the
     // component signal emit already handles).
     if (f.type.kind === 'array' && f.initial.kind === 'array' && f.initial.elements.length === 0) {
-      lines.push(`    var ${f.name} by mutableStateOf<${kotlinType(f.type)}>(listOf())`)
+      lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf<${kotlinType(f.type)}>(listOf())`)
     } else {
-      lines.push(`    var ${f.name} by mutableStateOf(${init})`)
+      lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf(${init})`)
     }
   }
   // v2 — computeds + methods on the object (mirror of emitSwiftStore;
@@ -1282,7 +1282,7 @@ function emitKotlinModel(m: ModelDefnIR): string {
   const lines: string[] = []
   lines.push(`object PyreonModel_${m.modelId} : PyreonModelProtocol {`)
   for (const f of m.fields) {
-    lines.push(`    var ${f.name} by mutableStateOf(${emitKotlinExpr(f.initial, 4)})`)
+    lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf(${emitKotlinExpr(f.initial, 4)})`)
   }
   // Views + actions on the object — mirror of emitSwiftModel; see
   // emitKotlinStore for the module-state swap rationale. `selfParam`
@@ -1373,7 +1373,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
           : 'Boolean'
     const initial =
       field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${field.name}: ${t} = ${initial},`)
+    lines.push(`    var ${kotlinMember(field.name)}: ${t} = ${initial},`)
   }
   lines.push(`)`)
   lines.push(``)
@@ -1669,10 +1669,10 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   for (const f of zs.fields) {
     const t = kotlinFieldType(f.type)
     if (f.optional) {
-      lines.push(`    var ${f.name}: ${t}? = null,`)
+      lines.push(`    var ${kotlinMember(f.name)}: ${t}? = null,`)
     } else {
       const initial = kotlinFieldInitial(f.type)
-      lines.push(`    var ${f.name}: ${t} = ${initial},`)
+      lines.push(`    var ${kotlinMember(f.name)}: ${t} = ${initial},`)
     }
   }
   lines.push(`) {`)
@@ -1692,7 +1692,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       const nestedType = `PyreonZodSchema_${f.type.schemaName}`
       if (f.optional) {
         lines.push(
-          `            val ${f.name}Val: ${nestedType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
+          `            val ${localBase(f.name)}Val: ${nestedType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
         )
         lines.push(
           `                val raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(nestedType)})`,
@@ -1701,13 +1701,13 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
         lines.push(`            } else null`)
       } else {
         lines.push(
-          `            val ${f.name}Raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>)`,
+          `            val ${localBase(f.name)}Raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>)`,
         )
         lines.push(
           `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(nestedType)})`,
         )
         lines.push(
-          `            val ${f.name}Val = ${nestedType}.parse(${f.name}Raw)`,
+          `            val ${localBase(f.name)}Val = ${nestedType}.parse(${localBase(f.name)}Raw)`,
         )
       }
       continue
@@ -1723,7 +1723,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       const arrayType = `List<${nestedType}>`
       if (f.optional) {
         lines.push(
-          `            val ${f.name}Val: ${arrayType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
+          `            val ${localBase(f.name)}Val: ${arrayType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
         )
         lines.push(
           `                val raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(arrayType)})`,
@@ -1732,13 +1732,13 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
         lines.push(`            } else null`)
       } else {
         lines.push(
-          `            val ${f.name}Raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>)`,
+          `            val ${localBase(f.name)}Raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>)`,
         )
         lines.push(
           `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(arrayType)})`,
         )
         lines.push(
-          `            val ${f.name}Val = ${f.name}Raw.map { ${nestedType}.parse(it) }`,
+          `            val ${localBase(f.name)}Val = ${localBase(f.name)}Raw.map { ${nestedType}.parse(it) }`,
         )
       }
       continue
@@ -1746,13 +1746,13 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     if (f.optional) {
       // Optional field: missing → null, present-but-wrong-type → throw
       lines.push(
-        `            val ${f.name}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) (input[${kotlinStr(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
+        `            val ${localBase(f.name)}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) (input[${kotlinStr(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
       )
       // Gap 4 v3 — constraints on optional fields apply ONLY when present;
       // the null branch above leaves the field null untouched.
       emitKotlinScalarConstraints(
         lines,
-        `${f.name}Val`,
+        `${localBase(f.name)}Val`,
         f.type,
         f.constraints,
         f.name,
@@ -1763,7 +1763,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       // when the array is present.
       emitKotlinArrayElementConstraints(
         lines,
-        `${f.name}Val`,
+        `${localBase(f.name)}Val`,
         f.type,
         f.name,
         12,
@@ -1772,7 +1772,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       continue
     }
     lines.push(
-      `            val ${f.name}Val = (input[${kotlinStr(f.name)}] as? ${t})`,
+      `            val ${localBase(f.name)}Val = (input[${kotlinStr(f.name)}] as? ${t})`,
     )
     lines.push(
       `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)})`,
@@ -1780,7 +1780,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     // Gap 4 v2.1 — scalar constraints.
     emitKotlinScalarConstraints(
       lines,
-      `${f.name}Val`,
+      `${localBase(f.name)}Val`,
       f.type,
       f.constraints,
       f.name,
@@ -1790,14 +1790,14 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     // Gap 4 v3 — per-element constraints for required array fields.
     emitKotlinArrayElementConstraints(
       lines,
-      `${f.name}Val`,
+      `${localBase(f.name)}Val`,
       f.type,
       f.name,
       12,
       /* nullableTarget */ false,
     )
   }
-  const ctorArgs = zs.fields.map((f) => `${f.name} = ${f.name}Val`).join(', ')
+  const ctorArgs = zs.fields.map((f) => `${kotlinMember(f.name)} = ${localBase(f.name)}Val`).join(', ')
   lines.push(
     `            return PyreonZodSchema_${zs.bindingName}(${ctorArgs})`,
   )
@@ -1891,7 +1891,7 @@ function emitKotlinEnum(e: EnumIR): string {
   // Each entry is a valid Kotlin name: a kebab-case / keyword union member
   // (`'top-left' | 'class'`) is backtick-quoted, which keeps the serialized
   // name byte-identical to the JS string (no `@SerialName` needed).
-  return `enum class ${e.name} { ${e.cases.map(kotlinMember).join(', ')} }`
+  return `enum class ${e.name} { ${e.cases.map(kotlinEnumEntry).join(', ')} }`
 }
 
 /**
@@ -5145,7 +5145,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // known enum-typed context. Kotlin requires the enum-name
         // qualifier (vs Swift's `.case` type-inferred shorthand).
         if (_activeEnumType !== undefined) {
-          return `${_activeEnumType}.${kotlinMember(e.value)}`
+          return `${_activeEnumType}.${kotlinEnumEntry(e.value)}`
         }
         return kotlinStr(e.value)
       }
@@ -7661,7 +7661,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           } else {
             const target = emitKotlinExpr(plan.source, indent)
             const overrides = plan.fields
-              .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+              .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
               .join(', ')
             return `${target}.copy(${overrides})`
           }
@@ -8966,7 +8966,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     if (b.body !== undefined && b.body.kind === 'identifier' && b.params[0] === b.body.name) {
       kotlinKey = 'it'
     } else if (b.body !== undefined && b.body.kind === 'member') {
-      kotlinKey = `it.${b.body.property}`
+      kotlinKey = `it.${kotlinMember(b.body.property)}`
     } else {
       _emitWarnings.push(
         `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a Compose items() key — this by-callback matches neither; emitting key = { it.id } which likely fails to compile. Key on a field or the element itself.`,
@@ -9035,7 +9035,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (isFieldArrayItems) _fieldArrayItemParamsKotlin.pop()
   return (
     `LazyColumn {\n` +
-    `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${param} ->\n` +
+    `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${kotlinIdent(param)} ->\n` +
     `${pad}${bodyText}\n` +
     `${close}}\n` +
     `${outerClose}}`

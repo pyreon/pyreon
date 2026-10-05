@@ -112,7 +112,7 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
-import { safeIdent, swiftIdent, swiftEnumCase } from './identifier-safety'
+import { localBase, safeIdent, swiftIdent, swiftEnumCase, swiftObservableIdent, withObservableMembers } from './identifier-safety'
 
 /** A backticked keyword keeps its JSON key — only a REWRITTEN name needs a CodingKey. */
 const SWIFT_KEYWORD_ONLY = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -1639,6 +1639,14 @@ let _modelMethodNames: Map<string, Set<string>> = new Map()
  * marker comes from PyreonStore.swift.
  */
 function emitSwiftStore(s: StoreDefnIR): string {
+  // `@Observable` rejects backticked property names — see identifier-safety.
+  return withObservableMembers(
+    [...s.fields.map((f) => f.name), ...(s.computeds ?? []).map((c) => c.name), ...(s.methods ?? []).map((m) => m.name)],
+    () => emitSwiftStoreBody(s),
+  )
+}
+
+function emitSwiftStoreBody(s: StoreDefnIR): string {
   const lines: string[] = []
   lines.push(`@available(iOS 17.0, macOS 14.0, *)`)
   lines.push(`@Observable`)
@@ -1647,7 +1655,7 @@ function emitSwiftStore(s: StoreDefnIR): string {
   for (const f of s.fields) {
     const t = swiftType(f.type)
     const init = emitSwiftExpr(f.initial, 4)
-    lines.push(`    var ${f.name}: ${t} = ${init}`)
+    lines.push(`    var ${swiftIdent(f.name)}: ${t} = ${init}`)
   }
   // v2 — computeds + methods live on the singleton. Their bodies read
   // the store's OWN signals (`tasks()` in source → the `tasks`
@@ -1719,13 +1727,20 @@ function emitSwiftStore(s: StoreDefnIR): string {
  * happens at expression-emit time via `_modelInstances`.
  */
 function emitSwiftModel(m: ModelDefnIR): string {
+  return withObservableMembers(
+    [...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name), ...(m.methods ?? []).map((mm) => mm.name)],
+    () => emitSwiftModelBody(m),
+  )
+}
+
+function emitSwiftModelBody(m: ModelDefnIR): string {
   const lines: string[] = []
   lines.push(`@available(iOS 17.0, macOS 14.0, *)`)
   lines.push(`@Observable`)
   lines.push(`final class PyreonModel_${m.modelId}: PyreonModelProtocol {`)
   lines.push(`    static let shared = PyreonModel_${m.modelId}()`)
   for (const f of m.fields) {
-    lines.push(`    var ${f.name}: ${swiftType(f.type)} = ${emitSwiftExpr(f.initial, 4)}`)
+    lines.push(`    var ${swiftIdent(f.name)}: ${swiftType(f.type)} = ${emitSwiftExpr(f.initial, 4)}`)
   }
   // Views + actions live on the singleton, exactly as a store's computeds
   // + methods do. Their bodies address state through the factory's `self`
@@ -1831,8 +1846,9 @@ function emitSwiftFeature(f: FeatureDefnIR): string {
     const t =
       field.type === 'string' ? 'String' : field.type === 'number' ? 'Int' : 'Bool'
     const initial = field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${field.name}: ${t} = ${initial}`)
+    lines.push(`    var ${swiftIdent(field.name)}: ${t} = ${initial}`)
   }
+  lines.push(...swiftCodingKeysLines(f.fields.map((x) => x.name), '    '))
   lines.push(`}`)
   lines.push(``)
   lines.push(`enum PyreonFeature_${f.bindingName} {`)
@@ -2064,7 +2080,7 @@ function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   const typeName = `PyreonZodSchema_${zs.bindingName}`
   lines.push(`enum ${typeName} {`)
   for (const v of d.variants) {
-    lines.push(`    case ${camelCase(v.caseName)}(PyreonZodSchema_${v.schemaName})`)
+    lines.push(`    case ${swiftIdent(camelCase(v.caseName))}(PyreonZodSchema_${v.schemaName})`)
   }
   lines.push(``)
   lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
@@ -2079,7 +2095,7 @@ function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   for (const v of d.variants) {
     lines.push(`        case ${swiftStr(v.literal)}:`)
     lines.push(
-      `            return .${camelCase(v.caseName)}(try PyreonZodSchema_${v.schemaName}.parse(input))`,
+      `            return .${swiftIdent(camelCase(v.caseName))}(try PyreonZodSchema_${v.schemaName}.parse(input))`,
     )
   }
   lines.push(`        default:`)
@@ -2120,12 +2136,13 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   for (const f of zs.fields) {
     const t = swiftFieldType(f.type)
     if (f.optional) {
-      lines.push(`    var ${f.name}: ${t}? = nil`)
+      lines.push(`    var ${swiftIdent(f.name)}: ${t}? = nil`)
     } else {
       const initial = swiftFieldInitial(f.type)
-      lines.push(`    var ${f.name}: ${t} = ${initial}`)
+      lines.push(`    var ${swiftIdent(f.name)}: ${t} = ${initial}`)
     }
   }
+  lines.push(...swiftCodingKeysLines(zs.fields.map((f) => f.name), '    '))
   lines.push(``)
   // Gap 4 v2 — runtime .parse() / .safeParse() methods. Take a
   // `[String: Any]` (decoded JSON map), type-check each field,
@@ -2141,26 +2158,26 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
       if (f.optional) {
         lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
         lines.push(
-          `            guard let ${f.name}Raw = raw as? [String: Any] else {`,
+          `            guard let ${localBase(f.name)}Raw = raw as? [String: Any] else {`,
         )
         lines.push(
           `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(nestedType)})`,
         )
         lines.push(`            }`)
         lines.push(
-          `            result.${f.name} = try ${nestedType}.parse(${f.name}Raw)`,
+          `            result.${swiftIdent(f.name)} = try ${nestedType}.parse(${localBase(f.name)}Raw)`,
         )
         lines.push(`        }`)
       } else {
         lines.push(
-          `        guard let ${f.name}Raw = input[${swiftStr(f.name)}] as? [String: Any] else {`,
+          `        guard let ${localBase(f.name)}Raw = input[${swiftStr(f.name)}] as? [String: Any] else {`,
         )
         lines.push(
           `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(nestedType)})`,
         )
         lines.push(`        }`)
         lines.push(
-          `        result.${f.name} = try ${nestedType}.parse(${f.name}Raw)`,
+          `        result.${swiftIdent(f.name)} = try ${nestedType}.parse(${localBase(f.name)}Raw)`,
         )
       }
       continue
@@ -2177,26 +2194,26 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
       if (f.optional) {
         lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
         lines.push(
-          `            guard let ${f.name}Raw = raw as? [[String: Any]] else {`,
+          `            guard let ${localBase(f.name)}Raw = raw as? [[String: Any]] else {`,
         )
         lines.push(
           `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(arrayType)})`,
         )
         lines.push(`            }`)
         lines.push(
-          `            result.${f.name} = try ${f.name}Raw.map { try ${nestedType}.parse($0) }`,
+          `            result.${swiftIdent(f.name)} = try ${localBase(f.name)}Raw.map { try ${nestedType}.parse($0) }`,
         )
         lines.push(`        }`)
       } else {
         lines.push(
-          `        guard let ${f.name}Raw = input[${swiftStr(f.name)}] as? [[String: Any]] else {`,
+          `        guard let ${localBase(f.name)}Raw = input[${swiftStr(f.name)}] as? [[String: Any]] else {`,
         )
         lines.push(
           `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(arrayType)})`,
         )
         lines.push(`        }`)
         lines.push(
-          `        result.${f.name} = try ${f.name}Raw.map { try ${nestedType}.parse($0) }`,
+          `        result.${swiftIdent(f.name)} = try ${localBase(f.name)}Raw.map { try ${nestedType}.parse($0) }`,
         )
       }
       continue
@@ -2204,7 +2221,7 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
     if (f.optional) {
       // Optional field — missing → leave nil, present-but-wrong-type → throw
       lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
-      lines.push(`            guard let ${f.name}Val = raw as? ${t} else {`)
+      lines.push(`            guard let ${localBase(f.name)}Val = raw as? ${t} else {`)
       lines.push(
         `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(t)})`,
       )
@@ -2213,20 +2230,20 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
       // field is present (the missing-case left nil above).
       emitSwiftScalarConstraints(
         lines,
-        `${f.name}Val`,
+        `${localBase(f.name)}Val`,
         f.type,
         f.constraints,
         f.name,
         12,
       )
       // Gap 4 v3 — element constraints for optional arrays apply per-element.
-      emitSwiftArrayElementConstraints(lines, `${f.name}Val`, f.type, f.name, 12)
-      lines.push(`            result.${f.name} = ${f.name}Val`)
+      emitSwiftArrayElementConstraints(lines, `${localBase(f.name)}Val`, f.type, f.name, 12)
+      lines.push(`            result.${swiftIdent(f.name)} = ${localBase(f.name)}Val`)
       lines.push(`        }`)
       continue
     }
     lines.push(
-      `        guard let ${f.name}Val = input[${swiftStr(f.name)}] as? ${t} else {`,
+      `        guard let ${localBase(f.name)}Val = input[${swiftStr(f.name)}] as? ${t} else {`,
     )
     lines.push(
       `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(t)})`,
@@ -2235,15 +2252,15 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
     // Gap 4 v2.1 — enforce scalar constraints from the modifier chain.
     emitSwiftScalarConstraints(
       lines,
-      `${f.name}Val`,
+      `${localBase(f.name)}Val`,
       f.type,
       f.constraints,
       f.name,
       8,
     )
     // Gap 4 v3 — enforce per-element constraints for array fields.
-    emitSwiftArrayElementConstraints(lines, `${f.name}Val`, f.type, f.name, 8)
-    lines.push(`        result.${f.name} = ${f.name}Val`)
+    emitSwiftArrayElementConstraints(lines, `${localBase(f.name)}Val`, f.type, f.name, 8)
+    lines.push(`        result.${swiftIdent(f.name)} = ${localBase(f.name)}Val`)
   }
   lines.push(`        return result`)
   lines.push(`    }`)
@@ -2364,6 +2381,27 @@ function emitSwiftEnum(e: EnumIR): string {
  *   - JSON encode/decode round-trip in user code
  *   - Pyreon's storage / network adapter layers
  */
+/**
+ * A `CodingKeys` enum for a Codable struct whose field names are not all
+ * plain Swift identifiers, or `[]` when none needs one.
+ *
+ * A KEYWORD name does NOT need it: `` var `where`: String `` synthesizes the
+ * key "where" (backticks are not part of the name — verified by a real
+ * encode/decode round trip, `identifier-safety-codable.test.ts`). Only a name
+ * `swiftIdent` has to REWRITE (`'my-key'` → `myKey`) diverges from its JSON
+ * key, and then every field of the struct must be listed.
+ */
+function swiftCodingKeysLines(names: readonly string[], pad: string): string[] {
+  if (!names.some((n) => !SWIFT_KEYWORD_ONLY.test(n))) return []
+  const lines = [`${pad}enum CodingKeys: String, CodingKey {`]
+  for (const n of names) {
+    const ident = swiftIdent(n)
+    lines.push(`${pad}  case ${ident}${ident === n || ident === '`' + n + '`' ? '' : ` = ${swiftStr(n)}`}`)
+  }
+  lines.push(`${pad}}`)
+  return lines
+}
+
 function emitSwiftStruct(s: StructIR): string {
   const lines: string[] = []
   // A FUNCTION-typed field can't derive Codable — closures aren't
@@ -2386,15 +2424,7 @@ function emitSwiftStruct(s: StructIR): string {
   // A field whose JS name is not a Swift identifier (`'my-key'`) was renamed
   // by `swiftIdent`; keep the JSON key by declaring CodingKeys for the whole
   // struct so Codable round-trips the ORIGINAL names.
-  const renamed = s.fields.filter((f) => swiftIdent(f.name) !== f.name && !SWIFT_KEYWORD_ONLY.test(f.name))
-  if (codable !== '' && renamed.length > 0) {
-    lines.push('  enum CodingKeys: String, CodingKey {')
-    for (const f of s.fields) {
-      const ident = swiftIdent(f.name)
-      lines.push(`    case ${ident}${ident === f.name ? '' : ` = ${swiftStr(f.name)}`}`)
-    }
-    lines.push('  }')
-  }
+  if (codable !== '') lines.push(...swiftCodingKeysLines(s.fields.map((f) => f.name), '  '))
   lines.push(`}`)
   return lines.join('\n')
 }
@@ -6056,7 +6086,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       // emit at least parses; member access on it won't typecheck, which
       // swiftc reports at the use site.
       if (t.fields.length === 1) return swiftType(t.fields[0]!.type)
-      const fields = t.fields.map((f) => `${f.name}: ${swiftType(f.type)}`).join(', ')
+      const fields = t.fields.map((f) => `${swiftIdent(f.name)}: ${swiftType(f.type)}`).join(', ')
       return `(${fields})`
     }
     case 'null':
@@ -6773,7 +6803,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const instance = e.callee.object.name
         const modelId = _modelInstances.get(instance)!
-        const member = swiftIdent(e.callee.property)
+        const member = swiftObservableIdent(e.callee.property)
         if (
           e.args.length === 0 &&
           _modelReadNames.get(instance)?.has(e.callee.property) === true
@@ -7374,7 +7404,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
         const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
-        return `PyreonStore_${storeId}.shared.${swiftIdent(e.callee.property)}(${args})`
+        return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
       }
       // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
       // object-literal VALUES argument lowers to a Swift dictionary
@@ -7560,7 +7590,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _storeHooks.has(e.callee.object.object.callee.name)
       ) {
         const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
-        return `PyreonStore_${storeId}.shared.${swiftIdent(e.callee.property)}`
+        return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}`
       }
       // Gap 4 v1: write to a store field — `useFoo().store.X.set(v)`
       // rewrites to `PyreonStore_foo.shared.X = v` (Swift @Observable
@@ -7576,7 +7606,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _storeHooks.has(e.callee.object.object.object.callee.name)
       ) {
         const storeId = _storeHooks.get(e.callee.object.object.object.callee.name)!
-        const field = swiftIdent(e.callee.object.property)
+        const field = swiftObservableIdent(e.callee.object.property)
         const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
         return `PyreonStore_${storeId}.shared.${field} = ${value}`
       }
@@ -7606,7 +7636,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         ) {
           isUpdateTarget = true
           const storeId = _storeHooks.get(target.object.object.callee.name)!
-          storeLhs = `PyreonStore_${storeId}.shared.${swiftIdent(target.property)}`
+          storeLhs = `PyreonStore_${storeId}.shared.${swiftObservableIdent(target.property)}`
         }
         if (isUpdateTarget) {
           const fn = e.args[0]!
@@ -8567,7 +8597,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _storeHooks.has(e.object.object.callee.name)
       ) {
         const storeId = _storeHooks.get(e.object.object.callee.name)!
-        return `PyreonStore_${storeId}.shared.${swiftIdent(e.property)}`
+        return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.property)}`
       }
       // Gap 4 v2 follow-up: rewrite `<instance>.<field>` for top-level
       // state-tree model instances. `const counter = model({...}).create()`
@@ -8578,7 +8608,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _modelInstances.has(e.object.name)
       ) {
         const modelId = _modelInstances.get(e.object.name)!
-        return `PyreonModel_${modelId}.shared.${swiftIdent(e.property)}`
+        return `PyreonModel_${modelId}.shared.${swiftObservableIdent(e.property)}`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct struct properties in
@@ -9260,7 +9290,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
       }
       warnUntypeableObjectLiteral(e.fields)
-      const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
+      const fields = e.fields.map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
     case 'paren':
@@ -10547,7 +10577,7 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     if (b.body !== undefined && b.body.kind === 'identifier' && b.params[0] === b.body.name) {
       idKey = 'self'
     } else if (b.body !== undefined && b.body.kind === 'member') {
-      idKey = b.body.property
+      idKey = swiftIdent(b.body.property)
     } else {
       _emitWarnings.push(
         `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a SwiftUI ForEach id — this by-callback matches neither; emitting id: \\.id which likely fails to compile. Key on a field or the element itself.`,
@@ -10616,7 +10646,7 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     }
   }
   if (isFieldArrayItems) _fieldArrayItemParamsSwift.pop()
-  return `ForEach(${items}, id: \\.${idPath}) { ${param} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
+  return `ForEach(${items}, id: \\.${idPath}) { ${swiftIdent(param)} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
 }
 
 /**

@@ -17,7 +17,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 29 entries
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 18 entries
 - **[Bundling Mistakes](/docs/troubleshooting/bundling)** — 6 entries
-- **[Testing Mistakes](/docs/troubleshooting/testing)** — 34 entries
+- **[Testing Mistakes](/docs/troubleshooting/testing)** — 35 entries
 - **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 42 entries
 - **[Build Pipeline Mistakes](/docs/troubleshooting/build)** — 79 entries
 - **[CI / Build Gate Mistakes](/docs/troubleshooting/ci)** — 35 entries
