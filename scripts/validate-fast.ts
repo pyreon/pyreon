@@ -155,6 +155,9 @@ const GATES: Gate[] = [
   { name: 'check-native-primitive-coverage', cmd: 'bun scripts/check-native-primitive-coverage.ts' },
   { name: 'check-native-cosource', cmd: 'bun scripts/check-native-cosource.ts' },
   { name: 'check-native-srcdirs-drift', cmd: 'bun scripts/check-native-srcdirs-drift.ts' },
+  // The published tarballs of the source-shipping native runtimes must be consumable
+  // (#3787: a Package.swift testTarget with no shipped Tests/ broke every consumer).
+  { name: 'check-native-tarballs', cmd: 'bun scripts/check-native-tarballs.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
   { name: 'check-skip-guards', cmd: 'bun scripts/check-skip-guards.ts' },
   { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },
