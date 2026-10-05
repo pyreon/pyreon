@@ -184,6 +184,31 @@ describe('instance-owned compiler plugins', () => {
       expect(actual).toEqual(baseline)
     },
   )
+  it('reads each declared option getter once, including inherited options', () => {
+    const reads = { target: 0, filename: 0, fonts: 0 }
+    const prototype = {
+      get target() {
+        reads.target++
+        return 'swift' as const
+      },
+      get filename() {
+        reads.filename++
+        return 'Outer.tsx'
+      },
+      get fonts() {
+        reads.fonts++
+        return { Brand: 'Original' }
+      },
+    }
+    const options = Object.create(prototype) as typeof prototype
+    const expected = transform(APP, {
+      target: 'swift',
+      filename: 'Outer.tsx',
+      fonts: { Brand: 'Original' },
+    })
+    expect(createCompiler().transform(APP, options)).toEqual(expected)
+    expect(reads).toEqual({ target: 1, filename: 1, fonts: 1 })
+  })
   it('isolates cached plugin IR from subsequent passes and compilers', () => {
     const shared = parsePyreon(APP)
     const compiler = createCompiler({

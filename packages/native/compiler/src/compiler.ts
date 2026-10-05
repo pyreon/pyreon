@@ -169,9 +169,13 @@ export function createCompiler<Target extends string = never>(
   return Object.freeze({
     targets,
     transform(source: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
-      const resolvedOptions = { ...options }
-      if (resolvedOptions.fonts) resolvedOptions.fonts = Object.freeze({ ...resolvedOptions.fonts })
-      Object.freeze(resolvedOptions)
+      // Capture declared values once, including class/prototype getters.
+      const { target, filename, fonts } = options
+      const resolvedOptions = Object.freeze({
+        target,
+        ...(filename !== undefined ? { filename } : {}),
+        ...(fonts ? { fonts: Object.freeze({ ...fonts }) } : {}),
+      })
       const backend = backends.get(resolvedOptions.target)
       if (!backend) {
         throw new Error(
