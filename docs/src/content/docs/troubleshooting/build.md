@@ -446,7 +446,7 @@ Workerd has no filesystem, so `readFileSync` of `template.html` failed and SSR s
 
 ### Do not statically value-import a heavy package from a cheap entry point.
 
-`@pyreon/lint`'s LSP module is re-exported from the package index and imported by `cli.ts`, so a top-level `import { analyzeReactivity } from '@pyreon/compiler'` cold-loaded the whole compiler for every CLI importer and timed out a CI hook. Keep types as `import type` and lazy-load the value (`packages/tools/lint/src/lsp/index.ts:loadAnalyze`: `_v ??= (await import('@pyreon/compiler')).analyzeReactivity`). Warm local runs hide this; a CI-only hook timeout on an unrelated `import('../X')` points here.
+`@pyreon/lint`'s LSP module is re-exported from the package index and imported by `cli.ts`, so a top-level `import { analyzeReactivity } from '@pyreon/compiler'` cold-loaded the whole compiler for every CLI importer and timed out a CI hook. Keep types as `import type` and lazy-load the value (`packages/tools/lint/src/lsp/index.ts:loadAnalyze`: `_v ??= (await import('@pyreon/compiler')).analyzeReactivity`). Warm local runs hide this; a CI-only hook timeout on an unrelated `import('../X')` points here. Also verify that a cheap subcommand returns before doing work: `pyreon doctor --help` previously ran the audit. A gate-name substring can appear in both help and an audit report; assert the actual usage header and exercise the built bin.
 
 ---
 
