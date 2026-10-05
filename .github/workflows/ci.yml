@@ -774,7 +774,7 @@ jobs:
           exit 1
       - name: Secrets Scan (trufflehog, verified only)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
+        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
         with:
           # Pinned to the action's own release — the default is `latest`.
           version: 3.97.0
@@ -1436,7 +1436,7 @@ jobs:
       # with it loaded; the equivalence harness asserts every JS-path output
       # matches the Rust path. Without it only the JS fallback is exercised —
       # which is exactly what shipped the 6 divergences caught in #491.
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master — pinned (OpenSSF Pinned-Dependencies)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         with:
           toolchain: stable
