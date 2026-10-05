@@ -1,5 +1,248 @@
 # @pyreon/vite-plugin
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3503](https://github.com/pyreon/pyreon/pull/3503) [`fdd4dc2`](https://github.com/pyreon/pyreon/commit/fdd4dc2aef317b1c177f9751fcffb6d88554ff92) Thanks [@vitbokisch](https://github.com/vitbokisch)! - - New `include`/`exclude` options (the `createFilter` convention); by default third-party `node_modules` JSX is no longer transformed (only `@pyreon/*` packages are), so an untranspiled React `.jsx` dependency is not reinterpreted as Pyreon JSX.
+  - A signal store under `src/lib/` reaches the cross-module registry (the prescan skipped every `lib`/`dist`/`build` directory at any depth; only a package-root one is build output), and a plain `.ts` store is registered when transformed, not only by the boot-time prescan.
+  - The sanitizer auto-import is decided on the masked source in prop position only (a comment, a string or `el.innerHTML = ''` no longer pins the side-effect import) and is appended, so the compiler's source map is no longer shifted by a line.
+  - The signal-export registry recognises aliased Plain Mode markers (`import { state as s } from '@pyreon/core/plain'`) — an aliased store's exports were never registered, so a classic importer rendered the signal's source text; `.js`/`.mjs`/`.cjs`/`.cts` plain stores are transformed (only `.ts`/`.mts` were, while the prescan walked `.js`).
+  - Framework-file detection for compat mode is by package identity, so npm consumers are handled like the monorepo; the `ssrTemplate` capability probe resolves from the project root; the LPIH dev endpoint rejects cross-origin POSTs and validates `fires` entries.
+
+- [#2796](https://github.com/pyreon/pyreon/pull/2796) [`bdee35d`](https://github.com/pyreon/pyreon/commit/bdee35d2915b34a31dbf3a7e184bccaf4a014a07) Thanks [@vitbokisch](https://github.com/vitbokisch)! - zero's nested SSR/SSG build now inherits the user's `pyreon()` transform options
+
+  `mode: 'ssg' | 'ssr' | 'isr'` runs a nested Vite build over the same source. It
+  cannot forward the outer `pyreon` plugin instance — a second `configResolved`
+  rewrites captured output paths — so it constructs a fresh one, and that call was
+  a bare `pyreon()`. Every transform option applied to the client graph and
+  silently did not apply to the SSR graph.
+
+  `ssrTemplate` was the sharpest case: it shapes only the SSR emit, so the SSR pass
+  is the one place it does anything, and the one place it was dropped.
+  `pyreon({ ssrTemplate: false })` in an SSG app was a no-op — `@pyreon/loom`'s
+  static-site build hit this and carried a comment saying so.
+
+  The plugin now publishes its options on its Vite `api` field
+  (`PyreonPluginApi`), and zero carries the transform-shaping subset across:
+  `compat`, `ssrTemplate`, `islands`, `jsxAutoImport`, `compileValidators`,
+  `optimizeValidators`.
+
+  Deliberately withheld, because forwarding them would mis-steer the sub-build:
+  `ssr.entry` (its `config()` return sets `build.rollupOptions.input`, which beats
+  the inline `build({ … })` argument — it would compile the user's server entry
+  instead of the synthetic one zero wrote), `collapse` (client-graph-only, and it
+  spawns its own nested build), and `lpih` / `devErrorPrinter` (dev-server-only).
+
+  The split is typed as a total `Record` over `keyof Required<PyreonPluginOptions>`,
+  so a newly added option is a typecheck error until it is classified rather than
+  silently inheriting the wrong default.
+
+- [#3110](https://github.com/pyreon/pyreon/pull/3110) [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode (experimental): write reactive code as plain JavaScript. A module carrying the `'use plain'` directive (or importing from the new `@pyreon/core/plain` entry) is rewritten by a compiler pre-pass before the JSX transform: `let count = state(0)` declares a signal, bare reads and plain assignments (`count = count + 1`, `count++`, `count += n`) compile to tracked calls and `.set(...)`, `derived(expr)` compiles to a computed, and `effect(fn)` gets total tracking — state mentioned only in a branch, after an `await`, or inside a nested function is subscribed via a hoisted prologue, so a conditional read can never silently lose its subscription. Destructured component props (`function C({ name })`) compile to live `props.*` reads instead of the captured-once footgun, and a component-body `if (<reactive>) return <jsx>` early return re-evaluates when the state flips. Cross-module: `export let x = state(0)` exports the live signal; the vite plugin's signal registry feeds importers on both dialects, and marker-bearing `.ts` store modules are transformed too. Out-of-scope shapes (deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns) warn loudly instead of failing silently, and plain code that never went through the compiler throws with the fix at runtime.
+
+- [#3122](https://github.com/pyreon/pyreon/pull/3122) [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode follow-up tier: deep state, the classic→plain codemod, readiness report, Lens verdicts, and native-target support.
+
+  - **Deep state** — `let user = state({ … })` / `state([ … ])` (a literal object/array initializer) now lowers to `signal(createStore(...))`: member writes (`user.name = x`) and array mutations (`todos.push(t)`) notify with per-key granularity, whole reassignment replaces the store, and every JSX position stays live through the existing signal machinery. `state.raw(v)` opts a literal out to a shallow signal (replace-the-value semantics); non-literal initializers stay shallow — the split is static. Total tracking hoists conditional static member paths (`void (user().name);`), never a write target.
+  - **Codemod + readiness** — `pyreon plain [paths] [--write] [--json]`: per-binding classic→plain migration (`migrateToPlain` in `@pyreon/compiler`) whose dry-run is the readiness report with a declined-shape histogram. Object-literal signals convert to `state.raw(...)` — the codemod never changes semantics. A seeded round-trip fuzz oracle (classic → codemod → compile → behavioral DOM diff) locks both directions.
+  - **Reactivity Lens** — plain pre-pass warnings surface as `plain-mode` footgun findings in `analyzeReactivity`, at their source locations.
+  - **Native targets** — the PMTC compiler runs the same pre-pass via the new light `@pyreon/compiler/plain` subpath; a plain shared-source file emits byte-identical Swift/Compose to its classic twin.
+  - **Cross-module** — the vite-plugin signal-export registry now recognizes `state.raw(...)` exports; imported-state member-write warnings give conditional (deep vs shallow) guidance.
+
+- [#3761](https://github.com/pyreon/pyreon/pull/3761) [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode is now production-ready: write reactive code as plain JavaScript (`let count = state(0)`, `count++`, `{count}`) and the compiler emits fine-grained signals.
+
+  - **New markers in `@pyreon/core/plain`.** `signalOf(x)` hands the underlying signal to an API that needs one (it compiles to the bare signal). `state.from(sig)` and `derived.from(sig)` adopt an existing signal (a hook result, a store field) as a plain binding. `derived(() => expr)` is now typed by the thunk's return value.
+  - **Newly supported shapes.** Destructuring assignment onto state (`[a, b] = [b, a]`, with exact JS semantics including defaults and rest). Nested props patterns (`{ user: { name } }` reads `props.user.name` live). A top-level `...rest` in props becomes a reactive `splitProps` copy, so `{...rest}` stays live.
+  - **Project-wide mode.** `pyreon({ plain: true })` compiles every app module as plain with no per-file directive; a `'use classic'` directive opts a file out. `@pyreon/zero` forwards the option to its SSR build.
+  - **Codemod (`pyreon plain --write`).** Converts far more real code and no longer changes behaviour or types:
+    - Arrow handlers that return a write (`() => x.set(v)`) now convert.
+    - Signals passed as values, stored, or used through `.subscribe` now convert via `signalOf`.
+    - Complex `.update` callbacks now convert via `x = (fn)(untrack(() => x))`.
+    - Fixed: an `.update` substitution discarded rewrites inside the callback body. `.update` inside an effect or computed no longer adds a subscription.
+    - Fixed: marker names that collide with a local binding are aliased, and `type` modifiers on kept imports are preserved.
+    - Exported signals now decline, since their importers still call them.
+
+    - `pyreon plain` skips test and spec files unless `--include-tests` is passed. Test runners often run without the `pyreon()` plugin, where plain code can't compile.
+
+    Across this repo's 883 example files: 86 declined before, 0 now.
+
+  - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
+  - **Vite plugin fix.** Dev mode's source-location injection no longer rewrites the text `effect()` or `signal()` inside JSX (for example, prose in a `<Code>` demo) into a broken call. Each match is now confirmed against the AST.
+  - **Plain Mode safety net.**
+    - New `pyreon/plain-mode-footgun` lint rule (on in `recommended`). It reports every Plain Mode compile-time warning, such as mutating shallow state or writing to a `derived` value, as an error in the editor and CI. Before, these only printed in the Vite terminal while the app was silently wrong.
+    - Reactivity lint rules that opt into `meta.plainLowered` also check plain files, by linting their compiled form and reporting at the source line: `no-signal-in-loop`, `no-nested-effect`, `no-unguarded-async-signal-write` and `no-unbatched-updates`. Without this, plain files were invisible to them.
+    - `detectPyreonPatterns`, which backs MCP `validate`, `pyreon check` and doctor, gains a `plain-mode` code for the same warnings.
+    - The "did not compile" runtime error now names the usual cause: a test runner without the `pyreon()` plugin.
+  - **Scaffold.** The `create-zero` counter page is written in Plain Mode.
+
+- [#2950](https://github.com/pyreon/pyreon/pull/2950) [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Templatize COMPONENT children by default — the mixed shape now hydrates too
+
+  `templatizeComponentChildren` absorbs a component child into the enclosing
+  `_tpl()` template instead of bailing the whole element to `h()`. It is worth a
+  measured −13.0% on the 2,047-component deep-tree mount (41% of the gap to
+  Solid), and it has been opt-in because it cost hydration retention. It now
+  **defaults ON** in `@pyreon/vite-plugin`. The compiler primitive stays opt-in,
+  the same split `ssrTemplate` uses, because the emit injects an import.
+
+  Two things changed to make that safe.
+
+  **The mount hole no longer has to be the element's whole content.** A hole is
+  marker-free because it is TRAILING — the element's own closing tag supplies its
+  extent — and that never required the element to be EMPTY, only for the hole to
+  come last. So an element with static children followed by components is now
+  declared a hole that starts after them: the compiler bakes the static prefix as
+  usual, and the verifier matches those children first and starts the hole cursor
+  after them. How many there are is read off the template itself, so no count
+  crosses the compiler/runtime boundary to drift, and the all-components case is
+  the same code path with a count of zero. The shape this closes measured 3 of 4
+  nodes retained with the option OFF and 0 of 4 with it ON; it now retains 4 of 4.
+
+  **Shapes that cannot adopt are no longer absorbed at all.** The emitter takes
+  exactly `[element*][component+]` and bails everything else to `h()`, which is
+  byte-identically what it emits with the option off. The `<!>` + `_mountSlot`
+  form for components is gone: it rendered correctly, but produced a template
+  containing a comment, which the adopt verifier refuses — so it cost more
+  retention than the absorb bought. The result is that the option changes an emit
+  exactly when it absorbs, and there is no shape it makes worse.
+
+  Also fixes a latent interaction between this option and `collapseRocketstyle`.
+  Both rewrite the same node; collapse decided whether to wrap its call in JSX
+  braces from the node's AST parent, which is still a JSX element even after the
+  template pass has relocated that node's text into a call argument. The result
+  was `_mountChild({__rsCollapse(…)}, …)` — not parseable JavaScript. It needed
+  both features at once, so it was unreachable while this one was opt-in.
+
+  Set `templatizeComponentChildren: false` to restore the previous emit.
+
+- [#2917](https://github.com/pyreon/pyreon/pull/2917) [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `templatizeComponentChildren` — absorb COMPONENT children into the enclosing
+  `_tpl()` template instead of bailing the whole element to `h()`. **Opt-in,
+  default off.**
+
+  The template emitter bails on a component child, so one `<Node/>` makes
+  `templateElementCount` return −1 for that element and every ancestor — an app's
+  whole composition skeleton lowers to `h()` + `mountElement`. With the option on,
+  the skeleton bakes into the template HTML and each component child is mounted
+  into the clone: `_mountChild` appended when nothing static follows it (no
+  placeholder comment), `_mountSlot` + a `<!>` placeholder otherwise.
+
+  Measured on the 2,047-component deep-tree mount — production builds, real
+  Chromium, three interleaved passes, arms verified by grepping the built bundle
+  for the baked `<div class="branch"></div>` template before reading any number:
+  **4.53ms → 3.94ms (−13.0%)**, with Vanilla/Solid/React/Vue/Svelte as in-run
+  controls all moving ≤2% except two noisier arms at ≤5.5%. The gap to SolidJS
+  closes 1.31ms → 0.77ms, i.e. **41% of the remaining deep-tree deficit**;
+  standing 1.41× → 1.24×.
+
+  Ordering is safe by construction. A `_tpl` bind runs when the CALL EXPRESSION
+  evaluates, so a bind that MOUNTS COMPONENTS is ordered against the enclosing
+  component's setup. A component's sole child is `_lc`-deferred, and every other
+  eager-argument position (multi-child component parent, member/namespaced tag
+  parent, fragment, expression container) bails to `h()`.
+
+  **Why it stays off by default:** a `_tpl` result is SWAPPED at hydration, so
+  every element this newly templatizes stops adopting its SSR DOM — and so does
+  everything below it. Measured on a 3-level layout, node retention 4/4 → 0/4 (it pinned 3/4 when written; [#2918](https://github.com/pyreon/pyreon/issues/2918) then taught hydration to ADOPT compiled templates, so the OFF arm now keeps all four).
+  Only enable it for a client bundle that never calls `hydrateRoot()`. The plugin
+  warns once when it is on, because it also forces the compiler's JS backend (no
+  native mirror yet).
+
+### Patch Changes
+
+- [#3593](https://github.com/pyreon/pyreon/pull/3593) [`890f785`](https://github.com/pyreon/pyreon/commit/890f785acfeaed76836d925a2ff61e5169b97789) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct the documented speed of `pyreon({ compileValidators: true })`. It was described as 1.6–3× faster than the default `.is()`; measured today it is ~2× slower (0.42–0.63× across four schemas, two load-gated runs), because the runtime `.is()` has since gained its own verdict-only JIT while the build still emits an issues-array validator. The option now documents that it is only useful where runtime code generation is blocked (a CSP without `unsafe-eval`).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#2915](https://github.com/pyreon/pyreon/pull/2915) [`71fbf23`](https://github.com/pyreon/pyreon/commit/71fbf23042b7ae852817dfa83ebecf1c9c85cca8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop the JSX auto-import injecting for a primitive name written inside a string.
+
+  `_maskCommentsAndStrings` masked only COMMENTS, despite its name and its call-site comment both claiming strings too. So a canonical primitive name appearing in any string — a diagnostic message, a doc example, a template literal — was read as real JSX usage, and the pass injected `import { … } from '@pyreon/primitives'` into a file whose package may not depend on it. That is a build break, not a warning: Rolldown fails to resolve the import.
+
+  Found for real in `@pyreon/feature`, whose `Field` error message read `` `[Pyreon] <Field name="${…}">` `` — seven CI checks failed with `Rolldown failed to resolve import "@pyreon/primitives"`.
+
+  Strings, template literals (including interpolations and nested templates) and comments are now all masked for usage scanning. Template interpolations are masked wholesale, so a JSX tag written inside `${…}` no longer triggers the auto-import — a false negative where the author adds an explicit import, chosen deliberately over the false positive that breaks the build.
+
+  Import DETECTION keeps a comments-only mask, since module specifiers are strings: masking them blinded the already-imported check and the extend-existing-import splice, which emitted a duplicate import line.
+
+- [#2939](https://github.com/pyreon/pyreon/pull/2939) [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration now ADOPTS a compiled template's mount holes, closing the blocker that kept `templatizeComponentChildren` opt-in for its main shape
+
+  A compiled template whose children are all absorbed COMPONENT children is emitted EMPTY and filled at mount by trailing `_mountChild` calls. Its server counterpart holds those components' real output, which the adoption verifier read as "extra elements" — so the whole subtree was cloned and swapped instead of hydrated, and everything below it with it. On a 3-level layout that measured **0 of 4 nodes retained**; the same page with the option off retained 4 of 4.
+
+  It now retains **4 of 4**, with three adoptions.
+
+  Three things had to be right, and doing only the first is a correctness bug rather than a partial win:
+
+  1. **The verifier skips a hole's DOM range.** The compiler DECLARES the element it leaves empty (`data-pyreon-hole`, baked into the template string and stripped by `_tpl` at parse time, so it never reaches user DOM). Declared rather than inferred: `_setChild` and a spread `innerHTML` also fill an empty template element and do not hydrate, so a blanket "an empty element may have extra children" rule would duplicate or discard their content.
+  2. **The compiled bind hydrates that range instead of mounting into it.** `_mountChild` threads a per-hole cursor when it runs inside an adopting bind, so a component absorbed into a hole hydrates the server's copy — which recursively arms its own template, and so on down. Relaxing (1) alone leaves the bind appending a second copy beside the server's.
+  3. **The range is delimited without any SSR change.** A hole is always trailing — the compiler routes a component child with static content after it through a `<!>` placeholder instead, and no template containing one is adoptable — so the parent element's own tag boundary supplies the extent. SSR emits exactly the same bytes it did before; a per-component range marker would have taxed every hydrated page.
+
+  Whatever the bind does not claim is swept, which is precisely the empty element a clone would have produced. A mis-declared hole therefore costs an adoption, never correctness.
+
+  Both compiler backends emit the declaration byte-identically (locked by the cross-backend equivalence suite and a 5,000-seed fuzz). Plan replay is refused for a hole-bearing template, because a plan records marker spots but not hole cursors.
+
+  **Still opt-in.** The residual is the MIXED shape — a component with a static sibling — which compiles to `<!>` + `_mountSlot` and measures 3/4 retained with the option off against 0/4 with it on. That is the pre-existing dynamic-slot limit reached through a component; its server range markers already exist, and closing it needs a verifier that can adopt a comment-placeholder-bearing template.
+
+- [#3586](https://github.com/pyreon/pyreon/pull/3586) [`02905e4`](https://github.com/pyreon/pyreon/commit/02905e41eaaaf204e181abc7f8879093bb47dccf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Production SSR builds now fold `process.env.NODE_ENV` to `"production"` inside `@pyreon/*` package files. Vite replaces that read in client builds but leaves it live in the SSR bundle, and under Node every `process.env` read is a native lookup (~145ns) — the framework's dev gates sit on hot paths (6 reads per signal create+read+write). Measured on Node 26: signal create+read+write 950ns → 158ns, and a 1,000-row SSR render whose rows hold a signal + computed 1.44ms → 0.74ms. The server bundle also drops its dev-only branches (the `cpa-pw-dash` example's server output: 404KB → 376KB). User code is untouched and keeps its runtime `NODE_ENV` semantics; rendered HTML is byte-identical.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#2924](https://github.com/pyreon/pyreon/pull/2924) [`37902b5`](https://github.com/pyreon/pyreon/commit/37902b5117083680c958b9ecf37af8572a126223) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(compiler): mirror `templatizeComponentChildren` into the native (Rust) backend
+
+  `templatizeComponentChildren` shipped opt-in and, while it was on, FORCED the
+  compiler's JS backend — deliberately, so the two backends could not disagree and
+  a bisect of the feature could not pass against a "reverted" build. That made
+  enabling the option cost a ~10x slower transform for the whole build.
+
+  The native backend now emits the same bytes, so the force is gone.
+
+  **Parity.** 1,183 real `.tsx` files across the repo compile byte-identically at
+  the default (3,549 comparisons, 0 differences — and the same harness reports 209
+  differences with the option on, so it discriminates). The seeded differential
+  fuzz gains a fourth mode, `client-tpl-components`, proven at **20,000 seeds x 4
+  modes** with the grammar extended to the shapes this feature's gate
+  discriminates: self-closing component children, member/namespaced tags
+  (`<Ns.Comp/>`, which `jsxTagName` reports as `''`), bare and nested fragment
+  children, and runs of 1-3 component siblings with and without interleaved static
+  content. `native-equivalence.test.ts` gains a 29-case hand corpus for the shapes
+  a reader needs to see named.
+
+  The fuzz mode also asserts it is ALIVE — that the option changes the emit for a
+  real fraction of seeds, in BOTH shapes (append `_mountChild` and placeholder
+  `_mountSlot`). A differential mode that never changes the output would pass
+  byte-identically against a backend where the option was never implemented.
+
+  **Transform cost.** 173 real `.tsx` files (333 KiB), 9 interleaved passes,
+  median: native 3.2ms off / 3.8ms on; JS 34.5ms off / 37.4ms on. So the forced-JS
+  path cost **9.7x** with the option on, and that is what is removed. The option
+  itself costs native ~1.22x, because elements that used to bail early now take
+  the real template path — small in absolute terms and honest about doing more
+  work.
+
+  **The runtime win survives, by construction rather than by re-measurement.**
+  Building `examples/benchmark` with the option on produces a byte-identical
+  bundle from both backends (`sha256 9400e813…` from each; the JS arm verified to
+  really be JS by its ~10x slower transform). Re-measured anyway on the native
+  build: the 2,047-component deep-tree mount goes **4.57ms → 3.90ms (−14.7%)**,
+  CIs strictly disjoint, controls within 2.3%. `ui-showcase-regression` is **26/26
+  with the option ON** — verified live by the dev server's own output showing real
+  `<Title>`/`<Paragraph>` component children absorbed into the parent `_tpl` and
+  mounted through phase-1 refs.
+
+  **Still default OFF.** This removes one of the two blockers `[#2914](https://github.com/pyreon/pyreon/issues/2914)` named. The
+  other is unchanged and independent: a `_tpl` result is SWAPPED at hydration, so
+  every element this newly templatizes stops adopting its SSR DOM. The plugin's
+  one-time warning keeps that half and drops the now-false JS-backend half.
+
+- Updated dependencies [[`bdd16e0`](https://github.com/pyreon/pyreon/commit/bdd16e0e3fb781e885a76c710981e1574ad24404), [`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`fdd4dc2`](https://github.com/pyreon/pyreon/commit/fdd4dc2aef317b1c177f9751fcffb6d88554ff92), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c), [`8d1ff30`](https://github.com/pyreon/pyreon/commit/8d1ff300e0a0904a29cec4160a2c3a75da091019), [`f22774f`](https://github.com/pyreon/pyreon/commit/f22774ffe70af6d7be01313b27eefdbb97bd0a8f), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`a01e106`](https://github.com/pyreon/pyreon/commit/a01e106993cb2fde0d5ed6576fbff1c81b99c123), [`b6cda55`](https://github.com/pyreon/pyreon/commit/b6cda55a3af5bead39df51c2e4c3691c4c88f52d), [`8429598`](https://github.com/pyreon/pyreon/commit/8429598bb4a77cc4e5821191de6078002a5169bd), [`a8a7c86`](https://github.com/pyreon/pyreon/commit/a8a7c8616aa3a84cbfbaf6f74f4ec7803e3aa326), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`1517cce`](https://github.com/pyreon/pyreon/commit/1517cce174aa483890d34a93ca89a2b0ce58ea8d), [`6bf2770`](https://github.com/pyreon/pyreon/commit/6bf2770d8d25e02aa853ac249b6c07923dac001d), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`96426be`](https://github.com/pyreon/pyreon/commit/96426bef7ac3c86cf60ab898813dde449b1b0954), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac), [`e00f2a5`](https://github.com/pyreon/pyreon/commit/e00f2a5d24336c7dba6aa9752f6fe4766d924a49), [`b7bd8e8`](https://github.com/pyreon/pyreon/commit/b7bd8e86a8eb9f5fbcd3e145f467e0789ab6c3d0), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`02cae6a`](https://github.com/pyreon/pyreon/commit/02cae6a420ef0d35f4300e907734415010493b9b), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`4821127`](https://github.com/pyreon/pyreon/commit/4821127fae2908e110346343b107c02b1f1b44a9), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`d160664`](https://github.com/pyreon/pyreon/commit/d16066489fa4fb9bdb5ea4727816394a5d4477b2), [`b062eb6`](https://github.com/pyreon/pyreon/commit/b062eb6576e221bb0e02dce520a2b21f855e55fc), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`fd14415`](https://github.com/pyreon/pyreon/commit/fd1441504ea02a96acfcbfb3950a036cbbdae6c7), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`5867cca`](https://github.com/pyreon/pyreon/commit/5867cca15becbf4811effac32e81bdb3dc0a0d86), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`b030408`](https://github.com/pyreon/pyreon/commit/b0304087973b540fa75fc0d627fd3a1dd120d1c1), [`ea63aa6`](https://github.com/pyreon/pyreon/commit/ea63aa659d52a1ebec8daf088b7a7d737658c9ad), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`db410a0`](https://github.com/pyreon/pyreon/commit/db410a0c599fde5df971c2d4ba3d95e18f7f62fb), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`cfbb342`](https://github.com/pyreon/pyreon/commit/cfbb3426f12049b86f596bc3337245accf75be5b), [`08f4356`](https://github.com/pyreon/pyreon/commit/08f4356efd8fe17fb1b443d24af2a3ce834acdc5), [`2486982`](https://github.com/pyreon/pyreon/commit/2486982da2c663375b7825ff23bbd0c16a94684c), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5f59c0e`](https://github.com/pyreon/pyreon/commit/5f59c0e4e0efe5e122719276696f23b2e888d201), [`b67df5e`](https://github.com/pyreon/pyreon/commit/b67df5ede1eed345022f3777968211f3526000c7), [`a370824`](https://github.com/pyreon/pyreon/commit/a370824dabd0af7a9543c6a986ecf0ef252eb7a5), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`37902b5`](https://github.com/pyreon/pyreon/commit/37902b5117083680c958b9ecf37af8572a126223), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`ec0a2cb`](https://github.com/pyreon/pyreon/commit/ec0a2cb240ae3f2f13508b44b00d4dafce4b1733), [`55699c3`](https://github.com/pyreon/pyreon/commit/55699c3ee3c0381679c65d9de087747e7f591f85), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`cf64ac7`](https://github.com/pyreon/pyreon/commit/cf64ac738115998ade80f3c8ed984a2d109cbc17), [`bcb04bd`](https://github.com/pyreon/pyreon/commit/bcb04bd844bd46bb8f30760e269f38746e911b5e), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`09b8661`](https://github.com/pyreon/pyreon/commit/09b8661fd6df33d6314db04518ca524fba5d04dc), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -523,7 +766,6 @@
   Reverting BOTH the reset + the chain fails Specs A and B simultaneously. Restoring → 3/3 audit specs + 255/255 vite-plugin + 428/428 styler + both typechecks clean.
 
   ### API contract
-
   - `StyleSheet.resetSSRBuffer()` is a NEW public method on the styler. Internal-use (intended for the rocketstyle-collapse resolver during SSR builds). No breaking changes — it's purely additive.
   - `CollapseResolver.resolve()` signature unchanged. Behavior change: calls are serialized via an internal chain. Wall-clock latency increases for parallel transforms (N sites → N × render latency), but dedup integrity is guaranteed.
   - No public API surface changes for end users.
@@ -825,8 +1067,8 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
 
   ```ts
   // vite.config.ts
-  import pyreon from "@pyreon/vite-plugin";
-  export default { plugins: [pyreon()] }; // that's it
+  import pyreon from '@pyreon/vite-plugin'
+  export default { plugins: [pyreon()] } // that's it
   ```
 
   ```bash
@@ -895,7 +1137,7 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
 
   ```ts
   // User source:
-  const count = signal(0);
+  const count = signal(0)
 
   // Runtime, when devtools active:
   // 1. new Error() + parse stack → ~2.2µs cost per creation
@@ -906,13 +1148,13 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
 
   ```ts
   // User source (unchanged):
-  const count = signal(0);
+  const count = signal(0)
 
   // Vite-transformed source (dev mode):
   const count = signal(0, {
-    name: "count",
-    __sourceLocation: { file: "app.tsx", line: 5, col: 14 },
-  });
+    name: 'count',
+    __sourceLocation: { file: 'app.tsx', line: 5, col: 14 },
+  })
 
   // Runtime, when devtools active:
   // 1. Read options.__sourceLocation → ~0ns cost
@@ -970,8 +1212,8 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   **3. String-region false-positives in `injectSignalNames` (medium impact)** — the regexes `(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(` (R4+R8 bound) and `(?<![\w$.])effect\(` (R8 unbound) matched anywhere in source text, including INSIDE string literals / template literals / comments. User code like:
 
   ```ts
-  const docs = `effect(() => x)`;
-  throw new Error("effect() must be called inside a component");
+  const docs = `effect(() => x)`
+  throw new Error('effect() must be called inside a component')
   // TODO: replace effect(() => log()) with watch()
   ```
 
@@ -1106,7 +1348,6 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
     the actual supply-chain guarantee.
 
   ### Remaining (cannot be closed by a code PR)
-
   - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
     squash-merge with self-review by maintainer doesn't count.
     Project-policy issue, not code.
@@ -1118,7 +1359,6 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
     infra work, out of scope.
 
   ### Validation
-
   - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
   - `@pyreon/compiler` 1257/1257 tests pass
   - `@pyreon/vite-plugin` 104/104 tests pass
@@ -1181,7 +1421,6 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   emit) enforces the link going forward.
 
   ### Validation
-
   - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
     zero skip):
     - `@pyreon/zero` 953/954
@@ -1273,7 +1512,6 @@ populated by`resolveImportedSignals`.
   pass.
 
   ### Validation
-
   - `@pyreon/vite-plugin` 104/104 tests pass (+5 new regression specs)
   - Lint + typecheck clean
   - No public-API surface change — `watchChange` is a Vite plugin hook,
@@ -1454,7 +1692,7 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **Before (v1, PR [#585](https://github.com/pyreon/pyreon/issues/585))** — explicit `chunk` prop required:
 
   ```tsx
-  <Defer chunk={() => import("./ConfirmModal")} when={open}>
+  <Defer chunk={() => import('./ConfirmModal')} when={open}>
     {(Modal) => <Modal onClose={() => setOpen(false)} />}
   </Defer>
   ```
@@ -1462,17 +1700,16 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   **After (this PR)** — inline children, compiler does the chunking:
 
   ```tsx
-  import { Modal } from "./ConfirmModal";
+  import { Modal } from './ConfirmModal'
 
-  <Defer when={open}>
+  ;<Defer when={open}>
     <Modal />
-  </Defer>;
+  </Defer>
   ```
 
   The compiler (`@pyreon/compiler`'s new `transformDeferInline`) detects `<Defer>` JSX with no `chunk` prop and a single bare component child, looks up that component's import, rewrites the JSX to use an explicit `chunk={() => import('./path')}` prop, and removes the static import so Rolldown actually emits a separate chunk.
 
   ## v1 scope (this PR)
-
   - Single Defer JSX element per file (multiple Defers in one file each get their own transform pass — works fine)
   - Child must be a single self-closing component element with **no props** (`<Modal />` ✓; `<Modal title="hi" />` falls back to the explicit form)
   - Named or default imports only — renamed imports (`{ Modal as M }`) and namespace imports (`* as M`) bail with a warning, user falls back to explicit form
@@ -1482,7 +1719,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   When the transform bails on any of the above, the user sees a soft warning at compile time. The `<Defer>` element is left unchanged; runtime then errors at chunk-load time because `chunk` is missing, prompting the user to use the explicit form.
 
   ## What's NOT in this PR
-
   - Closure capture (passing `count` signals or local state to the inline child) — requires prop-extraction analysis
   - Rust compiler implementation — JS fallback only
   - HMR for the synthetic chunk module — relies on Rolldown's standard dynamic-import HMR
@@ -1653,12 +1889,10 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents
@@ -1689,7 +1923,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1703,7 +1936,6 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics

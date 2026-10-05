@@ -1,5 +1,55 @@
 # zero-cli
 
+## 0.52.0
+
+### Patch Changes
+
+- [#3691](https://github.com/pyreon/pyreon/pull/3691) [`99ed841`](https://github.com/pyreon/pyreon/commit/99ed8417ee2541158b92ff6c105ce96d9a959524) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation accuracy pass over the five CLI packages — no runtime changes. `@pyreon/cli`'s README was missing the `check`/`plain`/`add`/`new`/`mcp`/`atlas`/`loom`/`lathe` commands entirely and undercounted `doctor`'s gates (8/10 instead of 13/15); rewritten against the current source, and the docs site gained `pyreon plain`/`pyreon loom`/`pyreon lathe` sections plus the `dependency-fabric` gate that two reference tables had dropped. `@pyreon/zero-cli`'s docs described `zero create` as a broken, prompt-less "copy the default template" shortcut (its actual pre-fix behavior, per the source's own history comment) instead of the full `@pyreon/create-zero` delegate it is today, and were missing `zero doctor --full` / `zero dev --routes`. `@pyreon/create-zero`'s README was missing the `monorepo` template, the `isr` render mode, `--preset`, the `--with-<feature>`/`--no-<feature>` flags, and `--typed-routes`. `@pyreon/create-multiplatform`'s docs never mentioned `--dir`/`--help`, the kebab-case project-name validation, the non-empty-target-dir refusal, or the generated `lint`/`release:keystore`/`release:android` scripts. `@pyreon/native-cli`'s README still claimed `"private": true` and "not published to npm", which stopped being true when the package started publishing; rewritten to document its full `build`/`check`/`assets`/`stage-web`/`wire` command surface.
+
+- [#3753](https://github.com/pyreon/pyreon/pull/3753) [`6bf2770`](https://github.com/pyreon/pyreon/commit/6bf2770d8d25e02aa853ac249b6c07923dac001d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh to latest. `@pyreon/dnd` moves to `@atlaskit/pragmatic-drag-and-drop` 4 and `-hitbox` 3 (the auto-scroll adapter already required core 4, so v3 core would have been installed twice). Runtime deps of the other packages move to their latest in-major releases (`oxc-parser` 0.152, `magic-string`, `@tanstack/query-*` 5.104, CodeMirror, tiptap, `yjs`, `sharp`, `vite`, …).
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#2998](https://github.com/pyreon/pyreon/pull/2998) [`5867cca`](https://github.com/pyreon/pyreon/commit/5867cca15becbf4811effac32e81bdb3dc0a0d86) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party dependencies to their latest compatible releases.
+
+  Runtime dependencies that reach consumers: `oxc-parser` / `oxc-transform`
+  0.144 → 0.147 (`@pyreon/compiler`, `@pyreon/native-compiler`), the CodeMirror 6
+  family (`@pyreon/code`), TipTap 3.29 → 3.30 (`@pyreon/rich-text`), TanStack
+  Query 5.101 → 5.102 (`@pyreon/query`), the
+  pragmatic-drag-and-drop auto-scroll/hitbox companions (`@pyreon/dnd`),
+  `y-protocols` (`@pyreon/sync`), `oxlint` 1.78 → 1.80 (`@pyreon/lint`), and the
+  shiki / remark / unist chain (`@pyreon/zero-content`).
+
+  No API surface changes. Held deliberately, each for a stated reason: TypeScript
+  stays capped `<7.0.0` (TS7 removed the classic Compiler API), and
+  `@changesets/cli` v3, `@atlaskit/pragmatic-drag-and-drop` v3, and `ky` v2 are
+  majors that need their own PRs.
+
+- [#3641](https://github.com/pyreon/pyreon/pull/3641) [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188) Thanks [@vitbokisch](https://github.com/vitbokisch)! - - `zero create` works again: it runs `@pyreon/create-zero` with every argument forwarded. It used to look for a `templates/default` folder that no longer exists and always failed with "Template not found".
+  - A mistyped command no longer starts a dev server. `zero biuld` used to treat `biuld` as a project directory; it now exits with `[Pyreon] "biuld" is not a zero command or a directory. Did you mean "zero build"?`.
+  - Scaffolded apps: the server entry now passes `apiRoutes` (API routes returned an empty HTML page in production), `tsconfig` includes `vite.config.ts` so `zero()` option typos fail the typecheck, the app template passes its own `doctor:ci`, and the pages point at `bun create @pyreon/zero` instead of an unrelated package.
+
+- [#3714](https://github.com/pyreon/pyreon/pull/3714) [`4188e73`](https://github.com/pyreon/pyreon/commit/4188e73e27514dcc22c7f1e05fbaee08a5dae426) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Drop the `cac` dependency: `zero`'s argument parsing is now a small first-party parser (`src/argv.ts`) over a declarative command table. Behaviour is unchanged — 72 argv cases recorded from `cac` itself before the swap (command dispatch, option coercion, `--no-*`, `--` passthrough, unknown-option / missing-value / unused-argument errors, `--help` and `--version` output) are replayed against the replacement. The only visible difference is that `--help` no longer prints a trailing space after each option description.
+
+- [#3662](https://github.com/pyreon/pyreon/pull/3662) [`b263f82`](https://github.com/pyreon/pyreon/commit/b263f82effa16d780f47f5d87f8d4a7a2f77602e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correctness and DX fixes for `@pyreon/zero`:
+
+  - `useLocale()` resolves the locale from the URL in production SSR, SSG and on the client (it returned `'en'` outside the dev middleware, so dev hydrated with a mismatch). Region locales such as `en-US` round-trip, and `setLocale()` keeps the base, query string and hash.
+  - A page's own `error` export applies without a directory `_error.tsx`.
+  - Windows backslash route paths are normalized to posix, so nested routes and generated imports work.
+  - SSG redirect targets must be relative or `http(s):` (a `javascript:` target is rejected). `vercelAdapter.revalidate()` sends the secret as `Authorization: Bearer`; `vercelRevalidateHandler` still accepts `?secret=` with a deprecation warning.
+  - Dotted URLs (`/api/export.csv`) reach dev API routes and the dev i18n middleware.
+  - Route scans are memoized per build, and `.server.*` siblings come from the same walk.
+  - `vite dev` runs the production request pipeline: the server entry's middleware, route middleware, `/_pyreon/data`, `/_zero/actions/*` and server islands (new `@pyreon/zero/pipeline` subpath).
+  - `zero({...})` options are validated with did-you-mean suggestions. A missing `pyreon()` plugin, a default-only layout and a literal `loader` each fail with one error that names the file; a route file with no default export warns. Dev SSR errors are logged to the terminal.
+  - A `getStaticPaths` export no longer defeats the route's code splitting (removes the `INEFFECTIVE_DYNAMIC_IMPORT` warning).
+  - `zero preview` runs the built node/bun server for SSR/ISR builds, and CLI errors are `[Pyreon]`-prefixed with the stack kept.
+  - `create-zero` refuses `--mode` a template cannot honor and `--adapter static` with an SSR mode, and `--pm` no longer aliases `--packages`.
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`019d5d1`](https://github.com/pyreon/pyreon/commit/019d5d1118d172c333b885122bb5ad286c1bcb50), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`fdd4dc2`](https://github.com/pyreon/pyreon/commit/fdd4dc2aef317b1c177f9751fcffb6d88554ff92), [`ddf1cd6`](https://github.com/pyreon/pyreon/commit/ddf1cd6ab111ea756a2f76a524a1e2bc5c576e90), [`c12635c`](https://github.com/pyreon/pyreon/commit/c12635c3a9c423ac7b860293b0397583970235dd), [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c), [`99ed841`](https://github.com/pyreon/pyreon/commit/99ed8417ee2541158b92ff6c105ce96d9a959524), [`2e60aea`](https://github.com/pyreon/pyreon/commit/2e60aeab613711749750e7c27407dea22c382c53), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`4188e73`](https://github.com/pyreon/pyreon/commit/4188e73e27514dcc22c7f1e05fbaee08a5dae426), [`6bf2770`](https://github.com/pyreon/pyreon/commit/6bf2770d8d25e02aa853ac249b6c07923dac001d), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`1dcfb39`](https://github.com/pyreon/pyreon/commit/1dcfb3984d41b01f36104a6e06ed9d655965e2e5), [`a1ccd9b`](https://github.com/pyreon/pyreon/commit/a1ccd9ba5016141ea836e255f376063980a91a6c), [`b7bd8e8`](https://github.com/pyreon/pyreon/commit/b7bd8e86a8eb9f5fbcd3e145f467e0789ab6c3d0), [`153bb4b`](https://github.com/pyreon/pyreon/commit/153bb4b7da3d3b13d61aa588c6302d4ca7650948), [`c000667`](https://github.com/pyreon/pyreon/commit/c0006673ffb70e9a23ca08076a94a5760526f2df), [`96371fc`](https://github.com/pyreon/pyreon/commit/96371fc37676131db59e15c34f8c783c80835211), [`e5567e3`](https://github.com/pyreon/pyreon/commit/e5567e3bf20fbf8d12e04a61747863a4a4e01fa2), [`5af46e1`](https://github.com/pyreon/pyreon/commit/5af46e10c79669e25660bada33324400445db0eb), [`88e7dff`](https://github.com/pyreon/pyreon/commit/88e7dffbba6223c776e47bb01a0600fedf8f2fab), [`bdee35d`](https://github.com/pyreon/pyreon/commit/bdee35d2915b34a31dbf3a7e184bccaf4a014a07), [`8c8c43d`](https://github.com/pyreon/pyreon/commit/8c8c43deeb2b68a4d8b29ffdfe3890f7df94a888), [`0c77007`](https://github.com/pyreon/pyreon/commit/0c770074bd90515a3203bf41d1bd8bf5e3f01bef), [`69c191f`](https://github.com/pyreon/pyreon/commit/69c191f7235dabc5ecc6b6dd41f7ca72376076d5), [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c), [`c58917d`](https://github.com/pyreon/pyreon/commit/c58917db33297788b87d3f011354af79d033ed58), [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c), [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c), [`b47e041`](https://github.com/pyreon/pyreon/commit/b47e041753e57fb38a26c1a57f15349c770c2727), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`2e12add`](https://github.com/pyreon/pyreon/commit/2e12addb54586212dce479699d7ea70f084d1a7e), [`c9e2e3e`](https://github.com/pyreon/pyreon/commit/c9e2e3e44c5f1a1b00cdd2861b8b5bfa48cdded4), [`f8d6aae`](https://github.com/pyreon/pyreon/commit/f8d6aae6083c37a4d4aecde91d51979a1d3a5694), [`3383952`](https://github.com/pyreon/pyreon/commit/3383952c34a3c0ba3f1961f6e60976697c3599fb), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`5867cca`](https://github.com/pyreon/pyreon/commit/5867cca15becbf4811effac32e81bdb3dc0a0d86), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`78f9652`](https://github.com/pyreon/pyreon/commit/78f965269befa8060db6661e9ce586f3d10c5337), [`db410a0`](https://github.com/pyreon/pyreon/commit/db410a0c599fde5df971c2d4ba3d95e18f7f62fb), [`a0611c4`](https://github.com/pyreon/pyreon/commit/a0611c4d5a9afa2472502f5d932e1ac152861e1e), [`f904416`](https://github.com/pyreon/pyreon/commit/f9044167f2716c658cc8b68fa2c1bde763ce328e), [`7255d9f`](https://github.com/pyreon/pyreon/commit/7255d9f9bf04eb4a2424c89de9e051ee0cd50937), [`a693a0f`](https://github.com/pyreon/pyreon/commit/a693a0f606597896da19d91d65cd6b7dfa447ec2), [`be6a2a4`](https://github.com/pyreon/pyreon/commit/be6a2a401520331b04f38c894f6ffafe5b454a35), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`f84675f`](https://github.com/pyreon/pyreon/commit/f84675fb134fe96c7d76c1631f754954816183bd), [`37902b5`](https://github.com/pyreon/pyreon/commit/37902b5117083680c958b9ecf37af8572a126223), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`2e60aea`](https://github.com/pyreon/pyreon/commit/2e60aeab613711749750e7c27407dea22c382c53), [`09b8661`](https://github.com/pyreon/pyreon/commit/09b8661fd6df33d6314db04518ca524fba5d04dc), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`b263f82`](https://github.com/pyreon/pyreon/commit/b263f82effa16d780f47f5d87f8d4a7a2f77602e), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`ffeea88`](https://github.com/pyreon/pyreon/commit/ffeea88b0ca39a8f0a1eb70051ba994ac15d8f9a), [`2cf6f2a`](https://github.com/pyreon/pyreon/commit/2cf6f2a15fe3d07ba78669b79f3a5385a60b6088), [`dc580fc`](https://github.com/pyreon/pyreon/commit/dc580fc13327c7a1ca1f23dc0ee5c25921470d1e), [`dc580fc`](https://github.com/pyreon/pyreon/commit/dc580fc13327c7a1ca1f23dc0ee5c25921470d1e), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`91d798e`](https://github.com/pyreon/pyreon/commit/91d798e7971c9e96c4c11070ea9843309fdee8ed), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb), [`dc580fc`](https://github.com/pyreon/pyreon/commit/dc580fc13327c7a1ca1f23dc0ee5c25921470d1e), [`552fd97`](https://github.com/pyreon/pyreon/commit/552fd97f949f73aaaa204f044acc4ce6b65c8844), [`b263f82`](https://github.com/pyreon/pyreon/commit/b263f82effa16d780f47f5d87f8d4a7a2f77602e), [`1339dbc`](https://github.com/pyreon/pyreon/commit/1339dbc85dc7e3fd87493932dde724cee59fbaac), [`92b8701`](https://github.com/pyreon/pyreon/commit/92b87011683004bcbb26641fd9a38dd0b0414a55), [`be6a2a4`](https://github.com/pyreon/pyreon/commit/be6a2a401520331b04f38c894f6ffafe5b454a35), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`c2503eb`](https://github.com/pyreon/pyreon/commit/c2503eba0b79f1b9460e125a582b4fee8ea5f188), [`c9043d8`](https://github.com/pyreon/pyreon/commit/c9043d82a4f2902c404e26e934ea5e2f68e97bfe)]:
+  - @pyreon/cli@0.52.0
+  - @pyreon/zero@0.52.0
+  - @pyreon/create-zero@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -592,7 +642,7 @@
 
   ```ts
   // vite.config.ts
-  plugins: [pyreon(), zero({ port: 8080 })];
+  plugins: [pyreon(), zero({ port: 8080 })]
   ```
 
   ```sh
@@ -771,7 +821,6 @@
 - ## @pyreon/zero
 
   ### New Features
-
   - **API routes** — file-based `.ts` handlers in `src/routes/api/` with HTTP method exports (GET, POST, PUT, DELETE)
   - **Server actions** — `defineAction()` with automatic client/server boundary detection (direct execution on server, fetch on client)
   - **Per-route middleware** — route files export `middleware` dispatched via `virtual:zero/route-middleware`
@@ -784,7 +833,6 @@
   - **Dev route table** — `zero dev` prints page + API routes on startup
 
   ### Improvements
-
   - Bumped all @pyreon/\* core deps to ^0.5.4
   - Added `./actions`, `./api-routes`, `./cors`, `./rate-limit`, `./compression`, `./testing` subpath exports
   - Fixed static adapter build skip for SSG mode
@@ -793,19 +841,16 @@
   ## @pyreon/zero-cli
 
   ### New Commands
-
   - `zero doctor` — detect React patterns (proxies @pyreon/cli)
   - `zero context` — generate AI project context
   - `zero create <name>` — scaffold a new project
 
   ### Improvements
-
   - Dev server prints route table on startup (page routes + API routes)
 
   ## @pyreon/create-zero
 
   ### New Features
-
   - **Interactive scaffolding** with @clack/prompts — pick rendering mode, features, AI toolchain
   - Generates customized package.json, vite.config.ts, entry files based on selections
   - AI toolchain opt-in: .mcp.json, CLAUDE.md, doctor scripts
@@ -813,12 +858,10 @@
   ## @pyreon/meta
 
   ### New Packages
-
   - `@pyreon/machine` — reactive state machines (`createMachine`)
   - `@pyreon/permissions` — reactive permissions (`createPermissions`, `usePermissions`)
 
   ### Updates
-
   - All fundamentals: query ^0.5.0, virtual ^0.5.0
   - All UI system: ^0.1.1 (styler, hooks, elements, coolgrid, kinetic, etc.)
   - 75 export verification tests

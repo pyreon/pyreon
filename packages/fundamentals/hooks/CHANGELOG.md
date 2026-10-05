@@ -1,5 +1,615 @@
 # @pyreon/hooks
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2766](https://github.com/pyreon/pyreon/pull/2766) [`c4c2d52`](https://github.com/pyreon/pyreon/commit/c4c2d5232856e31b733dbc992ea8cbb37201f53f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useCrashReporter()` — cross-platform crash capture, persistence, and rehydration. Captures uncaught errors (web `window.onerror`/`unhandledrejection`, iOS `NSSetUncaughtExceptionHandler`, Android `Thread.setDefaultUncaughtExceptionHandler` chaining to the previous handler), persists the report (localStorage / Application Support / app files dir), and rehydrates the previous session's report on the next launch — the credential-free half of crash reporting. The vendor transport (Sentry, a custom endpoint) is app-wired via `setCrashTransport` / `PyreonCrashTransportRegistry`, so the framework never fakes an upload. `useCrashReporter()` lowers to both native targets (SwiftUI + Compose); the Android factory self-installs a file-backed backend so the report survives the crash it reports. Signal crashes (iOS) and NDK crashes (Android) are disclosed out of v1 scope.
+
+- [#3652](https://github.com/pyreon/pyreon/pull/3652) [`a156c40`](https://github.com/pyreon/pyreon/commit/a156c4069ad6882d9e402efa552566dd5714b94d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hardening pass across five fundamentals packages. Behaviour changes are marked **(behaviour)**.
+
+  **@pyreon/hooks**
+
+  - **(behaviour)** Hook teardown is now owned by the component. Every hook registered its cleanup with `onCleanup` from `@pyreon/reactivity`, which only registers inside an effect run: a root-mounted component never cleaned up (the GPS watch, socket, window listeners and speech kept running after unmount), and a component inside a `<For>` / `<Show>` / routed page had its cleanup tied to that boundary's effect — adding one `<For>` row tore down the resources of every row that stayed. Teardown now runs exactly when the component unmounts.
+  - `useGeolocation`: a TIMEOUT / POSITION_UNAVAILABLE error no longer drops the watch id (which left GPS on after unmount and let a retry open a second watch). Only a permission denial ends the watch, and it is cleared explicitly.
+  - **(behaviour)** `useEventListener`: a `target` that is `null` at setup (a ref) is resolved at mount instead of silently falling back to `window`; if it is still `null`, nothing is bound and a dev warning fires. `target` may also be an `EventTarget` directly.
+  - `useTimeAgo`: a reactive date getter is tracked, so a change re-renders immediately and restarts the timer. **(behaviour)** The "just now" bucket goes through a custom `formatter` as `(0, 'second', isPast)`.
+  - `useSpeech`: only the hook's own current utterance drives `speaking()` (a replaced utterance's late `onend` no longer flips it off mid-speech), and **(behaviour)** `stop()` / unmount only cancel speech this hook started.
+  - `useNotifications`: when the `Notification` constructor throws (Android Chrome), falls back to the service-worker registration's `showNotification`; `notify()` on a platform without the API warns in dev.
+  - **(behaviour)** `useClickOutside`: listens for a single `pointerdown` instead of `mousedown` + `touchstart`, which fired the handler twice per touch tap.
+  - `useInfiniteScroll`: keeps loading while the sentinel stays visible after a page lands (a first page that does not fill the container no longer stalls), and does not start a second load while one is in flight.
+  - **(behaviour)** `useLinking().openUrl` refuses `javascript:` / `data:` and any scheme other than http(s), mailto and tel (relative URLs allowed), with a dev warning.
+  - `useIntersection` / `useElementSize`: the element getter is tracked from mount, so an element that appears after mount is observed.
+  - `useMediaQuery` accepts a query getter and re-subscribes when it changes. `useKeyboard` gains `ignoreInputs`. `useWebSocket` gains `maxMessages`. `useScrollLock` compensates for the removed scrollbar and also locks `<html>` (iOS Safari).
+  - **(behaviour)** `useFetch`: `isPending` starts `true` on the server as well, matching the client's first render (was a hydration mismatch).
+
+  **@pyreon/a11y**
+
+  - **(behaviour)** `announce()`: both regions are created on the first call and messages are written ~100ms later, so the first announcement lands in a region the screen reader has already seen; messages announced together are joined instead of overwriting each other.
+  - `<LiveRegion>`, `<VisuallyHidden>` and `<SkipLink>` no longer freeze reactive props at setup. `<LiveRegion>` accepts accessors for `politeness` / `atomic` / `role` / `visible`, and toggling `visible` restyles the region instead of remounting it.
+  - **(behaviour)** `<SkipLink>` handles the jump itself (focus + scrollIntoView) and cancels the default hash navigation, which a hash-mode router read as a route.
+  - `<RouteAnnouncer>` warns in dev when `<RouterView>`'s built-in announcer is also active. `createA11yId`'s docs no longer claim server/client ids always match.
+
+  **@pyreon/toast**
+
+  - **(behaviour)** A duration a timer cannot hold (`Infinity`, above 2^31-1 ms, `NaN`, negative) is treated as persistent — it used to overflow and dismiss the toast after ~1ms.
+  - **(behaviour)** `toast()` is a no-op on the server (dev warning): the store is process-wide, so a server-side toast leaked into other requests.
+  - **(behaviour)** An action's `onClick` receives `{ id, dismiss }`.
+  - A second mounted `<Toaster>` warns in dev; a Toaster's `duration` default is restored on unmount; the Toaster now removes its portal host and visibility listener on unmount. Animations respect `prefers-reduced-motion`.
+
+  **@pyreon/hotkeys**
+
+  - A keydown without a `key` (Chrome autofill) no longer throws out of the shared listener; IME composition keystrokes never fire shortcuts; input detection uses `composedPath()[0]` so inputs inside a shadow root are recognised; `alt+<letter/digit>` matches on macOS via `event.code`.
+  - `useHotkey`'s `target` may be a ref / getter, resolved at mount and tracked afterwards.
+
+  **@pyreon/virtual**
+
+  - **(behaviour)** Options are read once per pass and REPLACE the previous options, so a key you stop returning falls back to TanStack's default instead of lingering. `useVirtualizer` warns in dev when `getScrollElement()` is still `null` after mount.
+
+- [#2845](https://github.com/pyreon/pyreon/pull/2845) [`1275e17`](https://github.com/pyreon/pyreon/commit/1275e1726fed67b467377db956fda44827161589) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useDeviceInfo` — describe the device from one call on web, iOS and Android.
+
+  `platform` needs no runtime on native: it lowers to a compile-time constant
+  per target. `model`, `osVersion`, `isTouch` and `screen` come from a
+  `PyreonDeviceInfo` runtime co-located in `@pyreon/hooks`, with the platform
+  queries behind an injected probe so the shape is testable with no UIKit, no
+  Android SDK and no device.
+
+  Two deliberate contracts:
+
+  **`model` and `osVersion` are empty strings on the web.** The browser cannot
+  answer them reliably — `navigator.platform` is deprecated, User-Agent Client
+  Hints are Chromium-only, and parsing the UA string is a well-known source of
+  answers that look right and rot as browsers change their strings. These are
+  the fields that end up in analytics and support tickets, where a plausible
+  wrong answer costs more than a missing one, so empty means "not knowable
+  here" rather than a guess. Branch on `platform()` before reading them.
+
+  **`screen` reads through on every access** instead of caching at
+  construction. A fold, a rotation or a Stage Manager resize moves it while the
+  app is live, and a value captured once would silently describe the old
+  geometry. Both native suites assert this by mutating the probe after
+  construction.
+
+- [#2827](https://github.com/pyreon/pyreon/pull/2827) [`408b9b5`](https://github.com/pyreon/pyreon/commit/408b9b5324bb06acd528abf9d21642bb93beb732) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useBluetooth` — BLE discovery on web, iOS and Android from one source
+
+  `@pyreon/hooks` had no Bluetooth surface at all. This adds one that crosses:
+  a web implementation over `navigator.bluetooth`, a CoreBluetooth runtime, an
+  Android BLE runtime, and the lowering that connects them.
+
+  **Discovery only, deliberately.** GATT — services, characteristics, notify —
+  is where the three platforms stop resembling each other: Web Bluetooth
+  requires a user gesture per device and exposes no free-running scan at all,
+  while CoreBluetooth and Android BLE both scan continuously and model
+  connection state differently. Shipping discovery as a real 1:1 surface and
+  leaving connection to a native escape hatch is honest; pretending the whole
+  stack crosses would not be.
+
+  The one interaction difference that remains is documented rather than papered
+  over: on web, `scan()` opens the browser's chooser and resolves with a single
+  device, so `scanning` is true only while it is open. The reactive SHAPE is
+  identical on all three; the interaction model is the platform's.
+
+  **The contract both runtimes reproduce is first-seen order, deduped by id.**
+  BLE peripherals advertise continuously, so a duplicate sighting is the common
+  case rather than an edge one — a runtime that appended unconditionally would
+  flood the list while still passing a one-shot test. Asserted on all three
+  sides, and the FIRST sighting's name is the one kept.
+
+  Errors are state, not exceptions: a denied permission or a cancelled chooser
+  lands in `error()` and ends the scan, matching every other permission-shaped
+  hook here.
+
+  The runtimes take an injected scanner, so their ordering and state logic
+  compiles and RUNS with no radio and no SDK — both native test programs
+  execute in the co-source gate. The real `CoreBluetoothScanner` /
+  `AndroidBluetoothScanner` are device-verified rather than stub-verified,
+  because an approximated stub of a radio proves nothing.
+
+  `bt.scanning()` reads correctly on every target: Swift drops the parens (the
+  member is a stored property) and Kotlin resolves `.value`, so the web-correct
+  spelling compiles everywhere — the read-inversion `model()`'s state fields had.
+
+- [#2795](https://github.com/pyreon/pyreon/pull/2795) [`84e7444`](https://github.com/pyreon/pyreon/commit/84e7444cbde8b3f0259a1bdc91674d893d19d26c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Co-locate the @pyreon/hooks native runtimes (Batch 3).
+
+  Moves 21 hook service runtimes (AppState, Auth, Biometrics, Clipboard,
+  CrashReporter, Database, Fetch, FilePicker, Geolocation, Haptics, ImagePicker,
+  Linking, MapState, NetworkStatus, Notifications, Payments, PushNotifications,
+  Share, VideoPlayer, WebSocket, WebView + their Android/OkHttp variants — 28
+  Kotlin, 21 Swift files) out of the monolith into @pyreon/hooks/native, using the
+  per-service-group gate from the storage batch: 20 kotlinServices groups (each
+  under its own --service stub bundle; the 6 hooks with base dependencies —
+  Auth→PyreonHttp, CrashReporter→StorageBackends+Json, Database/Fetch/WebView→Json,
+  Geolocation→StorageBackends — reference the retained monolith primitives via
+  @base/ companions). WebView's Kotlin is device-only (android.webkit was never
+  stub-covered in the monolith).
+
+  The monolith now holds ONLY the framework-base runtimes (Reactivity, Tokens,
+  ViewModifier, Json, Assets, Http/OkHttp, StorageBackends). All 10 native example
+  apps gain the @pyreon/hooks/native source root.
+
+  Follow-up: the monolith's Swift hook-logic tests are removed here (the Kotlin
+  tests moved with their runtimes and run in the co-source gate; the Swift side is
+  typecheck + device-verified) — relocating them as co-located @main programs is a
+  tracked follow-up.
+
+- [#3755](https://github.com/pyreon/pyreon/pull/3755) [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Finish the Kotlin `Int` to `Long` move for the runtime APIs emitted code reaches. `PyreonToast.maxToasts`, `PyreonSortable.moveIndex`, `PyreonRateLimit` delays and scheduler, `PyreonSizedMap` (`maxEntries`, `size`), `PyreonScreenOrientation.angle`, `PyreonStream` (`maxEvents`, reconnect `attempts`) and the chart web-view selection indices now use `Long`, and the emit adds the `L` suffix to the literals it passes them. `PyreonChartPoints` takes `Long` counts, which fixes a real `gradle assembleDebug` failure in every chart-bearing Android example. `syncedSignal` and `PyreonCrdtMap.set` now accept `Long` (a `Long` signal previously threw `unsupported value type`).
+
+- [#2836](https://github.com/pyreon/pyreon/pull/2836) [`290a386`](https://github.com/pyreon/pyreon/commit/290a38675f6363ac6f8f8d24cab47a70ca081af9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lower `useDebouncedCallback` and `useThrottledCallback`
+
+  Both emitted verbatim, so a debounced save or a throttled scroll handler
+  compiled clean and never fired on device.
+
+  Unlike `useDebouncedValue`, these need a **runtime**: they return a callable
+  carrying `.cancel()` / `.flush()`, so there is a handle a caller reaches and a
+  latest-args slot to hold. A `.task(id:)` has no identity to offer. This adds
+  `PyreonRateLimit` — co-located in `@pyreon/hooks/native`, on both platforms.
+
+  **The edges are the contract, and were measured on the web before either port
+  existed** — two native ports would otherwise agree with each other on the
+  wrong ones:
+
+  - debounce → **no** leading edge; nothing fires until the caller goes quiet
+  - throttle → leading edge **and** a trailing one, carrying the latest args
+
+  Three design decisions worth stating:
+
+  - **Throttle is modelled as a WINDOW, not a clock.** The web compares
+    `Date.now()` against the last invocation; porting that would make the
+    runtime either untestable without real waiting or dependent on a fake clock
+    whose advance rate is its own source of divergence. A window is observably
+    identical and needs neither.
+  - **The scheduler is injected**, so both state machines are exercised
+    synchronously with no real clock. Both native test programs RUN in the
+    co-source gate. A timing test that actually sleeps is a timing test that
+    eventually flakes on a loaded runner.
+  - **Swift attaches the action post-init.** A `@State` initializer runs before
+    `self` exists, so a closure capturing sibling state cannot be passed to
+    `init` — the emit binds it in `.onAppear`, the same late attachment
+    `PyreonForm`'s `onSubmit` already uses.
+
+  Kotlin's default scheduler is a `java.util.Timer` task rather than a
+  `CoroutineScope`: a scope handed to a long-lived limiter either outlives the
+  composable that made it or is cancelled under it, and a Timer task is
+  cancellable by token with neither hazard.
+
+  A multi-argument callback declines BY NAME — the runtime carries one, and
+  silently dropping the rest would produce a callback that runs with the wrong
+  data rather than one that visibly does not run.
+
+- [#2851](https://github.com/pyreon/pyreon/pull/2851) [`1612ed1`](https://github.com/pyreon/pyreon/commit/1612ed15b80c220d049212b0f62dabccb45aa9e9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `<Audio>` — sound playback on web, iOS and Android.
+
+  Mirrors `<Video>` in shape: same `src` dispatch (a bare name is a bundled
+  asset), the same three-value `onStatusChange` vocabulary
+  (`waiting`/`playing`/`paused`), and a declarative prop surface rather than a
+  player-controller hook.
+
+  **It is deliberately NON-VISUAL, which is the one place it does not mirror
+  `<Video>`.** Audio has no view on the native targets — `AVAudioPlayer` and
+  Media3 are objects, not views — so there is no `controls` prop. The web's
+  browser-styled control bar has no cross-platform counterpart, and a prop that
+  silently no-ops on two of three targets is the failure this API family
+  refuses; `useScreenOrientation` omits `lock()` for exactly the same reason.
+  Compose a transport from Pyreon primitives and drive it with these props.
+
+  `volume` is **clamped** to 0..1 rather than rejected — on all three arms, and
+  at emit time too, so `volume={1.7}` bakes as `1` and the generated native
+  source is honest about what will actually play. An out-of-range value is a
+  caller slip, and refusing to play is a worse answer than the nearest legal
+  level.
+
+  The native host is a concrete zero-size view rather than `EmptyView`: a
+  modifier attached to `EmptyView` is silently inert, which is how a `<Modal>`
+  sheet once shipped that never presented. The playback engine is injected on
+  both targets, so the status machine and the clamp are testable with no
+  AVFoundation, no Android SDK and no device.
+
+  Adds `useAudioRecorder` alongside it — the input half of the same concept.
+  `start()` resolves `false` on a denied microphone permission rather than
+  throwing: that is the most likely outcome of the call and an ordinary branch
+  in any UI that uses it, so callers get an `if` rather than a `try`, matching
+  `useWakeLock.request()`. `stop()` resolves a URL — an object URL on the web,
+  a file URL natively — because that is the one representation all three targets
+  produce and every consumer can use; a zero-length capture resolves `null`
+  rather than an empty URL that plays nothing. Disposal releases the microphone
+  tracks, which is what turns the OS recording indicator off.
+
+  And `useCamera` — take a photo through the SYSTEM capture UI on every target.
+  It mirrors `useImagePicker` exactly, because the two differ only in which
+  system flow they open: `capture()` resolves a URI or `null` and never
+  rejects, since a cancel and an unavailable camera are the same outcome to a
+  caller. The system UI owns the permission prompt, so there is no permission
+  plumbing to get subtly different per platform.
+
+  A CUSTOM in-app viewfinder is deliberately out of scope. An AVCaptureSession
+  layer, a CameraX PreviewView and a `<video>` element are not one thing
+  wearing three hats, and a surface that only half-crosses is worse than one
+  that says what it covers — `useNativeModule` is the escape hatch there, as it
+  is for Bluetooth GATT.
+
+  Plus `useSpeech` and `useDeviceMotion`, the last two Tier-1 crossers.
+
+  `useSpeech` CANCELS before each `speak()` — queueing is the platform default
+  on all three, so without it a second press talks over the first instead of
+  replacing it. Rate, pitch and voice are deliberately out of scope: the
+  platforms disagree on ranges and on how voices are identified, so one name
+  would mean three different things.
+
+  `useDeviceMotion` has an explicit `start()` rather than listening on mount,
+  because an always-on hook would be wrong on all three targets: iOS Safari
+  gates the event behind a gesture-triggered prompt, and both native targets
+  want start/stop so the sensor is not draining battery for a screen nobody is
+  looking at. Where `requestPermission` does not exist (everything but iOS
+  Safari) its ABSENCE is a grant, not a failure.
+
+- [#2847](https://github.com/pyreon/pyreon/pull/2847) [`1025315`](https://github.com/pyreon/pyreon/commit/1025315701d7eb0a2bea2958252c3a0efda34b29) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useSafeArea` and `useScreenOrientation` — the display-environment pair,
+  across web, iOS and Android.
+
+  **`useSafeArea`** returns the insets content must avoid: notch / Dynamic
+  Island, home indicator, gesture bar, rounded corners. This is the one device
+  fact a multiplatform app cannot work around at the app level — without it,
+  content draws under the notch, or every screen pads by a hard-coded guess that
+  is wrong on the next device.
+
+  It returns ONE accessor rather than four, because the values move together on
+  rotation and separate accessors invite a torn read. On the web the numbers
+  come from `env(safe-area-inset-*)` read off an inert probe element, since CSS
+  environment variables are not exposed to script any other way; that needs
+  `viewport-fit=cover` in the viewport meta, and reports zeros without it —
+  which is correct (nothing is obscured) rather than broken. Natively they come
+  from `safeAreaInsets` and `WindowInsets`.
+
+  **`useScreenOrientation`** is deliberately read-only. Locking does not cross:
+  `screen.orientation.lock()` is Chromium-only and fullscreen-gated on the web,
+  and on iOS orientation is an app-level declaration
+  (`supportedInterfaceOrientations`), not something a view can request. A
+  `lock()` that silently no-ops on two of three targets is worse than a surface
+  that states what it covers. `type` is normalised to `'portrait' | 'landscape'`
+  — the part true everywhere — and the primary/secondary distinction the web
+  exposes lives in `angle`, so nothing is lost.
+
+  Both runtimes read THROUGH on every access rather than caching at
+  construction: a rotation, fold or Stage Manager resize moves them while the
+  app is live, and a captured value would silently describe the old display.
+  Both native suites assert that by mutating the probe after construction.
+
+- [#3119](https://github.com/pyreon/pyreon/pull/3119) [`51e5d80`](https://github.com/pyreon/pyreon/commit/51e5d8023751a9e97f9fc376f49263ab45fa378e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Audio>` now builds. It emitted `AVFoundationAudioEngine()` on iOS and
+  `Media3AudioEngine(…)` on Android, and both types — along with Android's
+  `PyreonAudioPlayer` composable — existed ONLY in the validation stubs. The
+  primitive had never compiled on either platform while both stub gates were
+  green.
+
+  Both engines now ship for real (AVPlayer and ExoPlayer, so remote `src` works
+  and the audio and video halves share one dependency).
+
+  A new gate asserts that every Pyreon-owned type a stub declares AND an emitter
+  emits is also declared in that language's real runtime — the class that hid all
+  three.
+
+- [#3119](https://github.com/pyreon/pyreon/pull/3119) [`51e5d80`](https://github.com/pyreon/pyreon/commit/51e5d8023751a9e97f9fc376f49263ab45fa378e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Audio>` now has a Compose implementation. It emitted `PyreonAudioPlayer(…)`
+  on Android, and the only definition of that name anywhere was the kotlinc
+  validation stub — so the emit passed the gate and referenced nothing in the real
+  runtime. Swift has had one all along, so `<Audio>` built on iOS and could not
+  have built on Android. No example uses it, which is why no device gate said so.
+
+  `<Transition>` and `<Audio>` now also carry `data-testid` and the accessibility
+  props, like every other primitive; both returned before the generic modifier
+  tail.
+
+  The completeness matrix that covers this now derives its list from the type
+  files rather than hardcoding it — it listed 15 primitives where the types
+  declare 18, which is how these two were missed.
+
+- [#3119](https://github.com/pyreon/pyreon/pull/3119) [`51e5d80`](https://github.com/pyreon/pyreon/commit/51e5d8023751a9e97f9fc376f49263ab45fa378e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Video controls={false}>` now hides the transport controls on iOS and Android.
+  The prop was typed and documented on all three targets and honoured on none:
+  neither native runtime took the parameter, and the Kotlin one hardcoded
+  `useController = true`.
+
+  Compose needed a parameter passed through to `PlayerView.useController`. AVKit's
+  `VideoPlayer` always draws controls with no way to turn them off, so the Swift
+  runtime gained an `AVPlayerLayer`-backed representable for the chrome-less case
+  — same player, same lifecycle, no chrome.
+
+- [#2840](https://github.com/pyreon/pyreon/pull/2840) [`e506bcf`](https://github.com/pyreon/pyreon/commit/e506bcf796a930094e5f5665b72e7efa4967a62c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useWakeLock` — keep the screen awake on web, iOS and Android from one call.
+
+  Lowers to `isIdleTimerDisabled` on iOS and `FLAG_KEEP_SCREEN_ON` on Android,
+  with `PyreonWakeLock` runtimes co-located in `@pyreon/hooks`.
+
+  The web arm carries a normalization the native ones do not need. A
+  `WakeLockSentinel` is released by the browser whenever the document hides and
+  is **not** reacquired, while the native flag survives backgrounding — so the
+  same call would leave the screen sleeping on web and lit on native. The hook
+  listens for the sentinel's `release` event and re-acquires on
+  `visibilitychange` unless the caller explicitly released, which is what makes
+  it 1:1 rather than merely mirrored.
+
+  Also closes a gap in `check-native-cosource`: it failed on a _declared_ Kotlin
+  runtime file that did not exist, but never on a file that exists and is
+  declared nowhere — so such a file was silently never verified.
+  `PyreonWebView.kt` had been in that state. The gate now requires every runtime
+  `.kt` to sit in a service group or in a new `pyreon.native.kotlinSdkOnly` list
+  (files importing the real Android SDK, which the device gate covers), so a
+  deliberate omission and a forgotten one are no longer indistinguishable.
+
+- [#3063](https://github.com/pyreon/pyreon/pull/3063) [`0cc9209`](https://github.com/pyreon/pyreon/commit/0cc9209a35e4ab9e73e849dd092ed654c2a56ed4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useFetch` accepts a promise source, so the documented multiplatform shape works on the web
+
+  `@pyreon/native-compiler` documents `useFetch<T>(getUser({ params: { id: '1' } }))`
+  as the crossing surface for `@pyreon/http` — it lowers to a native fetch of the
+  templated URL, and the coverage registry lists it by name.
+
+  An `@pyreon/http` endpoint CALL fires the request and returns a promise, while
+  this hook took `url: string`. So on the web the documented shape did
+  `fetch(String(promise))` — a request for the literal `[object Promise]`, which
+  Chromium rejects with `InvalidStateError: Unknown request object` — and the
+  endpoint's own rejection went unhandled, surfacing as an uncaught page error on
+  every failed request.
+
+  `useFetch` now adopts a promise source: the value lands in `data()`, a rejection
+  lands in `error()`, and both settle in one batch like the URL path.
+  `refetch()` warns rather than silently doing nothing, because a settled promise
+  cannot be re-issued and the hook never held the URL that produced it.
+
+### Patch Changes
+
+- [#3759](https://github.com/pyreon/pyreon/pull/3759) [`1a64907`](https://github.com/pyreon/pyreon/commit/1a64907717ca2734bedaceceda00d368e0c0f2a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useScreenOrientation()` / `useSafeArea()` compiled to `AndroidOrientationProbe(ctx)` / `AndroidSafeAreaProbe(ctx)` (Kotlin) and `UIKitOrientationProbe()` / `UIKitSafeAreaProbe()` (Swift), but no runtime file defined any of the four — they existed only in the validation stubs, so any app using either hook failed to build against the real SDK while every stub gate stayed green. The real probes now ship in `@pyreon/hooks` native (`PyreonSafeAreaAndroid.kt`, `PyreonSafeAreaUIKit.swift`): read-through, dp/points, orientation angle matching `screen.orientation.angle`, and on Android reactive via a `RememberObserver` (config callback + layout listener) so no emit change was needed. The Kotlin stubs now mirror the real constructor type. `emitted-runtime-types-exist` now also checks `Android*`/`UIKit*` probe names; nine other phantom probes it surfaced are pinned in a ratchet list that can only shrink.
+
+- [#3192](https://github.com/pyreon/pyreon/pull/3192) [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three defects found auditing the changes since 0.51.0.
+
+  **`safeRedirectLocation` failed open to an open redirect and to `javascript:`
+  XSS.** The guard classified the RAW target while a browser classifies a
+  PREPROCESSED one, and the gap is one character wide. The WHATWG URL parser
+  strips leading/trailing C0 controls and space, and removes ALL ASCII tab and
+  newline from anywhere in the input; `String.prototype.trim()` covers the first
+  only partially and the second not at all, because that character sits in the
+  middle. So `"/<TAB>/evil.example"` was classified `internal` and resolves to
+  `https://evil.example/`, and `"java<TAB>script:alert(1)"` was classified
+  `internal` and resolves to a live `javascript:` URL — both verified against the
+  platform's own URL parser, which is the oracle the regression test uses. The
+  `internal` branch also returned the ORIGINAL string rather than the one it had
+  inspected, so even a correct verdict handed back bytes that produce a different
+  one. The target is now normalised the way the parser does, before classifying,
+  and the normalised value is what ships.
+
+  **`@pyreon/lathe`'s YAML reader replaced an object's prototype instead of
+  setting a key.** Both mapping paths assigned `map[key] = value`, and for
+  `__proto__` that runs the inherited accessor: the key vanishes from the parsed
+  document while its value's properties leak into every later member read on that
+  object. A spec reaches this parser over the network — `lathe pull <url>` fetches
+  one and writes it to disk — and the IR it produces is what the emitters turn
+  into source, so a silently-dropped field is a missing field in a generated
+  client and a silently-added one is a generator input nobody wrote. The `.json`
+  half of the same reader was always correct, because `JSON.parse` defines the
+  property rather than assigning it; the two formats disagreed about the same
+  document. Fixed by doing what `JSON.parse` does.
+
+  **The three file pickers leaked their `<input>` when neither `change` nor
+  `cancel` fired.** `useCamera` / `useFilePicker` / `useImagePicker` each appended
+  a hidden input to `document.body` and removed it inside `settle`, under a
+  comment promising that "a browser that fires neither event must not leak the
+  node". The `settled` flag cannot provide that: with no event `settle` never
+  runs, so neither does `input.remove()`, and the document then holds the node,
+  its listeners and the `resolve` closure for the life of the page — once per
+  pick, unbounded. `cancel` is the event that would have fired, and the same
+  comments describe it as "not universal across older browsers". The three
+  implementations were byte-identical and are now one helper, whose `onCleanup`
+  settles any pick still open when the component unmounts.
+
+- [#3631](https://github.com/pyreon/pyreon/pull/3631) [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The framework-wide colour mode now reaches the rest of the framework.
+
+  - **`@pyreon/core`:** `useProvidedColorMode()` returns the mode an app explicitly set (`<PyreonUI mode>` / `<ColorModeProvider mode>`), or `undefined` when none did. It is for components whose own default is not "follow the system", so adopting the shared mode never flips them on a page that never asked.
+  - **`@pyreon/flow`:** with no `colorMode`, a flow takes the app's colour mode, and is still light when the app set none. An explicit `colorMode` still wins.
+  - **`@pyreon/code`:** an editor created without a `theme` follows the app's colour mode once mounted in `<CodeEditor>`, live. An explicit `theme` still wins, and with no app mode the default is still light.
+  - **`@pyreon/zero`:** the theme now also declares the CSS `color-scheme` on `<html>`, beside `data-theme`, in `setTheme`, on setup and in the pre-paint script. Native form controls and scrollbars follow it, and so does the shared colour mode, so a zero theme toggle reaches flow and the code editor with no wiring. **`themeScriptCspHash` changed with the script:** an app that pinned the old hash in its own `Content-Security-Policy` header must take the new value.
+  - **`@pyreon/native-compiler`:** `useColorMode()` lowers to the platform scheme read, exactly as `useColorScheme()` does.
+  - **`@pyreon/hooks`:** `useColorScheme()`'s docs point to `useColorMode()` for theming; it reads the OS only.
+
+- [#2799](https://github.com/pyreon/pyreon/pull/2799) [`215768a`](https://github.com/pyreon/pyreon/commit/215768ae52a01c22d4c6a428b5e62c8a6e83a6eb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - restore `@pyreon/hooks` to its coverage thresholds (source changes are comments only)
+
+  `Coverage (Full)` had been red on every push to main. `@pyreon/hooks` measured
+  98.95% statements / 96.29% branches against configured 99 / 98 — thresholds set
+  in [#1611](https://github.com/pyreon/pyreon/issues/1611) and never lowered, so the coverage had drifted down as the
+  native-colocation hooks landed without matching tests.
+
+  The real gap was that `useFetch` had **no test file at all**, including for the
+  contract its own JSDoc documents: "each `refetch()` aborts the previous in-flight
+  request, so a slow stale response can never clobber a fresh one" — leak class F,
+  untested. Now covered, along with a server-initiated `useWebSocket` close (the
+  fake's `close()` never fired `onclose`, so a dropped connection was untested
+  while the fake looked faithful) and a `useDatabase` cold read in a
+  blocked-storage context.
+
+  One `v8 ignore` was factually wrong and is corrected: it claimed
+  "happy-dom has no checkVisibility" and sat on `useFocusTrap`'s
+  `checkVisibility` branch. happy-dom reports
+  `typeof el.checkVisibility === 'function'` (measured), so the ignore was
+  excluding covered code while the genuinely-unreachable fallback counted against
+  coverage. The ignore now sits on the fallback.
+
+  Remaining ignores are the `isServer` / `isClient` module-load env guards, whose
+  false side cannot be reached without mocking `@pyreon/reactivity` — the same
+  justification the package already used for `useDatabase`'s server arm.
+
+  No runtime behaviour changes: every source edit in this changeset is a comment.
+
+- [#3501](https://github.com/pyreon/pyreon/pull/3501) [`f2b1d43`](https://github.com/pyreon/pyreon/commit/f2b1d433b0f833c56b173d300144436dcdcd53ae) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native `PyreonWebView` (Swift + Kotlin) speaks the `<WebView>` host-group protocol: reserved join/leave/relay messages are consumed before `onMessage`, and a relay is evaluated into every sibling WebView of the same group. Members are held weakly and removed by identity on leave, dismantle/release and deinit.
+
+- [#3382](https://github.com/pyreon/pyreon/pull/3382) [`9b1b20a`](https://github.com/pyreon/pyreon/commit/9b1b20ad8b5deb842079927bba39068749757cc6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useWakeLock`, `useAudioRecorder` and `useDeviceMotion` now release what they acquired when the acquisition settles AFTER the owning scope disposed (or after `release()`/`stop()` ran). Previously an unmount during the permission prompt left the screen lock held, the microphone stream live (OS recording indicator on) or the motion listener attached, with nothing able to release it.
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#2830](https://github.com/pyreon/pyreon/pull/2830) [`39db4ce`](https://github.com/pyreon/pyreon/commit/39db4ce30422821ac781e72d7cc27f43ac523e17) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useClipboard`'s reads were 1:1-inverted, and `text` was missing natively
+
+  Two findings, both in the same hook.
+
+  **The reads.** On the web `copied` and `text` are accessors (`copied: () => boolean`), and the hook's own documented example is
+  `{() => copied() ? 'Copied!' : 'Copy'}`. Natively they are stored properties, so that documented spelling failed with
+  `cannot call value of non-function type 'Bool'` — while the spelling that DID compile natively (`c.copied`) renders the accessor function on the web. Reads now drop their parens on both targets; a real method (`copy(text)`) keeps its parens and arguments.
+
+  This is the third instance of the class, after `model()`'s state fields and the one `useBluetooth` avoided by construction: **a hook whose web surface is accessors and whose native surface is fields needs a use-site rewrite, or the two spellings are mutually exclusive.**
+
+  **The missing member.** `text` — "the last successfully copied text" — has been in the web hook since inception and existed on neither native runtime, so a component reading it compiled on the web and failed with `has no member 'text'`. Both runtimes now expose it, set on the successful-copy path.
+
+  Found by taking each lowered hook's web-correct spelling and compiling it. Worth noting what that same sweep did NOT find: `useOnline` returns an accessor directly rather than an object, and `useCrashReporter` exposes getter-backed plain properties that already match — both were spellings I had guessed wrong, not bugs.
+
+  ## The Swift stubs were narrower than the runtimes
+
+  Sweeping every lowered hook's web-correct spelling through the compiler
+  surfaced a second class: the **type gate was rejecting correct emits**,
+  because several Swift stubs carried a fraction of their runtime's surface.
+
+  - `PyreonShare` — stub had `url`; the runtime has `text` / `url` / `textUrl` / `canShare`
+  - `PyreonHaptics` — stub had `impact`; the runtime has three
+  - `PyreonNotifications` — stub had `notify`; the runtime also has `requestPermission`
+
+  Every one of those members is reachable from the web hook, so a component
+  using them compiled on the web and was refused here. This is the mirror of
+  the documented superset-stub trap and just as costly: a stub NARROWER than
+  reality fails working code.
+
+  `useBiometrics.isAvailable` was the one real product gap in the sweep — it
+  has been in the web hook since inception and existed on neither runtime.
+  Swift now answers it with `canEvaluatePolicy` (honest: no sensor or no
+  enrolment reports false); Kotlin returns `false` alongside its v1
+  `authenticate` scaffold, because a hardcoded `true` would send a caller down
+  a path that cannot authenticate.
+
+  A new suite compiles the web-correct spelling of each lowered hook's surface,
+  so this class cannot recur silently.
+
+- [#3759](https://github.com/pyreon/pyreon/pull/3759) [`1a64907`](https://github.com/pyreon/pyreon/commit/1a64907717ca2734bedaceceda00d368e0c0f2a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useWakeLock`, `useDeviceInfo`, `useDeviceMotion`, `useSpeech`, `useAudioRecorder`, `useBluetooth` and `useCamera` compiled to engines named by the emit (Kotlin `AndroidScreenKeeper`, `AndroidDeviceProbe`, `AndroidMotionSource`, `AndroidSpeechSynth`, `AndroidRecordingEngine`, `AndroidBluetoothScanner`; Swift `UIKitIdleTimer`, `UIKitDeviceProbe`, `UIKitCameraPresenter`, `CoreMotionSource`, `AVSpeechSynth`, `AVFoundationRecordingEngine`, `CoreBluetoothScanner`) that existed only in the validation stubs — an app using any of the hooks could not build against the real SDK while every stub gate stayed green. The real engines now ship in `@pyreon/hooks` native (`PyreonDeviceProbesAndroid.kt`, `PyreonDeviceProbesUIKit.swift`) with the web arm's semantics: motion is m/s² including gravity with the W3C sign and rotation in deg/s, a recording returns a `file://` URI, a wake lock is the window / idle-timer flag, BLE discovery is first-seen and permission denial lands in `error`. Microphone / BLE-scan permission is requested at call time and the call reports the ordinary "denied" outcome; the next call succeeds. On Android the hook state classes are now `RememberObserver`s, so a recording, scan, sensor or wake lock is released when its screen leaves composition (the iOS twin does this in `deinit`). The Android display probes no longer depend on `RememberObserver` — the emit remembers the wrapper, not the probe, so Compose never notified it — and instead attach their layout watch lazily on first read. The `emitted-runtime-types-exist` ratchet list is now empty and its owned-name pattern covers the Apple-flavoured engine names.
+
+- [#3168](https://github.com/pyreon/pyreon/pull/3168) [`ddd9586`](https://github.com/pyreon/pyreon/commit/ddd95868e9a865face6c204559df037c2eadcf41) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Five defects in the native runtimes — a guard bypass, two crashes, and two threading faults
+
+  The Swift/Kotlin sources that ship to devices had never been audited. Four of these five are the same shape: **the correct idiom already exists in this repo and one sibling did not adopt it.**
+
+  **A COLD deep link bypassed every navigation guard.** `PyreonRouter.init` assigned the inbound path straight to `path`, and `allowNavigation` runs only from `push`/`replace` — so an app launched BY a URL arrived at that route with no guard run, while a warm link to the same route was gated. A visited web page doing `location.href = "myapp://admin/billing"` opened the app at `/admin/billing` with the auth guard never executed; this repo's own reference host is `exported` + `BROWSABLE`. The asymmetry is what hid it: an app tested by driving links into an already-running app looks correctly gated. A route's `beforeEnter` now runs on the initial path, falling back to root when refused.
+
+  **The Swift crash reporter replaced the app's existing handler instead of chaining to it.** `NSSetUncaughtExceptionHandler` replaces, so an app that configures Crashlytics or Sentry first stopped receiving NSException reports the moment a view called `useCrashReporter()` — the dashboard goes quiet and nothing says why, and which handler won was a coin flip on initialisation order. The Kotlin twin has always chained, and its header states the rule: "a crash reporter that swallows the crash changes app behavior".
+
+  **`openUrl` terminated the process on Android** for any URL nothing could handle. `startActivity` throws `ActivityNotFoundException`; the call was unguarded, so a `zoommtg://` link on a device without Zoom killed the app. The Swift half degraded gracefully, so one shared source crashed on exactly one target. It returns whether the URL opened, rather than swallowing — a caller that wants to fall back needs to know.
+
+  **The debounce/throttle scheduler ran the user's callback off the main thread, on both targets.** `TimerTask.run` executes on the Timer's thread and an unstructured Swift `Task` does not inherit MainActor, so a debounced body — which writes signals — was an off-main Compose state write: `IllegalArgumentException: Detected multithreaded access to SnapshotStateObserver`, the exact crash two neighbouring files each document and each already fix by hopping to the main looper. This one is reachable through the default emit with no unusual host code. Both targets hop now, both guard the task map they were racing, and Kotlin shares one daemon timer instead of starting a thread per debounced callback and never cancelling it.
+
+  **The deep-link listener released by position, not identity** (leak class A, both targets). A router that registered earlier and deallocated later cleared the slot belonging to the router that had replaced it — warm deep links then died silently for the session, and the next link was stashed for a router that might never be constructed.
+
+  One thing was tried and reverted: re-validating the standing path when a global guard is registered. It closes the cold-link hole for global guards, but it makes adding a guard NAVIGATE — so `beforeEach { false }`, the ordinary "block navigation while saving" pattern, would eject the user from the page they are on. The package's own `testBeforeEachBlocksReplace` caught it. A guard is about transitions; applying it retroactively to the current location is a different and worse semantic. So a guard that must cover a cold deep link belongs on the route's `beforeEnter`, which is now said in the public doc rather than left to be discovered.
+
+- [#3579](https://github.com/pyreon/pyreon/pull/3579) [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - An unsized native `<WebView>` now defaults to 150 points tall on iOS and Android, matching the CSS default the web `<iframe>` falls back to. Before, it measured to its content. For a hosted chart or flow page whose body is `height: 100%`, that came out around 18dp inside a scrolling page, so the page had no room to lay out and taps landed on nothing. An explicit height still takes precedence.
+
+- [#2752](https://github.com/pyreon/pyreon/pull/2752) [`e0e0dc0`](https://github.com/pyreon/pyreon/commit/e0e0dc066470e92066652ccbd739ae0d6e518c58) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Eight README examples are now typechecked in CI.
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- [#3515](https://github.com/pyreon/pyreon/pull/3515) [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: closes five README/manifest gaps against shipped 0.52-cycle APIs, found by auditing every package README against its real exports.
+
+  - **`@pyreon/core`** — `<Async>`, `use()` (already in the manifest but undocumented in the README) and `elementRef()` (missing from BOTH the README and the manifest) are now documented. `elementRef` gets a new manifest `api[]` entry with a real `mistakes` catalog, and the package `longExample` now demonstrates all three primitives so they surface in `llms-full.txt` / the MCP `api-reference` (the manifest's `longExample`, not `api[].example`, is what drives that section).
+  - **`@pyreon/sync`** — the multiplatform pure-TS CRDT engine (`pyreonAdapter`, `PyreonCrdtAdapter`, `PyreonCrdtDoc`, `createActorId`, `connectPyreonSync`, `webSocketChannel`, `createNativeSyncHost`) shipped via [#2824](https://github.com/pyreon/pyreon/issues/2824)/[#3207](https://github.com/pyreon/pyreon/issues/3207) and was undocumented everywhere — the README's own roadmap table still implied only the Yjs engine had landed. Adds a "Multiplatform engine" README section, 7 new manifest `api[]` entries, and a roadmap row.
+  - **`@pyreon/table`** — `createTableState` (the dependency-free, PMTC-lowerable table-state core) was documented in the manifest but absent from the README, which reads as TanStack-only. Adds a full section + a comparison table + a gotcha distinguishing it from `useTable`.
+  - **`@pyreon/router`** — `safeRedirectLocation` / `classifyRedirectTarget` (public open-redirect-guard exports) get a short "Redirect-target security" subsection under `notFound() / redirect()`.
+  - **`@pyreon/hooks`** — the README's "full surface" table-count line said "55 hooks across 7 categories" against a real 65 (the prose line three lines above it was correct and already guarded by `check-doc-claims`; this second, unguarded restatement of the same number silently drifted on its own). The table itself listed three hooks that do not exist (`useRootSize`, `useSpacing`, `useThemeValue`) and was missing 19 real ones across Interaction/Data (`useBluetooth`, `useSafeArea`, `useScreenOrientation`, `useDeviceMotion`, `useSpeech`, `useDeviceInfo`, `useCamera`, `useAudioRecorder`, `useWakeLock`, `useAppState`, `useCrashReporter`, `useAuth`, `useDatabase`, `useGeolocation`, `useMap`, `useWebSocket`, `useSecureStorage`, `usePush`, `usePayments`). The table is now a verified 1:1 match against `src/index.ts`'s real exports (programmatically diffed).
+  - **`@pyreon/cli`** — `check-doc-claims` gains a guarded claim site for the hooks README's table-count line, closing the exact gap that let it drift silently: `packages/tools/cli/src/doctor/gates/doc-claims.ts`'s `hook export count` check previously only watched the prose line in that file, not this second restatement a few lines below it. Bisect-verified: reverting the new claim spec makes the new regression test fail with `expected +0 to be 1` (drift undetected); restored, it passes.
+  - **`@pyreon/mcp`** — `api-reference.ts` regenerated (`bun run gen-docs`) from the `@pyreon/core` / `@pyreon/sync` manifest edits above; no hand edits.
+
+  No runtime behavior changes in any package.
+
+- [#2931](https://github.com/pyreon/pyreon/pull/2931) [`f904416`](https://github.com/pyreon/pyreon/commit/f9044167f2716c658cc8b68fa2c1bde763ce328e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Wire the secure-context diagnostic into every gated hook, and correct which hooks are gated.
+
+  `https()` shipped with the diagnostic wired into three hooks — `useGeolocation`, `useShare`, `useWakeLock` — while the docs and changeset said "hooks that need a secure context now explain why they are unavailable", which reads as all of them. Five were silent: `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useClipboard`, `useNotifications`. All eight now report the cause.
+
+  The list itself was also wrong in the other direction. Three hooks were described as secure-context-gated and are not: `useCamera` uses an `<input type="file" capture>` picker, which works over plain HTTP; `useSpeech` uses `speechSynthesis`, which is not gated (only SpeechRecognition is); and `usePush` is host-driven, with the app owning the PushManager flow. Warning for those would send someone to configure TLS for a problem TLS cannot fix, so they are deliberately excluded.
+
+  A new static test (`secure-context-coverage.test.ts`) asserts the coverage in both directions: every hook that accesses a gated API must call `warnIfInsecureContext` with its own name, and the check is keyed on the API ACCESS rather than a hook-name list, so a mention in a comment does not count. It has to be static — the diagnostic fires only when `isSecureContext === false`, and a happy-dom suite is always a secure context, so no behavioural test can distinguish a wired hook from an unwired one.
+
+- [#2940](https://github.com/pyreon/pyreon/pull/2940) [`b047088`](https://github.com/pyreon/pyreon/commit/b047088bb852d53f740802a3dd388890b03cc7f9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The secure-context diagnostic now also fires from a hook's capability accessor, not only when you try to use the API.
+
+  It was wired at the bail paths — `acquire()`, `start()`, `copy()`. But the idiomatic shape branches on the capability instead:
+
+  ```tsx
+  <Show when={() => lock.supported()} fallback={<Unsupported />}>
+  ```
+
+  An app written that way is correct, degrades gracefully, and never reaches a bail path — so it never learned that the only thing wrong was the origin. That is the same silent dead end the diagnostic exists to remove. The four gated hooks exposing a capability accessor (`useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useWakeLock`) now report from there too.
+
+  Safe from an accessor because the warning is memoized per hook: a `supported()` read inside a render loop still produces exactly one line.
+
+- [#3192](https://github.com/pyreon/pyreon/pull/3192) [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **`useSecureStorage` and `useDatabase` shared their store across requests on the
+  server.** Both back their web arm with a module-level `Map`, under comments that
+  reason correctly about a browser — "the secret store is app-wide, like the
+  Keychain it mirrors"; "module-scoped so reads and writes within one page agree".
+  In a browser one process serves one user, so app-wide and page-wide are the same
+  scope. On a server one process serves everyone, and both hooks reached that map
+  under SSR: `useDatabase` mirrored into it _before_ its `isServer` early return
+  and read from it, while `useSecureStorage` had no server branch at all.
+
+  Verified by running the modules with no `document` — the real SSR arm, not a
+  mock: a record inserted by one render came back to the next, and a session token
+  written by one render was returned to the next verbatim.
+
+  Both now have an inert server arm — reads empty, `write` returns `false`,
+  nothing stored. That is chosen over a per-call map, which removes the leak but
+  makes two components in one render disagree; inert is consistent for every
+  caller and carries nothing across a request. It is also the honest answer: a
+  localStorage/Keychain mirror has nothing to mirror on a server, and secrets
+  needed there belong in the request context or the environment.
+
+  Also repairs a security docblock in `@pyreon/server`: the server-island fragment
+  renderer's SECURITY CONTRACT paragraph had been spliced into the middle of the
+  preceding sentence, leaving both halves reading as fragments.
+
+- [#3745](https://github.com/pyreon/pyreon/pull/3745) [`b735e04`](https://github.com/pyreon/pyreon/commit/b735e040674de13d31aa30913ff5a3896c2f8b90) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Android `PyreonWebView`: a new opt-in `PyreonWebViewRendering.softwareLayer`
+  flag. When set, it draws hosted WebViews on a software layer. The default is
+  unchanged (hardware). It exists for GPU-less emulators. On the SwiftShader
+  emulator, hardware WebViews intermittently leave the whole window unpainted,
+  and instrumented tests set the flag in `@Before`.
+
+- [#3051](https://github.com/pyreon/pyreon/pull/3051) [`6b90f4a`](https://github.com/pyreon/pyreon/commit/6b90f4adef7e514a4c9e8b7f2e8ec4bfa77b3e0e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon-native wire` never followed a re-export chain
+
+  `resolveNativeSources` has a `transitiveScope: 'first-party'` option, documented
+  as the thing that makes a re-export chain aggregate. **No caller ever passed
+  it**, so the transitive walk never ran — a declared, dead option.
+
+  The consequence is a consumer-facing build failure. `useSecureStorage` is
+  exported by `@pyreon/hooks`, but its Kotlin runtime `PyreonSecureStorage` lives
+  in `@pyreon/storage`. An app that declares hooks (and not storage) wired only
+  hooks and failed a real `gradle assembleDebug` with
+  `Unresolved reference 'PyreonSecureStorage'`.
+
+  `wireApp` now passes it, which fixes the class rather than that one pair. It
+  immediately resolved two more genuinely-missing wirings in the repo's own
+  examples.
+
+  `@pyreon/hooks` also now declares `@pyreon/storage`, which is the honest
+  dependency: it re-exports a hook whose native runtime lives there.
+
+- [#2863](https://github.com/pyreon/pyreon/pull/2863) [`2cf6f2a`](https://github.com/pyreon/pyreon/commit/2cf6f2a15fe3d07ba78669b79f3a5385a60b6088) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `https()` plugin — HTTPS for the dev server, so secure-context browser APIs can be tested on a real device.
+
+  ```ts
+  import { https } from '@pyreon/zero/server'
+  plugins: [zero(), https({ lan: true })]
+  ```
+
+  **Not for localhost.** `http://localhost` is already a secure context. It exists because a phone reaches your dev server at `http://192.168.1.24:3000`, which is not — so `useCamera`, `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, `useSpeech`, `useBluetooth`, `useClipboard`, `useNotifications`, `usePush`, `useShare`, `useWakeLock`, service workers and `crypto.subtle` are all unavailable exactly where they most need testing. A laptop has no accelerometer.
+
+  `lan: true` certifies this machine's network address **and** binds the server to it; certifying an address the server never binds to would produce a certificate nothing can reach.
+
+  Certificates come from three tiers: `{ cert, key }` if supplied; a local `mkcert` CA if one is already installed and trusted (no browser warning); otherwise a self-signed certificate generated with zero dependencies, which works immediately behind a one-time interstitial. **Pyreon never installs a certificate authority** — a local CA key can mint a valid certificate for any domain, so trusting one is a deliberate user action (`mkcert -install`), not a side effect of adding a plugin. Custom hosts are supported; `*.localhost` resolves natively, and anything else has its `/etc/hosts` lines printed rather than written.
+
+  Dev and preview only, HTTP/1.1 (Vite's dev server has not offered HTTP/2 since v3). The certificate is cached under `node_modules/.pyreon-https` and reissued when the host list changes or expiry approaches.
+
+  `@pyreon/hooks` gains the matching diagnostic: hooks that need a secure context now explain why they are unavailable instead of silently reporting "unsupported". It fires only when `isSecureContext` is actually `false`, so it never blames TLS for an API the browser genuinely does not implement.
+
+- Updated dependencies [[`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`24178cc`](https://github.com/pyreon/pyreon/commit/24178cce182d38a6c58d4165222627a008d63976), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`8aeffe0`](https://github.com/pyreon/pyreon/commit/8aeffe09bf62ea08af1278c45ecdaf26d1a04cb6), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`dfdb7f4`](https://github.com/pyreon/pyreon/commit/dfdb7f4952d6f61dfe22fadab1e7bc31175d619f), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`6b1ff6b`](https://github.com/pyreon/pyreon/commit/6b1ff6bc64f0c8e285f61fd7e0a8790c18694818), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5a52b2b`](https://github.com/pyreon/pyreon/commit/5a52b2be1759fbb4fc5f2fb368217adf5ac6070a), [`073a94f`](https://github.com/pyreon/pyreon/commit/073a94f64f84da0d391a47d4fb3b769368455c0b), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/core@0.52.0
+  - @pyreon/storage@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -1213,7 +1823,6 @@ calls without rescanning values` fires; restored → 425/425 pass.
   Code-verified at source; no dedicated regression test in this PR (requires either mocked dynamic-import infra for charts, or a fake-indexeddb harness for storage — separable follow-ups).
 
   ### Audit byproducts (NOT fixed in this PR)
-
   - `@pyreon/code` `<CodeEditor>` component does not call `instance.dispose()` on unmount. Could be a design choice (user owns lifecycle since `instance` is an external prop) OR a documentation gap. Worth deciding deliberately, not bundled here.
   - `@pyreon/state-tree` `_hookRegistry` accepts dynamic IDs without bound — would leak if app generates IDs at runtime (uncommon — typical usage is static IDs).
   - `@pyreon/url-state` per-instance popstate listeners (no shared registry like storage has) — inefficient at scale but not a leak.

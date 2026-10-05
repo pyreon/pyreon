@@ -1,5 +1,51 @@
 # @pyreon/sized-map
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3755](https://github.com/pyreon/pyreon/pull/3755) [`489cba8`](https://github.com/pyreon/pyreon/commit/489cba8f7bb308ca26d27607a0c14c6dfa42da50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Finish the Kotlin `Int` to `Long` move for the runtime APIs emitted code reaches. `PyreonToast.maxToasts`, `PyreonSortable.moveIndex`, `PyreonRateLimit` delays and scheduler, `PyreonSizedMap` (`maxEntries`, `size`), `PyreonScreenOrientation.angle`, `PyreonStream` (`maxEvents`, reconnect `attempts`) and the chart web-view selection indices now use `Long`, and the emit adds the `L` suffix to the literals it passes them. `PyreonChartPoints` takes `Long` counts, which fixes a real `gradle assembleDebug` failure in every chart-bearing Android example. `syncedSignal` and `PyreonCrdtMap.set` now accept `Long` (a `Long` signal previously threw `unsupported value type`).
+
+- [#2805](https://github.com/pyreon/pyreon/pull/2805) [`5b93f4c`](https://github.com/pyreon/pyreon/commit/5b93f4cb70a6e210325aca3c79678b62383bc773) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Co-locate a native runtime for `@pyreon/sized-map`, and lower its constructor
+
+  `@pyreon/sized-map` is 102 lines of pure logic with no platform edge, and it did
+  not work natively at all: `new SizedMap(...)` fell through to the generic "class
+  constructors are not supported" path and emitted `let m = ""` — an empty STRING
+  where a bounded map was expected.
+
+  It now ships `native/{swift,kotlin}/PyreonSizedMap` and
+  `new SizedMap<K, V>({ maxEntries, lru })` lowers to it on both targets, so the
+  tier moves from `web-only` to `shared`.
+
+  The ordering is the whole of the work. JavaScript's `Map` preserves insertion
+  order, so the web gets eviction for free from `map.keys().next()`. Kotlin's
+  `LinkedHashMap` does too and mirrors it almost line for line; Swift's
+  `Dictionary` is explicitly UNORDERED, so the Swift runtime carries the recency
+  order in a parallel array — O(n) per touch against the web's O(1), which is a
+  deliberate trade for a structure whose cap is small by construction, and is
+  stated in the file rather than left to be discovered.
+
+  Three semantics are easy to get wrong and are asserted one-for-one on both
+  platforms: FIFO is the DEFAULT (a read does not rescue an entry from eviction),
+  LRU is opt-in, and `set` ALWAYS refreshes position in BOTH modes — otherwise a
+  just-written entry is evicted on the very next call.
+
+  The constructor recognizer gates on the IMPORT, not the bare name: `SizedMap` is
+  a plausible name for a user's own class. A non-literal `maxEntries` declines
+  with a reason rather than baking in a wrong constant.
+
+### Patch Changes
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
 ## 0.51.0
 
 ### Patch Changes

@@ -1,5 +1,34 @@
 # @pyreon/kinetic-presets
 
+## 0.52.0
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#3051](https://github.com/pyreon/pyreon/pull/3051) [`6b90f4a`](https://github.com/pyreon/pyreon/commit/6b90f4adef7e514a4c9e8b7f2e8ec4bfa77b3e0e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The preset pack's own documented form now animates on native
+
+  `kinetic(tag).preset(fadeUp)` — an identifier from `@pyreon/kinetic-presets`,
+  which is how the pack documents itself — fell through to the plain-container
+  decline, because the kinetic lowering accepted only a string literal. The
+  package's own example did not animate.
+
+  Named presets now resolve. The pack ships 123 and the native vocabulary has
+  seven, so the unambiguous names map (fade / fadeUp / fadeDown / fadeLeft /
+  fadeRight / slideUp / slideDown / slideLeft / slideRight / scaleIn / scale) and
+  everything else declines **by name**, saying which preset and what the native
+  vocabulary is.
+
+  Mapping the rest to the nearest motion would be worse than declining: a
+  `bounceIn` that silently plays a fade is a bug the author cannot see. The
+  diagonal (`fadeDownLeft`) and magnitude (`slideUpBig`) variants are unmapped for
+  the same reason — native has neither a diagonal nor a distance parameter, so a
+  mapping would drop half the intent without saying so.
+
 ## 0.51.0
 
 ### Patch Changes

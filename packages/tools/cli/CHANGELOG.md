@@ -1,5 +1,509 @@
 # @pyreon/cli
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2741](https://github.com/pyreon/pyreon/pull/2741) [`019d5d1`](https://github.com/pyreon/pyreon/commit/019d5d1118d172c333b885122bb5ad286c1bcb50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **`atlas verify <Component>` — the write → verify → fix loop, and a scan that says WHICH check failed.**
+
+  A scan reported `41 verified, 2 failing`. That counts _scenarios_, and it withholds the finding: six checks run per scenario, and the one that failed is the whole content of the message. Answering "which check?" meant opening `atlas-catalog.json` and walking it by hand.
+
+  - **Every run now prints a per-check tally** — `checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43` — plus `not run:` lines naming the checks that were unavailable and why. This is not cosmetic: on a package where `@pyreon/runtime-server` does not resolve, the scan reports **1090 of 1090 scenarios verified** having run two of the six checks. True, and completely misleading without the tally.
+  - **A failing scan now prints the failing CHECK and its findings**, not a bare list of scenario ids. Capped at 20 rows on a whole-catalog scan, and the cap reports itself.
+  - **New `atlas verify [Component] [--cwd <dir>] [--json]`.** Discovery still walks the project — a component's file is not known until it does — but decoration and verification run only for the match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s full scan against 0.90s scoped to one component's 60 scenarios; the verify work drops ~18× while discovery dominates the residual, so it is a focus tool first and a speed tool second. Failing scenarios print uncapped. `--json` emits the report as data for an agent to branch on.
+
+  Three refusals in `atlas verify` are deliberate. It **never writes `atlas-catalog.json`** — a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and `atlas check` for everything else. An **unmatched name exits non-zero** with suggestions, because filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass. And a run where **nothing could be verified exits non-zero** too: zero failures is not a pass when zero checks ran.
+
+  **Load errors are classified instead of blanket-blamed.** `virtual:zero/routes` is a module a build plugin synthesises; the import is correct and unresolvable only because Atlas does not run that plugin. Every scan of every zero app printed "fix the import and re-run" for it. Those are now reported separately, as "nothing to fix" — while still stating that a component defined in such a file would be absent, which is the half that remains true. A genuinely broken import keeps the loud, actionable message.
+
+  **Fixes a pre-existing arg-parsing bug**: `--cwd` was missing from the value-flag set, so any command reading a positional alongside it took the _path_ as that positional. `atlas check Button --cwd ./ui` parsed `./ui` as the component's args JSON and reported "could not parse the args" for a command line that is entirely correct.
+
+  `CHECK_KEYS` and `CheckKey` are now exported from the plugin registry as the single owner of the check list, so a seventh check cannot be merged into verdicts while going uncounted in the report.
+
+  `pyreon atlas --help` lists the new `verify` subcommand (`@pyreon/cli` passes every argument through, so the command itself already worked — the help text was the gap).
+
+- [#3665](https://github.com/pyreon/pyreon/pull/3665) [`2e60aea`](https://github.com/pyreon/pyreon/commit/2e60aeab613711749750e7c27407dea22c382c53) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon upgrade` now runs versioned codemods for the breaking changes an upgrade crosses: every codemod introduced after the project's lowest declared `@pyreon/*` version and at or before the target, oldest first. A dry run lists the files each would change; `--write` applies them; `--json` reports them under `codemods`. The first codemod, `zero-remove-vite-option` (0.52.0), removes the never-read `vite` option from `zero({...})` and keeps its value as a comment.
+
+- [#3116](https://github.com/pyreon/pyreon/pull/3116) [`1dcfb39`](https://github.com/pyreon/pyreon/commit/1dcfb3984d41b01f36104a6e06ed9d655965e2e5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor`'s distribution gate now names an unbuilt checkout correctly when
+  the package ships an ambient declaration under `src/`.
+
+  The gate discriminates two causes of "no source maps in the tarball" — a real
+  `files`-array defect, and a checkout that was simply never built — because they
+  need opposite fixes. It decided by asking whether the tarball contained any
+  `.js`/`.d.ts`, but a `.d.ts` is indistinguishable by extension from hand-written
+  source, and 19 published packages ship exactly that (`src/env.d.ts`,
+  `src/sharp.d.ts`, `src/vite-raw.d.ts`) while listing `src` in `files`. One
+  authored file answered "yes, this was built", so an unbuilt checkout got the
+  files-array message the discriminator exists to stop printing.
+
+  Built output is now JS, plus declarations outside `src/` — so a types-only build
+  (`lib/index.d.ts`) still reports as a real defect.
+
+- [#2751](https://github.com/pyreon/pyreon/pull/2751) [`c000667`](https://github.com/pyreon/pyreon/commit/c0006673ffb70e9a23ca08076a94a5760526f2df) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **`get_api` now answers for `@pyreon/a11y` and `@pyreon/rich-text`.** Both had manifests and ZERO api-reference entries, so an agent asking about them got nothing — 53 packages were served, not 56. A manifest is the docs pipeline's INPUT; an api-reference entry is what an agent can retrieve, and nothing connected the two. Adding their marker pairs generates 7 and 3 symbols respectively from the manifests they already had.
+
+  `check-mcp-docs` now gates that: a package with a manifest that `get_api` cannot answer for is a failure, with the marker-pair fix printed. It checks reachable KEYS rather than markers, because a package may legitimately be served by hand-written entries (`@pyreon/i18n` is) and demanding a marker would force a migration the pipeline makes optional.
+
+  **`check-doc-claims` gained 7 claim sites (23 → 30)**, covering counts that had rotted precisely because nothing watched them: the MCP tool count (CLAUDE.md said 18, actual 19), manifest coverage ("52 of 65 published packages", actual 56 of 75), the manifest-exempt count (13, actual 19 — the six `native-*` packages joined the list), and three claims in `@pyreon/primitives`' README.
+
+- [#3077](https://github.com/pyreon/pyreon/pull/3077) [`69c191f`](https://github.com/pyreon/pyreon/commit/69c191f7235dabc5ecc6b6dd41f7ca72376076d5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `@pyreon/lathe` — spec-to-client code generation for the Pyreon stack.
+
+  Reads an OpenAPI 3.x document and emits `@pyreon/validate` schemas,
+  `@pyreon/http` endpoints, `@pyreon/query` hooks, deterministic mock fixtures and
+  `@pyreon/atlas` scenarios. Available as `pyreon lathe generate` alongside
+  `pyreon atlas` and `pyreon loom`, and configured from a `lathe` section in
+  `pyreon.config.*`.
+
+  The `multiplatform` target is the part without a direct analogue elsewhere. The
+  native compiler lowers only a subset of TypeScript and has no module graph — it
+  recognises a client, a schema and a call only when they share one file's top
+  level — so Lathe emits an additional self-contained module per tag, a layout no
+  human would maintain and exactly the one the compiler wants. It then runs the
+  real compiler over its own output and checks for the POSITIVE marker, because
+  zero warnings is not evidence of lowering: a standalone hook wrapping `useQuery`
+  produces no warnings and emits Swift that cannot find the symbol.
+
+  Spec parsing is first-party, including a YAML reader scoped to the OpenAPI
+  subset that refuses anchors, merge keys, explicit tags and tab indentation with
+  a line number rather than mis-reading them.
+
+- [#3121](https://github.com/pyreon/pyreon/pull/3121) [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Role-aware rule tiers — one config now covers server, client, isomorphic and
+  multiplatform code, with no glob `overrides`.
+
+  A general-purpose linter splits backend from frontend with hand-written globs
+  the user keeps in sync. A framework does not have to guess: an fs-router API
+  route, a `node:` import, an `island()` call and an entry file each PROVE where
+  a file runs. `resolveFileRole()` reads them, strongest signal first, and
+  defaults to `shared` — the strict answer, because an isomorphic file must
+  satisfy both sides and guessing either one silently disables the other's rules.
+
+  **This was already happening, badly.** Two rules classified server files with
+  `filePath.includes('server')`, and `observer` contains `server` — so
+  `use-intersection-observer.ts`, a client hook, was treated as a server file by
+  both. Reproduced against `lintFile`, then fixed. A third rule re-implemented
+  `isTestFile` inline, omitting `/__tests__/`.
+
+  **Eleven new rules across five new groups** (113 rules, 25 categories,
+  10 groups). Every one gated by the RUNNER via `appliesTo`, never by the rule —
+  `exemptPaths` was opt-in per rule and 55 of 102 silently ignored it, and a role
+  gate written rule-by-rule would repeat that exactly.
+
+  - **`isomorphic`** — `no-locale-dependent-format`, `no-timezone-dependent-date`,
+    `no-unstable-render-id`, `no-node-builtin-in-component`. Hydration mismatches
+    that are correct in every unit test and wrong for some users in production.
+  - **`backend`** — `no-sync-fs-in-request-path`, `no-floating-promise-in-handler`.
+  - **`web-perf`** — `prefer-passive-listener`, `no-unbounded-raf-loop`.
+  - **`portable`** — `no-out-of-subset-construct`, `no-platform-branch-without-fallback`.
+    PMTC warns about these too, but only for files a native app's entry graph
+    reaches; the catalog names that gap directly ("a feature no example uses is
+    one no gate ever compiles"). These fire at authoring time instead.
+  - **`js`** — `require-error-cause`.
+
+  **Precision came from measurement, not taste.** Run unscoped against this repo
+  the first cut produced **over 5,000 findings**; reading them produced five
+  narrowings, and the final count is **11**:
+
+  | finding              | cause                                                            | narrowing                                                |
+  | -------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+  | 4,388 subset         | web-only internals are entitled to the whole language            | fires only where `portablePaths` says a file must travel |
+  | 469 floating promise | a shared util is not a request handler                           | the file must EXPORT a handler                           |
+  | 149 sync fs          | Vite plugins and the compiler are server-role, not request paths | same handler gate                                        |
+  | 14 raf               | a one-shot frame is ordinary                                     | must schedule ITSELF                                     |
+  | 1 raf                | a double-rAF terminates                                          | self-REFERENCE, not merely nested                        |
+  | 11 locale            | benches print to a console                                       | `bench/` and `e2e/` are build role                       |
+  | 2 timezone           | `new Date(y, m, d).getDate()` is timezone-independent arithmetic | only Dates representing an INSTANT                       |
+  | 2 error-cause        | a custom error class has no options slot                         | built-in error constructors only                         |
+
+  **Two real bugs found and fixed by the new rules.** The scaffolded dashboard
+  template formatted money and dates with no locale in 14 places — every
+  generated app shipped a hydration mismatch on its own front page. Fixed with a
+  `lib/format.ts` that pins locale AND timezone, which is also the pattern users
+  should copy. And five `throw new Error(msg)` sites inside `catch` now pass
+  `{ cause }`, so the stack points at what actually broke.
+
+  Also closes the review finding on `no-unsanitized-inner-html`: a dead
+  assignment was a half-written hop loop, and finishing it fixed a real
+  false positive — a sanitized value that had been renamed once
+  (`const body = clean`) was flagged.
+
+- [#3121](https://github.com/pyreon/pyreon/pull/3121) [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every rule now runs on this monorepo, and every rule is proven to fire.
+
+  Three silent holes, each the same shape — a capability that worked for a
+  hand-maintained subset, where being outside the subset was indistinguishable
+  from being inside it.
+
+  **Two rules could never fire.** `pyreon doctor`'s lint gate scans each
+  package's shipped `src/**` minus tests, fixtures and `.d.ts`. Two rules'
+  subject is exactly what that removes: `no-query-selector-cast-in-test` and
+  `vitest-config-uses-shared`. Both were configured `error`; 2,159 test files
+  and 115 vitest configs existed and **none were in scope**. A rule now declares
+  its surface via `RuleMeta.scanTarget` (`'source'` | `'test'` |
+  `'packageConfig'`) and the gate collects what the enabled rules need, each
+  extra target as its own pass with every other rule off — running the full set
+  over tests would reintroduce the fixture noise the exclusions exist to prevent.
+
+  Turning them on found **280 `querySelector(…) as HTMLX` sites across 92
+  files** — the exact class `no-query-selector-cast-in-test` exists to prevent,
+  re-accumulated since PR [#963](https://github.com/pyreon/pyreon/issues/963) eliminated 122 of them. They are routed to the
+  advisory ratchet at a seeded baseline of 280, which can only shrink. That is
+  strictly more enforcement than the zero they had, and the burn-down is a
+  follow-up.
+
+  **`exemptPaths` was honoured per rule** — a rule had to call `isPathExempt`
+  itself and **55 of 101 did not**, so an exemption configured for one of those
+  parsed, validated, and did nothing. It is now applied centrally in the runner,
+  before `rule.create()`, so it means the same thing for every rule by
+  construction.
+
+  Because it is now a runner-level option rather than a per-rule one, option
+  validation recognises it on every rule — configuring it on a rule whose schema
+  omits it used to warn `unknown option "exemptPaths"` about an exemption that
+  demonstrably works. The 46 per-rule `isPathExempt` bails are deleted: the
+  central skip runs before `rule.create()`, so they were unreachable.
+
+  **A config key naming nothing was silently ignored.** This repo shipped
+  `pyreon/dangerously-set-inner-html` — with an `exemptPaths` list — for a rule
+  that has never existed. Unknown `rules` / `groups` keys are now config
+  diagnostics with a did-you-mean.
+
+  **Verification:** a new fires-invariant asserts all 101 rules produce their
+  diagnostic on a defect fixture and stay silent on the corrected one, with only
+  that rule enabled, and asserts the fixture map is total over the registry.
+  Building it found 13 fixtures wrong and **zero broken rules** — and it then caught the new rule below before it had a fixture, which is the case it exists for.
+
+  **New rule — `pyreon/no-unsanitized-inner-html`** (opt-in, `warn`). Pyreon
+  assigns `dangerouslySetInnerHTML`'s `__html` **raw** by design — React parity,
+  the developer owns sanitization, and unlike the sibling `innerHTML` prop no
+  sanitizer applies. That is the most direct XSS vector a Pyreon app has, and it
+  was caught by nothing. The gap was recorded but not closed: the ghost config
+  entry above was `pyreon/dangerously-set-inner-html`, complete with an exemption
+  for the one file that legitimately uses it.
+
+  It stays quiet on everything it cannot prove — a string literal, a
+  substitution-free template literal, a sanitizer call, and one hop through a
+  same-file `const`, so the idiomatic `const clean = DOMPurify.sanitize(dirty)`
+  is recognised. Opt-in because it is a judgement call about a prop that is
+  legitimately used with your own sanitizer.
+
+  It found **4 raw sinks** in this repo, ratcheted alongside the others. One is
+  worth a look on its own: `<Icon svg={…}>` renders caller-supplied markup raw,
+  so an app passing untrusted SVG through it has an XSS hole. The other three
+  are library output (mermaid, katex) and an `aria-hidden` gutter built from
+  line numbers.
+
+  **Also fixed:** the code editor's gutter line numbers failed WCAG AA — 2.45:1
+  (light) and 2.63:1 (dark) against a 4.5:1 requirement. Now 4.55:1 and 4.75:1,
+  one palette step each.
+
+  The repo's config runs all 101 rules: non-opt-in at `error`, opt-in at
+  advisory severity so the ratchet locks them at zero. Four rules stay off with
+  stated reasons — `no-ternary-conditional` and `no-and-conditional` are style
+  preferences whose own docstrings say they are not correctness rules, and
+  gating CI on them would fail correct code.
+
+- [#2833](https://github.com/pyreon/pyreon/pull/2833) [`2e12add`](https://github.com/pyreon/pyreon/commit/2e12addb54586212dce479699d7ea70f084d1a7e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship co-located native ports, and gate that they always do.
+
+  - **`@pyreon/table`**: its `PyreonTableState` Swift/Kotlin ports (added in [#2828](https://github.com/pyreon/pyreon/issues/2828))
+    were declared via `pyreon.native` and compiled by the co-source gate, but the
+    package's `files` array did not include `native/swift` / `native/kotlin` — so
+    the ports never reached the published tarball. A native app installing
+    `@pyreon/table` could not resolve them. Added the two `files` entries.
+
+  - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
+    `check-distribution` CI gate): a new rule, `distribution/native-source-not-
+shipped`, fails any package that declares `pyreon.native` but omits the
+    declared native source dirs from `files`. This is the class of bug above —
+    a co-located port that builds in-repo but is absent from npm. It surfaced two
+    real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
+
+- [#3122](https://github.com/pyreon/pyreon/pull/3122) [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode follow-up tier: deep state, the classic→plain codemod, readiness report, Lens verdicts, and native-target support.
+
+  - **Deep state** — `let user = state({ … })` / `state([ … ])` (a literal object/array initializer) now lowers to `signal(createStore(...))`: member writes (`user.name = x`) and array mutations (`todos.push(t)`) notify with per-key granularity, whole reassignment replaces the store, and every JSX position stays live through the existing signal machinery. `state.raw(v)` opts a literal out to a shallow signal (replace-the-value semantics); non-literal initializers stay shallow — the split is static. Total tracking hoists conditional static member paths (`void (user().name);`), never a write target.
+  - **Codemod + readiness** — `pyreon plain [paths] [--write] [--json]`: per-binding classic→plain migration (`migrateToPlain` in `@pyreon/compiler`) whose dry-run is the readiness report with a declined-shape histogram. Object-literal signals convert to `state.raw(...)` — the codemod never changes semantics. A seeded round-trip fuzz oracle (classic → codemod → compile → behavioral DOM diff) locks both directions.
+  - **Reactivity Lens** — plain pre-pass warnings surface as `plain-mode` footgun findings in `analyzeReactivity`, at their source locations.
+  - **Native targets** — the PMTC compiler runs the same pre-pass via the new light `@pyreon/compiler/plain` subpath; a plain shared-source file emits byte-identical Swift/Compose to its classic twin.
+  - **Cross-module** — the vite-plugin signal-export registry now recognizes `state.raw(...)` exports; imported-state member-write warnings give conditional (deep vs shallow) guidance.
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#3677](https://github.com/pyreon/pyreon/pull/3677) [`c12635c`](https://github.com/pyreon/pyreon/commit/c12635c3a9c423ac7b860293b0397583970235dd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Audio>` is now a member of the compiler's canonical primitive set. It was lowered on both targets but missing from `CANONICAL_PRIMITIVES`, so an `<Audio>` the emitter could not read (a non-literal `src`) fell through to generic emit with no warning, while the same `<Video>` warned. A new test checks that the set matches `@pyreon/primitives`' exports, and the per-primitive typecheck suite now compiles `<Audio>` and `<Video>` too (it had pinned the count at 15).
+
+  Docs: the primitive count, which had drifted to 15, 16 and 18 in different places while the package exports 17, is corrected everywhere and now checked by `check-doc-claims`. The primitives manifest fixes `<Scroll>`'s prop name (`axis`, not `direction`) and the `<Link>`, `<Layer>` and `<Modal>` descriptions, and notes that `justify`/`wrap` and `<Link external>` are ignored on iOS and Android. The `prefer-canonical-primitive` lint message no longer quotes a count.
+
+- [#3709](https://github.com/pyreon/pyreon/pull/3709) [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/charts` no longer carries an ECharts-compatibility layer. It is Pyreon's own engine only: `<Chart>` with mark children, the family components, `/svg` and `/engine`.
+
+  - The chart engine drops every `Series` / `ChartSpec` field and helper that only an ECharts option could set: the ECharts bar layout and nice-domain algorithm, label placement and rich text, emphasis/select/blur states, extra and secondary x axes, axis-line / tick / minor-tick / split-area options, grid insets, inverse axes, pictorial symbol layout and the `lines` series. None of them was reachable from `<Chart>`; the generated native engines shrink by the same amount.
+  - `<FunnelChart echarts>` is removed; `funnel` covers sorting and alignment.
+  - `<GaugeChart dial>` takes a spec built with the new `gaugeDial({ data, … })`, every part defaulted. On iOS and Android `dial` now warns and draws the half-circle track.
+  - `visualMap` on `<HeatmapChart>`, `<CalendarChart>` and `<MapChart>` takes a spec built with the new `visualMap({ domain, … })`, which also lowers to native.
+  - `<CandlestickChart zoom>` takes a `CandlestickZoom` whose fields are all optional (`inside`, `slider`, `window`, `lock`, `minSpan`, `maxSpan`).
+  - `ChartHandle` loses the timeline (`step`, `playing`, `timelineChange`, `timelinePlayChange`), which only an option chart had; the native `PyreonChartHandle` follows.
+  - `tweenCmds` passes `clip` / `unclip` through instead of dropping them.
+
+  The native compiler drops the `<OptionChart>` and `<ChartWebView>` lowering. `pyreon/no-web-only-import-in-portable` no longer flags `@pyreon/charts`, which draws natively.
+
+- [#3691](https://github.com/pyreon/pyreon/pull/3691) [`99ed841`](https://github.com/pyreon/pyreon/commit/99ed8417ee2541158b92ff6c105ce96d9a959524) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation accuracy pass over the five CLI packages — no runtime changes. `@pyreon/cli`'s README was missing the `check`/`plain`/`add`/`new`/`mcp`/`atlas`/`loom`/`lathe` commands entirely and undercounted `doctor`'s gates (8/10 instead of 13/15); rewritten against the current source, and the docs site gained `pyreon plain`/`pyreon loom`/`pyreon lathe` sections plus the `dependency-fabric` gate that two reference tables had dropped. `@pyreon/zero-cli`'s docs described `zero create` as a broken, prompt-less "copy the default template" shortcut (its actual pre-fix behavior, per the source's own history comment) instead of the full `@pyreon/create-zero` delegate it is today, and were missing `zero doctor --full` / `zero dev --routes`. `@pyreon/create-zero`'s README was missing the `monorepo` template, the `isr` render mode, `--preset`, the `--with-<feature>`/`--no-<feature>` flags, and `--typed-routes`. `@pyreon/create-multiplatform`'s docs never mentioned `--dir`/`--help`, the kebab-case project-name validation, the non-empty-target-dir refusal, or the generated `lint`/`release:keystore`/`release:android` scripts. `@pyreon/native-cli`'s README still claimed `"private": true` and "not published to npm", which stopped being true when the package started publishing; rewritten to document its full `build`/`check`/`assets`/`stage-web`/`wire` command surface.
+
+- [#3109](https://github.com/pyreon/pyreon/pull/3109) [`a1ccd9b`](https://github.com/pyreon/pyreon/commit/a1ccd9ba5016141ea836e255f376063980a91a6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor`'s distribution gate now distinguishes "this checkout was never
+  built" from "the `files` array excludes source maps".
+
+  Both produce a tarball with no `.map` files, and the gate blamed the second for
+  both. In a fresh worktree — where `lib/` does not exist yet — that sent people
+  to read a `files` array that was never wrong. The tarball's own file list
+  answers it: no `.js`/`.d.ts` at all means there was no built output to carry
+  maps, and the fix is `bun scripts/bootstrap.ts`.
+
+  Still an error either way; only the message and the finding code change
+  (`distribution/unbuilt-checkout` for the new case).
+
+  `check-native-srcdirs-drift` gets the same treatment. It resolves through the
+  example's `node_modules`, so an under-installed checkout makes the resolver
+  return a subset and the report inverts — "the app no longer declares these; drop
+  the srcDir" is the opposite of the truth, and following it would delete working
+  wiring. It now recognises the case and says to install. Its pure logic also gets
+  its first tests.
+
+- [#3675](https://github.com/pyreon/pyreon/pull/3675) [`153bb4b`](https://github.com/pyreon/pyreon/commit/153bb4b7da3d3b13d61aa588c6302d4ca7650948) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Accuracy fixes found by a docs audit:
+
+  - `@pyreon/zero-content`: a directive opener with bare text after the name (`:::caution Title`, `:::details Label`, `:::math inline`) now warns for ANY name, not only the five callout types — an unknown name never became a directive, so it shipped as literal `:::caution …` text with no diagnostic. `:::math`, `:::mermaid` and `:::details` no longer emit a spurious "Unknown callout directive" warning.
+  - `@pyreon/loom`: `loom --help` now lists `dev` (it was missing) and files `--json` under `scan`, where it applies.
+  - `@pyreon/cli`: `pyreon loom` help and docstring name all three loom commands (`scan`, `dev`, `build`).
+  - `@pyreon/lint`: `prefer-canonical-primitive` no longer cites a stale primitive count; `prefer-isserver`'s JSDoc no longer claims the rule is not auto-fixable.
+
+- [#3696](https://github.com/pyreon/pyreon/pull/3696) [`96371fc`](https://github.com/pyreon/pyreon/commit/96371fc37676131db59e15c34f8c783c80835211) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Treat Loom's empty-workspace refusals as skipped dependency-fabric scans instead of reporting a false architecture warning.
+
+- [#3392](https://github.com/pyreon/pyreon/pull/3392) [`e5567e3`](https://github.com/pyreon/pyreon/commit/e5567e3bf20fbf8d12e04a61747863a4a4e01fa2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three confirmed pre-release defects in the tools layer, each a case of a guard
+  that recognised one SHAPE of its class and stopped there.
+
+  **`@pyreon/lathe` — a `pattern` carrying a line terminator killed the whole
+  generated schemas module.** `portableRegex` refused a `pattern` containing `/`,
+  and its own comment says why: the emit writes `/${pattern}/`, so an
+  unescaped `/` ends the literal. A regex literal is ALSO ended by all four
+  JavaScript line terminators — `RegularExpressionChar` is built from
+  `RegularExpressionNonTerminator`, "SourceCharacter but not LineTerminator", so
+  LF, CR, U+2028 and U+2029 are illegal anywhere in one, character class
+  included. `{"pattern": "a\nb"}` is legal OpenAPI, so this needed no bad faith
+  to reach, and the damage is not a dropped constraint: `.regex(/a<LF>b/)` is
+  `Unterminated regular expression literal '/a'`, which takes every model in
+  `schemas.ts` with it — one spec field is a build-time failure for the whole
+  generated client. All four are now refused alongside `/`. A raw CONTROL
+  character is NOT a terminator and stays legal, which is the discriminating case
+  and has its own spec, so the guard cannot quietly widen into "anything unusual".
+
+  This is the FIFTH lexical context a spec-controlled string reaches in this
+  package, after the line comment, the block comment, the string literal and the
+  JSON literal — the other four already handle line terminators
+  (`safeLineComment`, `q`, `jsonLiteral`), and the regex literal simply never
+  joined them. The `injection.test.ts` suite gains it as a fifth context and keeps
+  that file's discipline: the spec EXECUTES the emitted module, because
+  arbitrary-code injection is not reachable through a regex literal while `/`
+  stays refused, so "does this still parse" is the assertion that catches it and a
+  string-level check is not.
+
+  **`@pyreon/lint` — `no-query-selector-cast-in-test` missed three ordinary
+  shapes.** Measured firing ZERO times on each, against a rule configured `error`:
+
+  ```ts
+  c?.querySelector('a') as HTMLAnchorElement // ChainExpression
+  el.querySelector('x') as HTMLElement & { _x } // TSIntersectionType
+  el.querySelectorAll('x') as NodeListOf<HTMLDivElement>
+  ```
+
+  The third is the sharpest: the rule's own docblock advertised `queryAll` for
+  `querySelectorAll` while the callee test only ever accepted `querySelector`, so
+  the advice named a case the matcher could not see. The guard listed two AST
+  node types over a bare `MemberExpression` callee; the class is "a
+  `querySelector` / `querySelectorAll` call, HOWEVER REACHED, cast to a type that
+  MENTIONS an HTML element type". It now peels the wrappers that can sit between
+  a cast and its call (`ChainExpression`, a second `as`, `!`) and WALKS the
+  annotation (union, intersection, parenthesised, array, and type ARGUMENTS,
+  which is where `NodeListOf<…>` hides the element type), so a spelling nobody
+  has written yet is covered by construction. The angle-bracket cast
+  (`<HTMLY>expr`) is the same defect and is handled too. Eleven real sites in the
+  repo were reporting nothing and are now fixed with the typed helpers.
+
+  **`@pyreon/lint` — `no-require-in-esm` flagged the escape hatch it recommends,
+  and never looked at test files.** `const require = createRequire(import.meta.url)`
+  is the one legitimate way to load a CJS-only artifact (a napi `.node` addon, a
+  built CJS bundle) from an ES module, and the rule's shadow detection covered a
+  parameter and an import but not a variable binding — so `vite-plugin`'s
+  `plain-build.test.ts`, already correct and with a comment saying why, read as a
+  finding. The binding is now counted like a parameter: released when its
+  enclosing function exits, file-wide at module scope, so one `createRequire`
+  cannot mute the rule for the file.
+
+  Separately, the rule declared no `scanTarget` and therefore got the `source`
+  default — but a `.test.ts` in a `"type": "module"` package throws
+  `require is not defined` under real Node exactly as `src/` does. This repo was
+  carrying 47 such calls across ten test files, all green, because bun defines
+  `require` in ESM, which is this rule's entire premise. `RuleMeta.scanTarget`
+  now accepts a LIST and the rule declares `['source', 'test']`. Resolve it
+  through the new `scanTargetsOf` / `targetsScan` helpers rather than comparing
+  with `===`, which silently matches nothing against a list — the same shape of
+  silent hole the field exists to close.
+
+  **`@pyreon/cli` — the doctor lint gate's extra `scanTarget` passes evaporated
+  silently.** The PRIMARY scan already refuses to read an empty file list as a
+  clean pass (`emptyScanResult` skips loudly, because a gate that inspected
+  nothing must not score like one that inspected everything). The two
+  `scanTarget` passes were added beside that guard and `continue`d on an empty
+  match, so a pass that reached zero files left the gate green while every rule
+  it exists to run reported nothing — the same class as its own neighbour's
+  comment, one level down. An empty extra pass is now a `warning` finding that
+  names the rules which did not run and cannot have passed.
+
+  ***
+
+  **One budget moved, and it is a gate finding rather than a size change.**
+  `@pyreon/lint`'s bundle budget was **512 bytes** — for a linter shipping 513 KB
+  of built chunks. `check-bundle-budgets` builds the main entry with
+  `splitting: true` and measures only the entry OUTPUT; `lib/index.js` was a pure
+  re-export barrel over `_chunks/`, the package declares `sideEffects: false`, and
+  nothing inside the bundle consumes those exports — so Bun tree-shook the entire
+  package away and the gate measured a **730-byte empty bundle**. It was not
+  measuring `@pyreon/lint` at all.
+
+  Exporting `scanTargetsOf` / `targetsScan` puts a live declaration in the entry,
+  which defeats the drop-everything outcome and reveals the real figure: 65,807
+  bytes gzipped. The budget is bumped BY HAND to 67,840 (+3.1%, above the measured
+  local-vs-CI gzip delta) — never `--update`, which would rewrite all 71 entries
+  from this machine.
+
+  **The shipped bytes did not change.** Both `_chunks/` files are byte-identical
+  across the change (content-addressed names unchanged: `cli-DAVSZa6Z.js` 68,485 B
+  and `runner-B-C7XePv.js` 440,848 B), and the built barrel is 2,214 B either way.
+  A consumer importing `{ lint }` gets exactly what they got before.
+
+  Two sibling packages have the same shape and are still measuring empty bundles:
+  `@pyreon/charts` (256 B budget, 570 KB of lib) and `@pyreon/lathe` (512 B, 170 KB).
+  Making the gate REFUSE a near-empty measurement is the right fix and is the same
+  class as the doctor change above — but it requires honest re-baselines for both,
+  so it is called out here as an immediate follow-up rather than folded in.
+
+- [#3126](https://github.com/pyreon/pyreon/pull/3126) [`5af46e1`](https://github.com/pyreon/pyreon/commit/5af46e10c79669e25660bada33324400445db0eb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `doctor --only doc-claims` went blind on JSON claim files.
+
+  The claim patterns are written against what a reader SEES, but the gate matched
+  them against raw file BYTES — and JSON has more than one legal text
+  representation of the same string. A manifest storing its em dash as the literal
+  escape `—` made a pattern containing the real character match nothing, so
+  the claim degraded to a `pattern-miss`, which is ADVISORY. A stale count then
+  sits behind a passing gate.
+
+  Worse, the verdict depended on which tool last wrote the file: `changeset
+version` parses and re-serialises every manifest, so the same claim passed on one
+  branch and hard-failed on another. `.json` claim files now have their escapes
+  decoded before matching, which makes `@pyreon/lint`'s published npm description
+  — the real instance — checked rather than skipped.
+
+- [#3089](https://github.com/pyreon/pyreon/pull/3089) [`c58917d`](https://github.com/pyreon/pyreon/commit/c58917db33297788b87d3f011354af79d033ed58) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Rule-set restructure: remove a duplicate rule that reported every defect twice, stop shipping this repo's own conventions to consumers, and make "why isn't this rule firing?" answerable.
+
+  **A duplicate rule shipped.** `pyreon/no-large-for-without-by` and `pyreon/no-missing-for-by` had byte-identical implementations — same visitor, same condition, same message string — under different ids, categories and severities. Both fired, so one `<For>` without a `by` prop produced two diagnostics at the same span with the same text, one `warning` and one `error`, disagreeing about how bad it is. The `performance` copy is deleted; `no-missing-for-by` survives and is promoted `warn` → `error`, which is the severity the deleted rule carried — keeping `warn` would have silently weakened the gate. Verified zero violations across `packages/`, `examples/` and `docs/`.
+
+  **Breaking (lint config):**
+
+  - `pyreon/no-large-for-without-by` no longer exists — remove it from `.pyreonlintrc.json`. Not aliased, per the pre-1.0 no-shims policy.
+  - `pyreon/no-missing-for-by` is now `error`.
+  - `pyreon/no-querySelector-cast-in-test` → `pyreon/no-query-selector-cast-in-test` (camelCase inside a kebab id is malformed, not a style choice).
+  - Six rules no longer ship on. See below.
+  - Rule count 99 → 98; `performance` category 6 → 5.
+
+  **Monorepo-scoped rules stop shipping to consumers.** Six rules encode the Pyreon _repository_ rather than Pyreon the framework, and all six were on — several at `error` — in the presets a consumer selects. The split is drawn by measurement: these are exactly the rules whose source hardcodes an `@pyreon/*` specifier or a `packages/<layer>/` path — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. `dev-guard-warnings` hardcodes neither and is a genuine library-author rule, so it stays. New `RuleMeta.scope: 'framework' | 'monorepo'`; every shipped preset forces monorepo rules off, `best-practices` included, and `lib` stops promoting four of them to `error`. The Pyreon repo re-enables them by id in its own config, which makes that dependency visible instead of hidden in a shared preset.
+
+  **`pyreon-lint --why-off <rule>`.** A rule can be silently inert for four independent reasons, three of them invisible in config: `severity-off`, `opt-in`, `monorepo-scope`, `dependency-missing`. They compose, so a rule is often off for several at once and fixing one changes nothing. `--why-off` reports every reason that applies with the specific edit that lifts it, takes a bare or namespaced id, exits non-zero on an unknown rule with a did-you-mean, and surfaces configured `exemptPaths`. Exported programmatically as `explainRuleState` / `formatRuleState`. New `RuleMeta.requiresDependency` declares the dependency gate that previously lived only inside each rule body, with a test asserting the declaration matches the call the source makes.
+
+  **AST walks no longer follow `parent`.** Six rules hand-rolled a recursive walk that descends into anything holding a `.type` — including a `parent` back-reference, which climbs back up the tree and recurses until the stack blows. New `walkSubtree` helper driven by oxc's exported `visitorKeys`; measured across 2,994,091 nodes of this repo it reaches every typed child link except `Program.hashbang`, which has no children, and a test pins that premise. Two stateless walkers migrate onto it; the two that thread state through the recursion keep their own walk and gain the `parent` exclusion, since restructuring them to fit a generic helper would risk changing what they detect.
+
+  **A gate hole (`@pyreon/cli`).** `doc-claims` checked the rule count against CLAUDE.md, both READMEs, `docs/lint.md` and the manifest — but not `packages/tools/lint/package.json`, the published npm description and the first count a consumer sees. It had drifted to "56 rules" against an actual 98. That file and `.agents/rules/code-style.md` (stale at 97) are now covered; 33 claim sites, up from 30.
+
+  **Rule groups.** Every rule now belongs to one of four groups — the axis the 19 categories don't capture, _what knowledge does this rule require and does it ship?_: `pyreon` (50), `pkg` (27, per-library and dependency-gated), `a11y` (15), `internal` (6, never on in a shipped preset). Categories live underneath, so a query rule is group `pkg`, category `query`. New `groups` config key sets a whole group in one line — `{ "groups": { "a11y": "off" } }` — applied after the preset and before per-rule entries, so an explicit rule always wins. `--list` groups its output the same way. `CATEGORY_GROUP` is a total `Record<RuleCategory, RuleGroup>`, so a new category fails to compile until classified. There is deliberately no `js`/`ts` group: this package has no general JS/TS rules and an empty group would advertise coverage that doesn't exist.
+
+  **The fix engine had two defects.** Overlapping fixes were applied blind in reverse order, so two diagnostics touching the same range both got written and the later landed _inside_ the earlier one's replacement — `const x = window.innerWidth` could become `const x = globalThis`, matching neither intent. The first fix in source order now wins and overlapping ones are deferred, as ESLint does. And a fix could only carry ONE edit, so any fix needing an import insertion plus a call-site edit was inexpressible — a large part of why the fixable ratio was 11%.
+
+  **Breaking (programmatic):** `Diagnostic.fix` is now `Fix | readonly Fix[]`. Normalize with the exported `fixEdits(d.fix)`; TypeScript flags every site that assumed one edit. A multi-edit fix is applied whole or not at all.
+
+  **Two new autofixes.** `no-signal-call-write` fixes `count(5)` to `count.set(5)`, gated on exactly one non-function argument — `sig(prev => …)` reads as update intent and `.set(fn)` would store the function as the value. `prefer-isserver` rewrites `typeof window !== 'undefined'` to `isClient` _and_ adds the import as one fix, extending an existing `@pyreon/reactivity` import or inserting a statement, and refusing to fix through a namespace or type-only import where a specifier would not compile. `no-peek-in-tracked` deliberately gets no fixer: `.peek()` in a tracked scope is often intentional loop-prevention. Fixable ratio 11.2% to 13.3%.
+
+  **Accessibility is on by default.** Twelve of fifteen a11y rules were `optIn` — `require-img-alt` among them, at `error` severity and still silent — so a fresh Pyreon app had no accessibility checking at all. Six are promoted, chosen empirically: running oxlint's jsx-a11y plugin at its `correctness` tier over a fixture carrying each defect fires exactly `alt-text`, `anchor-is-valid`, `no-autofocus`, `no-redundant-roles` and `tabindex-no-positive`. Those plus `primitive-media-needs-label` (the primitives analogue, dependency-gated so it stays silent elsewhere) are now on in every standard preset. Layout-shift, heuristic and zero-specific rules stay opt-in. Measured zero findings across `packages/`, `examples/` and `docs/` first.
+
+  **Turning `no-redundant-role` on found a false positive in it.** It flagged `<a href={href} role="link">`, contradicting its own docstring — its helper was named `getStaticAttr` but matched the attribute by NAME and ignored the value. That matters because `applyProp` removes a nullish attribute: a dynamic href resolving to `undefined` renders no href, so the element has no implicit `link` role and the explicit one is meaningful. Split into `getAttr` and `getStaticStringAttr`. The bail-out spec for that branch had been passing vacuously, because the rule was off.
+
+  **Parallel linting.** Runs above 200 files are split across a worker pool instead of walking one core. Config is resolved once on the main thread and shipped as data; results are re-sorted by path so CI diffs are stable; config diagnostics are deduped; small runs stay sequential; a worker that fails to start falls back rather than reporting a partial result. `lint()` stays synchronous for the LSP and watch mode — `lintAsync()` is the parallel driver, and a test locks that the two produce an identical diagnostic stream. **Breaking:** `runCli` is now async.
+
+  Two micro-optimizations were measured and rejected rather than shipped: pre-filtering dependency-gated rules avoids 2.8% of `create()` calls, and a rule's unbounded backward character scan costs ~1% of a run. No speedup figure is quoted — the machine was under heavy load throughout, where timing measures the load.
+
+  **`pyreon-lint --init`.** Adoption previously meant hand-writing `.pyreonlintrc.json` against documentation. `--init` picks the preset from the project (a package with an entry point gets `lib`, anything else `app`), points `$schema` at the installed schema so editors complete rule ids, and refuses to overwrite an existing config. The file it writes is deliberately minimal — scaffolding every rule at its current severity would freeze today's defaults into the user's file, so later improvements to `recommended` would never reach them.
+
+  **Prevents recurrence.** `rule-registry.test.ts` lints a corpus with every rule enabled and fails if two rule ids ever emit an identical message at an identical span, so a future duplicate cannot land quietly. It also asserts id uniqueness, that no rule object is registered twice, strict kebab-case with no allowlist, that monorepo-scoped rules stay off in every shipped preset, and that ids matching an upstream ESLint name (`anchor-is-valid`, `no-autofocus`) are never renamed away from it.
+
+- [#3456](https://github.com/pyreon/pyreon/pull/3456) [`3383952`](https://github.com/pyreon/pyreon/commit/3383952c34a3c0ba3f1961f6e60976697c3599fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon plain --json` now emits JSON on the empty branch.
+
+  When no source file matched, the command printed the prose line
+  `No source files matched.` regardless of `--json` — so the one consumer the
+  flag exists for got something it cannot parse, and threw
+  `SyntaxError: Unexpected token 'N'`. "No files matched" is exactly the moment
+  a script is deciding whether to proceed, which makes it the worst branch to
+  lose the machine-readable shape on.
+
+  It now prints `{ "files": [], "declined": {}, "matched": 0 }` and keeps the
+  human line for a run without the flag.
+
+- [#3761](https://github.com/pyreon/pyreon/pull/3761) [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode is now production-ready: write reactive code as plain JavaScript (`let count = state(0)`, `count++`, `{count}`) and the compiler emits fine-grained signals.
+
+  - **New markers in `@pyreon/core/plain`.** `signalOf(x)` hands the underlying signal to an API that needs one (it compiles to the bare signal). `state.from(sig)` and `derived.from(sig)` adopt an existing signal (a hook result, a store field) as a plain binding. `derived(() => expr)` is now typed by the thunk's return value.
+  - **Newly supported shapes.** Destructuring assignment onto state (`[a, b] = [b, a]`, with exact JS semantics including defaults and rest). Nested props patterns (`{ user: { name } }` reads `props.user.name` live). A top-level `...rest` in props becomes a reactive `splitProps` copy, so `{...rest}` stays live.
+  - **Project-wide mode.** `pyreon({ plain: true })` compiles every app module as plain with no per-file directive; a `'use classic'` directive opts a file out. `@pyreon/zero` forwards the option to its SSR build.
+  - **Codemod (`pyreon plain --write`).** Converts far more real code and no longer changes behaviour or types:
+    - Arrow handlers that return a write (`() => x.set(v)`) now convert.
+    - Signals passed as values, stored, or used through `.subscribe` now convert via `signalOf`.
+    - Complex `.update` callbacks now convert via `x = (fn)(untrack(() => x))`.
+    - Fixed: an `.update` substitution discarded rewrites inside the callback body. `.update` inside an effect or computed no longer adds a subscription.
+    - Fixed: marker names that collide with a local binding are aliased, and `type` modifiers on kept imports are preserved.
+    - Exported signals now decline, since their importers still call them.
+
+    - `pyreon plain` skips test and spec files unless `--include-tests` is passed. Test runners often run without the `pyreon()` plugin, where plain code can't compile.
+
+    Across this repo's 883 example files: 86 declined before, 0 now.
+
+  - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
+  - **Vite plugin fix.** Dev mode's source-location injection no longer rewrites the text `effect()` or `signal()` inside JSX (for example, prose in a `<Code>` demo) into a broken call. Each match is now confirmed against the AST.
+  - **Plain Mode safety net.**
+    - New `pyreon/plain-mode-footgun` lint rule (on in `recommended`). It reports every Plain Mode compile-time warning, such as mutating shallow state or writing to a `derived` value, as an error in the editor and CI. Before, these only printed in the Vite terminal while the app was silently wrong.
+    - Reactivity lint rules that opt into `meta.plainLowered` also check plain files, by linting their compiled form and reporting at the source line: `no-signal-in-loop`, `no-nested-effect`, `no-unguarded-async-signal-write` and `no-unbatched-updates`. Without this, plain files were invisible to them.
+    - `detectPyreonPatterns`, which backs MCP `validate`, `pyreon check` and doctor, gains a `plain-mode` code for the same warnings.
+    - The "did not compile" runtime error now names the usual cause: a test runner without the `pyreon()` plugin.
+  - **Scaffold.** The `create-zero` counter page is written in Plain Mode.
+
+- [#3515](https://github.com/pyreon/pyreon/pull/3515) [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: closes five README/manifest gaps against shipped 0.52-cycle APIs, found by auditing every package README against its real exports.
+
+  - **`@pyreon/core`** — `<Async>`, `use()` (already in the manifest but undocumented in the README) and `elementRef()` (missing from BOTH the README and the manifest) are now documented. `elementRef` gets a new manifest `api[]` entry with a real `mistakes` catalog, and the package `longExample` now demonstrates all three primitives so they surface in `llms-full.txt` / the MCP `api-reference` (the manifest's `longExample`, not `api[].example`, is what drives that section).
+  - **`@pyreon/sync`** — the multiplatform pure-TS CRDT engine (`pyreonAdapter`, `PyreonCrdtAdapter`, `PyreonCrdtDoc`, `createActorId`, `connectPyreonSync`, `webSocketChannel`, `createNativeSyncHost`) shipped via [#2824](https://github.com/pyreon/pyreon/issues/2824)/[#3207](https://github.com/pyreon/pyreon/issues/3207) and was undocumented everywhere — the README's own roadmap table still implied only the Yjs engine had landed. Adds a "Multiplatform engine" README section, 7 new manifest `api[]` entries, and a roadmap row.
+  - **`@pyreon/table`** — `createTableState` (the dependency-free, PMTC-lowerable table-state core) was documented in the manifest but absent from the README, which reads as TanStack-only. Adds a full section + a comparison table + a gotcha distinguishing it from `useTable`.
+  - **`@pyreon/router`** — `safeRedirectLocation` / `classifyRedirectTarget` (public open-redirect-guard exports) get a short "Redirect-target security" subsection under `notFound() / redirect()`.
+  - **`@pyreon/hooks`** — the README's "full surface" table-count line said "55 hooks across 7 categories" against a real 65 (the prose line three lines above it was correct and already guarded by `check-doc-claims`; this second, unguarded restatement of the same number silently drifted on its own). The table itself listed three hooks that do not exist (`useRootSize`, `useSpacing`, `useThemeValue`) and was missing 19 real ones across Interaction/Data (`useBluetooth`, `useSafeArea`, `useScreenOrientation`, `useDeviceMotion`, `useSpeech`, `useDeviceInfo`, `useCamera`, `useAudioRecorder`, `useWakeLock`, `useAppState`, `useCrashReporter`, `useAuth`, `useDatabase`, `useGeolocation`, `useMap`, `useWebSocket`, `useSecureStorage`, `usePush`, `usePayments`). The table is now a verified 1:1 match against `src/index.ts`'s real exports (programmatically diffed).
+  - **`@pyreon/cli`** — `check-doc-claims` gains a guarded claim site for the hooks README's table-count line, closing the exact gap that let it drift silently: `packages/tools/cli/src/doctor/gates/doc-claims.ts`'s `hook export count` check previously only watched the prose line in that file, not this second restatement a few lines below it. Bisect-verified: reverting the new claim spec makes the new regression test fail with `expected +0 to be 1` (drift undetected); restored, it passes.
+  - **`@pyreon/mcp`** — `api-reference.ts` regenerated (`bun run gen-docs`) from the `@pyreon/core` / `@pyreon/sync` manifest edits above; no hand edits.
+
+  No runtime behavior changes in any package.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies [[`bdd16e0`](https://github.com/pyreon/pyreon/commit/bdd16e0e3fb781e885a76c710981e1574ad24404), [`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`fdd4dc2`](https://github.com/pyreon/pyreon/commit/fdd4dc2aef317b1c177f9751fcffb6d88554ff92), [`61e0482`](https://github.com/pyreon/pyreon/commit/61e0482b7fa532d439af670066b8928fe121a53c), [`c12635c`](https://github.com/pyreon/pyreon/commit/c12635c3a9c423ac7b860293b0397583970235dd), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c), [`8d1ff30`](https://github.com/pyreon/pyreon/commit/8d1ff300e0a0904a29cec4160a2c3a75da091019), [`f22774f`](https://github.com/pyreon/pyreon/commit/f22774ffe70af6d7be01313b27eefdbb97bd0a8f), [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`a01e106`](https://github.com/pyreon/pyreon/commit/a01e106993cb2fde0d5ed6576fbff1c81b99c123), [`b6cda55`](https://github.com/pyreon/pyreon/commit/b6cda55a3af5bead39df51c2e4c3691c4c88f52d), [`8429598`](https://github.com/pyreon/pyreon/commit/8429598bb4a77cc4e5821191de6078002a5169bd), [`a8a7c86`](https://github.com/pyreon/pyreon/commit/a8a7c8616aa3a84cbfbaf6f74f4ec7803e3aa326), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`1517cce`](https://github.com/pyreon/pyreon/commit/1517cce174aa483890d34a93ca89a2b0ce58ea8d), [`6bf2770`](https://github.com/pyreon/pyreon/commit/6bf2770d8d25e02aa853ac249b6c07923dac001d), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`96426be`](https://github.com/pyreon/pyreon/commit/96426bef7ac3c86cf60ab898813dde449b1b0954), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac), [`e00f2a5`](https://github.com/pyreon/pyreon/commit/e00f2a5d24336c7dba6aa9752f6fe4766d924a49), [`b7bd8e8`](https://github.com/pyreon/pyreon/commit/b7bd8e86a8eb9f5fbcd3e145f467e0789ab6c3d0), [`153bb4b`](https://github.com/pyreon/pyreon/commit/153bb4b7da3d3b13d61aa588c6302d4ca7650948), [`c95ea09`](https://github.com/pyreon/pyreon/commit/c95ea0941a5a09cd9b14e817b09c857ce64b1112), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`02cae6a`](https://github.com/pyreon/pyreon/commit/02cae6a420ef0d35f4300e907734415010493b9b), [`e5567e3`](https://github.com/pyreon/pyreon/commit/e5567e3bf20fbf8d12e04a61747863a4a4e01fa2), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`ad918cd`](https://github.com/pyreon/pyreon/commit/ad918cd3ee5c72e73ed6575e7fb233886a721dfd), [`33388e8`](https://github.com/pyreon/pyreon/commit/33388e8ded998f953e864ed863e0bff42de2ac8f), [`02cae6a`](https://github.com/pyreon/pyreon/commit/02cae6a420ef0d35f4300e907734415010493b9b), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`41df05a`](https://github.com/pyreon/pyreon/commit/41df05a6eba6a474ef8f57cdfb973c2402c3c2ee), [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c), [`72edfc6`](https://github.com/pyreon/pyreon/commit/72edfc6548ab7a2ad543676cf6ab439da784667d), [`c58917d`](https://github.com/pyreon/pyreon/commit/c58917db33297788b87d3f011354af79d033ed58), [`41df05a`](https://github.com/pyreon/pyreon/commit/41df05a6eba6a474ef8f57cdfb973c2402c3c2ee), [`437d110`](https://github.com/pyreon/pyreon/commit/437d11092ec59066ee82644bb3e5a66855a2231b), [`4a38216`](https://github.com/pyreon/pyreon/commit/4a382169d1b7bfee0489ca0840798fe0b8f94615), [`bb2dc02`](https://github.com/pyreon/pyreon/commit/bb2dc025bf0f3712f36f76499916884a5de045ac), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`d47ce14`](https://github.com/pyreon/pyreon/commit/d47ce140634c602f91508058ab2550b756f04a52), [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c), [`47ef812`](https://github.com/pyreon/pyreon/commit/47ef8126011c4985d4cd4957d1145ae221c5e1d5), [`bb2dc02`](https://github.com/pyreon/pyreon/commit/bb2dc025bf0f3712f36f76499916884a5de045ac), [`c041c1b`](https://github.com/pyreon/pyreon/commit/c041c1b2714ed7e54277d68f55206938f8c813c9), [`ec0aff6`](https://github.com/pyreon/pyreon/commit/ec0aff6672efcac6f135b1f32b0b7e72e96db08c), [`9517985`](https://github.com/pyreon/pyreon/commit/95179851cb681ae503815d09f17367f926257eb4), [`eddd3eb`](https://github.com/pyreon/pyreon/commit/eddd3eb05f75166ce2de6503459d91e967d82fc6), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`4821127`](https://github.com/pyreon/pyreon/commit/4821127fae2908e110346343b107c02b1f1b44a9), [`d160664`](https://github.com/pyreon/pyreon/commit/d16066489fa4fb9bdb5ea4727816394a5d4477b2), [`b062eb6`](https://github.com/pyreon/pyreon/commit/b062eb6576e221bb0e02dce520a2b21f855e55fc), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`c467178`](https://github.com/pyreon/pyreon/commit/c4671782cdef6b0f7df4a836f027beb7006598a4), [`fd14415`](https://github.com/pyreon/pyreon/commit/fd1441504ea02a96acfcbfb3950a036cbbdae6c7), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`5867cca`](https://github.com/pyreon/pyreon/commit/5867cca15becbf4811effac32e81bdb3dc0a0d86), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`b030408`](https://github.com/pyreon/pyreon/commit/b0304087973b540fa75fc0d627fd3a1dd120d1c1), [`ea63aa6`](https://github.com/pyreon/pyreon/commit/ea63aa659d52a1ebec8daf088b7a7d737658c9ad), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`02cae6a`](https://github.com/pyreon/pyreon/commit/02cae6a420ef0d35f4300e907734415010493b9b), [`db410a0`](https://github.com/pyreon/pyreon/commit/db410a0c599fde5df971c2d4ba3d95e18f7f62fb), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`72edfc6`](https://github.com/pyreon/pyreon/commit/72edfc6548ab7a2ad543676cf6ab439da784667d), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`cfbb342`](https://github.com/pyreon/pyreon/commit/cfbb3426f12049b86f596bc3337245accf75be5b), [`08f4356`](https://github.com/pyreon/pyreon/commit/08f4356efd8fe17fb1b443d24af2a3ce834acdc5), [`2486982`](https://github.com/pyreon/pyreon/commit/2486982da2c663375b7825ff23bbd0c16a94684c), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5f59c0e`](https://github.com/pyreon/pyreon/commit/5f59c0e4e0efe5e122719276696f23b2e888d201), [`b67df5e`](https://github.com/pyreon/pyreon/commit/b67df5ede1eed345022f3777968211f3526000c7), [`a370824`](https://github.com/pyreon/pyreon/commit/a370824dabd0af7a9543c6a986ecf0ef252eb7a5), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`37902b5`](https://github.com/pyreon/pyreon/commit/37902b5117083680c958b9ecf37af8572a126223), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`ec0a2cb`](https://github.com/pyreon/pyreon/commit/ec0a2cb240ae3f2f13508b44b00d4dafce4b1733), [`55699c3`](https://github.com/pyreon/pyreon/commit/55699c3ee3c0381679c65d9de087747e7f591f85), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`cf64ac7`](https://github.com/pyreon/pyreon/commit/cf64ac738115998ade80f3c8ed984a2d109cbc17), [`bcb04bd`](https://github.com/pyreon/pyreon/commit/bcb04bd844bd46bb8f30760e269f38746e911b5e), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`09b8661`](https://github.com/pyreon/pyreon/commit/09b8661fd6df33d6314db04518ca524fba5d04dc)]:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/lint@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -39,11 +543,11 @@
   `pyreon.config.ts` with a typed section per package, instead of a file per tool.
 
   ```ts
-  import { defineConfig } from "@pyreon/config";
+  import { defineConfig } from '@pyreon/config'
 
   export default defineConfig({
-    atlas: { title: "Acme Design System" },
-  });
+    atlas: { title: 'Acme Design System' },
+  })
   ```
 
   A key appears in the type ONLY when a package actually reads it — a config
@@ -833,7 +1337,6 @@ detected`) and split context/reactivity across instances at runtime.
   catalog in `.claude/rules/anti-patterns.md`.
 
   ### Validation
-
   - `@pyreon/cli` 147/147 tests pass (+1 new test suite for the gate
     adapter with 3 specs covering parse-output mapping, path
     relativization, and empty-findings edge case)
@@ -1287,12 +1790,10 @@ monorepo paths)'`. The aggregator then excludes documentation from the
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents

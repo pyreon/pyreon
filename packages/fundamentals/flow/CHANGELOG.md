@@ -1,5 +1,648 @@
 # @pyreon/flow
 
+## 0.52.0
+
+### Minor Changes
+
+- [#3631](https://github.com/pyreon/pyreon/pull/3631) [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The framework-wide colour mode now reaches the rest of the framework.
+
+  - **`@pyreon/core`:** `useProvidedColorMode()` returns the mode an app explicitly set (`<PyreonUI mode>` / `<ColorModeProvider mode>`), or `undefined` when none did. It is for components whose own default is not "follow the system", so adopting the shared mode never flips them on a page that never asked.
+  - **`@pyreon/flow`:** with no `colorMode`, a flow takes the app's colour mode, and is still light when the app set none. An explicit `colorMode` still wins.
+  - **`@pyreon/code`:** an editor created without a `theme` follows the app's colour mode once mounted in `<CodeEditor>`, live. An explicit `theme` still wins, and with no app mode the default is still light.
+  - **`@pyreon/zero`:** the theme now also declares the CSS `color-scheme` on `<html>`, beside `data-theme`, in `setTheme`, on setup and in the pre-paint script. Native form controls and scrollbars follow it, and so does the shared colour mode, so a zero theme toggle reaches flow and the code editor with no wiring. **`themeScriptCspHash` changed with the script:** an app that pinned the old hash in its own `Content-Security-Policy` header must take the new value.
+  - **`@pyreon/native-compiler`:** `useColorMode()` lowers to the platform scheme read, exactly as `useColorScheme()` does.
+  - **`@pyreon/hooks`:** `useColorScheme()`'s docs point to `useColorMode()` for theming; it reads the OS only.
+
+- [#3358](https://github.com/pyreon/pyreon/pull/3358) [`962e801`](https://github.com/pyreon/pyreon/commit/962e801c1f5c06fe7450908b332e724d7ec0279f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Keyboard and screen-reader accessibility for `<Flow>` (React Flow parity).
+
+  - Nodes and edges are focus stops: `Enter`/`Space` select, the arrow keys
+    move a node by 10 units (`Shift`: 100) with one undo entry per press,
+    `Delete`/`Escape`/undo shortcuts bubble to the canvas. Opt out per element
+    (`focusable: false`), per default (`nodesFocusable` / `edgesFocusable`) or
+    wholesale (`disableKeyboardA11y`).
+  - ARIA: nodes are `role="group"` + `aria-roledescription="node"` with an
+    optional `ariaLabel`; edges are named buttons; both are described by
+    visually-hidden keyboard instructions; a polite live region announces
+    selection changes and keyboard moves. Decorative layers are `aria-hidden`
+    and the edge layer is a named group so focusable paths stay exposed.
+  - The canvas no longer sets an inline `outline: none` (which hid keyboard
+    focus); `flowStyles` themes `:focus-visible` and honours
+    `prefers-reduced-motion` — `fitView`/`animateViewport`/animated `layout()`
+    jump under it (`config.reducedMotion` overrides).
+  - `<Controls>` buttons carry `aria-label`s and the lock button is a real
+    `aria-pressed` toggle (it was a no-op) that freezes pan, zoom and drag.
+
+- [#3360](https://github.com/pyreon/pyreon/pull/3360) [`cb6132e`](https://github.com/pyreon/pyreon/commit/cb6132ea1042b48d24344631112cb17f3432504e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - React Flow API parity for the imperative surface.
+
+  - Batch mutations: `getNodes`/`addNodes`/`setNodes`/`removeNodes`/
+    `updateNodeData`, `getEdges`/`addEdges`/`setEdges`/`removeEdges`/`updateEdge`.
+  - Viewport: `getViewport`, `setViewport(partial, { duration })`, `setCenter`,
+    `zoomTo`/`zoomIn`/`zoomOut`/`fitView` accept `{ duration }`,
+    `screenToFlowPosition` / `flowToScreenPosition` (the mounted canvas
+    registers its rect); a plain write cancels an in-flight animation.
+  - `hidden` and `deletable` on nodes and edges, `nodesDeletable` /
+    `edgesDeletable` defaults.
+  - `isValidConnection` config veto and `connectionRadius` drop snapping.
+  - Automatic undo checkpoints on every structural mutation (`autoHistory`,
+    default on; deduped against manual `pushHistory()`).
+  - Listeners: `onEdgesChange`, `onSelectionChange`, `onViewportChange`,
+    `onNodesDelete`, `onEdgesDelete`, `onNodeDrag` (per frame),
+    `onConnectStart`/`onConnectEnd`, `onPaneClick`.
+
+- [#3650](https://github.com/pyreon/pyreon/pull/3650) [`5223f9e`](https://github.com/pyreon/pyreon/commit/5223f9ebec5426337eebae9ac3c4813ab03e8144) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **@pyreon/flow**
+
+  - Gestures are owned by ONE pointer. A `pointercancel` / `lostpointercapture` (an OS-interrupted touch) now ends the in-flight node drag, connection draw, rubber band or pan instead of leaving it live for the next unrelated move; a second finger no longer starts a pan or drives an active drag. The MiniMap pan honours `pointercancel` too.
+  - Redo accepts Ctrl+Shift+Z whatever case `e.key` reports (Windows / Linux send `'Z'`) and Ctrl+Y; letter shortcuts compare case-insensitively.
+  - **Behaviour change:** `onConnect` fires only for a user connection (a handle drag). Programmatic `addEdge` / `addEdges` / `paste` no longer fire it — observe them through `onEdgesChange` (`type: 'add'`). This matches React Flow and the native runtimes.
+  - **Behaviour change:** removing a sub-flow parent (`removeNode(s)`, `deleteSelected`) removes its descendants and their edges instead of orphaning them.
+  - `paste()` re-parents copied children onto the copied parent (keeping their relative position) and is one checkpoint / one write per collection.
+  - **Behaviour change:** `fromJSON()` validates untrusted input — duplicate node/edge ids keep the first, dangling edges are dropped, a node without a valid position is placed at the origin — each with a `[Pyreon]` dev warning. Edges also get `defaultEdgeOptions` applied.
+  - `toJSON()` no longer throws on function-valued node/edge `data` (one-level copies instead of `structuredClone`).
+  - Measuring one node no longer re-derives every edge's geometry (per-node measurement gate), and a ResizeObserver delivery reads every node before committing all measurements in one batch.
+  - `getEdge` is O(1); `updateNode` patches one index and writes nothing for an unknown id.
+  - New `historyLimit` config (default 50).
+
+  **@pyreon/dnd**
+
+  - `useDraggable` / `useDroppable` / `useFileDrop` return a `ref` callback that registers an element that mounts LATER, follows a swapped element, and disposes on unmount; `element` is now optional. A signal-backed `element` getter re-resolves; a getter still `null` at setup warns in dev.
+  - **Behaviour change:** `useDroppable`'s `onDrop(sourceData, { edge, data })` receives the drop location (captured before `overEdge` resets). New second generic `TSource` types `canDrop` / `onDragEnter` / `onDrop`'s source data.
+  - `useSortable`: keyboard pickup mode (Space/Enter pick up, arrows move, Space/Enter drop, Escape cancel — all announced) alongside Alt+Arrow; new `disabled` option; a consumer-set item role is kept and a non-list container gets `role="list"`; the keyboard-instructions node moved OUT of the container (it was an invalid child of `<ul>` and defeated `<For>`'s bulk clear); a stale `itemRef(key)(null)` / `itemHandleRef(key)(null)` from a replaced row no longer disposes the live row; the focus-restore frame is cancelled on cleanup.
+  - `useFileDrop`: new `onReject(files, reason)` and `'*'` / `'*/*'` accept wildcards.
+
+- [#3391](https://github.com/pyreon/pyreon/pull/3391) [`8637009`](https://github.com/pyreon/pyreon/commit/863700940660cacfe517bdb57db2e0dc3ce69da3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Flow: the edge geometry becomes crossable to Swift/Kotlin — markers split out, handle anchoring lifted into the PMTC subset, and two compiler misclassifications fixed
+
+  Measured with the real PMTC transform, the geometry bundle went from **19
+  warnings on each target to 1** (the last is a dev-only diagnostic, which has no
+  native meaning). Three changes got it there:
+
+  - `edges.ts` was two things: pure geometry, and arrowhead resolution for the SVG
+    `<defs>` block. The second is web-only work and accounted for 8 of the 19
+    warnings on its own — it reaches for `typeof`, a regex, the `in` operator and
+    a `Map` with a non-scalar value. It now lives in `markers.ts`. No API change:
+    every symbol is still exported from the package root.
+
+  - `resolveHandleAnchor`'s two inner arrows are now top-level functions, and its
+    return type is the named `HandleAnchor` (newly exported). This is a bug fix,
+    not only a shape change: the native emit was **silently dropping** the spread
+    in `{ ...getHandlePosition(…), position }`, so the compiled geometry would
+    have returned an anchor with no coordinates, with no warning.
+
+  - Two PMTC classification fixes, each of which made a pure helper emit as a
+    view — whose top-level `if` statements are DROPPED, i.e. the logic gutted. A
+    parameter typed with a locally-declared string-literal union warned that its
+    props type was unresolvable (it lowers to a native enum, so it resolves
+    fine), and a helper whose last statement is `return null` was classified by
+    the value it returns when its return ANNOTATION had already stated its kind.
+
+- [#3502](https://github.com/pyreon/pyreon/pull/3502) [`8b8e2c3`](https://github.com/pyreon/pyreon/commit/8b8e2c331fb62690360254e720b05e256ca2850b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add a generic parsed reverse-message channel and typed host-error callback to `FlowWebView`, and preserve arbitrary JSON-safe node and edge fields for bundled editor hosts.
+
+- [#3502](https://github.com/pyreon/pyreon/pull/3502) [`8b8e2c3`](https://github.com/pyreon/pyreon/commit/8b8e2c331fb62690360254e720b05e256ca2850b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add once-only hosted viewport commands and typed node, edge, and viewport events to the multiplatform flow bridge.
+
+- [#3361](https://github.com/pyreon/pyreon/pull/3361) [`1348a49`](https://github.com/pyreon/pyreon/commit/1348a49390e41867f693674acfbf349c9322d182) Thanks [@vitbokisch](https://github.com/vitbokisch)! - React Flow interaction parity.
+
+  - Every edge has an invisible hit area (`edgeInteractionWidth`, default
+    20px; per-edge `interactionWidth`), so hairline edges are clickable.
+  - Selected edges show endpoint handles; dragging one onto another handle
+    reconnects that end (`reconnectable` / `edgesReconnectable` opt out).
+  - `connectionLineType` + a custom `<Flow connectionLine>` component with
+    accessor props; the built-in line now patches in place per pointer move.
+  - Pan/zoom options: `panOnDrag` (boolean or button list), `panOnScroll` +
+    `panOnScrollSpeed`, `zoomOnScroll`, `zoomOnPinch`, `zoomOnDoubleClick`,
+    `selectionOnDrag`, `selectionMode: 'partial' | 'full'`, `preventScrolling`.
+  - Keys: `deleteKeys`, `multiSelectionKey`, `selectionKey`, `zoomActivationKey`.
+
+- [#3569](https://github.com/pyreon/pyreon/pull/3569) [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native `<Flow colorMode>` now themes the canvas the way the web does. Both native renderers resolve the web's `--pyreon-flow-*` tokens per colour mode (`PyreonFlowPalette` — light mirrors the web fallbacks, dark mirrors `[data-color-mode="dark"]`) and paint the canvas background, default edge, edge labels, handles, resizers, reconnect controls, selection rectangle, minimap and background pattern from it. On iOS the mode is scoped to the flow (and the `<Panel>` overlays beside it) through `.environment(\.colorScheme)` instead of `.preferredColorScheme`, which re-themed the whole window; on Android `PyreonFlowColorMode` scopes a `MaterialTheme` and the palette the same way. The Compose canvas also fills the box it is given (the web's `width: 100%; height: 100%`) instead of wrapping to its Controls column. Device-proven on both targets: Panel position, marker rendering, reactive colour mode, a custom connection line, and `config.reducedMotion` suppressing viewport animation.
+
+- [#3487](https://github.com/pyreon/pyreon/pull/3487) [`cce5404`](https://github.com/pyreon/pyreon/commit/cce54042e9c2a953ffcc2a774cc42abf2b08f5ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Expose Flow canvas labels to native accessibility APIs and add direct SwiftUI
+  and Compose device coverage for custom nodes, handles, resizing, edges,
+  backgrounds, and controls.
+
+  Measure intrinsic custom-node content in both native hosts so edge routing,
+  handles, hit targets, and node positioning use the rendered dimensions while
+  preserving explicit width and height precedence.
+
+  Match the web editor's hardware-keyboard model on SwiftUI and Compose: focused
+  nodes select with Enter/Space, move by 10 units with arrows (100 with Shift),
+  and the canvas handles configured deletion, Escape, select/copy/paste, and
+  undo/redo shortcuts.
+
+  Lower the reactive `nodeMap`, `edgeMap`, and `measurements` FlowInstance reads
+  to native lookup maps, including shared `size`, `get`, and `has` operations.
+
+- [#3320](https://github.com/pyreon/pyreon/pull/3320) [`3bc29ff`](https://github.com/pyreon/pyreon/commit/3bc29ff0aea604decbd920ebf5da667a8a780380) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `PyreonFlowEdgeCanvas` (iOS + Android) — prebuilt strokes, one viewport transform, and the Kotlin geometry verified for the first time.
+
+  A stroke now builds its `Path`, parses its color and converts its dash ONCE (at construction on Swift; lazily on first draw on Android), and the canvas applies the viewport pan/zoom as ONE transform on the drawing context instead of transforming every edge. On the v1 draw path at E = 9,999 the Swift closure cost 6.9 ms per draw — 3.3 ms re-parsing hex colors, 2.6 ms rebuilding and re-transforming paths — at gesture rate; the prebuilt form under a context transform measured 0.65 ms on the same harness (0.71 -> 0.065 us per edge; 705 -> 71 us at E = 999). `PyreonFlowEdgeStroke` and the canvas are `Equatable`, so an unchanged draw list can be skipped with `.equatable()`. Stroke width and dash are in flow units and scale with the zoom through the transform (same visual result as before). Android's stroke cap is now `Butt`, matching the web SVG layer and the Swift twin (v1's rounded caps were a per-target divergence).
+
+  Android: the pure geometry (`PyreonFlowEdgeSegment`, `PyreonFlowEdgeStroke`, the path builder, the hex parser) moved to `PyreonFlowEdgeGeometry.kt`, a `kotlinServices` group the co-source gate compiles AND runs a behaviour test against (functional `Path`/`Color`/`PathEffect` stubs) — v1's canvas file was `kotlinSdkOnly` and verified by nothing. The composable itself stays SDK-only and is ~20 lines. `pyreonFlowEdgePath(segments)` no longer takes the viewport; pass it to the canvas.
+
+- [#3487](https://github.com/pyreon/pyreon/pull/3487) [`cce5404`](https://github.com/pyreon/pyreon/commit/cce54042e9c2a953ffcc2a774cc42abf2b08f5ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Carry Flow scroll, zoom, deletion-key, modifier-key, and scrolling-policy
+  configuration through shared-source compilation to both SwiftUI and Jetpack
+  Compose runtimes instead of silently replacing it with native defaults.
+
+- [#3487](https://github.com/pyreon/pyreon/pull/3487) [`cce5404`](https://github.com/pyreon/pyreon/commit/cce54042e9c2a953ffcc2a774cc42abf2b08f5ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lower Flow marker constants and the public marker resolution, ID, edge-pair,
+  and collection helpers to equivalent Swift and Kotlin implementations.
+
+- [#3319](https://github.com/pyreon/pyreon/pull/3319) [`bd6a184`](https://github.com/pyreon/pyreon/commit/bd6a1844502e029f5d71f5584f0d4d91d8f88907) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `PyreonFlowState` (iOS + Android) — id-keyed storage, per-node observation, and three web-parity fixes.
+
+  **Performance (measured on the same harness before/after, Apple M3 Max, per-file `-O` = the build every device gate runs):** a single `updateNodePosition` no longer invalidates every node view — Swift went from 1000/1000 trackers fired per drag frame at N=1,000 to only the moved node's readers; the id lookup on the drag path went from an O(n) generic array scan (452 µs at N=10,000) to an O(1) hash on a non-generic key (5.3 µs); `getNode` 1035 → 1.0 µs; `isNodeSelected` 20 → 1.3 µs (selection is now an insertion-ordered list PAIRED with a set); a 10,000-view render pass 97 → 14 ms; `deleteSelected` 1533 → 647 µs. Android mirrors it on `mutableStateMapOf` (per-key snapshot state) + `mutableStateListOf` for order: `updateNodePosition` 40 → 0.02 µs, `getNode` 22.6 → 0.02 µs at N=10,000, and no N-reference list is allocated per pointer-move any more. `nodes` is now DERIVED (a read subscribes to every node — use `getNode(id)` in per-node views, it is the per-node subscription point).
+
+  **Parity fixes (each was a silent divergence from the web engine):** `selectAll` no longer clears the edge selection (web `selectAll` only replaces the node set); a seeded or added edge without a `type` now reads `"bezier"` (the web `normalizeEdge` default) instead of `nil`/`null`; Swift `containerSize` is a `PyreonFlowContainerSize` struct (the Kotlin spelling) instead of a tuple — hand-written SwiftUI hosts assign `PyreonFlowContainerSize(width:height:)`.
+
+  The Kotlin co-source verify gate gained a functional `SnapshotStateMap` stub so the Android behaviour test still RUNS.
+
+- [#3524](https://github.com/pyreon/pyreon/pull/3524) [`d48d079`](https://github.com/pyreon/pyreon/commit/d48d079c3afdd5809da6aa06177fcbf9533f6d0f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `moveSelectedNodes` is now a positioned move on the web engine, exactly like `updateNodePosition` and the Swift/Kotlin engines: a nudge snaps to the grid when `snapToGrid` is on, clamps to the node extent, and reports every moved node through `onNodesChange`. Keyboard arrow nudges therefore land on the grid instead of one pixel step off it. `isNodeVisible` resolves a child node through its parent chain (the absolute position `fitView` and `focusNode` already used) instead of its parent-relative offset.
+
+  Both divergences were surfaced by the shared native-parity fixture, which now also covers grid and object snapping, `toJSON`/`fromJSON` round-trips, clipboard copy/paste, edge waypoints, `fitView`/`setCenter` against an explicit container size, `flowToScreenPosition`, absolute positions, child nodes, overlaps, proximity connections, search and collision resolution on web, iOS and Android.
+
+- [#2933](https://github.com/pyreon/pyreon/pull/2933) [`e30515b`](https://github.com/pyreon/pyreon/commit/e30515ba1a82185614f7dd33e6d6687c1bfb23bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Replace `elkjs` with a built-in layout engine — one fewer dependency, and the only copyleft one in the tree.
+
+  `elkjs` is a GWT-compiled port of the Eclipse Layout Kernel: ~1.4 MB of generated JavaScript under EPL-2.0, fetched at first `.layout()` call, to produce — in the end — one `{ x, y }` per node. Everything else it computed (edge sections, ports, hierarchy) was discarded by the caller.
+
+  All seven algorithms are now implemented directly: `layered` (Sugiyama — cycle breaking, longest-path layering, median-heuristic ordering with adjacent transposition), `tree`, `force` (Fruchterman–Reingold), `stress` (majorisation over BFS distances), `radial`, `box` and `rectpacking`.
+
+  The engine is **lazy-loaded**, exactly as elkjs was — an app that renders a flow but never calls `.layout()` pays nothing. What changes is the size of what gets fetched: a ~2 KB chunk instead of ~1.4 MB. `@pyreon/flow`'s main entry is unchanged.
+
+  **`computeLayout` keeps its async signature** — a caller awaiting it still works — but the engine underneath is pure and synchronous, so layouts are now **deterministic**: the same graph always produces the same positions, which elkjs did not guarantee.
+
+  **Measured against elkjs across all seven algorithms** on four graph shapes.
+
+  **Zero overlapping nodes everywhere** — a stronger guarantee than elkjs, whose stress layout leaves 22 / 6 / 29 overlapping pairs on the same graphs. Physical layouts (force, stress, radial) get a bounded overlap-relaxation pass, since optimising distance does not imply separation.
+
+  Crossings: we WIN clearly on force (0/1/8 against ELK's 34/19/135) and match on chains, trees and cycles. We LOSE on `layered` for a 20-node DAG (8 against 0), on `tree` for a 40-node DAG (56 vs 16), and on `radial` (145 vs 67). ELK's layered pipeline uses Brandes–Köpf coordinate assignment and a full layer sweep; this uses a median heuristic with transposition, so expect comparable structure and more crossings when graphs get dense.
+
+  **Performance at 1000 nodes** (median of 7 warm runs), after fixing three quadratic hot paths plus a round of allocation work — numeric grid keys instead of `\`${cx},${cy}\``strings, no argument-list spreads, a flattened pivot-distance buffer,`sqrt`over`hypot`:
+
+  |                          | before   | after    |
+  | ------------------------ | -------- | -------- |
+  | layered                  | 2,618ms  | **5ms**  |
+  | force                    | 53,441ms | **72ms** |
+  | stress                   | 8,312ms  | **56ms** |
+  | radial                   | —        | **5ms**  |
+  | tree / box / rectpacking | —        | **≤1ms** |
+
+  Quality is byte-identical before and after the optimisation work — same crossing counts on every graph, still zero overlaps — so the speedups are behaviour-preserving.
+
+  **Verified through the render path too**, in real Chromium: five specs mount a `<Flow>`, run each algorithm, and read `getBoundingClientRect()` from the DOM rather than the returned numbers — no visual overlap, children below parents, `RIGHT` laying out across the screen, and a tall node genuinely pushing the next layer down (proving measured boxes reach the engine). Bisect-verified: an all-zeros layout fails four of the five.
+
+- [#3043](https://github.com/pyreon/pyreon/pull/3043) [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Pointer-path performance overhaul (P4–P8 of the fundamentals perf campaign). Measured in happy-dom at the stated sizes:
+
+  - **History snapshots are shallow array copies** instead of `structuredClone` — `pushHistory` (it runs inside node-grab pointerdown) drops from ~1.13ms to ~0.002ms per call at 1000 nodes / 1000 edges, and undo/redo now work with non-cloneable node `data` (a function-valued callback previously threw `DataCloneError`). Safe because every write path replaces changed node/edge objects immutably — the same invariant the per-id equality gates already rely on. In-place mutation of node objects remains unsupported (it never rendered); undo cannot restore such mutations, and effectively could not before either.
+  - **Object snapping precomputes candidate guide lines once per drag** (`_createSnapSession`, internal; `SnapSession` type exported) instead of an O(N) scan with N allocations on every pointermove. Behavior change for MULTI-node drags: co-dragged nodes are no longer snap candidates — they move rigidly with the pointer, so snapping against them produced oscillating feedback.
+  - **Selection is per-id gated.** New `isNodeSelected(id)` / `isEdgeSelected(id)` reactive O(1) membership reads backed by per-id `{ equals: Object.is }` computeds — a selection change re-runs O(changed) node thunks instead of all N (20 selection changes at 300 mounted nodes: ~210ms → ~9ms; the old `selectedNodes().includes(id)` per-thunk scan was O(N²)). New bulk `selectNodes(ids, additive?)` replaces the rubber-band commit's O(K²) additive loop (300-node band: ~3000ms → ~0.3ms).
+  - **MiniMap patches in place** (static mount, keyed rows, reactive attr thunks) — a pan/zoom frame creates ZERO elements (was ~306 element creations per viewport write at 300 nodes; a 60-frame burst: ~302ms → ~2ms).
+  - **ONE shared ResizeObserver** measures all node wrappers (was one observer per node: 301 → 2 at 300 nodes).
+  - **Rubber-band / connection pointermoves reuse the container rect** captured at gesture start (was a forced-layout `getBoundingClientRect` per move; invalidated on container resize).
+  - **A drag frame is one batched reactive drain**, and helper-line writes are value-gated (unchanged guides write nothing — ~2 signal writes/frame → 1).
+  - **Selection box, helper-line guides, and Controls patch in place**; Controls buttons no longer remount on zoom changes (the zoom % moved into an inner text thunk — pan already stopped remounting when the reactivity default value gate landed).
+
+  Honest non-mover: total drag-frame wall clock at 300 nodes / 300 edges stayed ~0.3ms/frame in happy-dom — that path is dominated by the keyed reconcile + per-id refresh machinery, not by the removed work. The wins above are eliminated allocations, forced-layout reads, observers and remounts, plus grab latency, selection, and rubber-band costs.
+
+- [#3365](https://github.com/pyreon/pyreon/pull/3365) [`b8e36e5`](https://github.com/pyreon/pyreon/commit/b8e36e54515f5c5503e6373a5c4b57cdbdcbebe9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Portaled overlay layers.
+
+  - `<EdgeLabelRenderer>` renders HTML edge labels for custom edges into a
+    layer inside the viewport; `EdgeComponentProps` gains `labelX`/`labelY`.
+  - `<NodeToolbar nodeId>` is portaled into a container-level layer: it follows
+    the node through pan/zoom without being scaled or clipped and sits above
+    every node (`align` added). Without `nodeId` the inline form is unchanged.
+  - A pointerdown on a toolbar or a `.nopan` element never starts a canvas pan.
+
+- [#3590](https://github.com/pyreon/pyreon/pull/3590) [`9e2d7e5`](https://github.com/pyreon/pyreon/commit/9e2d7e5f78cbef41b19675e0c9dad27e36cb2e7c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close the remaining React Flow gaps on web, iOS and Android.
+
+  - `getIntersectingNodes`, `isNodeIntersecting` and `getNodesBounds` on the flow instance.
+  - `connectionMode: 'strict' | 'loose'`. Under the default `'strict'`, a connection may start from either handle type and drops only on the opposite type; starting from a target handle builds the edge from source to target. Check any drop logic that assumed a drag always starts from a source handle. `'loose'` connects any handle to any other.
+  - `zIndex` on nodes and edges, plus `elevateNodesOnSelect` (default `true`) and `elevateEdgesOnSelect` (default `false`). **Behaviour change:** a selected node now draws above the nodes around it.
+  - The context-menu listeners (`onNodeContextMenu`, `onEdgeContextMenu`, `onPaneContextMenu`) and the hover listeners (`onNodeMouseEnter` / `Leave`, `onEdgeMouseEnter` / `Leave`). While a context-menu listener is registered, the browser's own menu is suppressed for that target. On iOS and Android the context menu opens on a long-press, and hover needs a pointer.
+  - Auto-pan while a node or a connection is dragged near the canvas edge: `autoPanOnNodeDrag`, `autoPanOnConnect` and `autoPanSpeed`. **Behaviour change:** it is on by default.
+  - The `<BaseEdge>`, `<EdgeText>` and `<ViewportPortal>` components, and the `EdgeComponentProps` type is now exported. `<BaseEdge>` and `<EdgeText>` lower natively. `<ViewportPortal>` is web-only; the compiler names it and drops it.
+
+- [#3363](https://github.com/pyreon/pyreon/pull/3363) [`5ffa145`](https://github.com/pyreon/pyreon/commit/5ffa145a340cead2bcf7ee0f0bb47d546f8fb512) Thanks [@vitbokisch](https://github.com/vitbokisch)! - React Flow structure parity.
+
+  - Sub-flows: a child (`parentId`) keeps a RELATIVE position and renders at
+    the absolute one; parents carry their children on drag (no double move
+    when both are selected); edges, `fitView`, `focusNode`, the selection box,
+    culling and the minimap use absolute positions; parents render first.
+    `extent: 'parent'` / a box extent clamp a dragged node; `expandParent`
+    grows the parent.
+  - `<MiniMap>` pans on drag and zooms on wheel (`pannable` / `zoomable`).
+  - `<Controls>` accepts children.
+  - `<Flow colorMode="dark" | "system">` + a dark value for every
+    `--pyreon-flow-*` variable in `flowStyles`.
+
+- [#3502](https://github.com/pyreon/pyreon/pull/3502) [`8b8e2c3`](https://github.com/pyreon/pyreon/commit/8b8e2c331fb62690360254e720b05e256ca2850b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lower `FlowWebView` to the native WebView bridge on iOS and Android, including the built-in host, live graph and command updates, reverse-channel callbacks, and static host styling. Add generated-host freshness and public-prop totality ratchets so the web and native contracts cannot silently drift.
+
+- [#3295](https://github.com/pyreon/pyreon/pull/3295) [`9b1f957`](https://github.com/pyreon/pyreon/commit/9b1f9570a0f6cefb5844db9db53b1a2da4935f05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/flow` starts crossing to native (iOS + Android) — the state engine
+  and the edge-drawing runtime.
+
+  `const flow = createFlow({ nodes: [...], edges: [...] })` in shared `.tsx`
+  (v1: literal node/edge config) now compiles to the `@Observable`/`remember`
+  PyreonFlowState engine — node/edge CRUD, selection, pan/zoom/fitView, and
+  graph queries (getConnectedEdges/getIncomers/getOutgoers), mutated from
+  native event handlers with the SAME method names the web `FlowInstance`
+  uses.
+
+  - **The row struct is synthesized from the first node's `data` literal**
+    (every node must share one field set, the same uniform-row assumption
+    `createTableState` makes about its rows) via the shared
+    `synthLiteralStructName` registry — the SAME name every OTHER object
+    literal in the file resolves through, so `flow.addNode({...})`'s literal
+    argument constructs the real `PyreonFlowNode<Row>`, not a synthesized
+    lookalike struct (Swift/Kotlin are both NOMINALLY typed, so a
+    structurally-identical-but-differently-named struct does not typecheck).
+  - Use-sites: `flow.nodes()`/`.edges()`/`.viewport()`/`.zoom()` drop parens
+    (property reads, matching the underlying Signal/Computed); `addNode`/
+    `addEdge`/`removeNode`/`selectNode`/… flow through as methods with the
+    SAME names.
+  - **`createFlow` owns its data** (unlike `createTableState`, which wraps an
+    external reactive source) — nodes/edges seed once from literal config and
+    mutate through the instance's own methods, so the Swift emit needs no
+    `.onAppear` wiring dance; it is a fully self-contained `@State`
+    initializer.
+  - **`PyreonFlowEdgeCanvas`** (SwiftUI `Canvas` / Compose `Canvas`) draws the
+    built-in edge path geometry — bezier / smoothstep / straight / step /
+    waypoint all reduce to a closed 4-command vocabulary (`move`/`line`/
+    `cubic`/`quad`, the new `EdgeSegment` union in `types.ts`, additive
+    alongside the existing SVG `path` string with zero web behavior change) —
+    from hand-written native code. It is reusable runtime infrastructure, not
+    yet auto-wired from `<Flow>` JSX.
+  - **The `<Flow>`/`<Background>`/`<Controls>`/`<MiniMap>`/`<Handle>`/
+    `<NodeToolbar>`/`<NodeResizer>`/`<Panel>` JSX components, `useFlow`,
+    `computeLayout`, and the edge-path helper functions have NO native emit
+    yet** — importing them from shared native source now gets a loud,
+    per-symbol compiler warning naming `PyreonFlowState`/`PyreonFlowEdgeCanvas`
+    (hand-wire natively) or the `@pyreon/flow/webview` bridge (the full
+    JSX-driven editor) as the fix, instead of silently emitting a reference to
+    a Swift/Kotlin type that does not exist.
+  - `@pyreon/flow` declares a `nativeFrontend` and leaves the derived
+    `WEB_ONLY_PACKAGES` set.
+
+  Verified: the real emit type-checks against the real SwiftUI SDK + compiles
+  and RUNS against the real `@Observable`/`Compose` ports on macOS (bisect-
+  verified — reverting either the row-struct-registration fix or the
+  struct-literal call-site rewrite reproduces the exact compile failure this
+  PR closes), and both targets validate against the compiler stubs. The
+  co-located native sources pass `check-native-cosource` in isolation (no
+  implicit dependency on `@pyreon/charts`' runtime, even though both end up in
+  the same app-level Swift module — an app depending on `@pyreon/flow` alone
+  must not need `@pyreon/charts` linked).
+
+  v1 scope, matching the discipline `createTableState`/`useSortable` set: not
+  yet ported — `updateNode` (partial merge, no faithful Swift shape without a
+  builder closure), `isValidConnection`, bulk `selectNodes`, `layout()` (the
+  separate layout-engine crossing — a follow-up mirroring the charts
+  engine-bundle-generator tooling), `undo`/`redo`/`pushHistory`,
+  `copySelected`/`paste`, `moveSelectedNodes`/snap-lines (tied to the native
+  gesture layer — pan/zoom/drag/connect — the next, most uncertain phase),
+  sub-flow/group queries.
+
+- [#3391](https://github.com/pyreon/pyreon/pull/3391) [`8637009`](https://github.com/pyreon/pyreon/commit/863700940660cacfe517bdb57db2e0dc3ce69da3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - PMTC: four shapes that lowered to invalid Swift/Kotlin with no warning
+
+  All four were found by generating `@pyreon/flow`'s edge geometry and then
+  COMPILING the result — which the generator's own "zero warnings" precondition
+  had reported as clean. Every new spec runs the real `swiftc` and `kotlinc`
+  rather than asserting on the emitted string alone.
+
+  - `a?.b?.filter(…)` dropped its second link on both targets, so a method call
+    landed on an optional receiver.
+  - `if (nullableObject)` emitted the bare optional as a Swift condition. It now
+    binds (`if let x`). Kotlin was already correct.
+  - `return 'bottom'` where the return type is an enum emitted a raw string on
+    both targets. (The comparison position was fixed separately.)
+  - A Swift enum is now declared `Codable`, so a struct holding an enum-typed
+    field conforms. The old failure named the struct and pointed nowhere near the
+    enum that caused it.
+
+  A fifth shape — a function returning an ANONYMOUS object — now WARNS on Kotlin
+  instead of emitting two different data classes and returning the wrong one. The
+  remedy is a one-line source fix, so `@pyreon/flow` takes it: the return types of
+  `getSmartHandlePositions` and `getFloatingEndpoints` are the newly exported
+  `SmartHandlePositions`, `NodeBoxDimensions` and `FloatingEndpoints`.
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#3709](https://github.com/pyreon/pyreon/pull/3709) [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/charts` no longer carries an ECharts-compatibility layer. It is Pyreon's own engine only: `<Chart>` with mark children, the family components, `/svg` and `/engine`.
+
+  - The chart engine drops every `Series` / `ChartSpec` field and helper that only an ECharts option could set: the ECharts bar layout and nice-domain algorithm, label placement and rich text, emphasis/select/blur states, extra and secondary x axes, axis-line / tick / minor-tick / split-area options, grid insets, inverse axes, pictorial symbol layout and the `lines` series. None of them was reachable from `<Chart>`; the generated native engines shrink by the same amount.
+  - `<FunnelChart echarts>` is removed; `funnel` covers sorting and alignment.
+  - `<GaugeChart dial>` takes a spec built with the new `gaugeDial({ data, … })`, every part defaulted. On iOS and Android `dial` now warns and draws the half-circle track.
+  - `visualMap` on `<HeatmapChart>`, `<CalendarChart>` and `<MapChart>` takes a spec built with the new `visualMap({ domain, … })`, which also lowers to native.
+  - `<CandlestickChart zoom>` takes a `CandlestickZoom` whose fields are all optional (`inside`, `slider`, `window`, `lock`, `minSpan`, `maxSpan`).
+  - `ChartHandle` loses the timeline (`step`, `playing`, `timelineChange`, `timelinePlayChange`), which only an option chart had; the native `PyreonChartHandle` follows.
+  - `tweenCmds` passes `clip` / `unclip` through instead of dropping them.
+
+  The native compiler drops the `<OptionChart>` and `<ChartWebView>` lowering. `pyreon/no-web-only-import-in-portable` no longer flags `@pyreon/charts`, which draws natively.
+
+- [#2704](https://github.com/pyreon/pyreon/pull/2704) [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration).
+
+- [#3579](https://github.com/pyreon/pyreon/pull/3579) [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - On Android, custom edges and custom connection lines drawn with `<path>` now render at the right size. They were drawn in pixels instead of dp, so they came out smaller by the screen density (about 2.6× on a typical phone) and landed in the wrong place. The built-in edges were already correct, and iOS was unaffected.
+
+- [#3536](https://github.com/pyreon/pyreon/pull/3536) [`ff8b5ba`](https://github.com/pyreon/pyreon/commit/ff8b5ba3126df102a22d38c088f489729b25ae6b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Compose flow renderer now measures graph and viewport units in dp, the way the SwiftUI renderer uses points and the web uses CSS px. It used device pixels, so a 150-unit node was only ~57dp wide on a 420dpi phone, and its 48dp resizer hit targets covered the whole node: a tap on the node landed on a resizer and never selected it. Node sizes, handles, resizers, reconnect controls, edge labels, toolbars, the edge canvas, the background pattern and the minimap all convert through the density at the view boundary; the engine is unchanged.
+
+- [#3372](https://github.com/pyreon/pyreon/pull/3372) [`6c572fd`](https://github.com/pyreon/pyreon/commit/6c572fdbad7b6c2a42673fa0de0bda1d69e1620b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs: the README no longer describes auto-layout as lazy-loaded elkjs — the
+  package ships its own seven-mode engine, code-split, with no layout
+  dependency.
+
+- [#2763](https://github.com/pyreon/pyreon/pull/2763) [`56c87ab`](https://github.com/pyreon/pyreon/commit/56c87abe15cd8d96fa7446d09426ba7515bf33b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Single-node drag no longer fans out to every node and edge. A drag frame writes the whole `nodes()` array, and the shared `nodeMap`/`edgeMap` computeds notify unconditionally — so every node's class/style/data thunk re-ran and every edge recomputed its full geometry on every pointermove, even when untouched (O(N + E) per frame). Per-node/per-edge thunks now subscribe through per-id `computed(() => nodeMap().get(id), { equals: Object.is })` gates (every write path preserves untouched objects' identity), and edge geometry is memoized per edge with the two per-ENDPOINT node computeds as its deps — a single-node drag frame re-runs only the moved node's thunks plus its touching edges' geometry: O(1 + deg). Measured at 300 nodes / 300 edges: ~6.7–8.7 ms/frame → ~0.26 ms/frame (~25–33×), with unmoved-node and unmoved-edge thunk re-runs going from 299 + 298 per frame to 0. The per-id computeds are instance-cached, created detached from the mounting component's scope (an instance outlives any one `<Flow>` mount), swept when their id leaves the graph, and disposed with the instance.
+
+- [#3378](https://github.com/pyreon/pyreon/pull/3378) [`814cd1c`](https://github.com/pyreon/pyreon/commit/814cd1c8530e12be7dc74a4e913ae475a90bc099) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The edge-geometry engine is now expressible in the multiplatform (PMTC)
+  subset, which is the prerequisite for crossing it to iOS/Android: the five
+  path builders take NAMED, exported param interfaces (`BezierPathParams`,
+  `SmoothStepPathParams`, `StepPathParams`, `StraightPathParams`,
+  `WaypointPathParams`) instead of inline object types, read their fields
+  explicitly rather than through defaulted destructuring, and
+  `getHandlePosition` / `getEdgePath` return once instead of per switch case.
+  Structurally identical types and identical output — a docs win on the web
+  side, and PMTC warnings over the geometry drop from 10 to 4 (the remaining
+  four are type-SHAPE issues in the shared types, named in the flow native
+  route notes).
+
+- [#3534](https://github.com/pyreon/pyreon/pull/3534) [`4d017d0`](https://github.com/pyreon/pyreon/commit/4d017d0d9838089a863b625ebe32c4ed720c8a3b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Expose Flow connection handles with explicit button semantics on native SwiftUI and Compose hosts, improving keyboard and assistive-technology discovery of interactive endpoints.
+
+- [#3665](https://github.com/pyreon/pyreon/pull/3665) [`2e60aea`](https://github.com/pyreon/pyreon/commit/2e60aeab613711749750e7c27407dea22c382c53) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ensure native iOS flow handles claim connection drags inside scrolling layouts.
+
+- [#3529](https://github.com/pyreon/pyreon/pull/3529) [`45f50e7`](https://github.com/pyreon/pyreon/commit/45f50e76087d024702137086a033b0c324c96798) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native iOS: each flow node now has its own accessibility frame and receives drags. Nodes were placed with `.position`, which reported the whole canvas as every node's frame; they are now offset in a top-leading stack with the offset applied after the gestures, so the hit area moves with the node.
+
+- [#3367](https://github.com/pyreon/pyreon/pull/3367) [`7af545c`](https://github.com/pyreon/pyreon/commit/7af545c2bc6e23de1ee087b5a82bc33d6db6f705) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `layout()` always anchors the result at the origin. The per-algorithm
+  normalisation ran BEFORE overlap relaxation, which can push boxes past the
+  origin on crowded graphs — `force`, `stress`, `radial` and `tree` returned
+  negative positions on random graphs (found by the new seeded property sweep:
+  layouts, path builders, edge geometry, JSON and undo/redo round-trips).
+
+- [#3101](https://github.com/pyreon/pyreon/pull/3101) [`25d8f3c`](https://github.com/pyreon/pyreon/commit/25d8f3c9903c792c17ca93ed0a1d3f3de1b2d2ed) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: O(n) layout position application (was O(n²))
+
+  Applying a computed layout to the nodes ran `positions.find((p) => p.id ===
+node.id)` inside `nds.map(...)` — O(nodes²), which shows up on large graphs after
+  every layout run. The _animated_ branch already indexed positions into a `Map`
+  and used `.get(node.id)`; the non-animated branch just never got the same
+  treatment.
+
+  Index `positions` by id once (O(n)) and look each node up in O(1). Behaviour
+  identical. Bisect-verified: with the old `find` form the position application
+  calls `Array.prototype.find` once per node (N); the indexed form calls it 0.
+
+- [#3370](https://github.com/pyreon/pyreon/pull/3370) [`db7109c`](https://github.com/pyreon/pyreon/commit/db7109c6122ac2982016953bb81220b53203a410) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Perf: a node measurement is an O(1) in-place write with a forced notify
+  instead of a copy of the whole measurements Map per node (a 1,000-node mount
+  copied ~500,000 entries before the first frame); `getNode` reads the id map
+  instead of scanning the node array on every drag frame.
+
+- [#3377](https://github.com/pyreon/pyreon/pull/3377) [`940483d`](https://github.com/pyreon/pyreon/commit/940483d290af1addef4105ce4812ced832fb1d6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: clicking the minimap did nothing in real (vite-plugin-compiled) apps.
+  `<MiniMap>` resolved its instance with a prop-derived `const`, which the
+  compiler inlines into the click handler — so at click time it re-ran
+  `useContext(FlowContext)` outside the setup frame, got `null` and threw.
+  The panel rendered fine, which is why every existing test passed.
+
+- [#3502](https://github.com/pyreon/pyreon/pull/3502) [`8b8e2c3`](https://github.com/pyreon/pyreon/commit/8b8e2c331fb62690360254e720b05e256ca2850b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation truth for the native tier: the manifest, README and multiplatform docs now say what is proven where (state/algorithm parity by matching Swift and Kotlin fixtures, emit by both toolchains, rendered host + counts + zoom + selection on device; gestures, keyboard equivalents and reduced motion not yet device-asserted), name the browser-only members (`FlowLayersContext`, `flowStyles`), and stop listing `@pyreon/flow` among packages that cannot render natively.
+
+- [#3576](https://github.com/pyreon/pyreon/pull/3576) [`5094f1f`](https://github.com/pyreon/pyreon/commit/5094f1fd81557247e534e87f5ea47095005a1653) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `multiSelect: false` now disables additive selection everywhere, not just the drag-select box. On web, `selectNode(id, true)`, `selectNodes(ids, true)` and `selectEdge(id, true)` used to add to the existing selection even with `multiSelect: false`. They now replace it, which is what the option documents and what both native engines already did. A shared web-oracle parity scenario found the gap.
+
+- [#3487](https://github.com/pyreon/pyreon/pull/3487) [`cce5404`](https://github.com/pyreon/pyreon/commit/cce54042e9c2a953ffcc2a774cc42abf2b08f5ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lower the public Flow node-anchoring helpers to the native SwiftUI and Compose runtimes.
+
+  `getFloatingEndpoints`, `getSmartHandlePositions`, and `resolveHandleAnchor` now preserve web-compatible dimensions, configured-handle precedence, perimeter intersections, tangent sides, and result field names in shared-source native builds.
+
+  Static `<Handle>` declarations inside literal `nodeTypes` renderers now become real interactive SwiftUI and Compose connection handles, including side offsets. Explicit per-node handle arrays continue to win for their endpoint type.
+
+  Static `<NodeResizer>` declarations now render native corner and optional edge drag handles. Resize gestures preserve the opposite edge, respect minimum dimensions and viewport zoom, and update node position and size in one undo checkpoint.
+
+- [#3487](https://github.com/pyreon/pyreon/pull/3487) [`cce5404`](https://github.com/pyreon/pyreon/commit/cce54042e9c2a953ffcc2a774cc42abf2b08f5ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close native Flow host and chrome parity gaps. `colorMode` now reaches SwiftUI and Compose, reactive Background/Controls/MiniMap props no longer silently fall back to defaults, standalone `<Controls instance={flow}>` lowers with functional lock state and child content, and the exported `FlowProps` type cannot drift from the component's canonical props.
+
+- [#3303](https://github.com/pyreon/pyreon/pull/3303) [`faeb942`](https://github.com/pyreon/pyreon/commit/faeb942b9d87b67d0510faf894974cd123b1ce35) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createFlow`'s config takes 17 keys. The native reader took two — `nodes` and `edges` — and the other fifteen lowered to nothing, silently. So `createFlow({ nodes, edges, minZoom: 0.5, maxZoom: 2 })` clamped zoom to 2x on web and 4x on iOS/Android from the same source line: code that compiles, runs, and is simply wrong on one target, with no diagnostic anywhere. The IR's own doc comment acknowledged the gap; nothing surfaced it to the person writing the app.
+
+  `minZoom`/`maxZoom` now thread through when written as numeric literals. Both native constructors already accepted them, so the runtime was never the blocker — only the reader was. Kotlin renders them as Double literals, because `maxZoom: 2` emitting `maxZoom = 2` is an "argument type mismatch: actual type is 'Int', but 'Double' was expected", while Swift takes the identical source without complaint — the per-target asymmetry that hides this class until a real Kotlin compile.
+
+  Every other key now WARNS by name (`fitView`, `snapToGrid`, `defaultEdgeType`, …), including a `minZoom`/`maxZoom` written as a non-literal, rather than being dropped in silence. Guessing a native equivalent for `snapToGrid` would be worse than saying it does not cross.
+
+- [#3572](https://github.com/pyreon/pyreon/pull/3572) [`2ff475b`](https://github.com/pyreon/pyreon/commit/2ff475baccb91654ad541a444269b452e6443142) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native flow nodes and Controls now look like the web ones. A node without a custom `type` rendered on iOS and Android as a bare text label, and Controls used the platform's filled buttons. Five palette colours were declared but never painted: node background, node text, node border, node selected and control colour.
+
+  Both native runtimes add `PyreonFlowDefaultNode`, which matches the web's default node: palette colours, a 2px border that uses the selected colour while selected, 6px corners, 8×16 padding, 13px text and an 80px minimum width. The compiler emits it for untyped nodes. Native Controls now use the web's bordered panel box with 28px transparent buttons drawn in the control colour. A new test keeps the native palettes equal to the web's `--pyreon-flow-*` values.
+
+- [#3300](https://github.com/pyreon/pyreon/pull/3300) [`ac92f5a`](https://github.com/pyreon/pyreon/commit/ac92f5a8b1b9d88cac4cbccc6a7593d0c2025f63) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `PyreonFlowState.deleteSelected()` was quadratic on both native targets. It was built from the CRUD primitives — one `removeNode`/`removeEdge` call per selected id — and each `removeNode` re-scans the whole `nodes` AND `edges` collections, so K selected nodes cost O(K x (N + E)) rather than O(N + E). "Select all, then delete" is the shape that makes K = N: on a thousand-node graph that is roughly a million comparisons for one keypress instead of a couple of thousand.
+
+  The web engine this port is documented as byte-aligned with does not do that — its `deleteSelected` builds `Set`s from the selection once and does a single `filter` pass over each collection, with the edges predicate covering both concerns at once (connected-to-a-removed-node, and independently-edge-selected). Both native runtimes now use that same shape, including the reference's second branch for the edges-only case.
+
+  No behaviour change: the loop and the single-pass form produce identical node/edge/selection state, which is what the added specs pin.
+
+- [#3572](https://github.com/pyreon/pyreon/pull/3572) [`2ff475b`](https://github.com/pyreon/pyreon/commit/2ff475baccb91654ad541a444269b452e6443142) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native flow edge labels now take hardware-keyboard focus on iOS and Android, like the web's focusable edge path. Enter or Space selects the focused edge. Before, an edge was reachable by VoiceOver and TalkBack only. `handleKeyboardCommand` gains an optional `edgeId` for this.
+
+- [#3579](https://github.com/pyreon/pyreon/pull/3579) [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - An inline `<svg>` inside a native Flow node, edge or connection-line renderer now draws natively on iOS and Android instead of being dropped with a pointer to `<FlowWebView>`. Every SVG shape (`path`, `rect` including rounded corners, `circle`, `ellipse`, `line`, `polyline`, `polygon`, and shapes inside `<g>`) becomes path data drawn in one canvas, sized from `width` / `height` (or the `viewBox` aspect) and scaled by the `viewBox` with the default `xMidYMid meet` or `preserveAspectRatio="none"`. `fill`, `stroke` and `stroke-width` inherit from the `<svg>` and `<g>` as they do in SVG. A dynamic attribute (`cx={…}`) is interpolated into the path at runtime. What does not lower (`<text>`, gradients, `transform`, dynamic children) is named in a warning.
+
+  Plain `<div>`, `<p>` and `<span>` in a Flow renderer now lower in the two cases where the native layout provably matches the browser's: text-only content becomes a text run, and a `<div>` of block children (or a single child) becomes a flush-left, gap-free stack. A `class`, a `style`, an event handler or inline-flow children keep the existing warning. Outside a Flow renderer, both `<svg>` and DOM elements keep their warning.
+
+- [#3486](https://github.com/pyreon/pyreon/pull/3486) [`1e03f8b`](https://github.com/pyreon/pyreon/commit/1e03f8bb4428acd88166d7d4dd0cc429048c211e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Preserve Flow node and edge interaction metadata when `createFlow` crosses to Swift and Kotlin.
+
+  Native `PyreonFlowNode` now carries per-node draggable, selectable, connectable, focusable, accessibility, visibility, deletion, and group-parent fields. `PyreonFlowEdge` now carries source/target handles plus focusable, accessibility, visibility, deletion, reconnection, and interaction-width fields. Declaration-time seeds and `addNode`/`addEdge` literals emit those fields on both targets instead of silently discarding them; unsupported fields remain named warnings.
+
+  The native state also gains bulk node/edge removal and selection, plain state reads, multi-node movement, coordinate conversion, viewport visibility, group-child/absolute-position queries, and node focusing. Shared-source calls lower with the Swift labels, named position types, and Kotlin numeric widening each platform requires.
+
+  Edge waypoints now survive declaration and `addEdge` lowering, and native state supports waypoint insertion, update, removal, and edge reconnection with web-compatible index behavior.
+
+  Partial viewport updates and center-on-coordinate operations now lower to equivalent native state operations.
+
+  Literal bulk node and edge additions/replacements now lower to native model arrays, retaining duplicate filtering, edge normalization, selection pruning, and removal of edges disconnected by node replacement.
+
+  Node extents now constrain native position updates and shared-source extent setup, clearing, and explicit clamping lower on both targets.
+
+  Literal `snapToGrid`, `snapGrid`, and `nodeExtent` configuration now initializes both native engines, including JavaScript-compatible rounding at negative half-grid positions.
+
+  Native edge rendering can now derive straight, bezier, and waypoint segment lists and label anchors directly from endpoint coordinates instead of requiring precomputed bridge payloads.
+
+  Native edge routing also covers every horizontal/vertical smooth-step orientation and zero-radius step paths.
+
+  Native geometry now resolves node-side handle midpoints, perimeter intersections, and floating endpoints with the same coordinates and tangent sides as web.
+
+  Configured and measured handles now resolve by ID with the web precedence rules, exact measured centers, effective node dimensions, and first-handle fallback.
+
+  Literal source/target handle declarations now survive `createFlow` seeds and `addNode`/bulk-node lowering on Swift and Kotlin.
+
+  A complete native edge-path dispatcher now combines handle/floating endpoint resolution with waypoint and built-in route selection, matching authoritative web geometry fixtures.
+
+  SwiftUI and Compose now ship complete native Flow hosts that measure their container, render state-derived nodes and edges under one viewport, and support selection, node dragging, canvas pan/zoom, visibility, and accessibility labels. Real iOS and Android example targets compile the hosts, while the graph-to-stroke rules have executable Swift and Kotlin coverage.
+
+  Shared-source `<Flow instance={flow} />` now lowers directly to those SwiftUI and Compose hosts with a default node renderer. Unsupported custom renderer maps and optional web chrome remain explicit diagnostics rather than unresolved native symbols or silent drops.
+
+  Nested `<Background>` now lowers to native viewport-aware dots, lines, or cross patterns with matching gap, size, and color configuration.
+
+  Nested `<Controls>` now lowers to functional native zoom-in, zoom-out, fit-view, zoom-percentage, placement, and canvas-lock controls; locking disables pan, zoom, and node dragging on both targets.
+
+  Native MiniMap geometry now derives graph bounds, absolute child-node rectangles, scale, and the live viewport indicator identically on Swift and Kotlin, with executable coverage for hidden-node filtering.
+
+  Nested `<MiniMap>` now lowers to native node and viewport rendering with configurable size/colors, click-to-center, drag-to-pan, and pinch zoom behavior.
+
+  Literal `connectionRules` and `isValidConnection` callbacks now lower into both native state engines, preserving callback-first veto behavior and source-type-to-target-type validation.
+
+  Native connection commits now validate before mutation, preserve source/target handle IDs, generate stable unique IDs when needed, and reject duplicate explicit IDs; shared `isValidConnection({...})` calls lower to nominal native connection values.
+
+  Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.
+
+- [#3527](https://github.com/pyreon/pyreon/pull/3527) [`d72ba24`](https://github.com/pyreon/pyreon/commit/d72ba243a985c6d187f0a21882d4213dabd8b4e9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fixed on iOS: a flow node with no explicit `width` / `height` expanded to fill the whole canvas instead of sizing to its content. SwiftUI's `.frame(minWidth:)` grows with the proposal and `.position` proposes the entire canvas, so every auto-sized node became canvas-sized — nodes overlapped and swallowed each other's taps and drags, and the measured size fed edge anchoring the canvas box rather than the node. Nodes now shrink to fit with a minimum, which is what the web's `min-width` node box does. Found by the first device test to render a `<Flow>` canvas.
+
+- [#3569](https://github.com/pyreon/pyreon/pull/3569) [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Route SwiftUI Flow magnification through the canvas container so pinch-to-zoom works when the gesture begins over rendered graph content.
+
+- [#3579](https://github.com/pyreon/pyreon/pull/3579) [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A `<path d="…">` in a native Flow custom edge or connection line now renders natively for any path data. Before, only path-helper results and the connection line's `path()` accessor lowered, and a path string such as a template literal or a constant was dropped. The Swift and Kotlin runtimes now parse SVG path data themselves, covering every command (M L H V C S Q T A Z, absolute and relative) with arcs converted to cubic curves.
+
+  The paint now follows the browser's rules for an SVG path: fill defaults to black, stroke to none and stroke width to 1, and a `style` declaration beats the matching attribute. Previously the native default was a grey stroke with no fill, and `style` was read by taking its first hex colour.
+
+- [#3590](https://github.com/pyreon/pyreon/pull/3590) [`9e2d7e5`](https://github.com/pyreon/pyreon/commit/9e2d7e5f78cbef41b19675e0c9dad27e36cb2e7c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native flow view fixes found while device-testing the React Flow parity work.
+
+  - A raised node (selected, dragged, or with a `zIndex`) no longer covers the connection handles and resize handles on iOS and Android. They now take their own node's stacking, as on the web, where they are the node's children.
+  - The auto-pan loop on iOS now runs only while the pointer is in the edge band, not for the whole drag. Android had the same fix.
+  - Native edge labels (the built-in label and `<EdgeText>`) use the web's 11px size. They were 12pt on iOS and the platform default on Android.
+  - `flow.updateNode(id, { zIndex: 5 })` and `updateEdge(id, { zIndex: 3 })` now compile on Android. An integer literal was emitted into a `Double` field.
+  - `<ViewportPortal>` on iOS and Android now gets one accurate warning (that it was dropped), not also an import-time warning saying the build fails.
+  - Android flow animations (`animateViewport`, `fitView`, an animated `layout`) ran their frames on a background `Timer` thread, so `onViewportChange` / `onNodesChange` listeners were called off the main thread and any that touched a View crashed with `CalledFromWrongThreadException`. Frames now go through `PyreonFlowFrames.scheduler`, which `PyreonFlowView` sets to the main looper the first time it renders. Hand-written Kotlin that animates a flow before any view exists can call `pyreonFlowUseMainThreadFrames()`.
+
+- [#3356](https://github.com/pyreon/pyreon/pull/3356) [`fd9ea18`](https://github.com/pyreon/pyreon/commit/fd9ea1867a48c3d1f42217a19032f971c2859ddb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Production hardening from the 2026-09 deep audit.
+
+  - `addNode` refuses a duplicate id (dev-warns naming it) instead of silently
+    corrupting the id map and `<For>` keying; `addEdge` dev-warns when an
+    endpoint is not in the graph; `<Flow>` dev-warns once per unknown
+    `nodeTypes` key instead of silently rendering the default node.
+  - The shared node `ResizeObserver` is disconnected when the last node leaves;
+    `dispose()` releases the undo/redo snapshots; the unknown-handle warning
+    cache is bounded.
+  - `flowStyles` and the anchoring/marker helpers are documented in the
+    manifest (MCP `get_api`); the docs gain an SSR and hydration section; a
+    `@pyreon/flow::core` import budget locks that a flow which never calls
+    `layout()` does not pull the layout engine. Dead elkjs residue removed from
+    the tests.
+
+- [#3569](https://github.com/pyreon/pyreon/pull/3569) [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `instance.config` no longer holds the initial `nodes` and `edges` arrays, which are read once at creation. Keeping them pinned every initial node and edge for the instance's lifetime, including ones later removed.
+
+- [#3579](https://github.com/pyreon/pyreon/pull/3579) [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs and manifest: `@pyreon/flow` is now declared `service-backend` rather than `web-only`, because its default API has a web engine and a native Swift/Kotlin port. The flow docs gain an "iOS and Android" section covering four things: what renders natively, what stays browser-only and why, how parity is verified, and the known platform limits. The README's Multiplatform section had grown stale and contradicted itself; it is rewritten.
+
+- [#3536](https://github.com/pyreon/pyreon/pull/3536) [`ff8b5ba`](https://github.com/pyreon/pyreon/commit/ff8b5ba3126df102a22d38c088f489729b25ae6b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Give native handles, resizers, and edge-reconnect controls independent accessibility frames and platform-sized hit targets so assistive technology and touch gestures can target them reliably.
+
+  The Compose hit targets' 48 minimum is a DP floor: it is converted to px before dividing by the zoom, so a 420-dpi device gets a 48dp target rather than 48px (18dp).
+
+- [#3572](https://github.com/pyreon/pyreon/pull/3572) [`2ff475b`](https://github.com/pyreon/pyreon/commit/2ff475baccb91654ad541a444269b452e6443142) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The native iOS flow view now routes every hardware key press through one public function, `pyreonFlowHandleKey`, instead of a private mapping inside the view. Behaviour is unchanged. The change lets the native test suite prove Return, Escape, Delete and Backspace, which the iOS simulator's UI-test tooling cannot deliver.
+
+- [#3569](https://github.com/pyreon/pyreon/pull/3569) [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Assign SwiftUI keyboard focus when a native Flow node is activated so hardware arrow-key movement reaches the focused node reliably.
+
+- [#2756](https://github.com/pyreon/pyreon/pull/2756) [`19234c2`](https://github.com/pyreon/pyreon/commit/19234c2c6541eb2ceb9c38edf9ea8f650edc2eb2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Pan/zoom no longer remounts the entire graph. The viewport div was rendered by a reactive child accessor that read `viewport()` at its top — so every wheel tick, pan pointermove, and `animateViewport` frame tore down and re-created every node div (plus its ResizeObserver) and every edge path. The viewport div is now mounted statically with only its `style` string reactive: pan/zoom is one transform write per frame. Measured (happy-dom, 300 nodes/299 edges, 100 viewport writes): ~68ms/write → ~0.014ms/write, and zero element creations per write (was the whole subtree). Element identity across pan/zoom is now locked by bisect-verified regression tests; real-Chromium flow suites and the app-showcase e2e (wheel-zoom spec compiled through the real vite-plugin) pass unchanged.
+
+- [#2922](https://github.com/pyreon/pyreon/pull/2922) [`8aeffe0`](https://github.com/pyreon/pyreon/commit/8aeffe09bf62ea08af1278c45ecdaf26d1a04cb6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship the MIT LICENSE file in the package tarball
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- [#3682](https://github.com/pyreon/pyreon/pull/3682) [`0f89399`](https://github.com/pyreon/pyreon/commit/0f89399bace3aced249b79a5d1bd8bfde76b19db) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `historyLimit` now works on iOS and Android. The native `PyreonFlowState` engines had a fixed undo depth of 50. They now expose a mutable `historyLimit` with the web clamp: a positive finite value is floored, and anything else means 50. PMTC lowers `createFlow({ historyLimit })` and `flow.config.historyLimit` reads and writes. Before this, the key was dropped with a warning.
+
+  The web engine now reads `config.historyLimit` each time it records a checkpoint, the same way it already reads `autoHistory`. A write to `flow.config.historyLimit` therefore takes effect, as it does natively. A lowered limit trims the extra checkpoints on the next push.
+
+  Two emit fixes found while testing this:
+
+  - Swift `PyreonFlowState(...)` arguments are now emitted in the init's declaration order. Before, a config combining `autoHistory` with `fitViewPadding`, or `connectionRules` with any later key, did not compile.
+  - A whole-number write to a `Double` Flow config property, such as `flow.config.minZoom = 1`, now compiles on Kotlin.
+
+- [#3394](https://github.com/pyreon/pyreon/pull/3394) [`e87159b`](https://github.com/pyreon/pyreon/commit/e87159b0724e41d7bf41856f7bf877e49bab1379) Thanks [@vitbokisch](https://github.com/vitbokisch)! - PMTC: a top-level helper now infers against the file's structs, and the `Double` alias unifies with a numeric literal
+
+  `buildInferenceCtx`'s struct table is built PER COMPONENT, and both emitters
+  only assigned their inference context per component too. A file of pure
+  top-level helpers — which is exactly what a generated engine is — emitted every
+  expression against an EMPTY context: a member read typed as `unknown`, so every
+  inference-driven lowering silently skipped inside helper bodies.
+
+  Seeding a file-scope baseline was measured as NOT free on a first attempt: it
+  made two sites of the generated chart engine stop compiling. The cause was one
+  level down and is fixed here — the `Double` / `Float` alias arrives as an
+  unresolved `typeRef`, and any unification comparing `kind`s read it as unrelated
+  to `number`. The `binary` case already normalized it; the ternary and unary
+  cases did not, so `cond ? 1.0 : someDouble` degraded to `unknown` and took every
+  downstream type-gated lowering with it. The normalization is now shared, so the
+  three cannot disagree about whether `Double` is a number.
+
+  Net effect on the generated chart engine: **91 redundant `Double(...)` wraps
+  removed**, 29 rearranged, and it type-checks clean — those wraps are the ones
+  the emitter's own comments call out as blowing swiftc's expression budget.
+
+  `@pyreon/flow` takes one source change the improved inference surfaced: the
+  handle lookups bind through a non-optional local instead of `handles?.[0]`,
+  which Swift's safe-index lowering cannot express (it names the receiver twice)
+  and had been emitting as an UNGUARDED index that traps out of bounds.
+
+- [#2850](https://github.com/pyreon/pyreon/pull/2850) [`02cae6a`](https://github.com/pyreon/pyreon/commit/02cae6a420ef0d35f4300e907734415010493b9b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two reactivity/correctness fixes found by running `pyreon doctor` against the
+  framework itself, plus the rule-option support that made the remaining reports
+  resolvable.
+
+  - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
+    three branches (rubber-band / drag-end / connection-drop) are sequential and
+    can co-occur, and the rubber-band branch calls `clearSelection()` plus
+    `selectNode()` once per hit node — so a band over 100 nodes fired 100+ cycles
+    and re-rendered the canvas each time. One pointerup is now one transition.
+
+  - **`createActorId`'s fallback could collide.** The doc comment states two live
+    peers must not share an id, but the non-`crypto.randomUUID` path was
+    `Date.now()` + `Math.random()`, which repeats within a millisecond and is a
+    birthday risk besides. It now prefers `crypto.getRandomValues` (far more widely
+    available than `randomUUID`, which requires a secure context) and its last
+    resort mixes in a per-process monotonic counter, so two ids from one process
+    can never collide by construction and the random field only has to separate
+    processes.
+
+  - **`exemptPaths` on six rules that documented the convention but never read it.**
+    `toast-a11y`, `no-href-navigation`, `no-inline-style-object`,
+    `prefer-use-is-active`, `no-effect-in-mount` and `prefer-field-array` all
+    inspect a call site, so the file that _implements_ the thing being recommended
+    reports against itself — `link.tsx` renders the `<a href>` that `<Link>`
+    wraps, and the toast row computes `role` from severity in its definition
+    rather than at the `<ToastItem>` call site. Resolving that in-rule needs the
+    parent chain, which oxc's visitor does not provide, so these now honour the
+    documented `exemptPaths` option instead. Each still fires normally everywhere
+    else.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3066](https://github.com/pyreon/pyreon/pull/3066) [`d259c0c`](https://github.com/pyreon/pyreon/commit/d259c0c105427010a8c69b539b15f99b8342792c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Harden the flow webview host-HTML builder against a quote in developer-supplied
+  color config breaking the generated page.
+
+  `buildFlowHostHtml` interpolated the `edgeColor`/`nodeFill`/`nodeStroke`/
+  `labelColor` config into JS string literals and one `innerHTML` attribute, so a
+  value containing `'` broke out of the string. These are developer configuration
+  (never user data by design), so this is footgun-removal / correctness, not a
+  user-facing vulnerability — but a color with a quote should not corrupt the page.
+
+  Fix: the colors run through a `safeColor` allowlist (CSS-color tokens only) that
+  neutralizes every interpolation site at once. Valid hex / `rgb()` / named colors
+  are unaffected.
+
+- [#3153](https://github.com/pyreon/pyreon/pull/3153) [`0653ff0`](https://github.com/pyreon/pyreon/commit/0653ff0c23ae1303cb0854598d1137a424104b86) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close two escapes in the WebView host page that could not do what they claimed
+
+  The host-page builders wrote a `background` value into a `<style>` body with `&quot;` escaping and an inlined engine bundle into a `<script>` body with a `</` → `<\/` replacement. Both are the wrong escape for their context.
+
+  `<style>` is a RAW-TEXT element: character references are never decoded inside it, so `&quot;` was inert and a `</style>` in the value closed the element and put everything after it into the document. A real CSS colour or gradient never contains `<`, `>`, or a quote, so those are dropped now — lossless for every valid value, and `background: '#0b0d12'` and `rgb(11 13 18 / 80%)` still reach the sheet verbatim.
+
+  For the script body, `</` → `<\/` stops the element being CLOSED but not the tokenizer entering the script-data-DOUBLE-escaped state, which it does on `<!--` followed by `<script`. In that state the page's own literal `</script>` no longer ends the element and the rest of the document becomes script content. `<!--` is broken too now. Both replacements are identity escapes in the string and regex contexts a bundle actually contains these bytes in (`\/` is `/`, `\-` is `-`), so the JS is unchanged; the one shape they alter is an Annex-B `<!--` HTML-like comment in code position, which no bundler emits.
+
+  A `<script src>` URL is now escaped for its attribute context (`&` first, then `"` and `<`) rather than `"` alone.
+
+  These are developer-supplied options rather than request data, so this is defence-in-depth — but a PR earlier in this cycle hardened these exact functions for the JS-string context and left both of these, and an app deriving a theme colour from content would have been exposed.
+
+- [#3579](https://github.com/pyreon/pyreon/pull/3579) [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A changed `html` now reloads a web-hosted page, as it already did on iOS and Android. The web `<WebView>` and the `FlowWebView`, code and rich-text wrappers each read `html` once at setup, so a reactive swap kept the first page running forever. The new document gets the reverse bridge and the current `data` on load, the same as the first one.
+- Updated dependencies [[`089064b`](https://github.com/pyreon/pyreon/commit/089064b8f9c98b297b2f7897a3721695be6cd1d2), [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338), [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759), [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47), [`c12635c`](https://github.com/pyreon/pyreon/commit/c12635c3a9c423ac7b860293b0397583970235dd), [`5c5c0c7`](https://github.com/pyreon/pyreon/commit/5c5c0c72b1e10e03908c3d9dfc5fd729579b806c), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30), [`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58), [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012), [`ea669a1`](https://github.com/pyreon/pyreon/commit/ea669a11028d7067e80b8c59bb2f5d35d5cbda1b), [`1d74edc`](https://github.com/pyreon/pyreon/commit/1d74edc1b85c22714b9ee4b86e8fa9228be2ca93), [`fc0f445`](https://github.com/pyreon/pyreon/commit/fc0f445c4bf32e5b04355fa17ec5a938e9a05448), [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a), [`1431b7b`](https://github.com/pyreon/pyreon/commit/1431b7bc0f5e3b984ba2884674c8b998b0131bb4), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`4b40ea0`](https://github.com/pyreon/pyreon/commit/4b40ea0a0b88b467c61c737f385a3253c946368f), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754), [`43d769d`](https://github.com/pyreon/pyreon/commit/43d769d04237ece6e20b90a4499bed14c2b3b03e), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`1a7ca7e`](https://github.com/pyreon/pyreon/commit/1a7ca7ef1f982e43e2564e805a980d0a45385b73), [`c0e9e9c`](https://github.com/pyreon/pyreon/commit/c0e9e9cad5ac2cd077ca00fcd51648cee47d9fa5), [`18bc355`](https://github.com/pyreon/pyreon/commit/18bc355db06ba5f8e2eabcc6a5e68d82387d3b95), [`cb15c01`](https://github.com/pyreon/pyreon/commit/cb15c012632b66ea26b777087251aa906006a168), [`75a47dd`](https://github.com/pyreon/pyreon/commit/75a47dd93736933a941109d9a844099a54bdf58a), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`2b12889`](https://github.com/pyreon/pyreon/commit/2b12889546e64765a9c83c961e64c236f7b6dd76), [`80135d8`](https://github.com/pyreon/pyreon/commit/80135d80f82ea0f5f1c25da1f44512b8214529ea), [`ce16224`](https://github.com/pyreon/pyreon/commit/ce1622481cb8e11f3d2abe8df1cc290003018a13), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2), [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`9fe7be2`](https://github.com/pyreon/pyreon/commit/9fe7be2e14c2e42c79bd9267c410b9b4ebcc7676), [`fc0d636`](https://github.com/pyreon/pyreon/commit/fc0d636583d09a649c95d308d59b815a96a76a79), [`0764bf0`](https://github.com/pyreon/pyreon/commit/0764bf02cb3cc21881fbdebeabab9df35e13b7d7), [`8a855d5`](https://github.com/pyreon/pyreon/commit/8a855d54a758f19d912152acc23beebb82c5ab14), [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b), [`1612ed1`](https://github.com/pyreon/pyreon/commit/1612ed15b80c220d049212b0f62dabccb45aa9e9), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2), [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889), [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367), [`600f763`](https://github.com/pyreon/pyreon/commit/600f763fbd41493dd72812d875696a0ab3f2c623), [`f2b1d43`](https://github.com/pyreon/pyreon/commit/f2b1d433b0f833c56b173d300144436dcdcd53ae), [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4), [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d), [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760), [`0d4ebbf`](https://github.com/pyreon/pyreon/commit/0d4ebbf8a0c2ed015ee5fd29ff772cf66e7e0eb2), [`c52e915`](https://github.com/pyreon/pyreon/commit/c52e915f03b8f7322a5e993ee50e8dfb653e8b58), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`7c0d3cb`](https://github.com/pyreon/pyreon/commit/7c0d3cb9c7f158a0ce308fea3da9a7b487635b9a), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d), [`c5c44b8`](https://github.com/pyreon/pyreon/commit/c5c44b811a413688d34bd96ee7dda367d75d8b03), [`e5b71bd`](https://github.com/pyreon/pyreon/commit/e5b71bd064c94914001644f1bbafafc3c2b97559), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`6c9e618`](https://github.com/pyreon/pyreon/commit/6c9e6189660eee8d672825d6b6fc905155db2f9e), [`531d7a1`](https://github.com/pyreon/pyreon/commit/531d7a1c6294624c7e0ac63919d6bb4a70386c07), [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59), [`0b2edfc`](https://github.com/pyreon/pyreon/commit/0b2edfc24f106f765bd356c2a572bcae0b75d8d0), [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`f8ee02a`](https://github.com/pyreon/pyreon/commit/f8ee02aadb4c1fa2c223201f8f2480a143341e42), [`b689ffd`](https://github.com/pyreon/pyreon/commit/b689ffd0b004a387591c912479f080442ffce49b), [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299), [`086ca67`](https://github.com/pyreon/pyreon/commit/086ca67dd5219a7e80111c2c62c301be4263f535), [`967f78b`](https://github.com/pyreon/pyreon/commit/967f78b1c1d87d1eac156b1d122d27e772734330), [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d), [`a0c4cd7`](https://github.com/pyreon/pyreon/commit/a0c4cd7803dd244b79a8828dca36dff6c34b0b8c), [`b9c82f6`](https://github.com/pyreon/pyreon/commit/b9c82f6123f8d47481557b86b310914f5962a690), [`411a373`](https://github.com/pyreon/pyreon/commit/411a3735a340bae20370de806eb3650b153b05ce), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67), [`5a83e86`](https://github.com/pyreon/pyreon/commit/5a83e86c2c1848de9b318e2fd011963f2125cd4d), [`7ead5f8`](https://github.com/pyreon/pyreon/commit/7ead5f8c0b10e9301f66cc0dd6a6f8f1d3ea3bdb)]:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/primitives@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -853,7 +1496,6 @@
   - `@pyreon/document` — universal document rendering with 18 node primitives and 14 output formats (HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence/Jira, WhatsApp, Google Chat)
 
   ### Fixes
-
   - Fix DTS export paths — bump @vitus-labs/tools-rolldown to 1.15.4 (emitDtsOnly fix)
   - All packages now produce correct type declarations
 
@@ -867,7 +1509,6 @@
   - `@pyreon/code` — reactive code editor with CodeMirror 6, minimap, diff editor, lazy-loaded languages
 
   ### Improvements
-
   - Upgrade to pyreon 0.6.0
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages

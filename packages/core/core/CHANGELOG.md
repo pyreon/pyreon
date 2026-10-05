@@ -1,5 +1,421 @@
 # @pyreon/core
 
+## 0.52.0
+
+### Minor Changes
+
+- [#2884](https://github.com/pyreon/pyreon/pull/2884) [`d5f19b9`](https://github.com/pyreon/pyreon/commit/d5f19b9700962305b1cc4fd0e5da603ec884e759) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `<Async>` and `use()` — two primitives that remove the two most-repeated shapes in Pyreon app code.
+
+  **`<Async>`** renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at every data boundary (38 such chains across the repo's own example apps). The `of` prop is structural rather than a dependency — anything exposing `isPending` / `isError` / `error` / `data` accessors satisfies `AsyncLike<T>`, so `@pyreon/query` results, `@pyreon/http` resources and hand-rolled sources all work without `@pyreon/core` importing any of them.
+
+  Two deliberate semantics, both regression-locked:
+
+  - **There is no rethrowing default for errors.** An error thrown from a reactive re-run is NOT caught by `<ErrorBoundary>` — only a throw during the initial mount is — so rethrowing would escape unhandled on exactly the common case, a request that fails after mount. Omitting `error` renders nothing and warns once in development.
+  - **An empty array with no `empty` prop is passed to `children`**, so a list that renders its own empty state keeps working instead of silently vanishing. Only `null`/`undefined` renders nothing, because there is no value to hand to `children`.
+
+  **`use()`** composes element behaviours into a single ref. A `Directive` is a plain `(el) => cleanup | void`, so attaching N behaviours costs one attribute instead of a ref declaration, N hook calls and a ref attach. Nothing is special-cased by the compiler or renderer — `use()` returns an ordinary `RefCallback`, which the runtime already invokes with the element on mount and `null` on unmount. Cleanups run in reverse attach order; falsy entries are skipped so a directive can be applied conditionally inline; and a re-attach without an intervening detach tears the previous registration down first, so listeners cannot pile up.
+
+- [#3631](https://github.com/pyreon/pyreon/pull/3631) [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The framework-wide colour mode now reaches the rest of the framework.
+
+  - **`@pyreon/core`:** `useProvidedColorMode()` returns the mode an app explicitly set (`<PyreonUI mode>` / `<ColorModeProvider mode>`), or `undefined` when none did. It is for components whose own default is not "follow the system", so adopting the shared mode never flips them on a page that never asked.
+  - **`@pyreon/flow`:** with no `colorMode`, a flow takes the app's colour mode, and is still light when the app set none. An explicit `colorMode` still wins.
+  - **`@pyreon/code`:** an editor created without a `theme` follows the app's colour mode once mounted in `<CodeEditor>`, live. An explicit `theme` still wins, and with no app mode the default is still light.
+  - **`@pyreon/zero`:** the theme now also declares the CSS `color-scheme` on `<html>`, beside `data-theme`, in `setTheme`, on setup and in the pre-paint script. Native form controls and scrollbars follow it, and so does the shared colour mode, so a zero theme toggle reaches flow and the code editor with no wiring. **`themeScriptCspHash` changed with the script:** an app that pinned the old hash in its own `Content-Security-Policy` header must take the new value.
+  - **`@pyreon/native-compiler`:** `useColorMode()` lowers to the platform scheme read, exactly as `useColorScheme()` does.
+  - **`@pyreon/hooks`:** `useColorScheme()`'s docs point to `useColorMode()` for theming; it reads the OS only.
+
+- [#2879](https://github.com/pyreon/pyreon/pull/2879) [`9f02726`](https://github.com/pyreon/pyreon/commit/9f0272677bd083fb50998335257e31e44766e85d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `elementRef()` — one value that is both the ref and the element accessor
+
+  Eleven hooks across `@pyreon/hooks` and `@pyreon/dnd` take their target as
+  `() => HTMLElement | null`. That forced three touchpoints for one concept:
+  declare a `let`, hand-write the thunk, wire the ref back. Repo-wide that is
+  50 declarations and 194 thunk sites; a single kanban card writes the same
+  thunk twice because it uses two hooks on one element.
+
+  ```tsx
+  const panel = elementRef<HTMLDivElement>()
+  useClickOutside(panel, close)   // it IS () => T | null
+  useElementSize(panel)           // …and N hooks share it
+  <div ref={panel}>               // …and it IS a ref
+  ```
+
+  Purely additive: every existing hook takes it unchanged, because it already
+  has the accessor shape they declare. `.current` is kept so it drops into code
+  written against `createRef`.
+
+- [#2916](https://github.com/pyreon/pyreon/pull/2916) [`e6b70a5`](https://github.com/pyreon/pyreon/commit/e6b70a5c80ed7c9f338a6a750296ebe89e9dd9c2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lazy component children — a component's sole JSX child is now built when the component READS `props.children`, not when the `jsx(Comp, …)` argument is evaluated.
+
+  `<Provider><div>{useCtx()}</div></Provider>` lowers to `jsx(Provider, { children: _tpl(html, bind) })`, and `_tpl(…)` is an argument: it ran before `Provider`'s body, so every binding in that child snapshotted the context owner from BEFORE `provide()` and resolved to the default value. Measured on the previous release: the client rendered `DEFAULT`, plain SSR rendered `PROVIDED`, and SSR with `ssrTemplate` (default-on via the vite-plugin) rendered `DEFAULT` — wrong on the client and disagreeing with itself across the flag. The accessor form `{() => useCtx()}` was equally affected, because deferring the read does not move the effect's construction.
+
+  Both compiler backends now emit `{_lc(() => _tpl(…))}` (and `{_lc(() => _ssr(…))}`) for a component's sole child. `_lc` is a memoized, untracked thunk branded as a reactive prop, so the existing `makeReactiveProps` step turns it into a property getter — `props.children` still yields the same VALUE it always did, leaving every structural children consumer untouched. A component that never reads its children now builds nothing at all, which also removes an orphaned, undisposable binding those children used to leave behind.
+
+  Components with two or more children keep the previous eager behaviour: there `props.children` is an array, and deferring it would change what that array contains.
+
+- [#3731](https://github.com/pyreon/pyreon/pull/3731) [`cbd6459`](https://github.com/pyreon/pyreon/commit/cbd6459970423b7f7d94883685ae7c753895f1d9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydrating a `lazy()` whose client chunk has not landed no longer rebuilds its server-rendered region. The server's nodes stay in place (no fallback, no empty gap) and are hydrated once the chunk loads, inside the context owner of the hydration point — so node identity, focus and typed input survive. Covers core `lazy()`, the react/preact/solid-compat `lazy` and vue-compat's `defineAsyncComponent` (including `suspensible: false`, as Vue's hydration awaits every async wrapper).
+
+  `lazy()` now renders through an accessor, which also fixes a lazy mounted while its chunk was loading and NOT inside a `<Suspense>` rendering nothing forever. Its server output gains a `<!--$-->…<!--/$-->` range, like any reactive child. solid-compat's `lazy` now starts loading on first render, as Solid does. `pyreon doctor diagnose` explains a failed code-split chunk.
+
+- [#2898](https://github.com/pyreon/pyreon/pull/2898) [`d114ff8`](https://github.com/pyreon/pyreon/commit/d114ff8c83ac98acb0c421d0ee3217e43d4d713b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: a nested component setup no longer closes its parent's lifecycle-hook frame.
+
+  `runWithHooks` opened the setup frame with `setCurrentHooks(hooks)` and closed it
+  with `setCurrentHooks(null)` — a reset to a constant rather than a restore of the
+  caller's frame. Component setup genuinely nests: the compiler lowers an element
+  with a conditional or `.map` child to `_tpl(html, bindFn)` whose `bindFn` calls
+  `_mountSlot(...)`, and `_tpl` runs `bindFn` synchronously at its call site. So
+
+  ```tsx
+  const box = <div>{show && <Child />}</div> // Child's full setup runs HERE
+  onMount(() => {
+    /* ... */
+  }) // frame already closed → dropped
+  ```
+
+  ran `Child`'s entire setup partway through the parent's, and every
+  `onMount` / `onUnmount` / `onUpdate` / `onErrorCaptured` the parent registered
+  afterwards was silently discarded — surfacing only as a dev warning that blamed
+  the caller for using a hook "outside component setup".
+
+  The frame is now restored rather than reset, so each component keeps its own
+  hooks at any nesting depth.
+
+  `pyreon doctor diagnose` / MCP `diagnose` now also explain the residual case —
+  the hook genuinely called outside setup (after an `await`, in a handler, inside
+  an effect), which drops the callback silently.
+
+- [#3110](https://github.com/pyreon/pyreon/pull/3110) [`317367a`](https://github.com/pyreon/pyreon/commit/317367a9ade57b9aefd036441ebb397c8e3d1dc2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode (experimental): write reactive code as plain JavaScript. A module carrying the `'use plain'` directive (or importing from the new `@pyreon/core/plain` entry) is rewritten by a compiler pre-pass before the JSX transform: `let count = state(0)` declares a signal, bare reads and plain assignments (`count = count + 1`, `count++`, `count += n`) compile to tracked calls and `.set(...)`, `derived(expr)` compiles to a computed, and `effect(fn)` gets total tracking — state mentioned only in a branch, after an `await`, or inside a nested function is subscribed via a hoisted prologue, so a conditional read can never silently lose its subscription. Destructured component props (`function C({ name })`) compile to live `props.*` reads instead of the captured-once footgun, and a component-body `if (<reactive>) return <jsx>` early return re-evaluates when the state flips. Cross-module: `export let x = state(0)` exports the live signal; the vite plugin's signal registry feeds importers on both dialects, and marker-bearing `.ts` store modules are transformed too. Out-of-scope shapes (deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns) warn loudly instead of failing silently, and plain code that never went through the compiler throws with the fix at runtime.
+
+- [#3122](https://github.com/pyreon/pyreon/pull/3122) [`5c5e246`](https://github.com/pyreon/pyreon/commit/5c5e246832453a94e5ce112d11c9109d800d2889) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode follow-up tier: deep state, the classic→plain codemod, readiness report, Lens verdicts, and native-target support.
+
+  - **Deep state** — `let user = state({ … })` / `state([ … ])` (a literal object/array initializer) now lowers to `signal(createStore(...))`: member writes (`user.name = x`) and array mutations (`todos.push(t)`) notify with per-key granularity, whole reassignment replaces the store, and every JSX position stays live through the existing signal machinery. `state.raw(v)` opts a literal out to a shallow signal (replace-the-value semantics); non-literal initializers stay shallow — the split is static. Total tracking hoists conditional static member paths (`void (user().name);`), never a write target.
+  - **Codemod + readiness** — `pyreon plain [paths] [--write] [--json]`: per-binding classic→plain migration (`migrateToPlain` in `@pyreon/compiler`) whose dry-run is the readiness report with a declined-shape histogram. Object-literal signals convert to `state.raw(...)` — the codemod never changes semantics. A seeded round-trip fuzz oracle (classic → codemod → compile → behavioral DOM diff) locks both directions.
+  - **Reactivity Lens** — plain pre-pass warnings surface as `plain-mode` footgun findings in `analyzeReactivity`, at their source locations.
+  - **Native targets** — the PMTC compiler runs the same pre-pass via the new light `@pyreon/compiler/plain` subpath; a plain shared-source file emits byte-identical Swift/Compose to its classic twin.
+  - **Cross-module** — the vite-plugin signal-export registry now recognizes `state.raw(...)` exports; imported-state member-write warnings give conditional (deep vs shallow) guidance.
+
+- [#3761](https://github.com/pyreon/pyreon/pull/3761) [`384cb23`](https://github.com/pyreon/pyreon/commit/384cb23669ef897b74206c9441b8982a71729367) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Plain Mode is now production-ready: write reactive code as plain JavaScript (`let count = state(0)`, `count++`, `{count}`) and the compiler emits fine-grained signals.
+
+  - **New markers in `@pyreon/core/plain`.** `signalOf(x)` hands the underlying signal to an API that needs one (it compiles to the bare signal). `state.from(sig)` and `derived.from(sig)` adopt an existing signal (a hook result, a store field) as a plain binding. `derived(() => expr)` is now typed by the thunk's return value.
+  - **Newly supported shapes.** Destructuring assignment onto state (`[a, b] = [b, a]`, with exact JS semantics including defaults and rest). Nested props patterns (`{ user: { name } }` reads `props.user.name` live). A top-level `...rest` in props becomes a reactive `splitProps` copy, so `{...rest}` stays live.
+  - **Project-wide mode.** `pyreon({ plain: true })` compiles every app module as plain with no per-file directive; a `'use classic'` directive opts a file out. `@pyreon/zero` forwards the option to its SSR build.
+  - **Codemod (`pyreon plain --write`).** Converts far more real code and no longer changes behaviour or types:
+    - Arrow handlers that return a write (`() => x.set(v)`) now convert.
+    - Signals passed as values, stored, or used through `.subscribe` now convert via `signalOf`.
+    - Complex `.update` callbacks now convert via `x = (fn)(untrack(() => x))`.
+    - Fixed: an `.update` substitution discarded rewrites inside the callback body. `.update` inside an effect or computed no longer adds a subscription.
+    - Fixed: marker names that collide with a local binding are aliased, and `type` modifiers on kept imports are preserved.
+    - Exported signals now decline, since their importers still call them.
+
+    - `pyreon plain` skips test and spec files unless `--include-tests` is passed. Test runners often run without the `pyreon()` plugin, where plain code can't compile.
+
+    Across this repo's 883 example files: 86 declined before, 0 now.
+
+  - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
+  - **Vite plugin fix.** Dev mode's source-location injection no longer rewrites the text `effect()` or `signal()` inside JSX (for example, prose in a `<Code>` demo) into a broken call. Each match is now confirmed against the AST.
+  - **Plain Mode safety net.**
+    - New `pyreon/plain-mode-footgun` lint rule (on in `recommended`). It reports every Plain Mode compile-time warning, such as mutating shallow state or writing to a `derived` value, as an error in the editor and CI. Before, these only printed in the Vite terminal while the app was silently wrong.
+    - Reactivity lint rules that opt into `meta.plainLowered` also check plain files, by linting their compiled form and reporting at the source line: `no-signal-in-loop`, `no-nested-effect`, `no-unguarded-async-signal-write` and `no-unbatched-updates`. Without this, plain files were invisible to them.
+    - `detectPyreonPatterns`, which backs MCP `validate`, `pyreon check` and doctor, gains a `plain-mode` code for the same warnings.
+    - The "did not compile" runtime error now names the usual cause: a test runner without the `pyreon()` plugin.
+  - **Scaffold.** The `create-zero` counter page is written in Plain Mode.
+
+- [#3653](https://github.com/pyreon/pyreon/pull/3653) [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `onCleanup()` called synchronously in a component body now belongs to that component: it runs exactly once, when the component unmounts. Previously it only registered while an effect run was open, so a root-mounted component's setup-time cleanups never ran (listeners, sockets and watches leaked), and a component mounted inside `<For>` / `<Show>` / a routed page handed its cleanups to that boundary's effect, whose re-runs fired them while the component was still mounted (adding a `<For>` row tore down the listeners of every existing row).
+
+  `EffectScope.runInScope(fn)` now owns `onCleanup()` calls made in `fn` the same way, running them on `stop()`. This also makes `onCleanup()` inside `onMount()` run on unmount (it was silently dropped), and keeps a store first created inside a component from handing its setup cleanups to that component.
+
+  Behaviour change: code that relied on setup-time `onCleanup` never firing will now see it fire on unmount. `onCleanup` inside `effect()` is unchanged.
+
+- [#3631](https://github.com/pyreon/pyreon/pull/3631) [`d5a7c06`](https://github.com/pyreon/pyreon/commit/d5a7c06a689e392bb3274e8cbd16b4c48989c88d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - One light/dark mode for the whole framework. `useColorMode()` in `@pyreon/core` returns the mode in scope: the nearest `<ColorModeProvider mode>` or `provideColorMode(mode)`, else the page's declared `color-scheme`, else `prefers-color-scheme` (light on the server). `mode` is `'light'`, `'dark'` or `'system'`, or an accessor. `systemColorMode()` is the page-and-OS half alone.
+
+  `<PyreonUI mode>` now provides it, so everything below a PyreonUI follows the UI system's mode with no extra wiring.
+
+  **Breaking, `@pyreon/charts`:** charts read the shared mode, so a chart below a dark `<PyreonUI>` is dark. `<ChartThemeProvider>` no longer takes `mode`: set it with `<PyreonUI mode>` or `<ColorModeProvider mode>`. `systemChartMode()` is now `systemColorMode()` in `@pyreon/core`. The provider hands down a theme per mode, so a mode set below a provider still picks that provider's `light` / `dark` override. `pyreon doctor diagnose` explains both upgrade errors.
+
+  **Native:** a literal `<ColorModeProvider mode>` or `<PyreonUI mode>` is a compile-time scope the charts below inherit, and it re-resolves an outer provider's per-mode overrides. `'system'` keeps the platform scheme. A reactive mode on `<ColorModeProvider>` warns by name; on `<PyreonUI>` it is silent, as it was before. In both cases the charts below follow the platform scheme instead of being pinned to light.
+
+- [#3637](https://github.com/pyreon/pyreon/pull/3637) [`5438e9a`](https://github.com/pyreon/pyreon/commit/5438e9a7496e4c6e5dac43bc03ab90459d147a59) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Published type declarations now compile strictly (`skipLibCheck: false`), and no longer degrade to `any` under the default `skipLibCheck: true`.
+
+  - `@pyreon/core`: component props may be a plain `interface`. `ComponentFn`, `defineComponent`, `lazy`, `Defer`, `HigherOrderComponent` and `h()` bounded props by `Record<string, unknown>`, which an interface does not satisfy (no implicit index signature). `ComponentFn<ButtonProps>` was TS2344, and every `@pyreon/elements` props type violated the bound once emitted into a `.d.ts`. The bound is now `object`; `Props` is unchanged.
+  - `@pyreon/rocketstyle`: the origin-props parameter of `RocketStyleComponent` accepts interface-typed props for the same reason.
+  - `@pyreon/validate`: `s.string().iso.date()` / `.dateTime()` / `.time()` returned `any` to consumers. The inferred type put polymorphic `this` inside an object type literal, which is invalid in a declaration file. It is now typed as the named `IsoChecks<this>`, and the chain stays typed.
+  - `@pyreon/feature`: its declarations import `@tanstack/table-core`, which it now declares as a dependency. Before, the import resolved only where the package manager hoists transitive dependencies.
+  - `@pyreon/document-primitives`: declares `@pyreon/ui-core`, which its declarations import.
+
+- [#3734](https://github.com/pyreon/pyreon/pull/3734) [`5af143d`](https://github.com/pyreon/pyreon/commit/5af143d746be81a4a0d688243f123d532c455553) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Suspense>` now shows its fallback for an async descendant at ANY depth, not only its direct child — the React / Vue model. A still-loading `lazy()` (core, react/preact/solid-compat) or suspensible `defineAsyncComponent`, or an `async function` component, registers with the nearest boundary. While it waits the boundary's content stays mounted off-screen (moved into a detached fragment, not torn down), so its ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. An inner `<Suspense>` catches its own descendants. Hydration never shows a fallback over server content. On the client a `<Suspense>`'s output is bracketed by two comment markers.
+
+### Patch Changes
+
+- [#3602](https://github.com/pyreon/pyreon/pull/3602) [`2ac084f`](https://github.com/pyreon/pyreon/commit/2ac084f5c3c762902e38004b3787f806d155d338) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated.
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- [#3165](https://github.com/pyreon/pyreon/pull/3165) [`8563e97`](https://github.com/pyreon/pyreon/commit/8563e97ee5fd91daa6d74547c712ae6b71cffb47) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close the pre-release audit's long tail: a fail-open URL guard, an inert verification axis, an unnecessary supply-chain surface, and two overstated claims
+
+  **`isSafeImageDataUri` failed OPEN on a malformed percent-escape.** The base64 branch returns "unsafe" when `atob` throws; the percent branch caught the `decodeURIComponent` failure, kept the raw still-encoded payload, and scanned that — but the scripted-SVG regex matches `<script` and ` on…=`, neither of which appears in `%3Cscript%3E`. So one trailing `%` took a payload from blocked to allowed. The function's own docstring already promised the base64 branch's behaviour for both, so the two branches disagreeing was the whole defect. Scoped to `src`/`srcset`/`poster` on image/video elements where a scripted SVG does not execute, so this is defence-in-depth — reported because a guard that fails open is worse than one that does not exist: it is relied on.
+
+  **`@pyreon/atlas`'s route axis was inert.** `installRouter` had zero callers and `Scenario.route` had zero readers while `routerPlugin` was publicly exported, so a `routerPlugin({ urls })` config produced the expected doubled scenario count with names like `Profile @ /users/999` — and every one passed having mounted with no router installed. Two different URLs rendered byte-identically and both reported `pass`. The router is now installed around the scenario mount through a registration seam (the plugin publishes an installer; the plugin that owns mounting consumes it, so there is still ONE owner of the router's install/dispose), disposed in the same window so it cannot answer for the next scenario, and a route that CANNOT be applied is reported as a finding rather than passing silently.
+
+  **`@pyreon/code`'s 15 `@codemirror/lang-*` packages move from `optionalDependencies` to optional peers.** `optionalDependencies` reads as optional and is not: every package manager installs them by default, so every consumer carried their install weight and CVE surface for grammars they never load. Each is reached through a lazy `import()`, which is exactly the shape `@pyreon/document` moved to `peerDependenciesMeta.optional` for the same reason.
+
+  **The Vercel revalidate handler compares its secret in constant time.** It was `secret !== expected` under a comment calling it "constant-time-ish"; `!==` short-circuits at the first differing byte regardless of length, which is precisely the leak the phrase claimed to avoid. Length is compared separately because `timingSafeEqual` requires equal-length buffers — that leaks the secret's LENGTH, which is stated rather than hidden.
+
+  **`serverIsland` documents that its props are client-controlled.** The fragment endpoint is public and unauthenticated; the island NAME is allowlisted, the props are not, so a fragment renders with attacker-chosen props inside a full request context. That is the intended design, but neither the JSDoc nor the manifest said so — an island that reads a `userId` prop and returns that user's data is an IDOR by construction. Now named as the first entry in the API's `mistakes`, so it reaches `llms.txt` and the MCP reference too.
+
+- [#3725](https://github.com/pyreon/pyreon/pull/3725) [`9045709`](https://github.com/pyreon/pyreon/commit/9045709020995c37692eb2a9a6ecd65f6b8c6e30) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compat-layer `lazy()` / `defineAsyncComponent()` now take part in the SSR lazy contract: `renderToString` and `renderToStream` wait for a still-loading chunk (via `__load`) instead of rendering nothing or the `<Suspense>` fallback, and hydration adopts the server content.
+
+  - The compat `jsx()` runtimes wrapped a lazy component, hiding `__loading` / `__load` behind the wrapper — `<Suspense>` never showed its fallback on the client and the server could not see a pending chunk. Compat lazies are now marked `nativeCompat`.
+  - `@pyreon/react-compat` and `@pyreon/preact-compat` previously re-exported `@pyreon/core`'s `lazy`, which mounts the loaded component raw: a lazily-loaded component using hooks threw "Hook called outside of a component render". Their `lazy` now mounts it through the compat wrapper, like `jsx()` does.
+  - `@pyreon/solid-compat`'s `lazy` and `@pyreon/vue-compat`'s `defineAsyncComponent` expose `__load` (settles, never rejects) and keep their load-on-first-use semantics.
+  - `@pyreon/vue-compat`'s `<Suspense>` renders core's `Suspense` as a child vnode instead of calling it, so the server recognises the boundary.
+  - `@pyreon/core`'s `Suspense` is marked `nativeCompat`, so react/preact/vue-compat's `jsx()` no longer wraps it (solid/svelte-compat already routed it natively).
+  - solid/svelte-compat's component wrapper forwards `__load` alongside `__loading`, so a core `lazy()` reaching it is still waited for on the server.
+  - `@pyreon/compiler`: a diagnose-catalog entry for "Hook called outside of a component render" pointing at a core `lazy()` used in a compat app.
+
+- [#3518](https://github.com/pyreon/pyreon/pull/3518) [`99a1888`](https://github.com/pyreon/pyreon/commit/99a188821c005c4750c3daf98fd2d0863a0e3b58) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Refuse event-handler attributes on every render path, not just one
+
+  An inline `onclick="…"` is executable markup, and the refusal added in [#3432](https://github.com/pyreon/pyreon/issues/3432)
+  reached exactly one of the sinks a prop can travel through. Verified executing in
+  real Chromium, three did not refuse it: the `h()` path wrote it on any SVG /
+  MathML element (its foreign-namespace branch returns before the later checks),
+  the compiled template sink (`_setAttr`) wrote it on plain HTML too — and CALLED a
+  function-valued one to build the string — and the compiled SSR sink
+  (`_ssrAttrGen`) serialized it, because the compiler's own `on*` bail is
+  camelCase-only.
+
+  The name set was HTML-only as well: enumerating the `on*` IDL handlers a shipping
+  browser exposes on the HTML, SVG and Window prototypes found 36 missing,
+  including SVG's SMIL handlers (`onbegin` / `onend` / `onrepeat`) and the
+  vendor-legacy names browsers still compile (`onmousewheel`, `onwebkit*`,
+  `onbeforecopy`, `onsearch`). The set is now a vocabulary union and is ratcheted
+  against a real browser so a new handler reds a gate instead of becoming a sink.
+
+  `@pyreon/head` had no attribute guard at all, in either of its renderers: an
+  attribute NAME went out raw, so a user-keyed object could inject sibling
+  attributes (`{ 'name x="y" onload': 'z' }` serialized as
+  `<meta name x="y" onload="z">`), and `javascript:` URLs on `<link href>` /
+  `<script src>` were emitted verbatim. Head now runs the same guards the element
+  renderer already ran, sharing the predicates rather than re-deriving them.
+
+  Scripted-SVG detection in `data:image/svg+xml` URIs required whitespace before an
+  `on*=` handler; a slash separator, a comment-looking one, and no separator at all
+  (the closing quote of the previous attribute) each produced a live handler and
+  were allowed.
+
+  The documented camelCase props (`onClick`) are unaffected, and attributes that
+  merely start with "on" (`once`, `onyx`, `only`) still render.
+
+- [#3043](https://github.com/pyreon/pyreon/pull/3043) [`e56abb6`](https://github.com/pyreon/pyreon/commit/e56abb6b44873164473b085e0e64838e7d9e7012) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SVG geometry attributes (`x`, `y`, `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`rx`/`ry`, `width`, `height`, `points`) accept the reactive accessor form (`x={() => …}`) in the JSX types, matching `fill` / `stroke` / `d` / `transform` / `opacity`. Type-only widening — the runtime already resolves accessor-valued attributes; the fix for a missing variant belongs here, never an `as never` cast at the call site.
+
+- [#3432](https://github.com/pyreon/pyreon/pull/3432) [`6a7c0f1`](https://github.com/pyreon/pyreon/commit/6a7c0f1bb21f285fce47fe67492ce9a14c20fd6a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(core,runtime-server,runtime-dom): two guards keyed on one spelling of a thing with several
+
+  **A lowercase `on*` prop became a live inline handler in SSR output.** The
+  event-prop skip required an UPPERCASE third character, so the lowercase
+  spelling — the real HTML event-handler content attribute — fell through:
+
+  ```
+  h('div', { onclick: 'alert(1)' })            ->  <div onclick="alert(1)">
+  h('img', { src: 'x', onerror: 'alert(1)' })  ->  <img src="x" onerror="alert(1)">
+  ```
+
+  live in the server-rendered HTML, which the browser runs before any framework
+  code. The reachable vector is a spread of a user-keyed object — verbatim the
+  threat model `UNSAFE_ATTR_NAME_RE` already documents, and invisible to it
+  because `onclick` contains no breakout character.
+
+  The skip runs BEFORE the `typeof value === 'function'` resolution, so the same
+  hole meant a lowercase `on*` holding a FUNCTION was CALLED during render: a
+  typo'd `onclick={handleDelete}` executed `handleDelete` on the server.
+
+  Fixed with a NAME SET (`EVENT_HANDLER_ATTRS`, 112 entries) rather than
+  `/^on[a-z]/`, because the broad regex also eats `once` and `onyx`, which are
+  ordinary attributes an existing spec asserts must still render.
+
+  **`formAction` bypassed the URL guard on every path.** The guard keys on the
+  JSX PROP name while SSR emits the lowercased ATTRIBUTE name. `formAction` is an
+  advertised typed prop, so the idiomatic TSX spelling was the unguarded one —
+  and `formaction` overrides `<form action>`, which is in the set precisely
+  because `javascript:` executes on submit:
+
+  ```
+  <button formAction="javascript:alert(1)">  ->  formaction="javascript:alert(1)"
+  <button formaction="javascript:alert(1)">  ->  (blocked)
+  ```
+
+  `isUrlAttr` now resolves the name before asking, in one place, so no call site
+  can key on the wrong spelling again.
+
+- [#3674](https://github.com/pyreon/pyreon/pull/3674) [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: filled in manifest `api[]` gaps against each package's real `src/index.ts` exports. No runtime behavior changes.
+
+  Notable additions: `@pyreon/hooks`'s 10 web-half hooks that had no manifest entry (`useGeolocation`, `useMap`, `useWebSocket`, `useAuth`, `usePush`, `usePayments`, `useDatabase`, `useCrashReporter`, `useAppState`, `setCrashTransport`); `@pyreon/http`'s typed error hierarchy, URL/transport utilities, and `defineEndpoint`; `@pyreon/router`'s active-router, link-classification, redirect-safety, and loader-serialization utilities; `@pyreon/reactivity`'s `registerSingleton`/context-owner APIs and `defineCrossModuleState`; `@pyreon/core`'s `Defer`, `registerErrorHandler`/`reportError`, `isClient`/`isServer`; `@pyreon/zero`'s theme system, locale runtime, `Meta`, typed-routes codegen, and `generateRssFeed`; `@pyreon/zero-content`'s remaining docs components (`Details`, `Tabs`, `PropTable`, `APICard`, `CompatMatrix`, `PackageBadge`, `Mermaid`, `Math`, `Sidebar`, `Breadcrumbs`, `PrevNext`, `Toc`, `Playground`, `Search`/`useSearch`, `getEntry`/`getEntries`); `@pyreon/form`'s `<Form>`/`<Submit>` components; smaller additions to `@pyreon/store`, `@pyreon/validate`, `@pyreon/validation`, `@pyreon/a11y`, `@pyreon/i18n`, `@pyreon/code`, `@pyreon/feature`, `@pyreon/charts`, `@pyreon/hotkeys`, `@pyreon/virtual`, `@pyreon/sync`, and `@pyreon/server`.
+
+  Also corrected an inaccurate claim in `@pyreon/zero`'s `i18nRouting` manifest entry: it said components read the detected locale via `createLocaleContext`, but nothing in the framework reads `req.__localeContext` back out today — the working app-facing API is `useLocale()`/`setLocale()`. Verified `@pyreon/reactivity`'s `onCleanup` documentation is accurate (not outdated as initially suspected) via `effect.test.ts`'s explicit "onCleanup outside an effect is a silent no-op" test.
+
+  `packages/tools/mcp/src/api-reference.ts` is the generated output of `bun run gen-docs` reflecting the above.
+
+- [#3634](https://github.com/pyreon/pyreon/pull/3634) [`4f75a72`](https://github.com/pyreon/pyreon/commit/4f75a72ebbc4223a88d9ffc2ce950d962aa973a4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Signal-driven props now stay live on `<Dynamic>`, `<VisuallyHidden>`, `<LiveRegion>` and `<SkipLink>`. Each destructured its props, which reads every getter-backed prop once at setup: the documented `<Dynamic component={components[current()]} />` never switched component, and forwarded attributes (and `LiveRegion`'s `politeness`, `SkipLink`'s `href`) froze at their first value. They now use `splitProps`/`mergeProps`. A static `component` on `<Dynamic>` still renders a plain node; a reactive one renders through an accessor so a change remounts the new component (SSR and hydration verified).
+
+- [#2895](https://github.com/pyreon/pyreon/pull/2895) [`773f9df`](https://github.com/pyreon/pyreon/commit/773f9dfaafaed05a06b252b1f83a0f7d970dbb8d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(core): cut two allocations per JSX element and one per reactive prop on the component-mount path
+
+  Attribution for the deep-component-tree mount scenario (2,047 components) put
+  29% of self time in the props pipeline, ahead of every DOM call. Two changes,
+  both allocation removals on paths that run once per component:
+
+  - **`jsx()` zero-copy path.** When an element has no `children` and no `key`,
+    both existing paths reduce to "hand `props` through unchanged" — the
+    value-copy branch copies every data property, the descriptor branch
+    re-defines every descriptor, and neither adds or removes a key. The original
+    object is exactly what they produce, so it now goes straight to `h()`. That
+    skips `Object.getOwnPropertyDescriptors` (one descriptor object PER KEY, plus
+    the container) and the rest-spread. It also preserves getter-shaped reactive
+    props by construction, because nothing is read. Covers the dominant childless
+    shapes: `<Comp prop={x} />`, `<img src=… />`, `<Icon name=… />`.
+
+  - **`makeReactiveProps()` single pass.** Was scan-then-build, reading every key
+    twice for any component carrying a compiler-wrapped reactive prop. Now copies
+    on first reactive prop and backfills the keys already scanned. All-static
+    components still return the input object untouched, which is the property the
+    scan-first shape existed to guarantee.
+
+  Measured on that scenario with both builds served at once and the arms
+  alternated per pass, so both see the same machine: **4.90 → 4.50 ms, −8.2%,
+  confidence intervals separated** (60 samples per cell). Vanilla, SolidJS, React,
+  Preact and Vue all stayed inside their intervals across every run, which is the
+  control a Pyreon-only change has to pass. Context propagation over the same tree
+  is unchanged.
+
+  No API change and no behavioural change; the getter-preservation contract that
+  these paths exist to protect is unchanged and newly pinned by regression specs
+  for the key, inherited-`children`, and live-getter cases.
+
+- [#3325](https://github.com/pyreon/pyreon/pull/3325) [`3dba9dc`](https://github.com/pyreon/pyreon/commit/3dba9dceec5dc96c34686b70604b6d79939655a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reactive props reach the signal's DIRECT tier. `<Row value={sig()} />` used to
+  lower to `_rp(() => sig())`, an opaque thunk, and the row's `{props.value}` to
+  `bindPolymorphicText(() => props.value)` — a tracked effect whose teardown is a
+  hashed `Set.delete`. The dispose-500 ablation ladder measured that wrapper at
+  roughly half the residual over Solid: with the prop holding the signal itself,
+  the text bind's share of the teardown drops from ~31µs to ~11µs per 500 rows.
+
+  Now a BARE signal/computed call as a component prop lowers to `_rpd(sig)`
+  (`@pyreon/core`): a `REACTIVE_PROP`-branded thunk that also carries the
+  signal's `.direct` / `._v` / `.peek`, re-targeted to the signal. A prop READ in
+  a template text child lowers to `_bindProp(props, "key", node, parent)`
+  (`@pyreon/runtime-dom`), which binds through the prop's GETTER — the thunk
+  `makeReactiveProps` installed — and takes `_bindText`'s direct tier when the
+  getter carries `.direct`, falling back to the tracked polymorphic path for any
+  other getter or a plain data property. Value semantics are unchanged on every
+  path (the getter's value, re-rendered on change; VNode values still upgrade to
+  a subtree mount); the signal itself is never branded. Both compiler backends,
+  byte-identical. Anything that is not exactly a bare call (`sig() + 1`,
+  `String(sig())`, a shadowed name) keeps `_rp`; a deeper read (`props.a.b`)
+  keeps `bindPolymorphicText`.
+
+- [#3515](https://github.com/pyreon/pyreon/pull/3515) [`87b581a`](https://github.com/pyreon/pyreon/commit/87b581a6a28433116c9a6c8364fbb8e3cab15760) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation-only: closes five README/manifest gaps against shipped 0.52-cycle APIs, found by auditing every package README against its real exports.
+
+  - **`@pyreon/core`** — `<Async>`, `use()` (already in the manifest but undocumented in the README) and `elementRef()` (missing from BOTH the README and the manifest) are now documented. `elementRef` gets a new manifest `api[]` entry with a real `mistakes` catalog, and the package `longExample` now demonstrates all three primitives so they surface in `llms-full.txt` / the MCP `api-reference` (the manifest's `longExample`, not `api[].example`, is what drives that section).
+  - **`@pyreon/sync`** — the multiplatform pure-TS CRDT engine (`pyreonAdapter`, `PyreonCrdtAdapter`, `PyreonCrdtDoc`, `createActorId`, `connectPyreonSync`, `webSocketChannel`, `createNativeSyncHost`) shipped via [#2824](https://github.com/pyreon/pyreon/issues/2824)/[#3207](https://github.com/pyreon/pyreon/issues/3207) and was undocumented everywhere — the README's own roadmap table still implied only the Yjs engine had landed. Adds a "Multiplatform engine" README section, 7 new manifest `api[]` entries, and a roadmap row.
+  - **`@pyreon/table`** — `createTableState` (the dependency-free, PMTC-lowerable table-state core) was documented in the manifest but absent from the README, which reads as TanStack-only. Adds a full section + a comparison table + a gotcha distinguishing it from `useTable`.
+  - **`@pyreon/router`** — `safeRedirectLocation` / `classifyRedirectTarget` (public open-redirect-guard exports) get a short "Redirect-target security" subsection under `notFound() / redirect()`.
+  - **`@pyreon/hooks`** — the README's "full surface" table-count line said "55 hooks across 7 categories" against a real 65 (the prose line three lines above it was correct and already guarded by `check-doc-claims`; this second, unguarded restatement of the same number silently drifted on its own). The table itself listed three hooks that do not exist (`useRootSize`, `useSpacing`, `useThemeValue`) and was missing 19 real ones across Interaction/Data (`useBluetooth`, `useSafeArea`, `useScreenOrientation`, `useDeviceMotion`, `useSpeech`, `useDeviceInfo`, `useCamera`, `useAudioRecorder`, `useWakeLock`, `useAppState`, `useCrashReporter`, `useAuth`, `useDatabase`, `useGeolocation`, `useMap`, `useWebSocket`, `useSecureStorage`, `usePush`, `usePayments`). The table is now a verified 1:1 match against `src/index.ts`'s real exports (programmatically diffed).
+  - **`@pyreon/cli`** — `check-doc-claims` gains a guarded claim site for the hooks README's table-count line, closing the exact gap that let it drift silently: `packages/tools/cli/src/doctor/gates/doc-claims.ts`'s `hook export count` check previously only watched the prose line in that file, not this second restatement a few lines below it. Bisect-verified: reverting the new claim spec makes the new regression test fail with `expected +0 to be 1` (drift undetected); restored, it passes.
+  - **`@pyreon/mcp`** — `api-reference.ts` regenerated (`bun run gen-docs`) from the `@pyreon/core` / `@pyreon/sync` manifest edits above; no hand edits.
+
+  No runtime behavior changes in any package.
+
+- [#3611](https://github.com/pyreon/pyreon/pull/3611) [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Smaller client bundles: the client no longer ships the ~160-name event-handler list. `runtime-dom` and `@pyreon/head`'s DOM syncer now ask the element which lowercase `on*` names are real handlers (`key in el`, new `isElementEventHandlerAttr` export) — the engine's exact answer — while SSR keeps the list. The template cache is a plain FIFO `Map` (drops the `@pyreon/sized-map` dependency), and a signal's production read closure no longer carries a dev-only rest parameter. The krausest-style table app bundle goes from 16.6 KB to 15.7 KB gzipped.
+
+- [#3715](https://github.com/pyreon/pyreon/pull/3715) [`fabd888`](https://github.com/pyreon/pyreon/commit/fabd888ac865155a5af687f1706bf918c6419f19) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR now waits for a `lazy()` component whose chunk has not loaded yet, the same way it waits for an async component. Before, `renderToStream` swapped an EMPTY template into a `<Suspense>` boundary, replacing the fallback with nothing, and `renderToString` left the fallback in place. This hit the first request after a lazily-evaluated chunk.
+
+  `lazy()` exposes the settle promise as `__load()`. A streamed Suspense swap template is now bracketed with the same `<!--$-->…<!--/$-->` range the string renderer emits, so hydration adopts the swapped-in content instead of rebuilding it. Before, an async child was mounted a second time beside the server's copy.
+
+  `pyreon doctor diagnose` now recognises the "Suspense boundary caught an error — fallback will remain" line. A failed `lazy()` import on the server surfaces there.
+
+- [#3557](https://github.com/pyreon/pyreon/pull/3557) [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stop publishing the build's bundle-analysis report.
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- [#3389](https://github.com/pyreon/pyreon/pull/3389) [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close five correctness holes on the compiled path and the redirect boundary, two of them security-relevant.
+
+  **The compiled template path skipped `setStaticProp` branches it never re-stated.** The compiler routes each attribute by name straight to `_setAttr` / `_setValue` / `_setStyle`, so every branch `setStaticProp` runs _above_ that dispatch point is one the compiled path skips. Three shipped that way: `_setAttr` had no URL guard, so a compiled `<a href={u}>` wrote `javascript:alert(1)` while `h()` dropped it and SSR omitted it (an XSS in every compiled app, and a hydration mismatch); `_setValue` had no nullish branch, so `<input value={undefined}>` displayed the literal text `undefined`; and `_setStyle` cleared an object style on a nullish flip but never a string one. The shared branch is now one predicate both paths call, locked by a differential test over {attribute} × {payload} × {compiled, `h()`, SSR}.
+
+  **A namespaced JSX attribute reached every template name-reader as the empty string.** `xlink:href` parses as `JSXNamespacedName`, and the readers test for `JSXIdentifier`. Neither backend errored: the JS backend baked malformed HTML (`<use ="/static">`), the Rust backend dropped the attribute — so `<use xlink:href="#icon">`, the SVG sprite idiom, rendered nothing in every compiled app, differently per backend, for static and dynamic values alike. Both backends now bail the element to `h()`, where the runtime sets the qualified name and guards it.
+
+  **`\` is an authority delimiter, so blocking only `//host` left three bypasses.** The URL parser resolves `\\evil.com`, `/\evil.com` and `\/evil.com` off-origin exactly as `//evil.com` does, but the router's redirect boundary — whose verdict is emitted as a raw `Location:` header — classified all three as internal. Fixed as the class (any leading run of two or more `[/\]`), in the redirect boundary and in `classifyHref`, where an `internal` verdict renders a real `href` that a ctrl-click resolves without ever reaching the click handler. A blocked target now says so in dev instead of silently landing on `/`.
+
+  **A subscriber could be skipped when the tier promoted mid-notify.** `createSelector`'s `notifyBucket` snapshotted both inline subscribers, then asked whether the second was still subscribed using an identity compare against the inline tiers only — so when the first registered a third subscriber and `addSubscriber` promoted both slots into a Set, the second matched neither and was silently dropped. The check now covers every shape the two-tier store can be in.
+
+  Also: the hydration adoption marker is removed on final dispose, and the fuzz gate's timeout is derived from its seed count so the documented high-seed command can finish.
+
+- [#3341](https://github.com/pyreon/pyreon/pull/3341) [`f4e9268`](https://github.com/pyreon/pyreon/commit/f4e9268a750318ceb5f7d2dc40c185a53e6b5299) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Text fusion: a static-text run around an interpolation — `<p>Hello {name}!</p>`,
+  `<td>{a}{b}</td>`, `<li>{n} items</li>` — now compiles to ONE accessor child,
+  `() => _fuse("Hello ", name(), "!")`, on every emit path (the `_tpl` client
+  template, the `_ssr` fast path, and the h() path). The element is then the
+  sole-accessor-child shape the framework already renders and hydrates without
+  `<!--$-->…<!--/$-->` range markers: SSR emits one text node, hydration adopts
+  it in place, and every later update writes `.data` on that same node. Before
+  this the same element carried one marker range PER interpolation, and the
+  `$`-marker normalization those ranges force was the single largest item in
+  the hydration walk (~20% of it on the 1,000-row bench) — the cost Vue never
+  pays because `{{a}}{{b}}` is one text child there.
+
+  `_fuse` (new in `@pyreon/core`, compiler-emitted) keeps Pyreon's polymorphic
+  text semantics: null/undefined/false contribute nothing and numbers/`true`
+  stringify exactly as a lone `{x}` does, and the moment ANY part is a VNode,
+  array or function it returns the PARTS ARRAY, which `bindPolymorphicText` mounts
+  as a subtree (and swaps back to text later) and `renderNode` renders — nothing
+  is ever coerced to "[object Object]". The fusion boundary is exact and identical
+  in both compiler backends: DOM elements only, children that are only text and
+  text-position expressions, at least two parts and at least one reactive one. A
+  lone `{sig()}` keeps its single-signal direct-tier binding, a static-only mix
+  keeps its baked shape, and anything the template routes to a mount slot
+  (`props.children`, an in-file JSX helper call, inline JSX, an element-valued
+  const) or a component parent is untouched.
+
+  A project whose `@pyreon/core` is older than its `@pyreon/compiler` fails its
+  build with `"_fuse" is not exported by @pyreon/core` — the packages release as a
+  fixed group; `pyreon upgrade` aligns them (a diagnose-catalog entry teaches it).
+
+- [#3430](https://github.com/pyreon/pyreon/pull/3430) [`c26fcef`](https://github.com/pyreon/pyreon/commit/c26fcef861ec794ca7f0e0b2163d84f7b58c0866) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(core,compiler): the URL guard is bypassable by an obfuscated scheme on every path
+
+  `UNSAFE_URL_RE = /^\s*(?:javascript|data):/i` tolerates LEADING whitespace only.
+  The URL parser additionally strips ASCII tab and newline from ANYWHERE in the
+  input, and trims leading C0-or-space, before it resolves a scheme. So all of
+  these are live script URLs that the guard read as safe:
+
+  ```
+  java<TAB>script:alert(1)
+  java<LF>script:alert(1)
+  <0x01>javascript:alert(1)
+  ```
+
+  This defeats the guard for EVERY URL-bearing attribute at once, on all four
+  render paths plus the `innerHTML` sanitizer, because each one routes through
+  `isUnsafeUrl`.
+
+  The repo already knew this in two places and neither was the guard:
+  `@pyreon/router`'s `redirect.ts` implements both WHATWG steps, and
+  `@pyreon/lint`'s `no-script-url` strips exactly this range with a comment
+  naming `java\tscript:` as the bypass. So the STATIC rule, which only ever sees
+  literals a developer typed, was strictly stronger than the RUNTIME guard, which
+  sees attacker-controlled values.
+
+  `isUnsafeUrl` now tests the normalized string as well as the raw one, and both
+  compiler mirrors (`jsx.ts` and `native/src/lib.rs`) do the same for the
+  static-literal bake decision — reachable there because `@pyreon/lathe` generates
+  JSX from OpenAPI specs. Only the DECISION is normalized; the emitted value is
+  untouched. The `charCodeAt(0)` fast path is unchanged and stays sound:
+  normalization only removes characters <= 32, so a printable non-`j`/`d` first
+  character is still first afterwards.
+
+- [#3737](https://github.com/pyreon/pyreon/pull/3737) [`50caf2d`](https://github.com/pyreon/pyreon/commit/50caf2d3f97fefa7afa6105e38c7f5940c427b5d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR no longer serializes ten WebKit-only event-handler attributes (`onbeforeload`, `onorientationchange` and eight `onwebkit*` names). Chromium does not expose them, so the Chromium-run vocabulary ratchet never listed them in `EVENT_HANDLER_ATTRS`; WebKit compiles each into an inline handler, so a string-valued prop of that name reaching the server renderer (for example through a spread of user-keyed data) produced executable markup for Safari users. The client path was already safe — it asks the element which names are handlers. Both compiler backends' SSR fast-path sets are updated in lockstep.
+- Updated dependencies [[`57b94ed`](https://github.com/pyreon/pyreon/commit/57b94ed8cd4b2aa9d5bd16e52d39edcdb7056c62), [`1c70f68`](https://github.com/pyreon/pyreon/commit/1c70f68b69a7e9f60eb7d565bf8797a155353743), [`cc455e8`](https://github.com/pyreon/pyreon/commit/cc455e84d9ed7d682d963d44b25cd3c4bb89c7c8), [`cf50c79`](https://github.com/pyreon/pyreon/commit/cf50c79668fa46510df17f76906520c53d6e0e4a), [`f2194d5`](https://github.com/pyreon/pyreon/commit/f2194d544ca7fc10dcc64b2aeb1c97dc923eabfe), [`ea4e50a`](https://github.com/pyreon/pyreon/commit/ea4e50ab7d97d84f2bd5518ea747280c34805611), [`c8c47f7`](https://github.com/pyreon/pyreon/commit/c8c47f7c1b1853c4fde3247d5d7618cab03b6c4f), [`50d9324`](https://github.com/pyreon/pyreon/commit/50d93245d8e28ba0a3c8217bd83a50d3dd6719d3), [`d98b60d`](https://github.com/pyreon/pyreon/commit/d98b60d48ec42e1cf4cc6f22e20262000384676a), [`e44dcc7`](https://github.com/pyreon/pyreon/commit/e44dcc7124a5617f95ddb69786be262a35280d5f), [`768f104`](https://github.com/pyreon/pyreon/commit/768f104018ced7568dde1c99990a21c273e924ec), [`9593fbc`](https://github.com/pyreon/pyreon/commit/9593fbc44375cc00f57865790a798bd53e479551), [`24c4019`](https://github.com/pyreon/pyreon/commit/24c4019d3e2527bf063d65d62bf574b00965d1e4), [`d0e57b2`](https://github.com/pyreon/pyreon/commit/d0e57b27ccbf9b4b90521235186a003f3d6bc3ca), [`5c60743`](https://github.com/pyreon/pyreon/commit/5c60743c32bac8c46279fccacc5a51126b183832), [`2bef24d`](https://github.com/pyreon/pyreon/commit/2bef24df3d5c86d709509906d4d1e831357b41c6), [`127e5d6`](https://github.com/pyreon/pyreon/commit/127e5d65cd2a3cea8457a1bd6f397b75c0ad4597), [`c7feb0b`](https://github.com/pyreon/pyreon/commit/c7feb0b726ea78ef7b6a4d3a17e8ae85df471a67)]:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
@@ -688,7 +1104,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
 
   ## QA
-
   - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
   - Whole-repo `bun run lint` + `typecheck` clean
   - `gen-docs --check` clean
@@ -796,14 +1211,14 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 
   ```ts
   interface LifecycleState {
-    current: LifecycleHooks | null;
+    current: LifecycleHooks | null
   }
-  const KEY = Symbol.for("pyreon-core/lifecycle-state");
-  const g = globalThis as Record<symbol, unknown>;
+  const KEY = Symbol.for('pyreon-core/lifecycle-state')
+  const g = globalThis as Record<symbol, unknown>
   const _state: LifecycleState = (g[KEY] as LifecycleState | undefined) ?? {
     current: null,
-  };
-  if (!g[KEY]) g[KEY] = _state;
+  }
+  if (!g[KEY]) g[KEY] = _state
   ```
 
   The `if (!g[KEY])` guard ensures the FIRST module instance creates the state; subsequent instances see it and use it.
@@ -830,7 +1245,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   Workspace dev workflow unchanged — `bun` condition still routes framework src/ imports to TypeScript source files. Only publish-time package.json is mutated (then restored).
 
   ## Verification
-
   - **7 unit specs** for `stripBunCondition` covering recursive nesting, arrays, primitives, real `@pyreon/core` shape.
   - **7 regression specs** for the Symbol.for state hosting in [`tests/cross-module-state.test.ts`](packages/core/core/src/tests/cross-module-state.test.ts):
     - Each state var reachable at its `Symbol.for` key on `globalThis`
@@ -917,25 +1331,25 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 
   ```ts
   // Before
-  return [...getStack()]; // 40k entries under deep nesting
+  return [...getStack()] // 40k entries under deep nesting
 
   // After
   // Walk top-to-bottom, keep topmost-per-id frames
-  const seen = new Set<symbol>();
-  const reversed: Map<symbol, unknown>[] = [];
+  const seen = new Set<symbol>()
+  const reversed: Map<symbol, unknown>[] = []
   for (let i = stack.length - 1; i >= 0; i--) {
-    const frame = stack[i];
-    let unique = false;
+    const frame = stack[i]
+    let unique = false
     for (const id of frame.keys()) {
       if (!seen.has(id)) {
-        seen.add(id);
-        unique = true;
+        seen.add(id)
+        unique = true
       }
     }
-    if (unique) reversed.push(frame);
+    if (unique) reversed.push(frame)
   }
-  reversed.reverse();
-  return reversed;
+  reversed.reverse()
+  return reversed
   // → ~N entries where N = distinct context ids in scope (typically 2-10)
   ```
 
@@ -963,12 +1377,10 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
     - 100 snapshots of a 500-frame mixed stack with 50 distinct ids retain **5000 frame references**, not 50,000.
 
   ## Bisect-verified
-
   - Revert `captureContextStack` to `[...getStack()]` → **6 dedup-behavior specs + 2 leak-audit specs fail**; 29 pre-existing specs still pass (semantic equivalence preserved).
   - Restored → 37/37 context tests, 523/523 `@pyreon/core`, 150/150 `@pyreon/runtime-server`, 681/681 `@pyreon/runtime-dom`, 521/521 `@pyreon/router` — total **1875 tests across affected packages**. Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants.
 
   ## Impact
-
   - **Per-snapshot retention drops from O(stack-depth) to O(distinct-ids-in-scope)** — typically 100× reduction on deep trees, the same shape as the bug-report's 800× extrapolation.
   - The leak-audit unit tests are permanent regression locks — re-introducing the bug shape fails CI deterministically (no heap snapshot needed).
 
@@ -1048,12 +1460,10 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   Fix: LRU bound (default 256 entries). `Map` preserves insertion order, so the first key is the least-recently-used. `get` / `set` on an existing key refresh recency by re-inserting at the tail. Apps that lint thousands of distinct files in tight succession can bump the cap via `new AstCache(2048)`.
 
   ### Regression tests + bisect
-
   - `packages/tools/vue-compat/src/tests/provide-stack-leak-repro.test.ts` (2 specs) — `createApp().provide().mount(el); unmount()` returns the global context stack to baseline; 100 mount/unmount cycles do NOT accumulate frames. **Bisect-verified**: revert `vue-compat/src/index.ts` → both specs fail with stack-length assertions; restored → pass.
   - `packages/tools/lint/src/tests/ast-cache-lru.test.ts` (5 specs) — cache never exceeds `maxEntries`, evicts LRU on overflow, `get`/`set` refresh recency, re-setting an existing key doesn't double-count, default cap is 256. **Bisect-verified**: revert `lint/src/cache.ts` → all 5 fail; restored → pass.
 
   ### Validation
-
   - `@pyreon/core` 510/510 tests pass
   - `@pyreon/vue-compat` 218/218 tests pass (+ 2 new regression specs)
   - `@pyreon/lint` 639/639 tests pass (+ 5 new LRU specs)
@@ -1115,8 +1525,8 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
       extra: { component: ctx.component, reactiveTrace: ctx.reactiveTrace },
       // e.g. [{ name: 'status', prev: '"idle"', next: '"submitting"' },
       //       { name: 'user',   prev: 'null',    next: 'User {id, …}' }]
-    });
-  });
+    })
+  })
   ```
 
   **New: `getReactiveTrace()` / `clearReactiveTrace()`** (`@pyreon/reactivity`) — read / reset the buffer directly (devtools, test isolation), plus the `ReactiveTraceEntry` type.
@@ -1157,7 +1567,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   **Bisect-verified**: with the `transformDeferInline` call disabled in the vite-plugin's `transform()` hook, the fingerprint lands in `about-*.js` (the route chunk pulls in DeferredFixture via the un-removed static import) and the cell fails with `expected basename to start with "DeferredFixture-". Got: about-*.js`.
 
   ## Honest disclosure of gaps still NOT addressed
-
   - **Props on inline child** — `<Defer when={x}><Modal title="hi" /></Defer>` still bails to explicit form
   - **Closure capture** — `<Modal count={count} />` where count is a local signal still bails
   - **Renamed imports** — `{ Modal as M }` still bails
@@ -1448,9 +1857,9 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 
   ```tsx
   function Comp(props) {
-    const a = b + props.x; // reads props.x AND references b
-    const b = a + 1; // references a → circular
-    return <div>{a}</div>; // ← previously: Maximum call stack size exceeded
+    const a = b + props.x // reads props.x AND references b
+    const b = a + 1 // references a → circular
+    return <div>{a}</div> // ← previously: Maximum call stack size exceeded
   }
   ```
 
@@ -1461,7 +1870,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   `direction`, `layerSpacing`, and `edgeRouting` are silently ignored by ELK's `force`/`stress`/`radial`/`box`/`rectpacking` algorithms. `flow.layout()` now emits a `console.warn` in dev mode when these options are set on an algorithm that ignores them. Applicability table verified empirically by running each algorithm with different values.
 
   ### Document-primitives: `DocDocument` accepts reactive metadata + `extractDocNode` one-step API ([#197](https://github.com/pyreon/pyreon/issues/197))
-
   - `DocDocument` props `title`, `author`, `subject` now accept `string | (() => string)`. Accessor functions are resolved at extraction time — each export reads live values from the store.
   - `extractDocNode(templateFn)` — one-step convenience that replaces the two-step `createDocumentExport(fn).getDocNode()` pattern.
   - **Framework fix**: `extractDocumentTree` from `@pyreon/connector-document` now correctly reads `_documentProps` from real rocketstyle primitives (previously only worked with mock vnodes in tests — a silent metadata drop that had been present since the package was created).
@@ -1572,12 +1980,10 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Minor Changes
 
 - ### New packages
-
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
-
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents
@@ -1610,7 +2016,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -1624,7 +2029,6 @@ props[key]`), which fires getter-shaped reactive props at HOC-setup time and
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics

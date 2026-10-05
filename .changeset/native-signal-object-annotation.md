@@ -1,5 +1,0 @@
----
-"@pyreon/native-compiler": patch
----
-
-Swift: a signal whose object-literal (or array-of-object-literal) initializer contains a non-literal field no longer emits an `Any`-typed `@State` declaration beside a synthesized-struct value. Parse-time inference is ctx-less, so `signal([{ id: count(), name: label() }])` typed as unknown while the value emit synthesized `__ObjN` — and on `Any`, every member access and subscript fails the real-SDK typecheck (`value of type 'Any' has no subscripts`) with zero compiler warnings (the parse-only gate passes it; Kotlin was green the whole time because it emits no annotation). The annotation now resolves through the SAME three-rung struct-name resolution the value emit uses (`resolveSwiftObjectStructName`: exact index → optional-subset declared struct → synth dedup), called after the value is emitted so it is a pure lookup — annotation and value agree by construction and `__ObjN` numbering / cross-target name alignment cannot move. Mixed-shape arrays, spread-bearing literals, and declared generics are untouched.
