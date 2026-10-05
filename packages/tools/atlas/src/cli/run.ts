@@ -297,7 +297,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // nothing and reported it as a project with no components. Without a module
   // loader `loadAtlasConfig` falls back to its runtime loader, which is exactly
   // the degradation that path already documents.
-  const loaded = await loadAtlasConfig(cwd, loader)
+  let loaded = await loadAtlasConfig(cwd, loader)
   // A config that declares its OWN aliases has to reach the loader too, and
   // the loader that read the config was built before those were known. So the
   // loader is rebuilt — only when the config actually adds something, which is
@@ -309,6 +309,16 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   if (loader && explicitAlias.length > 0) {
     await loader.close()
     loader = await createModuleLoader(resolve(cwd), packages, alias)
+    // The config is RE-LOADED through the replacement. A module loader owns
+    // its own module graph, so everything the first load returned — `wrapper`,
+    // `theme`, authored `scenarios`, `projects`, presets — was instantiated in
+    // the graph just closed, while the components now load into the new one.
+    // Keeping the old config split every local module the two sides share (a
+    // context a wrapper `provide()`s and a component `useContext()`s became two
+    // different objects), so the provider never reached the components and the
+    // scan reported 0 verified with nothing naming the cause (#3786). The
+    // invariant: nothing loaded through a loader outlives that loader.
+    loaded = await loadAtlasConfig(cwd, loader)
   }
   // Mount with the framework the COMPONENTS were compiled against — see
   // `loadRuntime`. Undefined means Atlas resolves its own, which is right only
