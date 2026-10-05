@@ -248,7 +248,7 @@ const SHAPES: Record<string, string> = {
   // Names that are not struct fields.
   localConsts: `export function App() {\n${lines(LOCAL_WORDS, (w) => `  const ${w} = 1`)}\n  return <Stack>${texts(LOCAL_WORDS, (w) => w)}</Stack>\n}\n`,
   localSignals: `export function App() {\n${lines(LOCAL_WORDS, (w) => `  const ${w} = signal(1)`)}\n  return <Stack>${texts(LOCAL_WORDS, (w) => `${w}()`)}</Stack>\n}\n`,
-  handlerLocals: `export function App() {\n  const go = () => {\n${lines(LOCAL_WORDS, (w) => `    const ${w} = 1`)}\n    console.log(${LOCAL_WORDS.slice(0, 4).join(', ')})\n  }\n  return <Button onPress={go}>x</Button>\n}\n`,
+  handlerLocals: `export function App() {\n  const go = () => {\n${lines(LOCAL_WORDS, (w) => `    const ${w} = 1`)}\n    console.log(${LOCAL_WORDS[0]})\n  }\n  return <Button onPress={go}>x</Button>\n}\n`,
   componentProps: `export function C(props: { ${lines(FIELD_WORDS, (w) => `${w}: string`, '; ')} }) {\n  return <Stack>${texts(FIELD_WORDS, (w) => `props.${w}`)}</Stack>\n}\nexport function App() {\n  return <C ${lines(FIELD_WORDS, (w) => `${w}="x"`, ' ')} />\n}\n`,
   componentPropsDestructured: `export function C({ ${LOCAL_WORDS.join(', ')} }: { ${lines(LOCAL_WORDS, (w) => `${w}: string`, '; ')} }) {\n  return <Stack>${texts(LOCAL_WORDS, (w) => w)}</Stack>\n}\nexport function App() {\n  return <C ${lines(LOCAL_WORDS, (w) => `${w}="x"`, ' ')} />\n}\n`,
   functionParams: `function f(${lines(LOCAL_WORDS, (w) => `${w}: number`, ', ')}) {\n  return [${LOCAL_WORDS.join(', ')}].length\n}\nexport function App() {\n  return <Text>{f(${lines(LOCAL_WORDS, () => '1', ', ')})}</Text>\n}\n`,

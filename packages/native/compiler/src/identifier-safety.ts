@@ -80,8 +80,10 @@ const SWIFT_KEYWORDS = new Set([
   // fails as a local/parameter name (it parses as an expression prefix).
   // Both are legal TS/JSON/OpenAPI names. `async` parses as a closure EFFECT
   // in `{ async in … }` (so a `<For>` item or lambda parameter named `async`
-  // loses its name), though it is an ordinary identifier everywhere else.
-  'precedencegroup', 'await', 'async',
+  // loses its name), though it is an ordinary identifier everywhere else;
+  // `unsafe` (Swift 6.2) is the same effect-keyword shape, and `willSet`/`didSet`
+  // break a closure parameter inside a result-builder body (`ForEach { didSet in … }`).
+  'precedencegroup', 'await', 'async', 'unsafe', 'willSet', 'didSet',
 ])
 
 // Kotlin reserved (hard) keywords — same backtick-escape mechanism:
