@@ -6,6 +6,7 @@
 // SAME idiomatic native emit the hand-written `.set(x().map(...))`
 // form produces (no IIFE, no closure-invocation noise).
 
+import { hashServiceDeclsAsLegacy } from './services'
 import type { AttrIR, ChildIR, DeclIR, ExprIR, ParseResult, StructIR, TypeIR } from './types'
 
 /**
@@ -379,21 +380,24 @@ export function synthStructName(n: number): string {
  * IR rather than the raw source text or the file path).
  */
 export function moduleTag(parsed: ParseResult): string {
-  const key = JSON.stringify([
-    parsed.components,
-    parsed.enums,
-    parsed.structs,
-    parsed.moduleDecls,
-    parsed.stores,
-    parsed.models,
-    parsed.fieldMetas,
-    parsed.features,
-    parsed.zodSchemas,
-    parsed.helperFns,
-    parsed.styledComponents,
-    parsed.rocketstyleComponents,
-    parsed.attrsComponents,
-  ])
+  const key = JSON.stringify(
+    [
+      parsed.components,
+      parsed.enums,
+      parsed.structs,
+      parsed.moduleDecls,
+      parsed.stores,
+      parsed.models,
+      parsed.fieldMetas,
+      parsed.features,
+      parsed.zodSchemas,
+      parsed.helperFns,
+      parsed.styledComponents,
+      parsed.rocketstyleComponents,
+      parsed.attrsComponents,
+    ],
+    hashServiceDeclsAsLegacy,
+  )
   let h = 0x811c9dc5
   for (let i = 0; i < key.length; i++) {
     h ^= key.charCodeAt(i)

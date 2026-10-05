@@ -6,7 +6,7 @@
 
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { kotlinStr } from './string-literals'
-import { renderKotlinService, serviceFor } from './services'
+import { bindServices, renderKotlinService, serviceFor, type ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -630,26 +630,12 @@ let _zodStringFieldsKotlin: Map<string, string[]> = new Map()
  */
 let _formSubmitParamsKotlin: string[] = []
 /**
- * Phase 4: every `useOnline()` decl name in scope. A `net.isOnline` read emits
- * with a trailing `.value` (Compose `MutableState`); Swift exposes it as a
- * plain @Observable property, so it needs no rewrite.
- */
-let _netStatusNames: Set<string> = new Set()
-/** Per-component: `useAppState()` decl names — drives `state()` → `.phase.value`
- *  and `state.phase` → `.phase.value` (the Compose MutableState read). */
-let _appStateNames: Set<string> = new Set()
-/** Per-component: `useCrashReporter()` decl names — drives the `.value`
- *  member-read rewrite for `crash.lastCrash`/`crash.hadCrash` (Compose
- *  MutableState). */
-let _crashNames: Set<string> = new Set()
-/**
  * Phase 5: native data/services hook decl names → per-hook MutableState
  * field-read rewrite (append `.value`). Each maps a binding name to the
  * container's reactive fields; non-listed members (Bool getters + methods)
  * read bare. Swift exposes everything as @Observable, so it needs no rewrite.
  * Field sets are kept next to the read-rewrite in emitKotlinExpr.
  */
-let _geoNames: Set<string> = new Set()
 let _wsNames: Set<string> = new Set()
 /** `useStream` decl names — `s.events()` / `s.status()` read `.value`. */
 let _streamNames: Set<string> = new Set()
@@ -663,20 +649,13 @@ let _streamNames: Set<string> = new Set()
  */
 function isContainerMutableStateField(obj: string, p: string): boolean {
   return (
-    (_geoNames.has(obj) &&
-      ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'].includes(p)) ||
+    _serviceBindingsKotlin.get(obj)?.kotlinState?.includes(p) === true ||
     (_wsNames.has(obj) && ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
     (_streamNames.has(obj) && ['events', 'latest', 'status', 'error'].includes(p)) ||
-    (_pushNames.has(obj) &&
-      ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
-    (_payNames.has(obj) && ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
     (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
-    (_authNames.has(obj) && ['status', 'user', 'error'].includes(p)) ||
-    (_crashNames.has(obj) && ['lastCrash', 'hadCrash'].includes(p))
+    (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
   )
 }
-let _pushNames: Set<string> = new Set()
-let _payNames: Set<string> = new Set()
 let _mapNames: Set<string> = new Set()
 let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
@@ -853,15 +832,7 @@ export function emitKotlin(
   // resets per component and happens to take precedence in the shapes
   // tested, which is why no wrong emit has been observed — but relying on
   // that is relying on an accident.
-  _bluetoothKotlin = new Set()
-  _clipboardKotlin = new Set()
-  _deviceInfoKotlin = new Set()
-  _motionKotlin = new Set()
-  _orientationKotlin = new Set()
-  _recorderKotlin = new Set()
-  _safeAreaKotlin = new Set()
-  _speechKotlin = new Set()
-  _wakeLockKotlin = new Set()
+  _serviceBindingsKotlin = new Map()
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
@@ -1041,21 +1012,6 @@ export function emitKotlin(
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
   _pureStateKotlin = new Map()
-  _bluetoothKotlin = new Set()
-  _clipboardKotlin = new Set()
-  for (const c of components) {
-    for (const d of c.decls ?? []) {
-      if (d.kind === 'bluetooth') _bluetoothKotlin.add(d.name)
-      if (d.kind === 'wake-lock') _wakeLockKotlin.add(d.name)
-      if (d.kind === 'device-info') _deviceInfoKotlin.add(d.name)
-      if (d.kind === 'safe-area') _safeAreaKotlin.add(d.name)
-      if (d.kind === 'screen-orientation') _orientationKotlin.add(d.name)
-      if (d.kind === 'device-motion') _motionKotlin.add(d.name)
-      if (d.kind === 'speech') _speechKotlin.add(d.name)
-      if (d.kind === 'audio-recorder') _recorderKotlin.add(d.name)
-      if (d.kind === 'clipboard') _clipboardKotlin.add(d.name)
-    }
-  }
   // Mirror of the Swift registries: state fields + views are READ (a state
   // field is a signal on web, so the read is a call); actions are CALLED.
   _modelReadNamesKotlin = new Map(
@@ -1152,7 +1108,7 @@ export function emitKotlin(
   _storeHooksKotlin = new Map()
   _storeMethodNamesKotlin = new Map()
   _modelInstancesKotlin = new Map()
-  _clipboardKotlin = new Set()
+  _serviceBindingsKotlin = new Map()
   _modelReadNamesKotlin = new Map()
   _modelMethodNamesKotlin = new Map()
   _needsKotlinKeepAliveWrapper = false
@@ -1181,24 +1137,14 @@ let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
 let _modelInstancesKotlin: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
 let _pureStateKotlin: ReturnType<typeof pureStateBindings> = new Map()
-/** `useBluetooth()` bindings — its reactive reads become `.value`. */
-let _bluetoothKotlin: Set<string> = new Set()
-/** `useWakeLock()` bindings — `active` is MutableState, `supported` plain. */
-let _wakeLockKotlin: Set<string> = new Set()
-/** `useDeviceInfo()` bindings — all reads are plain getters (no `.value`). */
-let _deviceInfoKotlin: Set<string> = new Set()
-/** `useSafeArea()` bindings — the sole accessor becomes `.insets`. */
-let _safeAreaKotlin: Set<string> = new Set()
-/** `useScreenOrientation()` bindings — reads are properties. */
-let _orientationKotlin: Set<string> = new Set()
-/** `useDeviceMotion()` bindings — reads drop parens. */
-let _motionKotlin: Set<string> = new Set()
-/** `useSpeech()` bindings — reads drop parens. */
-let _speechKotlin: Set<string> = new Set()
-/** `useAudioRecorder()` bindings — reads are properties/state. */
-let _recorderKotlin: Set<string> = new Set()
-/** `useClipboard()` bindings — its reactive reads become `.value`. */
-let _clipboardKotlin: Set<string> = new Set()
+/**
+ * Per-component: binding name → service descriptor for every `service`
+ * declaration (services.ts). Drives the read-site rewrites: `accessorReads`
+ * (web accessor call → property), `callRead`, and `kotlinState` (a Compose
+ * `MutableState` member reads `.value`). Rebuilt at the start of each
+ * component, so a binding in one component can't rewrite another's values.
+ */
+let _serviceBindingsKotlin: Map<string, ServiceDescriptor> = new Map()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
 let _activeModelSelfParamKotlin: string | undefined
 /** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
@@ -2133,14 +2079,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
-  _netStatusNames = new Set()
-  _appStateNames = new Set()
-  _crashNames = new Set()
-  _geoNames = new Set()
+  _serviceBindingsKotlin = bindServices(c.decls)
   _wsNames = new Set()
   _streamNames = new Set()
-  _pushNames = new Set()
-  _payNames = new Set()
   _mapNames = new Set()
   _authNames = new Set()
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
@@ -2217,15 +2158,9 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'fetch' || d.kind === 'query') _fetchNames.add(d.name)
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
-    if (d.kind === 'network-status') _netStatusNames.add(d.name)
-    if (d.kind === 'app-state') _appStateNames.add(d.name)
-    if (d.kind === 'crash-reporter') _crashNames.add(d.name)
     // Phase 5: native data/services hook decl names (for the .value rewrite).
-    if (d.kind === 'geolocation') _geoNames.add(d.name)
     if (d.kind === 'websocket') _wsNames.add(d.name)
     if (d.kind === 'stream') _streamNames.add(d.name)
-    if (d.kind === 'push') _pushNames.add(d.name)
-    if (d.kind === 'payments') _payNames.add(d.name)
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
@@ -2632,14 +2567,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
-  _netStatusNames = new Set()
-  _appStateNames = new Set()
-  _crashNames = new Set()
-  _geoNames = new Set()
+  _serviceBindingsKotlin = new Map()
   _wsNames = new Set()
   _streamNames = new Set()
-  _pushNames = new Set()
-  _payNames = new Set()
   _mapNames = new Set()
   _authNames = new Set()
   _routerRoutes = new Map()
@@ -3024,45 +2954,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // constructor route and fail to compile again.
     return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${parts.join(', ')}) }`
   }
-  // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
-  if (d.kind === 'network-status') {
-    // rememberPyreonNetworkStatus SELF-INSTALLS a real
-    // ConnectivityManager.NetworkCallback and tears it down on leave. Before
-    // it, `PyreonNetworkStatus()` was a pure container defaulting to `true`
-    // with a `start(register)` seam the app was expected to wire — so
-    // `useOnline()` on Android reported online forever regardless of the
-    // device, and a device test that turned the radios off waited for a flip
-    // that could never arrive. Same shape as the geolocation registry: a
-    // default that requires a step nobody takes is not a default.
-    return `val ${kotlinIdent(d.name)} = rememberPyreonNetworkStatus()`
-  }
-  // Phase 5 (M3.7): `const state = useAppState()` → a remembered PyreonAppState.
-  if (d.kind === 'app-state') {
-    // rememberPyreonAppState SELF-INSTALLS a LifecycleEventObserver on the
-    // hosting Activity for the composable's lifetime (a bare
-    // `remember { PyreonAppState() }` was the never-wired class — the
-    // container reported its initial "active" forever).
-    return `val ${kotlinIdent(d.name)} = rememberPyreonAppState()`
-  }
-  // `const crash = useCrashReporter()` → a remembered PyreonCrashReporter.
-  // rememberPyreonCrashReporter SELF-INSTALLS a file-backed backend + calls
-  // start() (the never-wired-class fix — a report that vanishes on relaunch
-  // is worse than none). Reads `crash.lastCrash`/`crash.hadCrash` append
-  // `.value` (see isContainerMutableStateField); methods read bare.
-  if (d.kind === 'crash-reporter') {
-    return `val ${kotlinIdent(d.name)} = rememberPyreonCrashReporter()`
-  }
-  // Phase 5: native data/services hooks → remembered container. Reactive
-  // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters
-  // read bare. Lifecycle auto-start is a documented follow-up.
-  if (d.kind === 'geolocation') {
-    // rememberPyreonGeolocation SELF-INSTALLS the platform LocationManager
-    // source (guarded — an app-chosen registry source wins), mirroring
-    // rememberPyreonStorage. The prior bare `remember { PyreonGeolocation() }`
-    // compiled green while `geo.start()` errored on every real device
-    // (nothing ever installed AndroidLocationSource).
-    return `val ${kotlinIdent(d.name)} = rememberPyreonGeolocation()`
-  }
+  // Native data/services hooks without a descriptor: reactive FIELD reads
+  // append `.value` (see emitKotlinExpr); methods + Bool getters read bare.
   if (d.kind === 'websocket') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
   }
@@ -3105,17 +2998,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const init = d.initial.length === 0 ? '' : `listOf(${d.initial.map((v) => kotlinStr(v)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonFieldArray(${init}) }`
   }
-  if (d.kind === 'push') {
-    // rememberPyreonPushNotifications SELF-INSTALLS the PYREON_PUSH_ACTION
-    // BroadcastReceiver delivery seam for the composable's lifetime (a bare
-    // `remember { PyreonPushNotifications() }` was the never-wired class —
-    // the container rendered its initial state forever). FCM transport
-    // remains app-wired (credentials); it forwards into the same container.
-    return `val ${kotlinIdent(d.name)} = rememberPyreonPushNotifications()`
-  }
-  if (d.kind === 'payments') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonPayments() }`
-  }
   if (d.kind === 'map') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonMapState() }`
   }
@@ -3150,67 +3032,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
   // Mirror of the Swift pure-state emit: a plain mutableStateOf field, with
   // the mutators rewritten at their use sites.
-  // Mirror of the Swift bluetooth emit.
-  if (d.kind === 'bluetooth') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonBluetooth(AndroidBluetoothScanner(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  // Mirror of Swift: the keeper is injected so the state machine is
-  // testable with no Android SDK; the app supplies the real one.
-  if (d.kind === 'audio-recorder') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonAudioRecorder(AndroidRecordingEngine(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'speech') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonSpeech(AndroidSpeechSynth(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'device-motion') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonDeviceMotion(AndroidMotionSource(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'wake-lock') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonWakeLock(AndroidScreenKeeper(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  // Mirror of Swift: the probe is injected so the shape is testable with no
-  // Android SDK; the app supplies the real one.
-  if (d.kind === 'device-info') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonDeviceInfo(AndroidDeviceProbe(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'safe-area') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonSafeArea(AndroidSafeAreaProbe(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'screen-orientation') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonScreenOrientation(AndroidOrientationProbe(${id}Ctx)) }`,
-    ].join('\n  ')
-  }
   if (d.kind === 'pure-state') {
     // A counter is a TS integer — Long on Kotlin (see KOTLIN_INT).
     const init = typeof d.initial === 'number' && Number.isInteger(d.initial) ? `${d.initial}L` : String(d.initial)
@@ -3229,35 +3050,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     }
     const seed = `setOf(${d.grants.map((g) => kotlinStr(g)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
-  }
-  // Phase 4: `const cb = useClipboard()` → a remembered PyreonClipboard.
-  // Reads are method calls (`cb.copy("hi")`) + a Boolean field
-  // (`cb.copied`) — no `.value` rewrite. Compose's clipboard API needs
-  // a `Context`; PyreonClipboard captures it at CONSTRUCTION time so
-  // the call-site signature matches Swift's one-for-one.
-  //
-  // THREE-line emit (Round-1 audit follow-up — scope-leak fix):
-  //   1. `val ${name}Ctx = LocalContext.current` — Local reads can't
-  //      live inside `remember { … }`'s lambda (it's non-Composable).
-  //      Hoist to a sibling val.
-  //   2. `val ${name}Scope = rememberCoroutineScope()` — the
-  //      composition-bound coroutine scope. PyreonClipboard's 2s
-  //      reset coroutine launches on this scope; when the composable
-  //      leaves composition, `rememberCoroutineScope()` auto-cancels
-  //      its scope, which interrupts any in-flight `delay(2000)` and
-  //      prevents the `_copied = false` write from firing post-
-  //      unmount. Pre-fix PyreonClipboard built its own
-  //      `CoroutineScope(Dispatchers.IO)` with no parent Job — a real
-  //      leak under repeated remount.
-  //   3. `val ${name} = remember { PyreonClipboard(ctx, scope) }` —
-  //      same shape as before, just with the scope passed in.
-  if (d.kind === 'clipboard') {
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id}Scope = rememberCoroutineScope()`,
-      `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
-    ].join('\n  ')
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
   // instance of the APP's own class. A Context is hoisted and injected
@@ -5718,98 +5510,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `PyreonModel_${modelId}.${member}(${args})`
         }
       }
-      // useBluetooth's reactive reads — MutableState on Compose, so the
-      // web's accessor spelling becomes `.value`. `available` is a plain
-      // getter and takes neither parens nor `.value`.
+      // Service accessor reads (services.ts `accessorReads`) — the web spells
+      // them as accessors (`bt.scanning()`), the native container stores them as
+      // properties, so the parens drop. A member also listed in `kotlinState` is
+      // Compose `MutableState` and takes `.value`; a plain getter
+      // (`available`, `supported`, every `useDeviceInfo` read) takes neither
+      // parens nor `.value`.
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
-        _bluetoothKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
-      ) {
-        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-        return e.callee.property === 'available' ? base : `${base}.value`
-      }
-      // useWakeLock — `active` is MutableState so it takes `.value`;
-      // `supported` is a plain getter and takes neither parens nor `.value`.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _wakeLockKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['active', 'supported'].includes(e.callee.property)
-      ) {
-        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-        return e.callee.property === 'supported' ? base : `${base}.value`
-      }
-      // useDeviceInfo — every read is a plain getter here, so parens drop
-      // and NONE of them take `.value` (unlike useWakeLock's `active`).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _deviceInfoKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-      }
-      // useSafeArea returns a SINGLE accessor, so `s()` is a bare call on the
-      // binding itself rather than a member call. It becomes the runtime's
-      // `.insets` property, so `s().top` lowers to `s.insets.top`.
-      if (
-        e.callee.kind === 'identifier' &&
-        _safeAreaKotlin.has(e.callee.name) &&
         e.args.length === 0
       ) {
-        return `${kotlinIdent(e.callee.name)}.insets`
-      }
-      // useScreenOrientation's reads — properties on this target, so the
-      // web-correct accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _orientationKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['type', 'angle'].includes(e.callee.property)
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-      }
-      // useDeviceMotion's reads — the accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _motionKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['active', 'supported', 'acceleration', 'rotation'].includes(e.callee.property)
-      ) {
-        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-        // `supported` is a plain getter; the rest are MutableState.
-        return e.callee.property === 'supported' ? base : `${base}.value`
-      }
-      // useSpeech's reads — the accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _speechKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['speaking', 'supported'].includes(e.callee.property)
-      ) {
-        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-        // `supported` is a plain getter; `speaking` is MutableState.
-        return e.callee.property === 'supported' ? base : `${base}.value`
-      }
-      // useAudioRecorder's reads — the accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _recorderKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['recording', 'error', 'supported'].includes(e.callee.property)
-      ) {
-        const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-        // `supported` is a plain getter; recording/error are MutableState.
-        return e.callee.property === 'supported' ? base : `${base}.value`
+        const svc = _serviceBindingsKotlin.get(e.callee.object.name)
+        if (svc?.accessorReads?.includes(e.callee.property) === true) {
+          const base = `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+          return svc.kotlinState?.includes(e.callee.property) === true ? `${base}.value` : base
+        }
       }
       // useToggle / useCounter member surface (mirror of Swift). The state
       // field IS the value, so a read drops its parens; each mutator becomes
@@ -5838,17 +5554,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (m === 'set') return `${field} = ${clamp(arg ?? '0L')}`
           if (m === 'reset') return `${field} = ${clamp(((n: number | boolean) => (typeof n === 'number' && Number.isInteger(n) ? `${n}L` : String(n)))(info.initial))}`
         }
-      }
-      // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a
-      // `val … get()`, so the read is paren-less there too.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _clipboardKotlin.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['copied', 'text'].includes(e.callee.property)
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
       // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
       // the native PyreonForm exposes them as Boolean properties. Mirror of the
@@ -6437,17 +6142,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (_syncedSignalNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
-        // `useOnline()` returns a web ACCESSOR (`() => boolean`), so shared code
-        // reads it as `net()`. Lower that accessor call to `net.isOnline.value`
-        // (the MutableState-backed reactive Bool on PyreonNetworkStatus) so ONE
-        // source works web + native — the bare `net` fall-through emitted `if (net)`,
-        // uncompilable (the container isn't a Bool). The `net.isOnline` member
-        // form is handled separately (→ `.isOnline.value`); this covers `net()`.
-        if (_appStateNames.has(e.callee.name)) {
-          return `${kotlinIdent(e.callee.name)}.phase.value`
-        }
-        if (_netStatusNames.has(e.callee.name)) {
-          return `${kotlinIdent(e.callee.name)}.isOnline.value`
+        // A web service accessor is CALLED (`net()`, `state()`, `s()`);
+        // natively the container exposes the value as a property (services.ts
+        // `callRead`): `net()` → `net.isOnline.value` (the MutableState-backed
+        // reactive Bool on PyreonNetworkStatus), `s()` → `s.insets`. The bare
+        // identifier would fall through to `if (net)` — uncompilable, the
+        // container isn't a Bool. `.value` is appended when the property is
+        // listed in `kotlinState`.
+        const svc = _serviceBindingsKotlin.get(e.callee.name)
+        if (svc?.callRead !== undefined) {
+          const read = `${kotlinIdent(e.callee.name)}.${svc.callRead}`
+          return svc.kotlinState?.includes(svc.callRead) === true ? `${read}.value` : read
         }
         return kotlinIdent(e.callee.name)
       }
@@ -7162,25 +6867,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           e.property === 'errors' ||
           e.property === 'touched' ||
           e.property === 'isSubmitting')
-      ) {
-        return `${kotlinIdent(e.object.name)}.${e.property}.value`
-      }
-      // Phase 4: a useOnline decl's `isOnline` is Compose MutableState (`.value`).
-      if (
-        e.object.kind === 'identifier' &&
-        _netStatusNames.has(e.object.name) &&
-        e.property === 'isOnline'
-      ) {
-        return `${kotlinIdent(e.object.name)}.isOnline.value`
-      }
-      // Phase 5 (M3.7): a useAppState decl's `phase` is Compose MutableState —
-      // as is the sticky `wasBackgrounded` flag (the lifecycle-arc device-test
-      // surface): both need `.value` or the emitted read renders the
-      // MutableState object's toString.
-      if (
-        e.object.kind === 'identifier' &&
-        _appStateNames.has(e.object.name) &&
-        (e.property === 'phase' || e.property === 'wasBackgrounded')
       ) {
         return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
