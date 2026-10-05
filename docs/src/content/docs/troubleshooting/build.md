@@ -7,6 +7,12 @@ description: "Common build pipeline mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Rewriting SOURCE with raw text (`replaceAll` / `replace(/re/g)`) instead of by AST node range
+
+(the vite-plugin NODE_ENV fold, #3791): the production-SSR fold did `code.replaceAll('process.env.NODE_ENV', '(      "production")')` on `@pyreon/*` files, so the same characters inside a string, comment, regex literal or template text were rewritten too. Zero's own `define: { "process.env.NODE_ENV": … }` key became `"(      "production")"`, invalid JS that failed the nested SSR build. A text match cannot tell an expression from a quoted spelling of it; the compat `className`/`htmlFor` rename had the same flaw and rewrote `const className = …`. **Fix: parse, find the real node, replace by `[start,end)`** (`@pyreon/vite-plugin` `ast-rewrite.ts`), skip write targets, keep length/line count so no source map is needed, gate the parse on a cheap substring check, and on a parse failure leave the code untouched rather than falling back to text. **Rule: any transform that edits source is positioned by the parser; test quoted keys, strings, comments, regex, template text vs interpolations, every read position and write targets, and re-parse the output.** Reference: `packages/tools/vite-plugin/src/ast-rewrite.ts` + `tests/ast-rewrite.test.ts` (bisect-verified).
+
+---
+
 ### Evaluating page modules to collect static metadata can stall the index and run application effects
 
 Dev search warmed markdown with `ssrLoadModule`, executing each page and its dependency graph even though the transform had already recorded every search field. Use `transformRequest(file, { ssr: true })` for metadata collection. Keep configuration loading separate. The real-Vite regression confirms catalog/chunk contents, asserts page effects stay dormant while indexing, and explicitly loads the page afterward as an execution control. Reference: `packages/zero/zero-content/src/plugin.ts`; test `dev-search-no-evaluation.test.ts`.
