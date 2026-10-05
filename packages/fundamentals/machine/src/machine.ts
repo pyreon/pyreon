@@ -103,6 +103,11 @@ export function createMachine<const TConfig extends MachineConfig<string, string
   // always-loop (a config error) instead of hanging.
   const MAX_ALWAYS_STEPS = 1000
 
+  // Max events processed by ONE top-level send() (the event itself + everything
+  // queued by listeners/watchers during its run-to-completion drain) — guards an
+  // infinite send loop the same way MAX_ALWAYS_STEPS guards an always-loop.
+  const MAX_EVENTS_PER_SEND = 10_000
+
   // Guards are pure predicates — a guard that throws is treated as "denied"
   // (no transition) rather than crashing send()/can(). Lets `can(event)` be
   // called without a payload against a payload-reading guard, and keeps a
@@ -240,14 +245,31 @@ export function createMachine<const TConfig extends MachineConfig<string, string
       // the manifest documents ("a transient state is never observed by
       // reactive readers"). Batch defers only signal-subscriber notifications;
       // the per-step onEnter/onExit/onTransition callbacks still fire per step.
-      batch(() => {
-        processEvent(event, payload)
-        for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-          processEvent(next.event, next.payload)
-        }
-      })
+      //
+      // Run-to-completion across the batch FLUSH: when `batch` exits, effects
+      // and `watch` callbacks run synchronously — and may `send()`. `processing`
+      // is still true then, so those events are QUEUED; they must be drained
+      // too. So loop (one batch per round, FIFO) until a round's flush leaves
+      // the queue empty. Clearing the queue here without draining silently
+      // dropped every watcher-sent event.
+      queue.push({ event, payload })
+      let processed = 0
+      while (queue.length > 0) {
+        batch(() => {
+          for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+            if (++processed > MAX_EVENTS_PER_SEND) {
+              throw new Error(
+                `[Pyreon] machine: more than ${MAX_EVENTS_PER_SEND} events were processed by one send() — likely an infinite send loop (an onEnter/onExit/onTransition listener or watcher re-sending an event on every transition). Last event: '${String(next.event)}'.`,
+              )
+            }
+            processEvent(next.event, next.payload)
+          }
+        })
+      }
     } finally {
       processing = false
+      // Only non-empty when a throw aborted the drain; those events belong to
+      // an aborted macrostep and must not leak into the next send().
       queue.length = 0
     }
     // The settled state after the event + any eventless ('always') cascade.
