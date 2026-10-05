@@ -421,6 +421,26 @@
       "bytes": 318,
       "warnings": 0
     },
+    "golden-fixture:element-lowering-user.tsx|swift": {
+      "sha": "c5cbf19c36026fc70b5abe556d8fe24dd2a142858cf96d53dd0b70b13d1c2e78",
+      "bytes": 360,
+      "warnings": 1
+    },
+    "golden-fixture:element-lowering-user.tsx|kotlin": {
+      "sha": "a7746dde42dabc6d0268207f1e43461c5272013a70a3c34bd9de566249aa7e57",
+      "bytes": 403,
+      "warnings": 1
+    },
+    "golden-fixture:element-lowering.tsx|swift": {
+      "sha": "c956bb742391e794d2dd8c2823f80a8f1ea29bc055f69ee5ef9ad0c145d8280c",
+      "bytes": 986,
+      "warnings": 3
+    },
+    "golden-fixture:element-lowering.tsx|kotlin": {
+      "sha": "1a70a7255d34f73d4993f7518a9b1743ca17a574c7aadd552268b9ea5bebbb49",
+      "bytes": 1203,
+      "warnings": 3
+    },
     "example:native-analytics/AnalyticsApp.tsx|swift": {
       "sha": "0548637eb6a86537cc8a6a54623f4fd824158f3440aac115d1d9f61f1a23b902",
       "bytes": 2614,
