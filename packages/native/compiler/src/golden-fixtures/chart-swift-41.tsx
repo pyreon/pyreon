@@ -2,7 +2,7 @@
 // (plugins/charts/swift*.ts). Its expected output was recorded from the PRE-MOVE emitter, so a change here is a change of emitted Swift.
 import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, bars, line, points, band, bubble, bollinger, sma } from '@pyreon/charts/engine'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ y: number; lo: number; hi: number }[]>([])
   return (<Stack><PlotChart data={rows()} marks={[...bars((d) => d.y)]}  /></Stack>)

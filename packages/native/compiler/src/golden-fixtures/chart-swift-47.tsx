@@ -1,7 +1,6 @@
 // Golden-only: a shape harvested from the chart test suite that the rest of the corpus does not reach in the Swift chart emitters
 // (plugins/charts/swift*.ts). Its expected output was recorded from the PRE-MOVE emitter, so a change here is a change of emitted Swift.
-import { signal } from '@pyreon/reactivity'
-import { Stack, Text } from '@pyreon/primitives'
+import { Stack } from '@pyreon/primitives'
 import { PlotChart, bars } from '@pyreon/charts/engine'
 import type { TooltipContent } from '@pyreon/charts/engine'
 interface Month { name: string; revenue: number; cost: number }

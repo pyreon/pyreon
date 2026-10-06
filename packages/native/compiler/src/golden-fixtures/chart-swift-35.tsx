@@ -2,7 +2,7 @@
 // (plugins/charts/swift*.ts). Its expected output was recorded from the PRE-MOVE emitter, so a change here is a change of emitted Swift.
 import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, line } from '@pyreon/charts/engine'
+import { PlotChart } from '@pyreon/charts/engine'
 interface Day { label: string; hits: number }
 const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
 export function Traffic() {

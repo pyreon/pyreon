@@ -38,6 +38,13 @@ paths-ignore:
   # here, while the rest of the plugin stays fully scanned. Correctness is
   # locked by the compiler's emit-equivalence gate + the transform-driven tests.
   - '**/vite-plugin/src/compiled-verdicts.ts'
+  # Native-compiler GOLDEN fixtures: source TEXT that PMTC parses and lowers,
+  # never executed or imported. Their "unused" variables and imports are the
+  # point — an unused `signal` is emitted as a state declaration, so removing
+  # one changes the recorded output the byte-identity gate protects (measured:
+  # dropping them moved 11 entries). Same class as the test/e2e/example
+  # fixtures above: hardcoded inputs under the author's control.
+  - '**/golden-fixtures/**'
   # The validate runtime JIT — the reference pattern the compiled-verdicts.ts
   # comment above already cites. `tryCompileJit` emits a specialized validator
   # via `new Function` from the DEVELOPER'S schema definition (never untrusted
