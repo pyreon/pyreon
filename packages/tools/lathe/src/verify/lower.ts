@@ -355,27 +355,59 @@ export async function resolveNativeCompiler(): Promise<{
 }> {
   try {
     const mod = (await import('@pyreon/native-compiler')) as {
+      createCompiler?: (config: { discovered: readonly unknown[] }) => { transform: TransformFn }
       transform?: TransformFn
-      validateSwiftWithStubs?: CompileFn
-      validateKotlin?: CompileFn
-      validateSwiftFilesWithStubs?: CompileFilesFn
-      validateKotlinFiles?: CompileFilesFn
+      validateSwiftWithStubs?: (code: string, options?: unknown) => ReturnType<CompileFn>
+      validateKotlin?: (code: string, options?: unknown) => ReturnType<CompileFn>
+      validateSwiftFilesWithStubs?: (codes: readonly string[], options?: unknown) => ReturnType<CompileFn>
+      validateKotlinFiles?: (codes: readonly string[], options?: unknown) => ReturnType<CompileFn>
     }
+    // The libraries own their native lowering: each ships a plugin in its OWN package
+    // (`@pyreon/http`, `@pyreon/query`), loaded here from the project's installs — resolved, never
+    // fetched — exactly as `pyreon-native` discovers them. A library the project does not have simply
+    // contributes nothing, and a lowering that depends on it then reports as unlowered.
+    const { plugins, stubs } = await loadLibraryPlugins()
+    const compiler =
+      plugins.length > 0 && typeof mod.createCompiler === 'function' ? mod.createCompiler({ discovered: plugins }) : undefined
+    const options = stubs.length > 0 ? { augment: stubs } : undefined
     return {
-      transform: typeof mod.transform === 'function' ? mod.transform : undefined,
+      transform: compiler?.transform ?? (typeof mod.transform === 'function' ? mod.transform : undefined),
       compile: {
-        swift: typeof mod.validateSwiftWithStubs === 'function' ? mod.validateSwiftWithStubs : undefined,
-        kotlin: typeof mod.validateKotlin === 'function' ? mod.validateKotlin : undefined,
+        swift: typeof mod.validateSwiftWithStubs === 'function' ? (code) => mod.validateSwiftWithStubs!(code, options) : undefined,
+        kotlin: typeof mod.validateKotlin === 'function' ? (code) => mod.validateKotlin!(code, options) : undefined,
         // Absent on a compiler that predates them — the module-set check then
         // simply does not run, and the report says nothing about it.
         swiftFiles:
-          typeof mod.validateSwiftFilesWithStubs === 'function' ? mod.validateSwiftFilesWithStubs : undefined,
-        kotlinFiles: typeof mod.validateKotlinFiles === 'function' ? mod.validateKotlinFiles : undefined,
+          typeof mod.validateSwiftFilesWithStubs === 'function'
+            ? (codes) => mod.validateSwiftFilesWithStubs!(codes, options)
+            : undefined,
+        kotlinFiles:
+          typeof mod.validateKotlinFiles === 'function' ? (codes) => mod.validateKotlinFiles!(codes, options) : undefined,
       },
     }
   } catch {
     return { transform: undefined, compile: {} }
   }
+}
+
+/** The native-compiler plugins (and compile-gate stubs) the project's own installs of the libraries ship. */
+async function loadLibraryPlugins(): Promise<{ plugins: unknown[]; stubs: unknown[] }> {
+  const plugins: unknown[] = []
+  const stubs: unknown[] = []
+  const loaders: (() => Promise<Record<string, unknown>>)[] = [
+    () => import('@pyreon/http/native-plugin' as string),
+    () => import('@pyreon/query/native-plugin' as string),
+  ]
+  for (const load of loaders) {
+    try {
+      const m = await load()
+      if (m.default !== undefined) plugins.push(m.default)
+      if (m.queryStubs !== undefined) stubs.push(m.queryStubs)
+    } catch {
+      // not installed: that library's lowering is simply absent
+    }
+  }
+  return { plugins, stubs }
 }
 
 /**

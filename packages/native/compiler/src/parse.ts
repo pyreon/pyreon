@@ -8,9 +8,17 @@ import { forEachExpr } from './expr-walk'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
 import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
+import {
+  topLevelDeclarators,
+  staticPropKey,
+  hasDynamicKey,
+  dynamicKeyText,
+  unwrapTypeLayers,
+} from './plugin-ast'
 import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
 import { stampExtDecl, type AstNode, type ParseContext } from './call-lowering'
+import type { ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -280,85 +288,19 @@ interface ParseCtx {
    */
   theme: ThemeTable
   /**
-   * `@pyreon/http` client bindings: `const api = createHttp({ baseUrl })`
-   * → `api` → the baseUrl string literal. Collected in a pre-pass so an
-   * endpoint call in a component body parsed EARLIER in the file still
-   * resolves a client declared later. A non-literal baseUrl stores the
-   * `HTTP_NONLITERAL_BASEURL` sentinel so `resolveEndpointUrl` can warn
-   * ("needs a literal baseUrl") rather than silently mis-lowering.
+   * Plugin-owned memory for this file (`ParseContext.fileState` / `ModuleScan.fileState`). The
+   * core never reads it.
    */
-  httpClientBaseUrls: Map<string, string>
+  pluginState: Map<string, unknown>
+  /** Predicates plugins registered (`ModuleScan.skipTopLevel`): a top-level node one of them accepts is metadata and is not parsed. */
+  skipTopLevel: ((node: AnyNode) => boolean)[]
+  /** `module#name` (module `*`: any) imports a plugin marked as consumed by lowering (`ModuleScan.lowered`). */
+  loweredImports: Set<string>
   /**
-   * Identifiers passed as `createHttp({ schema: <name> })`. The pre-pass
-   * below reads ONLY `baseUrl` off that config and emits nothing for the
-   * declaration, so such a name never reaches the Swift/Kotlin — and the
-   * blanket "reproduced verbatim … cannot find X in scope" line would be
-   * denying a symbol that is not there. Same shape as the `withField` /
-   * `zodSchema` suppressions below.
+   * Decode sites: a hook's type argument paired with the same-module schema its request's `response`
+   * names. Read by `refineStructFloatsFromResponseSchemas` after the structs are built.
    */
-  httpClientSchemaNames: Set<string>
-  /**
-   * Local names bound to `openEventStream` / `openNdjsonStream` from
-   * `@pyreon/http/stream`, and the wire format each opens. A `useStream`
-   * whose source returns one of these lowers to the native stream runtime.
-   */
-  streamOpeners: Map<string, 'sse' | 'ndjson'>
-  /**
-   * True when EVERY call of a stream opener in the file is the source of a
-   * `useStream(...)` — the only position it lowers from. Suppresses the blanket
-   * "has NO native lowering" import warning, which would otherwise be printed
-   * above a stream that does lower; any other use keeps the warning.
-   */
-  streamOpenersAllLowered: boolean
-  /**
-   * `@pyreon/http` endpoint bindings: `const getUser = api.endpoint('GET
-   * /users/:id', { … })` → `getUser` → its method / path template / owning
-   * client / `:param` names. A same-file, compile-time-templated endpoint
-   * call (`useFetch<T>(getUser({ params: { id: '1' } }))`) resolves to a
-   * concrete URL literal + method via `resolveEndpointUrl`, then feeds the
-   * EXISTING `kind: 'fetch'` path unchanged — no new emit/IR/stub.
-   */
-  endpointDefs: Map<
-    string,
-    {
-      method: string
-      pathTemplate: string
-      clientName: string
-      paramNames: string[]
-      /**
-       * Literal `headers` from the endpoint DECLARATION's second argument
-       * (`api.endpoint('POST /users', { headers: { … } })`). The web treats
-       * these as the DEFAULT (`args?.headers ?? options.headers`), so a
-       * per-call `headers` replaces them wholesale. Empty when absent.
-       */
-      declHeaders: Record<string, string>
-      /**
-       * Declaration options that cannot be lowered, warned at CALL time (not
-       * declaration time) so an endpoint used only on web stays silent.
-       */
-      declUnlowerable: string[]
-      /**
-       * The declaration's `responseType`, when given. `'stream'` is what a
-       * streamed endpoint is declared with on the web (so it hands back the raw
-       * body); it is honoured by `useStream` and WARNED on `useFetch` /
-       * `useQuery`, whose native harness decodes one JSON body.
-       */
-      responseType?: string
-      /**
-       * The declaration's `response` schema when it names a same-module schema
-       * binding — `{ response: book_schema }` or `{ response: s.array(book_schema) }`.
-       * Evidence for the decode type's number fields: see
-       * `refineStructFloatsFromResponseSchemas`.
-       */
-      responseSchema?: { binding: string; array: boolean }
-    }
-  >
-  /**
-   * Decode sites: a hook's type argument paired with the endpoint whose
-   * response it decodes (`useQuery<Book>(() => getBook.query())`). Read by
-   * `refineStructFloatsFromResponseSchemas` after the structs are built.
-   */
-  responseDecodes: { type: TypeIR; endpoint: string }[]
+  responseDecodes: { type: TypeIR; response: { binding: string; array: boolean } | undefined }[]
   /**
    * Schemas SYNTHESIZED from inline `s.object({ … }).safeParse(x)` expressions
    * encountered while parsing component bodies. Merged into the top-level
@@ -390,13 +332,6 @@ interface ParseCtx {
   safeParseResultBindings?: Set<string>
 }
 
-/**
- * Sentinel baseUrl for a `createHttp({ baseUrl: <non-literal> })` client — the
- * client is recorded (so its endpoints still register) but any endpoint call
- * against it must stay web, and `resolveEndpointUrl` names why. The NUL prefix
- * can never collide with a real baseUrl string.
- */
-const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
 
 /**
  * Nesting depth while parsing an object literal's field VALUES. Used only to
@@ -499,11 +434,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     hookDestructureCounter: 0,
     helperFns: [],
     theme: DEFAULT_THEME,
-    httpClientBaseUrls: new Map(),
-    httpClientSchemaNames: new Set(),
-    streamOpeners: new Map(),
-    streamOpenersAllLowered: false,
-    endpointDefs: new Map(),
+    pluginState: new Map(),
+    skipTopLevel: [],
+    loweredImports: new Set(),
     responseDecodes: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -587,14 +520,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   collectFieldMetaLowered(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
   collectSizedMapNames(ast.program.body as AnyNode[], ctx)
-  // Pre-pass: collect `@pyreon/http` client + endpoint declarations so an
-  // endpoint call (`useFetch<T>(getUser({ params: { id: '1' } }))`) resolves
-  // to a concrete URL + method regardless of where the client/endpoint is
-  // declared relative to the component. Clients first (endpoints gate on a
-  // known client). Both no-op on any file without the shapes.
-  collectHttpClients(ast.program.body as AnyNode[], ctx)
-  collectEndpointDefs(ast.program.body as AnyNode[], ctx)
-  collectStreamOpeners(ast.program as AnyNode, ctx)
+  // Plugin pre-passes (`CompilerPlugin.scanModule`): a library records the facts its top-level
+  // declarations carry (an `@pyreon/http` client and its endpoints) before any hook that reads
+  // them is parsed, regardless of where the declaration sits relative to the component.
+  runModuleScanners(ast.program as AnyNode, source, ctx)
   // A `<PermissionsProvider>` anywhere in the file means a bare
   // `usePermissions()` has somewhere to read from. Checked against the source
   // because the warn pass runs before the JSX walk — the same ordering that
@@ -789,12 +718,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // the arrow-const declaration form. Routes it to `helperFns` so the shared
     // helper emission + return-inference + Int×Double coercion all apply.
     if (tryHelperFnFromArrowConst(node, ctx)) continue
-    // A `const api = createHttp({ … })` / `const getUser = api.endpoint(…)` is
-    // @pyreon/http metadata consumed by the endpoint-resolution pre-pass — it
-    // has no native runtime. Skip it so it doesn't fall through to the
-    // module-decl catch-all + emit an unresolved `let api = createHttp(…)`
-    // binding that fails the native build (the same treatment defineTheme gets).
-    if (isHttpMetadataNode(node, ctx)) continue
+    // A declaration a plugin's scan marked as metadata (`const api = createHttp({ … })`): it has no
+    // native runtime, so it must not fall through to the module-decl catch-all and emit an
+    // unresolved binding that fails the native build (the same treatment defineTheme gets).
+    if (ctx.skipTopLevel.some((skip) => skip(node))) continue
     // A `const Box = kinetic('div').preset('fade')` is a WEB animation-engine
     // binding. Skipped for the same reason as `createHttp` above: emitting it
     // verbatim produces `private let Box = kinetic("div")…`, a call to a
@@ -1590,174 +1517,6 @@ function collectSizedMapNames(body: AnyNode[], ctx: ParseCtx): void {
   }
 }
 
-/** Walk `ExportNamedDeclaration → VariableDeclaration` OR a bare
- * `VariableDeclaration`, yielding the declarators. Shared by the http
- * collectors. */
-function topLevelDeclarators(node: AnyNode): AnyNode[] {
-  const varDecl =
-    node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
-      ? node.declaration
-      : node.type === 'VariableDeclaration'
-        ? node
-        : undefined
-  return (varDecl?.declarations as AnyNode[] | undefined) ?? []
-}
-
-/** Read the value node of a non-computed property `<name>` off an
- * ObjectExpression, or undefined. */
-/**
- * An endpoint declaration's `response` value, when it names a schema BINDING
- * of this module: `book_schema` or `<prefix>.array(book_schema)`. Anything
- * else (an inline object, a call chain) yields `undefined` — no evidence.
- */
-function readResponseSchemaRef(node: AnyNode | undefined): { binding: string; array: boolean } | undefined {
-  const v = unwrapTypeLayers(node) as AnyNode | undefined
-  if (v?.type === 'Identifier') return { binding: v.name as string, array: false }
-  if (
-    v?.type === 'CallExpression' &&
-    v.callee?.type === 'MemberExpression' &&
-    v.callee.property?.type === 'Identifier' &&
-    v.callee.property.name === 'array'
-  ) {
-    const inner = unwrapTypeLayers((v.arguments as AnyNode[] | undefined)?.[0]) as AnyNode | undefined
-    if (inner?.type === 'Identifier') return { binding: inner.name as string, array: true }
-  }
-  return undefined
-}
-
-function readObjectProp(obj: AnyNode | undefined, name: string): AnyNode | undefined {
-  if (obj?.type !== 'ObjectExpression') return undefined
-  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (staticPropKey(prop) === name) return prop.value as AnyNode | undefined
-  }
-  return undefined
-}
-
-/** Collect every string/number/boolean-literal property of an ObjectExpression
- * into a `name → String(value)` record. Non-literal values are dropped (the
- * caller decides whether a missing key is fatal). */
-function readLiteralEntries(obj: AnyNode | undefined): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (obj?.type !== 'ObjectExpression') return out
-  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    const key = staticPropKey(prop)
-    if (typeof key !== 'string') continue
-    const v = prop.value as AnyNode | undefined
-    const val = v?.value
-    if (
-      (v?.type === 'Literal' ||
-        v?.type === 'StringLiteral' ||
-        v?.type === 'NumericLiteral' ||
-        v?.type === 'BooleanLiteral') &&
-      (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
-    ) {
-      out[key] = String(val)
-    }
-  }
-  return out
-}
-
-/**
- * The raw value NODE of each non-computed property of an object literal.
- *
- * The node-level twin of {@link readLiteralEntries}, which collapses each
- * value to a string and therefore cannot distinguish "absent" from "present
- * but not a literal" — the exact distinction runtime path params turn on: a
- * MISSING param can only bail, while a present-but-reactive one lowers to
- * native string interpolation.
- */
-function readEntryNodes(obj: AnyNode | undefined): Record<string, AnyNode> {
-  const out: Record<string, AnyNode> = {}
-  if (obj?.type !== 'ObjectExpression') return out
-  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    const key = propName(prop)
-    if (typeof key !== 'string') continue
-    const v = prop.value as AnyNode | undefined
-    if (v) out[key] = v
-  }
-  return out
-}
-
-/** The literal value of a string/number/boolean literal node, else undefined. */
-function literalScalar(v: AnyNode | undefined): string | number | boolean | undefined {
-  const val = v?.value
-  if (
-    (v?.type === 'Literal' ||
-      v?.type === 'StringLiteral' ||
-      v?.type === 'NumericLiteral' ||
-      v?.type === 'BooleanLiteral') &&
-    (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean')
-  ) {
-    return val
-  }
-  return undefined
-}
-
-/** The statically-known property name of an object-literal `Property`, else undefined. */
-function propName(prop: AnyNode): string | undefined {
-  return staticPropKey(prop)
-}
-
-/**
- * The STATICALLY-KNOWN key of an object-literal / object-pattern property.
- *
- * A non-computed identifier key → its name; a string/number literal key
- * (`{ 'a-b': 1 }`, `{ 0: 1 }`, and the computed `{ ['a']: 1 }`) → its value.
- * Anything else — above all a COMPUTED identifier key `{ [kind]: … }`, whose
- * key is the RUNTIME VALUE of `kind`, not the string "kind" — is NOT
- * statically known and returns undefined.
- *
- * Every literal-config reader in this file goes through here. The class it
- * closes: readers tested `key.type === 'Identifier'` without `prop.computed`,
- * so `{ [kind]: v }` was silently read as the literal key "kind". Pair it with
- * {@link hasDynamicKey} to NAME the entry rather than silently skip it.
- */
-function staticPropKey(prop: AnyNode | undefined): string | undefined {
-  if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return undefined
-  const key = prop.key as AnyNode | undefined
-  if (!key) return undefined
-  if (key.type === 'Identifier' || key.type === 'PrivateIdentifier') {
-    return prop.computed === true ? undefined : (key.name as string)
-  }
-  const v = key.value
-  if (
-    (key.type === 'Literal' || key.type === 'StringLiteral' || key.type === 'NumericLiteral') &&
-    (typeof v === 'string' || typeof v === 'number')
-  ) {
-    return String(v)
-  }
-  // `` { [`a`]: … } `` — a template literal with NO substitutions is a static
-  // string, exactly like `['a']`.
-  if (
-    prop.computed === true &&
-    key.type === 'TemplateLiteral' &&
-    ((key.expressions as AnyNode[] | undefined)?.length ?? 0) === 0
-  ) {
-    const cooked = (key.quasis as AnyNode[] | undefined)?.[0]?.value?.cooked
-    if (typeof cooked === 'string') return cooked
-  }
-  return undefined
-}
-
-/**
- * True when a property's key is a computed expression that is NOT a literal
- * (`{ [kind]: … }`, `{ [\`a${b}\`]: … }`) — i.e. the key only exists at
- * runtime, so no compile-time reader can know which entry it is.
- */
-function hasDynamicKey(prop: AnyNode | undefined): boolean {
-  if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return false
-  return prop.computed === true && staticPropKey(prop) === undefined
-}
-
-/** Source text of a dynamic key, for warnings (`[kind]`). */
-function dynamicKeyText(prop: AnyNode, ctx: { source: string }): string {
-  const k = prop.key as AnyNode | undefined
-  const text =
-    k && typeof k.start === 'number' && typeof k.end === 'number'
-      ? ctx.source.slice(k.start, k.end)
-      : 'expr'
-  return `[${text}]`
-}
 
 /**
  * Push the shared named warning for a computed non-literal key in a config
@@ -1767,768 +1526,6 @@ function warnDynamicKey(prop: AnyNode, where: string, ctx: ParseCtx): void {
   ctx.warnings.push(
     `${where}: the computed key \`${dynamicKeyText(prop, ctx)}\` is only known at runtime, so this entry cannot be read at compile time and does not lower to native. Write the key literally (\`{ input: … }\`, not \`{ [kind]: … }\`).`,
   )
-}
-
-/**
- * Encode a `:param` value for a URL PATH segment.
- *
- * This is deliberately the SAME platform primitive the web runtime calls
- * (`@pyreon/http`'s `applyPathParams` → `encodeURIComponent`), not an
- * approximation of it. The two sides must agree byte-for-byte, because one
- * source file produces both URLs: a hand-rolled encoder here would make
- * `getUser({ params: { id: 'a b' } })` request `/users/a%20b` on the web and
- * something else on iOS/Android, silently. Encoding at COMPILE time is free —
- * the native path only ever substitutes LITERALS — so the emitted URL is a
- * fully-encoded constant.
- *
- * Un-encoded substitution was not merely cosmetic: a value containing `#`
- * truncated the URL at the fragment, and `?` / `&` injected query structure
- * into a path segment.
- */
-const encodePathParam = (value: string): string => encodeURIComponent(value)
-
-/**
- * The `:param` pattern, and it must stay the web's EXACTLY.
- *
- * `@pyreon/http`'s `applyPathParams` uses this literal to decide what counts
- * as a parameter; if the native side recognised a different set, the same path
- * template would carry different parameters on each platform — the one class
- * this whole resolver exists to prevent. Two native sites read it (collecting
- * a declaration's `paramNames`, and substituting at a call site), so it lives
- * once rather than being re-typed at each.
- *
- * `\\:` is the web's escape for a LITERAL colon (`/v1/:name\\:cancel`, a
- * Google-style custom verb). It matches with no capture group, and both sites
- * treat that match as the text `:` — reading it as a second parameter would
- * make the native URL demand a value the web never asks for.
- *
- * A fresh RegExp per use: `g`-flagged instances carry `lastIndex`, so a shared
- * one would resume mid-string on its second caller and silently skip params.
- */
-const pathParamPattern = (): RegExp => /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
-
-/**
- * Serialize literal query entries EXACTLY as the web's `buildQuery` does — by
- * running the SAME `URLSearchParams` it runs.
- *
- * POSITION MATTERS, which is why this cannot share an encoder with
- * {@link encodePathParam}: `URLSearchParams` is
- * application/x-www-form-urlencoded, so a space becomes `+` and `'` becomes
- * `%27`, whereas the same characters in a path segment are `%20` and a literal
- * `'`. One encoder for both positions is wrong in both.
- */
-function buildQueryString(entries: readonly (readonly [string, string])[]): string {
-  if (entries.length === 0) return ''
-  const search = new URLSearchParams()
-  for (const [k, v] of entries) search.append(k, v)
-  const out = search.toString()
-  return out ? `?${out}` : ''
-}
-
-/**
- * Read an endpoint call's `query` object into ORDERED key/value pairs.
- *
- * Ordered PAIRS rather than a record because the web repeats a key per array
- * entry (`{ tag: ['a','b'] }` → `?tag=a&tag=b`). `undefined` / `null` entries
- * are dropped, matching `buildQuery`. Anything else that cannot be read as a
- * literal is reported through `onUnlowerable` rather than dropped — a query
- * parameter that silently disappears from the native request is a data bug,
- * not a missing feature.
- */
-function readQueryEntries(
-  obj: AnyNode | undefined,
-  onUnlowerable: (key: string) => void,
-): Array<[string, string]> {
-  const out: Array<[string, string]> = []
-  if (obj === undefined) return out
-  if (obj.type !== 'ObjectExpression') {
-    onUnlowerable('query')
-    return out
-  }
-  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type === 'SpreadElement') {
-      onUnlowerable('query (spread)')
-      continue
-    }
-    if (hasDynamicKey(prop)) {
-      onUnlowerable('query (computed key)')
-      continue
-    }
-    const key = propName(prop)
-    if (key === undefined) continue
-    const v = prop.value as AnyNode | undefined
-    // The web DROPS nullish entries rather than serializing "undefined".
-    if (isNullishLiteral(v)) continue
-    if (v?.type === 'ArrayExpression') {
-      for (const el of (v.elements as AnyNode[] | undefined) ?? []) {
-        if (isNullishLiteral(el)) continue
-        const item = literalScalar(el)
-        if (item === undefined) {
-          onUnlowerable(key)
-          continue
-        }
-        out.push([key, String(item)])
-      }
-      continue
-    }
-    const scalar = literalScalar(v)
-    if (scalar === undefined) {
-      onUnlowerable(key)
-      continue
-    }
-    out.push([key, String(scalar)])
-  }
-  return out
-}
-
-/** True for `null`, `undefined`, or an absent node — the entries the web drops. */
-function isNullishLiteral(v: AnyNode | undefined): boolean {
-  if (v === undefined || v === null) return true
-  if (v.type === 'NullLiteral') return true
-  if ((v.type === 'Literal' || v.type === 'NullLiteral') && v.value === null) return true
-  return v.type === 'Identifier' && v.name === 'undefined'
-}
-
-/**
- * Read a literal `headers` object into string pairs, naming anything that
- * cannot lower instead of dropping it.
- */
-function readLiteralHeaders(
-  obj: AnyNode | undefined,
-  onUnlowerable: (what: string) => void,
-): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (obj === undefined) return out
-  if (obj.type !== 'ObjectExpression') {
-    onUnlowerable('headers')
-    return out
-  }
-  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type === 'SpreadElement') {
-      onUnlowerable('headers (spread)')
-      continue
-    }
-    if (hasDynamicKey(prop)) {
-      onUnlowerable('headers (computed key)')
-      continue
-    }
-    const key = propName(prop)
-    if (key === undefined) continue
-    const value = literalScalar(prop.value as AnyNode | undefined)
-    if (typeof value !== 'string') {
-      onUnlowerable(`headers.${key}`)
-      continue
-    }
-    out[key] = value
-  }
-  return out
-}
-
-/**
- * Evaluate a JSON-shaped literal AST node to its runtime value.
- *
- * Returns a WRAPPER (`{ value }`) rather than the value itself so a literal
- * `null` / `false` / `0` is distinguishable from "not a literal".
- */
-function readJsonLiteral(node: AnyNode | undefined): { value: unknown } | undefined {
-  if (node === undefined) return undefined
-  if (node.type === 'NullLiteral' || ((node.type === 'Literal') && node.value === null)) {
-    return { value: null }
-  }
-  const scalar = literalScalar(node)
-  if (scalar !== undefined) return { value: scalar }
-  // `-1` parses as a unary expression, not a numeric literal.
-  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
-    const inner = literalScalar(node.argument as AnyNode | undefined)
-    if (typeof inner === 'number') return { value: node.operator === '-' ? -inner : inner }
-    return undefined
-  }
-  if (node.type === 'ArrayExpression') {
-    const items: unknown[] = []
-    for (const el of (node.elements as AnyNode[] | undefined) ?? []) {
-      const read = readJsonLiteral(el)
-      if (read === undefined) return undefined
-      items.push(read.value)
-    }
-    return { value: items }
-  }
-  if (node.type === 'ObjectExpression') {
-    const obj: Record<string, unknown> = {}
-    for (const prop of (node.properties as AnyNode[] | undefined) ?? []) {
-      const key = propName(prop)
-      if (key === undefined) return undefined
-      const read = readJsonLiteral(prop.value as AnyNode | undefined)
-      if (read === undefined) return undefined
-      obj[key] = read.value
-    }
-    return { value: obj }
-  }
-  return undefined
-}
-
-/**
- * Endpoint CALL-SITE options that lower to native. Every other key on the call
- * object is reported — see {@link ENDPOINT_UNLOWERABLE_ARGS}.
- */
-const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', 'json', 'headers'])
-
-/**
- * Endpoint call-site options with NO native lowering, and why.
- *
- * Enumerating them — rather than warning generically — is what closes the
- * class: `EndpointArgs` has a fixed shape, so every key is either lowered above
- * or named here, and an option added to the DSL later falls through to the
- * generic arm in `resolveEndpointParts` instead of vanishing. `json` and
- * `headers` were in exactly that position: read by nobody, dropped in silence,
- * so `createUser({ json })` issued a POST with no body on both targets.
- */
-const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
-  ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
-  ['timeout', 'PyreonHttpRequest carries no timeout field'],
-  ['meta', 'per-call metadata is read by client middleware, which does not lower'],
-  ['form', 'the emitted fetch harness sends a JSON body only; an encoded form body is not built'],
-  ['multipart', 'the emitted fetch harness sends a JSON body only; a multipart body (a file upload) is not built'],
-  ['body', 'the emitted fetch harness sends a JSON body only; a raw Blob / ArrayBuffer / string body is not sent'],
-  ['cookies', 'the platform HTTP stacks own the Cookie header; a per-call cookie record is not sent'],
-])
-
-/**
- * Endpoint DECLARATION options with no native lowering.
- *
- * `response` is deliberately absent: the native path decodes into the typed
- * struct the generic argument names (Swift `Decodable`, kotlinx), so a response
- * schema IS honoured structurally — a mismatched payload rejects on both sides.
- */
-const ENDPOINT_UNLOWERABLE_OPTIONS: ReadonlyMap<string, string> = new Map([
-  ['timeout', 'PyreonHttpRequest carries no timeout field'],
-])
-
-/**
- * Pre-pass: read every top-level `const <name> = createHttp({ baseUrl })` into
- * `ctx.httpClientBaseUrls`. Missing baseUrl → `''`; a non-literal baseUrl →
- * the HTTP_NONLITERAL_BASEURL sentinel (so the client's endpoints still
- * register but their calls stay web, and `resolveEndpointUrl` names why).
- * Matched by callee name — `createHttp` is a distinctive @pyreon/http export
- * and the metadata declaration emits nothing regardless.
- */
-function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    for (const decl of topLevelDeclarators(node)) {
-      const name = decl.id?.name as string | undefined
-      const init = decl.init as AnyNode | undefined
-      if (!name || init?.type !== 'CallExpression') continue
-      if (init.callee?.type !== 'Identifier' || init.callee.name !== 'createHttp') continue
-      const cfg = init.arguments?.[0] as AnyNode | undefined
-      let baseUrl = ''
-      const v = readObjectProp(cfg, 'baseUrl')
-      if (v !== undefined) {
-        // A module-scope `const API_BASE = '…'` shared across the app is how an
-        // http client is normally written, and its value is just as known at
-        // build time as an inline string.
-        baseUrl = staticStringArg(v, ctx) ?? HTTP_NONLITERAL_BASEURL
-      }
-      // `schema:` is read by nobody on this path — PyreonFetch does not
-      // validate — so record the name to keep the symbol warn honest.
-      const sch = readObjectProp(cfg, 'schema') as AnyNode | undefined
-      if (sch?.type === 'Identifier' && typeof sch.name === 'string') {
-        ctx.httpClientSchemaNames.add(sch.name)
-      }
-      ctx.httpClientBaseUrls.set(name, baseUrl)
-    }
-  }
-}
-
-/**
- * Pre-pass: the local names `openEventStream` / `openNdjsonStream` are bound to
- * (from `@pyreon/http/stream`), and whether every call of one is a `useStream`
- * source — the one position the native stream runtime lowers it from.
- */
-function collectStreamOpeners(program: AnyNode, ctx: ParseCtx): void {
-  for (const node of (program.body as AnyNode[] | undefined) ?? []) {
-    if (node.type !== 'ImportDeclaration' || node.source?.value !== '@pyreon/http/stream') continue
-    if ((node as { importKind?: string }).importKind === 'type') continue
-    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
-      if (spec.type !== 'ImportSpecifier') continue
-      if ((spec as { importKind?: string }).importKind === 'type') continue
-      const imported = spec.imported?.name ?? spec.imported?.value
-      const local = spec.local?.name as string | undefined
-      if (!local) continue
-      if (imported === 'openEventStream') ctx.streamOpeners.set(local, 'sse')
-      if (imported === 'openNdjsonStream') ctx.streamOpeners.set(local, 'ndjson')
-    }
-  }
-  if (ctx.streamOpeners.size === 0) return
-  let total = 0
-  const sources = new Set<AnyNode>()
-  const visit = (n: unknown): void => {
-    if (n === null || typeof n !== 'object') return
-    if (Array.isArray(n)) {
-      for (const x of n) visit(x)
-      return
-    }
-    const node = n as AnyNode
-    if (node.type === 'CallExpression') {
-      const callee = node.callee as AnyNode | undefined
-      if (callee?.type === 'Identifier' && callee.name === 'useStream') {
-        const src = streamSourceCall(node.arguments?.[0] as AnyNode | undefined)
-        if (src) sources.add(src)
-      }
-      if (callee?.type === 'Identifier' && ctx.streamOpeners.has(callee.name as string)) total++
-    }
-    for (const key of Object.keys(node)) {
-      if (key === 'parent' || key === 'loc' || key === 'range') continue
-      visit((node as Record<string, unknown>)[key])
-    }
-  }
-  visit(program)
-  let lowered = 0
-  for (const src of sources) {
-    const callee = src.callee as AnyNode | undefined
-    if (callee?.type === 'Identifier' && ctx.streamOpeners.has(callee.name as string)) lowered++
-  }
-  ctx.streamOpenersAllLowered = total > 0 && total === lowered
-}
-
-/** The call an arrow returns — concise body, parenthesized, or a lone `return`. */
-function arrowReturnedCall(arrow: AnyNode | undefined): AnyNode | undefined {
-  if (arrow?.type !== 'ArrowFunctionExpression' && arrow?.type !== 'FunctionExpression') return undefined
-  let body = arrow.body as AnyNode | undefined
-  if (body?.type === 'ParenthesizedExpression') body = body.expression as AnyNode | undefined
-  if (body?.type === 'BlockStatement') {
-    const stmts = (body.body as AnyNode[] | undefined) ?? []
-    if (stmts.length !== 1 || stmts[0]?.type !== 'ReturnStatement') return undefined
-    body = stmts[0].argument as AnyNode | undefined
-    if (body?.type === 'ParenthesizedExpression') body = body.expression as AnyNode | undefined
-  }
-  return body?.type === 'CallExpression' ? body : undefined
-}
-
-/** An arrow / function expression node. */
-function isFunctionNode(n: AnyNode | undefined): boolean {
-  return n?.type === 'ArrowFunctionExpression' || n?.type === 'FunctionExpression'
-}
-
-/** The expression a zero-arg accessor returns — concise body or a lone `return`. */
-function arrowExprBody(arrow: AnyNode | undefined): AnyNode | undefined {
-  if (!isFunctionNode(arrow) || ((arrow!.params as AnyNode[] | undefined)?.length ?? 0) > 0) return undefined
-  const body = arrow!.body as AnyNode | undefined
-  if (body?.type !== 'BlockStatement') return body
-  const stmts = (body.body as AnyNode[] | undefined) ?? []
-  return stmts.length === 1 && stmts[0]?.type === 'ReturnStatement' ? (stmts[0].argument as AnyNode | undefined) : undefined
-}
-
-/** Does `name` appear as an identifier anywhere under `node`? (Conservative: shadowing counts as a use.) */
-function identifierReferenced(node: AnyNode | undefined, name: string): boolean {
-  let found = false
-  const visit = (n: unknown): void => {
-    if (found || n === null || typeof n !== 'object') return
-    if (Array.isArray(n)) {
-      for (const x of n) visit(x)
-      return
-    }
-    const a = n as AnyNode
-    if (a.type === 'Identifier' && a.name === name) {
-      found = true
-      return
-    }
-    for (const key of Object.keys(a)) {
-      if (key === 'parent' || key === 'loc' || key === 'range') continue
-      visit((a as Record<string, unknown>)[key])
-    }
-  }
-  visit(node)
-  return found
-}
-
-/** `useStream(<arrow>)`'s source call — the opener call its arrow returns. */
-function streamSourceCall(arrow: AnyNode | undefined): AnyNode | undefined {
-  return arrowReturnedCall(arrow)
-}
-
-/**
- * Pre-pass: read every top-level `const <name> = <client>.endpoint('<METHOD>
- * /path/:x', <opts>?)` — where `<client>` is a known createHttp client — into
- * `ctx.endpointDefs`. Splits the spec on the FIRST space (method + path),
- * uppercases the method, and extracts `:param` names (`:name.json` → `name`).
- */
-function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    for (const decl of topLevelDeclarators(node)) {
-      const name = decl.id?.name as string | undefined
-      const init = decl.init as AnyNode | undefined
-      if (!name || init?.type !== 'CallExpression') continue
-      const callee = init.callee as AnyNode | undefined
-      if (callee?.type !== 'MemberExpression' || callee.computed) continue
-      if (callee.object?.type !== 'Identifier' || !ctx.httpClientBaseUrls.has(callee.object.name)) {
-        continue
-      }
-      if (callee.property?.type !== 'Identifier' || callee.property.name !== 'endpoint') continue
-      const specArg = init.arguments?.[0] as AnyNode | undefined
-      if (
-        !specArg ||
-        (specArg.type !== 'Literal' && specArg.type !== 'StringLiteral') ||
-        typeof specArg.value !== 'string'
-      ) {
-        continue
-      }
-      const raw = specArg.value.trim()
-      const sp = raw.indexOf(' ')
-      if (sp < 0) continue // needs "<METHOD> <path>"
-      const method = raw.slice(0, sp).toUpperCase()
-      const pathTemplate = raw.slice(sp + 1).trim()
-      const paramNames: string[] = []
-      const re = pathParamPattern()
-      let m: RegExpExecArray | null
-      while ((m = re.exec(pathTemplate)) !== null) {
-        if (m[1]) paramNames.push(m[1])
-      }
-      // The DECLARATION's second argument — `{ response, headers, timeout,
-      // throwHttpErrors }`. Nothing read it before, so a `headers` declared
-      // once on the endpoint was dropped from every native request in silence.
-      const declUnlowerable: string[] = []
-      let responseType: string | undefined
-      let responseSchema: { binding: string; array: boolean } | undefined
-      const optsArg = init.arguments?.[1] as AnyNode | undefined
-      const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
-        declUnlowerable.push(what),
-      )
-      if (optsArg !== undefined && optsArg.type !== 'ObjectExpression') {
-        declUnlowerable.push('options (not an object literal)')
-      }
-      for (const prop of (optsArg?.properties as AnyNode[] | undefined) ?? []) {
-        if (prop.type === 'SpreadElement') {
-          declUnlowerable.push('options (spread)')
-          continue
-        }
-        const key = propName(prop)
-        if (key === 'response') {
-          responseSchema = readResponseSchemaRef(prop.value as AnyNode | undefined)
-          continue
-        }
-        if (key === undefined || key === 'headers') continue
-        if (key === 'responseType') {
-          const v = literalScalar(prop.value as AnyNode | undefined)
-          // `'json'` is the default and `'stream'` is consumed by useStream;
-          // any other body type has no native lowering.
-          if (v === 'json' || v === 'stream') responseType = v
-          else declUnlowerable.push(key)
-          continue
-        }
-        if (key === 'throwHttpErrors') {
-          // The native harness ALWAYS rejects a non-2xx, so `true` matches it
-          // exactly and only an opt-OUT is unhonourable.
-          if (literalScalar(prop.value as AnyNode | undefined) !== true) declUnlowerable.push(key)
-          continue
-        }
-        declUnlowerable.push(key)
-      }
-
-      ctx.endpointDefs.set(name, {
-        method,
-        pathTemplate,
-        clientName: callee.object.name as string,
-        paramNames,
-        declHeaders,
-        declUnlowerable,
-        ...(responseType !== undefined ? { responseType } : {}),
-        ...(responseSchema !== undefined ? { responseSchema } : {}),
-      })
-    }
-  }
-}
-
-/**
- * Resolve a same-file, compile-time-templated endpoint call —
- * `getUser({ params: { id: '1' }, query?: { … } })` — to a concrete
- * `{ url, method }`, or `null` (with a warning) when it can't be lowered:
- * an unknown endpoint (null, no warning — not our shape), a non-literal
- * client baseUrl, or a missing / non-literal `:param`. The result feeds the
- * EXISTING `kind: 'fetch'` path unchanged — no new emit / IR / stub.
- */
-function resolveEndpointUrl(callNode: AnyNode, ctx: ParseCtx): ResolvedEndpoint | null {
-  if (callNode.callee?.type !== 'Identifier') return null
-  return resolveEndpointParts(
-    callNode.callee.name as string,
-    callNode.arguments?.[0] as AnyNode | undefined,
-    ctx,
-  )
-}
-
-/**
- * What an endpoint call lowers to. `headers` / `body` feed the SAME fields the
- * `useFetch<T>(url, { headers, body })` form already fills, so both the `fetch`
- * and `query` emits carry them with no emit / IR / stub change.
- */
-interface ResolvedEndpoint {
-  /**
-   * The resolved URL as a compile-time CONSTANT.
-   *
-   * When `urlExpr` is set this still holds a best-effort literal — every
-   * runtime `:param` rendered as its own `:name` placeholder — so a caller
-   * that only needs a string for a diagnostic has one. The EMITTED url is
-   * `urlExpr` whenever it is present.
-   */
-  url: string
-  /**
-   * Set when at least one `:param` came from a RUNTIME expression (a signal
-   * read, a prop, a local). A `template` ExprIR the emit renders as native
-   * string interpolation, with each runtime part wrapped in
-   * `PyreonURL.encodePathParam(…)` so the native URL matches the web's
-   * `encodeURIComponent(String(value))` byte for byte.
-   */
-  urlExpr?: ExprIR
-  method: string
-  headers?: Record<string, string>
-  body?: string
-}
-
-/**
- * The endpoint-resolution core, shared by the direct call form
- * (`getUser({ params })` → useFetch) and the `.query()` fetcher form
- * (`getUser.query({ params })` → useQuery). Given the endpoint NAME and the
- * args object node, it substitutes ENCODED literal `:params` into the templated
- * URL, appends the serialized query, lowers a literal `json` body + `headers`,
- * and returns {@link ResolvedEndpoint} — or null (having pushed a specific
- * warning) when the baseUrl is non-literal or a param is missing/reactive.
- *
- * Every option it cannot honour is NAMED in a warning rather than dropped.
- */
-function resolveEndpointParts(
-  endpointName: string,
-  arg: AnyNode | undefined,
-  ctx: ParseCtx,
-  /**
-   * Whether the CALLER can honour a runtime `:param`.
-   *
-   * Only true for the `useQuery` fetcher form, whose native harness is KEYED
-   * on the runtime query key and therefore re-fetches when the param changes —
-   * the same semantic the web has. `useFetch` lowers to a ONE-SHOT task with
-   * no re-run trigger, so a runtime URL there would fetch the first value and
-   * freeze on it: silently wrong, rather than merely unsupported. That path
-   * keeps bailing, and now says which hook to reach for instead.
-   */
-  allowRuntimeParams = false,
-  /** The caller consumes the RAW body as a stream (`useStream`). */
-  streaming = false,
-): ResolvedEndpoint | null {
-  const def = ctx.endpointDefs.get(endpointName)
-  if (!def) return null
-  if (def.responseType === 'stream' && !streaming) {
-    ctx.warnings.push(
-      `endpoint ${endpointName} is declared \`responseType: 'stream'\`, so its body is a byte stream — the native useFetch/useQuery harness decodes ONE JSON body and would fail on it. Consume it with \`useStream((ctx) => openEventStream((c) => ${endpointName}({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))\` (or \`openNdjsonStream\`), which lowers to the native stream runtime. This call stays web.`,
-    )
-    return null
-  }
-  const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
-  if (baseUrl === undefined || baseUrl === HTTP_NONLITERAL_BASEURL) {
-    ctx.warnings.push(
-      `endpoint ${endpointName}: native lowering needs a LITERAL baseUrl on client ${def.clientName} (\`createHttp({ baseUrl: '/api' })\`) — a computed baseUrl can't be baked into the URL at compile time, so this call stays web. A module-scope \`const\` holding the string works too.`,
-    )
-    return null
-  }
-  const warn = (message: string): void => {
-    ctx.warnings.push(`endpoint ${endpointName}: ${message}`)
-  }
-
-  // --- path params -------------------------------------------------------
-  //
-  // ONE ordered scan of the path template rather than a loop over param names,
-  // because a runtime param has to keep its POSITION in the emitted template.
-  // A per-name `String.replace` pass cannot express that: it rewrites text,
-  // and an interpolation slot is not text. Scanning the template also handles
-  // a param used twice (`/a/:id/b/:id`) and preserves left-to-right order for
-  // free, which the name loop only did by accident.
-  //
-  // It also retires a documented foot-gun by construction: the old loop used
-  // `String.replace`, which interprets `$&` / `` $` `` / `$'` / `$$` in a
-  // STRING replacement — a value containing them spliced the match back into
-  // the URL. Building the string by SLICING never interprets anything, so
-  // there is no replacement syntax to get wrong. Do not reintroduce a
-  // `.replace` here.
-  const paramsObj = readObjectProp(arg, 'params')
-  const dynamicParam = (
-    paramsObj?.type === 'ObjectExpression' ? (paramsObj.properties as AnyNode[]) : []
-  ).find(hasDynamicKey)
-  if (dynamicParam) {
-    warn(
-      `the \`params\` key \`${dynamicKeyText(dynamicParam, ctx)}\` is computed, so which path parameter it fills is only known at runtime — write the parameter name literally (\`params: { id }\`). This call stays web.`,
-    )
-    return null
-  }
-  const paramNodes = readEntryNodes(paramsObj)
-  const literalParams = readLiteralEntries(paramsObj)
-  // Quasis/exprs of the templated form, built in parallel with the literal
-  // one. `quasis` always has exactly `exprs.length + 1` entries.
-  const quasis: string[] = ['']
-  const exprs: ExprIR[] = []
-  let literalPath = ''
-  let sawRuntimeParam = false
-  let bailed = false
-  const PARAM_RE = pathParamPattern()
-  let cursor = 0
-  for (let m = PARAM_RE.exec(def.pathTemplate); m; m = PARAM_RE.exec(def.pathTemplate)) {
-    const before = def.pathTemplate.slice(cursor, m.index)
-    cursor = m.index + m[0].length
-    literalPath += before
-    quasis[quasis.length - 1] += before
-    const name = m[1]
-    if (name === undefined) {
-      // `\:` — a literal colon, exactly as the web's `applyPathParams` writes it.
-      literalPath += ':'
-      quasis[quasis.length - 1] += ':'
-      continue
-    }
-    const literal = literalParams[name]
-    if (literal !== undefined) {
-      const encoded = encodePathParam(literal)
-      literalPath += encoded
-      quasis[quasis.length - 1] += encoded
-      continue
-    }
-    const node = paramNodes[name]
-    if (node === undefined || isNullishLiteral(node)) {
-      // MISSING is unfixable at compile time and unfixable at runtime too —
-      // the web THROWS here — so it stays a bail on every path.
-      warn(
-        `native lowering needs the \`${name}\` path parameter; it is missing from \`params\` (the web throws for this shape too) — this call stays web.`,
-      )
-      bailed = true
-      break
-    }
-    if (!allowRuntimeParams) {
-      warn(
-        `path parameter \`${name}\` is a runtime value, and \`useFetch\` lowers to a ONE-SHOT native task with nothing to re-run it — the request would fetch once and freeze at that first value. Use \`useQuery(() => ${endpointName}.query({ params: { ${name} } }))\` instead: its native harness is keyed on the runtime value, so it re-fetches when the value changes, exactly as the web does. This call stays web.`,
-      )
-      bailed = true
-      break
-    }
-    sawRuntimeParam = true
-    // The literal twin keeps the `:name` placeholder so `url` stays a readable
-    // description of the shape (it is not what gets emitted — `urlExpr` is).
-    literalPath += m[0]
-    // `PyreonURL.encodePathParam(<value>)` on BOTH targets — same spelling,
-    // and it takes the value UNSTRINGIFIED so the helper can apply JS
-    // `String()` semantics (a whole Double is `1`, not `1.0`). Pre-interpolating
-    // here would hand it an already-wrong string.
-    exprs.push({
-      kind: 'call',
-      callee: {
-        kind: 'member',
-        object: { kind: 'identifier', name: 'PyreonURL' },
-        property: 'encodePathParam',
-      },
-      args: [parseExpr(node, ctx)],
-    })
-    quasis.push('')
-  }
-  if (bailed) return null
-  const tail = def.pathTemplate.slice(cursor)
-  literalPath += tail
-  quasis[quasis.length - 1] += tail
-  const path = literalPath
-  let url = baseUrl + path
-  quasis[0] = baseUrl + (quasis[0] ?? '')
-
-  // --- query -------------------------------------------------------------
-  const queryEntries = readQueryEntries(readObjectProp(arg, 'query'), (key) => {
-    warn(
-      `query parameter \`${key}\` is not a string/number/boolean literal (or an array of them), so it cannot be baked into the compile-time URL — it is OMITTED on iOS and Android.`,
-    )
-  })
-  const qs = buildQueryString(queryEntries)
-  // Mirrors the web's `buildUrl`: a path template that already carries a `?`
-  // takes `&`, and the leading `?` is stripped from the serialized query.
-  //
-  // The `?`-detection reads the LITERAL url, never the template: a runtime
-  // param's VALUE is percent-encoded before it lands in the URL, so it can
-  // never contribute a structural `?` — which is exactly what
-  // `encodePathParam` is there to guarantee.
-  if (qs) {
-    const joined = url.includes('?') ? `&${qs.slice(1)}` : qs
-    url += joined
-    quasis[quasis.length - 1] += joined
-  }
-
-  // --- headers -----------------------------------------------------------
-  // A per-call `headers` REPLACES the declaration's, mirroring the web's
-  // `args?.headers ?? options.headers`.
-  const callHeadersNode = readObjectProp(arg, 'headers')
-  let headers: Record<string, string> =
-    callHeadersNode === undefined
-      ? { ...def.declHeaders }
-      : readLiteralHeaders(callHeadersNode, (what) => {
-          warn(
-            `\`${what}\` is not a string literal, so it cannot be baked into the native request — it is OMITTED on iOS and Android.`,
-          )
-        })
-
-  // --- json body ---------------------------------------------------------
-  const jsonNode = readObjectProp(arg, 'json')
-  let body: string | undefined
-  if (jsonNode !== undefined && !isNullishLiteral(jsonNode)) {
-    const literal = readJsonLiteral(jsonNode)
-    if (literal === undefined) {
-      warn(
-        'the `json` body must be a literal (object / array / string / number / boolean / null) to be baked into the native request; the request is sent with NO body on iOS and Android.',
-      )
-    } else {
-      body = JSON.stringify(literal.value)
-      // The web sets `content-type: application/json` unless the caller already
-      // declared one. `Headers` matches case-insensitively and lowercases the
-      // name it stores, so mirror both halves.
-      if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
-        headers = { ...headers, 'content-type': 'application/json' }
-      }
-    }
-  }
-
-  // --- everything else ---------------------------------------------------
-  // Any option the call site carries that is NOT lowered above gets NAMED. This
-  // is the arm that makes the class closed rather than a list of instances: a
-  // future `EndpointArgs` field lands here instead of disappearing.
-  if (arg !== undefined && arg.type !== 'ObjectExpression') {
-    warn('the call argument is not an object literal, so no option on it lowers — this call stays web.')
-    return null
-  }
-  for (const prop of (arg?.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type === 'SpreadElement') {
-      warn(
-        'a spread in the call arguments cannot be read at compile time, so any option it carries is IGNORED on iOS and Android — pass the options literally.',
-      )
-      continue
-    }
-    const key = propName(prop)
-    if (key === undefined || ENDPOINT_LOWERED_ARGS.has(key)) continue
-    warn(
-      `option \`${key}\` has no native equivalent and is IGNORED on iOS and Android (${ENDPOINT_UNLOWERABLE_ARGS.get(key) ?? 'not part of the lowered endpoint surface'}).`,
-    )
-  }
-  for (const key of def.declUnlowerable) {
-    warn(
-      `the endpoint declaration's \`${key}\` has no native equivalent and is IGNORED on iOS and Android (${ENDPOINT_UNLOWERABLE_OPTIONS.get(key) ?? 'not part of the lowered endpoint surface'}).`,
-    )
-  }
-
-  const extras: { urlExpr?: ExprIR; headers?: Record<string, string>; body?: string } = {}
-  if (sawRuntimeParam) extras.urlExpr = { kind: 'template', quasis, exprs }
-  if (Object.keys(headers).length > 0) extras.headers = headers
-  if (body !== undefined) extras.body = body
-  return { url, method: def.method, ...extras }
-}
-
-/**
- * True when EVERY declarator of a top-level node is an @pyreon/http client or
- * endpoint binding (recorded by the pre-pass collectors). Those are metadata
- * only — they emit nothing — so the main loop skips them before the
- * module-decl catch-all mis-emits them as bindings.
- */
-function isHttpMetadataNode(node: AnyNode, ctx: ParseCtx): boolean {
-  const decls = topLevelDeclarators(node)
-  if (decls.length === 0) return false
-  return decls.every((d) => {
-    const n = d.id?.name as string | undefined
-    return typeof n === 'string' && (ctx.httpClientBaseUrls.has(n) || ctx.endpointDefs.has(n))
-  })
 }
 
 /**
@@ -2800,13 +1797,13 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
   'useHotkey', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate',
-  'useParams', 'usePermissions', 'useQuery',
+  'useParams', 'usePermissions',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter',
   'useUrlState',
   'useSecureStorage',
-  'useSizeClass', 'useStorage', 'useStream', 'useWebSocket',
+  'useSizeClass', 'useStorage', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
   'useDebouncedValue',
   'useDebouncedCallback', 'useThrottledCallback',
@@ -3114,20 +2111,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         '`useStorage(key, initial)` DOES lower on both targets (as do `useSessionStorage` and `useMemoryStorage`) — use a hook rather than the factory. `useCookie` and `useIndexedDB` have no native analogue at all: a native app has no cookie jar, and for structured local data `useDatabase()` lowers to SQLite on both targets',
     },
   ],
-  [
-    '@pyreon/http',
-    {
-      // `createHttp` LOWERS as part of the endpoint→useFetch resolution: a
-      // same-file `const api = createHttp({ baseUrl })` + `const getUser =
-      // api.endpoint('GET /users/:id')` let `useFetch<T>(getUser({ params }))`
-      // resolve to a concrete URL + method (metadata only — createHttp emits
-      // nothing). The remaining transport surface (a bare `endpoint(...)`
-      // import, `.query()` fetcher form, reactive params) still fails native.
-      supported: new Set(['createHttp']),
-      advice:
-        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch, and `useQuery<T>(() => e.query({ params: { id: \'1\' } }))` lowers to PyreonQuery. What stays web: reactive params and a computed baseUrl',
-    },
-  ],
 ])
 
 /**
@@ -3224,21 +2207,9 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       ) {
         continue
       }
-      // Same shape once more: a name used ONLY as `createHttp({ schema })`
-      // is consumed by `collectHttpClients`, which reads `baseUrl` and
-      // nothing else, so the declaration emits no Swift/Kotlin at all. The
-      // blanket line claimed it was "reproduced verbatim" in an emit that
-      // never mentions it.
-      if (ctx.httpClientSchemaNames.has(imported)) continue
-      // A stream opener used ONLY as a `useStream` source lowers with it (the
-      // native stream runtime) — see `streamOpenersAllLowered`.
-      if (
-        src === '@pyreon/http/stream' &&
-        (imported === 'openEventStream' || imported === 'openNdjsonStream') &&
-        ctx.streamOpenersAllLowered
-      ) {
-        continue
-      }
+      // An import a plugin's scan marked as consumed by lowering (`createHttp({ schema })`'s schema
+      // name, a stream opener used only as a `useStream` source): nothing of it reaches the emit.
+      if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`)) continue
       // A component the emitters DROP with their own named warning at the use site
       // (a web-only one): nothing reaches Swift/Kotlin, so "reproduced verbatim …
       // the native build fails" would be false.
@@ -5565,7 +4536,7 @@ function refineStructFloatsFromResponseSchemas(
   }
 
   for (const decode of ctx.responseDecodes) {
-    const ref = ctx.endpointDefs.get(decode.endpoint)?.responseSchema
+    const ref = decode.response
     if (!ref) continue
     const schema = schemaByName.get(ref.binding)
     const struct = structOf(decode.type)
@@ -6251,11 +5222,9 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     hookDestructureCounter: 0,
     helperFns: [],
     theme: DEFAULT_THEME,
-    httpClientBaseUrls: new Map(),
-    httpClientSchemaNames: new Set(),
-    streamOpeners: new Map(),
-    streamOpenersAllLowered: false,
-    endpointDefs: new Map(),
+    pluginState: new Map(),
+    skipTopLevel: [],
+    loweredImports: new Set(),
     responseDecodes: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -7348,25 +6317,10 @@ function bodyReferencesPropsParam(body: AnyNode[], paramName: string): boolean {
   return false
 }
 
-/** Strip TS type-only wrappers + parens to reach the underlying expression. */
-function unwrapTypeLayers(node: AnyNode | undefined): AnyNode | undefined {
-  let current = node
-  while (
-    current &&
-    (current.type === 'ParenthesizedExpression' ||
-      current.type === 'TSAsExpression' ||
-      current.type === 'TSSatisfiesExpression' ||
-      current.type === 'TSNonNullExpression' ||
-      current.type === 'TSTypeAssertion')
-  ) {
-    current = current.expression
-  }
-  return current
-}
 
 /** The facade a plugin's `CallRecognizer` reads the call through; each member delegates to parser state. */
 function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseContext {
-  return {
+  const facade: ParseContext = {
     declName,
     stringLiteralArg(index) {
       const arg = (call.arguments as AnyNode[] | undefined)?.[index]
@@ -7399,6 +6353,72 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
     propKey: (prop) => staticPropKey(prop as AnyNode | undefined),
     hasDynamicKey: (prop) => hasDynamicKey(prop as AnyNode | undefined),
     dynamicKeyText: (prop) => dynamicKeyText(prop as AnyNode, ctx),
+    staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
+    statements: (block) => parseStatementBlock(block as AnyNode, ctx),
+    typeArgOf: (other) => parseGenericTypeArg(other as AnyNode, ctx),
+    fileState: <T>(key: string, init: () => T): T => {
+      if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
+      return ctx.pluginState.get(key) as T
+    },
+    requests: {
+      has: (requestName) => requestSourceFor(requestName, facade) !== undefined,
+      resolve: (requestName, arg, options) => {
+        const source = requestSourceFor(requestName, facade)
+        return source === undefined ? null : source.resolve(requestName, arg, options, facade)
+      },
+    },
+    recordDecode: (type, response) => {
+      ctx.responseDecodes.push({ type, response })
+    },
+  }
+  return facade
+}
+
+/** The first registered request source that resolves `name`, or `undefined`. */
+function requestSourceFor(name: string, facade: ParseContext) {
+  for (const { source } of activeRegistries().scan.sources) {
+    if (source.has(name, facade)) return source
+  }
+  return undefined
+}
+
+/**
+ * Run every plugin's `scanModule` over the program's top level, in plugin order. A scan that
+ * throws names its plugin: the pre-pass runs before any declaration, so an unlabelled failure
+ * would read as a parser bug.
+ */
+function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): void {
+  const { scanners } = activeRegistries().scan
+  if (scanners.length === 0) return
+  const body = (program.body as AnyNode[] | undefined) ?? []
+  const scan: ModuleScan = {
+    program: program as AstNode,
+    body: body as readonly AstNode[],
+    source,
+    staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
+    fileState: <T>(key: string, init: () => T): T => {
+      if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
+      return ctx.pluginState.get(key) as T
+    },
+    skipTopLevel: (skip) => {
+      ctx.skipTopLevel.push(skip as (node: AnyNode) => boolean)
+    },
+    lowered: (module, name) => {
+      ctx.loweredImports.add(`${module}#${name}`)
+    },
+    report: (message) => {
+      ctx.warnings.push(message)
+    },
+  }
+  for (const { owner, scan: run } of scanners) {
+    try {
+      run(scan)
+    } catch (cause) {
+      throw new Error(
+        `[Pyreon] Native compiler ${owner} failed in scanModule: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      )
+    }
   }
 }
 
@@ -7429,8 +6449,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const DESTRUCTURE_CONTAINER_HOOKS = new Set([
     // Service descriptors that declare `destructure` (services.ts).
     ...activeRegistries().serviceTables.destructureHooks,
+    ...activeRegistries().scan.destructureCalls,
     'useFetch',
-    'useQuery',
     'useForm',
     'useStorage',
     'usePermissions',
@@ -7568,8 +6588,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const crdtDocDecl = tryDeclFromCrdtDoc(node, ctx)
   if (crdtDocDecl) return crdtDocDecl
 
-  const queryClientDecl = tryDeclFromQueryClient(node)
-  if (queryClientDecl) return queryClientDecl
+  // A constructor a plugin claims (`new QueryClient()` from `@pyreon/query`): `CompilerPlugin.calls`
+  // recognizers also see `new Name(…)` with `construct` set.
+  const constructed = tryPluginConstruct(node, ctx)
+  if (constructed) return constructed
 
   const syncedSignalDecl = tryDeclFromSyncedSignal(node, ctx)
   if (syncedSignalDecl) return syncedSignalDecl
@@ -8070,22 +7092,26 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useFetch') {
     const type = parseGenericTypeArg(init, ctx)
     const urlArg = init.arguments?.[0]
-    // @pyreon/http endpoint DSL — `useFetch<T>(getUser({ params: { id: '1' } }))`.
-    // A same-file, compile-time-templated endpoint call resolves to a concrete
-    // URL literal + HTTP method, then feeds the EXISTING fetch path below
-    // exactly as if the author had written `useFetch<T>('/api/users/1',
-    // { method: 'GET' })`. Reactive params / a non-literal client baseUrl bail
-    // (warning pushed inside resolveEndpointUrl) and the call stays web.
+    // A request source's endpoint DSL — `useFetch<T>(getUser({ params: { id: '1' } }))`
+    // (`@pyreon/http`, through `CompilerPlugin.requestSources`). A same-file,
+    // compile-time-templated call resolves to a concrete URL literal + HTTP method, then feeds the
+    // fetch path below exactly as if the author had written `useFetch<T>('/api/users/1',
+    // { method: 'GET' })`. Reactive params / a non-literal client baseUrl bail (the source pushes
+    // the warning) and the call stays web.
     let resolvedUrl: string | undefined
-    let resolvedEndpoint: ResolvedEndpoint | undefined
+    let resolvedEndpoint: ResolvedRequest | undefined
+    const requests = parseContextFor(name, init, ctx).requests
     if (
       urlArg?.type === 'CallExpression' &&
       urlArg.callee?.type === 'Identifier' &&
-      ctx.endpointDefs.has(urlArg.callee.name as string)
+      requests.has(urlArg.callee.name as string)
     ) {
-      const resolved = resolveEndpointUrl(urlArg, ctx)
+      const resolved = requests.resolve(urlArg.callee.name as string, urlArg.arguments?.[0] as AstNode | undefined, {
+        allowRuntimeParams: false,
+        streaming: false,
+      })
       if (!resolved) return null // warning already pushed; stays web
-      ctx.responseDecodes.push({ type, endpoint: urlArg.callee.name as string })
+      ctx.responseDecodes.push({ type, response: resolved.response })
       resolvedUrl = resolved.url
       resolvedEndpoint = resolved
     }
@@ -8202,194 +7228,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
 
     return { kind: 'fetch', name, type, url, ...req }
-  }
-  // `useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` from @pyreon/query
-  // — useFetch + a keyed cache. v1 (conservative, same literal-only rule as
-  // useFetch): queryKey = array of string/number literals (colon-joined into
-  // the cache key); queryFn = inline `() => fetch('<url-literal>')`; staleTime
-  // = number literal (ms). Anything else WARNS and bails to undeclared, so the
-  // hook-arc's "no native lowering" diagnostic still fires rather than the
-  // emit mis-lowering a shape it can't honour.
-  if (calleeName === 'useQuery') {
-    const type = parseGenericTypeArg(init, ctx)
-    if (type.kind === 'unknown') {
-      ctx.warnings.push(
-        `Declaration ${name}: useQuery without a response type lowers to a decode of Any on Swift, which does NOT compile — Any cannot conform to Decodable. Give it the shape you expect: useQuery<Response>(() => ({ … })). Kotlin compiles either way, so this breaks iOS only.`,
-      )
-      return null
-    }
-    const optsFn = init.arguments?.[0] as AnyNode | undefined
-    if (!optsFn || optsFn.type !== 'ArrowFunctionExpression') {
-      ctx.warnings.push(
-        `Declaration ${name}: useQuery expects an options function \`() => ({ queryKey, queryFn, staleTime })\`; got ${optsFn?.type ?? 'nothing'}. The @pyreon/query hooks take options as a FUNCTION so queryKey can read signals.`,
-      )
-      return null
-    }
-    // The @pyreon/http endpoint `.query()` fetcher form —
-    // `useQuery(() => getUser.query({ params: { … } }))` — is NOT lowered in
-    // v1 (the useQuery emit expects a literal `queryKey` + inline `fetch`
-    // queryFn). Detect it explicitly so the diagnostic names the real shape
-    // and the actionable fix, instead of the generic "must return an object
-    // literal" below.
-    const endpointQuery = endpointQueryCallInArrow(optsFn, ctx)
-    if (endpointQuery) {
-      // The @pyreon/http endpoint `.query()` fetcher form —
-      // `useQuery<T>(() => getUser.query({ params: { … } }))` — resolves the
-      // endpoint to a concrete URL + method (same compile-time templating as
-      // `useFetch(getUser({ params }))`) and lowers to the SAME `kind: 'query'`
-      // PyreonQuery path, no emit change. The queryKey is `method:url` so the
-      // native cache keys distinctly per endpoint call. Reactive params / a
-      // computed baseUrl still stay web (resolveEndpointParts warns + bails).
-      const resolved = resolveEndpointParts(
-        endpointQuery.name,
-        endpointQuery.call.arguments?.[0] as AnyNode | undefined,
-        ctx,
-        // The query harness re-fetches on key change, so a RUNTIME `:param`
-        // is honourable here (and only here — see the flag's own doc).
-        true,
-      )
-      if (!resolved) return null
-      ctx.responseDecodes.push({ type, endpoint: endpointQuery.name })
-      const eqReq: {
-        urlExpr?: ExprIR
-        queryKeyExpr?: ExprIR
-        method?: string
-        headers?: Record<string, string>
-        body?: string
-      } = {}
-      if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
-      if (resolved.headers) eqReq.headers = resolved.headers
-      if (resolved.body !== undefined) eqReq.body = resolved.body
-      if (resolved.urlExpr !== undefined) {
-        eqReq.urlExpr = resolved.urlExpr
-        // The cache key MUST carry the runtime parts too. A key built from the
-        // literal `url` alone would collapse every id onto ONE cache entry —
-        // the first user fetched would be served for every other id, and
-        // nothing would re-fetch on change, because the harness re-runs on
-        // KEY change. Same template, same exprs, `METHOD:` on the front.
-        const kq = [...(resolved.urlExpr as { quasis: string[] }).quasis]
-        kq[0] = `${resolved.method}:${kq[0] ?? ''}`
-        eqReq.queryKeyExpr = {
-          kind: 'template',
-          quasis: kq,
-          exprs: (resolved.urlExpr as { exprs: ExprIR[] }).exprs,
-        }
-      }
-      return {
-        kind: 'query',
-        name,
-        type,
-        // `url` is omitted when a template took its place — the DeclIR
-        // documents them as mutually exclusive, and the emit picks urlExpr
-        // first, so leaving both set would be a silent contradiction.
-        ...(resolved.urlExpr === undefined ? { url: resolved.url } : {}),
-        queryKey: `${resolved.method}:${resolved.url}`,
-        staleMillis: 0,
-        ...eqReq,
-      }
-    }
-    const optsObj = arrowReturnedObject(optsFn)
-    if (!optsObj) {
-      ctx.warnings.push(
-        `Declaration ${name}: useQuery options function must return an object literal \`({ queryKey, queryFn, staleTime })\` to lower to native.`,
-      )
-      return null
-    }
-    let queryKey: string | undefined
-    let queryKeyExpr: ExprIR | undefined
-    let url: string | undefined
-    let urlExpr: ExprIR | undefined
-    let valueExpr: ExprIR | undefined
-    let queryFnSeen = false
-    let staleMillis = 0
-    const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
-    for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
-      if (prop.type !== 'Property') continue
-      if (hasDynamicKey(prop)) {
-        warnDynamicKey(prop, `Declaration ${name}: useQuery options`, ctx)
-        continue
-      }
-      const key = staticPropKey(prop)
-      if (!key) continue
-      if (key === 'queryKey') {
-        // A `queryKey` array whose parts are ALL string/number literals bakes
-        // a constant cache key (`['todo', 1]` → `"todo:1"`, the v1 path). A
-        // part that reads a signal / prop / member (`['user', userId]`,
-        // `['k', id()]`) builds a RUNTIME string the emit re-keys at task time
-        // (see the DeclIR `queryKeyExpr` note for why this can't sit in the
-        // SwiftUI `@State` default). Anything that isn't an array bails.
-        const k = tryQueryKeyParts(prop.value, ctx)
-        if (k === undefined) {
-          ctx.warnings.push(
-            `Declaration ${name}: useQuery queryKey must be an ARRAY of string/number literals or expressions (\`['todo', id()]\`) to lower to native; got ${(prop.value as AnyNode | undefined)?.type ?? 'nothing'}.`,
-          )
-          return null
-        }
-        queryKey = k.literal
-        queryKeyExpr = k.expr
-      } else if (key === 'queryFn') {
-        queryFnSeen = true
-        const f = tryQueryFnFetch(prop.value)
-        if (f !== undefined) {
-          if (f.url !== undefined) url = f.url
-          else if (f.urlNode !== undefined) urlExpr = parseExpr(f.urlNode, ctx)
-          // An inline `fetch(url, { method, headers, body })` routes through
-          // PyreonHttp (mirroring useFetch); a bare `fetch(url)` stays a GET.
-          if (f.init) Object.assign(req, parseFetchInitObject(f.init, name, ctx))
-        } else {
-          // Not a recognized inline fetch — try a DIRECT-VALUE queryFn
-          // (`() => <expr>` / `async () => <expr>` with no fetch, no await):
-          // the emit computes `<expr>` in the harness and resolves it.
-          const v = tryQueryFnValue(prop.value)
-          if (v === undefined) {
-            ctx.warnings.push(
-              `Declaration ${name}: useQuery queryFn must be an inline \`() => fetch('<url>')\` (literal OR template URL) or a \`() => <expr>\` returning the decoded value directly; a function reference, a \`fetch(<non-url>)\`, or an \`await\`/multi-statement body is a tracked follow-up.`,
-            )
-            return null
-          }
-          valueExpr = parseExpr(v, ctx)
-        }
-      } else if (key === 'staleTime') {
-        const v = prop.value as AnyNode | undefined
-        if ((v?.type === 'Literal' || v?.type === 'NumericLiteral') && typeof v.value === 'number') {
-          staleMillis = v.value
-        } else if (v) {
-          ctx.warnings.push(
-            `Declaration ${name}: useQuery staleTime must be a number literal (ms) to lower to native; got ${v.type}. Defaulting to 0 (always revalidate, serving the stale value instantly).`,
-          )
-        }
-      }
-    }
-    if (queryKey === undefined) {
-      ctx.warnings.push(
-        `Declaration ${name}: useQuery needs a queryKey to lower to native.`,
-      )
-      return null
-    }
-    // Exactly one of the three queryFn forms must have resolved: a literal URL
-    // (`url`), a templated/runtime URL (`urlExpr`), or a direct-value fetcher
-    // (`valueExpr`). `queryFnSeen` distinguishes "no queryFn at all" from
-    // "queryFn present but unlowerable" (which already warned above).
-    if (url === undefined && urlExpr === undefined && valueExpr === undefined) {
-      if (!queryFnSeen) {
-        ctx.warnings.push(
-          `Declaration ${name}: useQuery needs a queryFn to lower to native.`,
-        )
-      }
-      return null
-    }
-    return {
-      kind: 'query',
-      name,
-      type,
-      queryKey,
-      staleMillis,
-      ...(url !== undefined ? { url } : {}),
-      ...(urlExpr !== undefined ? { urlExpr } : {}),
-      ...(valueExpr !== undefined ? { valueExpr } : {}),
-      ...(queryKeyExpr !== undefined ? { queryKeyExpr } : {}),
-      ...req,
-    }
   }
   // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
   // arg is optional; when present we capture the string-keyed literal
@@ -8659,6 +7497,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       { callee: calleeName, argCount: init.arguments?.length ?? 0 },
       parseContextFor(name, init, ctx),
     )
+    if (spec === null) return null
     if (spec !== undefined) return stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
   }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
@@ -8733,11 +7572,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return { kind: 'auth', name, userType: parseGenericTypeArg(init, ctx) }
   }
   // `useStream((ctx) => openEventStream((c) => ep({ … }), { … }))` from
-  // @pyreon/query + @pyreon/http/stream — SSE / NDJSON over the native
-  // stream runtime (`PyreonStream`, co-located in @pyreon/http/native).
-  if (calleeName === 'useStream') {
-    return tryUseStreamDecl(init, name, ctx)
-  }
   // `useWebSocket('wss://…')` — the URL must be a string literal so it can
   // be baked into the emitted connect call (same rule as useFetch).
   if (calleeName === 'useWebSocket') {
@@ -8838,613 +7672,6 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
  * the original silent-drop — strictly better than `main`.
  */
 
-// --- useQuery options-function extraction (v1) --------------------------------
-
-/**
- * The object literal an arrow function returns, for both the concise form
- * `() => ({ … })` and the block form `() => { return { … } }`. Returns
- * undefined for anything else (so the caller warns + bails).
- */
-/**
- * If an options arrow directly returns `<endpoint>.query(...)` on a known
- * @pyreon/http endpoint, return the endpoint name; else undefined. Handles the
- * concise (`() => e.query(…)`) and block-return (`() => { return e.query(…) }`)
- * arrow shapes. Used to give the useQuery `.query()` fetcher form a specific
- * "stays web" diagnostic rather than the generic object-literal one.
- */
-/** `@pyreon/http/stream`'s default `ReconnectPolicy`. */
-const STREAM_DEFAULT_RECONNECT = { attempts: 5, delay: 1000, maxDelay: 30_000, onEnd: false }
-
-/** `v` is `<obj>.<prop>` — `c.signal`, `ctx.onStatus`. */
-function isMemberRead(v: AnyNode | undefined, obj: string | undefined, prop: string): boolean {
-  return (
-    obj !== undefined &&
-    v?.type === 'MemberExpression' &&
-    !v.computed &&
-    v.object?.type === 'Identifier' &&
-    v.object.name === obj &&
-    v.property?.type === 'Identifier' &&
-    v.property.name === prop
-  )
-}
-
-/**
- * `const s = useStream<SseEvent<T>>((ctx) => openEventStream((c) => ep({ …,
- * signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus:
- * ctx.onStatus, … }), { maxEvents })` — the documented `useStream` shape, and
- * what a generated client's stream component writes.
- *
- * The endpoint resolves exactly as it does for `useQuery` (a runtime `:param`
- * is honourable: the native harness is KEYED on the URL, so a new value
- * reopens the stream — the web's reactive-source semantic). `signal` /
- * `onStatus` are consumed: cancellation and status are structural natively.
- * Every option that cannot lower is either NAMED (ignored, when the stream
- * still means the same thing) or a bail (when it would not).
- */
-function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | null {
-  const bail = (why: string): null => {
-    ctx.warnings.push(
-      `Declaration ${name}: useStream ${why} This stream stays web — on iOS and Android the call is reproduced verbatim and does not compile.`,
-    )
-    return null
-  }
-  const ignored = (what: string, why: string): void => {
-    ctx.warnings.push(`Declaration ${name}: useStream ${what} is IGNORED on iOS and Android (${why}).`)
-  }
-  const srcArrow = init.arguments?.[0] as AnyNode | undefined
-  const ctxParam = (srcArrow?.params as AnyNode[] | undefined)?.[0]?.name as string | undefined
-  const open = arrowReturnedCall(srcArrow)
-  const openName = open?.callee?.type === 'Identifier' ? (open.callee.name as string) : undefined
-  const format = openName !== undefined ? ctx.streamOpeners.get(openName) : undefined
-  if (!open || format === undefined) {
-    return bail(
-      'lowers when its source directly returns `openEventStream(…)` / `openNdjsonStream(…)` imported from `@pyreon/http/stream` — `(ctx) => openEventStream((c) => endpoint({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus })`.',
-    )
-  }
-  const connect = open.arguments?.[0] as AnyNode | undefined
-  const cParam = (connect?.params as AnyNode[] | undefined)?.[0]?.name as string | undefined
-  const epCall = arrowReturnedCall(connect)
-  const epName = epCall?.callee?.type === 'Identifier' ? (epCall.callee.name as string) : undefined
-  if (!epCall || epName === undefined || !ctx.endpointDefs.has(epName)) {
-    return bail(
-      'connects through a same-file `@pyreon/http` endpoint — `(c) => ep({ signal: c.signal, headers: c.headers })` with `const ep = api.endpoint(…)` and `const api = createHttp({ baseUrl })`. A `fetch(…)` transport or an imported endpoint is a tracked follow-up.',
-    )
-  }
-  const epArg = epCall.arguments?.[0] as AnyNode | undefined
-  if (epArg !== undefined && epArg.type !== 'ObjectExpression') {
-    return bail('needs the endpoint call argument to be an object literal.')
-  }
-  // `signal` is how the web cancels; natively the stream is cancelled by the
-  // view's lifecycle. `headers: c.headers` is how the web adds `accept` /
-  // `last-event-id`; the native runtime adds both itself.
-  // `headers: { ...c.headers, accept: 'application/jsonl' }` — the stream's
-  // own headers plus literal extras (a generated client names a non-default
-  // stream media type this way). The spread is the runtime's job; the literal
-  // props lower, and `accept` becomes the stream's Accept.
-  let accept: string | undefined
-  // A RUNTIME `json` body — the common POST-stream shape (`json: { prompt:
-  // prompt() }`). The endpoint resolver only bakes a LITERAL body (and sends
-  // none otherwise), so it is taken out here and serialized per run through
-  // the `JSON.stringify` lowering instead.
-  let requestBodyExpr: ExprIR | undefined
-  const kept = ((epArg?.properties as AnyNode[] | undefined) ?? []).flatMap((p): AnyNode[] => {
-    const k = propName(p)
-    if (k === 'signal') return []
-    const v = p.value as AnyNode | undefined
-    if (k === 'json' && v !== undefined && !isNullishLiteral(v) && readJsonLiteral(v) === undefined) {
-      requestBodyExpr = { kind: 'json-stringify', arg: parseExpr(v, ctx) }
-      return []
-    }
-    if (k === 'headers' && isMemberRead(v, cParam, 'headers')) return []
-    if (k === 'headers' && v?.type === 'ObjectExpression') {
-      const props = (v.properties as AnyNode[] | undefined) ?? []
-      const rest = props.filter(
-        (hp) => !(hp.type === 'SpreadElement' && isMemberRead(hp.argument as AnyNode | undefined, cParam, 'headers')),
-      )
-      if (rest.length === props.length) return [p]
-      const literal = rest.filter((hp) => {
-        if (propName(hp)?.toLowerCase() !== 'accept') return true
-        const a = literalScalar(hp.value as AnyNode | undefined)
-        if (typeof a === 'string') accept = a
-        return typeof a !== 'string'
-      })
-      return literal.length > 0 ? [{ ...p, value: { ...v, properties: literal } } as AnyNode] : []
-    }
-    return [p]
-  })
-  const filtered = epArg !== undefined ? ({ ...epArg, properties: kept } as AnyNode) : undefined
-  const resolved = resolveEndpointParts(epName, filtered, ctx, true, true)
-  if (!resolved) return null
-  let reqHeaders = resolved.headers
-  if (requestBodyExpr !== undefined && !Object.keys(reqHeaders ?? {}).some((k) => k.toLowerCase() === 'content-type')) {
-    // The web's `json` sets this unless the caller declared one (see the
-    // literal-body branch of the endpoint resolver).
-    reqHeaders = { ...reqHeaders, 'content-type': 'application/json' }
-  }
-
-  let sseText = false
-  let events: string[] | undefined
-  let lastEventId: string | undefined
-  let reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null =
-    format === 'sse' ? { ...STREAM_DEFAULT_RECONNECT } : null
-  const opts = open.arguments?.[1] as AnyNode | undefined
-  if (opts !== undefined) {
-    if (opts.type !== 'ObjectExpression') return bail(`needs \`${openName}\`'s options to be an object literal.`)
-    for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
-      if (p.type === 'SpreadElement') {
-        ignored('an options spread', 'it cannot be read at compile time — pass the options literally')
-        continue
-      }
-      const k = propName(p)
-      const v = p.value as AnyNode | undefined
-      if (k === undefined) continue
-      if (k === 'signal' || k === 'onStatus') {
-        if (!isMemberRead(v, ctxParam, k)) {
-          ignored(`option \`${k}\``, `only \`${k}: ctx.${k}\` is understood — cancellation and status are driven by the view natively`)
-        }
-        continue
-      }
-      if (format === 'sse' && k === 'data') {
-        const lit = literalScalar(v)
-        if (lit === 'text') sseText = true
-        else if (lit !== 'json') return bail("needs `data` to be the literal 'json' or 'text'.")
-        continue
-      }
-      if (format === 'sse' && k === 'events') {
-        const els = v?.type === 'ArrayExpression' ? ((v.elements as AnyNode[] | undefined) ?? []) : undefined
-        const names = els?.map((e) => literalScalar(e))
-        if (!names || names.some((x) => typeof x !== 'string')) {
-          return bail('needs `events` to be an array of string literals — the filter is baked into the native request.')
-        }
-        events = names as string[]
-        continue
-      }
-      if (format === 'sse' && k === 'lastEventId') {
-        const id = staticStringArg(v, ctx)
-        if (id === null) return bail('needs `lastEventId` to be a string literal (or a module-scope const).')
-        lastEventId = id
-        continue
-      }
-      if (format === 'sse' && k === 'reconnect') {
-        const lit = literalScalar(v)
-        if (lit === false) {
-          reconnect = null
-          continue
-        }
-        if (lit === true) continue
-        if (v?.type !== 'ObjectExpression') {
-          return bail('needs `reconnect` to be `true`, `false` or an object literal of number/boolean literals.')
-        }
-        const next = { ...STREAM_DEFAULT_RECONNECT }
-        for (const rp of (v.properties as AnyNode[] | undefined) ?? []) {
-          const rk = propName(rp)
-          const rv = literalScalar(rp.value as AnyNode | undefined)
-          if ((rk === 'attempts' || rk === 'delay' || rk === 'maxDelay') && typeof rv === 'number') next[rk] = rv
-          else if (rk === 'onEnd' && typeof rv === 'boolean') next.onEnd = rv
-          else if (rk === 'shouldRetry') {
-            ignored('`reconnect.shouldRetry`', 'a JS predicate — the native runtime applies the default rule: network, 408, 429 and 5xx retry')
-          } else {
-            return bail(`needs \`reconnect.${rk ?? '?'}\` to be a number/boolean literal.`)
-          }
-        }
-        reconnect = next
-        continue
-      }
-      if (k === 'parse') {
-        ignored(
-          'option `parse`',
-          'schema validation stays web: each payload is decoded into the declared type, so a malformed payload still ends the stream in `error`, but refinements beyond the type do not run',
-        )
-        continue
-      }
-      ignored(`option \`${k}\``, 'not part of the lowered stream surface')
-    }
-  }
-
-  let maxEvents = 1000
-  let enabled: ExprIR | undefined
-  let onEventNode: AnyNode | undefined
-  const hookOpts = init.arguments?.[1] as AnyNode | undefined
-  if (hookOpts !== undefined) {
-    if (hookOpts.type !== 'ObjectExpression') return bail('needs its options to be an object literal.')
-    for (const p of (hookOpts.properties as AnyNode[] | undefined) ?? []) {
-      const k = propName(p)
-      const node = unwrapTypeLayers(p.value as AnyNode | undefined)
-      const v = literalScalar(node)
-      if (k === 'maxEvents' && typeof v === 'number') maxEvents = v
-      else if (k === 'enabled') {
-        // `enabled: true | false | () => expr | expr` — the web reads it
-        // TRACKED on every run (`typeof enabled === 'function' ? enabled() :
-        // enabled`), so the accessor's BODY is the value, and a literal
-        // `true` is the default.
-        if (v === true) continue
-        if (v === false) {
-          enabled = { kind: 'literal', value: false }
-          continue
-        }
-        const expr = arrowExprBody(node) ?? (isFunctionNode(node) ? undefined : node)
-        if (expr === undefined) {
-          return bail('needs `enabled` to be a boolean, an expression, or an accessor returning one (`() => ready()`).')
-        }
-        enabled = parseExpr(expr, ctx)
-      } else if (k === 'onEvent') {
-        if (!isFunctionNode(node)) {
-          return bail('needs `onEvent` to be an inline function — `(event) => { … }` — to lower as the per-event callback.')
-        }
-        const params = (node!.params as AnyNode[] | undefined) ?? []
-        const second = params[1]?.type === 'Identifier' ? (params[1].name as string) : undefined
-        if (params.length > 2 || (params[1] !== undefined && second === undefined)) {
-          return bail('`onEvent` takes `(event, queryClient)` — no other shape lowers.')
-        }
-        if (second !== undefined && identifierReferenced(node!.body as AnyNode, second)) {
-          return bail(
-            `\`onEvent\` uses its second argument (\`${second}\`, the QueryClient) — native queries are self-contained PyreonQuery containers with no shared client to write into, so this callback cannot mean the same thing there.`,
-          )
-        }
-        onEventNode = node
-      } else {
-        ignored(`option \`${k ?? '…'}\``, 'not part of the lowered stream surface')
-      }
-    }
-  }
-
-  let itemType = parseGenericTypeArg(init, ctx)
-  let dataType: TypeIR | undefined
-  if (format === 'sse') {
-    if (itemType.kind === 'typeRef' && itemType.name === 'SseEvent' && itemType.args.length === 1) {
-      dataType = itemType.args[0]
-    } else if (itemType.kind === 'unknown') {
-      const g = parseGenericTypeArg(open, ctx)
-      if (g.kind !== 'unknown') dataType = g
-      else if (sseText) dataType = { kind: 'string' }
-    } else {
-      return bail('over SSE yields `SseEvent<T>` items — declare it `useStream<SseEvent<T>>(…)`.')
-    }
-    if (dataType === undefined) {
-      return bail(
-        'needs the event payload type — `useStream<SseEvent<T>>(…)` or `openEventStream<T>(…)`. A native stream decodes each event INTO a declared type; there is nothing to decode `unknown` into.',
-      )
-    }
-    if (sseText && dataType.kind !== 'string') return bail("with `data: 'text'` yields string payloads — declare `SseEvent<string>`.")
-    itemType = { kind: 'typeRef', name: 'SseEvent', args: [dataType] }
-  } else {
-    if (itemType.kind === 'unknown') itemType = parseGenericTypeArg(open, ctx)
-    if (itemType.kind === 'unknown') {
-      return bail('needs the item type — `useStream<T>(…)` or `openNdjsonStream<T>(…)`. A native stream decodes each line INTO a declared type.')
-    }
-    dataType = itemType
-  }
-  let onEvent: { param: string; body: StatementIR[] } | undefined
-  if (onEventNode !== undefined) {
-    const p0 = ((onEventNode.params as AnyNode[] | undefined) ?? [])[0]
-    const param = p0?.type === 'Identifier' ? (p0.name as string) : '_'
-    if (p0 !== undefined && p0.type !== 'Identifier') {
-      return bail('needs `onEvent`\'s event parameter to be a plain name — `(event) => …`.')
-    }
-    const body = onEventNode.body as AnyNode
-    const stmts: StatementIR[] =
-      body.type === 'BlockStatement' ? parseStatementBlock(body, ctx) : [{ kind: 'expr', expr: parseExpr(body, ctx) }]
-    onEvent = { param, body: stmts }
-  }
-  return {
-    kind: 'stream',
-    name,
-    format,
-    itemType,
-    dataType,
-    sseText,
-    url: resolved.url,
-    ...(resolved.urlExpr !== undefined ? { urlExpr: resolved.urlExpr } : {}),
-    method: resolved.method,
-    ...(reqHeaders !== undefined ? { headers: reqHeaders } : {}),
-    ...(accept !== undefined ? { accept } : {}),
-    ...(resolved.body !== undefined ? { requestBody: resolved.body } : {}),
-    ...(requestBodyExpr !== undefined ? { requestBodyExpr } : {}),
-    ...(enabled !== undefined ? { enabled } : {}),
-    ...(onEvent !== undefined ? { onEvent } : {}),
-    ...(events !== undefined ? { events } : {}),
-    ...(lastEventId !== undefined ? { lastEventId } : {}),
-    reconnect,
-    maxEvents,
-  }
-}
-
-function endpointQueryCallInArrow(
-  arrow: AnyNode,
-  ctx: ParseCtx,
-): { name: string; call: AnyNode } | undefined {
-  const body = arrow?.body as AnyNode | undefined
-  let expr: AnyNode | undefined
-  if (body?.type === 'CallExpression') expr = body
-  else if (body?.type === 'ParenthesizedExpression') expr = body.expression as AnyNode | undefined
-  else if (body?.type === 'BlockStatement') {
-    for (const st of (body.body as AnyNode[] | undefined) ?? []) {
-      if (st.type === 'ReturnStatement') {
-        const a = st.argument as AnyNode | undefined
-        expr = a?.type === 'ParenthesizedExpression' ? (a.expression as AnyNode | undefined) : a
-        break
-      }
-    }
-  }
-  if (expr?.type !== 'CallExpression') return undefined
-  const callee = expr.callee as AnyNode | undefined
-  if (
-    callee?.type === 'MemberExpression' &&
-    !callee.computed &&
-    callee.object?.type === 'Identifier' &&
-    ctx.endpointDefs.has(callee.object.name as string) &&
-    callee.property?.type === 'Identifier' &&
-    callee.property.name === 'query'
-  ) {
-    return { name: callee.object.name as string, call: expr }
-  }
-  return undefined
-}
-
-function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
-  const body = arrow?.body
-  if (!body) return undefined
-  // Concise: `() => ({...})` — the body IS the ObjectExpression (the parens are
-  // grouping the parser drops). Some parsers wrap in ParenthesizedExpression.
-  if (body.type === 'ObjectExpression') return body
-  if (body.type === 'ParenthesizedExpression' && body.expression?.type === 'ObjectExpression') {
-    return body.expression
-  }
-  // Block: `() => { return {...} }` — find the (single) return of an object.
-  if (body.type === 'BlockStatement') {
-    for (const st of (body.body as AnyNode[] | undefined) ?? []) {
-      if (st.type === 'ReturnStatement') {
-        const arg = st.argument
-        if (arg?.type === 'ObjectExpression') return arg
-        if (arg?.type === 'ParenthesizedExpression' && arg.expression?.type === 'ObjectExpression') {
-          return arg.expression
-        }
-      }
-    }
-  }
-  return undefined
-}
-
-/**
- * Resolve a `queryKey` array into the native cache key. Returns:
- *   `{ literal }`       — every element is a string/number literal
- *                         (`['todos', 5]` → `"todos:5"`), the baked-constant path.
- *   `{ literal, expr }` — at least one element is a non-literal expression
- *                         (`['user', userId]`, `['k', id()]`): `expr` is a
- *                         `template` ExprIR that colon-joins the parts as a
- *                         RUNTIME string (literals in the quasis, expressions
- *                         interpolated), and `literal` carries the literal-only
- *                         join as an inert fallback for the IR's required
- *                         `queryKey` field (the emit reads `expr` on this path).
- * Returns undefined when the node is not an array, is empty, or holds a spread.
- */
-function tryQueryKeyParts(
-  node: AnyNode,
-  ctx: ParseCtx,
-): { literal: string; expr?: ExprIR } | undefined {
-  if (!node || node.type !== 'ArrayExpression') return undefined
-  const els = (node.elements as AnyNode[] | undefined) ?? []
-  if (els.length === 0) return undefined
-  const quasis: string[] = ['']
-  const exprs: ExprIR[] = []
-  const literalParts: string[] = []
-  let hasExpr = false
-  for (let i = 0; i < els.length; i++) {
-    const el = els[i]
-    if (!el || el.type === 'SpreadElement') return undefined
-    const sep = i === 0 ? '' : ':'
-    const isLit =
-      el.type === 'Literal' || el.type === 'StringLiteral' || el.type === 'NumericLiteral'
-    if (isLit && (typeof el.value === 'string' || typeof el.value === 'number')) {
-      quasis[quasis.length - 1] += sep + String(el.value)
-      literalParts.push(String(el.value))
-    } else {
-      hasExpr = true
-      quasis[quasis.length - 1] += sep
-      exprs.push(parseExpr(el, ctx))
-      quasis.push('')
-    }
-  }
-  const literal = literalParts.join(':')
-  return hasExpr ? { literal, expr: { kind: 'template', quasis, exprs } } : { literal }
-}
-
-/**
- * Extract the URL + optional init object from an inline
- * `queryFn: () => fetch('<url>', { method, headers, body })` (also
- * `() => fetch('<url>').then(r => r.json())`, or a block body returning one).
- * Walks the arrow's body for the first `fetch(<url>, init?)` call. Returns:
- *   `{ url, init }`     — a STRING-LITERAL URL (baked verbatim).
- *   `{ urlNode, init }` — a TEMPLATE / identifier / member URL
- *                         (`\`/users/${id}\``, `endpoint`, `props.url`), emitted
- *                         as native string interpolation in the async harness.
- * Returns undefined for a function reference, a `fetch(<call-expression>)` URL
- * that can't be safely baked, or a non-fetch body (the caller then tries the
- * direct-value form).
- */
-function tryQueryFnFetch(
-  node: AnyNode,
-): { url?: string; urlNode?: AnyNode; init?: AnyNode } | undefined {
-  if (
-    !node ||
-    (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression')
-  ) {
-    return undefined
-  }
-  let found: { url?: string; urlNode?: AnyNode; init?: AnyNode } | undefined
-  const visit = (n: AnyNode): void => {
-    if (found || !n || typeof n !== 'object') return
-    if (
-      n.type === 'CallExpression' &&
-      n.callee?.type === 'Identifier' &&
-      n.callee.name === 'fetch'
-    ) {
-      const arg = n.arguments?.[0]
-      const init = n.arguments?.[1]
-      if (
-        (arg?.type === 'Literal' || arg?.type === 'StringLiteral') &&
-        typeof arg.value === 'string'
-      ) {
-        found = { url: arg.value, init }
-        return
-      }
-      if (
-        arg &&
-        (arg.type === 'TemplateLiteral' ||
-          arg.type === 'Identifier' ||
-          arg.type === 'MemberExpression')
-      ) {
-        found = { urlNode: arg, init }
-        return
-      }
-    }
-    for (const key of Object.keys(n)) {
-      if (key === 'type' || key === 'loc' || key === 'range' || key === 'start' || key === 'end') {
-        continue
-      }
-      const child = (n as Record<string, AnyNode>)[key]
-      if (Array.isArray(child)) {
-        for (const c of child) visit(c)
-      } else if (child && typeof child === 'object') {
-        visit(child)
-      }
-    }
-  }
-  visit(node.body)
-  return found
-}
-
-/**
- * A DIRECT-VALUE `queryFn` — `() => <expr>` / `async () => <expr>`, or a block
- * body that is a single `return <expr>`, whose returned expression performs NO
- * `fetch` and NO `await`. Returns the returned-expression AST node (the emit
- * computes it in the harness and `resolve`s it directly, no URLSession/decode),
- * or undefined for a fetch body, an await, a multi-statement block, or a
- * function reference.
- */
-function tryQueryFnValue(node: AnyNode): AnyNode | undefined {
-  if (
-    !node ||
-    (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression')
-  ) {
-    return undefined
-  }
-  let expr: AnyNode | undefined
-  const body = node.body as AnyNode | undefined
-  if (body?.type === 'BlockStatement') {
-    const stmts = (body.body as AnyNode[] | undefined) ?? []
-    const only = stmts[0]
-    if (stmts.length !== 1 || only?.type !== 'ReturnStatement' || !only.argument) {
-      return undefined
-    }
-    expr = only.argument as AnyNode
-  } else {
-    expr = body
-  }
-  if (!expr) return undefined
-  let disallowed = false
-  const visit = (n: AnyNode): void => {
-    if (disallowed || !n || typeof n !== 'object') return
-    if (n.type === 'AwaitExpression') {
-      disallowed = true
-      return
-    }
-    if (
-      n.type === 'CallExpression' &&
-      n.callee?.type === 'Identifier' &&
-      n.callee.name === 'fetch'
-    ) {
-      disallowed = true
-      return
-    }
-    for (const key of Object.keys(n)) {
-      if (key === 'type' || key === 'loc' || key === 'range' || key === 'start' || key === 'end') {
-        continue
-      }
-      const child = (n as Record<string, AnyNode>)[key]
-      if (Array.isArray(child)) {
-        for (const c of child) visit(c)
-      } else if (child && typeof child === 'object') {
-        visit(child)
-      }
-    }
-  }
-  visit(expr)
-  return disallowed ? undefined : expr
-}
-
-/**
- * Parse a `fetch(url, { method, headers, body })` init object into the literal
- * request fields. Mirrors the useFetch rule: literals are baked, anything
- * non-literal WARNS (a silently-wrong verb/body is worse than a missing
- * feature). Returns the request fields; a missing/non-object init → GET.
- */
-function parseFetchInitObject(
-  initNode: AnyNode,
-  name: string,
-  ctx: ParseCtx,
-): { method?: string; headers?: Record<string, string>; body?: string } {
-  const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
-  if (!initNode) return req
-  if (initNode.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `Declaration ${name}: useQuery queryFn fetch init must be an object literal to lower to native; got ${initNode.type}. The request will be a plain GET.`,
-    )
-    return req
-  }
-  for (const prop of (initNode.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `Declaration ${name}: useQuery queryFn fetch init`, ctx)
-      continue
-    }
-    const key = staticPropKey(prop)
-    if (!key) continue
-    const value = prop.value as AnyNode | undefined
-    const isStringLit =
-      (value?.type === 'Literal' || value?.type === 'StringLiteral') &&
-      typeof value.value === 'string'
-    if (key === 'method') {
-      if (!isStringLit) {
-        ctx.warnings.push(
-          `Declaration ${name}: useQuery queryFn fetch method must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be a plain GET.`,
-        )
-        continue
-      }
-      req.method = String(value!.value).toUpperCase()
-    } else if (key === 'body') {
-      if (!isStringLit) {
-        ctx.warnings.push(
-          `Declaration ${name}: useQuery queryFn fetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body.`,
-        )
-        continue
-      }
-      req.body = String(value!.value)
-    } else if (key === 'headers') {
-      if (value?.type !== 'ObjectExpression') {
-        ctx.warnings.push(
-          `Declaration ${name}: useQuery queryFn fetch headers must be an object literal to lower to native; got ${value?.type ?? 'nothing'}. Headers will be omitted.`,
-        )
-        continue
-      }
-      const headers: Record<string, string> = {}
-      for (const h of (value.properties as AnyNode[] | undefined) ?? []) {
-        if (h.type !== 'Property') continue
-        if (hasDynamicKey(h)) {
-          warnDynamicKey(h, `Declaration ${name}: useQuery queryFn fetch headers`, ctx)
-          continue
-        }
-        const hk = staticPropKey(h)
-        const hv = h.value
-        if (hk && (hv?.type === 'Literal' || hv?.type === 'StringLiteral') && typeof hv.value === 'string') {
-          headers[hk] = hv.value
-        }
-      }
-      if (Object.keys(headers).length > 0) req.headers = headers
-    }
-  }
-  return req
-}
 
 /**
  * Collect the local names imported from `@pyreon/rx`, mapped to their
@@ -9666,24 +7893,22 @@ function tryDeclFromCreateMachine(
 }
 
 /**
- * `const client = new QueryClient()` from `@pyreon/query` → a `query-client`
- * decl, which emits NOTHING.
- *
- * On the web the client is mandatory: `useQuery` reads it from
- * `<QueryClientProvider>` and throws `No QueryClient found` without one. The
- * native lowering is self-contained — `useQuery` becomes a `PyreonQuery` that
- * holds its own state — so there is no client for the binding to be, and
- * emitting nothing is the whole lowering.
- *
- * Recognizing it is what stops the generic path from emitting `let client = ""`
- * (an unused junk binding) beside the transparent provider.
+ * `const x = new Name(…)` where a plugin claims `Name` (`CompilerPlugin.calls`): the recognizer
+ * receives `construct: true`. `null` when the shape is not a constructor of a claimed name, or the
+ * plugin declined.
  */
-function tryDeclFromQueryClient(node: AnyNode): DeclIR | null {
+function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
-  if (init?.type !== 'NewExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'QueryClient') return null
-  if (node.id?.type !== 'Identifier') return null
-  return { kind: 'query-client', name: node.id.name as string }
+  if (init?.type !== 'NewExpression' || init.callee?.type !== 'Identifier' || node.id?.type !== 'Identifier') return null
+  const calleeName = init.callee.name as string
+  const recognized = activeRegistries().calls.calls.get(calleeName)
+  if (recognized === undefined) return null
+  const name = node.id.name as string
+  const spec = recognized.recognizer(
+    { callee: calleeName, argCount: init.arguments?.length ?? 0, construct: true },
+    parseContextFor(name, init, ctx),
+  )
+  return spec === undefined || spec === null ? null : stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
 }
 
 /**

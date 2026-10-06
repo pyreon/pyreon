@@ -35,13 +35,25 @@ describe('@pyreon/native-compiler/plugin-api', () => {
   it('exports the version, the walker and the pure spelling helpers a plugin uses', () => {
     expect(Object.keys(pluginApi).sort()).toEqual([
       'NATIVE_COMPILER_PLUGIN_API_VERSION',
+      'dynamicKeyText',
       'forEachExpr',
+      'hasDynamicKey',
+      'isNullishLiteral',
       'isNumericLiteralOrNegation',
       'kotlinIdent',
       'kotlinStr',
+      'literalScalar',
+      'propName',
+      'readEntryNodes',
+      'readJsonLiteral',
+      'readLiteralEntries',
+      'readObjectProp',
+      'staticPropKey',
       'substituteIdentifier',
       'swiftIdent',
       'swiftStr',
+      'topLevelDeclarators',
+      'unwrapTypeLayers',
     ])
     expect(pluginApi.NATIVE_COMPILER_PLUGIN_API_VERSION).toBe(chartsPlugin.apiVersion)
   })

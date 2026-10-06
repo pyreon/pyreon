@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 /**
  * `useUrlState`'s key is BAKED into the native emit, so it has to be known at

@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import { queryPlugin } from './first-party-plugins'
 import { SERVICES } from '../services'
 
 const SWIFT = readFileSync(join(resolve(import.meta.dirname, '..'), 'emit-swift.ts'), 'utf8')
@@ -98,10 +99,12 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
     }
   })
 
-  it('`fetch` and `query` are still present (the original device-found pair)', () => {
+  it('`fetch` is present, and `query` / `stream` (now plugin-owned) get the host from their decl lifecycle', () => {
     const declared = declaredSet()
     expect(declared.has('fetch')).toBe(true)
-    expect(declared.has('query')).toBe(true)
+    // The original device-found pair: a `.task` on a transparent conditional restarts forever.
+    expect(queryPlugin.decls?.query?.lifecycle?.stableHost).toBe(true)
+    expect(queryPlugin.decls?.stream?.lifecycle?.stableHost).toBe(true)
   })
 })
 

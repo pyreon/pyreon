@@ -13,7 +13,6 @@
       "@pyreon/elements": 2,
       "@pyreon/feature": 1,
       "@pyreon/head": 1,
-      "@pyreon/http": 5,
       "@pyreon/kinetic": 1,
       "@pyreon/kinetic-presets": 1,
       "@pyreon/lathe": 1,
@@ -44,7 +43,7 @@
       "@pyreon/zero": 1,
       "@pyreon/zero-content": 1
     },
-    "hooks": 119
+    "hooks": 113
   },
   "compiler": {
     "packages": {

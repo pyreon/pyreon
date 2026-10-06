@@ -29,7 +29,7 @@
 //    mismatch"). Same class as the `if (token)` session-rehydrate shape.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const src = (decl: string, read = `{p.data()?.id ?? 'none'}`) => `
   interface Item { id: string }

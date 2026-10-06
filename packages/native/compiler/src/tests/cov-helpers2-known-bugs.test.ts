@@ -10,7 +10,7 @@
 // by running the REAL toolchains, because "this compiles" is the whole claim.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

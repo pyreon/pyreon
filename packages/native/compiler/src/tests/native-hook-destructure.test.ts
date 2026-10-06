@@ -16,7 +16,7 @@
 // lowering can only make destructure work where single-binding already works.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
 
 const fetchApp = (binding: string) =>

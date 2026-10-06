@@ -12,7 +12,7 @@
 // Bisect site: the `@Serializable\n` prefix in emitKotlinDataClass.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('synthesized data classes — @Serializable consistency', () => {
   it('inline object type in a useFetch generic emits an annotated synth class', () => {

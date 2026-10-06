@@ -203,7 +203,8 @@ describe('verifier failure paths', () => {
     expect(typeof c.transform).toBe('function')
     expect(typeof c.compile.swift).toBe('function')
     expect(typeof c.compile.kotlin).toBe('function')
-    expect(await resolveTransform()).toBe(c.transform)
+    // A fresh compiler per resolution (it carries the project's library plugins), so equal behaviour, not identity.
+    expect(typeof (await resolveTransform())).toBe('function')
   })
 })
 

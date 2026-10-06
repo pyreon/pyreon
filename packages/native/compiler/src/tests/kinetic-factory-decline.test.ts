@@ -20,7 +20,7 @@
 // binding" specs AND both toolchain specs, with the real compiler errors.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

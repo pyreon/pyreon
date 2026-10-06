@@ -21,7 +21,7 @@
 // whole emit) and the client binding emits NOTHING.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

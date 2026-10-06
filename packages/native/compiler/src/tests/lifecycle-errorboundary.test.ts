@@ -7,7 +7,7 @@
 // `false` (content always shows). Mirror of the Suspense emit.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `
 import { Stack, Text, ErrorBoundary } from '@pyreon/primitives'

@@ -32,6 +32,11 @@
       "bun": "./src/persist.ts",
       "import": "./lib/persist.js",
       "types": "./lib/types/persist.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -53,7 +58,13 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@tanstack/query-async-storage-persister": "^5.104.0",
@@ -65,6 +76,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -78,7 +90,11 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/query"
+      ]
     }
   }
 }

@@ -1843,6 +1843,7 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/query": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/router": "workspace:^",
@@ -1864,9 +1865,11 @@
         "zod": "^4.6.5",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/validation": "workspace:^",
       },
       "optionalPeers": [
+        "@pyreon/native-compiler",
         "@pyreon/validation",
       ],
     },
@@ -1929,6 +1932,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -1938,8 +1942,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/rich-text": {
       "name": "@pyreon/rich-text",

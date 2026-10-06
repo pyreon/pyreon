@@ -1111,57 +1111,6 @@ class PyreonFetch<T> {
   fun refetch() {}
 }
 
-// PyreonQuery — mirror of @pyreon/native-runtime-kotlin's PyreonQuery.kt.
-// The cached data container a \`useQuery\` decl emits: MutableState fields
-// (\`data\`/\`error\`/\`isPending\`/\`isFetching\` — the emit reads \`.value\`),
-// an \`isStale\` getter the emit's LaunchedEffect guards on, and a ctor taking
-// \`queryKey\` + defaulted \`staleMillis\`. Signatures track the runtime exactly.
-class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
-  var queryKey: String = queryKey
-    private set
-  val data: MutableState<T?> = mutableStateOf(null)
-  val error: MutableState<Throwable?> = mutableStateOf(null)
-  val isPending: MutableState<Boolean> = mutableStateOf(false)
-  val isFetching: MutableState<Boolean> = mutableStateOf(false)
-  val isStale: Boolean get() = true
-  fun setKey(key: String) {}
-  fun begin() {}
-  fun resolve(value: T) {}
-  fun reject(e: Throwable) {}
-  fun refetch() {}
-}
-
-// PyreonStream — mirror of @pyreon/http/native/kotlin/.../PyreonStream.kt, the
-// surface a \`useStream\` decl emits: MutableState result fields (read
-// \`.value\`), \`restartTick\` the DisposableEffect keys on, and start/stop.
-// \`delay\`/\`maxDelay\` are Long and \`retry\` is Long? — as in the runtime. The
-// optional \`transport\` parameter is omitted: the emit never passes it.
-data class PyreonSseMessage(val type: String, val data: String, val id: String, val retry: Long?)
-data class PyreonStreamReconnect(val attempts: Long = 5L, val delay: Long = 1000, val maxDelay: Long = 30_000, val onEnd: Boolean = false)
-data class PyreonSseOptions(val events: List<String>? = null, val lastEventId: String? = null, val reconnect: PyreonStreamReconnect? = PyreonStreamReconnect())
-data class PyreonStreamRequest(val method: String = "GET", val url: String, val headers: Map<String, String> = emptyMap(), val body: String? = null)
-data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
-// The main-looper executor (PyreonStreamAndroid.kt) the emit hands the container.
-object PyreonStreamMain : java.util.concurrent.Executor {
-  override fun execute(command: Runnable) {}
-}
-class PyreonStream<E>(val maxEvents: Long = 1000L, main: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() }) {
-  val events: MutableState<List<E>> = mutableStateOf(emptyList())
-  val latest: MutableState<E?> = mutableStateOf(null)
-  val status: MutableState<String> = mutableStateOf("idle")
-  val error: MutableState<Throwable?> = mutableStateOf(null)
-  val restartTick: MutableState<Int> = mutableStateOf(0)
-  fun begin() {}
-  fun push(event: E) {}
-  fun fail(failure: Throwable) {}
-  fun abort() {}
-  fun restart() {}
-  fun stop() {}
-  fun idle() {}
-  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", onEvent: ((E) -> Unit)? = null, decode: (PyreonSseMessage) -> E) {}
-  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", onEvent: ((E) -> Unit)? = null, decode: (String) -> E) {}
-}
-
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.kt surface exactly (a superset stub masks):
 // \`isOk\` is lower-k here where Swift's is \`isOK\`, \`body\` is a non-null

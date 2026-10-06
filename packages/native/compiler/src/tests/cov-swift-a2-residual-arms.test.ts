@@ -10,7 +10,7 @@
 // Annotated zero-parameter value helpers must remain functions on both targets.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 const run = (src: string) => transform(src, { target: 'swift' })
