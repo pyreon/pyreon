@@ -3,13 +3,61 @@ import { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } fro
 const isStringArray = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim() !== '')
 
+function assertElementLowering(plugin: string, value: unknown): void {
+  const lowering = value as Record<string, unknown> | null
+  if (
+    !lowering ||
+    typeof lowering !== 'object' ||
+    typeof lowering.module !== 'string' ||
+    !lowering.module.trim() ||
+    !isStringArray(lowering.tags) ||
+    lowering.tags.length === 0
+  ) {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering needs a nonempty module string and a nonempty tags array of strings.`,
+    )
+  }
+  const { retag, emit, styleBase } = lowering
+  if (retag !== undefined && typeof retag !== 'function') {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} retag must be a function.`,
+    )
+  }
+  if (emit !== undefined) {
+    const targets = emit as Record<string, unknown> | null
+    if (
+      !targets ||
+      typeof targets !== 'object' ||
+      (targets.swift !== undefined && typeof targets.swift !== 'function') ||
+      (targets.kotlin !== undefined && typeof targets.kotlin !== 'function')
+    ) {
+      throw new Error(
+        `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} emit must be an object with swift and/or kotlin functions.`,
+      )
+    }
+  }
+  if (retag === undefined && emit === undefined) {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} needs a retag or an emit — a lowering with neither claims tags and does nothing.`,
+    )
+  }
+  if (styleBase !== undefined && typeof styleBase !== 'boolean') {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} styleBase must be a boolean.`,
+    )
+  }
+}
+
 /**
  * The fields added after the first protocol cut. Shared by `createCompiler`
  * (which keeps its own older checks verbatim) and the CLI loader, so a plugin
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, modules, requires, builtIn } = plugin as Record<string, unknown>
+  const { services, elements, calls, decls, memberCalls, unlowered, modules, requires, builtIn } = plugin as Record<
+    string,
+    unknown
+  >
   if (services !== undefined) {
     if (!services || typeof services !== 'object' || Array.isArray(services)) {
       throw new Error(`[Pyreon] Plugin "${name}" services must be an object keyed by hook name.`)
@@ -26,6 +74,88 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       ) {
         throw new Error(
           `[Pyreon] Plugin "${name}" service "${hook}" needs a nonempty swift string and a nonempty kotlin string array.`,
+        )
+      }
+    }
+  }
+  if (elements !== undefined) {
+    if (!Array.isArray(elements)) {
+      throw new Error(`[Pyreon] Plugin "${name}" elements must be an array of element lowerings.`)
+    }
+    for (const entry of elements as unknown[]) assertElementLowering(name, entry)
+  }
+  if (calls !== undefined) {
+    if (!calls || typeof calls !== 'object' || Array.isArray(calls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" calls must be an object keyed by hook name.`)
+    }
+    for (const [hook, recognizer] of Object.entries(calls)) {
+      if (typeof recognizer !== 'function') {
+        throw new Error(`[Pyreon] Plugin "${name}" call "${hook}" must be a recognizer function.`)
+      }
+    }
+  }
+  if (decls !== undefined) {
+    if (!decls || typeof decls !== 'object' || Array.isArray(decls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" decls must be an object keyed by declaration type.`)
+    }
+    for (const [type, emitter] of Object.entries(decls)) {
+      const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyKind?: unknown } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.swift !== 'function' ||
+        typeof entry.kotlin !== 'function' ||
+        (entry.legacyKind !== undefined && typeof entry.legacyKind !== 'string')
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" decl "${type}" needs swift and kotlin emitter functions.`,
+        )
+      }
+    }
+  }
+  if (calls !== undefined && Object.keys(calls as object).length > 0 && decls === undefined) {
+    throw new Error(
+      `[Pyreon] Plugin "${name}" declares calls but no decls — a recognizer returns a declaration type that needs an emitter.`,
+    )
+  }
+  if (memberCalls !== undefined) {
+    if (!memberCalls || typeof memberCalls !== 'object' || Array.isArray(memberCalls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" memberCalls must be an object keyed by method name.`)
+    }
+    for (const [method, lowering] of Object.entries(memberCalls)) {
+      const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.swift !== 'function' ||
+        typeof entry.kotlin !== 'function'
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" memberCall "${method}" needs swift and kotlin functions.`,
+        )
+      }
+    }
+    if (Object.keys(memberCalls as object).length > 0 && decls === undefined) {
+      throw new Error(
+        `[Pyreon] Plugin "${name}" declares memberCalls but no decls — a member call is only claimed on a binding one of the plugin's own declarations created.`,
+      )
+    }
+  }
+  if (unlowered !== undefined) {
+    if (!unlowered || typeof unlowered !== 'object' || Array.isArray(unlowered)) {
+      throw new Error(`[Pyreon] Plugin "${name}" unlowered must be an object keyed by module.`)
+    }
+    for (const [module, spec] of Object.entries(unlowered)) {
+      const entry = spec as { advice?: unknown; supported?: unknown } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.advice !== 'string' ||
+        !entry.advice.trim() ||
+        (entry.supported !== undefined && !isStringArray(entry.supported))
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" unlowered "${module}" needs a nonempty advice string and, optionally, a supported array of strings.`,
         )
       }
     }

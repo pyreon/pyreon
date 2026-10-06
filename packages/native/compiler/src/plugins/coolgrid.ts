@@ -31,6 +31,7 @@
 
 import type { EmitContext } from '../emit-context'
 import type { ElementLowering } from '../element-lowering'
+import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CompilerPlugin } from '../plugin'
 import type { AttrIR, JsxElementIR } from '../types'
 
 /** coolgrid tags this lowering claims. */
@@ -180,4 +181,12 @@ export const coolgridLowering: ElementLowering = Object.freeze({
   tags: COOLGRID_TAGS,
   retag: (e: JsxElementIR) => (e.tag === 'Col' ? undefined : coolgridToStack(e)),
   emit: Object.freeze({ swift: emitSwiftCol, kotlin: emitKotlinCol }),
+})
+
+/** The coolgrid lowering as a built-in plugin — registered like any third-party one. */
+export const coolgridPlugin: CompilerPlugin = Object.freeze({
+  name: coolgridLowering.module,
+  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  builtIn: true,
+  elements: Object.freeze([coolgridLowering]),
 })

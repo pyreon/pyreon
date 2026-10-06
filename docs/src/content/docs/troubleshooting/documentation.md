@@ -162,3 +162,15 @@ A spec's `title`, `summary`, `description`, `enum`, parameter names, `pattern` a
 (the PMTC alias-import guard, 2026-10). `canAliasIntercept` suppresses a claim when the tag was imported from another package, but it can only judge names whose import `parse.ts` RECORDED — and the recorder kept a fixed set (`Element`, `Row`, `Col`, …). An untracked name is deliberately "claimed" (prior behaviour), so a plugin's new tag would have been claimed even from `./mine`, with no error and no test failing. The recorder now asks the element-lowering registry which tags are claimed, and normalises any scoped sub-path import (not only `@pyreon/*`) to its package root. **Rule: a guard and the list that feeds it must share one source; a second list "kept in sync by comment" is the silent hole.** Locked by `tests/element-lowering.test.ts` (third-party claim from `./mine` is left alone; bisect: guard ignored → 7 specs and the `element-lowering-user` golden entries fail).
 
 ---
+
+### Island declaration scanners treating documentation text as executable calls
+
+Both registry discovery and auto-naming validate regex candidates against parsed bare `island()` callee positions. Strings, comments and regex examples must remain inert; real calls inside template interpolations remain discoverable. A diagnostic example must never inject a nonexistent dynamic import that prevents the entire hydration registry from loading. Reference: `packages/tools/vite-plugin/src/ast-rewrite.ts:islandCallOffsets`; controls `islands-registry.test.ts` and `island-auto-name.test.ts`.
+
+---
+
+### Backend parity masking the same invalid emit in both compilers
+
+Parse emitted source independently and keep fallback assertions alive without the optional binary. Prop inlining and signal auto-calls use the same original AST offsets, so compose their edits before emission; static hoist declarations terminate explicitly before a following JSX statement. Controls: `packages/core/compiler/src/tests/jsx-composed-edits.test.ts`, the curated syntax corpus and seeded fallback grammar.
+
+---

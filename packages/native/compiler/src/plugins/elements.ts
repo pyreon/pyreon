@@ -21,6 +21,7 @@
 // ============================================================================
 
 import type { ElementLowering, RetagContext } from '../element-lowering'
+import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CompilerPlugin } from '../plugin'
 import { unconsumedSlotWarning } from '../jsx-slot-attrs'
 import type { AttrIR, JsxElementIR } from '../types'
 
@@ -93,4 +94,12 @@ export const elementsLowering: ElementLowering = Object.freeze({
     return { ...stack, attrs: stack.attrs.filter((a: AttrIR) => unconsumedSlotWarning('Stack', a) === undefined) }
   },
   styleBase: true,
+})
+
+/** The elements lowering as a built-in plugin — registered like any third-party one. */
+export const elementsPlugin: CompilerPlugin = Object.freeze({
+  name: elementsLowering.module,
+  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  builtIn: true,
+  elements: Object.freeze([elementsLowering]),
 })

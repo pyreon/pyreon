@@ -42,7 +42,7 @@
  * be rare. Every finding includes file paths + line/column + actionable
  * fix suggestion so the user can verify in seconds.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { assertClassicTs } from './ts'
@@ -95,9 +95,16 @@ export interface IslandAuditResult {
 // Discovery
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function findMonorepoRoot(startDir: string): string | null {
+function findProjectRoot(startDir: string): string | null {
   let dir = resolve(startDir)
   for (let i = 0; i < 30; i++) {
+    // A consumer app inside a workspace owns its own registry. Do not climb
+    // past its manifest and compare its island names with sibling apps.
+    try {
+      if (statSync(join(dir, 'package.json')).isFile()) return dir
+    } catch {
+      // Try the monorepo marker, then the next ancestor.
+    }
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
@@ -110,7 +117,7 @@ function findMonorepoRoot(startDir: string): string | null {
   return null
 }
 
-function walkSourceFiles(dir: string, out: string[], depth = 0): void {
+function walkSourceFiles(dir: string, out: string[], depth = 0, walkRoot = dir): void {
   if (depth > 12) return
   let entries: string[]
   try {
@@ -118,9 +125,13 @@ function walkSourceFiles(dir: string, out: string[], depth = 0): void {
   } catch {
     return
   }
+  const isPackageRoot = dir === walkRoot || existsSync(join(dir, 'package.json'))
   for (const name of entries) {
     if (name.startsWith('.')) continue
-    if (name === 'node_modules' || name === 'lib' || name === 'dist') continue
+    if (name === 'node_modules') continue
+    // These names are build output only at a package root. An author's
+    // src/lib (or src/build) directory is still application source.
+    if (isPackageRoot && (name === 'lib' || name === 'dist' || name === 'build')) continue
     if (name === '__tests__' || name === 'tests') continue
     const full = join(dir, name)
     let isDir = false
@@ -130,7 +141,7 @@ function walkSourceFiles(dir: string, out: string[], depth = 0): void {
       continue
     }
     if (isDir) {
-      walkSourceFiles(full, out, depth + 1)
+      walkSourceFiles(full, out, depth + 1, walkRoot)
       continue
     }
     if (/\.(tsx?|jsx?)$/.test(name) && !/\.(test|spec)\.(tsx?|jsx?)$/.test(name)) {
@@ -253,11 +264,7 @@ function extractIslandDecls(sf: ts.SourceFile, absPath: string, root: string): I
  * shorthand (`{ Counter }`) and property-assignment (`{ Counter: () =>
  * import('./Counter') }`) forms.
  */
-function extractRegistryEntries(
-  sf: ts.SourceFile,
-  absPath: string,
-  root: string,
-): RegistryEntry[] {
+function extractRegistryEntries(sf: ts.SourceFile, absPath: string, root: string): RegistryEntry[] {
   const entries: RegistryEntry[] = []
   const relPath = relative(root, absPath)
 
@@ -316,10 +323,7 @@ function extractImports(sf: ts.SourceFile, absPath: string): Set<string> {
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       record(node.moduleSpecifier.text)
-    } else if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword
-    ) {
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const arg0 = node.arguments[0]
       const v = arg0 ? stringLiteralValue(arg0) : undefined
       if (v) record(v)
@@ -420,9 +424,7 @@ function detectDuplicateName(
     for (let i = 0; i < list.length; i++) {
       const self = list[i]
       if (!self) continue
-      const others = list
-        .filter((_, j) => j !== i)
-        .map((d) => d.loc)
+      const others = list.filter((_, j) => j !== i).map((d) => d.loc)
       findings.push({
         code: 'duplicate-name',
         message: `Two or more \`island()\` declarations share the name "${name}". The client-side hydration registry is keyed by name; only the FIRST loader fires — every other declaration fails silently with no error flag, and the user sees broken interactivity on the second component without any signal pointing at the cause. Rename one to make the names unique.`,
@@ -520,7 +522,7 @@ function detectDeadIslands(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function auditIslands(rootDir: string): IslandAuditResult {
-  const root = findMonorepoRoot(rootDir)
+  const root = findProjectRoot(rootDir)
   const findings: IslandFinding[] = []
   const summary = {
     filesScanned: 0,
@@ -538,8 +540,20 @@ export function auditIslands(rootDir: string): IslandAuditResult {
   if (!root) return { root: null, findings, summary }
 
   const files: string[] = []
-  walkSourceFiles(join(root, 'packages'), files)
-  walkSourceFiles(join(root, 'examples'), files)
+  let hasWorkspacePackages = false
+  try {
+    hasWorkspacePackages = statSync(join(root, 'packages')).isDirectory()
+  } catch {
+    // Flat application roots do not need a packages/ directory.
+  }
+  if (hasWorkspacePackages) {
+    // Preserve explicit workspace audits and the legacy packages/ marker.
+    walkSourceFiles(join(root, 'packages'), files, 0, root)
+    walkSourceFiles(join(root, 'examples'), files, 0, root)
+    walkSourceFiles(join(root, 'src'), files, 0, root)
+  } else {
+    walkSourceFiles(root, files)
+  }
   summary.filesScanned = files.length
 
   const declsByFile = new Map<string, IslandDecl[]>()
@@ -622,8 +636,8 @@ export function formatIslandAudit(
 
   if (!result.root) {
     return (
-      'No monorepo root found. The islands audit walks `packages/` and `examples/` ' +
-      'starting from the cwd. Run `pyreon doctor --check-islands` from the Pyreon repo root.'
+      'No project root found. Run `pyreon doctor --check-islands` from a directory ' +
+      'with a package.json, or pass an explicit workspace root containing packages/.'
     )
   }
 

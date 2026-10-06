@@ -15,7 +15,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { assertPluginShape, type CompilerPlugin } from '@pyreon/native-compiler'
+import { assertPluginShape, BUILT_IN_PLUGINS, type CompilerPlugin } from '@pyreon/native-compiler'
 import { findPackageDir, readManifest } from './native-sources'
 
 /** A dependency that declared `pyreon.native.plugin`. */
@@ -152,12 +152,28 @@ export async function loadPluginPackage(pkg: PluginPackage): Promise<DiscoveredP
  * declared plugin loads (what `plugins` listing wants); with it, a plugin loads
  * only when the source imports one of its `modules`.
  */
-export async function discoverPlugins(appDir: string, source?: string): Promise<DiscoveredPlugin[]> {
+export async function discoverPlugins(
+  appDir: string,
+  source?: string,
+  warn: ((message: string) => void) | undefined = (message) => console.warn(message),
+): Promise<DiscoveredPlugin[]> {
   const specifiers = source === undefined ? undefined : collectSourceImports(source)
   const out: DiscoveredPlugin[] = []
   for (const pkg of listPluginPackages(appDir)) {
     if (specifiers !== undefined && !isActivated(pkg.modules, specifiers)) continue
-    out.push(await loadPluginPackage(pkg))
+    try {
+      out.push(await loadPluginPackage(pkg))
+    } catch (error) {
+      // A package whose plugin the compiler already carries a built-in copy of (the generated
+      // `@pyreon/hooks` table) degrades to that copy: a missing or stale `lib/` must not break a
+      // native build that the compiler could have lowered anyway. A third-party plugin has no
+      // fallback, so its failure stays a hard error naming the package and file.
+      if (!BUILT_IN_PLUGINS.some((builtIn) => builtIn.name === pkg.package)) throw error
+      warn?.(
+        `[pyreon-native] warning: ${error instanceof Error ? error.message : String(error)} ` +
+          `Using the compiler's built-in copy of "${pkg.package}" instead (rebuild the package to pick up a newer plugin).`,
+      )
+    }
   }
   return out
 }

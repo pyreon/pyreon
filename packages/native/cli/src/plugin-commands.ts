@@ -81,11 +81,35 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   for (const [hook, { owner }] of [...compiler.services].sort(([a], [b]) => a.localeCompare(b))) {
     lines.push(`  ${hook}  ${owner}`)
   }
+  const elements = compiler.registries.elements.entries
+  lines.push(`element lowerings (${elements.length}):`)
+  for (const { lowering, owner } of elements) {
+    lines.push(`  ${lowering.module}  ${lowering.tags.join(', ')}  ${owner}`)
+  }
+  const calls = [...compiler.registries.calls.calls].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`call recognizers (${calls.length}):`)
+  for (const [hook, { owner }] of calls) {
+    const types = [...(compiler.registries.calls.emitters.get(owner)?.keys() ?? [])]
+    lines.push(`  ${hook}  ${owner}  decls: ${types.length > 0 ? types.join(', ') : '-'}`)
+  }
+  const memberCalls = [...compiler.registries.calls.memberCalls].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`member-call lowerings (${memberCalls.length}):`)
+  for (const [method, owners] of memberCalls) {
+    lines.push(`  .${method}()  ${[...owners.keys()].join(', ')}`)
+  }
+  const unlowered = [...compiler.registries.unlowered].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`unlowered-module metadata (${unlowered.length}):`)
+  for (const [module, { owner }] of unlowered) {
+    lines.push(`  ${module}  ${owner}`)
+  }
   lines.push(`discovered plugins (${discovered.length}):`)
   for (const found of discovered) {
     const services = Object.keys(found.plugin.services ?? {})
+    const callNames = Object.keys(found.plugin.calls ?? {})
+    const memberNames = Object.keys(found.plugin.memberCalls ?? {})
+    const unloweredNames = Object.keys(found.plugin.unlowered ?? {})
     lines.push(
-      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}`,
+      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}${memberNames.length > 0 ? `  memberCalls: ${memberNames.join(', ')}` : ''}${unloweredNames.length > 0 ? `  unlowered: ${unloweredNames.join(', ')}` : ''}`,
     )
   }
   const undeclared = listPluginPackages(appDir).length - discovered.length
@@ -104,25 +128,95 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
 
 const HOOK_CALL = /\b(use[A-Z][A-Za-z0-9]*)\s*\(/g
 
+const isSpace = (ch: string | undefined): boolean =>
+  ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r'
+
+/**
+ * Tags the source imports (`import { Row } from '@pyreon/coolgrid'`) as
+ * `module → tags`.
+ *
+ * Scanned by hand rather than with one regex: `import\s*\{([^}]*)\}` rescans to
+ * the end of the file from every `import {` that has no closing brace, and
+ * `\s+as\s+` backtracks on whitespace runs — both quadratic on hostile input
+ * (CodeQL js/polynomial-redos). Here the closing-brace search is remembered
+ * (a position past the last known `}` is the only reason to search again), so
+ * every character is read a bounded number of times.
+ */
+function importedTags(source: string): Map<string, Set<string>> {
+  const imported = new Map<string, Set<string>>()
+  const skipSpace = (from: number): number => {
+    let i = from
+    while (i < source.length && isSpace(source[i])) i++
+    return i
+  }
+  let nextClose = -2
+  let at = source.indexOf('import')
+  while (at !== -1) {
+    let resume = at + 'import'.length
+    let i = skipSpace(resume)
+    if (source.startsWith('type', i) && isSpace(source[i + 4])) i = skipSpace(i + 4)
+    if (source[i] === '{') {
+      if (nextClose !== -1 && nextClose < i) nextClose = source.indexOf('}', i)
+      if (nextClose === -1) break
+      let j = skipSpace(nextClose + 1)
+      if (source.startsWith('from', j)) {
+        j = skipSpace(j + 4)
+        const quote = source[j]
+        if (quote === '"' || quote === "'") {
+          const end = source.indexOf(quote, j + 1)
+          const specifier = end === -1 ? '' : source.slice(j + 1, end)
+          if (specifier !== '' && !specifier.includes('\n')) {
+            const tags = imported.get(specifier) ?? new Set<string>()
+            for (const part of source.slice(i + 1, nextClose).split(',')) {
+              // `Row as R` -> Row; an inline `type Row` modifier is skipped.
+              const words = part.trim().split(/\s+/)
+              const name = words[0] === 'type' && words.length > 1 && words[1] !== 'as' ? words[1] : words[0]
+              if (name) tags.add(name)
+            }
+            imported.set(specifier, tags)
+            // Like a global regex match: carry on AFTER this statement, so the
+            // text inside it is never scanned a second time.
+            resume = end + 1
+          }
+        }
+      }
+    }
+    at = source.indexOf('import', resume)
+  }
+  return imported
+}
+
 /**
  * `explain <file>`: for each plain service the parser lowered, the hook, its
  * owning plugin, and the declaration both targets emit — plus whether that
- * declaration really appears in the emit.
+ * declaration really appears in the emit. Every element a registered lowering
+ * claims in the file is attributed to its owning plugin too. The file is parsed
+ * against the compiler's OWN registries, so a plugin's service or element is
+ * explained exactly as it is lowered.
  */
 export function explainReport(
   source: string,
   filename: string,
-  compiler: Pick<NativeCompiler, 'transform' | 'services'>,
+  compiler: Pick<NativeCompiler, 'transform' | 'services' | 'registries'>,
   root: string = process.cwd(),
 ): CommandReport {
   const lines: string[] = [relative(root, filename) || filename]
   let swiftEmit: string
   let kotlinEmit: string
   const decls: { name: string; hook: string }[] = []
+  const pluginDecls: { name: string; plugin: string; type: string; payload: string }[] = []
   try {
-    for (const component of parsePyreon(source, filename).components) {
+    for (const component of parsePyreon(source, filename, { registries: compiler.registries }).components) {
       for (const decl of component.decls) {
         if (decl.kind === 'service') decls.push({ name: decl.name, hook: decl.hook })
+        if (decl.kind === 'ext') {
+          pluginDecls.push({
+            name: decl.name,
+            plugin: decl.plugin,
+            type: decl.type,
+            payload: JSON.stringify(decl.payload),
+          })
+        }
       }
     }
     swiftEmit = compiler.transform(source, { target: 'swift', filename }).code
@@ -152,12 +246,37 @@ export function explainReport(
       lines.push(`${prefix}${line}${i === kotlinLines.length - 1 ? `  (${status})` : ''}`)
     })
   }
+  // A call a plugin recognized: its owner, the declaration type, and whether that
+  // plugin's emitter exists in THIS compiler (a declaration whose plugin is not loaded cannot emit).
+  for (const { name, plugin, type, payload } of pluginDecls) {
+    const emitter = compiler.registries.calls.emitter(plugin, type)
+    lines.push(
+      `  ${name} = ${type}  [call recognizer, owner: ${plugin}]  payload: ${payload}${emitter === undefined ? '  (NO emitter registered — not emitted)' : ''}`,
+    )
+  }
+  // A call EXPRESSION the declaration's owner lowers (`chart.dispatch(…)`), reported once per receiver + method that appears.
+  for (const { name, plugin } of pluginDecls) {
+    for (const [method, owners] of compiler.registries.calls.memberCalls) {
+      if (!owners.has(plugin)) continue
+      if (!new RegExp(`\\b${name}\\s*\\.\\s*${method}\\s*\\(`).test(source)) continue
+      lines.push(`  ${name}.${method}(…)  [member call, owner: ${plugin}]`)
+    }
+  }
+  const imports = importedTags(source)
+  for (const { lowering, owner } of compiler.registries.elements.entries) {
+    const used = lowering.tags.filter(
+      (tag) => imports.get(lowering.module)?.has(tag) === true && new RegExp(`<${tag}[\\s/>]`).test(source),
+    )
+    if (used.length > 0) {
+      lines.push(`  <${used.join('>, <')}> from ${lowering.module}  [element lowering, owner: ${owner}]`)
+    }
+  }
   const called = new Set([...source.matchAll(HOOK_CALL)].map((m) => m[1]!))
   for (const hook of [...called].sort()) {
     if (compiler.services.has(hook) && !lowered.has(hook)) {
       lines.push(`  ${hook}() is registered but was not lowered as a service declaration in this file`)
     }
   }
-  if (decls.length === 0 && lines.length === 1) lines.push('  no service hooks found')
+  if (lines.length === 1) lines.push('  no service hooks, call recognizers or element lowerings found')
   return { lines, exitCode: 0 }
 }

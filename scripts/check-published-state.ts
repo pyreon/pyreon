@@ -29,11 +29,13 @@
  *     catches a native-binary cascade failure, by which time native has caught
  *     up on npm)
  *
- *   bun scripts/check-published-state.ts [--json] [--native]
+ *   bun scripts/check-published-state.ts [--json] [--native] [--wait-for-publish]
  */
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { parsePublishResult } from './heal-release-chain'
+import { REGISTRY_LOOKUP_CONCURRENCY, waitForRegistryVisibility } from './wait-for-registry'
 
 export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] as const
 
@@ -222,14 +224,30 @@ export function classifyExistence(results: ReadonlyArray<{ pkg: string; npm: str
  */
 export const NPM_NAME_RE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
 
-async function npmLatest(pkg: string): Promise<string | null> {
+/** Only this checkout's successfully submitted packages receive a visibility grace. */
+export function publicationVisibilityTargets(
+  receipt: string | null,
+  version: string,
+  publishable: ReadonlyArray<{ pkg: string; repo: string }>,
+): string[] {
+  const result = parsePublishResult(receipt)
+  if (!result || result.version !== version) return []
+  const eligible = new Set(publishable.filter((p) => p.repo === version).map((p) => p.pkg))
+  const failed = new Set(result.incomplete)
+  return [...new Set(result.published)].filter((pkg) => eligible.has(pkg) && !failed.has(pkg))
+}
+
+async function npmLatest(pkg: string, signal?: AbortSignal): Promise<string | null> {
   if (!NPM_NAME_RE.test(pkg)) {
     throw new Error(
       `invalid npm package name read from a workspace package.json: ${JSON.stringify(pkg)}`,
     )
   }
   const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`, {
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+      : AbortSignal.timeout(10_000),
   })
   if (res.status === 404) return null // never published (first-publish pending)
   if (!res.ok) throw new Error(`registry HTTP ${res.status} for ${pkg}`)
@@ -253,6 +271,36 @@ if (import.meta.main) {
   const sentinels = resolveSentinels(includeNative)
 
   try {
+    if (process.argv.includes('--wait-for-publish')) {
+      const receiptPath = join(repoRoot, 'publish-result.json')
+      const version = repoVersion('@pyreon/core')
+      const targets = publicationVisibilityTargets(
+        existsSync(receiptPath) ? readFileSync(receiptPath, 'utf8') : null,
+        version,
+        enumeratePublishableVersions(),
+      )
+      // npm accepted native-cli@0.52.0 at 16:45:37, but its visibility
+      // timestamp was 16:48:13. Verification at 16:45:48 falsely failed.
+      // Wait only for accepted submissions, then perform the FULL gate below:
+      // missing, failed and permanently lagging packages remain failures.
+      const settled = await waitForRegistryVisibility(
+        targets,
+        async (pkg, signal) => {
+          const latest = await npmLatest(pkg, signal)
+          return latest !== null && cmpSemver(version, latest) <= 0
+        },
+        {
+          onPending: (pending) => console.warn(
+            `[check-published-state] npm is processing accepted publication(s); waiting up to 5m: ${pending.join(', ')}`,
+          ),
+        },
+      )
+      if (settled.timedOut) {
+        console.warn(
+          `[check-published-state] npm visibility deadline expired for ${settled.pending.join(', ')}; running the full verification gate.`,
+        )
+      }
+    }
     const results = await Promise.all(
       sentinels.map(async (pkg) => {
         const repo = repoVersion(pkg)
@@ -273,8 +321,8 @@ if (import.meta.main) {
     // Bounded concurrency + one retry: 65 simultaneous fetches to the npm
     // registry get ECONNRESET-throttled (observed live) — walk in pools of 8.
     const sweep: Array<{ pkg: string; npm: string | null }> = []
-    for (let i = 0; i < all.length; i += 8) {
-      const batch = all.slice(i, i + 8)
+    for (let i = 0; i < all.length; i += REGISTRY_LOOKUP_CONCURRENCY) {
+      const batch = all.slice(i, i + REGISTRY_LOOKUP_CONCURRENCY)
       sweep.push(
         ...(await Promise.all(
           batch.map(async (pkg) => {

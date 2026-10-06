@@ -19,21 +19,22 @@ describe('explainReport — where the registry and the emit disagree', () => {
   const emit = (code: string) => ({ code }) as ReturnType<typeof real.transform>
 
   it('says so when a lowered hook has no registered service', () => {
-    const compiler = { services: new Map(), transform: () => emit('') }
+    const compiler = { services: new Map(),
+      registries: real.registries, transform: () => emit('') }
     const { lines, exitCode } = explainReport(SHARE_SOURCE, '/x/A.tsx', compiler, '/x')
     expect(exitCode).toBe(0)
     expect(lines.join('\n')).toContain('no service registered')
   })
 
   it('flags a declaration the emit does not contain', () => {
-    const compiler = { services: new Map([['useShare', shareEntry]]), transform: () => emit('// nothing') }
+    const compiler = { services: new Map([['useShare', shareEntry]]), registries: real.registries, transform: () => emit('// nothing') }
     const { lines } = explainReport(SHARE_SOURCE, '/x/A.tsx', compiler, '/x')
     expect(lines.join('\n')).toContain('NOT in emit')
   })
 
   it('reports a registered hook the file calls but the parser did not lower', () => {
     const source = `export function Example() {\n  return <Text>{String(useShare())}</Text>\n}`
-    const compiler = { services: new Map([['useShare', shareEntry]]), transform: () => emit('') }
+    const compiler = { services: new Map([['useShare', shareEntry]]), registries: real.registries, transform: () => emit('') }
     const { lines, exitCode } = explainReport(source, '/x/A.tsx', compiler, '/x')
     expect(exitCode).toBe(0)
     expect(lines.join('\n')).toMatch(/useShare\(\) is registered but was not lowered/)
@@ -47,12 +48,13 @@ describe('explainReport — where the registry and the emit disagree', () => {
       '/x',
     )
     expect(exitCode).toBe(0)
-    expect(lines.at(-1)).toContain('no service hooks found')
+    expect(lines.at(-1)).toMatch(/no service hooks/)
   })
 
   it('exits 2 with the message when the compiler throws', () => {
     const compiler = {
       services: new Map(),
+      registries: real.registries,
       transform: () => {
         throw new Error('boom from the compiler')
       },
@@ -65,6 +67,7 @@ describe('explainReport — where the registry and the emit disagree', () => {
   it('exits 2 and stringifies a non-Error throw', () => {
     const compiler = {
       services: new Map(),
+      registries: real.registries,
       transform: () => {
         throw 'plain string'
       },
@@ -138,5 +141,24 @@ describe('pluginsReport — discovery edge cases', () => {
     addPackage('@acme/swap', `export default { name: ${JSON.stringify(builtIn!.name)}, apiVersion: 1 }`)
     const { lines } = await pluginsReport(app, false)
     expect(lines.join('\n')).toContain('(replaced by a discovered plugin)')
+  })
+
+  it('lists the elements and unlowered modules a plugin contributes on its row', async () => {
+    addPackage(
+      '@acme/rich',
+      `export default {
+        name: 'rich',
+        apiVersion: 1,
+        services: { useRich: { swift: 'Rich()', kotlin: ['val {id} = Rich()'] } },
+        elements: [{ module: '@acme/ui', tags: ['Banner', 'Badge'], emit: { swift: () => 'B()', kotlin: () => 'B()' } }],
+        unlowered: { '@acme/web': { advice: 'web only' } },
+      }`,
+    )
+    const { lines, exitCode } = await pluginsReport(app, false)
+    expect(exitCode).toBe(0)
+    const row = lines.find((l) => l.includes('@acme/rich'))!
+    expect(row).toContain('elements: Banner, Badge')
+    expect(row).toContain('unlowered: @acme/web')
+    expect(row).toContain('services: useRich')
   })
 })

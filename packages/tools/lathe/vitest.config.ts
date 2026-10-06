@@ -34,6 +34,13 @@ export default defineNodeConfig({
   // to absorb a regression (BELOW_FLOOR_EXEMPTIONS mirrors these and the
   // drift check requires they match exactly).
   coverageThresholds: { statements: 96, branches: 92, functions: 95, lines: 96 },
+  // A dozen suites here run the REAL TypeScript compiler over generated
+  // clients (`typecheckSpec`, `createProgram`). Under v8 coverage instrumentation
+  // on a shared runner one of them crossed the 20s default (`infinite-queries`,
+  // 'typecheck — typed pages and page params'), and a timeout reads as a
+  // failing package rather than a slow one. The budget belongs to the package,
+  // not to whichever test happened to be slowest that run.
+  overrides: { test: { testTimeout: 60_000 } },
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',

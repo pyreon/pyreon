@@ -18,45 +18,38 @@ export function attributeBuildFailures(output: string): Set<string> {
   return failed
 }
 
-import { spawn } from 'node:child_process'
+import { captureProcess } from './bounded-process'
 
 /**
- * Spawn the batch, STREAMING its output while CAPTURING it, and resolve on the
- * batch's own EXIT. `exit`, NOT `close`: `close` waits for every stdio pipe to
- * reach EOF, and the per-package builds bun spawns INHERIT the pipe — killing
- * the batch on the timeout left those orphans holding it open, so `close`
- * never fired and the postinstall hung forever (measured). Whatever tail an
- * orphan still writes after the batch exits is simply not attributed, which
- * is the fail-closed direction (an unattributed failure withholds every hash).
+ * Stream and capture build output. Bound pipe drainage after parent exit and
+ * stop owned descendants before settling, so the bootstrap runtime can exit.
+ * An incomplete drain fails closed instead of accepting partial attribution.
  */
-export function spawnBatchAttributed(
+export async function spawnBatchAttributed(
   cmd: string,
   args: string[],
-  opts: { cwd: string; timeoutMs: number; stdout?: (d: Buffer) => void; stderr?: (d: Buffer) => void },
+  opts: {
+    cwd: string
+    timeoutMs: number
+    stdout?: (d: Buffer) => void
+    stderr?: (d: Buffer) => void
+  },
 ): Promise<{ ok: boolean; output: string; timedOut: boolean }> {
-  return new Promise((resolvePromise) => {
-    const child = spawn(cmd, args, { cwd: opts.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
-    let output = ''
-    let timedOut = false
-    child.stdout.on('data', (d: Buffer) => {
-      output += d.toString()
-      opts.stdout?.(d)
-    })
-    child.stderr.on('data', (d: Buffer) => {
-      output += d.toString()
-      opts.stderr?.(d)
-    })
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill('SIGKILL')
-    }, opts.timeoutMs)
-    child.on('error', () => {
-      clearTimeout(timer)
-      resolvePromise({ ok: false, output, timedOut })
-    })
-    child.on('exit', (code) => {
-      clearTimeout(timer)
-      resolvePromise({ ok: code === 0, output, timedOut })
-    })
+  const result = await captureProcess(cmd, args, {
+    cwd: opts.cwd,
+    env: process.env,
+    timeoutMs: opts.timeoutMs,
+    stdout: opts.stdout,
+    stderr: opts.stderr,
+    exitDrainMs: 250,
   })
+  const problem =
+    result.error || (result.timedOut ? `build timed out after ${opts.timeoutMs}ms` : '')
+  const diagnostic = problem ? `[bootstrap] ${problem}\n` : ''
+  if (diagnostic) opts.stderr?.(Buffer.from(diagnostic))
+  return {
+    ok: result.code === 0 && !result.signal && !result.error && !result.timedOut,
+    output: result.output + diagnostic,
+    timedOut: result.timedOut,
+  }
 }

@@ -91,6 +91,8 @@
     "check-gates-wired": "bun scripts/check-gates-wired.ts",
     "check-native-golden": "bun scripts/check-native-golden.ts",
     "check-compiler-boundary": "bun scripts/check-compiler-boundary.ts",
+    "gen-native-builtin-plugins": "bun scripts/gen-native-builtin-plugins.ts",
+    "check-native-plugin-types": "bun scripts/check-native-plugin-types.ts",
     "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "check-component-docs": "bun scripts/check-component-docs.ts",
     "atlas-guide": "bun scripts/check-atlas-guide.ts",
@@ -132,7 +134,7 @@
     "test:e2e:atlas-dev": "bunx playwright test --config=e2e-configs/atlas-dev.config.ts",
     "test:e2e:atlas-build": "bunx playwright test --config=e2e-configs/atlas-build.config.ts",
     "test:e2e:atlas-ui-components": "bunx playwright test --config=e2e-configs/atlas-ui-components.config.ts",
-    "test:e2e:atlas-verify": "bunx playwright test --config=e2e-configs/atlas-verify-browser.config.ts && PYREON_REQUIRE_CHROMIUM=1 bunx vitest run --root packages/tools/atlas src/verify-browser/tests/side-effects.test.ts",
+    "test:e2e:atlas-verify": "bunx playwright test --config=e2e-configs/atlas-verify-browser.config.ts && PYREON_REQUIRE_CHROMIUM=1 bunx vitest run --root packages/tools/atlas src/verify-browser/tests/side-effects.test.ts src/verify-browser/tests/settle.test.ts",
     "test:e2e:loom": "bunx playwright test --config=e2e-configs/loom-dev.config.ts",
     "check-native-primitive-coverage": "bun scripts/check-native-primitive-coverage.ts"
   },
