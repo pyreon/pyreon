@@ -19,7 +19,7 @@
  *
  * Usage: bun scripts/check-native-plugin-types.ts
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -32,10 +32,17 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function readSources(dir: string, extension: '.swift' | '.kt'): string[] {
   const texts: string[] = []
-  const walk = (path: string): void => {
-    if (statSync(path).isDirectory()) {
-      for (const entry of readdirSync(path).sort()) walk(join(path, entry))
-    } else if (path.endsWith(extension)) texts.push(readFileSync(path, 'utf8'))
+  // Directory entries carry their own type: no stat-then-read pair on a path
+  // (CodeQL js/file-system-race).
+  const walk = (current: string): void => {
+    const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    )
+    for (const entry of entries) {
+      const path = join(current, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (path.endsWith(extension)) texts.push(readFileSync(path, 'utf8'))
+    }
   }
   walk(dir)
   return texts
