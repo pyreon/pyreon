@@ -274,6 +274,30 @@ describe("a package-owned '@pyreon/hooks' plugin replaces the built-in of the sa
   })
 })
 
+describe('a built-in plugin package that fails to load degrades to the built-in copy', () => {
+  it.each([
+    ['a missing file', undefined, /does not exist/],
+    ['a module that throws', 'throw new Error("boom")', /failed to load: boom/],
+  ])('%s warns and keeps the built-in, instead of breaking the build', async (_label, body, message) => {
+    addPackage('@pyreon/hooks', declares({ modules: ['@pyreon/hooks'] }), body)
+    setApp(['@pyreon/hooks'], "import { useShare } from '@pyreon/hooks'\nexport function A() { return null }")
+    const warnings: string[] = []
+    const found = await discoverPlugins(app, join(app, 'src'), (m) => warnings.push(m))
+    expect(found).toEqual([])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(message)
+    expect(warnings[0]).toContain('built-in copy of "@pyreon/hooks"')
+    // The built-in still lowers the hook, so the build does not need the plugin file at all.
+    expect(createCompiler({ discovered: found.map((f) => f.plugin) }).services.has('useShare')).toBe(true)
+  })
+
+  it('a THIRD-PARTY plugin with no built-in copy still fails hard (there is nothing to fall back to)', async () => {
+    addPackage('@acme/kit', declares(), undefined)
+    setApp(['@acme/kit'], "import '@acme/kit'")
+    await expect(discoverPlugins(app, join(app, 'src'), () => {})).rejects.toThrow(/does not exist/)
+  })
+})
+
 describe('explain with a plugin-supplied service and element', () => {
   const plugin = {
     name: '@acme/kit',
