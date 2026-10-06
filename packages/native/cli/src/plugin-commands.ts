@@ -81,11 +81,16 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   for (const [hook, { owner }] of [...compiler.services].sort(([a], [b]) => a.localeCompare(b))) {
     lines.push(`  ${hook}  ${owner}`)
   }
+  const elements = compiler.registries.elements.entries
+  lines.push(`element lowerings (${elements.length}):`)
+  for (const { lowering, owner } of elements) {
+    lines.push(`  ${lowering.module}  ${lowering.tags.join(', ')}  ${owner}`)
+  }
   lines.push(`discovered plugins (${discovered.length}):`)
   for (const found of discovered) {
     const services = Object.keys(found.plugin.services ?? {})
     lines.push(
-      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}`,
+      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}`,
     )
   }
   const undeclared = listPluginPackages(appDir).length - discovered.length
@@ -104,15 +109,32 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
 
 const HOOK_CALL = /\b(use[A-Z][A-Za-z0-9]*)\s*\(/g
 
+/** Tags the source imports (`import { Row } from '@pyreon/coolgrid'`) as `module → tags`. */
+function importedTags(source: string): Map<string, Set<string>> {
+  const imported = new Map<string, Set<string>>()
+  for (const match of source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    const tags = imported.get(match[2]!) ?? new Set<string>()
+    for (const part of match[1]!.split(',')) {
+      const name = part.trim().split(/\s+as\s+/)[0]!.trim()
+      if (name) tags.add(name)
+    }
+    imported.set(match[2]!, tags)
+  }
+  return imported
+}
+
 /**
  * `explain <file>`: for each plain service the parser lowered, the hook, its
  * owning plugin, and the declaration both targets emit — plus whether that
- * declaration really appears in the emit.
+ * declaration really appears in the emit. Every element a registered lowering
+ * claims in the file is attributed to its owning plugin too. The file is parsed
+ * against the compiler's OWN registries, so a plugin's service or element is
+ * explained exactly as it is lowered.
  */
 export function explainReport(
   source: string,
   filename: string,
-  compiler: Pick<NativeCompiler, 'transform' | 'services'>,
+  compiler: Pick<NativeCompiler, 'transform' | 'services' | 'registries'>,
   root: string = process.cwd(),
 ): CommandReport {
   const lines: string[] = [relative(root, filename) || filename]
@@ -120,7 +142,7 @@ export function explainReport(
   let kotlinEmit: string
   const decls: { name: string; hook: string }[] = []
   try {
-    for (const component of parsePyreon(source, filename).components) {
+    for (const component of parsePyreon(source, filename, { registries: compiler.registries }).components) {
       for (const decl of component.decls) {
         if (decl.kind === 'service') decls.push({ name: decl.name, hook: decl.hook })
       }
@@ -152,12 +174,21 @@ export function explainReport(
       lines.push(`${prefix}${line}${i === kotlinLines.length - 1 ? `  (${status})` : ''}`)
     })
   }
+  const imports = importedTags(source)
+  for (const { lowering, owner } of compiler.registries.elements.entries) {
+    const used = lowering.tags.filter(
+      (tag) => imports.get(lowering.module)?.has(tag) === true && new RegExp(`<${tag}[\\s/>]`).test(source),
+    )
+    if (used.length > 0) {
+      lines.push(`  <${used.join('>, <')}> from ${lowering.module}  [element lowering, owner: ${owner}]`)
+    }
+  }
   const called = new Set([...source.matchAll(HOOK_CALL)].map((m) => m[1]!))
   for (const hook of [...called].sort()) {
     if (compiler.services.has(hook) && !lowered.has(hook)) {
       lines.push(`  ${hook}() is registered but was not lowered as a service declaration in this file`)
     }
   }
-  if (decls.length === 0 && lines.length === 1) lines.push('  no service hooks found')
+  if (lines.length === 1) lines.push('  no service hooks or element lowerings found')
   return { lines, exitCode: 0 }
 }

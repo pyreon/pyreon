@@ -5,9 +5,11 @@
  * A lowering claims `tags` imported from `module` and either RETAGS the
  * element to another (usually canonical) element that the emitter then lowers
  * as usual, or EMITS target code itself through the `EmitContext` facade.
- * Both built-in lowerings (`plugins/coolgrid.ts`, `plugins/elements.ts`) and any
- * third-party one register through `registerElementLowering` — there is no
- * private back door.
+ * Lowerings are declared on a plugin (`CompilerPlugin.elements`). The built-in
+ * ones (`plugins/coolgrid.ts`, `plugins/elements.ts`) are built-in PLUGINS that
+ * travel the same path as any third-party one — there is no private back door,
+ * and no process-global registry: each `createCompiler` instance owns its
+ * {@link ElementRegistry}.
  *
  * Import guard: a tag is claimed only when the emitter's guard accepts
  * `(tag, module)`. The emitters implement it as `canAliasIntercept` — the tag
@@ -19,8 +21,6 @@
 
 import type { EmitContext } from './emit-context'
 import type { JsxElementIR } from './types'
-import { coolgridLowering } from './plugins/coolgrid'
-import { elementsLowering } from './plugins/elements'
 
 /** What a retag may do besides returning the new element: report a warning against the tag the author wrote. */
 export interface RetagContext {
@@ -53,46 +53,70 @@ export interface ElementLowering {
 /** The guard the emitters pass: is `tag` eligible to be claimed for `module`? */
 export type ElementClaimGuard = (tag: string, module: string) => boolean
 
-const registry: ElementLowering[] = []
+export interface RegisteredElementLowering {
+  readonly lowering: ElementLowering
+  /** The plugin that declared it. */
+  readonly owner: string
+}
+
+/** One compiler instance's element lowerings, with the lookups the emitters need. */
+export interface ElementRegistry {
+  readonly entries: readonly RegisteredElementLowering[]
+  /** The lowering that claims `tag` when `guard` accepts `(tag, module)`, or `undefined`. */
+  find(tag: string, guard: ElementClaimGuard): ElementLowering | undefined
+  /** True when some lowering claims `name` (the parser then records where it was imported from). */
+  hasTag(name: string): boolean
+  /** True when `name` is a tag a lowering marks usable as a style base. */
+  isStyleBase(name: string): boolean
+}
 
 /**
- * Register an element lowering. Throws when a `(module, tag)` pair is already
- * claimed — two lowerings for one pair would make the winner depend on load
- * order. Returns an unregister function (tests, hot reload).
+ * Build a registry from every plugin's `elements`, in plugin order. Throws when
+ * a `(module, tag)` pair is claimed twice — two lowerings for one pair would
+ * make the winner depend on plugin order, which the app cannot see — and names
+ * both owners.
+ *
+ * @example
+ * createElementRegistry([{ name: '@acme/grid', elements: [{ module: '@acme/grid', tags: ['Row'] }] }])
  */
-export function registerElementLowering(lowering: ElementLowering): () => void {
-  for (const tag of lowering.tags) {
-    if (registry.some((l) => l.module === lowering.module && l.tags.includes(tag))) {
-      throw new Error(
-        `[Pyreon] element lowering for <${tag}> from ${lowering.module} is already registered — ` +
-          `a (module, tag) pair may be claimed once.`,
-      )
+export function createElementRegistry(
+  plugins: readonly { readonly name: string; readonly elements?: readonly ElementLowering[] | undefined }[],
+): ElementRegistry {
+  const entries: RegisteredElementLowering[] = []
+  const claimed = new Map<string, string>()
+  for (const plugin of plugins) {
+    for (const lowering of plugin.elements ?? []) {
+      for (const tag of lowering.tags) {
+        const key = `${lowering.module}\0${tag}`
+        const existing = claimed.get(key)
+        if (existing !== undefined) {
+          throw new Error(
+            `[Pyreon] element lowering for <${tag}> from ${lowering.module} is claimed by both "${existing}" and "${plugin.name}". ` +
+              `A (module, tag) pair has exactly one lowering — remove one of the two plugins from this app.`,
+          )
+        }
+        claimed.set(key, plugin.name)
+      }
+      entries.push({ lowering, owner: plugin.name })
     }
   }
-  registry.push(lowering)
-  return () => {
-    const i = registry.indexOf(lowering)
-    if (i >= 0) registry.splice(i, 1)
+  const tags = new Set<string>()
+  const styleBases = new Set<string>()
+  for (const { lowering } of entries) {
+    for (const tag of lowering.tags) {
+      tags.add(tag)
+      if (lowering.styleBase === true) styleBases.add(tag)
+    }
   }
+  return Object.freeze<ElementRegistry>({
+    entries,
+    find(tag, guard) {
+      for (const { lowering } of entries) {
+        if (lowering.tags.includes(tag) && guard(tag, lowering.module)) return lowering
+      }
+      return undefined
+    },
+    hasTag: (name) => tags.has(name),
+    isStyleBase: (name) => styleBases.has(name),
+  })
 }
-
-/** The lowering that claims `tag`, or `undefined`. Called at the emitters' JSX dispatch. */
-export function findElementLowering(tag: string, guard: ElementClaimGuard): ElementLowering | undefined {
-  for (const l of registry) {
-    if (l.tags.includes(tag) && guard(tag, l.module)) return l
-  }
-  return undefined
-}
-
-/** True when some registered lowering claims `name` (the parser then records where it was imported from). */
-export function isElementLoweringTag(name: string): boolean {
-  return registry.some((l) => l.tags.includes(name))
-}
-
-/** True when `name` is a tag a registered lowering marks usable as a style base. */
-export function isStyleBasePrimitive(name: string): boolean {
-  return registry.some((l) => l.styleBase === true && l.tags.includes(name))
-}
-
-registerElementLowering(elementsLowering)
-registerElementLowering(coolgridLowering)

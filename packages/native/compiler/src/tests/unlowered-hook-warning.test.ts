@@ -103,10 +103,10 @@ describe('a Pyreon hook with no native lowering', () => {
   // nameable; if an entry stops being handled, the warning silently stops
   // firing for it and we are back to uncompilable-and-quiet.
   it('every hook in NATIVE_LOWERED_HOOKS is actually referenced by the parser', () => {
-    const setBlock = /const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/.exec(
+    const setBlock = /const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/.exec(
       PARSE_SRC,
     )
-    expect(setBlock, 'NATIVE_LOWERED_HOOKS not found').toBeTruthy()
+    expect(setBlock, 'NATIVE_LOWERED_STATIC_HOOKS not found').toBeTruthy()
     const listed = [...setBlock![1]!.matchAll(/'(use[A-Za-z]+)'/g)].map((m) => m[1]!)
     expect(listed.length).toBeGreaterThan(20)
 
