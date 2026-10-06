@@ -3643,8 +3643,7 @@ export function transformJSX_JS(
     text: string,
     baseOffset: number,
     sourceNode?: N,
-    /** Out-param: `[sourceEnd, newLen - oldLen]` per substituted identifier. */
-    shifts?: Array<[number, number]>,
+    signalIdents: { start: number; end: number }[] = [],
   ): string {
     const endOffset = baseOffset + text.length
     const idents: {
@@ -3792,20 +3791,27 @@ export function transformJSX_JS(
     }
     findIdents(program, null)
 
-    if (idents.length === 0) return text
+    if (idents.length === 0 && signalIdents.length === 0) return text
 
-    idents.sort((a, b) => a.start - b.start)
+    // Both rewrites use ORIGINAL AST positions. Applying signal edits after
+    // prop expansion loses the expansion and can slice past the expression.
+    const edits = idents.map((id) => {
+      const resolved = resolveVarToString(id.name, sourceNode)
+      return {
+        start: id.start,
+        end: id.end,
+        text: id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`,
+      }
+    })
+    for (const id of signalIdents) {
+      edits.push({ start: id.start, end: id.end, text: `${code.slice(id.start, id.end)}()` })
+    }
+    edits.sort((a, b) => a.start - b.start)
     const parts: string[] = []
     let lastPos = baseOffset
-    for (const id of idents) {
-      parts.push(code.slice(lastPos, id.start))
-      const resolved = resolveVarToString(id.name, sourceNode)
-      // A shorthand-property ident expands to `name: (value)`; a normal
-      // reference just substitutes `(value)` in place.
-      const replacement = id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`
-      parts.push(replacement)
-      shifts?.push([id.end, replacement.length - (id.end - id.start)])
-      lastPos = id.end
+    for (const edit of edits) {
+      parts.push(code.slice(lastPos, edit.start), edit.text)
+      lastPos = edit.end
     }
     parts.push(code.slice(lastPos, endOffset))
     return parts.join('')
@@ -4251,7 +4257,7 @@ export function transformJSX_JS(
   let preamble = ''
 
   if (hoists.length > 0) {
-    preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join('') + preamble
+    preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text};\n`).join('') + preamble
   }
 
   if (needsTplImport) {
@@ -6115,13 +6121,12 @@ export function transformJSX_JS(
 
   function sliceExpr(expr: N): string {
     let result: string
-    // Length shifts the prop-derived resolution applied — the signal auto-call
-    // below addresses the RESOLVED text by source position through these.
-    const shifts: Array<[number, number]> = []
     if (propDerivedVars.size > 0 && accessesProps(expr)) {
       const start = expr.start as number
       const end = expr.end as number
-      result = resolveIdentifiersInText(code.slice(start, end), start, expr, shifts)
+      const signalIdents =
+        signalVars.size > shadowedSignals.size ? collectSignalCallIdents(expr) : []
+      return resolveIdentifiersInText(code.slice(start, end), start, expr, signalIdents)
     } else {
       result = code.slice(expr.start as number, expr.end as number)
     }
@@ -6137,7 +6142,7 @@ export function transformJSX_JS(
     // itself (shadow-aware, JSX-aware) and returns the text unchanged when
     // nothing needs calling, so the gate bought only a redundant walk.
     if (signalVars.size > 0 && signalVars.size > shadowedSignals.size) {
-      result = autoCallSignals(result, expr, shifts)
+      result = autoCallSignals(result, expr)
     }
 
     return result
@@ -6302,15 +6307,7 @@ export function transformJSX_JS(
     return false
   }
 
-  /**
-   * `text` is the expression's text AFTER prop-derived resolution, so it is not
-   * a slice of `code` any more: signal identifiers are located by SOURCE
-   * position (the AST) and addressed in `text` through `shifts`. Re-slicing
-   * `code` here instead dropped every prop-derived inlining in the expression
-   * and, because the resolved text is longer, ran past the expression and
-   * copied the source that followed it.
-   */
-  function autoCallSignals(text: string, expr: N, shifts: Array<[number, number]>): string {
+  function collectSignalCallIdents(expr: N): { start: number; end: number }[] {
     const start = expr.start as number
     const end = expr.end as number
     // Collect signal identifier positions that need auto-calling
@@ -6376,22 +6373,24 @@ export function transformJSX_JS(
       for (const n of introduced) shadowed.delete(n)
     }
     findSignalIdents(expr)
+    return idents
+  }
 
+  function autoCallSignals(text: string, expr: N): string {
+    const start = expr.start as number
+    const idents = collectSignalCallIdents(expr)
     if (idents.length === 0) return text
 
     // Sort by position and insert () after each identifier
     idents.sort((a, b) => a.start - b.start)
     const parts: string[] = []
-    let lastOut = 0
+    let lastPos = start
     for (const id of idents) {
-      let shift = 0
-      for (const [pos, delta] of shifts) if (pos <= id.end) shift += delta
-      const at = id.end - start + shift
-      parts.push(text.slice(lastOut, at))
+      parts.push(code.slice(lastPos, id.end))
       parts.push('()') // auto-call
-      lastOut = at
+      lastPos = id.end
     }
-    parts.push(text.slice(lastOut))
+    parts.push(code.slice(lastPos, start + text.length))
     return parts.join('')
   }
 }

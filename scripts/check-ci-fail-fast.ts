@@ -96,6 +96,21 @@ export function findCiFailFastViolations(workflow: string, aggregateScript: stri
   if (aggregateBody === undefined || !aggregateBody.includes(aggregateNeeds)) {
     violations.push('Test aggregate must not occupy a runner while matrices execute')
   }
+  const jobCondition = (body: string | undefined) =>
+    /^ {4}if:\s*(.+)$/m
+      .exec(body ?? '')?.[1]
+      ?.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      .trim()
+  if (jobCondition(aggregateBody) !== '!cancelled()') {
+    violations.push(
+      'Test aggregate must run after failed prerequisites and respect workflow cancellation',
+    )
+  }
+  if (
+    jobCondition(jobs.get('fast-gates')) !== "!cancelled() && needs.install.result == 'success'"
+  ) {
+    violations.push('Fast Gates must require Install success and respect workflow cancellation')
+  }
 
   const workflowFailFastMarkers = [
     'first failing category: $category',
@@ -195,12 +210,26 @@ export function findNativeCacheSnapshotViolations(workflow: string): string[] {
   return errors
 }
 
+/** Superseded coverage PRs must release their lane; main runs must finish. */
+export function findCoverageConcurrencyViolations(workflow: string): string[] {
+  const concurrency = /^concurrency:\n((?:[ \t]+[^\n]*\n)*)/m.exec(workflow)?.[1] ?? ''
+  const group = /^ {2}group:\s*(.+)$/m.exec(concurrency)?.[1]?.trim()
+  const cancellation = /^ {2}cancel-in-progress:\s*(.+)$/m.exec(concurrency)?.[1]?.trim()
+  return group === 'ci-main-${{ github.ref }}' &&
+    cancellation === "${{ github.event_name == 'pull_request' && true || false }}"
+    ? []
+    : ['full coverage must cancel superseded PR runs and coalesce main runs by ref']
+}
+
 if (import.meta.main) {
   const root = join(import.meta.dirname, '..')
   const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')
   const aggregate = readFileSync(join(root, 'scripts/ci-aggregate.ts'), 'utf8')
   const setup = readFileSync(join(root, '.github/actions/setup-pyreon/action.yml'), 'utf8')
   const violations = [
+    ...findCoverageConcurrencyViolations(
+      readFileSync(join(root, '.github/workflows/ci-main.yml'), 'utf8'),
+    ),
     ...findCiFailFastViolations(workflow, aggregate),
     ...findCiSchedulingViolations(workflow, setup),
     ...['ci.yml', 'ci-main.yml', 'native-validate.yml'].flatMap((file) =>

@@ -960,7 +960,7 @@ impl<'a> Ctx<'a> {
             let preamble: String = self
                 .hoists
                 .iter()
-                .map(|h| format!("const {} = /*@__PURE__*/ {}\n", h.name, h.text))
+                .map(|h| format!("const {} = /*@__PURE__*/ {};\n", h.name, h.text))
                 .collect();
             result = preamble + &result;
         }
@@ -2955,29 +2955,14 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     resolved
 }
 
-/// Resolve prop-derived vars in an expression by walking its AST subtree.
-///
-/// Finds `IdentifierReference` nodes whose name matches a key in
-/// `ctx.prop_derived_vars`, skipping property-name positions and nested
-/// function scopes. Replaces each matching span with the resolved initializer.
-///
-/// Returns the resolved text AND the length shifts it applied, as
-/// `(source_end_of_replaced_ident, new_len - old_len)`. Anything that later
-/// needs to address the resolved text by SOURCE position (the signal auto-call
-/// pass) maps through these — re-slicing the original source instead silently
-/// discarded the inlining and, when the text had grown, appended whatever
-/// source followed the expression.
-fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> (String, Vec<(u32, i64)>) {
+/// Compose prop-derived substitutions and signal calls against original AST spans.
+fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
     let span = expr.span();
-    let source_slice = &ctx.source[span.start as usize..span.end as usize];
 
     // Collect identifier references to prop-derived vars in this expression subtree
     let mut idents: Vec<(u32, u32, String, bool)> = Vec::new(); // (start, end, var_name)
     collect_prop_derived_idents(expr, &ctx.prop_derived_vars, &mut idents);
 
-    if idents.is_empty() {
-        return (source_slice.to_string(), Vec::new());
-    }
 
     // Sort by position, deduplicate overlapping
     idents.sort_by_key(|i| i.0);
@@ -2988,26 +2973,37 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> (String, Vec<(u3
         }
     }
 
-    // Build replacement string using absolute source offsets
-    let mut result = String::new();
-    let mut shifts: Vec<(u32, i64)> = Vec::with_capacity(deduped.len());
-    let mut last = span.start;
-    for (start, end, var_name, is_shorthand) in &deduped {
-        result.push_str(&ctx.source[last as usize..*start as usize]);
-        let resolved = resolve_var_to_string(var_name, ctx);
-        let before = result.len();
-        // A shorthand-property ident expands to `name: (value)`; a normal
-        // reference substitutes `(value)` in place.
-        if *is_shorthand {
-            result.push_str(&format!("{}: ({})", var_name, resolved));
+    // Apply prop expansion and signal auto-calls against the same source span.
+    let mut edits: Vec<(u32, u32, String)> = Vec::new();
+    for (start, end, var_name, is_shorthand) in deduped {
+        let resolved = resolve_var_to_string(&var_name, ctx);
+        let text = if is_shorthand {
+            format!("{}: ({})", var_name, resolved)
         } else {
-            result.push_str(&format!("({})", resolved));
+            format!("({})", resolved)
+        };
+        edits.push((start, end, text));
+    }
+    if !ctx.signal_vars.is_empty() && ctx.signal_vars.len() > ctx.shadowed_signals.len() {
+        let mut signals = Vec::new();
+        collect_signal_idents(expr, ctx, &mut signals, span.start, span.end, &mut Vec::new());
+        for (start, end) in signals {
+            edits.push((start, end, format!("{}()", &ctx.source[start as usize..end as usize])));
         }
-        shifts.push((*end, (result.len() - before) as i64 - (*end - *start) as i64));
-        last = *end;
+    }
+    if edits.is_empty() {
+        return ctx.source[span.start as usize..span.end as usize].to_string();
+    }
+    edits.sort_by_key(|edit| edit.0);
+    let mut result = String::new();
+    let mut last = span.start;
+    for (start, end, text) in edits {
+        result.push_str(&ctx.source[last as usize..start as usize]);
+        result.push_str(&text);
+        last = end;
     }
     result.push_str(&ctx.source[last as usize..span.end as usize]);
-    (result, shifts)
+    result
 }
 
 /// Names a binding pattern introduces (recursive). Mirrors the JS backend's
@@ -3534,12 +3530,12 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     // prop-derived ref inside reads the LIVE prop, matching JS. `accesses_props`
     // keeps `Arrow|Function => false`, so a function appearing as a CHILD stays
     // skipped — JS's `forEachChildFast` child-skip asymmetry, faithfully.
-    let (mut result, shifts) = if !ctx.prop_derived_vars.is_empty()
+    let mut result = if !ctx.prop_derived_vars.is_empty()
         && (accesses_props(expr, ctx) || fn_body_accesses_props(expr, ctx))
     {
-        resolve_expr_with_props(expr, ctx)
+        return resolve_expr_with_props(expr, ctx);
     } else {
-        (ctx.source[span.start as usize..span.end as usize].to_string(), Vec::new())
+        ctx.source[span.start as usize..span.end as usize].to_string()
     };
 
     // Auto-call signal variables: insert () after bare signal identifiers.
@@ -3553,7 +3549,7 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     // collector below walks the exact reachability itself (shadow-aware,
     // JSX-aware) and returns the text unchanged when nothing needs calling.
     if !ctx.signal_vars.is_empty() && ctx.signal_vars.len() > ctx.shadowed_signals.len() {
-        result = auto_call_signals(&result, expr, ctx, &shifts);
+        result = auto_call_signals(&result, expr, ctx);
     }
 
     result
@@ -3617,20 +3613,10 @@ fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
     }
 }
 
-/// Auto-insert () after signal variable references in expression source text.
-///
-/// `text` is the expression's text AFTER prop-derived resolution, so it is not
-/// a slice of the source any more: signal identifiers are located by SOURCE
-/// position (the AST) and addressed in `text` through `shifts`, the length
-/// deltas the resolution applied. Re-slicing `ctx.source` here instead dropped
-/// every prop-derived inlining in the expression and, because the resolved
-/// text is longer, ran past the expression and copied the source that followed
-/// it (a slot mixing a bare signal with a prop-derived const emitted
-/// `s() ? h : 1}</div> } …` — and indexed past the end of the file on the
-/// last expression, which panics).
-fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx, shifts: &[(u32, i64)]) -> String {
+/// Auto-call signals in an unexpanded source slice; prop slices use the joint edit pass.
+fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
     let base = expr.span().start;
-    let end_offset = expr.span().end;
+    let end_offset = base + text.len() as u32;
     let mut idents: Vec<(u32, u32)> = Vec::new();
     let mut shadows: Vec<String> = Vec::new();
     collect_signal_idents(expr, ctx, &mut idents, base, end_offset, &mut shadows);
@@ -3641,15 +3627,13 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx, shifts: &[(u32, i
 
     idents.sort_by_key(|&(start, _)| start);
     let mut result = String::new();
-    let mut last = 0usize;
+    let mut last = base;
     for &(_, end) in &idents {
-        let shift: i64 = shifts.iter().filter(|(pos, _)| *pos <= end).map(|(_, d)| *d).sum();
-        let at = ((end - base) as i64 + shift) as usize;
-        result.push_str(&text[last..at]);
+        result.push_str(&ctx.source[last as usize..end as usize]);
         result.push_str("()");
-        last = at;
+        last = end;
     }
-    result.push_str(&text[last..]);
+    result.push_str(&ctx.source[last as usize..end_offset as usize]);
     result
 }
 
