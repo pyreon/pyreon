@@ -19,7 +19,7 @@
  * An untracked name keeps the claim.
  */
 
-import type { EmitContext } from './emit-context'
+import type { EmitContext, SwiftEmitContext } from './emit-context'
 import type { JsxElementIR } from './types'
 
 /** What a retag may do besides returning the new element: report a warning against the tag the author wrote. */
@@ -40,7 +40,7 @@ export interface ElementLowering {
   retag?(el: JsxElementIR, ctx: RetagContext): JsxElementIR | undefined
   /** Emit target code. A target with no function here falls through to the generic path. */
   readonly emit?: {
-    swift?(el: JsxElementIR, ctx: EmitContext): string
+    swift?(el: JsxElementIR, ctx: SwiftEmitContext): string
     kotlin?(el: JsxElementIR, ctx: EmitContext): string
   }
   /**

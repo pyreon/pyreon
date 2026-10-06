@@ -1,3 +1,4 @@
+import { CHARTS_PLUGIN_NAME, CHART_HANDLE_TYPE, chartHandleSeriesKey } from './charts/names'
 import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from '../chart-engine-structs'
 import type { DeclEmitter, MemberCallLowering, MemberCallSite } from '../call-lowering'
 import type { EmitContext } from '../emit-context'
@@ -6,7 +7,10 @@ import {
   CHART_HOSTS,
   FRAME_CHART_HOSTS,
   chartActionFields,
+  chartHostTags,
 } from '../chart-hosts'
+import type { ElementLowering } from '../element-lowering'
+import { emitSwiftChartElement } from './charts/swift'
 import type { DeclIR, ExprIR, ExtDecl } from '../types'
 import {
   NATIVE_COMPILER_PLUGIN_API_VERSION,
@@ -22,17 +26,7 @@ const ENTRYPOINTS = new Set([
 ])
 const ENGINE_NAMES = new Set(CHART_ENGINE_DECLARED_NAMES)
 
-export const CHARTS_PLUGIN_NAME = '@pyreon/charts'
-export const CHART_HANDLE_TYPE = 'chart-handle'
-
-/**
- * The Swift constructor argument is the bound chart's series count, which only
- * the BODY emit knows. The declaration embeds a deferred token under this key
- * (`ctx.deferred`) and the `<PlotChart handle>` host resolves it
- * (`ctx.resolveDeferred`) once it has counted its marks. `ident` is the handle's
- * emitted identifier, so both sides agree even when the name needed escaping.
- */
-export const chartHandleSeriesKey = (ident: string): string => `${CHARTS_PLUGIN_NAME}/series/${ident}`
+export { CHARTS_PLUGIN_NAME, CHART_HANDLE_TYPE, chartHandleSeriesKey }
 
 /**
  * True for a `const chart = createChartHandle()` declaration. The `<PlotChart
@@ -88,6 +82,18 @@ const chartHandleDecl = Object.freeze<DeclEmitter>({
 })
 
 /**
+ * Every chart host (and the grammar's mark / config tags, so a stray one warns
+ * instead of emitting a phantom component), claimed when imported from
+ * `@pyreon/charts`. Swift lowers here; Kotlin has no `emit.kotlin`, so the
+ * dispatcher falls through to the core's chart branch for it.
+ */
+const chartHostLowering: ElementLowering = Object.freeze({
+  module: CHARTS_PLUGIN_NAME,
+  tags: Object.freeze(chartHostTags()),
+  emit: Object.freeze({ swift: emitSwiftChartElement }),
+})
+
+/**
  * `@pyreon/charts` on native. Runtime-provided chart structs participate in
  * inference, but are not emitted; `createChartHandle()` lowers to a
  * PyreonChartHandle — observable fields the bound `<PlotChart handle>` reads and
@@ -101,6 +107,7 @@ export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
   builtIn: true,
   calls: chartCalls,
+  elements: Object.freeze([chartHostLowering]),
   decls: Object.freeze({ [CHART_HANDLE_TYPE]: chartHandleDecl }),
   memberCalls: Object.freeze({ dispatch: chartHandleDispatch }),
   unlowered: Object.freeze({

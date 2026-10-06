@@ -804,6 +804,26 @@ export function isChartHostTag(tag: string): boolean {
 }
 
 /**
+ * Every tag {@link isChartHostTag} accepts, as a list — what the `@pyreon/charts`
+ * plugin declares as the tags it claims. Derived from the same tables, so a host
+ * added to one cannot be missing from the other; `chart-host-tags.test.ts`
+ * asserts the two agree on every table key.
+ */
+export function chartHostTags(): readonly string[] {
+  return [
+    ...Object.keys(CHART_HOSTS),
+    ...Object.keys(ACCESSOR_CHART_HOSTS),
+    ...Object.keys(FRAME_CHART_HOSTS),
+    ...Object.keys(UNLOWERED_CHART_HOSTS),
+    GRAMMAR_CHART_HOST,
+    ...Object.keys(GRAMMAR_MARK_TAGS),
+    ...Object.keys(GRAMMAR_INDICATOR_TAGS),
+    ...Object.keys(GRAMMAR_FAMILY_TAGS),
+    ...GRAMMAR_CONFIG_TAGS,
+  ].filter((tag, i, all) => all.indexOf(tag) === i)
+}
+
+/**
  * Apply an accessor to an argument. An arrow is INLINED (its parameter
  * substituted) rather than called, so the emitted native code reads
  * `d.age` instead of `((d) => d.age)(d)` — the emitters lower a member
