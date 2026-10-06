@@ -1,18 +1,23 @@
 import type { CompilerPlugin, ServiceSpec } from './plugin'
-import { SERVICES, type ServiceDescriptor } from './services'
+import type { ServiceDescriptor } from './services'
 
-/** Owner recorded for the compiler's own `SERVICES` table. */
+/**
+ * Name of the built-in plugin that carries the compiler's own `SERVICES` table
+ * (see `plugins/services.ts`). Also the owner recorded for those hooks.
+ */
 export const BUILT_IN_SERVICE_OWNER = 'native-compiler'
 
 export interface RegisteredService {
   readonly descriptor: ServiceDescriptor
   /** The plugin (or {@link BUILT_IN_SERVICE_OWNER}) that claimed the hook. */
   readonly owner: string
+  /** Import specifiers the owning plugin serves (`CompilerPlugin.modules`), when it declared any. */
+  readonly modules?: readonly string[] | undefined
 }
 
 export type ServiceRegistry = ReadonlyMap<string, RegisteredService>
 
-type ServicePlugin = Pick<CompilerPlugin, 'name' | 'services'>
+type ServicePlugin = Pick<CompilerPlugin, 'name' | 'services' | 'modules'>
 
 /** A descriptor list as the `services` record a plugin would declare. */
 export function serviceSpecsOf(
@@ -24,22 +29,18 @@ export function serviceSpecsOf(
 }
 
 /**
- * Hook → descriptor + owner, from the built-in table plus every plugin's
- * `services`. Two owners for one hook is an error: silently picking one would
- * make the emitted code depend on plugin order, which the app cannot see.
+ * Hook → descriptor + owner, from every plugin's `services` — the compiler's
+ * own hooks arrive the same way, through the built-in services plugin, so there
+ * is no private table beside this one. Two owners for one hook is an error:
+ * silently picking one would make the emitted code depend on plugin order,
+ * which the app cannot see.
  *
  * @example
- * const registry = createServiceRegistry([{ name: '@acme/camera', services: { useShare: … } }])
+ * const registry = createServiceRegistry([builtInServices, { name: '@acme/camera', services: { useShare: … } }])
  * // throws: hook "useShare" is claimed by both "native-compiler" and "@acme/camera"
  */
-export function createServiceRegistry(
-  plugins: readonly ServicePlugin[],
-  builtIn: readonly ServiceDescriptor[] = SERVICES,
-): ServiceRegistry {
+export function createServiceRegistry(plugins: readonly ServicePlugin[]): ServiceRegistry {
   const registry = new Map<string, RegisteredService>()
-  for (const descriptor of builtIn) {
-    registry.set(descriptor.hook, { descriptor, owner: BUILT_IN_SERVICE_OWNER })
-  }
   for (const plugin of plugins) {
     for (const [hook, spec] of Object.entries(plugin.services ?? {})) {
       const existing = registry.get(hook)
@@ -52,10 +53,36 @@ export function createServiceRegistry(
       registry.set(hook, {
         descriptor: { ...spec, hook, legacyKind: spec.legacyKind ?? 'service' },
         owner: plugin.name,
+        ...(plugin.modules !== undefined ? { modules: plugin.modules } : {}),
       })
     }
   }
   return registry
+}
+
+/**
+ * Tables the parser and emitters read at hot sites, derived ONCE when the
+ * registry is built (never per call). Registry order is preserved, so a
+ * built-in-only compile iterates in the same order the old `SERVICES` array did.
+ */
+export interface ServiceTables {
+  /** Every descriptor, in registry order. */
+  readonly descriptors: readonly ServiceDescriptor[]
+  readonly byHook: ReadonlyMap<string, ServiceDescriptor>
+  /** Every service hook name. */
+  readonly hooks: ReadonlySet<string>
+  /** Hooks whose descriptor declares `destructure`. */
+  readonly destructureHooks: ReadonlySet<string>
+}
+
+export function createServiceTables(registry: ServiceRegistry): ServiceTables {
+  const descriptors = [...registry.values()].map((entry) => entry.descriptor)
+  return Object.freeze({
+    descriptors,
+    byHook: new Map(descriptors.map((d) => [d.hook, d])),
+    hooks: new Set(descriptors.map((d) => d.hook)),
+    destructureHooks: new Set(descriptors.filter((d) => d.destructure === true).map((d) => d.hook)),
+  })
 }
 
 /**

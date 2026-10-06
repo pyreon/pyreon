@@ -36,8 +36,10 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { NATIVE_LOWERED_HOOKS } from '../parse'
+import { nativeLoweredHooks } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+
+const NATIVE_LOWERED_HOOKS = nativeLoweredHooks()
 
 /** One minimal, REALISTIC call per hook — the shape an author would write. */
 const USAGES: ReadonlyArray<readonly [string, string, string]> = [
