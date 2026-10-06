@@ -15,6 +15,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./audit": {
+      "bun": "./src/audit.ts",
+      "import": "./lib/audit.js",
+      "types": "./lib/types/audit.d.ts"
     }
   },
   "scripts": {

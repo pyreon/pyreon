@@ -321,6 +321,29 @@ describe('Plain Mode signal-bridge warnings are diagnosable', () => {
   })
 })
 
+describe('diagnoseError — the native audit moved out of the web compiler', () => {
+  const shapes = (name: string, from: string): string[] => [
+    `Module '"${from}"' has no exported member '${name}'.`,
+    `SyntaxError: The requested module '${from}' does not provide an export named '${name}'`,
+    `"${name}" is not exported by "../../core/compiler/lib/audits.js", imported by "src/x.ts".`,
+    `No matching export in "../../core/compiler/lib/audits.js" for import "${name}"`,
+  ]
+
+  it.each(['auditNative', 'detectNativePatterns'])(
+    '%s points at the native compiler /audit subpath in every error shape, from the main entry or /audits',
+    (name) => {
+      for (const from of ['@pyreon/compiler', '@pyreon/compiler/audits']) {
+        for (const message of shapes(name, from)) {
+          const d = diagnoseError(message)
+          expect(d, message).not.toBeNull()
+          expect(d?.cause).toContain('native compiler package')
+          expect(d?.fix).toContain('/audit')
+        }
+      }
+    },
+  )
+})
+
 describe('diagnoseError — exports moved off the @pyreon/compiler main entry', () => {
   const shapes = (name: string): string[] => [
     `Module '"@pyreon/compiler"' has no exported member '${name}'.`,
@@ -334,7 +357,6 @@ describe('diagnoseError — exports moved off the @pyreon/compiler main entry', 
     ['analyzeReactivity', 'analyze'],
     ['auditIslands', 'audits'],
     ['generateContext', 'audits'],
-    ['detectNativePatterns', 'audits'],
     ['analyzeValidate', 'validate'],
     ['emitValidator', 'validate'],
   ])('%s points at @pyreon/compiler/%s in every error shape a bundler or tsc prints', (name, subpath) => {
