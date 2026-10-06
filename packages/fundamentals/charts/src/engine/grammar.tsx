@@ -29,7 +29,7 @@
 // that host instead of `<PlotChart>`. One family per chart; a family mark
 // beside a cartesian one is reported and the family wins.
 
-import { For, Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
+import { For, Fragment, Show, h, makeReactiveProps, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { computed, signal, untrack } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
@@ -411,6 +411,21 @@ export const Candle = /* @__PURE__ */ familyMark<CandleProps<any>>('Candle', Can
 export type FamilyHost = 'pie' | 'funnel' | 'heatmap' | 'candlestick'
 const FAMILY_OF: Readonly<Record<string, FamilyHost>> = { Arc: 'pie', Stage: 'funnel', Cell: 'heatmap', Candle: 'candlestick' }
 
+/**
+ * A child vnode's props through the reactive-prop contract.
+ *
+ * A mark is DATA, never mounted, so nothing runs `makeReactiveProps` on its
+ * props: a compiler-emitted `_rp(() => props.x)` (what `stack={hidden}` lowers
+ * to when `hidden` derives from a prop) would reach the resolver as a raw
+ * thunk, and `thunk === true` is false — the flag silently ignored. This is the
+ * ONE place that unwraps them, by the REACTIVE_PROP brand (never by `typeof ===
+ * 'function'`: channel accessors, `format` and `onX` handlers are legitimately
+ * functions and must not be called). The result carries getters, so the read
+ * happens where the resolver reads it — inside the `resolved` computed — and a
+ * signal behind the prop re-resolves the marks.
+ */
+const propsOf = (v: VNode): Record<string, unknown> => makeReactiveProps(v.props as Record<string, unknown>)
+
 const markName = (type: unknown): string | undefined =>
   typeof type === 'function' ? ((type as unknown as Record<symbol, string>)[CHART_MARK] as string | undefined) : undefined
 
@@ -431,7 +446,7 @@ function flatChildren(children: VNodeChild): VNode[] {
     // `<Show when>` around a mark: read the condition here (tracked by the
     // resolving computed) and descend; a fragment is transparent.
     if (v.type === Show) {
-      const when = (v.props as { when?: unknown }).when
+      const when = propsOf(v).when
       const on = typeof when === 'function' ? (when as () => unknown)() : when
       if (on) for (const x of v.children) walk(x)
       return
@@ -445,7 +460,7 @@ function flatChildren(children: VNodeChild): VNode[] {
     // inside the resolving computed, so an accessor `each` tracks. (The runtime
     // `<For>` never mounts here: a mark is data, not DOM.)
     if ((v.type as unknown) === For) {
-      const fp = v.props as { each?: unknown; children?: unknown }
+      const fp = propsOf(v) as { each?: unknown; children?: unknown }
       const each = typeof fp.each === 'function' ? (fp.each as () => unknown)() : fp.each
       const render = typeof fp.children === 'function' ? fp.children : v.children[0]
       if (Array.isArray(each) && typeof render === 'function') {
@@ -584,7 +599,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
   const props: Partial<PlotChartProps<T>> = {}
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
-  const rawMarks: { vnode: VNode; name: string }[] = []
+  const rawMarks: { vnode: VNode; name: string; p: Record<string, unknown> }[] = []
   let family: ResolvedGrammar<T>['family'] = null
   const features: ResolvedGrammar<T>['features'] = {}
   let plotHost: PlotHost | undefined
@@ -596,7 +611,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       warnGrammar(`unrecognized child ${describeChild(v)} — only mark components (<Bar>, <Line>, <Rule>, …) render inside <Chart>; it is ignored.`)
       continue
     }
-    const p = v.props as Record<string, unknown>
+    const p = propsOf(v)
     if (plotHost === undefined) plotHost = (v.type as unknown as Record<symbol, PlotHost | undefined>)[PLOT_HOST]
     const familyHost = FAMILY_OF[name]
     if (familyHost !== undefined) {
@@ -615,7 +630,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       case 'Ema':
       case 'Trend':
       case 'Bollinger':
-        rawMarks.push({ vnode: v, name })
+        rawMarks.push({ vnode: v, name, p })
         break
       case 'Rule': {
         const r = p as RuleProps
@@ -669,7 +684,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         break
       }
       case 'Histogram':
-        rawMarks.push({ vnode: v, name })
+        rawMarks.push({ vnode: v, name, p })
         break
       case 'Tooltip': {
         const t = p as TooltipProps
@@ -725,7 +740,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
   const hist = rawMarks.find((m) => m.name === 'Histogram')
   if (hist !== undefined) {
     if (rawMarks.length > 1) warnGrammar(`<Histogram> beside another mark — the plot draws the histogram; the other marks are ignored.`)
-    const hp = hist.vnode.props as unknown as HistogramProps<T>
+    const hp = hist.p as unknown as HistogramProps<T>
     const opts: Parameters<typeof histogram>[2] = {}
     if (hp.bins !== undefined) opts.bins = hp.bins
     if (hp.label !== undefined) opts.label = hp.label
@@ -737,7 +752,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
 
   const colorOf = chart.color === undefined ? null : channel<T, string>(chart.color)
   if (colorOf === null) {
-    return { marks: rawMarks.flatMap(({ vnode, name }) => toMarks<T>(vnode, name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null, family: null, features, plotHost }
+    return { marks: rawMarks.flatMap(({ vnode, name, p }) => toMarks<T>(vnode, name, p, undefined)), props, pivot: null, family: null, features, plotHost }
   }
   // Long format: pivot rows into (category × series) per `y` mark.
   const xOf = chart.x === undefined ? (_d: T, i: number) => String(i) : channel<T, string>(chart.x)
@@ -758,8 +773,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
     }
   }
   const marks: Mark<T>[] = []
-  for (const { vnode, name } of rawMarks) {
-    const p = vnode.props as Record<string, unknown>
+  for (const { vnode, name, p } of rawMarks) {
     const yOf = channel<T, Double>(p.y as Channel<T>)
     const table: Double[][] = seriesNames.map(() => categories.map(() => NaN))
     for (let i = 0; i < rows.length; i++) {
