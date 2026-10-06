@@ -20,6 +20,10 @@ Read before adding or changing a workflow, job, required check, or cache key.
   `Test` uses `!cancelled()` so failed prerequisites still produce a verdict,
   while superseded PR runs release their concurrency slot. An `always()` job
   can survive ordinary cancellation and leave the newest run pending.
+- Bootstrap build deadlines must settle the runtime, not just the build promise.
+  The shared bounded-process helper stops owned POSIX descendants and destroys
+  inherited pipes. Bootstrap allows 250ms output drainage after parent exit;
+  incomplete drainage fails closed. Windows cleanup targets the direct child.
 - Matrices and decide outputs are fail-closed. A detection error runs the full set, because a skipped required check reports success to branch protection.
 - Generated-output freshness must reject failed Git comparisons and include
   new unstaged files within the generator-owned paths. Empty stdout alone

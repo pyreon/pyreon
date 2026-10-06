@@ -23,6 +23,7 @@ on:
       - .github/actions/setup-pyreon/**
       - scripts/check-coverage.ts
       - scripts/coverage-process.ts
+      - scripts/bounded-process.ts
       - scripts/coverage-reporter.ts
       - scripts/coverage-threshold-baseline.json
       - packages/internals/vitest-config/**
