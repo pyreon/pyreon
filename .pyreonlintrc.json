@@ -76,7 +76,14 @@
     ],
     "pyreon/no-duplicate-store-id": "error",
     "pyreon/no-dynamic-styled": "error",
-    "pyreon/no-eager-import": "error",
+    "pyreon/no-eager-import": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/native/compiler/src/golden-fixtures/"
+        ]
+      }
+    ],
     "pyreon/no-effect-assignment": "error",
     "pyreon/no-effect-in-for": "error",
     "pyreon/no-effect-in-mount": [

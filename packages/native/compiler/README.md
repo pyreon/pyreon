@@ -86,7 +86,7 @@ modules with a default plugin export; CLI target selection remains iOS/Android.
 
 ### Services, modules, requires (additive; API version stays 1)
 
-Seven optional fields were added without a version bump, because additive
+Nine optional fields were added without a version bump, because additive
 fields never break an older plugin:
 
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
@@ -115,6 +115,22 @@ fields never break an older plugin:
   the same rule as a service hook, and two owners for one name — or a name that is
   also a service — is a load-time error naming both. The built-in `createChartHandle()`
   lowering is a `@pyreon/charts` plugin declaration registered this way.
+- `memberCalls` — call EXPRESSIONS: keyed by method name, `{ swift(call, ctx),
+  kotlin(call, ctx) } => string | undefined` lowers `<receiver>.<method>(…)` when
+  `<receiver>` is a binding one of the plugin's own `decls` created (so two plugins
+  may both claim `dispatch`: the receiver decides). `undefined` declines. Requires
+  `decls`. The built-in `chart.dispatch({...})` lowering is a `@pyreon/charts`
+  `memberCalls` entry. Inside a lowering, `ctx.expr(e)` / `ctx.exprAs(type, e)` emit
+  a sub-expression, `ctx.decls(plugin, type)` reads the component's declarations,
+  `ctx.state(key, init)` is per-component memory, and `ctx.deferred(key, fallback?)`
+  / `ctx.resolveDeferred(key, value)` substitute a value that is only known after the
+  component body has emitted (an unresolved token without a fallback is an error
+  naming the key).
+- `unlowered` — per-module metadata for the "has NO native lowering" warning:
+  `{ [module]: { advice, supported?: string[] } }`. Merged into
+  `compiler.registries.unlowered`; a module supplied by two plugins is a load-time
+  error, and a plugin's entry wins over the compiler's own hand-maintained one. The
+  `@pyreon/charts` entry is supplied by the built-in charts plugin.
 - `requires` — plugin names that must be loaded. A missing one or a cycle is a
   load-time error naming the plugins; passes run in `requires` order (input
   order otherwise).

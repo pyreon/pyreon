@@ -266,3 +266,19 @@ describe('shape validation for the new surfaces', () => {
     )
   })
 })
+
+describe('chart handle through the facade', () => {
+  it('a keyword-escaped handle still receives its series count (token and host agree on the emitted identifier)', () => {
+    const { code } = transform(
+      `import { createChartHandle } from '@pyreon/charts'
+import { PlotChart, bars } from '@pyreon/charts/engine'
+const ROWS = [{ a: 1 }]
+export function App() {
+  const guard = createChartHandle()
+  return <PlotChart data={ROWS} marks={[bars((d) => d.a)]} height={200} handle={guard} />
+}`,
+      { target: 'swift' },
+    )
+    expect(code).toContain('PyreonChartHandle(seriesCount: 1)')
+  })
+})
