@@ -36,6 +36,18 @@
 // can drive native signals. The payload is a plain string. Same unified
 // `window.pyreonPostMessage(...)` API on web + iOS.
 //
+// ## DOM storage (`domStorage`)
+//
+// `WebSettings.domStorageEnabled` is `false` by default on Android, which
+// makes `localStorage` throw a `TypeError` (and `sessionStorage` unusable) in
+// any hosted document. Hosted pages are web apps (chart/flow engines, user
+// content) that routinely use it, and iOS `WKWebView` has it on by default, so
+// `PyreonWebView` turns it ON by default (React Native WebView does the same).
+// Pass `domStorage = false` to opt out. Storage is per-origin, so enabling it
+// never lets one origin read another's data; note a page loaded with
+// `html = …` has the `file:///android_asset/` base origin, shared by every
+// inline-`html` host in the app (give pages that need isolation a `src`).
+//
 // ## Policy posture (Play Store / App Store)
 //
 // Intended for HYBRID apps — a substantial native Compose shell with this
@@ -100,7 +112,9 @@ object PyreonWebViewRendering {
  * [src] (a local `assets/` file name — preferred, policy-safe — or a
  * remote `http(s)` URL); [html] wins if both are set. [data] is an
  * optional JSON string pushed into the page as `window.__pyreonData`
- * (live-updates without reloading; see the file header).
+ * (live-updates without reloading; see the file header). [domStorage]
+ * (default `true`) enables `WebSettings.domStorageEnabled` so `localStorage` /
+ * `sessionStorage` work in the hosted page; `false` opts out.
  */
 @Composable
 fun PyreonWebView(
@@ -109,6 +123,7 @@ fun PyreonWebView(
     data: String? = null,
     onMessage: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    domStorage: Boolean = true,
 ) {
     // Per-view bridge state survives recomposition; the WebViewClient +
     // JS bridge (set once in `factory`) close over it, reading the latest
@@ -148,6 +163,7 @@ fun PyreonWebView(
                 }
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
+                settings.domStorageEnabled = domStorage
                 // Reverse bridge — the page's `window.pyreonPostMessage(s)`
                 // routes through `window.__pyreonNative.postMessage(s)`
                 // (this JS interface) to the native `onMessage` callback.
@@ -172,6 +188,8 @@ fun PyreonWebView(
             }
         },
         update = { webView ->
+            // Applies to documents loaded after the change (a setting, not a reload).
+            webView.settings.domStorageEnabled = domStorage
             state.latestData = data
             state.onMessage = onMessage
             val key = (html ?: "") + "" + (src ?: "")

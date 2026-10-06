@@ -1657,7 +1657,7 @@ public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
 public struct PyreonWebView: View {
   // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
   // params optional so every shape resolves; arg TYPES stay faithful.
-  public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
+  public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true) {}
   public typealias Body = Never
 }
 public struct PyreonFlowWebViewSelection { public let id: String; public let data: Any? }
