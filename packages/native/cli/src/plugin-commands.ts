@@ -109,16 +109,60 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
 
 const HOOK_CALL = /\b(use[A-Z][A-Za-z0-9]*)\s*\(/g
 
-/** Tags the source imports (`import { Row } from '@pyreon/coolgrid'`) as `module → tags`. */
+const isSpace = (ch: string | undefined): boolean =>
+  ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r'
+
+/**
+ * Tags the source imports (`import { Row } from '@pyreon/coolgrid'`) as
+ * `module → tags`.
+ *
+ * Scanned by hand rather than with one regex: `import\s*\{([^}]*)\}` rescans to
+ * the end of the file from every `import {` that has no closing brace, and
+ * `\s+as\s+` backtracks on whitespace runs — both quadratic on hostile input
+ * (CodeQL js/polynomial-redos). Here the closing-brace search is remembered
+ * (a position past the last known `}` is the only reason to search again), so
+ * every character is read a bounded number of times.
+ */
 function importedTags(source: string): Map<string, Set<string>> {
   const imported = new Map<string, Set<string>>()
-  for (const match of source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
-    const tags = imported.get(match[2]!) ?? new Set<string>()
-    for (const part of match[1]!.split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0]!.trim()
-      if (name) tags.add(name)
+  const skipSpace = (from: number): number => {
+    let i = from
+    while (i < source.length && isSpace(source[i])) i++
+    return i
+  }
+  let nextClose = -2
+  let at = source.indexOf('import')
+  while (at !== -1) {
+    let resume = at + 'import'.length
+    let i = skipSpace(resume)
+    if (source.startsWith('type', i) && isSpace(source[i + 4])) i = skipSpace(i + 4)
+    if (source[i] === '{') {
+      if (nextClose !== -1 && nextClose < i) nextClose = source.indexOf('}', i)
+      if (nextClose === -1) break
+      let j = skipSpace(nextClose + 1)
+      if (source.startsWith('from', j)) {
+        j = skipSpace(j + 4)
+        const quote = source[j]
+        if (quote === '"' || quote === "'") {
+          const end = source.indexOf(quote, j + 1)
+          const specifier = end === -1 ? '' : source.slice(j + 1, end)
+          if (specifier !== '' && !specifier.includes('\n')) {
+            const tags = imported.get(specifier) ?? new Set<string>()
+            for (const part of source.slice(i + 1, nextClose).split(',')) {
+              // `Row as R` -> Row; an inline `type Row` modifier is skipped.
+              const words = part.trim().split(/\s+/)
+              const name = words[0] === 'type' && words.length > 1 && words[1] !== 'as' ? words[1] : words[0]
+              if (name) tags.add(name)
+            }
+            imported.set(specifier, tags)
+            // Like a global regex match: carry on AFTER this statement, so the
+            // text inside it is never scanned a second time.
+            resume = end + 1
+          }
+        }
+      }
     }
-    imported.set(match[2]!, tags)
+    at = source.indexOf('import', resume)
   }
   return imported
 }
