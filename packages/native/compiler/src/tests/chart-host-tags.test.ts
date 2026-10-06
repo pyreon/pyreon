@@ -3,7 +3,7 @@ import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TA
 import { createRegistries } from '../active-registries'
 import { BUILT_IN_PLUGINS } from '../built-in-plugins'
 
-// The `@pyreon/charts` plugin claims `chartHostTags()`; Kotlin still dispatches on `isChartHostTag`.
+// The `@pyreon/charts` plugin claims `chartHostTags()`; the parser still tests `isChartHostTag`.
 // Two lists for one set would drift the day a host is added to one, so they are derived from the
 // same tables and compared here in both directions.
 describe('chartHostTags', () => {
@@ -38,8 +38,8 @@ describe('chartHostTags', () => {
     expect(claimed).toHaveLength(1)
     expect(claimed[0]!.lowering.module).toBe('@pyreon/charts')
     expect([...claimed[0]!.lowering.tags].sort()).toEqual([...tags].sort())
-    // Swift only: Kotlin has no `emit.kotlin` yet and falls through to the core's chart branch.
+    // Both targets emit from the plugin: neither emitter keeps a chart branch of its own.
     expect(claimed[0]!.lowering.emit?.swift).toBeTypeOf('function')
-    expect(claimed[0]!.lowering.emit?.kotlin).toBeUndefined()
+    expect(claimed[0]!.lowering.emit?.kotlin).toBeTypeOf('function')
   })
 })

@@ -158,7 +158,7 @@ describe('code-shaped plugin: load-time errors', () => {
     expect(registry.names.size).toBe(0)
     const ctx = createEmitContext(
       'swift',
-      { emit: () => '', staticAttr: () => undefined, stringLiteral: String, identifier: String, warn: () => {}, expr: () => '', exprAs: () => '', scope: () => createPluginScope() },
+      { emit: () => '', staticAttr: () => undefined, stringLiteral: String, identifier: String, warn: () => {}, expr: () => '', exprAs: () => '', scope: () => createPluginScope(), stringAttr: () => undefined, layoutModifiers: () => '', action: () => '', constExpr: () => undefined, colorScope: () => undefined },
       0,
     )
     expect(() => emitExtDecl(registry, decl, 'swift', ctx)).toThrow(
