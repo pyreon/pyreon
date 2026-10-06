@@ -27,6 +27,7 @@
  * proves the diagnosis and is wired into the native-validate workflow.
  */
 
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -114,8 +115,9 @@ export function kotlinTarballProblems(pkg: string, dir: string, sdkOnly: string[
 }
 
 function run(cmd: string[], cwd: string): { code: number; out: string; err: string } {
-  const r = Bun.spawnSync(cmd, { cwd, stdout: 'pipe', stderr: 'pipe' })
-  return { code: r.exitCode ?? 1, out: r.stdout.toString(), err: r.stderr.toString() }
+  const [bin, ...args] = cmd
+  const r = spawnSync(bin as string, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  return { code: r.status ?? 1, out: r.stdout ?? '', err: r.stderr ?? '' }
 }
 
 interface Pkg {
