@@ -87,6 +87,7 @@
     "check-native-runtime-parity": "bun scripts/check-native-runtime-parity.ts",
     "check-native-lifecycle-wiring": "bun scripts/check-native-lifecycle-wiring.ts",
     "check-native-cosource": "bun scripts/check-native-cosource.ts",
+    "check-native-tarballs": "bun scripts/check-native-tarballs.ts",
     "check-gates-wired": "bun scripts/check-gates-wired.ts",
     "check-native-golden": "bun scripts/check-native-golden.ts",
     "check-compiler-boundary": "bun scripts/check-compiler-boundary.ts",

@@ -13,6 +13,12 @@ description: "Common build pipeline mistakes in Pyreon and how to fix them."
 
 ---
 
+### One anonymous object shape keyed two ways gets two native types (PMTC `{ data: { id } }`, #3784)
+
+A generated data component names its response at the render-callback parameter AND the `useQuery<T>` generic. The lifted struct for the parameter was keyed by its FIELD TYPES (`ref:Name` for the lifted inner object); the annotation site keyed the same shape as `obj{…}`, so the declared-shape lookup missed — Kotlin then synthesized a second class (`GetItemDataData` vs `GetItemDataChildrenData`) and Swift's single-field legacy fallback collapsed `{ data: T }` to the inner `T`. Same source line, two different compile errors. **Rule: a structural shape key must expand a reference to a declared struct into that struct's shape (`typeShapeKey(t, resolve)`), and every emitter's type site must ask the declared-shape map BEFORE synthesizing.** The class matrix is depth × field name (`data`/`items`/`children`/`result`) × arrays/optionals/equal siblings, compiled on the real toolchains — a one-field envelope is the sharpest case because it hits the single-field fallback. **Reporting corollary: static IR reach (`reachOf`) says what SHOULD lower; only the verifier says what DID — `reconcileReach` downgrades an operation whose module failed to compile to `web-only` with the compiler's own error, and an import the module never calls (`zodSchema`) must not be emitted, since PMTC warns on it by name and that blanket line then masquerades as the cause.** Reference: `packages/native/compiler/src/expr-utils.ts:typeShapeKey`, `emit-kotlin.ts:knownKotlinShape`, `packages/tools/lathe/src/verify/lower.ts:reconcileReach`; locks `native-nested-response-type-names.test.ts` + lathe `native-nested-envelope.test.ts` (bisect-verified).
+
+---
+
 ### Evaluating page modules to collect static metadata can stall the index and run application effects
 
 Dev search warmed markdown with `ssrLoadModule`, executing each page and its dependency graph even though the transform had already recorded every search field. Use `transformRequest(file, { ssr: true })` for metadata collection. Keep configuration loading separate. The real-Vite regression confirms catalog/chunk contents, asserts page effects stay dormant while indexing, and explicitly loads the page afterward as an execution control. Reference: `packages/zero/zero-content/src/plugin.ts`; test `dev-search-no-evaluation.test.ts`.
@@ -550,5 +556,11 @@ Comments and strings look like imports; side-effect, escaped, and comment-separa
 ### Process-global compiler plugin registration
 
 Compilations and projects contaminate each other, and registrations grow with watch invocations. Snapshot versioned registrations per `createCompiler()` instance, isolate custom-pass IR, and reject duplicate targets. Source passes precede runtime preparation; use the same instance for build/check/editor diagnostics (`compiler-plugins.test.ts` in native compiler and CLI).
+
+---
+
+### A JSX-valued attribute the native emitter never READS vanishes silently (the `<Show fallback>` instance, #3788).
+
+The dedicated emitters look attributes up BY NAME (`attrs.find(a => a.name === 'when')`), so an attribute nobody asks for is simply never seen: `<Show when fallback={<Text>…</Text>}>` emitted `if visible { … }` with no `else` and `warnings: []` on both targets, and the screen started EMPTY in exactly the state the fallback covers. `<Suspense>`/`<ErrorBoundary>` had read `fallback` since Gap 3 — `<Show>`, the most common boundary, was the one that did not, and a compiles-and-typechecks gate cannot see an absent branch. **Rule: "the emitter does not read it" must be an OBSERVABLE decision, enforced centrally rather than per tag.** `jsx-slot-attrs.ts` holds the closed set of (builtin tag, JSX-valued attr) pairs consumed (`Show`/`Suspense`/`ErrorBoundary` `fallback`), and both `emit*Jsx` dispatchers warn on any other JSX-valued attribute on a non-user-component tag (user components are exempt: their view-typed props lower as `@ViewBuilder`/`@Composable` slot parameters). `classifyFallback` is the ONE reading of `fallback` for all three boundaries (JSX element, fragment — emitted as its CHILDREN, never one stringified `Group` — or a zero-arg accessor returning one; absent/`null` is no fallback; anything else is a named warning). Reference: `packages/native/compiler/src/{jsx-slot-attrs,emit-swift,emit-kotlin}.ts`; locked by `tests/show-fallback.test.ts`.
 
 ---

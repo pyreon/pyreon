@@ -11,6 +11,7 @@
   "files": [
     "Package.swift",
     "Sources",
+    "Tests",
     "README.md",
     "LICENSE"
   ],

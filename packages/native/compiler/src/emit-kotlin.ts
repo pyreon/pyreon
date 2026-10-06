@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
+import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { kotlinStr } from './string-literals'
 import { renderKotlinService, serviceFor } from './services'
 import {
@@ -68,7 +69,7 @@ import {
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
-  structShapeKey,
+  structShapeKey as rawStructShapeKey,
   literalShapeKey,
   resolveForElementKey,
   forMissingByWarning,
@@ -252,6 +253,14 @@ let _structTypedKeyToName: Map<string, string> = new Map()
  *  exact field-set index above cannot see a literal that omits an optional
  *  field. */
 let _declaredStructs: readonly StructIR[] = []
+
+/**
+ * Shape key with declared-struct references EXPANDED (see `typeShapeKey`), so an
+ * inline `{ data: { id } }` and the lifted struct that stands for it key alike.
+ */
+function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
+  return rawStructShapeKey(fields, (n) => _declaredStructs.find((s) => s.name === n)?.fields)
+}
 /**
  * Synthesized data classes for ANONYMOUS all-scalar-literal object
  * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
@@ -4874,6 +4883,13 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // rewrite `emitKotlinDataClass` renders the nested object as `Any`,
       // which is NOT `@Serializable` and breaks a real Android build.
       if (!ctx) return 'Any'
+      // A shape the file already names — declared, lifted from a prop, or
+      // synthesized earlier — IS that type. Synthesizing a second class for it
+      // gave one value two nominal types (`GetItemDataData` vs
+      // `GetItemDataChildrenData`), which kotlinc rejects at the first place
+      // the two meet. Mirrors emit-swift's `swiftType` object case.
+      const known = knownKotlinShape(t)
+      if (known !== undefined) return known
       return registerKotlinSynthClass(t, ctx, synthesizeDataClassName(ctx.componentName, signalName))
     }
     case 'null':
@@ -4965,6 +4981,11 @@ function synthesizeDataClassName(componentName: string, signalName?: string): st
  * left un-rewritten degrades to `Any` (not `@Serializable`); the rewrite keeps
  * the whole nested tree serialization-safe. Returns `name`.
  */
+function knownKotlinShape(t: Extract<TypeIR, { kind: 'object' }>): string | undefined {
+  if (t.fields.length === 0) return undefined
+  return _structTypedKeyToName.get(structShapeKey(t.fields))
+}
+
 function registerKotlinSynthClass(
   t: Extract<TypeIR, { kind: 'object' }>,
   ctx: KotlinCtx,
@@ -4998,10 +5019,14 @@ function resolveKotlinSynthFieldType(
   }
   const suffix = fieldName.charAt(0).toUpperCase() + fieldName.slice(1)
   if (ft.kind === 'object') {
+    const known = knownKotlinShape(ft)
+    if (known !== undefined) return { kind: 'typeRef', name: known, args: [] }
     const nested = registerKotlinSynthClass(ft, ctx, uniqueKotlinClassName(ctx, parentName + suffix))
     return { kind: 'typeRef', name: nested, args: [] }
   }
   if (ft.kind === 'array' && ft.element.kind === 'object') {
+    const known = knownKotlinShape(ft.element)
+    if (known !== undefined) return { kind: 'array', element: { kind: 'typeRef', name: known, args: [] } }
     const singular = suffix.endsWith('s') ? suffix.slice(0, -1) : suffix
     const nested = registerKotlinSynthClass(ft.element, ctx, uniqueKotlinClassName(ctx, parentName + singular))
     return { kind: 'array', element: { kind: 'typeRef', name: nested, args: [] } }
@@ -7858,7 +7883,16 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
   // @pyreon/elements `<Element>` → the canonical `<Stack>` (mirror of the Swift
   // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
-  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) return emitKotlinJsx(elementToStack(e), indent)
+  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) {
+    // Name a dropped JSX slot (`beforeContent={<…/>}`) against the tag the author WROTE,
+    // then strip it so the lowered `<Stack>` does not warn a second time under another name.
+    for (const a of e.attrs) {
+      const w = unconsumedSlotWarning('Element', a)
+      if (w !== undefined) pushEmitWarning(w)
+    }
+    const stack = elementToStack(e)
+    return emitKotlinJsx({ ...stack, attrs: stack.attrs.filter((a: AttrIR) => unconsumedSlotWarning('Stack', a) === undefined) }, indent)
+  }
 
   // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
   // compile-time-resolved; dark mode is a system read). Render children directly
@@ -7992,6 +8026,14 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     _emitWarnings.push(
       `<${tag} {...}> spread is not lowered to native — its props are DROPPED (a runtime prop-bag can't apply to a static Compose composable). Pass props explicitly, e.g. <${tag} gap="md" padding={4}>.`,
     )
+  }
+
+  // A JSX-valued attribute no emitter reads would vanish silently — name it.
+  if (!isUserComponentTagKotlin(tag)) {
+    for (const a of e.attrs) {
+      const w = unconsumedSlotWarning(tag, a)
+      if (w !== undefined) pushEmitWarning(w)
+    }
   }
 
   if (tag === 'For') return emitKotlinFor(e, indent)
@@ -9042,6 +9084,16 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   )
 }
 
+/** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
+function pushEmitWarning(w: string): void {
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+/** A tag the user (or a styled/rocketstyle/attrs factory) defined — its view-typed props lower as slot parameters. */
+function isUserComponentTagKotlin(tag: string): boolean {
+  return _componentNames.has(tag) || _styledComponents.has(tag) || _rocketstyleComponents.has(tag) || _attrsComponents.has(tag)
+}
+
 function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
     | Extract<AttrIR, { kind: 'attr' }>
@@ -9054,6 +9106,13 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const cond = whenExpr ? kotlinCondition(whenExpr, emitKotlinSignalRead) : 'true'
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  // `fallback` → the `else` branch (see the Swift twin).
+  const fb = classifyFallback('Show', e.attrs)
+  if (fb.kind === 'unsupported') pushEmitWarning(fb.warning)
+  if (fb.kind === 'view') {
+    const fbBody = fb.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+    return `if (${cond}) {\n${body}\n${' '.repeat(indent)}} else {\n${fbBody}\n${' '.repeat(indent)}}`
+  }
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
 }
 
@@ -9097,22 +9156,24 @@ function emitKotlinSuspense(
   if (!fallbackAttr) {
     return emitKotlinWalledTagAsChildren(e, indent, 'Suspense')
   }
-  const fallbackExpr = fallbackAttr.value
-  if (fallbackExpr.kind !== 'jsx-element') {
-    _emitWarnings.push(
-      '<Suspense fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
-    )
+  const fbPlan = classifyFallback('Suspense', e.attrs)
+  if (fbPlan.kind !== 'view') {
+    if (fbPlan.kind === 'unsupported') {
+      _emitWarnings.push(
+        '<Suspense fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
+      )
+    }
     return emitKotlinWalledTagAsChildren(e, indent, 'Suspense')
   }
+  const fallbackChildren = fbPlan.children
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
     .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
     .join('\n')
-  const fallbackBody =
-    inner +
-    '  ' +
-    emitKotlinChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  const fallbackBody = fallbackChildren
+    .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
+    .join('\n')
   // Real semantics (Phase 2), emitted INLINE — NOT via a child
   // composable. Reading the isPending MutableState DIRECTLY in this
   // composable's body subscribes THIS scope, so it recomposes when the
@@ -9151,22 +9212,24 @@ function emitKotlinErrorBoundary(
   if (!fallbackAttr) {
     return emitKotlinWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
-  const fallbackExpr = fallbackAttr.value
-  if (fallbackExpr.kind !== 'jsx-element') {
-    _emitWarnings.push(
-      '<ErrorBoundary fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
-    )
+  const fbPlan = classifyFallback('ErrorBoundary', e.attrs)
+  if (fbPlan.kind !== 'view') {
+    if (fbPlan.kind === 'unsupported') {
+      _emitWarnings.push(
+        '<ErrorBoundary fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
+      )
+    }
     return emitKotlinWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
+  const fallbackChildren = fbPlan.children
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const childrenBody = e.children
     .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
     .join('\n')
-  const fallbackBody =
-    inner +
-    '  ' +
-    emitKotlinChild({ kind: 'expr', expr: fallbackExpr }, indent + 4)
+  const fallbackBody = fallbackChildren
+    .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
+    .join('\n')
   const fetches = [..._fetchNames]
   const hasError =
     fetches.length > 0
