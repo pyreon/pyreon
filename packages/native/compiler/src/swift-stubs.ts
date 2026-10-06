@@ -1351,23 +1351,6 @@ public struct Font {
 // is the subset-stub failure mode: a stub NARROWER than the real API
 // manufactures failures on valid source, the mirror image of a superset stub
 // masking real breakage.
-// PyreonSizedMap — mirrors packages/core/sized-map/native/swift/PyreonSizedMap.swift.
-// Signature copied from the shipped class, not approximated: maxEntries is
-// required and lru defaults, which is what makes a snippet passing only
-// maxEntries compile while a maxSize typo still fails.
-public final class PyreonSizedMap<Key: Hashable, Value> {
-  public init(maxEntries: Int, lru: Bool = false) {}
-  public var size: Int { 0 }
-  public func get(_ key: Key) -> Value? { nil }
-  public func set(_ key: Key, _ value: Value) {}
-  public func has(_ key: Key) -> Bool { false }
-  @discardableResult public func delete(_ key: Key) -> Bool { false }
-  public func clear() {}
-  public func keys() -> [Key] { [] }
-  public func values() -> [Value] { [] }
-  public func entries() -> [(Key, Value)] { [] }
-}
-
 // KeyEquivalent / EventModifiers — the two types a keyboard shortcut needs.
 // The named members are exactly those SwiftUI declares; an emit asking for one
 // it does not have (e.g. 'insert') must FAIL the gate rather than compile

@@ -545,6 +545,11 @@ export function pluginExprType(e: ExtExprIR): TypeIR | undefined {
   return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.type?.(e)
 }
 
+/** Whether a file-scope `const` holding this `ext-expr` is typed by the node's own type for later reads (default true). */
+export function pluginExprSeedsModuleConst(e: ExtExprIR): boolean {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.seedsModuleConst !== false
+}
+
 /** The type of `<ext-expr>.<property>` when the owner types member reads on its node, else `undefined`. */
 export function pluginExprMemberType(e: ExtExprIR, property: string): TypeIR | undefined {
   return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.member?.(e, property)

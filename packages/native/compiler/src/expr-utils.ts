@@ -698,12 +698,6 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
           ([k, v]) => exprReferencesIdent(k, name) || exprReferencesIdent(v, name),
         ) ?? false
       )
-    // A SizedMap constructor carries only literal options (cap + flag), so it
-    // can never reference an identifier, be hoisted around one, or need a
-    // param rewrite. Enumerated rather than left to a default so the
-    // exhaustiveness check keeps working for the NEXT ExprIR member.
-    case 'new-sized-map':
-      return false
     case 'literal':
       return false
     case 'identifier':
@@ -831,8 +825,6 @@ export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | 
   const name = subst.shadow
   if (subst.matches(expr)) return replacement
   switch (expr.kind) {
-    case 'new-sized-map':
-      return expr
     case 'new-collection': {
       if (expr.seed !== undefined) {
         const seed = substituteMatching(expr.seed, subst)
@@ -1083,8 +1075,6 @@ function walkLowerParams(
       if (expr.entries !== undefined) {
         return { ...expr, entries: expr.entries.map(([k, v]): [ExprIR, ExprIR] => [rec(k), rec(v)]) }
       }
-      return expr
-    case 'new-sized-map':
       return expr
     case 'literal':
       return expr
@@ -1437,7 +1427,7 @@ export function exprContainsJsx(e: ExprIR): boolean {
       return e.exprs.some(exprContainsJsx)
     default:
       // literal / identifier / update / json-stringify / schema-validate /
-      // rx-call / new-collection / new-sized-map —
+      // rx-call / new-collection —
       // none can carry JSX in the shapes PMTC parses.
       return false
   }

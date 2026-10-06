@@ -18,6 +18,7 @@ import { A11Y_KOTLIN_STUBS, A11Y_SWIFT_STUBS } from '../../../../fundamentals/a1
 import { TABLE_KOTLIN_STUBS, TABLE_SWIFT_STUBS } from '../../../../fundamentals/table/src/native-plugin/stubs'
 import { DND_KOTLIN_STUBS, DND_SWIFT_STUBS } from '../../../../fundamentals/dnd/src/native-plugin/stubs'
 import { SYNC_KOTLIN_STUBS, SYNC_SWIFT_STUBS } from '../../../../fundamentals/sync/src/native-plugin/stubs'
+import { SIZED_MAP_KOTLIN_STUBS, SIZED_MAP_SWIFT_STUBS } from '../../../../core/sized-map/src/native-plugin/stubs'
 import { STORAGE_KOTLIN_STUBS, STORAGE_SWIFT_STUBS } from '../../../../fundamentals/storage/src/native-plugin/stubs'
 import { PERMISSIONS_KOTLIN_STUBS, PERMISSIONS_SWIFT_STUBS } from '../../../../fundamentals/permissions/src/native-plugin/stubs'
 
@@ -31,6 +32,7 @@ export interface PluginStubs {
 }
 
 export const PLUGIN_STUBS: readonly PluginStubs[] = [
+  { label: 'sized-map', swift: SIZED_MAP_SWIFT_STUBS, kotlin: SIZED_MAP_KOTLIN_STUBS },
   { label: 'storage', swift: STORAGE_SWIFT_STUBS, kotlin: STORAGE_KOTLIN_STUBS },
   { label: 'permissions', swift: PERMISSIONS_SWIFT_STUBS, kotlin: PERMISSIONS_KOTLIN_STUBS },
   { label: 'sync', swift: SYNC_SWIFT_STUBS, kotlin: SYNC_KOTLIN_STUBS },
@@ -51,6 +53,7 @@ export const PLUGIN_STUBS: readonly PluginStubs[] = [
  * in the gate that scans it; a library that moves its lowering into its package adds its directory here.
  */
 export const PLUGIN_EMITTER_DIRS: readonly string[] = [
+  join(REPO, 'packages/core/sized-map/src/native-plugin'),
   join(REPO, 'packages/fundamentals/storage/src/native-plugin'),
   join(REPO, 'packages/fundamentals/permissions/src/native-plugin'),
   join(REPO, 'packages/fundamentals/sync/src/native-plugin'),

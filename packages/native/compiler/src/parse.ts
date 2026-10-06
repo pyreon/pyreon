@@ -181,8 +181,6 @@ interface ParseCtx {
   kineticMountPending: boolean
   /** local name -> exported name, for presets imported from kinetic-presets. */
   kineticPresetImports: Map<string, string>
-  /** Local name(s) bound to `SizedMap` imported from `@pyreon/sized-map`. */
-  sizedMapNames: Set<string>
   /**
    * Local names imported from `@pyreon/rx`, mapped to their ORIGINAL export
    * name (so `import { map as project }` resolves).
@@ -339,7 +337,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     rxImportedNames: new Map(),
-    sizedMapNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -415,7 +412,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
-  collectSizedMapNames(ast.program.body as AnyNode[], ctx)
   // Plugin pre-passes (`CompilerPlugin.scanModule`): a library records the facts its top-level
   // declarations carry (an `@pyreon/http` client and its endpoints) before any hook that reads
   // them is parsed, regardless of where the declaration sits relative to the component.
@@ -1159,24 +1155,6 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
         // added here belongs AFTER it, not instead of it.
         `${pkg} is WEB-ONLY, with NO native (iOS/Android) emit: ${reason}. On native, prefer the platform-native equivalent — the shared, multi-platform UI vocabulary lives in \`@pyreon/primitives\` (Stack / Text / Button / …), which compiles to all three targets. If the package IS the rendering engine you need, host the web implementation behind a \`<Web>\` escape hatch (web target only) or inside \`<NativeIOS>\` / \`<NativeAndroid>\`.`,
       )
-    }
-  }
-}
-
-/** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
- *
- * Gated on the IMPORT rather than the bare name: `SizedMap` is a plausible
- * name for a user's own class, and mis-lowering someone else's constructor is
- * worse than not lowering ours. */
-function collectSizedMapNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/sized-map') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'SizedMap') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.sizedMapNames.add(local)
-      }
     }
   }
 }
@@ -3349,7 +3327,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     rxImportedNames: new Map(),
-    sizedMapNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -4519,6 +4496,11 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
+    typeArgs: (node) =>
+      (((node as AnyNode).typeArguments?.params ?? (node as AnyNode).typeParameters?.params ?? []) as AnyNode[]).map((t) =>
+        parseTypeAnnotation(t, ctx),
+      ),
+    loc: (node) => locOf(node as AnyNode, ctx),
     unsupported: (node, what, hint) => {
       unsupportedExpr(ctx, node as AnyNode, what, hint)
       return null
@@ -4580,7 +4562,7 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
 }
 
 /**
- * A call a plugin's `callExprs` recognizer claims by its callee (the names its `scanModule` recorded): the open
+ * A call (or `new` construction) a plugin's `callExprs` recognizer claims by its callee (the names its `scanModule` recorded): the open
  * `ext-expr` node, the empty literal every unsupported expression becomes (`null` verdict), or `undefined`.
  */
 function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
@@ -4590,6 +4572,7 @@ function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
     node: node as AstNode,
     callee: node.callee as AstNode,
     args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
+    ...(node.type === 'NewExpression' ? { construct: true } : {}),
   }
   for (const { owner, recognize } of registry.callExprs) {
     const verdict = runPluginHook(owner, 'callExprs', () => recognize(site, moduleParseContextFor(ctx, owner)))
@@ -7942,45 +7925,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // bare `new Map()` has none — the local's USE sites can't type it, so
       // it stays a named warning: annotate the generics). Other `new X`
       // falls through to the default unsupported warning.
+      // A construction a plugin claims by the callee it recorded when it scanned the file (`CompilerPlugin.callExprs`).
+      const constructed = tryPluginCallExpr(node, ctx)
+      if (constructed !== undefined) return constructed
       const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
       const typeArgs = (node.typeArguments?.params ?? node.typeParameters?.params ?? []) as AnyNode[]
-      // `new SizedMap<K, V>({ maxEntries: N, lru?: B })`. Gated on the IMPORT
-      // (see collectSizedMapNames): `SizedMap` is a plausible name for a
-      // user's own class, and mis-lowering someone else's constructor is
-      // worse than not lowering ours.
-      if (ctx.sizedMapNames.has(calleeName) && typeArgs.length === 2) {
-        const optsNode = (node.arguments as AnyNode[] | undefined)?.[0]
-        const readNum = (key: string): number | undefined => {
-          for (const prop of (optsNode?.properties as AnyNode[] | undefined) ?? []) {
-            const k = staticPropKey(prop)
-            if (k === key && prop.value?.type === 'Literal') {
-              const v = prop.value.value
-              if (typeof v === 'number') return v
-              if (typeof v === 'boolean') return v ? 1 : 0
-            }
-          }
-          return undefined
-        }
-        const maxEntries = readNum('maxEntries')
-        if (optsNode?.type !== 'ObjectExpression' || maxEntries === undefined) {
-          // A non-literal cap cannot be baked in — the same conservative rule
-          // useFetch applies to its URL and useStorage to its key.
-          ctx.warnings.push(
-            `[${locOf(node, ctx)}] new ${calleeName}(...) lowers only with a LITERAL \`{ maxEntries: N }\` option object — a computed cap cannot be baked into the native emit. Use a literal, or keep the call behind a \`<Web>\` escape hatch.`,
-          )
-          // Return here: falling through reached the generic "class
-          // construction is not supported" arm, naming the SAME call twice.
-          return { kind: 'literal', value: '' }
-        } else {
-          return {
-            kind: 'new-sized-map',
-            keyType: parseTypeAnnotation(typeArgs[0]!, ctx),
-            valueType: parseTypeAnnotation(typeArgs[1]!, ctx),
-            maxEntries,
-            lru: readNum('lru') === 1,
-          }
-        }
-      }
       // v1 scope: only SCALAR (number/string/boolean) element/key/value types
       // lower to native collections. A non-scalar element (`Set<{x:number}>`, a
       // `typeRef`, a nested array/union) has no `Hashable`/native-key guarantee

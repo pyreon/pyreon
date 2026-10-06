@@ -5130,11 +5130,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // with "an explicit type is required on a value parameter").
       return `{ ${ktLambdaParams()} -> ${emitKotlinExpr(e.body, indent)} }`
     }
-    case 'new-sized-map': {
-      // Mirror of the Swift emit; Kotlin spells named arguments with `=`.
-      const lru = e.lru ? ', lru = true' : ''
-      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}L${lru})`
-    }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).

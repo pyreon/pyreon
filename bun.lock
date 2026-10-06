@@ -1530,10 +1530,17 @@
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^5.0.2",
       },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/a11y": {
       "name": "@pyreon/a11y",

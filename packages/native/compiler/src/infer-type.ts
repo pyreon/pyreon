@@ -21,7 +21,7 @@
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findService, pluginCallReadType, pluginExprMemberType, pluginExprType } from './registry-lookup'
+import { findService, pluginCallReadType, pluginExprMemberType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 import { ERROR_OBJECT } from './services'
 
 export interface InferenceCtx {
@@ -191,11 +191,10 @@ export function buildModuleConstTypes(
  */
 export function moduleConstType(md: ModuleDeclIR, ctx: InferenceCtx): TypeIR | undefined {
   if (md.type.kind !== 'unknown') return md.type
-  // `new SizedMap<K, V>(…)` infers as a `map` for its READS, but the native
-  // value is a `PyreonSizedMap` class, not a dictionary: seeding it as a map
-  // re-spells `seen.size` as `.count`, which the class does not have. Left
-  // `unknown`, as before, so its own member surface is emitted verbatim.
-  if (md.initial.kind === 'new-sized-map') return undefined
+  // A plugin expression that types as a map for its READS but is a class natively (`new SizedMap<K, V>(…)`): seeding it
+  // as a map re-spells `seen.size` as `.count`, which the class does not have. Left `unknown` so its own member surface
+  // is emitted verbatim.
+  if (md.initial.kind === 'ext-expr' && !pluginExprSeedsModuleConst(md.initial)) return undefined
   const t = inferType(md.initial, ctx)
   return isSeedableModuleType(t) ? t : undefined
 }
@@ -1529,14 +1528,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
 /** The declared property type before optional-chain short-circuiting. */
 export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
-    // The declared generics ARE the type — a SizedMap<K, V> behaves as a map
-    // at every use site (`m.get(k)` yields V), so downstream inference reads
-    // it exactly like the built-in.
     // A plugin's own expression: typed by its owner (`ExprEmitter.typing.type`), `unknown` without one.
     case 'ext-expr':
       return pluginExprType(expr) ?? { kind: 'unknown' }
-    case 'new-sized-map':
-      return { kind: 'map', key: expr.keyType, value: expr.valueType }
     case 'new-collection': {
       if (expr.collection === 'map') {
         return { kind: 'map', key: expr.keyType!, value: expr.valueType! }

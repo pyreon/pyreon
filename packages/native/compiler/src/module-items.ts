@@ -61,6 +61,10 @@ export interface ModuleParseContext {
    * (the compiler's own wording). `where` is the prefix, e.g. `toast() options`.
    */
   warnDynamicKey(prop: AstNode, where: string): void
+  /** The type arguments of a call or `new` node (`new Box<string, number>(…)`), each parsed to a type; none when there are none. */
+  typeArgs(node: AstNode): TypeIR[]
+  /** The source location of `node` as the compiler spells it in its own messages (`file.tsx:3:14`), for a message that names a call. */
+  loc(node: AstNode): string
   /**
    * Add an item found OUTSIDE a declaration (a schema synthesized from an inline `s.object({ … }).safeParse(x)`).
    * Appended after every declaration-level item, in the order added.
@@ -156,6 +160,8 @@ export interface CallExprSite {
   /** The callee as written (`toast`, `toast.success`): the recognizer matches it against what its scan recorded. */
   readonly callee: AstNode
   readonly args: readonly AstNode[]
+  /** True for `new Name(…)`: a recognizer that claims a constructor checks it, and one that claims a call ignores a construction. */
+  readonly construct?: boolean | undefined
 }
 
 /**
@@ -177,6 +183,12 @@ export interface ExprEmitter {
         type?(e: ExtExprIR): TypeIR
         /** The type of `<node>.<property>`; when present it decides every member read on the node. */
         member?(e: ExtExprIR, property: string): TypeIR
+        /**
+         * Whether a file-scope `const` initialized with this node is typed by `type` for the READS that follow it.
+         * Default true; false when the node's `type` describes how it reads (a map) but not what it is (a class
+         * whose own member surface must be emitted verbatim).
+         */
+        seedsModuleConst?: boolean
       }
     | undefined
   /**
