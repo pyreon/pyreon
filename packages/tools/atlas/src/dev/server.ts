@@ -14,7 +14,8 @@
  */
 import { resolve } from 'node:path'
 import { discoverComponents } from '../discover'
-import { workspaceResolvePlugin } from '../discover/workspace-packages'
+import { workspaceDirsFor, workspaceResolvePlugin } from '../discover/workspace-packages'
+import { collectPyreonPackages } from './pyreon-singletons'
 import { collectEntries } from '../build/entries'
 import { runScan } from '../cli/run'
 import { configCandidatePaths } from '../discover/config'
@@ -194,6 +195,12 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   const title = options.title ?? configTitle ?? 'atlas'
   const html = devHtml(title)
 
+  // Every `@pyreon/*` package any workspace package declares or links — see
+  // `./pyreon-singletons` (#3846). The Pyreon plugin only excludes the ones the
+  // ROOT manifest declares, so a package only a component package depends on
+  // (`@pyreon/store`) was optimized on a cold start while already loaded raw.
+  const singletons = collectPyreonPackages(workspaceDirsFor(root))
+
   const server = await createServer({
     root,
     configFile: false,
@@ -201,7 +208,13 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // removed it. Without this a single `~/components/…` import fails to
     // resolve and the dev overlay covers the WHOLE workbench, not just that
     // component's card (#2744).
-    ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),
+    //
+    // `dedupe` pins every `@pyreon/*` to one copy however the import chain
+    // reaches it (direct, transitive, from a workspace package's own link).
+    resolve: {
+      ...(alias.length > 0 ? { alias: [...alias] } : {}),
+      ...(singletons.length > 0 ? { dedupe: singletons } : {}),
+    },
     // An explicit port is a requirement; the default is a preference. Failing
     // because 5210 is taken — by another workbench, say — made a second
     // `atlas dev` refuse to start with nothing else wrong.
@@ -215,7 +228,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // `index.html` for dependencies — that file belongs to the consuming app
     // (it may not even exist), and scanning it pre-bundles the wrong graph and
     // reports failures that have nothing to do with the workbench.
-    optimizeDeps: { entries: [] },
+    //
+    // `exclude` keeps the framework out of the optimizer ENTIRELY, so no
+    // import can ever be served both raw and optimized (two instances — the
+    // singleton sentinel refuses that, and only on a cold cache).
+    optimizeDeps: { entries: [], exclude: singletons },
     plugins: [
       // The workbench entry and catalog are VIRTUAL modules, so their imports
       // are resolved against the Vite root — the project root, which in a

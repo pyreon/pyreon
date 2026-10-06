@@ -373,7 +373,7 @@ function isAtlasGenerated(importer: string | undefined): boolean {
  * The root is included as a resolution base because a single-package project
  * keeps its dependencies there, and a monorepo root occasionally does too.
  */
-function workspaceDirsFor(root: string): string[] {
+export function workspaceDirsFor(root: string): string[] {
   // Atlas's OWN directory is a base too, and it is the one that matters for the
   // generated entry: that entry is Atlas's UI code, so it imports the framework
   // — and in a consumer install NO project package declares `@pyreon/runtime-dom`,

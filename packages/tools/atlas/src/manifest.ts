@@ -162,7 +162,7 @@ atlas verify Button: 1 component(s), 15 scenario(s)
       kind: 'function',
       signature: 'atlas dev [dir] [--port=5210]',
       summary:
-        'Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import `@pyreon/atlas` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings).',
+        'Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import `@pyreon/atlas` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings). Every @pyreon package any workspace package declares or links is kept out of Vite’s dependency optimizer and deduped, so a framework package only a COMPONENT package depends on (not the root manifest) keeps ONE runtime instance on a cold node_modules/.cache/atlas-vite too — a raw + optimized pair trips the singleton sentinel and the first preview fails to load.',
       example: `$ atlas dev . --port=5210
 atlas dev: 10 component(s) → http://localhost:5210/`,
       mistakes: [
