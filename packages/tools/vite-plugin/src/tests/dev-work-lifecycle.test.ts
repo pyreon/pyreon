@@ -95,6 +95,24 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('disposes once when watcher removal reenters server close', async () => {
+    vi.useFakeTimers()
+    const root = fixture()
+    const plugin = pyreon({ islands: false })
+    plugins.push(plugin)
+    const watcher = configure(plugin, root)
+    const off = vi.spyOn(watcher, 'off')
+    let reentrant: unknown
+    watcher.on('removeListener', (event) => {
+      if (event === 'change') reentrant = (plugin.closeBundle as unknown as Hook).call(null)
+    })
+    await (plugin.closeBundle as unknown as Hook).call(null)
+    await reentrant
+    expect(off).toHaveBeenCalledTimes(1)
+    expect(watcher.listenerCount('change')).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('refreshes the active server context after its quiet period using its own root', async () => {
     vi.useFakeTimers()
     const first = fixture(false)
