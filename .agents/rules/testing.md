@@ -63,6 +63,8 @@ Specs can assert broken behaviour (a `??` that swallowed an explicit `null`; an 
 
 ## Timeouts and CI-only failures
 
+- Tests of timing helpers must exercise policy with an injected monotonic clock and deterministic work, rather than run microbenchmarks inside the required coverage pool. `measureComplexity` accepts `clock`; its controls count real linear/nested-loop work, calibration, fastest samples, resampling and flat-growth stops. The default remains `performance.now` for measurements of real operations. Ratios reduce sensitivity to machine speed, but unequal contention can still skew them; do not claim load independence or retry the helper's own unit tests into passing.
+
 - For browser debounce/quiet-period contracts, install Playwright's clock before navigation, pause after hydration, and advance the exact delay. Assert the pre-deadline state and timer restart on a later input. A generous wall-clock assertion still depends on hosted timer delivery; increasing it does not prove cancellation or the quiet period. Run reliability controls with `--retries=0`.
 
 Reference: `packages/fundamentals/sync/src/tests/ws-relay.test.ts`.

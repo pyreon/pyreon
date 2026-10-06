@@ -1212,6 +1212,9 @@ async function runWithConcurrency(
                 ? 'TIMED OUT'
                 : 'NO COVERAGE OUTPUT'
         console.log(`  ${pkg.name}: \u274c ${why}`)
+        // Preserve actionable diagnostics even if a later suite or the job
+        // deadline prevents the final table from being printed.
+        console.log(describeProblem(outcome))
       }
     }
   }
