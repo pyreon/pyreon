@@ -27,7 +27,7 @@ export type { PropType, PropShape } from './controls'
 export { inferControl, inferControls } from './controls'
 
 export type { ScenarioInit } from './scenario'
-export { slugify, scenarioId, makeScenario } from './scenario'
+export { duplicateScenarioIds, slugify, scenarioId, makeScenario } from './scenario'
 
 export { buildVariantMatrix, buildVariantFan, variantLabel, autoVariantScenarios } from './variants'
 export type { VariantMatrix } from './variants'
@@ -46,6 +46,6 @@ export {
 export type { UsageFinding, UsageResult } from './validate-usage'
 export { editDistance, formatUsage, nearest, validateUsage } from './validate-usage'
 export type { ComponentIdentity } from './identity'
-export { ambiguousComponentMessage, componentKey, fileQualifierFor, pathQualifierFor, resolveComponent } from './identity'
+export { ambiguousComponentMessage, componentKey, fileQualifierFor, identityPath, pathQualifierFor, resolveComponent, scanRelativePath } from './identity'
 export type { CatalogGraph, SearchHit } from './graph'
 export { createCatalogGraph, qualifyIdentities } from './graph'
