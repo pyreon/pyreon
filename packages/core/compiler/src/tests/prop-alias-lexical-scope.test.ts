@@ -126,7 +126,10 @@ describe('prop-derived aliases resolve by lexical binding (#3815)', () => {
     })
   }
 
-  it('the native binary is present in this environment (a skipped suite is not coverage)', () => {
-    expect(native).not.toBeNull()
+  // A skipped native backend must not masquerade as coverage, but only a job
+  // that BUILDS the binary can be held to it: the unit-test cells do not run
+  // cargo. The Build job's Rust-binary step sets PYREON_REQUIRE_NATIVE_COMPILER.
+  it('the native binary is present wherever the job says it builds one', () => {
+    if (process.env.PYREON_REQUIRE_NATIVE_COMPILER) expect(native).not.toBeNull()
   })
 })
