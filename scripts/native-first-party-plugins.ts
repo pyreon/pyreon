@@ -26,11 +26,13 @@ import { validatePlugin } from '../packages/fundamentals/validate/src/native-plu
 import { validationPlugin } from '../packages/fundamentals/validation/src/native-plugin/plugin'
 import { machinePlugin } from '../packages/fundamentals/machine/src/native-plugin/plugin'
 import { machineStubs } from '../packages/fundamentals/machine/src/native-plugin/stubs'
+import { i18nPlugin } from '../packages/fundamentals/i18n/src/native-plugin/plugin'
+import { i18nStubs } from '../packages/fundamentals/i18n/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin])
+export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 

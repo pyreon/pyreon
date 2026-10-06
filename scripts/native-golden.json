@@ -3381,6 +3381,16 @@
       "bytes": 264,
       "warnings": 3
     },
+    "golden-fixture:i18n-16.tsx|swift": {
+      "sha": "77f092b4a50cb0fea996e345124c4a220ecb3148e48006b999aeee44d8119fd0",
+      "bytes": 480,
+      "warnings": 0
+    },
+    "golden-fixture:i18n-16.tsx|kotlin": {
+      "sha": "b1aea208cc4d6dc542460511b14d2acdd8efd828aa495646697f59952d56af75",
+      "bytes": 685,
+      "warnings": 0
+    },
     "golden-fixture:machine-01.tsx|swift": {
       "sha": "8d543a23dbea7564db57dcdc5703126a65dc1d3419521942fdea94ef1047b0ef",
       "bytes": 224,

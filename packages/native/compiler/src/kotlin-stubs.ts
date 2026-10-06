@@ -1545,35 +1545,6 @@ fun PyreonRouteLoader(path: String, load: () -> Any?, content: @Composable () ->
   content()
 }
 
-// PyreonI18n — Gap 4 PR-3 (Strategy-B port for @pyreon/i18n/core, v1).
-// Real impl in @pyreon/native-runtime-kotlin's PyreonI18n.kt.
-class PyreonI18n(
-  initialLocale: String,
-  val messages: Map<String, Map<String, String>>,
-  val fallbackLocale: String? = null,
-) {
-  var locale: String = initialLocale
-    private set
-  fun t(key: String): String {
-    messages[locale]?.get(key)?.let { return it }
-    if (fallbackLocale != null) {
-      messages[fallbackLocale]?.get(key)?.let { return it }
-    }
-    return key
-  }
-  // Two-arg overload — interpolation + one/other plurals. Mirrors the
-  // REAL runtime-kotlin signature t(key, values: Map<String, Any?>)
-  // (see PyreonI18n.kt) so the emitted dict-arg call shape
-  // i18n.t("items", mapOf("count" to n)) typechecks here.
-  fun t(key: String, values: Map<String, Any?>): String {
-    var out = t(key)
-    for ((name, value) in values) {
-      out = out.replace("{{" + name + "}}", value?.toString() ?: "")
-    }
-    return out
-  }
-}
-
 // @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
 // PyreonCrdt.kt / PyreonSyncedSignal.kt SURFACE.
 // A stub NARROWER than the runtime rejects CORRECT emit; one that is WIDER

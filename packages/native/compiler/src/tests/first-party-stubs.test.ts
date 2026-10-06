@@ -4,11 +4,12 @@
 // input that names the runtime type gets a stub that declares it on the right target.
 import { describe, expect, it } from 'vitest'
 import { FIRST_PARTY_VALIDATE_OPTIONS } from '../../../../../scripts/native-first-party-plugins'
-import { machineStubs } from './first-party-plugins'
+import { i18nStubs, machineStubs } from './first-party-plugins'
 
 describe('first-party stub augmentations', () => {
   it('are loaded into the compile gates the repo scripts use', () => {
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(machineStubs)
+    expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(i18nStubs)
   })
 
   it('append nothing to an emit that names none of their runtime types', () => {
@@ -21,5 +22,10 @@ describe('first-party stub augmentations', () => {
   it('the machine stubs declare PyreonMachine on the target that names it', () => {
     expect(machineStubs.swift?.('@State private var m = PyreonMachine(initial: "a", transitions: [:])')).toContain('final class PyreonMachine')
     expect(machineStubs.kotlin?.('val m = remember { PyreonMachine(initial = "a", transitions = mapOf()) }')).toContain('class PyreonMachine')
+  })
+
+  it('the i18n stubs declare PyreonI18n on the target that names it', () => {
+    expect(i18nStubs.swift?.('@State private var i18n = PyreonI18n(locale: "en", messages: [:])')).toContain('struct PyreonI18n')
+    expect(i18nStubs.kotlin?.('val i18n = remember { PyreonI18n(initialLocale = "en", messages = mapOf()) }')).toContain('class PyreonI18n')
   })
 })

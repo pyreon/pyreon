@@ -603,10 +603,6 @@ let _syncedSignalNames: Set<string> = new Set()
 let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
-/** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
- *  object-literal values arg to a map at this call shape. Mirror of
- *  emit-swift's `_i18nNames`. */
-let _i18nNamesKotlin: Set<string> = new Set()
 /**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
@@ -1405,7 +1401,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
-  _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1446,7 +1441,6 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
@@ -1809,7 +1803,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
-  _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -2245,26 +2238,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // descriptor in services.ts (see `renderKotlinService`).
   if (d.kind === 'service') {
     return renderKotlinService(serviceFor(d.hook), kotlinIdent(d.name))
-  }
-  // Gap 4 PR-3: `const i18n = createI18n({...})` →
-  // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
-  // flows through unchanged (PyreonI18n.t is defined on the runtime
-  // container).
-  if (d.kind === 'i18n') {
-    const entries = Object.entries(d.messages)
-      .map(([loc, kv]) => {
-        const inner = Object.entries(kv)
-          .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
-          .join(', ')
-        return `${kotlinStr(loc)} to ${inner === '' ? 'mapOf()' : `mapOf(${inner})`}`
-      })
-      .join(', ')
-    const msgLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
-    const fbArg =
-      d.fallbackLocale !== undefined
-        ? `, fallbackLocale = ${kotlinStr(d.fallbackLocale)}`
-        : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${kotlinStr(d.locale)}, messages = ${msgLit}${fbArg}) }`
   }
   // `@pyreon/sync` — `remember { }` blocks run sequentially in composition, so
   // (unlike Swift's @State) the doc and its signals can reference each other
@@ -4179,27 +4152,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
         const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
         return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}(${args})`
-      }
-      // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
-      // object-literal VALUES argument lowers to a Kotlin map (the
-      // runtime's `t(key, values: Map<String, Any?>)` overload). The
-      // general object-literal emit produces a data-class construction
-      // / `(field = value)` pseudo-tuple — wrong in this call position.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 't' &&
-        e.callee.object.kind === 'identifier' &&
-        _i18nNamesKotlin.has(e.callee.object.name) &&
-        e.args.length === 2 &&
-        e.args[1]!.kind === 'object' &&
-        (e.args[1]! as Extract<ExprIR, { kind: 'object' }>).spreads === undefined
-      ) {
-        const keyArg = emitKotlinExpr(e.args[0]!, indent)
-        const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
-        const entries = obj.fields
-          .map((f) => `${kotlinStr(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
-          .join(', ')
-        return `${kotlinIdent(e.callee.object.name)}.t(${keyArg}, mapOf(${entries}))`
       }
       // Gap 4 v1: signal-style read on a store field — drop the parens.
       // Same chain-shape as Swift: call(member(<field>, member(store,

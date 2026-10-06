@@ -676,7 +676,7 @@ extension View {
   // which lowers to .scaledToFill(), meaning every plain <Image src alt /> --
   // the most common usage of a canonical primitive -- failed the required Swift
   // gate on valid SwiftUI. Only fit="contain" (scaledToFit) and fit="none" (no
-  // modifier) got through. Same SUBSET-stub defect as PyreonI18n above, found
+  // modifier) got through. Same SUBSET-stub defect as the PyreonI18n stub (now in @pyreon/i18n's plugin), found
   // the same way: Kotlin accepted the identical source.
   public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
@@ -993,23 +993,6 @@ extension View {
   public func pyreonSortableContainer<T>(
     _ state: PyreonSortableState<T>
   ) -> some View { self }
-}
-public struct PyreonI18n {
-  // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
-  // made it required, so \`createI18n({ locale, messages })\` — the two-argument
-  // form the docs show and the common case — was REJECTED by the gate with
-  // "missing argument for parameter 'fallbackLocale'". Valid source, failing
-  // build. Same class as the coolgrid frame stub: a SUBSET stub manufactures
-  // failures exactly as a SUPERSET stub masks them, and the fix is the same —
-  // mirror the real signature, do not guess at it.
-  public init(
-    locale: String,
-    messages: [String: [String: String]],
-    fallbackLocale: String? = nil
-  ) {}
-  // t(key) OR t(key, interpolation values) — the emit passes [String: Any]-shaped
-  // dictionary literals ([String: String] and [String: Int] both coerce).
-  public func t(_ key: String, _ values: [String: Any] = [:]) -> String { "" }
 }
 // AppStorage - SwiftUI's own wrapper, which \`useStorage\` emits for SCALAR
 // values (a struct value routes to PyreonAppStorage below instead). Stripped

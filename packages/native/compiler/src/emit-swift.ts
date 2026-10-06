@@ -657,9 +657,6 @@ let _websocketUrlsSwift: Map<string, string> = new Map()
  * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
  */
 let _asyncDeclsSwift: DeclIR[] = []
-/** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
- *  object-literal values arg to a dictionary at this call shape. */
-let _i18nNames: Set<string> = new Set()
 /**
  * Per-component: every function decl name in scope (DeclIR.function —
  * Parser-A). Disambiguates `addTodo()` (function call — keeps parens)
@@ -1917,7 +1914,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
-  _i18nNames = new Set()
   _formNamesSwift = new Set()
   _formSubmitParamsSwift = []
   _fetchNamesSwift = new Set()
@@ -1975,7 +1971,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
       _serviceKindByNameSwift.set(d.name as string, d.kind)
     }
-    if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
     // A plugin declaration that is an async source (`useQuery`) joins the Suspense / ErrorBoundary set.
@@ -3309,26 +3304,6 @@ function emitSwiftDecl(
   }
   // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
   if (d.kind === 'ext') return emitPluginDecl(d, 'swift', swiftEmitContext(2))
-  // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
-  // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
-  // is defined on the runtime container). Read access to `i18n.locale`
-  // is the plain String property.
-  if (d.kind === 'i18n') {
-    const msgEntries = Object.entries(d.messages)
-      .map(([loc, kv]) => {
-        const inner = Object.entries(kv)
-          .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
-          .join(', ')
-        return `${swiftStr(loc)}: ${inner === '' ? '[:]' : `[${inner}]`}`
-      })
-      .join(', ')
-    const msgLit = msgEntries === '' ? '[:]' : `[${msgEntries}]`
-    const fbArg =
-      d.fallbackLocale !== undefined
-        ? `, fallbackLocale: ${swiftStr(d.fallbackLocale)}`
-        : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonI18n(locale: ${swiftStr(d.locale)}, messages: ${msgLit}${fbArg})`
-  }
   // `@pyreon/sync` — the doc + each synced signal are declared as TYPED @State
   // with NO inline initializer; they're seeded in the component's generated
   // `init()` (emitSwiftComponent), because a synced signal's initializer must
@@ -5285,28 +5260,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
         const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
         return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
-      }
-      // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
-      // object-literal VALUES argument lowers to a Swift dictionary
-      // (the runtime's `t(_:_:[String: CustomStringConvertible])`
-      // overload). The general object-literal emit produces a struct
-      // construction / labeled tuple — wrong in this call position (a
-      // single-field labeled tuple is a Swift PARSE error).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 't' &&
-        e.callee.object.kind === 'identifier' &&
-        _i18nNames.has(e.callee.object.name) &&
-        e.args.length === 2 &&
-        e.args[1]!.kind === 'object' &&
-        (e.args[1]! as Extract<ExprIR, { kind: 'object' }>).spreads === undefined
-      ) {
-        const keyArg = emitSwiftExpr(e.args[0]!, indent)
-        const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
-        const entries = obj.fields
-          .map((f) => `${swiftStr(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
-          .join(', ')
-        return `${swiftIdent(e.callee.object.name)}.t(${keyArg}, [${entries}])`
       }
       // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
       // is the primary write, and the object literal was lowered by the

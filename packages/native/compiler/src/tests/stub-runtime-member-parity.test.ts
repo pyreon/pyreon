@@ -40,6 +40,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findNativeRuntime, nativeRuntimeRoots } from './native-runtime-locations'
+import { PLUGIN_STUBS } from './plugin-stub-text'
 
 const REPO = join(import.meta.dirname ?? __dirname, '..', '..', '..', '..', '..')
 
@@ -259,9 +260,11 @@ function runtimeTypeNames(kind: 'swift' | 'kotlin'): string[] {
   return [...names].sort()
 }
 
+// The core stub bundle PLUS every first-party plugin's stubs: a library that moved its lowering into its package took its
+// stub types with it, and a gate that kept reading only the core file would silently stop covering them.
 const STUBS = {
-  swift: readFileSync(join(REPO, 'packages/native/compiler/src/swift-stubs.ts'), 'utf8'),
-  kotlin: readFileSync(join(REPO, 'packages/native/compiler/src/kotlin-stubs.ts'), 'utf8'),
+  swift: [readFileSync(join(REPO, 'packages/native/compiler/src/swift-stubs.ts'), 'utf8'), ...PLUGIN_STUBS.map((p) => p.swift)].join('\n'),
+  kotlin: [readFileSync(join(REPO, 'packages/native/compiler/src/kotlin-stubs.ts'), 'utf8'), ...PLUGIN_STUBS.map((p) => p.kotlin)].join('\n'),
 } as const
 
 describe('every stubbed runtime type declares the members its runtime does', () => {

@@ -23,8 +23,10 @@ import { queryPlugin } from '../../../../fundamentals/query/src/native-plugin/pl
 import { queryStubs } from '../../../../fundamentals/query/src/native-plugin/stubs'
 import { validatePlugin } from '../../../../fundamentals/validate/src/native-plugin/plugin'
 import { validationPlugin } from '../../../../fundamentals/validation/src/native-plugin/plugin'
+import { i18nPlugin } from '../../../../fundamentals/i18n/src/native-plugin/plugin'
+import { i18nStubs } from '../../../../fundamentals/i18n/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
