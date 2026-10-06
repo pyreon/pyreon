@@ -107,8 +107,13 @@ describe('code-shaped plugin: load-time errors', () => {
 
   it('a call that is also a service hook fails to load, naming both owners', () => {
     const clash = toyPlugin({ calls: { useShare: toyCall } })
+    // Whoever owns the service today (the compiler itself, or a package plugin
+    // such as @pyreon/hooks once a library owns its lowering) must be named —
+    // so read the owner from the registry rather than hardcoding it.
+    const owner = createCompiler().services.get('useShare')?.owner
+    expect(owner, 'useShare must be a registered service for this spec to mean anything').toBeDefined()
     expect(() => createCompiler({ plugins: [clash] })).toThrow(
-      /hook "useShare" is claimed by both "native-compiler" \(services\) and "@acme\/toy" \(calls\)/,
+      new RegExp(`hook "useShare" is claimed by both "${owner!.replace(/[/]/g, '\\/')}" \\(services\\) and "@acme\\/toy" \\(calls\\)`),
     )
   })
 
