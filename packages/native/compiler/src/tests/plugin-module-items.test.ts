@@ -330,6 +330,23 @@ export function App() {
     expect(code).toContain('Meters.check("unit", v)')
   })
 
+  it("bindings: a form's `schema:` link follows the rename, so its validators resolve against the renamed item", () => {
+    const { code } = testNativePlugin(
+      unitsPlugin(),
+      `import { defineUnit } from '@acme/units'
+import { useForm } from '@pyreon/form'
+${HEAD}export const Meters = defineUnit('m')
+export type Meters = { amount: number }
+export function App() {
+  const f = useForm({ initialValues: { label: '' }, schema: Meters, onSubmit: () => {} })
+  return <Stack><Text>{String(f.isValid())}</Text></Stack>
+}`,
+      { target },
+    )
+    expect(code).toContain('MetersValue.check("label", v)')
+    expect(code).not.toContain(' Meters.check(')
+  })
+
   it('refineStructs: a decode type is settled from the item the request names; finishModule sees every item', () => {
     const seen: string[] = []
     const plugin = unitsPlugin({

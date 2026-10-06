@@ -156,7 +156,9 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
         const to = renames.get(n.name)
         if (to !== undefined) n.name = to
       }
-      if (typeof n.schemaName === 'string') {
+      // A form's `schema: Pet` link is the core's own field. A plugin's by-name links (an expression's payload, an
+      // item's field types) follow through its own `rename` hooks, never through a key name the core guesses at.
+      if (n.kind === 'form' && typeof n.schemaName === 'string') {
         const to = renames.get(n.schemaName)
         if (to !== undefined) n.schemaName = to
       }
