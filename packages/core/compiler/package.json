@@ -23,6 +23,21 @@
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
     },
+    "./analyze": {
+      "bun": "./src/analyze.ts",
+      "import": "./lib/analyze.js",
+      "types": "./lib/types/analyze.d.ts"
+    },
+    "./audits": {
+      "bun": "./src/audits.ts",
+      "import": "./lib/audits.js",
+      "types": "./lib/types/audits.d.ts"
+    },
+    "./validate": {
+      "bun": "./src/validate.ts",
+      "import": "./lib/validate.js",
+      "types": "./lib/types/validate.d.ts"
+    },
     "./plain": {
       "bun": "./src/plain.ts",
       "import": "./lib/plain.js",

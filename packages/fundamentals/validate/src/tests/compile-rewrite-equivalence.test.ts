@@ -17,7 +17,7 @@
  * Bisect-verify: change any action mapping in `emitSchemaSource` (e.g. string
  * `min` → `maxLength`) → the matching case fails with the diff.
  */
-import { analyzeValidate, emitSchemaSource } from '@pyreon/compiler'
+import { analyzeValidate, emitSchemaSource } from '@pyreon/compiler/validate'
 import { describe, expect, it } from 'vitest'
 import { s } from '../index'
 import * as mini from '../mini'

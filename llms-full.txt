@@ -277,7 +277,7 @@ import { transformJSX_JS } from "@pyreon/compiler"
 // Backend-deterministic — never dispatches to the native binary.
 const { code } = transformJSX_JS("<div>{name()}</div>", "x.tsx")
 
-import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler/analyze"
 
 const result = analyzeReactivity(
   "const A = (props) => <div>{props.name}</div>",
@@ -286,46 +286,46 @@ const result = analyzeReactivity(
 for (const f of result.findings) console.log(f.line, f.kind, f.detail)
 console.log(formatReactivityLens(code, result)) // annotated-source debug view
 
-import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler/analyze"
 
 const r = analyzeReactivity(src, "App.tsx")
 process.stdout.write(formatReactivityLens(src, r))
 
-import { analyzeValidate } from "@pyreon/compiler"
+import { analyzeValidate } from "@pyreon/compiler/validate"
 
 const [info] = analyzeValidate("const L = s.object({ e: s.string().email() })")
 info.emittable // true
 
-import { analyzeValidate, emitValidator } from "@pyreon/compiler"
+import { analyzeValidate, emitValidator } from "@pyreon/compiler/validate"
 
 const [info] = analyzeValidate("const S = s.string().email()")
 const src = emitValidator(info.node)
 const validate = new Function("return " + src)()
 validate("a@b.co").length // 0
 
-import { detectReactPatterns } from "@pyreon/compiler"
+import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
 console.log(diags[0]?.code) // "react-use-state"
 
-import { migrateReactCode } from "@pyreon/compiler"
+import { migrateReactCode } from "@pyreon/compiler/analyze"
 
 const { code, changes } = migrateReactCode(reactSource, "C.tsx")
 
-import { migratePyreonCode } from "@pyreon/compiler"
+import { migratePyreonCode } from "@pyreon/compiler/analyze"
 
 const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")
 
-import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler"
+import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler/analyze"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))
 
-import { diagnoseError } from "@pyreon/compiler"
+import { diagnoseError } from "@pyreon/compiler/analyze"
 
 const d = diagnoseError("props.when is not a function")
 if (d) console.log(d.cause, d.fix)
 
-import { detectPyreonPatterns } from "@pyreon/compiler"
+import { detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectPyreonPatterns(
   "const A = (props) => { const { x } = props; return <i>{x}</i> }",
@@ -333,34 +333,34 @@ const diags = detectPyreonPatterns(
 )
 console.log(diags[0]?.code) // "props-destructured-body"
 
-import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler"
+import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))
 
-import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 const r = auditTestEnvironment(process.cwd())
 console.log(formatTestAudit(r, { minRisk: "high" }))
 
-import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))
 
-import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 const r = auditIslands(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)
 
-import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 console.log(formatIslandAudit(auditIslands(".")))
 
-import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 const r = auditSsg(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)
 
-import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 console.log(formatSsgAudit(auditSsg(".")))
 
@@ -368,7 +368,7 @@ import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")
 
-import { generateContext } from "@pyreon/compiler"
+import { generateContext } from "@pyreon/compiler/audits"
 
 const ctx = generateContext(process.cwd())
 console.log(ctx.routes.length, ctx.islands.length)

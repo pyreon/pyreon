@@ -14,7 +14,7 @@
  * web-CI failure.
  */
 
-import { auditNative, type NativeFindingCode } from '@pyreon/compiler'
+import { auditNative, type NativeFindingCode } from '@pyreon/compiler/audits'
 
 import type { Finding, GateResult, Severity } from '../types'
 

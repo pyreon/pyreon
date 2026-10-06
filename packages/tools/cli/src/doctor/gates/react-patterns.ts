@@ -20,7 +20,7 @@ import {
   detectReactPatterns,
   hasReactPatterns,
   migrateReactCode,
-} from '@pyreon/compiler'
+} from '@pyreon/compiler/analyze'
 
 import type { Finding, GateResult } from '../types'
 import { emptyScanResult } from '../utils/empty-scan'

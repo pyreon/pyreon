@@ -15,7 +15,7 @@
  * dep graph clean — this test lives in @pyreon/validate, a fundamentals package
  * that may devDep the core @pyreon/compiler; the correct direction).
  */
-import { analyzeValidate, emitValidator, type ValidateNode } from '@pyreon/compiler'
+import { analyzeValidate, emitValidator, type ValidateNode } from '@pyreon/compiler/validate'
 import { describe, expect, it } from 'vitest'
 import { s } from '../v1'
 
