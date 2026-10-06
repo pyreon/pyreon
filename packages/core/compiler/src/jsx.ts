@@ -3169,7 +3169,9 @@ export function transformJSX_JS(
     name: string
     prev: { start: number; end: number } | undefined
     /** Entry registers a member of this name-set (undo = delete), not an alias. */
-    set?: 'props' | 'signal' | 'selector'
+    set?: 'props' | 'signal' | 'selector' | 'fn'
+    /** `set: 'fn'` — whether `propDerivedFnInits` held the name BEFORE this registration. */
+    fnPrev?: boolean
   }[] = []
   /** `propsNames` is lexically scoped by the same frames (see above). */
   function registerPropsName(name: string): void {
@@ -3177,6 +3179,19 @@ export function transformJSX_JS(
     propsNames.add(name)
     propDerivedLog.push({ name, prev: undefined, set: 'props' })
   }
+  /**
+   * Prop-derived consts whose initializer is itself a function expression
+   * (`const f = () => props.x`). Inlining one yields a FRESH function that
+   * reads the props getter when CALLED, so a binding that captures the inlined
+   * value once is still live. Any other prop-derived initializer
+   * (`foo(props.n)`) evaluates to a value that goes stale if captured once.
+   *
+   * Name-keyed like `propDerivedVars`, so it is scoped by the SAME undo log
+   * (`set: 'fn'` restores the previous membership): without that, a function
+   * initializer in one function would let a same-named VALUE initializer in a
+   * sibling skip the staleness bail (issue #3815's leak class).
+   */
+  const propDerivedFnInits = new Set<string>()
   // Round 9 fix: names of const/let bindings whose initializer is a JSX
   // element (`const x = <El/>`). A bare `{x}` child of such a binding must be
   // MOUNTED, not text-coerced — pre-fix it emitted `createTextNode(x)` which
@@ -3532,6 +3547,14 @@ export function transformJSX_JS(
             start: decl.init.start as number,
             end: decl.init.end as number,
           })
+          const isFnInit =
+            decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression'
+          const wasFnInit = propDerivedFnInits.has(decl.id.name)
+          if (isFnInit !== wasFnInit) {
+            propDerivedLog.push({ name: decl.id.name, prev: undefined, set: 'fn', fnPrev: wasFnInit })
+            if (isFnInit) propDerivedFnInits.add(decl.id.name)
+            else propDerivedFnInits.delete(decl.id.name)
+          }
         }
       }
     }
@@ -3616,7 +3639,13 @@ export function transformJSX_JS(
     return resolved
   }
 
-  function resolveIdentifiersInText(text: string, baseOffset: number, sourceNode?: N): string {
+  function resolveIdentifiersInText(
+    text: string,
+    baseOffset: number,
+    sourceNode?: N,
+    /** Out-param: `[sourceEnd, newLen - oldLen]` per substituted identifier. */
+    shifts?: Array<[number, number]>,
+  ): string {
     const endOffset = baseOffset + text.length
     const idents: {
       start: number
@@ -3773,7 +3802,9 @@ export function transformJSX_JS(
       const resolved = resolveVarToString(id.name, sourceNode)
       // A shorthand-property ident expands to `name: (value)`; a normal
       // reference just substitutes `(value)` in place.
-      parts.push(id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`)
+      const replacement = id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`
+      parts.push(replacement)
+      shifts?.push([id.end, replacement.length - (id.end - id.start)])
       lastPos = id.end
     }
     parts.push(code.slice(lastPos, endOffset))
@@ -4171,7 +4202,10 @@ export function transformJSX_JS(
         if (e.set === 'props') propsNames.delete(e.name)
         else if (e.set === 'signal') signalVars.delete(e.name)
         else if (e.set === 'selector') selectorVars.delete(e.name)
-        else if (e.prev) propDerivedVars.set(e.name, e.prev)
+        else if (e.set === 'fn') {
+          if (e.fnPrev) propDerivedFnInits.add(e.name)
+          else propDerivedFnInits.delete(e.name)
+        } else if (e.prev) propDerivedVars.set(e.name, e.prev)
         else propDerivedVars.delete(e.name)
       }
     }
@@ -4830,8 +4864,15 @@ export function transformJSX_JS(
       const callee = inner.callee
       if (!callee) return null
       // Bare identifier — the existing fast path. Caller emits 2-arg form.
-      if (callee.type === 'Identifier')
+      if (callee.type === 'Identifier') {
+        // A prop-derived VALUE (`const f = foo(props.n)`, `{f()}`) inlines to an
+        // expression the fast path would evaluate ONCE at bind time and keep —
+        // stale on the next prop change. Only a function-expression initializer
+        // inlines to something that is live when called. Bail to the general
+        // path, which re-evaluates the whole expression on every change.
+        if (propDerivedVars.has(callee.name) && !propDerivedFnInits.has(callee.name)) return null
         return { ref: sliceExpr(callee), isMember: false, receiver: null }
+      }
       // MemberExpression chain — widening. Walk the chain, bail on any
       // computed access. Root identifier must NOT be a tracked active
       // signal (would imply a method call on a signal, e.g. `count.peek()`).
@@ -4844,6 +4885,11 @@ export function transformJSX_JS(
         }
         if (cur.type !== 'Identifier') return null
         if (isActiveSignal(cur.name)) return null
+        // A prop-derived root (`const h = foo(props.n)`, `{h.c()}`): the fast
+        // path evaluates `ref` and `receiver` once at bind time, so the inlined
+        // `(foo(props.n)).c` / `(foo(props.n))` would freeze the value from
+        // setup. The general path re-evaluates it per change.
+        if (propDerivedVars.has(cur.name) && !propDerivedFnInits.has(cur.name)) return null
         // Depth-1 chain (`row.label()`): the RECEIVER is a plain identifier
         // already in scope, so the emitter can hand the runtime `row` instead of
         // minting a `() => row.label()` thunk the fast path throws away. Reading
@@ -6069,10 +6115,13 @@ export function transformJSX_JS(
 
   function sliceExpr(expr: N): string {
     let result: string
+    // Length shifts the prop-derived resolution applied — the signal auto-call
+    // below addresses the RESOLVED text by source position through these.
+    const shifts: Array<[number, number]> = []
     if (propDerivedVars.size > 0 && accessesProps(expr)) {
       const start = expr.start as number
       const end = expr.end as number
-      result = resolveIdentifiersInText(code.slice(start, end), start, expr)
+      result = resolveIdentifiersInText(code.slice(start, end), start, expr, shifts)
     } else {
       result = code.slice(expr.start as number, expr.end as number)
     }
@@ -6088,7 +6137,7 @@ export function transformJSX_JS(
     // itself (shadow-aware, JSX-aware) and returns the text unchanged when
     // nothing needs calling, so the gate bought only a redundant walk.
     if (signalVars.size > 0 && signalVars.size > shadowedSignals.size) {
-      result = autoCallSignals(result, expr)
+      result = autoCallSignals(result, expr, shifts)
     }
 
     return result
@@ -6253,8 +6302,17 @@ export function transformJSX_JS(
     return false
   }
 
-  function autoCallSignals(text: string, expr: N): string {
+  /**
+   * `text` is the expression's text AFTER prop-derived resolution, so it is not
+   * a slice of `code` any more: signal identifiers are located by SOURCE
+   * position (the AST) and addressed in `text` through `shifts`. Re-slicing
+   * `code` here instead dropped every prop-derived inlining in the expression
+   * and, because the resolved text is longer, ran past the expression and
+   * copied the source that followed it.
+   */
+  function autoCallSignals(text: string, expr: N, shifts: Array<[number, number]>): string {
     const start = expr.start as number
+    const end = expr.end as number
     // Collect signal identifier positions that need auto-calling
     const idents: { start: number; end: number }[] = []
     // Local lexical shadow set — a signal-named binding introduced INSIDE
@@ -6264,7 +6322,7 @@ export function transformJSX_JS(
     const shadowed = new Set<string>()
 
     function findSignalIdents(node: N): void {
-      if ((node.start as number) >= start + text.length || (node.end as number) <= start) return
+      if ((node.start as number) >= end || (node.end as number) <= start) return
       const introduced: string[] = []
       for (const n of scopeBoundSignals(node)) {
         if (!shadowed.has(n)) {
@@ -6311,7 +6369,7 @@ export function transformJSX_JS(
         }
         // Exactly-bare DOM attr/child — leave bare for the runtimes'
         // fine-grained accessor treatment (see isBareDomBinding).
-        if (isBareDomBinding(node, start, start + text.length)) return
+        if (isBareDomBinding(node, start, end)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
       forEachChildFast(node, findSignalIdents)
@@ -6324,13 +6382,16 @@ export function transformJSX_JS(
     // Sort by position and insert () after each identifier
     idents.sort((a, b) => a.start - b.start)
     const parts: string[] = []
-    let lastPos = start
+    let lastOut = 0
     for (const id of idents) {
-      parts.push(code.slice(lastPos, id.end))
+      let shift = 0
+      for (const [pos, delta] of shifts) if (pos <= id.end) shift += delta
+      const at = id.end - start + shift
+      parts.push(text.slice(lastOut, at))
       parts.push('()') // auto-call
-      lastPos = id.end
+      lastOut = at
     }
-    parts.push(code.slice(lastPos, start + text.length))
+    parts.push(text.slice(lastOut))
     return parts.join('')
   }
 }
