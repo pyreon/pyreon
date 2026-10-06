@@ -92,12 +92,17 @@ interface PyreonNativeSwiftDecl {
   module?: string
   dir: string
 }
-interface PyreonNativeField {
+export interface PyreonNativeField {
+  /** Package-relative ESM module whose default export is a compiler plugin. */
+  plugin?: string
+  /** Import specifiers that activate the plugin (default: the package name). */
+  modules?: string[]
   swift?: PyreonNativeSwiftDecl | PyreonNativeSwiftDecl[] | string
   kotlin?: { dir: string } | { dir: string }[] | string
 }
-interface PackageManifest {
+export interface PackageManifest {
   name?: string
+  version?: string
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
@@ -127,7 +132,7 @@ export function findPackageDir(name: string, fromDir: string): string | null {
   return null
 }
 
-function readManifest(pkgDir: string): PackageManifest | null {
+export function readManifest(pkgDir: string): PackageManifest | null {
   try {
     return JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as PackageManifest
   } catch {

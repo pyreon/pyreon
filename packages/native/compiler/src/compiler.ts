@@ -3,7 +3,7 @@ import { moduleTag, withSynthStructSuffix } from './expr-utils'
 import { parsePyreon } from './parse'
 import { chartsPlugin } from './plugins/charts'
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
+  SUPPORTED_PLUGIN_API_VERSIONS,
   type CompilerBackend,
   type CompilerConfig,
   type CompilerContext,
@@ -13,7 +13,12 @@ import {
   type CompilerPlugin,
   type NativeCompiler,
 } from './plugin'
+import { assertPluginExtensions, assertPluginShape } from './plugin-shape'
+import { createServiceRegistry, orderPlugins, selectDiscovered } from './service-registry'
 import type { TargetLanguage, TransformResult } from './types'
+
+/** Compiler-shipped plugins; a discovered plugin of the same name replaces one. */
+export const BUILT_IN_PLUGINS: readonly CompilerPlugin[] = Object.freeze([chartsPlugin])
 
 const MODULE_ARRAYS = [
   'imports',
@@ -91,11 +96,19 @@ function invoke<T>(owner: string, phase: string, callback: () => T): T {
 export function createCompiler<Target extends string = never>(
   config: CompilerConfig<Target> = {},
 ): NativeCompiler<TargetLanguage | Target> {
-  const supplied = config.plugins ?? []
-  if (!Array.isArray(supplied))
+  const explicit = config.plugins ?? []
+  if (!Array.isArray(explicit))
     throw new Error('[Pyreon] Native compiler plugins must be an array.')
-  const names = new Set<string>([chartsPlugin.name])
-  const plugins: CompilerPlugin[] = [chartsPlugin]
+  const discovered = config.discovered ?? []
+  if (!Array.isArray(discovered))
+    throw new Error('[Pyreon] Native compiler discovered plugins must be an array.')
+  for (const plugin of discovered) assertPluginShape(plugin)
+  const selection = selectDiscovered([chartsPlugin], explicit, discovered)
+  const supplied = [...explicit, ...selection.kept]
+  const names = new Set<string>(selection.replaced.includes(chartsPlugin.name) ? [] : [chartsPlugin.name])
+  const plugins: CompilerPlugin[] = selection.replaced.includes(chartsPlugin.name)
+    ? []
+    : [chartsPlugin]
   const backends = new Map<
     string,
     { owner: string; emit: CompilerBackend['emit']; custom: boolean }
@@ -121,11 +134,12 @@ export function createCompiler<Target extends string = never>(
       throw new Error(
         `[Pyreon] Duplicate native compiler plugin "${name}". Use unique plugin names.`,
       )
-    if (plugin.apiVersion !== NATIVE_COMPILER_PLUGIN_API_VERSION) {
+    if (!SUPPORTED_PLUGIN_API_VERSIONS.includes(plugin.apiVersion)) {
       throw new Error(
-        `[Pyreon] Native compiler plugin "${name}" requires API ${plugin.apiVersion}; this compiler supports API ${NATIVE_COMPILER_PLUGIN_API_VERSION}. Update the plugin and compiler together.`,
+        `[Pyreon] Native compiler plugin "${name}" requires API ${plugin.apiVersion}; this compiler supports API ${SUPPORTED_PLUGIN_API_VERSIONS.join(', ')}. Update the plugin and compiler together.`,
       )
     }
+    assertPluginExtensions(name, plugin)
     for (const phase of ['transformIR', 'prepareIR'] as const) {
       if (plugin[phase] !== undefined && typeof plugin[phase] !== 'function') {
         throw new Error(`[Pyreon] Plugin "${name}" ${phase} must be a synchronous function.`)
@@ -162,12 +176,21 @@ export function createCompiler<Target extends string = never>(
       apiVersion: plugin.apiVersion,
       transformIR: plugin.transformIR,
       prepareIR: plugin.prepareIR,
+      services: plugin.services,
+      modules: plugin.modules,
+      requires: plugin.requires,
+      builtIn: plugin.builtIn,
     })
   }
+  // Load-time errors, before any source is compiled: a missing `requires`, a
+  // cycle, or two owners for one hook.
+  const ordered = orderPlugins(plugins)
+  const services = createServiceRegistry(ordered)
   const targets = Object.freeze([...backends.keys()]) as readonly (TargetLanguage | Target)[]
 
   return Object.freeze({
     targets,
+    services,
     transform(source: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
       // Capture declared values once, including class/prototype getters.
       const { target, filename, fonts } = options
@@ -188,13 +211,14 @@ export function createCompiler<Target extends string = never>(
         Object.freeze({
           source,
           options: resolvedOptions,
+          services,
           warn(message: string) {
             if (typeof message !== 'string') throw new Error('[Pyreon] Warnings must be strings.')
             warnings.push(`[Pyreon] ${owner}: ${message}`)
           },
         })
       const runPasses = (phase: 'transformIR' | 'prepareIR') => {
-        for (const plugin of plugins) {
+        for (const plugin of ordered) {
           const pass: CompilerPass | undefined = plugin[phase]
           if (!pass) continue
           if (plugin === chartsPlugin) {
