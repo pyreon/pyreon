@@ -1682,6 +1682,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
@@ -1690,8 +1691,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/document": {
       "name": "@pyreon/document",

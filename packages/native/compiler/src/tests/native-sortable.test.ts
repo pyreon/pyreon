@@ -15,13 +15,8 @@
 // can never quietly over-claim.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /** The canonical documented usage: a string-keyed list of scalars. */
 const SCALAR = `import { signal } from '@pyreon/reactivity'

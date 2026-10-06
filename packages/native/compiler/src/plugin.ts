@@ -6,6 +6,7 @@ import type {
   FunctionLowering,
   IdentifierLowering,
   IntrinsicLowering,
+  RefModifierLowering,
   MemberReadLowering,
   ReceiverLowering,
 } from './expr-lowering'
@@ -173,6 +174,11 @@ export interface CompilerPlugin<Target extends string = string> {
    * imported from a package, so the claim is the predicate.
    */
   readonly intrinsics?: readonly IntrinsicLowering[] | undefined
+  /**
+   * A modifier appended to an element's layout chain from the value of its `ref` attribute (see
+   * {@link RefModifierLowering}): how a library's ref callbacks (`ref={s.itemRef(key)}`) lower on native.
+   */
+  readonly refModifiers?: RefModifierLowering | undefined
   /**
    * A per-file pass each emitter runs after the file's components and module
    * constants are known and before any component is emitted. It may keep

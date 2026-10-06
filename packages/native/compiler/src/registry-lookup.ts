@@ -341,6 +341,40 @@ export function lowerPluginFunction(
     : found.lowering.kotlin?.(site, ctx() as KotlinEmitContext)
 }
 
+/**
+ * The modifiers plugins append to `el`'s layout chain from its `ref` attribute, in plugin order (see `RefModifierLowering`).
+ * Empty — one array-length check — when the element has no `ref` or no plugin registered a lowering.
+ */
+export function lowerPluginRefModifiers(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: 'swift',
+  ctx: () => SwiftEmitContext,
+): readonly string[]
+export function lowerPluginRefModifiers(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: 'kotlin',
+  ctx: () => KotlinEmitContext,
+): readonly string[]
+export function lowerPluginRefModifiers(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): readonly string[] {
+  const lowerings = activeRegistries().exprs.refModifiers
+  if (lowerings.length === 0) return []
+  const attr = el.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
+  if (attr === undefined || attr.kind !== 'attr') return []
+  const out: string[] = []
+  for (const { lowering } of lowerings) {
+    const modifier =
+      target === 'swift'
+        ? lowering.swift?.(attr.value, el, ctx() as SwiftEmitContext)
+        : lowering.kotlin?.(attr.value, el, ctx() as KotlinEmitContext)
+    if (modifier !== undefined) out.push(modifier)
+  }
+  return out
+}
+
 /** Lower a bare identifier a plugin names (`DEFAULT_NODE_WIDTH`), or `undefined`. */
 export function lowerPluginIdentifier(
   name: string,

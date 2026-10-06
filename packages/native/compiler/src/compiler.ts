@@ -191,6 +191,7 @@ export function createCompiler<Target extends string = never>(
       memberReads: plugin.memberReads,
       identifiers: plugin.identifiers,
       intrinsics: plugin.intrinsics,
+      refModifiers: plugin.refModifiers,
       prepareEmit: plugin.prepareEmit,
       intrinsicAdvice: plugin.intrinsicAdvice,
       propsTypes: plugin.propsTypes,

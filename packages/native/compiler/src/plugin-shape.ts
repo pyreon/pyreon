@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, componentOnlyCalls, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, componentOnlyCalls, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -221,6 +221,18 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     const entry = memberReads as { swift?: unknown; kotlin?: unknown } | null
     if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
       throw new Error(`[Pyreon] Plugin "${name}" memberReads needs a swift and/or kotlin function.`)
+    }
+  }
+  if (refModifiers !== undefined) {
+    const entry = refModifiers as { swift?: unknown; kotlin?: unknown } | null
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      (entry.swift === undefined && entry.kotlin === undefined) ||
+      (entry.swift !== undefined && typeof entry.swift !== 'function') ||
+      (entry.kotlin !== undefined && typeof entry.kotlin !== 'function')
+    ) {
+      throw new Error(`[Pyreon] Plugin "${name}" refModifiers must be an object with swift and/or kotlin functions.`)
     }
   }
   if (intrinsics !== undefined) {

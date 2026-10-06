@@ -696,14 +696,6 @@ object Modifier {
   fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(key1: Any?, key2: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(vararg keys: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
-  // @pyreon/dnd sortable modifiers. Real Compose ships them as top-level
-  // extensions on Modifier (PyreonSortableModifier.kt); the stub Modifier is
-  // an object, so they are modelled as members with the IDENTICAL parameter
-  // lists — same shape testTag / semantics / clickable already use here.
-  @Suppress("UNUSED_PARAMETER")
-  fun <T> pyreonSortableItem(state: PyreonSortableState<T>, key: String): Modifier = this
-  @Suppress("UNUSED_PARAMETER")
-  fun <T> pyreonSortableContainer(state: PyreonSortableState<T>): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
   // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
@@ -1603,36 +1595,6 @@ class PyreonSyncedSignal<T>(
   // Mirror of the runtime's dispose(); its absence rejected correct code.
   fun dispose() {}
 }
-// @pyreon/dnd — the PyreonSortableState engine. Mirrors PyreonSortable.kt.
-// The Modifier extensions it pairs with (PyreonSortableModifier.kt) are
-// mirrored as Modifier MEMBERS below, the same shape testTag/semantics use —
-// the stub Modifier is an object, so a real top-level extension is modelled
-// as a member with the identical parameter list.
-enum class PyreonSortAxis { VERTICAL, HORIZONTAL }
-enum class PyreonDropEdge { TOP, BOTTOM, LEFT, RIGHT }
-class PyreonSortableState<T>(
-  val axis: PyreonSortAxis = PyreonSortAxis.VERTICAL,
-) {
-  fun bind(items: () -> List<T>, by: (T) -> String, onReorder: (List<T>) -> Unit) {}
-  fun isActive(key: String): Boolean = false
-  fun isOverKey(key: String): Boolean = false
-  fun activeId(): String? = null
-  fun overId(): String? = null
-  fun overEdge(): String? = null
-  fun pickUp(key: String) {}
-  fun dragBy(delta: Float, extent: Float) {}
-  fun drop(): Boolean = false
-  fun cancel() {}
-  fun reordered(dragKey: String, dropKey: String, edge: PyreonDropEdge): List<T>? = null
-  val activeKey: String? get() = null
-  val overKey: String? get() = null
-  val currentEdge: PyreonDropEdge? get() = null
-  companion object {
-    fun <T> moveIndex(list: List<T>, from: Long, to: Long): List<T> = list
-  }
-}
-
-
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape
 // (operator invoke), not / cannot / all / any. Added with the

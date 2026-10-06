@@ -112,6 +112,18 @@ export interface MemberReadLowering {
  * facade (typically `ctx.component()`), so the claim is as narrow as the
  * plugin's own context: outside it the tag keeps the core's behaviour.
  */
+/**
+ * A modifier a plugin appends to an element's layout chain from the value of its `ref` attribute — the web
+ * shape a library hands back as a ref callback (`ref={s.containerRef}`, `ref={s.itemRef(key)}`) lowers on native to
+ * a view modifier / Compose `Modifier` extension instead. Each target returns the modifier text (`.foo(state)`),
+ * or `undefined` when the ref is not one of the plugin's (an unrelated `ref` keeps its existing behaviour: ignored).
+ * It is appended LAST, so it wraps the element's own padding / background.
+ */
+export interface RefModifierLowering {
+  swift?(ref: ExprIR, el: JsxElementIR, ctx: SwiftEmitContext): string | undefined
+  kotlin?(ref: ExprIR, el: JsxElementIR, ctx: KotlinEmitContext): string | undefined
+}
+
 export interface IntrinsicLowering {
   readonly tags: readonly string[]
   applies(ctx: EmitContext): boolean
@@ -143,6 +155,7 @@ type ExprPlugin = {
   readonly memberReads?: MemberReadLowering | undefined
   readonly identifiers?: Readonly<Record<string, IdentifierLowering>> | undefined
   readonly intrinsics?: readonly IntrinsicLowering[] | undefined
+  readonly refModifiers?: RefModifierLowering | undefined
   readonly prepareEmit?: EmitPreparation | undefined
   readonly intrinsicAdvice?: string | undefined
 }
@@ -165,6 +178,7 @@ export interface ExprRegistry {
   readonly intrinsics: readonly { readonly lowering: IntrinsicLowering; readonly owner: string }[]
   /** Every tag some intrinsic lowering names (the parser then records nothing; the emitters short-circuit on it). */
   readonly intrinsicTags: ReadonlySet<string>
+  readonly refModifiers: readonly { readonly lowering: RefModifierLowering; readonly owner: string }[]
   readonly preparations: readonly { readonly owner: string; readonly prepare: EmitPreparation }[]
   /** Sentences plugins append to the "DOM/SVG element has no native lowering" warning, in plugin order. */
   readonly intrinsicAdvice: readonly string[]
@@ -190,6 +204,7 @@ export function createExprRegistry(plugins: readonly ExprPlugin[]): ExprRegistry
   const identifiers = new Map<string, { lowering: IdentifierLowering; owner: string }>()
   const intrinsics: { lowering: IntrinsicLowering; owner: string }[] = []
   const intrinsicTags = new Set<string>()
+  const refModifiers: { lowering: RefModifierLowering; owner: string }[] = []
   const preparations: { owner: string; prepare: EmitPreparation }[] = []
   const intrinsicAdvice: string[] = []
   for (const plugin of plugins) {
@@ -214,6 +229,7 @@ export function createExprRegistry(plugins: readonly ExprPlugin[]): ExprRegistry
       intrinsics.push({ lowering, owner: plugin.name })
       for (const tag of lowering.tags) intrinsicTags.add(tag)
     }
+    if (plugin.refModifiers !== undefined) refModifiers.push({ lowering: plugin.refModifiers, owner: plugin.name })
     if (plugin.prepareEmit !== undefined) preparations.push({ owner: plugin.name, prepare: plugin.prepareEmit })
     if (plugin.intrinsicAdvice !== undefined) intrinsicAdvice.push(plugin.intrinsicAdvice)
   }
@@ -225,6 +241,7 @@ export function createExprRegistry(plugins: readonly ExprPlugin[]): ExprRegistry
     identifiers,
     intrinsics,
     intrinsicTags,
+    refModifiers,
     preparations,
     intrinsicAdvice,
   })

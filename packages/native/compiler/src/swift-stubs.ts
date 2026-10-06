@@ -520,6 +520,7 @@ public struct DragGesture: Gesture {
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
 public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
+public struct CGPoint { public var x: Double = 0; public var y: Double = 0 }
 // MagnificationGesture — what <PlotChart dataZoom> lowers its pinch to. The
 // value is the cumulative scale (CGFloat) since the gesture began.
 public struct MagnificationGesture: Gesture {
@@ -923,48 +924,6 @@ public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
   // The runtime ships this and the stub did not, so a correct
   // \`s.dispose()\` was rejected by the type gate.
   public func dispose() {}
-}
-// @pyreon/dnd — the PyreonSortableState engine + its two View modifiers.
-// Mirrors PyreonSortable.swift EXACTLY (minus @Observable/@available, which are
-// runtime-reactivity/availability macros rather than type-level contract — the
-// same omission PyreonTableState/PyreonNetworkStatus document).
-public enum PyreonSortAxis: String, Equatable { case vertical, horizontal }
-public enum PyreonDropEdge: String, Equatable { case top, bottom, left, right }
-public struct CGPoint { public var x: Double = 0; public var y: Double = 0 }
-public final class PyreonSortableState<T> {
-  public init(axis: PyreonSortAxis = .vertical) {}
-  public func bind(
-    items: @escaping () -> [T],
-    by: @escaping (T) -> String,
-    onReorder: @escaping ([T]) -> Void
-  ) {}
-  public func isActive(_ key: String) -> Bool { false }
-  public func isOverKey(_ key: String) -> Bool { false }
-  public func activeId() -> String? { nil }
-  public func overId() -> String? { nil }
-  public func overEdge() -> String? { nil }
-  public func pickUp(_ key: String) {}
-  public func dragOver(_ key: String, edge: PyreonDropEdge) {}
-  public func dragLeave(_ key: String) {}
-  public func cancel() {}
-  @discardableResult
-  public func drop(source: String, on target: String, edge: PyreonDropEdge) -> Bool { false }
-  public static func moveIndex(_ list: [T], from: Int, to: Int) -> [T] { list }
-  public func reordered(dragKey: String, dropKey: String, edge: PyreonDropEdge) -> [T]? { nil }
-  public func edgeAt(_ point: CGPoint, in size: CGSize) -> PyreonDropEdge { .top }
-  public private(set) var activeKey: String?
-  public private(set) var overKey: String?
-  public private(set) var currentEdge: PyreonDropEdge?
-  public let axis: PyreonSortAxis = .vertical
-}
-extension View {
-  public func pyreonSortableItem<T>(
-    _ state: PyreonSortableState<T>,
-    key: String
-  ) -> some View { self }
-  public func pyreonSortableContainer<T>(
-    _ state: PyreonSortableState<T>
-  ) -> some View { self }
 }
 // AppStorage - SwiftUI's own wrapper, which \`useStorage\` emits for SCALAR
 // values (a struct value routes to PyreonAppStorage below instead). Stripped

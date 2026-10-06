@@ -34,11 +34,13 @@ import { a11yPlugin } from '../packages/fundamentals/a11y/src/native-plugin/plug
 import { a11yStubs } from '../packages/fundamentals/a11y/src/native-plugin/stubs'
 import { tablePlugin } from '../packages/fundamentals/table/src/native-plugin/plugin'
 import { tableStubs } from '../packages/fundamentals/table/src/native-plugin/stubs'
+import { dndPlugin } from '../packages/fundamentals/dnd/src/native-plugin/plugin'
+import { dndStubs } from '../packages/fundamentals/dnd/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin])
+export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 

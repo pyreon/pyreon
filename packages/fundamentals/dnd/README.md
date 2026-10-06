@@ -207,6 +207,10 @@ useDraggable({
 
 The signal-driven layer adds **near-zero overhead** over calling pdnd directly. A package-level benchmark (`bun run bench`) measures the _wrapper tax_ — the JS the ergonomic hook adds over a hand-rolled Pyreon+pdnd integration wiring the same reactive state — against the **real** pdnd build under happy-dom, with per-`(op × impl)` process isolation and a bootstrap CI95. `useDraggable` / `useDroppable` / `useSortable`-item mount→unmount lifecycles all tie the hand-rolled baseline (CI overlap); `useDragMonitor` adds ~one closure allocation per mount; per drag-event dispatch adds one optional-callback hop. Reactive DnD at ~raw-pdnd cost. The bench also measures the ROW-BINDING idiom at scale: at N=1000 sortable rows, one row-enter costs ~26µs with the naive `overId() === key` equality idiom (every row subscribes — O(N) notifies) vs ~1.5µs with the `isOverKey(key)` selector idiom (**~18× / 94% faster**, `createSelector`-backed O(2) notifies — use the selectors, they exist for exactly this). (Real pointer-gesture timing is browser-dependent and out of scope for the micro-bench; author-judge disclosed.)
 
+## Native (iOS / Android)
+
+`useSortable({ items, by, onReorder })` lowers to the `PyreonSortableState` engine on SwiftUI and Compose, and `ref={s.containerRef}` / `ref={s.itemRef(key)}` to the drag view modifiers (list reorder within one list — cross-list boards and the element-getter hooks have no native lowering). The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/dnd](https://pyreon.dev/docs/dnd) (or `docs/src/content/docs/dnd.md` in this repo).

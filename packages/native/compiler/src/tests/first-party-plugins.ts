@@ -31,8 +31,10 @@ import { a11yPlugin } from '../../../../fundamentals/a11y/src/native-plugin/plug
 import { a11yStubs } from '../../../../fundamentals/a11y/src/native-plugin/stubs'
 import { tablePlugin } from '../../../../fundamentals/table/src/native-plugin/plugin'
 import { tableStubs } from '../../../../fundamentals/table/src/native-plugin/stubs'
+import { dndPlugin } from '../../../../fundamentals/dnd/src/native-plugin/plugin'
+import { dndStubs } from '../../../../fundamentals/dnd/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })

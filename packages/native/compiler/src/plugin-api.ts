@@ -78,6 +78,7 @@ export type {
   FunctionSite,
   IdentifierLowering,
   IntrinsicLowering,
+  RefModifierLowering,
   MemberExprIR,
   MemberReadLowering,
   ReceiverAssignSite,

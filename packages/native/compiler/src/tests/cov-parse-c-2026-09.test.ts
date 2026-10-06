@@ -904,7 +904,7 @@ describe('parse.ts — computed-expression keys are named by every literal-confi
 
   it('useSortable: a computed key is skipped', () => {
     const d = declsOf(sortApp('{ [a + b]: 1, items: () => items(), by: (it) => it.id, onReorder: (n) => items.set(n) }'))
-    expect(d.some((x) => x.kind === 'sortable')).toBe(true)
+    expect(extDecl(d, 'sortable')).toBeDefined()
   })
 
   it('createI18n: config / locale / message keys', () => {

@@ -16,6 +16,7 @@ import {
 import { TOAST_KOTLIN_STUBS, TOAST_SWIFT_STUBS } from '../../../../fundamentals/toast/src/native-plugin/stubs'
 import { A11Y_KOTLIN_STUBS, A11Y_SWIFT_STUBS } from '../../../../fundamentals/a11y/src/native-plugin/stubs'
 import { TABLE_KOTLIN_STUBS, TABLE_SWIFT_STUBS } from '../../../../fundamentals/table/src/native-plugin/stubs'
+import { DND_KOTLIN_STUBS, DND_SWIFT_STUBS } from '../../../../fundamentals/dnd/src/native-plugin/stubs'
 
 export const REPO = resolve(import.meta.dirname, '..', '..', '..', '..', '..')
 
@@ -27,6 +28,7 @@ export interface PluginStubs {
 }
 
 export const PLUGIN_STUBS: readonly PluginStubs[] = [
+  { label: 'dnd', swift: DND_SWIFT_STUBS, kotlin: DND_KOTLIN_STUBS },
   { label: 'table', swift: TABLE_SWIFT_STUBS, kotlin: TABLE_KOTLIN_STUBS },
   { label: 'a11y', swift: A11Y_SWIFT_STUBS, kotlin: A11Y_KOTLIN_STUBS },
   { label: 'toast', swift: TOAST_SWIFT_STUBS, kotlin: TOAST_KOTLIN_STUBS },
@@ -43,6 +45,7 @@ export const PLUGIN_STUBS: readonly PluginStubs[] = [
  * in the gate that scans it; a library that moves its lowering into its package adds its directory here.
  */
 export const PLUGIN_EMITTER_DIRS: readonly string[] = [
+  join(REPO, 'packages/fundamentals/dnd/src/native-plugin'),
   join(REPO, 'packages/fundamentals/table/src/native-plugin'),
   join(REPO, 'packages/fundamentals/a11y/src/native-plugin'),
   join(REPO, 'packages/fundamentals/toast/src/native-plugin'),

@@ -2,7 +2,6 @@
   "native-compiler": {
     "packages": {
       "@pyreon/coolgrid": 1,
-      "@pyreon/dnd": 1,
       "@pyreon/elements": 2,
       "@pyreon/feature": 1,
       "@pyreon/kinetic": 1,
@@ -16,7 +15,7 @@
       "@pyreon/sync": 1,
       "@pyreon/ui-core": 2
     },
-    "hooks": 112
+    "hooks": 109
   },
   "compiler": {
     "packages": {

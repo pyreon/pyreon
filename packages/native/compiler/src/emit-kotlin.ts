@@ -27,6 +27,7 @@ import {
   isHeadLifecycleDecl,
   midLifecycleDecls,
   lowerPluginReceiver,
+  lowerPluginRefModifiers,
   pluginAsyncState,
   pluginLifecycleLines,
   tailLifecycleDecls,
@@ -59,7 +60,6 @@ import {
   synthTypedStructName,
   namedInlineParamType,
   classifyDynamicStylingAttr,
-  classifySortableRef,
   exprHasOptionalLink,
   structShapeKey as rawStructShapeKey,
   literalShapeKey,
@@ -600,8 +600,6 @@ let _zeroArgHelperNames: Set<string> = new Set()
  *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
  *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
 let _syncedSignalNames: Set<string> = new Set()
-/** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
-let _sortableNames: Set<string> = new Set()
 /**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
@@ -1398,7 +1396,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _syncedSignalNames = new Set()
-  _sortableNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1437,7 +1434,6 @@ function emitKotlinComponent(c: ComponentIR): string {
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
-    if (d.kind === 'sortable') _sortableNames.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
@@ -1608,29 +1604,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`  }`)
   }
-  // sortable: wire the item source + key extractor + reorder sink. Bound in
-  // the composable body (not inside `remember`) for the same reason the form's
-  // onSubmit is: the closures reference the component's OWN state, which is
-  // not in scope inside the state object's own initializer. The captured
-  // `items` is a `by remember { mutableStateOf }` delegate, so the closure
-  // reads the LIVE value on every call rather than a first-composition
-  // snapshot. The key is coerced to String — the native engine keys on String
-  // while the web `by` returns `string | number`.
-  for (const d of c.decls) {
-    if (d.kind !== 'sortable') continue
-    const name = kotlinIdent(d.name)
-    const p = kotlinIdent(d.keyParam)
-    const key = kotlinSortKeyExpr(d)
-    const next = kotlinIdent(d.reorderParam)
-    const body = d.reorderBody.map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`).join('\n')
-    lines.push(`  ${name}.bind({ ${emitKotlinExpr(d.itemsBody, 2)} }, { ${p} -> ${key} }) { ${next} ->`)
-    lines.push(body)
-    lines.push(`  }`)
-  }
   // A plugin container that binds its source and sinks here (`midOrder`): closures over the component's own state,
   // which is not in scope inside the container's own initializer.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
   // first composition (Compose's async-on-mount hook), driving the
@@ -1680,7 +1657,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
@@ -1725,7 +1702,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
@@ -1803,7 +1780,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _urlStateNames = new Set()
   _syncedSignalNames = new Set()
-  _sortableNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1857,17 +1833,6 @@ let _databaseNames: Set<string> = new Set()
 // stack (nested Fors restore correctly).
 let _fieldArrayNamesKotlin: Set<string> = new Set()
 let _fieldArrayItemParamsKotlin: string[] = []
-
-/**
- * The `by` key expression for a sortable, coerced to `String` — the Kotlin
- * mirror of `swiftSortKeyExpr`. The web `by` returns `string | number`; the
- * native engine keys on String so both targets agree on one key type.
- */
-function kotlinSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
-  const emitted = emitKotlinExpr(d.keyBody, 2)
-  const t = inferType(d.keyBody, _kotlinExprInferCtx)
-  return t.kind === 'string' ? emitted : `(${emitted}).toString()`
-}
 
 /** The row struct's Kotlin type name — a named typeRef, or the synthesized
  *  struct whose fields match an inline object (matching what the data list
@@ -2248,17 +2213,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
     const mapArg = d.map !== undefined ? `, ${kotlinStr(d.map)}` : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${kotlinStr(d.key)}, ${initial}${mapArg}) }`
-  }
-  // `@pyreon/dnd` — the PyreonSortableState engine. `remember` keeps ONE
-  // instance across recompositions (the drag state lives in it); the reactive
-  // item source + reorder sink are wired by a `bind` call emitted into the
-  // composable body, mirroring how the form's onSubmit is assigned post-decl.
-  if (d.kind === 'sortable') {
-    const it = inferType(d.itemsBody, _kotlinExprInferCtx)
-    const elem: TypeIR = it.kind === 'array' ? it.element : { kind: 'unknown' }
-    const rowType = resolveKotlinRowTypeName(elem)
-    const axisArg = d.axis === 'horizontal' ? 'PyreonSortAxis.HORIZONTAL' : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonSortableState<${rowType}>(${axisArg}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -7315,33 +7269,11 @@ function emitKotlinLayoutModifier(
   // `hideFromAccessibility()` (only lands in 1.8). Emitted LAST so a
   // contradictory label+hidden combo resolves to hidden (parity with web/iOS).
   parts.push(...kotlinAccessibilityHiddenModifier(e))
-  // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
-  // sortable Modifier extensions. Emitted LAST for the same reason as Swift:
-  // the long-press drag wraps the element's own padding/background.
-  const sortableRef = kotlinSortableRef(e)
-  if (sortableRef !== undefined) parts.push(sortableRef)
+  // A modifier a plugin derives from the element's `ref` (`@pyreon/dnd`'s `ref={s.containerRef}`), LAST so it wraps the
+  // element's own padding / background.
+  parts.push(...lowerPluginRefModifiers(e, 'kotlin', () => kotlinEmitContext(0)))
   if (parts.length === 0) return ''
   return `Modifier${parts.join('')}`
-}
-
-/**
- * The sortable Modifier extension for this element's `ref` attr, if it binds
- * one. Mirror of `swiftSortableRef`; both route through the SHARED
- * `classifySortableRef` so the two backends cannot disagree on the shape.
- */
-function kotlinSortableRef(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-): string | undefined {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
-  if (attr === undefined || attr.kind !== 'attr') return undefined
-  const binding = classifySortableRef(attr.value, _sortableNames)
-  if (binding === null) return undefined
-  const state = kotlinIdent(binding.state)
-  if (binding.kind === 'container') return `.pyreonSortableContainer(${state})`
-  const keyExpr = emitKotlinExpr(binding.key, 0)
-  const t = inferType(binding.key, _kotlinExprInferCtx)
-  const key = t.kind === 'string' ? keyExpr : `(${keyExpr}).toString()`
-  return `.pyreonSortableItem(${state}, ${key})`
 }
 
 /**

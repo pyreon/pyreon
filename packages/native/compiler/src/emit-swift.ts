@@ -32,6 +32,7 @@ import {
   isHeadLifecycleDecl,
   midLifecycleDecls,
   lowerPluginReceiver,
+  lowerPluginRefModifiers,
   pluginAsyncState,
   tailLifecycleDecls,
   pluginLifecycleLines,
@@ -66,7 +67,6 @@ import {
   synthTypedStructName,
   namedInlineParamType,
   classifyDynamicStylingAttr,
-  classifySortableRef,
   exprHasOptionalLink,
   exprReferencesIdent,
   structShapeKey as rawStructShapeKey,
@@ -520,8 +520,6 @@ let _signalNames: Set<string> = new Set()
  *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
  *  rewrite must skip them (they are facade objects, not bare @State values). */
 let _syncedSignalNames: Set<string> = new Set()
-/** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
-let _sortableNames: Set<string> = new Set()
 /**
  * Per-component: binding name → service descriptor for every `service`
  * declaration (services.ts). The read-site rewrites consult it: `accessorReads`
@@ -1769,7 +1767,6 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'hotkey',
   'on-mount',
   'rate-limited',
-  'sortable',
   'tick',
 ])
 
@@ -1905,7 +1902,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _syncedSignalNames = new Set()
-  _sortableNames = new Set()
   _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
@@ -1959,7 +1955,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
-    if (d.kind === 'sortable') _sortableNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
@@ -2418,7 +2413,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(line === '' ? '' : `      ${line}`)
   }
   // useHotkey → a hidden shortcut Button in `.background`.
   //
@@ -2456,28 +2451,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin container that binds its source and sinks here (`midOrder`) — closures over the component's own state,
   // which a property initializer cannot capture.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
-  }
-  // sortable: wire the item source + key extractor + reorder sink, same
-  // `.onAppear` rationale as table-state (a @State initializer cannot capture
-  // the view's own @State). The key is coerced to String because the native
-  // engine keys on String while the web `by` returns `string | number`.
-  for (const d of c.decls) {
-    if (d.kind !== 'sortable') continue
-    const name = swiftIdent(d.name)
-    const p = swiftIdent(d.keyParam)
-    const key = swiftSortKeyExpr(d)
-    const next = swiftIdent(d.reorderParam)
-    const body = d.reorderBody.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
-    lines.push(`      .onAppear {`)
-    lines.push(`        ${name}.bind(`)
-    lines.push(`          items: { ${emitSwiftExpr(d.itemsBody, 10)} },`)
-    lines.push(`          by: { ${p} in ${key} },`)
-    lines.push(`          onReorder: { ${next} in`)
-    lines.push(body)
-    lines.push(`          }`)
-    lines.push(`        )`)
-    lines.push(`      }`)
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(line === '' ? '' : `      ${line}`)
   }
   // Service lifecycle (services.ts `lifecycle`): START the live monitor. These
   // runtimes shipped a real monitor behind `start()` — NWPathMonitor, the
@@ -2550,7 +2524,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(line === '' ? '' : `      ${line}`)
   }
   lines.push(`  }`)
   lines.push(`}`)
@@ -2828,16 +2802,6 @@ function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
 }
 
 /**
- * The `by` key expression for a sortable, coerced to `String`.
- *
- * The web `by` returns `string | number` (both are valid `<For by>` keys), but
- * the native engine keys on `String` so one drag payload type serves every row
- * type — `String` already conforms to `Transferable`, which is what lets a
- * consumer's row type stay conformance-free. A string-typed key passes through
- * unchanged; anything else is interpolated (total, and identical to the
- * `String(describing:)` result for the scalar keys this accepts).
- */
-/**
  * One template-literal interpoland. A Double goes through the runtime's
  * `pyreonNumberString`, because Swift interpolation prints a whole-valued
  * Double as `7.0` where JavaScript's `String(number)` prints `7` — every axis
@@ -2848,12 +2812,6 @@ function swiftTemplatePart(expr: ExprIR, indent: number): string {
   const emitted = emitSwiftExpr(expr, indent)
   const t = inferType(expr, _activeInferCtx)
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
-}
-
-function swiftSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
-  const emitted = emitSwiftExpr(d.keyBody, 10)
-  const t = inferType(d.keyBody, _activeInferCtx)
-  return t.kind === 'string' ? emitted : `"\\(${emitted})"`
 }
 
 /** The row struct's fields, whether inline-object or a named struct. */
@@ -3298,16 +3256,6 @@ function emitSwiftDecl(
     return `@State private var ${swiftIdent(d.name)}: PyreonSyncedSignal<${syncedSignalSwiftType(d.scalarType)}>`
   }
   // (see swiftSortKeyExpr below for the `by` key coercion)
-  // `@pyreon/dnd` — a self-seeding @State PyreonSortableState. Same shape as
-  // the table above: the reactive item source + reorder sink are wired in
-  // `.onAppear` (emitSwiftComponent) so the initializer captures no `self`.
-  if (d.kind === 'sortable') {
-    const it = inferType(d.itemsBody, inferCtx)
-    const elem: TypeIR = it.kind === 'array' ? it.element : { kind: 'unknown' }
-    const rowType = swiftType(elem, synth)
-    const axisArg = d.axis === 'horizontal' ? 'axis: .horizontal' : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonSortableState<${rowType}>(${axisArg})`
-  }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
   // (added at the component-emit level via _usesColorScheme). Returns
@@ -9120,33 +9068,10 @@ function emitSwiftLayoutModifiers(
   if (swiftTrait !== null) {
     parts.push(`.accessibilityAddTraits(${swiftTrait})`)
   }
-  // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
-  // sortable view modifiers. Emitted LAST so the drag wrapper sits outside the
-  // element's own padding/background, which is what an author writing the
-  // SwiftUI by hand would do (the lifted row carries its styling with it).
-  const sortableRef = swiftSortableRef(e)
-  if (sortableRef !== undefined) parts.push(sortableRef)
+  // A modifier a plugin derives from the element's `ref` (`@pyreon/dnd`'s `ref={s.containerRef}`), LAST so it wraps the
+  // element's own padding / background — which is what an author writing the SwiftUI by hand would do.
+  parts.push(...lowerPluginRefModifiers(e, 'swift', () => swiftEmitContext(0)))
   return parts.join('')
-}
-
-/**
- * The sortable modifier for this element's `ref` attr, if it binds one.
- * `null`-returning by construction for every other ref value, so an unrelated
- * `ref` keeps its existing native behaviour (ignored) rather than mis-lowering.
- */
-function swiftSortableRef(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-): string | undefined {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
-  if (attr === undefined || attr.kind !== 'attr') return undefined
-  const binding = classifySortableRef(attr.value, _sortableNames)
-  if (binding === null) return undefined
-  const state = swiftIdent(binding.state)
-  if (binding.kind === 'container') return `.pyreonSortableContainer(${state})`
-  const keyExpr = emitSwiftExpr(binding.key, 0)
-  const t = inferType(binding.key, _activeInferCtx)
-  const key = t.kind === 'string' ? keyExpr : `"\\(${keyExpr})"`
-  return `.pyreonSortableItem(${state}, key: ${key})`
 }
 
 /**

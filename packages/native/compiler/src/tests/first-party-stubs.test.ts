@@ -4,7 +4,7 @@
 // input that names the runtime type gets a stub that declares it on the right target.
 import { describe, expect, it } from 'vitest'
 import { FIRST_PARTY_VALIDATE_OPTIONS } from '../../../../../scripts/native-first-party-plugins'
-import { a11yStubs, i18nStubs, machineStubs, tableStubs, toastStubs } from './first-party-plugins'
+import { a11yStubs, dndStubs, i18nStubs, machineStubs, tableStubs, toastStubs } from './first-party-plugins'
 
 describe('first-party stub augmentations', () => {
   it('are loaded into the compile gates the repo scripts use', () => {
@@ -13,6 +13,7 @@ describe('first-party stub augmentations', () => {
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(toastStubs)
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(a11yStubs)
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(tableStubs)
+    expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(dndStubs)
   })
 
   it('append nothing to an emit that names none of their runtime types', () => {
@@ -42,5 +43,12 @@ describe('first-party stub augmentations', () => {
   it('the table stubs declare the engine on the target that names it', () => {
     expect(tableStubs.swift?.('@State private var t = PyreonTableState<Row>(columns: [])')).toContain('final class PyreonTableState')
     expect(tableStubs.kotlin?.('val t = remember { PyreonTableState<Row>({ rows }, listOf()) }')).toContain('class PyreonTableState')
+  })
+
+  it('the dnd stubs declare the sortable engine and its modifiers on the target that names them', () => {
+    expect(dndStubs.swift?.('@State private var s = PyreonSortableState<Row>()')).toContain('final class PyreonSortableState')
+    expect(dndStubs.kotlin?.('Modifier.pyreonSortableItem(s, "k")')).toContain('fun <T> Modifier.pyreonSortableItem')
+    // The shared CoreGraphics mirror stays in the core bundle: the gesture stubs need CGPoint without any drag library.
+    expect(dndStubs.swift?.('PyreonSortableState')).not.toContain('struct CGPoint')
   })
 })
