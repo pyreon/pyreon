@@ -5131,6 +5131,46 @@
       "bytes": 182,
       "warnings": 0
     },
+    "golden-fixture:sized-map-14.tsx|swift": {
+      "sha": "7e2bc18fc86572558230aad15708eb4cd53d5e71952b1978cba2f777790320ca",
+      "bytes": 123,
+      "warnings": 1
+    },
+    "golden-fixture:sized-map-14.tsx|kotlin": {
+      "sha": "d6da1f04e9fcbdafa36c31abe14939ec879ee7e535af3302226fbc6a158a2dcb",
+      "bytes": 190,
+      "warnings": 1
+    },
+    "golden-fixture:sized-map-15.tsx|swift": {
+      "sha": "d5d9300e358f8322cb70527735036c8da228940f0a58702e576e283ccc38bdc1",
+      "bytes": 188,
+      "warnings": 3
+    },
+    "golden-fixture:sized-map-15.tsx|kotlin": {
+      "sha": "b48a2b1949d71e6521d3dd968577412921a6c9abcb3d68fd55b6bab70f2f6bbe",
+      "bytes": 251,
+      "warnings": 3
+    },
+    "golden-fixture:sized-map-16.tsx|swift": {
+      "sha": "5fef3ad156f56ad88a793e632e8c7ea9b4a6e248de01935e8434c20e5651e546",
+      "bytes": 210,
+      "warnings": 0
+    },
+    "golden-fixture:sized-map-16.tsx|kotlin": {
+      "sha": "a0c55a6a52dd228f9f9fd6a4004e6ae53895313712beb1010f2e815a429aeecc",
+      "bytes": 284,
+      "warnings": 0
+    },
+    "golden-fixture:sized-map-17.tsx|swift": {
+      "sha": "7c7253f4ec8db98ebfa61e6cefc5f539b92b12e15f03705aff76f1d4e7c9ef73",
+      "bytes": 1039,
+      "warnings": 0
+    },
+    "golden-fixture:sized-map-17.tsx|kotlin": {
+      "sha": "67ed5f63d0f0b9feee526458aead086b61dce81246e4848a2de804d118ce7b84",
+      "bytes": 1065,
+      "warnings": 0
+    },
     "golden-fixture:storage-01.tsx|swift": {
       "sha": "424f1307e9d7565bcf772565e0144169aa37a0585a7562a188f385764e4793d7",
       "bytes": 1952,
