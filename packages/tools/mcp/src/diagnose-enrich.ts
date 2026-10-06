@@ -25,7 +25,7 @@
  * filesystem / server concerns.
  */
 
-import type { PyreonDiagnostic } from '@pyreon/compiler'
+import type { PyreonDiagnostic } from '@pyreon/compiler/analyze'
 import type { AntiPatternEntry } from './anti-patterns'
 
 /**

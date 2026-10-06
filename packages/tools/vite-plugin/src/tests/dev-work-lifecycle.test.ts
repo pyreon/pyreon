@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.close()
   for (const plugin of plugins.splice(0)) await (plugin.closeBundle as unknown as Hook).call(null)
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
-  vi.doUnmock('@pyreon/compiler')
+  vi.doUnmock('@pyreon/compiler/audits')
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -73,6 +73,7 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
     plugins.push(plugin)
     const watcher = configure(plugin, root)
     const context = join(root, '.pyreon/context.json')
+    await vi.dynamicImportSettled()
     expect(existsSync(context)).toBe(true)
     watcher.emit('change', join(root, 'packages/app/src/a.tsx'))
     await (plugin.closeBundle as unknown as Hook).call(null)
@@ -121,6 +122,7 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
     plugins.push(plugin)
     const watcher = configure(plugin, first)
     const context = join(first, '.pyreon/context.json')
+    await vi.dynamicImportSettled()
     rmSync(context)
     watcher.emit('change', join(first, 'packages/app/src/a.tsx'))
     vi.advanceTimersByTime(300)
@@ -134,6 +136,7 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
     vi.advanceTimersByTime(499)
     expect(existsSync(context)).toBe(false)
     vi.advanceTimersByTime(1)
+    await vi.dynamicImportSettled()
     expect(existsSync(context)).toBe(true)
     expect(existsSync(join(second, '.pyreon/context.json'))).toBe(false)
   })
@@ -152,17 +155,13 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
   })
 
   it('cancels an audit that is already waiting for the compiler module', async () => {
-    const actual = await vi.importActual<typeof import('@pyreon/compiler')>('@pyreon/compiler')
+    const actual =
+      await vi.importActual<typeof import('@pyreon/compiler/audits')>('@pyreon/compiler/audits')
     let release!: () => void
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
     let entered = false
-    vi.doMock('@pyreon/compiler', async () => {
-      entered = true
-      await gate
-      return actual
-    })
     vi.useFakeTimers()
     const root = fixture()
     const plugin = pyreon({ islands: true })
@@ -170,6 +169,16 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       configure(plugin, root)
+      // Let the initial context load finish before delaying the audit's import.
+      await vi.dynamicImportSettled()
+      const context = join(root, '.pyreon/context.json')
+      expect(existsSync(context)).toBe(true)
+      rmSync(context)
+      vi.doMock('@pyreon/compiler/audits', async () => {
+        entered = true
+        await gate
+        return actual
+      })
       await vi.advanceTimersByTimeAsync(1_000)
       await vi.waitFor(() => expect(entered).toBe(true))
       await (plugin.closeBundle as unknown as Hook).call(null)
@@ -178,7 +187,41 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
       await vi.dynamicImportSettled()
     }
     expect(islandWarnings(spy)).toEqual([])
+    expect(existsSync(join(root, '.pyreon/context.json'))).toBe(false)
   })
+
+  it.each(['close', 'replace'] as const)(
+    'invalidates a pending context import on %s',
+    async (action) => {
+      const actual =
+        await vi.importActual<typeof import('@pyreon/compiler/audits')>('@pyreon/compiler/audits')
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let entered = false
+      vi.doMock('@pyreon/compiler/audits', async () => {
+        entered = true
+        await gate
+        return actual
+      })
+      const root = fixture(false)
+      const replacement = fixture(false)
+      const plugin = pyreon({ islands: false })
+      plugins.push(plugin)
+      try {
+        configure(plugin, root)
+        await vi.waitFor(() => expect(entered).toBe(true))
+        if (action === 'close') await (plugin.closeBundle as unknown as Hook).call(null)
+        else configure(plugin, replacement)
+      } finally {
+        release()
+        await vi.dynamicImportSettled()
+      }
+      expect(existsSync(join(root, '.pyreon/context.json'))).toBe(false)
+      expect(existsSync(join(replacement, '.pyreon/context.json'))).toBe(action === 'replace')
+    },
+  )
 
   it('cleans up through a real middleware-mode Vite server close', async () => {
     const root = fixture()

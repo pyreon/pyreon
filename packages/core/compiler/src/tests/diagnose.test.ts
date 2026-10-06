@@ -320,3 +320,33 @@ describe('Plain Mode signal-bridge warnings are diagnosable', () => {
     expect(d?.cause).toContain('signal bridge')
   })
 })
+
+describe('diagnoseError — exports moved off the @pyreon/compiler main entry', () => {
+  const shapes = (name: string): string[] => [
+    `Module '"@pyreon/compiler"' has no exported member '${name}'.`,
+    `SyntaxError: The requested module '@pyreon/compiler' does not provide an export named '${name}'`,
+    `"${name}" is not exported by "../../core/compiler/lib/index.js", imported by "src/x.ts".`,
+    `No matching export in "../../core/compiler/lib/index.js" for import "${name}"`,
+  ]
+
+  it.each([
+    ['detectReactPatterns', 'analyze'],
+    ['analyzeReactivity', 'analyze'],
+    ['auditIslands', 'audits'],
+    ['generateContext', 'audits'],
+    ['detectNativePatterns', 'audits'],
+    ['analyzeValidate', 'validate'],
+    ['emitValidator', 'validate'],
+  ])('%s points at @pyreon/compiler/%s in every error shape a bundler or tsc prints', (name, subpath) => {
+    for (const message of shapes(name)) {
+      const d = diagnoseError(message)
+      expect(d, message).not.toBeNull()
+      expect(d?.cause).toContain(`@pyreon/compiler/${subpath}`)
+      expect(d?.fixCode).toContain(`from '@pyreon/compiler/${subpath}'`)
+    }
+  })
+
+  it('does not fire for an export that still lives on the main entry', () => {
+    expect(diagnoseError(`Module '"@pyreon/compiler"' has no exported member 'transformJSX'.`)?.cause ?? '').not.toContain('moved')
+  })
+})

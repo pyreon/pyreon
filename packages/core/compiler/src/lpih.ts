@@ -26,7 +26,7 @@
  * No category like this exists for any reactive framework today.
  *
  * @example
- * import { analyzeReactivity, mergeFireDataIntoFindings } from '@pyreon/compiler'
+ * import { analyzeReactivity, mergeFireDataIntoFindings } from '@pyreon/compiler/analyze'
  * import { getFireSummaries } from '@pyreon/reactivity'
  *
  * const code = `const count = signal(0)\nreturn <div>{count()}</div>`
@@ -201,7 +201,7 @@ export function mergeFireDataIntoFindings(
  * `sourceFile` (after normalization) are skipped.
  *
  * @example
- * import { firesToCreationSiteFindings } from '@pyreon/compiler'
+ * import { firesToCreationSiteFindings } from '@pyreon/compiler/analyze'
  * import { getFireSummaries } from '@pyreon/reactivity'
  *
  * const fires = getFireSummaries().map(s => ({

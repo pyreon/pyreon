@@ -152,7 +152,7 @@ export function lensMethod(ctx: LensContext): RpcMethod {
 
     let analyze: (code: string, filename?: string) => { findings: readonly unknown[] }
     try {
-      const mod = (await import('@pyreon/compiler')) as unknown as {
+      const mod = (await import('@pyreon/compiler/analyze')) as unknown as {
         analyzeReactivity: typeof analyze
       }
       analyze = mod.analyzeReactivity

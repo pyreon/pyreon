@@ -46,7 +46,7 @@
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _fuse, _lc, h } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -89,6 +89,7 @@ const tplAdopted = () => counts['runtime.tpl.adopt'] ?? 0
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

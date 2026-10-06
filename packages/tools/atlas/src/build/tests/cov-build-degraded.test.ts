@@ -57,7 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.doUnmock('@pyreon/vite-plugin')
   vi.doUnmock('vite')
-  vi.doUnmock('@pyreon/compiler')
+  vi.doUnmock('@pyreon/compiler/analyze')
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -95,7 +95,7 @@ describe('a panel that could not be baked', () => {
     // whose answer is missing is permanently dark and looks like a panel with
     // nothing to say. The answer is stored as an ERROR and the failure is
     // reported, per component and per method.
-    vi.doMock('@pyreon/compiler', () => {
+    vi.doMock('@pyreon/compiler/analyze', () => {
       throw new Error('Cannot find package')
     })
     const logs: string[] = []

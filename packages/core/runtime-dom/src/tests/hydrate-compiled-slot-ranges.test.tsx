@@ -22,7 +22,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, For, Fragment, h } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -51,6 +51,7 @@ import { disableHydrationWarnings } from '../hydration-debug'
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

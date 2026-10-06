@@ -1108,6 +1108,57 @@ describeNative('Native vs JS equivalence — DOM properties', () => {
   })
 })
 
+describeNative('Native vs JS equivalence — fixed-dependency classification (#3782)', () => {
+  // `_bind` only for provably-stable dependency sets; everything else
+  // `renderEffect`. The JS `hasFixedDeps` and Rust `has_fixed_deps` verdicts
+  // must agree byte-for-byte across the container grammar.
+  const SIG = 'const a = signal(false); const b = signal(false); const n = signal(null); const o = signal(null); '
+  const exprs = [
+    'a() && !b()',
+    'a() || b()',
+    'n() ?? b()',
+    'a() ? b() : "x"',
+    'a() ? b() : c()',
+    'a() ? "y" : "x"',
+    'a() + b()',
+    '`${a()} ${b()}`',
+    'String(a() && b())',
+    'String(a())',
+    'a() && o()?.v',
+    'o()?.v',
+    'o()?.[b()]',
+    'fn(a())',
+    'obj.m(a())',
+    'a() && fn()',
+    '[a(), b()]',
+    '({ k: a(), [b()]: 1 })',
+    '(a(), b())',
+    '!a()',
+    'typeof a()',
+    'a() as boolean',
+    'a()!',
+    'a() && (b() || c())',
+    '`${a() ? b() : 1}`',
+    'tag`x${a()}`',
+    'obj[a()]',
+    'a() ? <i/> : null',
+  ]
+  for (const e of exprs) {
+    test(`title={() => ${e}}`, () => {
+      compareWithSignals(`${SIG}const x = <div title={() => ${e}}><span /></div>`, ['a', 'b', 'n', 'o'])
+    })
+  }
+  test('block-body accessor + function expression', () => {
+    compareWithSignals(`${SIG}const x = <div title={() => { return a() }}><span /></div>`, ['a', 'b'])
+    compare('<div class={function () { return "c" }}><span /></div>')
+  })
+  test('props member + prop-derived const', () => {
+    compare('function C(props) { return <div class={props.cls}><span /></div> }')
+    compare('function C(props) { const k = props.k; return <div class={k + 1}><span /></div> }')
+    compare('function C(props) { return <div class={props.a?.b}><span /></div> }')
+  })
+})
+
 describeNative('Native vs JS equivalence — select value binding (PZ-09)', () => {
   // <select value> is never baked (dead content attribute) and its bind
   // line — static one-time property set AND `_bindDirect` — is deferred

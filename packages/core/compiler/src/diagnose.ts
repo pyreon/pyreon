@@ -38,6 +38,13 @@ export interface ErrorPattern {
  * can ever answer. Adding a byte to the bundle is free: `diagnoseError`
  * already references it.
  */
+/** Which new `@pyreon/compiler` subpath an export moved to (see the matching `ERROR_PATTERNS` entry). */
+function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' {
+  if (/^(?:analyzeValidate|emitSchemaSource|emitValidator|isEmittable)$/.test(name)) return 'validate'
+  if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext|detectNativePatterns)/.test(name)) return 'audits'
+  return 'analyze'
+}
+
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
     pattern: /useLoaderData(?:\(\))?.*(?:undefined|empty).*first.*loader.*(?:resolved|finished|completed)|first.*loader.*(?:resolved|finished|completed).*useLoaderData(?:\(\))?.*(?:undefined|empty)/i,
@@ -2176,6 +2183,27 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
       fix: 'Make the slow child resolve faster (cache its data, move it to a loader) or raise `suspenseTimeoutMs` / pass `Infinity` to wait indefinitely.',
       fixCode: `createHandler({ App, routes, mode: 'stream', suspenseTimeoutMs: 60_000 })`,
     }),
+  },
+  {
+    // The main entry of `@pyreon/compiler` stopped re-exporting everything that
+    // parses with the TypeScript compiler API: those exports moved to three
+    // subpaths so a consumer that only needs `transformJSX` does not load it.
+    // An importer still on the old barrel hits one of four errors, none naming
+    // the move: the type checker's missing member, Node's missing named
+    // export, or the bundler's missing export (rolldown / esbuild wording).
+    // Quotes as \x22 / \x27 escapes for the same lexical-scanner reason as the
+    // charts entry above.
+    pattern:
+      /(?:Module \x27\x22@pyreon\/compiler\x22\x27 has no exported member \x27(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x27|The requested module \x27@pyreon\/compiler\x27 does not provide an export named \x27(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x27|\x22(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x22 is not exported by \x22[^\x22]*compiler[^\x22]*\x22|No matching export in \x22[^\x22]*compiler[^\x22]*\x22 for import \x22(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x22)/,
+    diagnose: (m) => {
+      const name = m.slice(1).find((g) => g !== undefined) ?? ''
+      const subpath = compilerExportSubpath(name)
+      return {
+        cause: `\`${name}\` is no longer exported from the main entry of \`@pyreon/compiler\`. It moved to \`@pyreon/compiler/${subpath}\` so that importing \`transformJSX\` does not load the TypeScript compiler API.`,
+        fix: `Import it from \`@pyreon/compiler/${subpath}\` instead of \`@pyreon/compiler\`. The main entry keeps \`transformJSX\`, \`transformDeferInline\`, the Plain Mode functions, the fs-route convention and island naming.`,
+        fixCode: `import { ${name} } from '@pyreon/compiler/${subpath}'`,
+      }
+    },
   },
 ]
 

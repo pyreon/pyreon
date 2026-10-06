@@ -284,7 +284,7 @@ Returns `<cwd>/.pyreon-lpih.json` when `process.cwd` is available, `null` otherw
 
 The canonical filename constant. Stable identifier for tools that want to compose paths from a different directory root.
 
-### `@pyreon/compiler`
+### `@pyreon/compiler/analyze`
 
 ```ts
 import {
@@ -292,7 +292,7 @@ import {
   firesToCreationSiteFindings,
   type LPIHFireDatum,
   type LPIHMergeOptions,
-} from '@pyreon/compiler'
+} from '@pyreon/compiler/analyze'
 ```
 
 #### `firesToCreationSiteFindings(fires, sourceFile, options?)`

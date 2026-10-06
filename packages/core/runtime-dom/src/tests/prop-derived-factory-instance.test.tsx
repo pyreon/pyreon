@@ -28,7 +28,7 @@
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _fuse, _lc, h } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   _applyProps,
@@ -49,6 +49,7 @@ import { bindPolymorphicText } from '../mount'
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

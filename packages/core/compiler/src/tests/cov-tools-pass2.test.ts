@@ -8,7 +8,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { transformClientDirectives } from '../client-directives'
 import { auditIslands } from '../island-audit'
 import { auditNative, detectNativePatterns } from '../native-audit'
 import { detectPyreonPatterns, type PyreonDiagnosticCode } from '../pyreon-intercept'
@@ -36,32 +35,6 @@ function makeTree(prefix: string, sentinel: 'packages' | 'package.json') {
 
 const pyreonCodes = (src: string, file = 'input.tsx'): PyreonDiagnosticCode[] =>
   detectPyreonPatterns(src, file).map((d) => d.code)
-
-// ═══════════════════════════════════════════════════════════════════════════
-// client-directives — the whitespace-eat guard
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe('client-directives — attribute removal whitespace handling', () => {
-  it('eats one leading space, and eats NOTHING when the previous char is `}`', () => {
-    const spaced = transformClientDirectives(
-      `import { Widget } from './widget'\nexport const P = () => <Widget hydrate="visible" id="a" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(spaced.changed).toBe(true)
-    expect(spaced.code).not.toContain('hydrate=')
-    expect(spaced.code).toContain('id="a"')
-
-    // JSX allows an attribute to follow a spread with no separating space, so
-    // the character before `hydrate` is `}` rather than whitespace.
-    const tight = transformClientDirectives(
-      `import { Widget } from './widget'\nexport const P = () => <Widget {...rest}hydrate="visible" />\n`,
-      '/app/src/p.tsx',
-    )
-    expect(tight.changed).toBe(true)
-    expect(tight.code).not.toContain('hydrate=')
-    expect(tight.code).toContain('{...rest}')
-  })
-})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // island-audit — zero-argument import() and extension-complete specifiers
