@@ -5131,6 +5131,46 @@
       "bytes": 182,
       "warnings": 0
     },
+    "golden-fixture:storage-01.tsx|swift": {
+      "sha": "424f1307e9d7565bcf772565e0144169aa37a0585a7562a188f385764e4793d7",
+      "bytes": 1952,
+      "warnings": 0
+    },
+    "golden-fixture:storage-01.tsx|kotlin": {
+      "sha": "591cf3c8a7257f564f00152f47f74701a10b5a0e2f7ba4cf99c96c647e82ae3c",
+      "bytes": 2142,
+      "warnings": 0
+    },
+    "golden-fixture:storage-02.tsx|swift": {
+      "sha": "cb00283446cbc3ee63b175bfce64e7035fb84695bbaafaf47983a7ad0d77c6a5",
+      "bytes": 734,
+      "warnings": 1
+    },
+    "golden-fixture:storage-02.tsx|kotlin": {
+      "sha": "4af88600c1b49672b90d4356df722d9dfbcfea4acd6c1e05532b96c7016fcd0f",
+      "bytes": 808,
+      "warnings": 1
+    },
+    "golden-fixture:storage-03.tsx|swift": {
+      "sha": "09dd9397999b54717de4efbca5512526607ad85aad1a0a0373bd864d3d7aead8",
+      "bytes": 173,
+      "warnings": 2
+    },
+    "golden-fixture:storage-03.tsx|kotlin": {
+      "sha": "12d4f42470130428800f3b0880698448a0cde331c9e1a1cc715b5dbc0b9ab050",
+      "bytes": 230,
+      "warnings": 2
+    },
+    "golden-fixture:storage-04.tsx|swift": {
+      "sha": "90484641b8ff46a37c48b2db00fc1bafc056fda25c3bb29cca2ec41b8d4b7c72",
+      "bytes": 208,
+      "warnings": 0
+    },
+    "golden-fixture:storage-04.tsx|kotlin": {
+      "sha": "4eff54e0a825704cee613e84913cadbad703a489151dbb724debcfee778760f5",
+      "bytes": 278,
+      "warnings": 0
+    },
     "golden-fixture:sync-01.tsx|swift": {
       "sha": "96db60511480af9ec86902f0e6207a64ae7f158d3fd3d9db1d6bd21773233bbb",
       "bytes": 199,
