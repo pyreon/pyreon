@@ -166,7 +166,9 @@ describe('createMachine — events sent from a watcher during the batch flush (#
     })
     const stop = watch(
       () => m(),
-      () => m.send('TOGGLE'),
+      () => {
+        m.send('TOGGLE')
+      },
     )
     // The throw is raised inside the drain; watch callbacks swallow nothing,
     // so it surfaces from the outer send().
