@@ -62,7 +62,8 @@ describe('jsx.ts — signal METHOD-call promotion (`{count().toFixed(2)}`)', () 
 
   it('a method-call ATTRIBUTE keeps the general tracked binding (this promotion is text-only)', () => {
     const out = t(`${SIG}export const A = () => <div title={count().toFixed(2)}>x</div>`)
-    expect(out).toContain('_bind(')
+    // An unknown method call is not provably fixed-dependency (#3782).
+    expect(out).toContain('renderEffect(')
     expect(out).not.toContain('_bindDirect(count, (v) => { __t0')
   })
 })
@@ -86,7 +87,7 @@ describe('jsx.ts — direct-tier ATTRIBUTE bindings', () => {
 
   it('a COMPUTED member accessor declines the direct tier entirely', () => {
     const out = t('export const A = () => <div title={() => row["l"]()}>x</div>')
-    expect(out).toContain('_bind(')
+    expect(out).toContain('renderEffect(')
     expect(out).not.toContain('_bindDirect')
   })
 

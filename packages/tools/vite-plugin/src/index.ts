@@ -36,6 +36,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
+import { foldNodeEnvProduction, renameCompatJsxAttributes } from './ast-rewrite'
 import {
   detectPlain,
   type CollapsibleSite,
@@ -649,9 +650,6 @@ const isTruthyEnv = _isTruthyEnv
 // mismatch at the seam and need an `as never` cast at the call site.
 // Runtime is identical — the Plugin shape itself hasn't changed across
 // vite 5/6/7/8 for the hooks we implement.
-const NODE_ENV_READ = 'process.env.NODE_ENV'
-/** Same length as `process.env.NODE_ENV` (20 chars) so positions are preserved. */
-const NODE_ENV_PRODUCTION_LITERAL = '(      "production")'
 
 /**
  * Whether a module id belongs to a `@pyreon/*` package — decided by the
@@ -1179,13 +1177,20 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       if (
         isProductionBuild &&
         transformOptions?.ssr === true &&
-        code.includes(NODE_ENV_READ) &&
+        code.includes('NODE_ENV') &&
         isPyreonPackageFile(id, pyreonDirCache)
       ) {
-        code = code.replaceAll(NODE_ENV_READ, NODE_ENV_PRODUCTION_LITERAL)
-        folded = true
-        // A built `lib/*.js` module has nothing else for this plugin to do.
-        if (/\.[cm]?js$/.test(id.split('?')[0]!)) return { code, map: null }
+        // AST-positioned, never raw text: the same characters inside a string
+        // (zero's own `"process.env.NODE_ENV"` define key), comment, regex or
+        // template text are not reads and must survive. A module that does not
+        // parse keeps its runtime read.
+        const foldedCode = foldNodeEnvProduction(code, id)
+        if (foldedCode !== null) {
+          code = foldedCode
+          folded = true
+          // A built `lib/*.js` module has nothing else for this plugin to do.
+          if (/\.[cm]?js$/.test(id.split('?')[0]!)) return { code, map: null }
+        }
       }
       // ── Validator tree-shake rewrite (opt-in, build-only) ──────────────
       // Rewrite chainable `const X = s.<chain>` schemas to the lean
@@ -1259,7 +1264,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         compat === 'svelte'
       ) {
         if (compat === 'react' || compat === 'preact') {
-          const transformed = transformCompatAttributes(code)
+          const transformed = renameCompatJsxAttributes(code, id)
           if (transformed !== code) return { code: transformed, map: null }
         }
         return folded ? { code, map: null } : undefined
@@ -2443,25 +2448,6 @@ function injectHmr(code: string, moduleId: string): string {
 }
 
 // ── Compat attribute transforms ──────────────────────────────────────────────
-
-/**
- * Transform React-style JSX attribute names to standard HTML attribute names.
- * This is a lightweight string transform that runs on JSX source before OXC's
- * JSX transform converts it to jsx() calls.
- *
- * - `className` → `class`
- * - `htmlFor` → `for`
- *
- * Only matches attribute position in JSX (after `<tag ` or whitespace).
- * Does not transform property access (e.g. `props.className` stays as-is since
- * the compat JSX runtime handles that at call time).
- */
-function transformCompatAttributes(code: string): string {
-  // Match className/htmlFor in JSX attribute position:
-  // After < and tag name, or after whitespace between attributes
-  // Pattern: word boundary + attribute name + = (with optional whitespace)
-  return code.replace(/(\s)className(\s*=)/g, '$1class$2').replace(/(\s)htmlFor(\s*=)/g, '$1for$2')
-}
 
 /**
  * Auto-inject `import { ... } from '<source>'` for bare JSX references

@@ -20,7 +20,7 @@ import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import type { ComponentFn } from '@pyreon/core'
 import { Fragment, Suspense, _fuse, _lc, h, lazy } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import {
   _applyProps,
@@ -55,6 +55,7 @@ function build(
   const deps = {
     _tpl,
     _bind,
+    renderEffect,
     _bindText,
     _bindDirect,
     _applyProps,

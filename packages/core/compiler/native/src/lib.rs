@@ -641,6 +641,7 @@ struct Ctx<'a> {
     needs_bind_prop_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
+    needs_render_effect_import: bool,
     needs_bind_poly_import: bool,
     needs_set_child_import: bool,
     needs_set_child_at_import: bool,
@@ -857,6 +858,7 @@ impl<'a> Ctx<'a> {
             needs_bind_prop_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
+            needs_render_effect_import: false,
             needs_bind_poly_import: false,
             needs_set_child_import: false,
             needs_set_child_at_import: false,
@@ -1021,10 +1023,20 @@ impl<'a> Ctx<'a> {
             if self.needs_set_html_import {
                 imports.push("_setHtml");
             }
-            let reactivity = if self.needs_bind_import {
-                "\nimport { _bind } from \"@pyreon/reactivity\";"
+            let mut reactivity_specs: Vec<&str> = Vec::new();
+            if self.needs_bind_import {
+                reactivity_specs.push("_bind");
+            }
+            if self.needs_render_effect_import {
+                reactivity_specs.push("renderEffect");
+            }
+            let reactivity = if reactivity_specs.is_empty() {
+                String::new()
             } else {
-                ""
+                format!(
+                    "\nimport {{ {} }} from \"@pyreon/reactivity\";",
+                    reactivity_specs.join(", ")
+                )
             };
             result = format!(
                 "import {{ {} }} from \"@pyreon/runtime-dom\";{}\n{}",
@@ -2079,6 +2091,142 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
             false
         }
         _ => false,
+    }
+}
+
+/// Is the DEPENDENCY SET of this expression provably the same on every run?
+/// (#3782) The combined template `_bind` tracks only on its FIRST run, so a
+/// read short-circuited on that run (`a() && b()`, `?:`, `??`, `?.`), made
+/// inside a user function that reads conditionally, or through a props getter
+/// whose own body does, never subscribes. Only provably-stable expressions may
+/// use `_bind`; the rest take `renderEffect`. `cond` = we are inside a branch
+/// that may be skipped. Mirrors `hasFixedDeps` in jsx.ts — verdicts must be
+/// byte-identical (native-equivalence + fuzz lock it).
+fn has_fixed_deps(expr: &Expression, cond: bool, ctx: &mut Ctx) -> bool {
+    match expr {
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
+        Expression::TaggedTemplateExpression(_)
+        | Expression::AwaitExpression(_)
+        | Expression::YieldExpression(_)
+        | Expression::NewExpression(_) => false,
+        Expression::CallExpression(call) => call_has_fixed_deps(call, cond, ctx),
+        Expression::Identifier(id) => {
+            if !is_dynamic(expr, ctx) {
+                return true;
+            }
+            if is_active_signal(id.name.as_str(), ctx)
+                && !ctx.prop_derived_vars.contains_key(id.name.as_str())
+            {
+                return !cond;
+            }
+            false
+        }
+        Expression::StaticMemberExpression(m) => {
+            if let Expression::Identifier(obj) = &m.object {
+                if ctx.props_names.contains(obj.name.as_str()) {
+                    return false;
+                }
+            }
+            has_fixed_deps(&m.object, cond, ctx)
+        }
+        Expression::ComputedMemberExpression(m) => {
+            has_fixed_deps(&m.object, cond, ctx)
+                && has_fixed_deps(&m.expression, cond || m.optional, ctx)
+        }
+        Expression::ConditionalExpression(c) => {
+            has_fixed_deps(&c.test, cond, ctx)
+                && has_fixed_deps(&c.consequent, true, ctx)
+                && has_fixed_deps(&c.alternate, true, ctx)
+        }
+        Expression::LogicalExpression(l) => {
+            has_fixed_deps(&l.left, cond, ctx) && has_fixed_deps(&l.right, true, ctx)
+        }
+        Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::ThisExpression(_) => true,
+        Expression::ParenthesizedExpression(p) => has_fixed_deps(&p.expression, cond, ctx),
+        Expression::TSAsExpression(e) => has_fixed_deps(&e.expression, cond, ctx),
+        Expression::TSSatisfiesExpression(e) => has_fixed_deps(&e.expression, cond, ctx),
+        Expression::TSNonNullExpression(e) => has_fixed_deps(&e.expression, cond, ctx),
+        Expression::TSTypeAssertion(e) => has_fixed_deps(&e.expression, cond, ctx),
+        Expression::UnaryExpression(u) => has_fixed_deps(&u.argument, cond, ctx),
+        Expression::BinaryExpression(b) => {
+            has_fixed_deps(&b.left, cond, ctx) && has_fixed_deps(&b.right, cond, ctx)
+        }
+        Expression::SequenceExpression(s) => {
+            s.expressions.iter().all(|e| has_fixed_deps(e, cond, ctx))
+        }
+        Expression::TemplateLiteral(t) => {
+            t.expressions.iter().all(|e| has_fixed_deps(e, cond, ctx))
+        }
+        Expression::ArrayExpression(arr) => arr.elements.iter().all(|el| match el {
+            ArrayExpressionElement::SpreadElement(s) => has_fixed_deps(&s.argument, cond, ctx),
+            ArrayExpressionElement::Elision(_) => true,
+            _ => el.as_expression().map_or(false, |e| has_fixed_deps(e, cond, ctx)),
+        }),
+        Expression::ObjectExpression(obj) => obj.properties.iter().all(|p| match p {
+            ObjectPropertyKind::ObjectProperty(prop) => {
+                (!prop.computed
+                    || prop
+                        .key
+                        .as_expression()
+                        .map_or(false, |k| has_fixed_deps(k, cond, ctx)))
+                    && has_fixed_deps(&prop.value, cond, ctx)
+            }
+            ObjectPropertyKind::SpreadProperty(s) => has_fixed_deps(&s.argument, cond, ctx),
+        }),
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::CallExpression(call) => call_has_fixed_deps(call, cond, ctx),
+            ChainElement::StaticMemberExpression(m) => {
+                if let Expression::Identifier(obj) = &m.object {
+                    if ctx.props_names.contains(obj.name.as_str()) {
+                        return false;
+                    }
+                }
+                has_fixed_deps(&m.object, cond, ctx)
+            }
+            ChainElement::ComputedMemberExpression(m) => {
+                has_fixed_deps(&m.object, cond, ctx)
+                    && has_fixed_deps(&m.expression, cond || m.optional, ctx)
+            }
+            ChainElement::TSNonNullExpression(e) => has_fixed_deps(&e.expression, cond, ctx),
+            ChainElement::PrivateFieldExpression(_) => false,
+        },
+        _ => false,
+    }
+}
+
+fn call_has_fixed_deps(call: &CallExpression, cond: bool, ctx: &mut Ctx) -> bool {
+    if let Expression::Identifier(id) = &call.callee {
+        if call.arguments.is_empty() && is_active_signal(id.name.as_str(), ctx) {
+            return !cond;
+        }
+    }
+    if is_pure_static_call(call) {
+        return true;
+    }
+    if is_pure_coercion_call(call) {
+        return call.arguments.iter().all(|a| match a {
+            Argument::SpreadElement(_) => false,
+            _ => a.as_expression().map_or(false, |e| has_fixed_deps(e, cond, ctx)),
+        });
+    }
+    false
+}
+
+/// Entry point: classify the attr value the way `unwrap_accessor` slices it.
+fn attr_has_fixed_deps(expr: &Expression, ctx: &mut Ctx) -> bool {
+    match expr {
+        Expression::ArrowFunctionExpression(arrow) => match arrow.get_expression() {
+            Some(body) => has_fixed_deps(body, false, ctx),
+            None => false, // block body is emitted as an IIFE — an opaque call
+        },
+        Expression::FunctionExpression(_) => false,
+        _ => has_fixed_deps(expr, false, ctx),
     }
 }
 
@@ -7119,6 +7267,7 @@ struct TemplateBuilder {
     bind_lines: Vec<String>,
     disposer_names: Vec<String>,
     reactive_bind_exprs: Vec<String>,
+    reactive_effect_exprs: Vec<String>,
     var_idx: u32,
     disp_idx: u32,
     placeholder_idx: u32,
@@ -7161,6 +7310,7 @@ impl TemplateBuilder {
             bind_lines: Vec::new(),
             disposer_names: Vec::new(),
             reactive_bind_exprs: Vec::new(),
+            reactive_effect_exprs: Vec::new(),
             var_idx: 0,
             disp_idx: 0,
             placeholder_idx: 0,
@@ -7357,6 +7507,13 @@ fn build_template_call(
         let combined_body = tb.reactive_bind_exprs.join("; ");
         tb.bind_lines
             .push(format!("const {} = _bind(() => {{ {} }})", combined_name, combined_body));
+    }
+    let effect_exprs = std::mem::take(&mut tb.reactive_effect_exprs);
+    for body in effect_exprs {
+        ctx.needs_render_effect_import = true;
+        let name = tb.next_disp();
+        tb.bind_lines
+            .push(format!("const {} = renderEffect(() => {{ {} }})", name, body));
     }
 
     if tb.needs_bind {
@@ -8200,7 +8357,11 @@ fn emit_dynamic_attr(
         return;
     }
     let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb);
-    tb.reactive_bind_exprs.push(line);
+    if attr_has_fixed_deps(expr_node, ctx) {
+        tb.reactive_bind_exprs.push(line);
+    } else {
+        tb.reactive_effect_exprs.push(line);
+    }
 }
 
 fn emit_attr_expression(
