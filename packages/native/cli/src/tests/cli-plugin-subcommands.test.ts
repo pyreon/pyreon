@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createCompiler } from '@pyreon/native-compiler'
 import { main, mainWithPlugins } from '../cli'
 
 // `plugins` and `explain` are the two subcommands that need plugin loading, so
@@ -62,7 +63,11 @@ describe('pyreon-native explain', () => {
     expect(await mainWithPlugins(['explain', file, `--app=${app}`])).toBe(0)
     const out = logs.join('\n')
     expect(out).toContain('useShare()')
-    expect(out).toContain('owner: native-compiler')
+    // Whoever owns the service (the compiler itself, or a package plugin such as
+    // @pyreon/hooks once a library owns its lowering) — read it, don't hardcode it.
+    const owner = createCompiler().services.get('useShare')?.owner
+    expect(owner, 'useShare must be a registered service for this spec to mean anything').toBeDefined()
+    expect(out).toContain(`owner: ${owner}`)
   })
 
   it('works with plugin discovery switched off', async () => {
