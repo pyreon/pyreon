@@ -42,6 +42,7 @@ import type {
 import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
+import { isElementLoweringTag } from './element-lowering'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
 import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
@@ -1418,9 +1419,9 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     const src = node.source?.value
     if (typeof src !== 'string') continue
     // Match the package root, allowing sub-path imports.
-    const pkg = src.startsWith('@pyreon/')
-      ? `@pyreon/${(src.slice('@pyreon/'.length).split('/')[0] ?? '')}`
-      : src
+    // A scoped sub-path import (`@scope/pkg/x`) normalises to the package root.
+    const scoped = src.startsWith('@') ? src.split('/') : undefined
+    const pkg = scoped !== undefined && scoped.length >= 2 ? `${scoped[0]}/${scoped[1]}` : src
     // A package with a granular entry in UNLOWERED_PYREON_MODULES is already
     // covered at SYMBOL level, with advice specific to it ("use the namespace
     // form", "validate in a <Web> branch"). That is strictly better than this
@@ -3479,9 +3480,11 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
   }
 }
 
-/** The imported names understood by package-specific JSX alias hooks
- *  can intercept. Kept in sync with the guards in emit-swift/emit-kotlin. */
-const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'FlowWebView'])
+/** Imported names the emitters' own alias hooks intercept, kept in sync with
+ *  the guards in emit-swift/emit-kotlin. Tags claimed by a registered element
+ *  lowering (`element-lowering.ts`) are tracked through the registry instead,
+ *  so a plugin's tags get the same import guard with no edit here. */
+const ALIAS_TAG_NAMES = new Set(['PyreonUI', 'PyreonUIProvider', 'FlowWebView'])
 
 /**
  * Collect each local name with its source package and original imported name.
@@ -3497,13 +3500,13 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     if (node.type !== 'ImportDeclaration') continue
     const src = node.source?.value
     if (typeof src !== 'string') continue
-    const pkg = src.startsWith('@pyreon/')
-      ? `@pyreon/${(src.slice('@pyreon/'.length).split('/')[0] ?? '')}`
-      : src
+    // A scoped sub-path import (`@scope/pkg/x`) normalises to the package root.
+    const scoped = src.startsWith('@') ? src.split('/') : undefined
+    const pkg = scoped !== undefined && scoped.length >= 2 ? `${scoped[0]}/${scoped[1]}` : src
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
-      if (typeof local === 'string' && typeof imported === 'string' && ALIAS_TAG_NAMES.has(imported)) {
+      if (typeof local === 'string' && typeof imported === 'string' && (ALIAS_TAG_NAMES.has(imported) || isElementLoweringTag(imported))) {
         map.set(local, { source: pkg, imported })
       }
     }

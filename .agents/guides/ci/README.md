@@ -21,6 +21,9 @@ Read before adding or changing a workflow, job, required check, or cache key.
   while superseded PR runs release their concurrency slot. An `always()` job
   can survive ordinary cancellation and leave the newest run pending.
 - Matrices and decide outputs are fail-closed. A detection error runs the full set, because a skipped required check reports success to branch protection.
+- Generated-output freshness must reject failed Git comparisons and include
+  new unstaged files within the generator-owned paths. Empty stdout alone
+  does not prove freshness; unrelated working-tree edits remain outside the check.
 - Expensive matrices use `fail-fast: true`, and sequential batches stop on the
   first real failure. Preserve diagnostics/upload/cache steps with
   `if: always()` rather than continuing expensive test work after red.

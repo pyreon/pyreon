@@ -94,7 +94,7 @@ function walk(dir: string, out: string[] = []): string[] {
     const full = join(dir, name)
     const st = statSync(full)
     if (st.isDirectory()) {
-      if (name === 'tests' || name === '__tests__' || name === 'fixtures' || name === 'node_modules') continue
+      if (name === 'tests' || name === '__tests__' || name === 'fixtures' || name === 'golden-fixtures' || name === 'node_modules') continue
       walk(full, out)
     } else if (/\.tsx?$/.test(name) && !/\.(test|spec)\.tsx?$/.test(name) && !name.endsWith('.d.ts')) {
       out.push(full)
