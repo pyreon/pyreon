@@ -5,5 +5,8 @@
   "license": "MIT",
   "dependencies": {
     "wrangler": "4.146.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
   }
 }

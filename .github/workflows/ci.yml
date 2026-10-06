@@ -593,7 +593,7 @@ jobs:
   fast-gates:
     name: Fast Gates
     needs: install
-    if: always() && needs.install.result == 'success'
+    if: ${{ !cancelled() && needs.install.result == 'success' }}
     runs-on: ubuntu-latest
     # Derived: ~90s of prior gates + lint 20s + doc examples 45s + secrets
     # scan 30s (+ up to 100s of pre-pull backoff) + audit/readiness/guard
@@ -1327,9 +1327,10 @@ jobs:
     # No runner-held polling and no API dependency on a healthy run. Re-run
     # failed jobs to include this verdict after repairs; if re-running a single
     # cell manually, also re-run Test. Its token can read jobs, not write checks.
-    # always() ensures failed prerequisites produce a red verdict, not a skip.
+    # A failed prerequisite still needs a red verdict. A cancelled workflow
+    # must release its concurrency slot instead of queuing an always() job.
     needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

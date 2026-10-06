@@ -123,6 +123,16 @@ function walk(node: unknown, parent: AnyNode | undefined, key: string, visit: (n
   }
 }
 
+/**
+ * Does `source` legitimately provide `hook`? A package-owned plugin declares
+ * the specifiers it serves (`modules`), so its hooks are claimed from there as
+ * well as from `@pyreon/*`. Absent, only `@pyreon/*` counts — unchanged.
+ */
+export type HookSourceClaim = (hook: string, source: string) => boolean
+
+const isFrameworkSource = (source: string, hook: string, claims?: HookSourceClaim): boolean =>
+  source.startsWith('@pyreon/') || claims?.(hook, source) === true
+
 /** The suffix a non-framework `useX` is renamed with so name-keyed recognizers stop seeing it. */
 export const NOT_FRAMEWORK_SUFFIX = '_'
 
@@ -132,7 +142,11 @@ export const NOT_FRAMEWORK_SUFFIX = '_'
  * name); a locally declared function of the same name needs none, since it is
  * simply the author's own function.
  */
-export function canonicalizeHookBindings(program: AnyNode, hooks: ReadonlySet<string>): string[] {
+export function canonicalizeHookBindings(
+  program: AnyNode,
+  hooks: ReadonlySet<string>,
+  claims?: HookSourceClaim,
+): string[] {
   const imports = collectImports(program)
   const declared = collectDeclared(program)
   const warnings: string[] = []
@@ -143,7 +157,7 @@ export function canonicalizeHookBindings(program: AnyNode, hooks: ReadonlySet<st
   for (const name of hooks) {
     const imp = imports.get(name)
     if (imp) {
-      const isFramework = imp.source.startsWith('@pyreon/') && imp.imported === name
+      const isFramework = isFrameworkSource(imp.source, name, claims) && imp.imported === name
       if (!isFramework) {
         rename.add(name)
         warnings.push(
@@ -160,7 +174,7 @@ export function canonicalizeHookBindings(program: AnyNode, hooks: ReadonlySet<st
   // An aliased framework hook: calls under the alias are the canonical hook.
   for (const [local, imp] of imports) {
     if (local === imp.imported) continue
-    if (!imp.source.startsWith('@pyreon/') || !hooks.has(imp.imported)) continue
+    if (!isFrameworkSource(imp.source, imp.imported, claims) || !hooks.has(imp.imported)) continue
     // The canonical name is taken by something else in this file: leave it, the alias stays unresolved.
     if (declared.has(imp.imported) || imports.has(imp.imported)) continue
     alias.set(local, imp.imported)

@@ -231,6 +231,49 @@ describe('plugins and explain reports', () => {
   })
 })
 
+describe('explain with a plugin-supplied service and element', () => {
+  const plugin = {
+    name: '@acme/kit',
+    apiVersion: 1 as const,
+    modules: ['@acme/kit'],
+    services: { useGadget: { swift: 'AcmeGadget()', kotlin: ['val {id} = remember { AcmeGadget() }'] } },
+    elements: [
+      {
+        module: '@acme/ui',
+        tags: ['Banner'],
+        emit: { swift: () => 'AcmeBanner()', kotlin: () => 'AcmeBanner()' },
+      },
+    ],
+  }
+  const source = `import { useGadget } from '@acme/kit'
+import { Banner } from '@acme/ui'
+export function A() { const gadget = useGadget(); return <Button onClick={() => gadget.go()}><Banner /></Button> }`
+
+  it('lowers the plugin hook and attributes it, and the element, to the plugin', () => {
+    const { lines, exitCode } = explainReport(source, join(app, 'A.tsx'), createCompiler({ plugins: [plugin] }), app)
+    expect(exitCode).toBe(0)
+    const text = lines.join('\n')
+    expect(text).toContain('gadget = useGadget()  [owner: @acme/kit]')
+    expect(text).toContain('swift:  @State private var gadget = AcmeGadget()  (emitted)')
+    expect(text).toContain('val gadget = remember { AcmeGadget() }  (emitted)')
+    expect(text).toContain('<Banner> from @acme/ui  [element lowering, owner: @acme/kit]')
+    expect(text).not.toContain('registered but was not lowered')
+  })
+
+  it('still flags a registered hook the parser really did not lower (a genuine failure)', () => {
+    const inline = `import { useShare } from '@pyreon/hooks'
+export function A() { return <Button onClick={() => useShare().text('hi')}>x</Button> }`
+    const { lines } = explainReport(inline, join(app, 'A.tsx'), createCompiler(), app)
+    expect(lines.join('\n')).toContain('useShare() is registered but was not lowered as a service declaration in this file')
+  })
+
+  it('the plugins listing shows element lowerings with their owners', async () => {
+    const { lines } = await pluginsReport(app, false)
+    expect(lines).toContain('  @pyreon/coolgrid  Container, Row, Col  @pyreon/coolgrid')
+    expect(lines).toContain('  @pyreon/elements  Element  @pyreon/elements')
+  })
+})
+
 describe('the shipped bin', () => {
   it('runs `plugins` and `explain` and reports exit codes only', () => {
     addPackage('@acme/badge', declares(), pluginModule('badge'))

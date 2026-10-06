@@ -1716,9 +1716,9 @@ const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
     // OWN `workspaces` globs and refuses to read an empty scan as a clean
     // pass. Users hitting this message have a layout the resolver could
     // not see (no `workspaces` field, roots outside the declared globs)
-    // or ran a Pyreon-monorepo-only gate in a consumer repo.
+    // or invoked an audit outside a project directory.
     pattern:
-      /matched no (source|test) files under \d+ package root|doctor --ci measured nothing|No monorepo root found/i,
+      /matched no (source|test) files under \d+ package root|doctor --ci measured nothing|No (?:project|monorepo) root found/i,
     diagnose: () => ({
       cause:
         "A `pyreon doctor` file-scanning gate resolved the workspace's package roots (from `package.json` `workspaces` / `pnpm-workspace.yaml`, or the nearest package dir) and found NO files to audit. The doctor deliberately reports this as a skipped gate + warning instead of a clean pass — pre-0.50 the same situation silently scored 100/100 Grade A while inspecting nothing (a false green).",
@@ -1732,6 +1732,18 @@ const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
 //   pyreon doctor --roots src`,
       related:
         'The per-gate scan counts are printed in the report header (`Scanned: react-patterns 1050 · …`) and in `--json` under `gates[].meta.scanned` + `workspace` — verify the scope there. `--ci` exits non-zero when NOTHING was measured, by design.',
+    }),
+  },
+  {
+    pattern: /Duplicate island names/i,
+    diagnose: () => ({
+      cause:
+        'Multiple islands in the audited project share a hydration registry name. The registry selects the first loader for that name, so another island can stay non-interactive without throwing.',
+      fix: 'Give every island in the application a unique name. Run auditIslands from that application root: the nearest package.json scopes the scan, while an explicit monorepo audit compares all included apps.',
+      fixCode: `const One = island(() => import('./One'), { name: 'One', hydrate: 'load' })
+const Two = island(() => import('./Two'), { name: 'Two', hydrate: 'load' })`,
+      related:
+        'Independent apps can reuse names when audited separately. Check the root and filesScanned fields before treating a workspace-wide report as an application report.',
     }),
   },
   {

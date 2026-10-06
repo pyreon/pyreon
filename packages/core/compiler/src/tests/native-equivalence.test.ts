@@ -1,12 +1,12 @@
 /**
- * Cross-backend equivalence tests.
- * Runs every test input through BOTH the JS and Rust implementations
- * and asserts identical output. This catches any behavioral divergence
- * between the two backends.
+ * Curated JavaScript syntax corpus with optional Rust byte-equivalence.
+ * Syntax assertions run without the optional binary; parity additionally runs
+ * when it is installed. Native-only warning comparisons skip loudly.
  */
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseSync } from 'oxc-parser'
 import { rocketstyleCollapseKey, serializeStaticChildren, transformJSX_JS } from '../jsx'
 import type { ReactivitySpan } from '../jsx'
 
@@ -46,21 +46,32 @@ try {
 
 const describeNative = nativeTransform ? describe : describe.skip
 
+function assertJavaScript(code: string, filename = 'test.tsx') {
+  expect(code).not.toBe('')
+  expect(parseSync(filename, code).errors, code).toEqual([])
+}
+
 function compare(input: string, filename = 'test.tsx') {
   const js = transformJSX_JS(input, filename)
-  const rs = nativeTransform!(input, filename, false, null)
+  assertJavaScript(js.code)
+  if (!nativeTransform) return
+  const rs = nativeTransform(input, filename, false, null)
   expect(rs.code).toBe(js.code)
 }
 
 function compareWithSignals(input: string, knownSignals: string[]) {
   const js = transformJSX_JS(input, 'test.tsx', { knownSignals })
-  const rs = nativeTransform!(input, 'test.tsx', false, knownSignals)
+  assertJavaScript(js.code)
+  if (!nativeTransform) return
+  const rs = nativeTransform(input, 'test.tsx', false, knownSignals)
   expect(rs.code).toBe(js.code)
 }
 
 function compareSsr(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { ssr: true })
-  const rs = nativeTransform!(input, 'test.tsx', true, null)
+  assertJavaScript(js.code)
+  if (!nativeTransform) return
+  const rs = nativeTransform(input, 'test.tsx', true, null)
   expect(rs.code).toBe(js.code)
 }
 
@@ -69,7 +80,9 @@ function compareSsr(input: string) {
 // blocker that kept `ssrTemplate` JS-only until native parity landed.
 function compareSsrTemplate(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { ssr: true, ssrTemplate: true })
-  const rs = nativeTransform!(input, 'test.tsx', true, null, false, undefined, true)
+  assertJavaScript(js.code)
+  if (!nativeTransform) return
+  const rs = nativeTransform(input, 'test.tsx', true, null, false, undefined, true)
   expect(rs.code).toBe(js.code)
 }
 
@@ -78,7 +91,9 @@ function compareSsrTemplate(input: string) {
 // lines the JS oracle does; this was the blocker that kept the option JS-only.
 function compareTplComponents(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { templatizeComponentChildren: true })
-  const rs = nativeTransform!(input, 'test.tsx', false, null, false, undefined, false, true)
+  assertJavaScript(js.code)
+  if (!nativeTransform) return
+  const rs = nativeTransform(input, 'test.tsx', false, null, false, undefined, false, true)
   expect(rs.code).toBe(js.code)
 }
 
@@ -87,7 +102,9 @@ function compareTplComponentsWithSignals(input: string, knownSignals: string[]) 
     knownSignals,
     templatizeComponentChildren: true,
   })
-  const rs = nativeTransform!(input, 'test.tsx', false, knownSignals, false, undefined, false, true)
+  assertJavaScript(js.code)
+  if (!nativeTransform) return
+  const rs = nativeTransform(input, 'test.tsx', false, knownSignals, false, undefined, false, true)
   expect(rs.code).toBe(js.code)
 }
 
@@ -112,45 +129,41 @@ function canon(spans: ReactivitySpan[] | null | undefined): string[] {
 function compareLens(input: string, filename = 'test.tsx') {
   const jsOff = transformJSX_JS(input, filename)
   const jsOn = transformJSX_JS(input, filename, { reactivityLens: true })
-  const rsOff = nativeTransform!(input, filename, false, null, false)
-  const rsOn = nativeTransform!(input, filename, false, null, true)
-
-  // (1) additive — collecting the lens never changes emitted code, on
-  // either backend, and both backends still agree on that code.
+  assertJavaScript(jsOn.code, filename)
   expect(jsOn.code).toBe(jsOff.code)
+  expect(jsOff.reactivityLens == null).toBe(true)
+  const j = canon(jsOn.reactivityLens)
+  expect(j.length).toBeGreaterThan(0)
+  if (!nativeTransform) return
+  const rsOff = nativeTransform(input, filename, false, null, false)
+  const rsOn = nativeTransform(input, filename, false, null, true)
   expect(rsOn.code).toBe(rsOff.code)
   expect(rsOn.code).toBe(jsOn.code)
-
-  // The opt-out path must NOT carry the sidecar (parity with JS, which
-  // omits the field entirely when not collecting).
   expect(rsOff.reactivityLens == null).toBe(true)
-  expect(jsOff.reactivityLens == null).toBe(true)
-
-  // (2) parity — identical SET of spans.
-  const j = canon(jsOn.reactivityLens)
-  const r = canon(rsOn.reactivityLens)
-  expect(r).toEqual(j)
-  // Guard against the degenerate "both empty → trivially equal" pass:
-  // every fixture below is chosen to produce ≥1 span.
-  expect(j.length).toBeGreaterThan(0)
+  expect(canon(rsOn.reactivityLens)).toEqual(j)
 }
 
 // ─── Cross-backend equivalence ──────────────────────────────────────────────
 
-describeNative('Native vs JS equivalence — class/style binding fidelity', () => {
+describe('JS syntax and optional native parity — class/style binding fidelity', () => {
   const sig = `import { signal } from '@pyreon/reactivity'\nconst c = signal(0); const a = signal(true); const t = signal('x')\n`
   // class — cx-normalizing form (array/object → cx, string passthrough)
   test('class array', () => compare(`${sig}export const X = () => <div class={[t(), 'x']}>y</div>`))
-  test('class object', () => compare(`${sig}export const X = () => <div class={{ active: a() }}>y</div>`))
-  test('class string ternary', () => compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
+  test('class object', () =>
+    compare(`${sig}export const X = () => <div class={{ active: a() }}>y</div>`))
+  test('class string ternary', () =>
+    compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
   test('class non-reactive', () => compare(`export const X = () => <div class={someVar}>y</div>`))
-  test('class direct signal ref', () => compare(`${sig}export const X = () => <div class={t}>y</div>`))
+  test('class direct signal ref', () =>
+    compare(`${sig}export const X = () => <div class={t}>y</div>`))
   // single-disposer fast path: `return __d0` (no wrapper closure) — JS + Rust
   // must agree byte-for-byte on both the fast path and the multi-disposer wrapper.
   test('single-disposer template', () =>
     compare(`${sig}export const X = () => <div class="row"><span>{t()}</span></div>`))
   test('multi-disposer template', () =>
-    compare(`${sig}export const X = () => <div class="row"><span>{t()}</span><span>{c()}</span></div>`))
+    compare(
+      `${sig}export const X = () => <div class="row"><span>{t()}</span><span>{c()}</span></div>`,
+    ))
   // dangerouslySetInnerHTML — must mirror the runtime (innerHTML = value.__html),
   // not a generic setAttribute (which stringifies the object to "[object Object]").
   // The wrapper div forces template-ization so the attr binding goes through attr_setter.
@@ -174,13 +187,17 @@ describeNative('Native vs JS equivalence — class/style binding fidelity', () =
       `export const X = (props) => <div class="cb"><div dangerouslySetInnerHTML={props.html}><span>kid</span></div></div>`,
     ))
   // style — object-aware form (object → Object.assign, string → cssText)
-  test('style object literal (reactive)', () => compare(`${sig}export const X = () => <div style={{ color: t() }}>y</div>`))
-  test('style object thunk (reactive)', () => compare(`${sig}export const X = () => <div style={() => ({ color: t() })}>y</div>`))
-  test('style string template', () => compare(`${sig}export const X = () => <div style={\`color: \${t()}\`}>y</div>`))
-  test('style static object (one-shot)', () => compare(`export const X = () => <div style={{ color: 'red' }}>y</div>`))
+  test('style object literal (reactive)', () =>
+    compare(`${sig}export const X = () => <div style={{ color: t() }}>y</div>`))
+  test('style object thunk (reactive)', () =>
+    compare(`${sig}export const X = () => <div style={() => ({ color: t() })}>y</div>`))
+  test('style string template', () =>
+    compare(`${sig}export const X = () => <div style={\`color: \${t()}\`}>y</div>`))
+  test('style static object (one-shot)', () =>
+    compare(`export const X = () => <div style={{ color: 'red' }}>y</div>`))
 })
 
-describeNative('Native vs JS equivalence — basic', () => {
+describe('JS syntax and optional native parity — basic', () => {
   test('simple signal child', () => compare('<div>{count()}</div>'))
   test('static string child', () => compare('<div>{"static"}</div>'))
   test('numeric child', () => compare('<div>{42}</div>'))
@@ -206,7 +223,7 @@ describeNative('Native vs JS equivalence — basic', () => {
   test('self-closing', () => compare('<br />'))
 })
 
-describeNative('Native vs JS equivalence — props', () => {
+describe('JS syntax and optional native parity — props', () => {
   test('dynamic class', () => compare('<div class={activeClass()} />'))
   test('dynamic style', () => compare('<div style={styles()} />'))
   test('string class', () => compare('<div class="foo" />'))
@@ -223,7 +240,7 @@ describeNative('Native vs JS equivalence — props', () => {
   test('conditional prop', () => compare("<div title={isActive() ? 'yes' : 'no'} />"))
 })
 
-describeNative('Native vs JS equivalence — components', () => {
+describe('JS syntax and optional native parity — components', () => {
   test('reactive prop with _rp', () => compare('<MyComponent value={count()} />'))
   test('_rp import', () => compare('<Button label={getText()} />'))
   test('static prop', () => compare('<Button size={12} />'))
@@ -237,7 +254,7 @@ describeNative('Native vs JS equivalence — components', () => {
   test('template literal in component prop', () => compare('<Comp label={`${count()} items`} />'))
 })
 
-describeNative('Native vs JS equivalence — template emission', () => {
+describe('JS syntax and optional native parity — template emission', () => {
   test('nested elements', () => compare('<div><span>hello</span></div>'))
   test('single element with text', () => compare('<div>hello</div>'))
   test('component child bails', () => compare('<div><MyComponent /></div>'))
@@ -276,7 +293,8 @@ describeNative('Native vs JS equivalence — template emission', () => {
     const js = transformJSX_JS(input, 'test.tsx')
     expect(js.code).not.toMatch(/firstElementChild\(\(/)
     expect(js.code).toMatch(/const __e0 = __root\.firstElementChild;/)
-    const rs = nativeTransform!(input, 'test.tsx', false, null)
+    if (!nativeTransform) return
+    const rs = nativeTransform(input, 'test.tsx', false, null)
     expect(rs.code).not.toMatch(/firstElementChild\(\(/)
     expect(rs.code).toMatch(/const __e0 = __root\.firstElementChild;/)
   })
@@ -294,7 +312,7 @@ describeNative('Native vs JS equivalence — template emission', () => {
     compare('<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>'))
 })
 
-describeNative('Native vs JS equivalence — hoisting', () => {
+describe('JS syntax and optional native parity — hoisting', () => {
   test('static JSX child', () => compare('<div>{<span>Hello</span>}</div>'))
   test('static self-closing', () => compare('<div>{<br />}</div>'))
   test('dynamic JSX not hoisted', () => compare('<div>{<span class={cls()}>text</span>}</div>'))
@@ -308,13 +326,13 @@ describeNative('Native vs JS equivalence — hoisting', () => {
   test('static false expression', () => compare('<div>{<input disabled={false} />}</div>'))
   test('static null expression', () => compare('<div>{<input disabled={null} />}</div>'))
   test('static numeric expression', () => compare('<div>{<input tabindex={0} />}</div>'))
-  test('empty expression attr', () => compare('<div>{<input disabled={/* comment */} />}</div>'))
+  test('empty expression child', () => compare('<div>{<span>{/* comment */}</span>}</div>'))
   test('nested static element', () => compare('<div>{<div><span>text</span></div>}</div>'))
   test('nested static self-closing', () => compare('<div>{<div><br /></div>}</div>'))
   test('nested static fragment', () => compare('<div>{<div><>text</></div>}</div>'))
 })
 
-describeNative('Native vs JS equivalence — pure calls', () => {
+describe('JS syntax and optional native parity — pure calls', () => {
   test('Math.max static', () => compare('<div>{Math.max(5, 10)}</div>'))
   test('JSON.stringify static', () => compare('<div>{JSON.stringify("hello")}</div>'))
   test('JSON.stringify non-static', () => compare('<div>{JSON.stringify({a: 1})}</div>'))
@@ -324,7 +342,7 @@ describeNative('Native vs JS equivalence — pure calls', () => {
   test('Number.parseInt', () => compare('<div>{Number.parseInt("42", 10)}</div>'))
 })
 
-describeNative('Native vs JS equivalence — props detection', () => {
+describe('JS syntax and optional native parity — props detection', () => {
   test('props.x in child', () => compare('function Comp(props) { return <div>{props.name}</div> }'))
   test('props.x in attr', () =>
     compare('function Comp(props) { return <div class={props.cls}></div> }'))
@@ -347,7 +365,7 @@ describeNative('Native vs JS equivalence — props detection', () => {
     compare('function Comp(props) { const x = props.a ?? "def"; return <div class={x}>{x}</div> }'))
 })
 
-describeNative('Native vs JS equivalence — transitive derivation', () => {
+describe('JS syntax and optional native parity — transitive derivation', () => {
   test('simple chain', () =>
     compare('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
   test('non-prop const', () =>
@@ -367,7 +385,9 @@ describeNative('Native vs JS equivalence — transitive derivation', () => {
   // emitted `(a + 1)` (a unresolved, reactivity lost) instead of `((props.x) + 1)`.
   // Function-DECLARATION components masked the bug (their body IS descended).
   test('arrow component — transitive chain', () =>
-    compare('const Comp = (props) => { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
+    compare(
+      'const Comp = (props) => { const a = props.x; const b = a + 1; return <div>{b}</div> }',
+    ))
   test('arrow component — deep chain', () =>
     compare(
       'const Comp = (props) => { const a = props.x; const b = a; const c = b + 1; return <div>{c}</div> }',
@@ -404,7 +424,7 @@ describeNative('Native vs JS equivalence — transitive derivation', () => {
 // gate-only `fn_body_accesses_props` restores the 1-level descent; the inliner
 // already matched JS once the gate passes. These lock both the descent AND the
 // nested-function skip (so they can't drift back to either extreme).
-describeNative('Native vs JS equivalence — prop-derived in handler/accessor bodies', () => {
+describe('JS syntax and optional native parity — prop-derived in handler/accessor bodies', () => {
   test('inline arrow handler inlines prop-derived (live read)', () =>
     compare(
       'const C = (props) => { const a = props.x; return <button onClick={() => send(a)}>g</button> }',
@@ -450,7 +470,7 @@ describeNative('Native vs JS equivalence — prop-derived in handler/accessor bo
 // (`const f = () => i; {f()}`) shipped the stale-capture form on the native
 // backend. Closed by function-body descent in both registration helpers + a
 // prop-derived-callee resolution in the `_bindText` nullary-call fast path.
-describeNative('Native vs JS equivalence — prop-derived in separately-declared functions', () => {
+describe('JS syntax and optional native parity — prop-derived in separately-declared functions', () => {
   test('named handler reference inlines f value (live read)', () =>
     compare(
       'const C = (props) => { const a = props.x; const f = () => send(a); return <button onClick={f}>g</button> }',
@@ -464,15 +484,21 @@ describeNative('Native vs JS equivalence — prop-derived in separately-declared
       'const C = (props) => { const i = props.start; const f = () => { for (let i = 0; i < 3; i++) {} return i }; return <s>{f()}</s> }',
     ))
   test('simple local function call', () =>
-    compare('const C = (props) => { const a = props.x; const f = () => a + 1; return <s>{f()}</s> }'))
+    compare(
+      'const C = (props) => { const a = props.x; const f = () => a + 1; return <s>{f()}</s> }',
+    ))
   test('function reading props directly registers + inlines', () =>
-    compare('const C = (props) => { const f = () => props.x; return <button onClick={f}>g</button> }'))
+    compare(
+      'const C = (props) => { const f = () => props.x; return <button onClick={f}>g</button> }',
+    ))
   test('local shadow inside named function is over-registered like JS', () =>
     compare(
       'const C = (props) => { const a = props.x; const f = () => { const a = 5; send(a) }; return <button onClick={f}>g</button> }',
     ))
   test('function NOT reading props/prop-derived stays a raw reference', () =>
-    compare('const C = (props) => { const f = () => send(1); return <button onClick={f}>g</button> }'))
+    compare(
+      'const C = (props) => { const f = () => send(1); return <button onClick={f}>g</button> }',
+    ))
   test('transitive: const used in a named function body', () =>
     compare(
       'const C = (props) => { const a = props.x; const b = a + 1; const f = () => use(b); return <button onClick={f}>g</button> }',
@@ -481,7 +507,7 @@ describeNative('Native vs JS equivalence — prop-derived in separately-declared
 
 // ─── Edge cases that previously broke ───────────────────────────────────────
 
-describeNative('Native vs JS equivalence — TypeScript syntax', () => {
+describe('JS syntax and optional native parity — TypeScript syntax', () => {
   test('as expression in prop', () =>
     compare('function C(props) { return <div>{(props.x as string)}</div> }'))
   test('as in variable init', () =>
@@ -500,7 +526,7 @@ describeNative('Native vs JS equivalence — TypeScript syntax', () => {
     compare('function List<T>(props: { items: T[] }) { return <div>{props.items}</div> }'))
 })
 
-describeNative('Native vs JS equivalence — export forms', () => {
+describe('JS syntax and optional native parity — export forms', () => {
   test('export default function', () =>
     compare('export default function App(props) { return <div>{props.name}</div> }'))
   test('export const arrow', () => compare('export const App = (props) => <div>{props.name}</div>'))
@@ -509,7 +535,7 @@ describeNative('Native vs JS equivalence — export forms', () => {
   test('export const with signal', () => compare('export const view = <div>{count()}</div>'))
 })
 
-describeNative('Native vs JS equivalence — control flow', () => {
+describe('JS syntax and optional native parity — control flow', () => {
   test('if statement before JSX', () =>
     compare(`
     function C(props) {
@@ -569,7 +595,7 @@ describeNative('Native vs JS equivalence — control flow', () => {
   `))
 })
 
-describeNative('Native vs JS equivalence — callback depth', () => {
+describe('JS syntax and optional native parity — callback depth', () => {
   test('.map callback not tracked', () =>
     compare(`
     function App(props) {
@@ -597,7 +623,7 @@ describeNative('Native vs JS equivalence — callback depth', () => {
   `))
 })
 
-describeNative('Native vs JS equivalence — children slot', () => {
+describe('JS syntax and optional native parity — children slot', () => {
   test('props.children uses _mountSlot', () =>
     compare('function C(props) { return <div>{props.children}</div> }'))
   test('own.children uses _mountSlot', () =>
@@ -608,7 +634,7 @@ describeNative('Native vs JS equivalence — children slot', () => {
     compare('function C(props) { return <div>{props.name}</div> }'))
 })
 
-describeNative('Native vs JS equivalence — SSR mode', () => {
+describe('JS syntax and optional native parity — SSR mode', () => {
   test('SSR skips _tpl', () => {
     const code = 'function Btn() { return <button onClick={() => null}>Click {() => x()}</button> }'
     compareSsr(code)
@@ -644,7 +670,7 @@ describeNative('Native vs JS equivalence — warnings', () => {
   })
 })
 
-describeNative('Native vs JS equivalence — HTML escaping', () => {
+describe('JS syntax and optional native parity — HTML escaping', () => {
   test('HTML entities preserved', () =>
     compare('function C() { return <button>&lt; prev</button> }'))
   test('mixed entities and ampersands', () =>
@@ -652,7 +678,7 @@ describeNative('Native vs JS equivalence — HTML escaping', () => {
   test('quotes in attributes', () => compare('<div title="say &quot;hi&quot;"><span /></div>'))
 })
 
-describeNative('Native vs JS equivalence — signal() not inlined', () => {
+describe('JS syntax and optional native parity — signal() not inlined', () => {
   test('signal() call not tracked as prop-derived', () =>
     compare(`
     function C(props) {
@@ -662,7 +688,7 @@ describeNative('Native vs JS equivalence — signal() not inlined', () => {
   `))
 })
 
-describeNative('Native vs JS equivalence — circular references', () => {
+describe('JS syntax and optional native parity — circular references', () => {
   test('two-variable cycle does not crash', () =>
     compare(`
     function Comp(props) {
@@ -689,7 +715,7 @@ describeNative('Native vs JS equivalence — circular references', () => {
   `))
 })
 
-describeNative('Native vs JS equivalence — complex real-world patterns', () => {
+describe('JS syntax and optional native parity — complex real-world patterns', () => {
   test('todo app component', () =>
     compare(`
     const TodoApp = (props) => {
@@ -758,7 +784,7 @@ describeNative('Native vs JS equivalence — complex real-world patterns', () =>
 
 // ─── Unicode and multi-byte character safety ────────────────────────────────
 
-describeNative('Native vs JS equivalence — Unicode', () => {
+describe('JS syntax and optional native parity — Unicode', () => {
   test('emoji before JSX expression', () =>
     compare(`
     function C() { return <div>🔥{count()}</div> }
@@ -794,7 +820,7 @@ describeNative('Native vs JS equivalence — Unicode', () => {
 
 // ─── String literal collision resistance ────────────────────────────────────
 
-describeNative('Native vs JS equivalence — string literal collision', () => {
+describe('JS syntax and optional native parity — string literal collision', () => {
   test('prop name matches string in ternary', () =>
     compare(`
     function C(props) {
@@ -859,7 +885,7 @@ describeNative('Native vs JS equivalence — string literal collision', () => {
 
 // ─── Additional robustness tests ────────────────────────────────────────────
 
-describeNative('Native vs JS equivalence — additional edge cases', () => {
+describe('JS syntax and optional native parity — additional edge cases', () => {
   test('deeply nested template', () =>
     compare(`
     <div><section><article><header><h1>{title()}</h1></header><p>{body()}</p></article></section></div>
@@ -941,7 +967,7 @@ describeNative('Native vs JS equivalence — additional edge cases', () => {
 
 // ─── Signal auto-call cross-backend equivalence ─────────────────────────────
 
-describeNative('Native vs JS equivalence — signal auto-call', () => {
+describe('JS syntax and optional native parity — signal auto-call', () => {
   test('bare signal in text child', () =>
     compare('function C() { const name = signal("Vít"); return <div>{name}</div> }'))
   test('signal in attribute', () =>
@@ -1022,7 +1048,7 @@ describeNative('Native vs JS equivalence — signal auto-call', () => {
     ))
 })
 
-describeNative('Native vs JS equivalence — knownSignals cross-module', () => {
+describe('JS syntax and optional native parity — knownSignals cross-module', () => {
   test('imported signal auto-called', () =>
     compareWithSignals(
       'import { count } from "./store"; function App() { return <div>{count}</div> }',
@@ -1064,7 +1090,7 @@ describeNative('Native vs JS equivalence — knownSignals cross-module', () => {
 // so a drift between the two lists fails one specific test.
 //
 // Reference: packages/core/compiler/src/jsx.ts:1389 — DOM_PROPS Set.
-describeNative('Native vs JS equivalence — DOM properties', () => {
+describe('JS syntax and optional native parity — DOM properties', () => {
   const DOM_PROPS = [
     'value',
     'checked',
@@ -1108,11 +1134,12 @@ describeNative('Native vs JS equivalence — DOM properties', () => {
   })
 })
 
-describeNative('Native vs JS equivalence — fixed-dependency classification (#3782)', () => {
+describe('JS syntax and optional native parity — fixed-dependency classification (#3782)', () => {
   // `_bind` only for provably-stable dependency sets; everything else
   // `renderEffect`. The JS `hasFixedDeps` and Rust `has_fixed_deps` verdicts
   // must agree byte-for-byte across the container grammar.
-  const SIG = 'const a = signal(false); const b = signal(false); const n = signal(null); const o = signal(null); '
+  const SIG =
+    'const a = signal(false); const b = signal(false); const n = signal(null); const o = signal(null); '
   const exprs = [
     'a() && !b()',
     'a() || b()',
@@ -1145,11 +1172,19 @@ describeNative('Native vs JS equivalence — fixed-dependency classification (#3
   ]
   for (const e of exprs) {
     test(`title={() => ${e}}`, () => {
-      compareWithSignals(`${SIG}const x = <div title={() => ${e}}><span /></div>`, ['a', 'b', 'n', 'o'])
+      compareWithSignals(`${SIG}const x = <div title={() => ${e}}><span /></div>`, [
+        'a',
+        'b',
+        'n',
+        'o',
+      ])
     })
   }
   test('block-body accessor + function expression', () => {
-    compareWithSignals(`${SIG}const x = <div title={() => { return a() }}><span /></div>`, ['a', 'b'])
+    compareWithSignals(`${SIG}const x = <div title={() => { return a() }}><span /></div>`, [
+      'a',
+      'b',
+    ])
     compare('<div class={function () { return "c" }}><span /></div>')
   })
   test('props member + prop-derived const', () => {
@@ -1159,7 +1194,7 @@ describeNative('Native vs JS equivalence — fixed-dependency classification (#3
   })
 })
 
-describeNative('Native vs JS equivalence — select value binding (PZ-09)', () => {
+describe('JS syntax and optional native parity — select value binding (PZ-09)', () => {
   // <select value> is never baked (dead content attribute) and its bind
   // line — static one-time property set AND `_bindDirect` — is deferred
   // past the element's children lines. Both backends must agree on the
@@ -1218,7 +1253,7 @@ describeNative('Native vs JS equivalence — select value binding (PZ-09)', () =
 // `_ssr` while native emitted `h()`. Every case here is compared BYTE-identical
 // JS↔Rust with the flag ON; bail shapes (where the compiler falls to h()) must
 // ALSO agree — so the h() output for those matches between backends too.
-describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
+describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional native parity', () => {
   test('fully static element (no holes)', () => {
     compareSsrTemplate(`const A = <div class="x" id="y">hello</div>`)
   })
@@ -1305,10 +1340,16 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
     ['bare & in JSXText', `const N = <p>fish & chips</p>`],
     ['& in raw JSX string attr', `const N = <a title="Tom &amp; Jerry">x</a>`],
     ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
-    ['dangerouslySetInnerHTML', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],
+    [
+      'dangerouslySetInnerHTML',
+      `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`,
+    ],
     ['duplicate attribute', `const N = <div id="a" id="b">y</div>`],
     ['fragment child', `const N = <div><>{x}</></div>`],
-    ['<For> list', `const N = <ul><For each={rows} by={r => r.id}>{r => <li>{r.name}</li>}</For></ul>`],
+    [
+      '<For> list',
+      `const N = <ul><For each={rows} by={r => r.id}>{r => <li>{r.name}</li>}</For></ul>`,
+    ],
   ]
   for (const [name, src] of bails) {
     test(`bail agrees: ${name}`, () => compareSsrTemplate(src))
@@ -1341,16 +1382,28 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
   // would ship nothing (native is what ~80% of users compile with).
   const componentChildren: [string, string][] = [
     ['only child is a component', `const N = <main class="m"><Widget /></main>`],
-    ['component with a dynamic prop', `const Page = (p) => <main class="m"><Widget id={p.id} /></main>`],
-    ['component between static siblings', `const N = <div><header>H</header><Widget /><footer>F</footer></div>`],
+    [
+      'component with a dynamic prop',
+      `const Page = (p) => <main class="m"><Widget id={p.id} /></main>`,
+    ],
+    [
+      'component between static siblings',
+      `const N = <div><header>H</header><Widget /><footer>F</footer></div>`,
+    ],
     ['two component children', `const N = <div><A /><B /></div>`],
     ['component adjacent to a text hole', `const N = <div><Widget />{t}</div>`],
     ['component receiving children', `const N = <main><Widget>inner</Widget></main>`],
-    ['nested templatable subtree inside the preserved child', `const Page = (p) => <main><Widget><span class="x">{p.t}</span></Widget></main>`],
+    [
+      'nested templatable subtree inside the preserved child',
+      `const Page = (p) => <main><Widget><span class="x">{p.t}</span></Widget></main>`,
+    ],
     ['component child carrying key still bails', `const N = <div><Widget key="k" /></div>`],
     // The two backends reached statics quoting through two separately-written
     // functions until they were unified — exactly how an emit divergence starts.
-    ['`</script` sanitization in statics', `const N = <div class="d"><script>{s}</script><Widget /></div>`],
+    [
+      '`</script` sanitization in statics',
+      `const N = <div class="d"><script>{s}</script><Widget /></div>`,
+    ],
   ]
   for (const [name, src] of componentChildren) {
     test(`component-child agrees: ${name}`, () => compareSsrTemplate(src))
@@ -1371,7 +1424,7 @@ describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
 // (e.g. dropping the `reactive-prop` call → `<Comp value={x()} />` fails
 // `expect(r).toEqual(j)` because the Rust set is missing that span);
 // restored → 9/9 pass.
-describeNative('Reactivity-lens — JS↔Rust span parity', () => {
+describe('Reactivity-lens — JS invariants and optional Rust span parity', () => {
   test('reactive text child (_bindText)', () => compareLens('<div>{count()}</div>'))
 
   test('reactive accessor text child (() => …)', () => compareLens('<div>{() => count()}</div>'))
@@ -1397,7 +1450,7 @@ describeNative('Reactivity-lens — JS↔Rust span parity', () => {
     compareLens('const count = signal(0); const App = () => <div>{count}</div>', 'auto.tsx'))
 })
 
-describeNative('cross-backend: component-child stable-reference carve-out', () => {
+describe('cross-backend: component-child stable-reference carve-out', () => {
   test('bare Identifier (splitProps-derived const) emitted bare in component child', () =>
     compare(`
       const Kinetic = (props) => {
@@ -1496,7 +1549,7 @@ describeNative('cross-backend: component-child stable-reference carve-out', () =
 // every shape in the bail catalog.
 // ----------------------------------------------------------------------
 
-describeNative('Native vs JS equivalence — selector.subscribe auto-promotion', () => {
+describe('JS syntax and optional native parity — selector.subscribe auto-promotion', () => {
   test('promotes `class={() => sel(id) ? "a" : "b"}` shape', () =>
     compare(`
       import { createSelector, signal } from '@pyreon/reactivity'
@@ -1578,7 +1631,7 @@ describeNative('Native vs JS equivalence — selector.subscribe auto-promotion',
 // #898 — same detector, different emission target).
 // ----------------------------------------------------------------------
 
-describeNative('Native vs JS equivalence — text-child selector.subscribe auto-promotion', () => {
+describe('JS syntax and optional native parity — text-child selector.subscribe auto-promotion', () => {
   test('promotes `<td>{() => sel(k) ? "X" : ""}</td>` shape', () =>
     compare(`
       import { createSelector, signal } from '@pyreon/reactivity'
@@ -1614,7 +1667,7 @@ describeNative('Native vs JS equivalence — text-child selector.subscribe auto-
 // Signal-method-call auto-promotion to `_bindDirect`.
 // ----------------------------------------------------------------------
 
-describeNative('Native vs JS equivalence — signal-method-call auto-promotion', () => {
+describe('JS syntax and optional native parity — signal-method-call auto-promotion', () => {
   test('Number.toFixed(2)', () =>
     compare(`
       import { signal } from '@pyreon/reactivity'
@@ -1679,25 +1732,34 @@ describeNative('Native vs JS equivalence — signal-method-call auto-promotion',
     `))
 })
 
-describeNative('Native vs JS equivalence — HTML text entity escaping', () => {
+describe('JS syntax and optional native parity — HTML text entity escaping', () => {
   // The `&` in static text is escaped to `&amp;` UNLESS it forms a valid
   // char-ref: `#<dec>`, `#x<hex>`, or `<letter><word*>`. Both backends MUST
   // agree. Regression for the `&<digits>;` divergence (Rust wrongly accepted a
   // bare numeric run without `#`).
-  test('bare numeric entity without # is escaped', () => compare('export const X = () => <div>a&123;b</div>'))
-  test('digit-led mixed run is escaped', () => compare('export const X = () => <div>a&123abc;b</div>'))
-  test('valid named entity is preserved', () => compare('export const X = () => <div>a&amp;b</div>'))
-  test('letter-led entity-ish run is preserved', () => compare('export const X = () => <div>a&xyz;b</div>'))
-  test('valid decimal char-ref is preserved', () => compare('export const X = () => <div>a&#65;b</div>'))
-  test('valid lowercase-x hex char-ref is preserved', () => compare('export const X = () => <div>a&#x1F;b</div>'))
-  test('uppercase #X hex is NOT a valid ref (matches JS regex)', () => compare('export const X = () => <div>a&#X41;b</div>'))
-  test('bare ampersand with spaces is escaped', () => compare('export const X = () => <div>tom & jerry</div>'))
+  test('bare numeric entity without # is escaped', () =>
+    compare('export const X = () => <div>a&123;b</div>'))
+  test('digit-led mixed run is escaped', () =>
+    compare('export const X = () => <div>a&123abc;b</div>'))
+  test('valid named entity is preserved', () =>
+    compare('export const X = () => <div>a&amp;b</div>'))
+  test('letter-led entity-ish run is preserved', () =>
+    compare('export const X = () => <div>a&xyz;b</div>'))
+  test('valid decimal char-ref is preserved', () =>
+    compare('export const X = () => <div>a&#65;b</div>'))
+  test('valid lowercase-x hex char-ref is preserved', () =>
+    compare('export const X = () => <div>a&#x1F;b</div>'))
+  test('uppercase #X hex is NOT a valid ref (matches JS regex)', () =>
+    compare('export const X = () => <div>a&#X41;b</div>'))
+  test('bare ampersand with spaces is escaped', () =>
+    compare('export const X = () => <div>tom & jerry</div>'))
   test('empty entity (&;) is escaped', () => compare('export const X = () => <div>a&;b</div>'))
   test('hash-only (&#;) is escaped', () => compare('export const X = () => <div>a&#;b</div>'))
-  test('underscore in named entity is preserved', () => compare('export const X = () => <div>a&a_1;b</div>'))
+  test('underscore in named entity is preserved', () =>
+    compare('export const X = () => <div>a&a_1;b</div>'))
 })
 
-describeNative('Native vs JS equivalence — element-conditional templatization', () => {
+describe('JS syntax and optional native parity — element-conditional templatization', () => {
   // A DOM wrapper around an inline element-conditional keeps the `_tpl` fast
   // path and routes the conditional child through `_mountSlot` (previously the
   // whole wrapper bailed to the jsx runtime). Both backends must emit this
@@ -1738,7 +1800,7 @@ describeNative('Native vs JS equivalence — element-conditional templatization'
     compare(`export const X = () => <div>{<span>Hi</span>}</div>`))
 })
 
-describeNative('Native vs JS equivalence — rocketstyle collapse (full variant)', () => {
+describe('JS syntax and optional native parity — rocketstyle collapse (full variant)', () => {
   const MODE = { name: 'useMode', source: '@pyreon/zero' }
   interface Site {
     templateHtml: string
@@ -1769,8 +1831,10 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (full variant)
     const js = transformJSX_JS(input, 'test.tsx', {
       collapseRocketstyle: jsCfg as never,
     }).code
+    assertJavaScript(js)
+    if (!nativeTransform) return
     // 6th native arg is the collapse config (typed loosely here).
-    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })(
       input,
       'test.tsx',
       false,
@@ -1790,34 +1854,46 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (full variant)
   }
 
   test('top-level full collapse (no braces)', () =>
-    cmp(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmp(
+      `export const C = () => <Button state="primary">Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('fragment-child full collapse (brace-wrapped)', () =>
-    cmp(`export const C = () => <><Button state="primary">Save</Button></>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmp(
+      `export const C = () => <><Button state="primary">Save</Button></>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('multi-prop (sorted-key canonical)', () =>
-    cmp(`export const C = () => <Button size="md" state="primary">Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary', size: 'md' }, 'Save', SITE],
-    ]))
+    cmp(
+      `export const C = () => <Button size="md" state="primary">Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary', size: 'md' }, 'Save', SITE]],
+    ))
 
   test('unresolved key keeps the normal mount', () =>
-    cmp(`export const C = () => <Button state="secondary">X</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmp(
+      `export const C = () => <Button state="secondary">X</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('non-candidate component is not collapsed', () =>
-    cmp(`export const C = () => <Other state="primary">Save</Other>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmp(
+      `export const C = () => <Other state="primary">Save</Other>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('dynamic prop ({expr}) bails (full detector)', () =>
-    cmp(`export const C = (p) => <Button state={p.s}>Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmp(
+      `export const C = (p) => <Button state={p.s}>Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('two sites sharing a ruleKey → injectRules deduped once', () =>
     cmp(
@@ -1827,23 +1903,27 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (full variant)
     ))
 
   test('templateHtml/class with quotes + control chars escape like JSON.stringify', () =>
-    cmp(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
+    cmp(
+      `export const C = () => <Button state="primary">Save</Button>`,
+      ['Button'],
       [
-        'Button',
-        { state: 'primary' },
-        'Save',
-        {
-          templateHtml: '<button title="a&quot;b"><span>S</span></button>',
-          lightClass: 'l "q"',
-          darkClass: 'd\\x',
-          rules: ['.l{content:"\\""}'],
-          ruleKey: 'rk2',
-        },
+        [
+          'Button',
+          { state: 'primary' },
+          'Save',
+          {
+            templateHtml: '<button title="a&quot;b"><span>S</span></button>',
+            lightClass: 'l "q"',
+            darkClass: 'd\\x',
+            rules: ['.l{content:"\\""}'],
+            ruleKey: 'rk2',
+          },
+        ],
       ],
-    ]))
+    ))
 })
 
-describeNative('Native vs JS equivalence — rocketstyle collapse (on*-handler partial)', () => {
+describe('JS syntax and optional native parity — rocketstyle collapse (on*-handler partial)', () => {
   const MODE = { name: 'useMode', source: '@pyreon/zero' }
   interface Site {
     templateHtml: string
@@ -1874,7 +1954,9 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (on*-handler p
     const js = transformJSX_JS(input, 'test.tsx', {
       collapseRocketstyle: jsCfg as never,
     }).code
-    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+    assertJavaScript(js)
+    if (!nativeTransform) return
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })(
       input,
       'test.tsx',
       false,
@@ -1894,9 +1976,11 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (on*-handler p
   }
 
   test('single handler, top-level (no braces) — emits __rsCollapseH + both imports', () =>
-    cmpH(`export const C = () => <Button state="primary" onClick={() => go()}>Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmpH(
+      `export const C = () => <Button state="primary" onClick={() => go()}>Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('handler site as a JSX child is brace-wrapped', () =>
     cmpH(
@@ -1920,27 +2004,35 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (on*-handler p
     ))
 
   test('handler-only (no other props)', () =>
-    cmpH(`export const C = () => <Button onClick={h}>Save</Button>`, ['Button'], [
-      ['Button', {}, 'Save', SITE],
-    ]))
+    cmpH(
+      `export const C = () => <Button onClick={h}>Save</Button>`,
+      ['Button'],
+      [['Button', {}, 'Save', SITE]],
+    ))
 
   test('unresolved key keeps the normal mount', () =>
-    cmpH(`export const C = () => <Button state="secondary" onClick={h}>X</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmpH(
+      `export const C = () => <Button state="secondary" onClick={h}>X</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('a non-handler {expr} prop bails both full AND partial', () =>
-    cmpH(`export const C = (p) => <Button state={p.s} onClick={h}>Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmpH(
+      `export const C = (p) => <Button state={p.s} onClick={h}>Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 
   test('zero handlers → full path, never __rsCollapseH', () =>
-    cmpH(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', SITE],
-    ]))
+    cmpH(
+      `export const C = () => <Button state="primary">Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', SITE]],
+    ))
 })
 
-describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic variant)', () => {
+describe('JS syntax and optional native parity — rocketstyle collapse (dynamic variant)', () => {
   const MODE = { name: 'useMode', source: '@pyreon/zero' }
   interface Site {
     templateHtml: string
@@ -1971,7 +2063,9 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic varia
     const js = transformJSX_JS(input, 'test.tsx', {
       collapseRocketstyle: jsCfg as never,
     }).code
-    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+    assertJavaScript(js)
+    if (!nativeTransform) return
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })(
       input,
       'test.tsx',
       false,
@@ -1998,14 +2092,23 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic varia
     rules: ['.s-l{color:#333}'],
     ruleKey: 'rkS',
   }
-  const SECONDARY_DIVERGENT: Site = { ...SECONDARY, templateHtml: '<button class=x><span>Save</span></button>' }
-  const both = (extra: Record<string, string> = {}): Array<[string, Record<string, string>, string, Site]> => [
+  const SECONDARY_DIVERGENT: Site = {
+    ...SECONDARY,
+    templateHtml: '<button class=x><span>Save</span></button>',
+  }
+  const both = (
+    extra: Record<string, string> = {},
+  ): Array<[string, Record<string, string>, string, Site]> => [
     ['Button', { ...extra, state: 'primary' }, 'Save', PRIMARY],
     ['Button', { ...extra, state: 'secondary' }, 'Save', SECONDARY],
   ]
 
   test('no-handler ternary → __rsCollapseDyn (stride-2 classes)', () =>
-    cmpD(`export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`, ['Button'], both()))
+    cmpD(
+      `export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`,
+      ['Button'],
+      both(),
+    ))
 
   test('ternary + handler → __rsCollapseDynH', () =>
     cmpD(
@@ -2043,15 +2146,21 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic varia
     ))
 
   test('half-resolved (only truthy site) keeps normal mount', () =>
-    cmpD(`export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', PRIMARY],
-    ]))
+    cmpD(
+      `export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, 'Save', PRIMARY]],
+    ))
 
   test('divergent templateHtml across values bails', () =>
-    cmpD(`export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, 'Save', PRIMARY],
-      ['Button', { state: 'secondary' }, 'Save', SECONDARY_DIVERGENT],
-    ]))
+    cmpD(
+      `export const C = (p) => <Button state={p.on ? 'primary' : 'secondary'}>Save</Button>`,
+      ['Button'],
+      [
+        ['Button', { state: 'primary' }, 'Save', PRIMARY],
+        ['Button', { state: 'secondary' }, 'Save', SECONDARY_DIVERGENT],
+      ],
+    ))
 
   test('two ternaries (multi-axis) bail entirely', () =>
     cmpD(
@@ -2061,7 +2170,11 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic varia
     ))
 
   test('non-literal ternary branch bails', () =>
-    cmpD(`export const C = (p) => <Button state={p.on ? p.x : 'secondary'}>Save</Button>`, ['Button'], both()))
+    cmpD(
+      `export const C = (p) => <Button state={p.on ? p.x : 'secondary'}>Save</Button>`,
+      ['Button'],
+      both(),
+    ))
 
   test('two dynamic sites share a value → rules deduped', () =>
     cmpD(
@@ -2071,7 +2184,7 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (dynamic varia
     ))
 })
 
-describeNative('Native vs JS equivalence — rocketstyle collapse (element-child variant)', () => {
+describe('JS syntax and optional native parity — rocketstyle collapse (element-child variant)', () => {
   const MODE = { name: 'useMode', source: '@pyreon/zero' }
   interface Site {
     templateHtml: string
@@ -2080,7 +2193,9 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (element-child
     rules: string[]
     ruleKey: string
   }
-  type StaticChild = string | { tag: string; props: Record<string, string>; children: StaticChild[] }
+  type StaticChild =
+    | string
+    | { tag: string; props: Record<string, string>; children: StaticChild[] }
   // Element-child sites key on `serializeStaticChildren(childTree)` as the
   // childrenText arg. We build the childTree literally + compute the key via the
   // SAME exported serializer the JS detector uses, so a matching native serialize
@@ -2105,7 +2220,9 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (element-child
     const js = transformJSX_JS(input, 'test.tsx', {
       collapseRocketstyle: jsCfg as never,
     }).code
-    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })!(
+    assertJavaScript(js)
+    if (!nativeTransform) return
+    const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })(
       input,
       'test.tsx',
       false,
@@ -2129,24 +2246,32 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (element-child
   }
 
   test('single element child → baked __rsCollapse', () =>
-    cmpE(`export const C = () => <Button state="primary"><span class="ico">Save</span></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary"><span class="ico">Save</span></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE]],
+    ))
 
   test('mixed text + element + text (clean_jsx_text + serialize parity)', () =>
-    cmpE(`export const C = () => <Button state="primary">Press <kbd>Enter</kbd> now</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, ['Press ', T('kbd', {}, ['Enter']), ' now'], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary">Press <kbd>Enter</kbd> now</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, ['Press ', T('kbd', {}, ['Enter']), ' now'], SITE]],
+    ))
 
   test('recursive nesting (span > b)', () =>
-    cmpE(`export const C = () => <Button state="primary"><span><b>Hi</b></span></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', {}, [T('b', {}, ['Hi'])])], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary"><span><b>Hi</b></span></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', {}, [T('b', {}, ['Hi'])])], SITE]],
+    ))
 
   test('element child with multiple props (sorted key)', () =>
-    cmpE(`export const C = () => <Button state="primary"><i data-x="1" class="a">x</i></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('i', { class: 'a', 'data-x': '1' }, ['x'])], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary"><i data-x="1" class="a">x</i></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('i', { class: 'a', 'data-x': '1' }, ['x'])], SITE]],
+    ))
 
   test('element-child site as a JSX child is brace-wrapped', () =>
     cmpE(
@@ -2156,34 +2281,46 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (element-child
     ))
 
   test('text-only children → FULL path, never element-child', () =>
-    cmpE(`export const C = () => <Button state="primary">Save</Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, ['Save'], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary">Save</Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, ['Save'], SITE]],
+    ))
 
   test('component (uppercase) child bails', () =>
-    cmpE(`export const C = () => <Button state="primary"><Inner/></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', {}, [])], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary"><Inner/></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', {}, [])], SITE]],
+    ))
 
   test('handler on a child bails (cannot bake a handler)', () =>
-    cmpE(`export const C = () => <Button state="primary"><span onClick={h}>x</span></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', {}, ['x'])], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="primary"><span onClick={h}>x</span></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', {}, ['x'])], SITE]],
+    ))
 
   test('expression child bails', () =>
-    cmpE(`export const C = (p) => <Button state="primary"><span>{p.x}</span></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', {}, [])], SITE],
-    ]))
+    cmpE(
+      `export const C = (p) => <Button state="primary"><span>{p.x}</span></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', {}, [])], SITE]],
+    ))
 
   test('unresolved key keeps the normal mount', () =>
-    cmpE(`export const C = () => <Button state="secondary"><span class="ico">Save</span></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
-    ]))
+    cmpE(
+      `export const C = () => <Button state="secondary"><span class="ico">Save</span></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE]],
+    ))
 
   test('dynamic root prop + element child bails (root not all-literal)', () =>
-    cmpE(`export const C = (p) => <Button state={p.s}><span class="ico">Save</span></Button>`, ['Button'], [
-      ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
-    ]))
+    cmpE(
+      `export const C = (p) => <Button state={p.s}><span class="ico">Save</span></Button>`,
+      ['Button'],
+      [['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE]],
+    ))
 })
 
 // ── Corpus-sweep regression locks (2026-06 dual-backend deep validation) ──────
@@ -2192,7 +2329,7 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (element-child
 // `contains_jsx_in_expr` / component-prop registration had not implemented.
 // `compare()` asserts byte-identical output — these would FAIL against the
 // pre-fix binary (verified via minimal repros: each flipped EQUAL false→true).
-describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
+describe('JS syntax and optional native parity — corpus-sweep regressions', () => {
   // (1) Optional-chained `.map` returning JSX is a VNODE child (`_mountSlot`),
   // NOT text (`_bind .data` → renders `[object Object]`). Rust
   // `contains_jsx_in_expr` lacked a ChainExpression arm. Hit `image.tsx`
@@ -2230,7 +2367,9 @@ describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
   test('IIFE returning JSX is a vnode child (CallExpression callee)', () =>
     compare('<div>{(() => { const x = 1; return <iframe src="x" /> })()}</div>'))
   test('IIFE returning JSX after statements', () =>
-    compare('<section>{(() => { if (a) return null; return <article>{b()}</article> })()}</section>'))
+    compare(
+      '<section>{(() => { if (a) return null; return <article>{b()}</article> })()}</section>',
+    ))
 
   // (4) An array-of-JSX const (`const arr = [<a/>, <b/>]`) or a map-of-JSX
   // const (`const rows = items.map(i => <li/>)`) used as a bare `{x}` child is
@@ -2239,13 +2378,17 @@ describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
   // backends must add such a binding to `element_vars` (see
   // `is_jsx_collection_init`). Reported migration finding: `<div>{vnodeArray}</div>`.
   test('array-of-JSX const child is a vnode collection (_mountSlot)', () =>
-    compare('const arr = [<span>a</span>, <span>b</span>]; export const X = () => <div>{arr}</div>'))
+    compare(
+      'const arr = [<span>a</span>, <span>b</span>]; export const X = () => <div>{arr}</div>',
+    ))
   test('map-of-JSX const child is a vnode collection (_mountSlot)', () =>
     compare(
       'const items = [1, 2]; const rows = items.map((i) => <li>{i}</li>); export const X = () => <ul>{rows}</ul>',
     ))
   test('array-of-JSX with a conditional element (returnsJsxValue recursion)', () =>
-    compare('const a = [c ? <b>x</b> : <i>y</i>, <span>z</span>]; export const X = () => <div>{a}</div>'))
+    compare(
+      'const a = [c ? <b>x</b> : <i>y</i>, <span>z</span>]; export const X = () => <div>{a}</div>',
+    ))
   test('plain string const child STAYS text (no over-classification)', () =>
     compare("const s = 'hi'; export const X = () => <div>{s}</div>"))
   test('array-of-primitives const stays text (no JSX element → not a collection)', () =>
@@ -2254,7 +2397,7 @@ describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
     compare('<div>{renderThing()}</div>'))
 })
 
-describeNative('Native vs JS equivalence — bare-signal attribute → _bindDirect', () => {
+describe('JS syntax and optional native parity — bare-signal attribute → _bindDirect', () => {
   // The consistency fix: a bare signal attribute value (`class={active}`) binds
   // directly, matching the accessor form. Both backends must emit identically.
   test('class={sig} (bare)', () =>
@@ -2282,13 +2425,12 @@ describeNative('Native vs JS equivalence — bare-signal attribute → _bindDire
       'function C(){ const sel = createSelector(signal(null)); return <div class={sel}><span/></div> }',
     ))
   test('bare signal in TEXT is unchanged (scope: attr-only)', () =>
-    compareWithSignals(
-      "function C(){ const name = signal(''); return <div>{name}</div> }",
-      ['name'],
-    ))
+    compareWithSignals("function C(){ const name = signal(''); return <div>{name}</div> }", [
+      'name',
+    ]))
 })
 
-describeNative('ssrTemplate — a JSX-bearing prop-derived const is not inlined (parity)', () => {
+describe('ssrTemplate — a JSX-bearing prop-derived const is not inlined (parity)', () => {
   // Both backends must REFUSE to inline here. Inlining splices PRE-transform
   // source into an `_ssr` hole, so two sibling `.map()` callbacks swapped
   // expressions and rendering died with `ReferenceError: p1 is not defined`.
@@ -2297,14 +2439,14 @@ describeNative('ssrTemplate — a JSX-bearing prop-derived const is not inlined 
   // on exactly that scoping.
   test('two sibling maps agree', () =>
     compareSsrTemplate(
-      "function V(p){" +
-        "const edges=p.edges.map((e)=>{const p1=e.from;return <path d={`M ${p1.x}`}/>});" +
+      'function V(p){' +
+        'const edges=p.edges.map((e)=>{const p1=e.from;return <path d={`M ${p1.x}`}/>});' +
         "const axis=p.depths.map((d,di)=><text x={String(di)}>{d===0?'E':`D ${d}`}</text>);" +
-        "return <svg><g>{axis}</g><g>{edges}</g></svg>}",
+        'return <svg><g>{axis}</g><g>{edges}</g></svg>}',
     ))
 })
 
-describeNative('lazy component children (_lc) — parity', () => {
+describe('lazy component children (_lc) — syntax and optional native parity', () => {
   // A compiled template that is a component's SOLE child is emitted as
   // `{_lc(() => _tpl(…))}` so it is built when the component READS
   // `props.children`, not when the `jsx(Comp, …)` argument is evaluated. The
@@ -2314,7 +2456,9 @@ describeNative('lazy component children (_lc) — parity', () => {
   // boundary of it needs a parity case or the backends can silently disagree
   // about which shapes defer.
   test('sole element child of a component is lazy', () =>
-    compare('const A = () => <Provider theme={t}><div class="x"><span>{v()}</span></div></Provider>'))
+    compare(
+      'const A = () => <Provider theme={t}><div class="x"><span>{v()}</span></div></Provider>',
+    ))
   test('indented sole child (whitespace elided) is lazy', () =>
     compare('const A = () => (\n  <Provider>\n    <div><b>x</b></div>\n  </Provider>\n)'))
   test('nested inside an element parent', () =>
@@ -2330,7 +2474,9 @@ describeNative('lazy component children (_lc) — parity', () => {
   test('a DOM-element parent never defers', () =>
     compare('const A = () => <section><div><b>x</b></div></section>'))
   test('a render-prop child is never a template call', () =>
-    compare('const A = () => <For each={xs} by={r => r.id}>{(row) => <li><b>{row.n}</b></li>}</For>'))
+    compare(
+      'const A = () => <For each={xs} by={r => r.id}>{(row) => <li><b>{row.n}</b></li>}</For>',
+    ))
   test('component child of a component (no template) is unchanged', () =>
     compare('const A = () => <Provider><Child /></Provider>'))
 
@@ -2356,7 +2502,7 @@ describeNative('lazy component children (_lc) — parity', () => {
 // `client-tpl-components` mode in `fuzz-equivalence.test.ts`. Both are required
 // — this file names the shapes a reader needs to see, the fuzzer covers the
 // products of them nobody enumerated.
-describeNative('templatizeComponentChildren parity', () => {
+describe('templatizeComponentChildren syntax and optional native parity', () => {
   // ── The emit itself ──
   test('append form — sibling component children, no placeholder', () =>
     compareTplComponents('const A = () => <div class="branch"><Node /><Node /></div>'))
@@ -2401,7 +2547,9 @@ describeNative('templatizeComponentChildren parity', () => {
 
   // ── Preservation: the hole must be WALKED, not sliced ──
   test('preserved hole keeps _rp on the absorbed component props', () =>
-    compareTplComponents('function C(props) { return <div class="b"><Leaf title={props.t} /></div> }'))
+    compareTplComponents(
+      'function C(props) { return <div class="b"><Leaf title={props.t} /></div> }',
+    ))
   test('preserved hole keeps the signal auto-call', () =>
     compareTplComponentsWithSignals('const A = () => <div class="b"><Leaf n={s} /></div>', ['s']))
   test('preserved hole keeps a NESTED _tpl (and its own _lc)', () =>
@@ -2409,11 +2557,15 @@ describeNative('templatizeComponentChildren parity', () => {
 
   // ── The ordering gate: every eager-argument position BAILS ──
   test('gate — a component parent with MULTIPLE children stays eager', () =>
-    compareTplComponents('const A = () => <Provider><div class="k"><Leaf /></div><p>x</p></Provider>'))
+    compareTplComponents(
+      'const A = () => <Provider><div class="k"><Leaf /></div><p>x</p></Provider>',
+    ))
   test('gate — a component parent with a SOLE child is exempt (_lc)', () =>
     compareTplComponents('const A = () => <Provider><div class="k"><Leaf /></div></Provider>'))
   test('gate — a MEMBER-tag parent is always eager', () =>
-    compareTplComponents('const A = () => <Ctx.Provider><div class="k"><Leaf /></div></Ctx.Provider>'))
+    compareTplComponents(
+      'const A = () => <Ctx.Provider><div class="k"><Leaf /></div></Ctx.Provider>',
+    ))
   test('gate — a FRAGMENT parent is always eager', () =>
     compareTplComponents('const A = () => <><div class="k"><Leaf /></div></>'))
   test('gate — a DOM parent never defers', () =>
@@ -2423,19 +2575,27 @@ describeNative('templatizeComponentChildren parity', () => {
   test('gate — an attribute-value JSX parent is eager', () =>
     compareTplComponents('const A = () => <Comp slot={<div class="k"><Leaf /></div>} />'))
   test('gate — a map callback is NOT eager', () =>
-    compareTplComponents('const A = () => <Comp>{xs.map(x => <div class="k"><Leaf /></div>)}</Comp>'))
+    compareTplComponents(
+      'const A = () => <Comp>{xs.map(x => <div class="k"><Leaf /></div>)}</Comp>',
+    ))
   test('gate — a ternary branch is NOT eager', () =>
     compareTplComponents('const A = () => <Comp>{c ? <div class="k"><Leaf /></div> : null}</Comp>'))
   test('gate — absorbing through NESTED fragments still bails under a component', () =>
-    compareTplComponents('const A = () => <Provider><div><><><Leaf /></></></div><p>x</p></Provider>'))
+    compareTplComponents(
+      'const A = () => <Provider><div><><><Leaf /></></></div><p>x</p></Provider>',
+    ))
   test('gate — a purely STATIC template under an eager parent still emits', () =>
-    compareTplComponents('const A = () => <Provider><div class="k"><b>x</b></div><p>y</p></Provider>'))
+    compareTplComponents(
+      'const A = () => <Provider><div class="k"><b>x</b></div><p>y</p></Provider>',
+    ))
 
   // ── Scope: the option is client-only and additive ──
   test('SSR is unaffected by the option', () => {
     const src = 'const A = () => <div class="b"><Leaf /></div>'
     const js = transformJSX_JS(src, 'test.tsx', { ssr: true, templatizeComponentChildren: true })
-    const rs = nativeTransform!(src, 'test.tsx', true, null, false, undefined, false, true)
+    expect(js.code).toBe(transformJSX_JS(src, 'test.tsx', { ssr: true }).code)
+    if (!nativeTransform) return
+    const rs = nativeTransform(src, 'test.tsx', true, null, false, undefined, false, true)
     expect(rs.code).toBe(js.code)
     // …and identical to the same source compiled with the option OFF.
     expect(rs.code).toBe(transformJSX_JS(src, 'test.tsx', { ssr: true }).code)
@@ -2459,7 +2619,9 @@ describeNative('templatizeComponentChildren parity', () => {
       )
     })
     it('the member form `Feature.useX(props.q)` agrees across backends', () => {
-      compare(`function C(props){ const r = Posts.useSearch(props.q); return <div>{() => r.data()}</div> }`)
+      compare(
+        `function C(props){ const r = Posts.useSearch(props.q); return <div>{() => r.data()}</div> }`,
+      )
     })
     it('an unrecognised callee still inlines identically in both backends', () => {
       compare(`function C(props){ const cls = cx(props.a, props.b); return <div class={cls}/> }`)
@@ -2470,7 +2632,7 @@ describeNative('templatizeComponentChildren parity', () => {
   })
 })
 
-describeNative('`_mountSlot` sole-slot verdict (both backends)', () => {
+describe('`_mountSlot` sole-slot verdict (both backends)', () => {
   // The flag is the compiler's SSR-level soleness verdict, emitted as a fourth
   // `_mountSlot` argument on exactly the sole shape; the same predicate gates
   // the lone-reactive-text `firstChild` fast form. Byte-parity here is what
@@ -2480,7 +2642,9 @@ describeNative('`_mountSlot` sole-slot verdict (both backends)', () => {
     return transformJSX_JS(src, 'test.tsx').code
   }
   it('a sole accessor slot carries `, true`', () => {
-    expect(both(`const A = () => <b>{() => (s() ? <>{() => t()}<input /></> : <i/>)}</b>`)).toContain('__p0, true)')
+    expect(
+      both(`const A = () => <b>{() => (s() ? <>{() => t()}<input /></> : <i/>)}</b>`),
+    ).toContain('__p0, true)')
   })
   it('a `{null}` sibling makes the slot NOT sole (SSR marks it)', () => {
     const js = both(`const A = () => <main>{null}{() => (s() ? <input /> : <i/>)}</main>`)
@@ -2488,7 +2652,9 @@ describeNative('`_mountSlot` sole-slot verdict (both backends)', () => {
     expect(js).not.toContain(', true)')
   })
   it('a fragment-wrapped slot is NOT sole', () => {
-    expect(both(`const A = () => <span><>{() => (s() ? <b/> : <i/>)}</></span>`)).not.toContain(', true)')
+    expect(both(`const A = () => <span><>{() => (s() ? <b/> : <i/>)}</></span>`)).not.toContain(
+      ', true)',
+    )
   })
   it('a slot with a static sibling before it is NOT sole', () => {
     expect(both(`const A = () => <p><i/>{() => (s() ? <b/> : <u/>)}</p>`)).not.toContain(', true)')
@@ -2505,7 +2671,7 @@ describeNative('`_mountSlot` sole-slot verdict (both backends)', () => {
   })
 })
 
-describeNative('text fusion — parity', () => {
+describe('text fusion — syntax and optional native parity', () => {
   // `<p>Hello {name}!</p>` lowers to ONE `_fuse(...)` accessor child on the
   // client, `_ssr` and h() paths (see jsx.ts `fuseTextChildren`). The native
   // backend must emit the same bytes AND draw the same fusion boundary — a
@@ -2543,7 +2709,10 @@ describeNative('text fusion — parity', () => {
   test('the fused emit is real on both backends', () => {
     const src = SIG + `const v = <p>Hello {name}!</p>`
     expect(transformJSX_JS(src, 'test.tsx').code).toContain('_fuse("Hello ", name(), "!")')
-    expect(nativeTransform!(src, 'test.tsx', false, null).code).toContain('_fuse("Hello ", name(), "!")')
+    if (!nativeTransform) return
+    expect(nativeTransform(src, 'test.tsx', false, null).code).toContain(
+      '_fuse("Hello ", name(), "!")',
+    )
   })
 })
 
@@ -2576,7 +2745,7 @@ describeNative('text fusion — parity', () => {
  * exactly the byte-divergence this file exists to catch, and the corpus here is
  * the ONLY thing that exercises the shape on both backends.
  */
-describeNative('namespaced attribute names — both backends emit identically', () => {
+describe('namespaced attribute names — both backends emit identically', () => {
   const shapes = [
     '<div><use xlink:href={u} /></div>',
     '<div><use xlink:href="/static" /></div>',
@@ -2614,7 +2783,9 @@ describeNative('namespaced attribute names — both backends emit identically', 
     ] as const) {
       for (const [name, code] of [
         ['js', transformJSX_JS(src, 'test.tsx').code],
-        ['native', nativeTransform!(src, 'test.tsx', false, null).code],
+        ...(nativeTransform
+          ? [['native', nativeTransform(src, 'test.tsx', false, null).code]]
+          : []),
       ] as const) {
         expect(code, `${name}: must templatize`).toContain('_tpl(')
         expect(code, `${name}: must carry the qualified name`).toContain(expected)
@@ -2628,7 +2799,9 @@ describeNative('namespaced attribute names — both backends emit identically', 
   test('an ordinary attribute on the same tag is byte-identical to before', () => {
     for (const code of [
       transformJSX_JS('<div><use href={u} /></div>', 'test.tsx').code,
-      nativeTransform!('<div><use href={u} /></div>', 'test.tsx', false, null).code,
+      ...(nativeTransform
+        ? [nativeTransform('<div><use href={u} /></div>', 'test.tsx', false, null).code]
+        : []),
     ]) {
       expect(code).toContain('_tpl(')
       expect(code).toContain('_setAttr(__e0, "href", u)')

@@ -102,6 +102,13 @@ describe('verifyLifecycleWiring', () => {
       expect(verifyLifecycleWiring(discovered, reg, emits, [online])).toEqual([])
     })
 
+    it('accepts the loop over the active registry (allServices()) as well as the built-in table', () => {
+      const registryLoop = SWIFT_LOOP.replace('SERVICES', 'allServices()')
+      expect(
+        verifyLifecycleWiring(discovered, reg, { swift: `${registryLoop} 'websocket'`, kotlin: emits.kotlin }, [online]),
+      ).toEqual([])
+    })
+
     it('FAILS when the descriptor loses its lifecycle (iOS would never start it)', () => {
       const { lifecycle: _gone, ...noLifecycle } = online
       const problems = verifyLifecycleWiring(discovered, reg, emits, [noLifecycle])
