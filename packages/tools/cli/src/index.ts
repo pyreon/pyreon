@@ -267,6 +267,10 @@ async function main(): Promise<void> {
   }
 
   if (command === 'doctor') {
+    if (args.includes('--help') || args.includes('-h')) {
+      printUsage()
+      return
+    }
     const { doctor } = await import('./doctor')
     const format = args.includes('--gha')
       ? ('gha' as const)

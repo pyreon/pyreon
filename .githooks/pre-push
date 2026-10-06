@@ -14,7 +14,8 @@
 #
 # ── Timeout & stale-process safety net ──
 #
-# Each step has a timeout (default 300s) so the hook can never hang
+# Each step has a timeout (300s for ordinary affected checks; larger budgets
+# below for fast gates and native/full-workspace tests) so it cannot hang
 # forever — historically vitest workers from prior worktree sessions
 # could deadlock the test step indefinitely. On timeout: kill the step,
 # print actionable guidance (likely cause + bypass flag), exit 1.
@@ -25,7 +26,7 @@
 # another active dev session).
 #
 # Tunable:
-#   PYREON_PRE_PUSH_TIMEOUT_SEC=300   # per-step timeout (default 300)
+#   PYREON_PRE_PUSH_TIMEOUT_SEC=300   # overrides every step's budget
 #
 # Opt-out:
 #   PYREON_SKIP_PRE_PUSH=1 git push   # one-off bypass for emergencies
@@ -167,8 +168,8 @@ run_with_timeout_secs() {
       echo
       echo "[pyreon pre-push] ❌ $step_name exceeded ${budget_sec}s — killing."
       echo "[pyreon pre-push]    This is a CLOCK failure, not a gate failure — the step did not"
-      echo "[pyreon pre-push]    report a problem, it ran out of time. Raise the budget with"
-      echo "[pyreon pre-push]    PYREON_PRE_PUSH_TIMEOUT_SEC=1800 git push before assuming a bug."
+      echo "[pyreon pre-push]    report a problem, it ran out of time. Inspect the progress log and"
+      echo "[pyreon pre-push]    choose PYREON_PRE_PUSH_TIMEOUT_SEC above ${budget_sec}s before assuming a bug."
       echo "[pyreon pre-push]    This hook has terminated only the timed-out step's process tree."
       echo "[pyreon pre-push]    Inspect any older unrelated watchers before retrying."
       echo "[pyreon pre-push]    Or:  PYREON_SKIP_PRE_PUSH=1 git push  (one-off bypass)"
@@ -241,16 +242,25 @@ echo
 # run is heavyweight (60+ parallel vitest workers, occasional flakes
 # from resource contention) and bypasses the whole point of "affected".
 FILTER=$(bun run scripts/affected.ts --base=origin/main 2>/dev/null || echo "")
+TEST_TIMEOUT_SEC="$TIMEOUT_SEC"
 # ── Full-wall auto-budget ────────────────────────────────────────────
 # A root-file change resolves to `--filter=*` — the ENTIRE workspace.
-# Measured 2026-08-04: that wall runs 10-25 minutes, structurally beyond
-# the 300s per-step budget sized for the affected case. Killing a
-# HEALTHY full wall at 300s trains people to bypass the hook wholesale
-# (it happened twice that day), which costs more than the longer wait.
+# Cold macOS native tests were still compiling after the full test wall's
+# one-hour deadline. Real-SDK fixtures also compile directly, outside the
+# verdict cache, so warming it does not make every check cheap. Give tests
+# their own backstop; keep typecheck's existing 30-minute root-file budget.
 # An explicit PYREON_PRE_PUSH_TIMEOUT_SEC always wins.
 if [ "$FILTER" = "--filter=*" ] && [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; then
   TIMEOUT_SEC=1800
-  echo "[pyreon pre-push] full-workspace filter (root-file change) — per-step timeout auto-raised to ${TIMEOUT_SEC}s"
+  TEST_TIMEOUT_SEC=7200
+  echo "[pyreon pre-push] full-workspace filter — typecheck timeout ${TIMEOUT_SEC}s; test timeout ${TEST_TIMEOUT_SEC}s"
+elif [ -z "${PYREON_PRE_PUSH_TIMEOUT_SEC:-}" ]; then
+  case " $FILTER " in
+    *" --filter=@pyreon/native-compiler "*)
+      TEST_TIMEOUT_SEC=7200
+      echo "[pyreon pre-push] native-compiler affected — test timeout ${TEST_TIMEOUT_SEC}s"
+      ;;
+  esac
 fi
 if [ -z "$FILTER" ]; then
   echo "[pyreon pre-push] no affected packages — skipping typecheck + tests"
@@ -279,7 +289,7 @@ echo
 echo "[3/3] tests (affected)"
 TEST_OUTPUT_FILE=$(mktemp -t pyreon-pre-push-XXXXXX)
 
-run_with_timeout "tests" "bun run $FILTER --sequential test -- > '$TEST_OUTPUT_FILE' 2>&1"
+run_with_timeout_secs "$TEST_TIMEOUT_SEC" "tests" "bun run $FILTER --sequential test -- > '$TEST_OUTPUT_FILE' 2>&1"
 TEST_EXIT=$?
 cat "$TEST_OUTPUT_FILE"
 

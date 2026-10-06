@@ -50,7 +50,7 @@ function findingCodes(result: ReturnType<typeof auditIslands>): IslandFindingCod
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('auditIslands — discovery', () => {
-  it('returns root=null when no packages/ dir exists', () => {
+  it('returns root=null when no project or workspace marker exists', () => {
     const empty = mkdtempSync(join(tmpdir(), 'pyreon-island-audit-empty-'))
     try {
       const r = auditIslands(empty)
@@ -79,6 +79,7 @@ describe('auditIslands — discovery', () => {
   it('skips test files / __tests__ / node_modules / lib / dist', () => {
     const f = makeFixture()
     try {
+      f.write('a/package.json', '{"name":"a"}')
       f.write('a/src/Real.tsx', `export const A = () => null`)
       f.write('a/src/Real.test.tsx', `it('x', () => {})`)
       f.write('a/src/__tests__/foo.tsx', `export const F = () => null`)
@@ -486,7 +487,7 @@ describe('formatIslandAudit', () => {
     try {
       const r = auditIslands(empty)
       const text = formatIslandAudit(r)
-      expect(text).toContain('No monorepo root found')
+      expect(text).toContain('No project root found')
     } finally {
       rmSync(empty, { recursive: true, force: true })
     }

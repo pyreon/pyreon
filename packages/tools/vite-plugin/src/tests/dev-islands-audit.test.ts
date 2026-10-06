@@ -24,11 +24,8 @@ let root: string
 let pkgSrc: string
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'pyreon-vp-audit-'))
-  // `auditIslands` walks `<monorepoRoot>/packages` and `/examples`, and
-  // finds that root by looking UPWARD for a directory containing
-  // `packages/`. A flat project therefore scans nothing and reports
-  // nothing — which is why the fixture is shaped this way, and worth
-  // knowing: the boot audit is a no-op outside that layout.
+  // Keep an explicit workspace-root fixture here; flat application roots
+  // and nearest-package isolation are covered by compiler project-root tests.
   pkgSrc = join(root, 'packages', 'app', 'src')
   mkdirSync(pkgSrc, { recursive: true })
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'audit-fixture' }))
