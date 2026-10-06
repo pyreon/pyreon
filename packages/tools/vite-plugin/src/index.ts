@@ -36,14 +36,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
-import { detectPlain,
+import { foldNodeEnvProduction, renameCompatJsxAttributes } from './ast-rewrite'
+import {
+  detectPlain,
   type CollapsibleSite,
-  generateContext,
   scanCollapsibleSites,
   transformDeferInline,
   transformJSX,
 } from '@pyreon/compiler'
-import { buildCompiledVerdicts } from './compiled-verdicts'
 import {
   DEV_ERROR_PRINTER_ID,
   DEV_ERROR_PRINTER_IMPORT,
@@ -51,7 +51,6 @@ import {
   DEV_ERROR_PRINTER_SOURCE,
 } from './dev-error-printer'
 import { injectIslandNames } from './island-auto-name'
-import { optimizeValidators } from './optimize-validators'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import { createFilter } from 'vite'
 import type { FilterPattern, Plugin, ViteDevServer } from 'vite'
@@ -651,9 +650,6 @@ const isTruthyEnv = _isTruthyEnv
 // mismatch at the seam and need an `as never` cast at the call site.
 // Runtime is identical — the Plugin shape itself hasn't changed across
 // vite 5/6/7/8 for the hooks we implement.
-const NODE_ENV_READ = 'process.env.NODE_ENV'
-/** Same length as `process.env.NODE_ENV` (20 chars) so positions are preserved. */
-const NODE_ENV_PRODUCTION_LITERAL = '(      "production")'
 
 /**
  * Whether a module id belongs to a `@pyreon/*` package — decided by the
@@ -1181,13 +1177,20 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       if (
         isProductionBuild &&
         transformOptions?.ssr === true &&
-        code.includes(NODE_ENV_READ) &&
+        code.includes('NODE_ENV') &&
         isPyreonPackageFile(id, pyreonDirCache)
       ) {
-        code = code.replaceAll(NODE_ENV_READ, NODE_ENV_PRODUCTION_LITERAL)
-        folded = true
-        // A built `lib/*.js` module has nothing else for this plugin to do.
-        if (/\.[cm]?js$/.test(id.split('?')[0]!)) return { code, map: null }
+        // AST-positioned, never raw text: the same characters inside a string
+        // (zero's own `"process.env.NODE_ENV"` define key), comment, regex or
+        // template text are not reads and must survive. A module that does not
+        // parse keeps its runtime read.
+        const foldedCode = foldNodeEnvProduction(code, id)
+        if (foldedCode !== null) {
+          code = foldedCode
+          folded = true
+          // A built `lib/*.js` module has nothing else for this plugin to do.
+          if (/\.[cm]?js$/.test(id.split('?')[0]!)) return { code, map: null }
+        }
       }
       // ── Validator tree-shake rewrite (opt-in, build-only) ──────────────
       // Rewrite chainable `const X = s.<chain>` schemas to the lean
@@ -1196,6 +1199,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // validation schemas overwhelmingly live), mirroring the compiled-verdict
       // `.ts` early-return: esbuild compiles the rewritten source after us.
       if (optimizeValidatorsEnabled && isBuild && getExt(id) === '.ts' && code.includes('@pyreon/validate')) {
+        // Lazy: `optimize-validators` imports `@pyreon/compiler/validate`
+        // (the TypeScript compiler API). Loaded only when the option is on, so
+        // the plugin's static graph never pulls `typescript`.
+        const { optimizeValidators } = await import('./optimize-validators')
         const rewritten = optimizeValidators(code, id)
         if (rewritten !== null) return { code: rewritten, map: null }
       }
@@ -1209,6 +1216,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       if (compileValidatorsEnabled && isBuild) {
         const e0 = getExt(id)
         if ((e0 === '.ts' || e0 === '.tsx') && code.includes('@pyreon/validate')) {
+          // Lazy for the same reason as `optimizeValidators` above.
+          const { buildCompiledVerdicts } = await import('./compiled-verdicts')
           const v = buildCompiledVerdicts(code, id)
           if (v) {
             // `.ts` isn't JSX-compiled by this plugin — inject + hand back to
@@ -1255,7 +1264,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         compat === 'svelte'
       ) {
         if (compat === 'react' || compat === 'preact') {
-          const transformed = transformCompatAttributes(code)
+          const transformed = renameCompatJsxAttributes(code, id)
           if (transformed !== code) return { code: transformed, map: null }
         }
         return folded ? { code, map: null } : undefined
@@ -1547,7 +1556,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         setTimeout(() => {
           void (async () => {
             try {
-              const { auditIslands, formatIslandAudit } = await import('@pyreon/compiler')
+              const { auditIslands, formatIslandAudit } = await import('@pyreon/compiler/audits')
               const result = auditIslands(projectRoot)
               if (result.findings.length > 0) {
                 // oxlint-disable-next-line no-console
@@ -1564,14 +1573,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
 
       // Generate .pyreon/context.json for AI tools on dev server start
-      generateProjectContext(projectRoot)
+      void generateProjectContext(projectRoot)
 
       // Debounced regeneration on file changes
       let contextTimer: ReturnType<typeof setTimeout> | null = null
       server.watcher.on('change', (file) => {
         if (/\.(tsx|jsx|ts|js)$/.test(file) && !file.includes('node_modules')) {
           if (contextTimer) clearTimeout(contextTimer)
-          contextTimer = setTimeout(() => generateProjectContext(projectRoot), 500)
+          contextTimer = setTimeout(() => void generateProjectContext(projectRoot), 500)
         }
       })
 
@@ -1671,8 +1680,11 @@ export async function _handleSsrRequest(
  * Generate .pyreon/context.json — project map for AI coding assistants.
  * Delegates to @pyreon/compiler's unified project scanner.
  */
-function generateProjectContext(root: string): void {
+async function generateProjectContext(root: string): Promise<void> {
   try {
+    // Lazy: the project scanner parses with the TypeScript compiler API, which
+    // the plugin's static graph must not load.
+    const { generateContext } = await import('@pyreon/compiler/audits')
     const context = generateContext(root)
     const outDir = pathJoin(root, '.pyreon')
     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
@@ -2436,25 +2448,6 @@ function injectHmr(code: string, moduleId: string): string {
 }
 
 // ── Compat attribute transforms ──────────────────────────────────────────────
-
-/**
- * Transform React-style JSX attribute names to standard HTML attribute names.
- * This is a lightweight string transform that runs on JSX source before OXC's
- * JSX transform converts it to jsx() calls.
- *
- * - `className` → `class`
- * - `htmlFor` → `for`
- *
- * Only matches attribute position in JSX (after `<tag ` or whitespace).
- * Does not transform property access (e.g. `props.className` stays as-is since
- * the compat JSX runtime handles that at call time).
- */
-function transformCompatAttributes(code: string): string {
-  // Match className/htmlFor in JSX attribute position:
-  // After < and tag name, or after whitespace between attributes
-  // Pattern: word boundary + attribute name + = (with optional whitespace)
-  return code.replace(/(\s)className(\s*=)/g, '$1class$2').replace(/(\s)htmlFor(\s*=)/g, '$1for$2')
-}
 
 /**
  * Auto-inject `import { ... } from '<source>'` for bare JSX references

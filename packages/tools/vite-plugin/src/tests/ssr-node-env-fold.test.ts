@@ -102,3 +102,19 @@ describe('production SSR NODE_ENV fold', () => {
     expect(devBuild?.code ?? SRC).toContain('process.env.NODE_ENV')
   })
 })
+
+describe('production SSR NODE_ENV fold — quoted occurrences (#3791)', () => {
+  it('keeps the quoted define key, folds the read, output parses', async () => {
+    const src = `export const define = { "process.env.NODE_ENV": "production" }; export const mode = process.env.NODE_ENV;`
+    const out = await transform(makePlugin({ command: 'build', isProduction: true }), src, PYREON_LIB_FILE, true)
+    expect(out!.code).toContain(`{ "process.env.NODE_ENV": "production" }`)
+    expect(out!.code).toContain(`mode = (      "production");`)
+    expect(out!.code.length).toBe(src.length)
+  })
+
+  it('a lib file with only quoted occurrences is left alone', async () => {
+    const src = `export const define = { "process.env.NODE_ENV": "production" }`
+    const out = await transform(makePlugin({ command: 'build', isProduction: true }), src, PYREON_LIB_FILE, true)
+    expect(out?.code ?? src).toBe(src)
+  })
+})

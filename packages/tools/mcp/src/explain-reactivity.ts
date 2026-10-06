@@ -13,7 +13,7 @@
  * Pure + deterministic — the tool handler in `index.ts` is a thin wrapper.
  */
 
-import { analyzeReactivity, formatReactivityLens } from '@pyreon/compiler'
+import { analyzeReactivity, formatReactivityLens } from '@pyreon/compiler/analyze'
 
 export interface ReactivityExplanation {
   /** The rendered, agent-facing text block. */

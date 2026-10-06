@@ -1712,9 +1712,9 @@ describe('JSX transform — reactive props detection', () => {
     expect(result).not.toContain('bindPolymorphicText')
   })
 
-  test('props.x in attribute is reactive (wrapped in _bind)', () => {
+  test('props.x in attribute is reactive (opaque getter -> renderEffect, #3782)', () => {
     const result = t('function Comp(props) { return <div class={props.cls}></div> }')
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('renderEffect(() => {')
     expect(result).toContain('props.cls')
   })
 
@@ -1732,7 +1732,7 @@ describe('JSX transform — reactive props detection', () => {
     const result = t(
       'function Comp(props) { const align = props.alignX ?? "left"; return <div class={align}></div> }',
     )
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('renderEffect(() => {')
     expect(result).toContain('props.alignX ?? "left"')
   })
 
@@ -1831,7 +1831,7 @@ describe('JSX transform — transitive prop derivation', () => {
     const result = t(
       'function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }',
     )
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('renderEffect(() => {')
   })
 
   test('prop-derived used in non-JSX stays static', () => {
@@ -2763,7 +2763,7 @@ describe('JSX transform — DOM properties use property assignment', () => {
 
 describe('JSX transform — template combined _bind for complex expressions', () => {
   test('complex attribute expression uses combined _bind', () => {
-    const result = t('<div class={`${a()} ${b()}`}><span /></div>')
+    const result = t('function C() { const a = signal(0); const b = signal(1); return <div class={`${a()} ${b()}`}><span /></div> }')
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('_setClass(')
   })
@@ -2927,7 +2927,7 @@ describe('JSX transform — parse error handling', () => {
 
 describe('JSX transform — reactive combined _bind for multiple reactive attrs', () => {
   test('multiple reactive attributes on same element with complex expressions', () => {
-    const result = t('<div class={`${a()} b`} title={`${c()} d`}><span /></div>')
+    const result = t('function C() { const a = signal(0); const c = signal(1); return <div class={`${a()} b`} title={`${c()} d`}><span /></div> }')
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('_setClass(')
     expect(result).toContain('_setAttr(__root, "title"')
@@ -2980,7 +2980,7 @@ describe('JSX transform — referencesPropDerived computed access', () => {
     )
     // key is used as computed property — it IS a reference (p.computed === true)
     expect(result).toContain('props.key')
-    expect(result).toContain('_bind')
+    expect(result).toContain('renderEffect')
   })
 
   test('prop-derived var in non-computed property position is NOT a reference', () => {
@@ -2998,7 +2998,7 @@ describe('JSX transform — template style attribute combined _bind', () => {
   test('complex reactive style delegates to _setStyle in combined _bind', () => {
     const result = t('<div style={getStyle() + "extra"}>text</div>')
     expect(result).toContain('_setStyle(__root, getStyle() + "extra")')
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('renderEffect(() => {')
   })
 })
 
@@ -3095,7 +3095,7 @@ describe('JSX transform — tryDirectSignalRef with arguments', () => {
     const result = t('<div class={getClass("primary")}><span /></div>')
     // Has arguments — not a direct signal ref
     expect(result).not.toContain('_bindDirect')
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('renderEffect(() => {')
   })
 })
 
@@ -3104,7 +3104,7 @@ describe('JSX transform — tryDirectSignalRef with arguments', () => {
 describe('JSX transform — unwrapAccessor with function expression', () => {
   test('function expression in attribute is called in bind', () => {
     const result = t('<div class={function() { return "cls" }}><span /></div>')
-    expect(result).toContain('_bind')
+    expect(result).toContain('renderEffect')
   })
 })
 
@@ -3177,7 +3177,7 @@ describe('JSX transform — additional branch coverage paths', () => {
 
   test('function expression with block body in attribute', () => {
     const result = t('<div class={function() { return cls() }}><span /></div>')
-    expect(result).toContain('_bind')
+    expect(result).toContain('renderEffect')
   })
 
   test('prop-derived var used inside a nested function arg but NOT as callback', () => {
@@ -3278,7 +3278,7 @@ describe('JSX transform — additional branch coverage paths', () => {
       'function C() { const x = signal(0); return <div data-val={obj.method(x)}></div> }',
     )
     expect(result).toContain('x()')
-    expect(result).toContain('_bind')
+    expect(result).toContain('renderEffect')
   })
 
   test('template with static spread on root and dynamic inner attr', () => {
@@ -3307,13 +3307,13 @@ describe('JSX transform — additional branch coverage paths', () => {
 
   test('FunctionDeclaration with JSX detected as component', () => {
     const result = t('function MyComp(props) { return <div class={props.cls}></div> }')
-    expect(result).toContain('_bind')
+    expect(result).toContain('renderEffect')
     expect(result).toContain('props.cls')
   })
 
   test('ArrowFunctionExpression with JSX and single param detected as component', () => {
     const result = t('const MyComp = (props) => <div class={props.cls}></div>')
-    expect(result).toContain('_bind')
+    expect(result).toContain('renderEffect')
     expect(result).toContain('props.cls')
   })
 

@@ -34,7 +34,7 @@
  *
  * Run: bun run --filter=@pyreon/validate bench:compiled-verdict
  */
-import { analyzeValidate, emitValidator } from '@pyreon/compiler'
+import { analyzeValidate, emitValidator } from '@pyreon/compiler/validate'
 import { s } from '../src/v1'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
 

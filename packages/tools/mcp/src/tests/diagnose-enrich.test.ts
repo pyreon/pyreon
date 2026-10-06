@@ -1,4 +1,4 @@
-import { detectPyreonPatterns, diagnoseError } from '@pyreon/compiler'
+import { detectPyreonPatterns, diagnoseError } from '@pyreon/compiler/analyze'
 import type { AntiPatternEntry } from '../anti-patterns'
 import {
   type DiagnoseInput,

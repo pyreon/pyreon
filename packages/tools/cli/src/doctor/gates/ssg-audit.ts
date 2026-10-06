@@ -8,7 +8,7 @@
  * (silently broken under `mode: 'ssg'`).
  */
 
-import { auditSsg, type SsgFindingCode } from '@pyreon/compiler'
+import { auditSsg, type SsgFindingCode } from '@pyreon/compiler/audits'
 
 import type { Finding, GateResult, Severity } from '../types'
 

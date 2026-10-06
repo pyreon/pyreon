@@ -59,6 +59,18 @@ Three canonical reactive shapes auto-promote to effect-free runtime calls (~5 �
 
 Conservative bail catalog — uncertain shapes fall back to `_bind(...)` unchanged. See [docs/src/content/docs/compiler.md](../../../docs/src/content/docs/compiler.md) for the full detection logic.
 
+## Entry points
+
+The main entry is lean and **does not load the TypeScript compiler API**. Everything that parses with `typescript` is behind a subpath, so a consumer that only needs `transformJSX` (a bundler plugin, a test harness) never pays for it:
+
+| Import | Contents | Loads `typescript` |
+| --- | --- | --- |
+| `@pyreon/compiler` | `transformJSX` / `transformJSX_JS`, rocketstyle-collapse scan, `transformDeferInline`, Plain Mode (`detectPlain` / `transformPlain` / `migrateToPlain`), fs-route convention, island naming | no |
+| `@pyreon/compiler/analyze` | pattern detectors + codemods (`detectReactPatterns`, `detectPyreonPatterns`, `migrate*`, `diagnoseError`), Reactivity Lens (`analyzeReactivity`, LPIH helpers) | yes |
+| `@pyreon/compiler/audits` | `pyreon doctor` audits (test-environment / islands / SSG / native / content) and the project scanner `generateContext` | yes |
+| `@pyreon/compiler/validate` | `@pyreon/validate` analyzer + emitters (`analyzeValidate`, `emitValidator`, `emitSchemaSource`) | yes |
+| `@pyreon/compiler/diagnose`, `/plain`, `/fs-route-convention` | browser-safe / pre-pass subpaths | no |
+
 ## Reactive transform — Quick start
 
 ```ts
@@ -81,7 +93,7 @@ const { code, warnings, usesTemplates } = transformJSX(
 ## Authoring-time tools (editor-side)
 
 ```ts
-import { analyzeReactivity, formatReactivityLens } from '@pyreon/compiler'
+import { analyzeReactivity, formatReactivityLens } from '@pyreon/compiler/analyze'
 
 // Surface the compiler's reactive/static decisions back to the editor
 const { findings, spans } = analyzeReactivity(
@@ -99,7 +111,7 @@ The Lens is **additive** — `TransformResult.code` is byte-identical with or wi
 ## React migration
 
 ```ts
-import { detectReactPatterns, migrateReactCode, diagnoseError } from '@pyreon/compiler'
+import { detectReactPatterns, migrateReactCode, diagnoseError } from '@pyreon/compiler/analyze'
 
 const diagnostics = detectReactPatterns(reactSource, 'App.tsx')
 // diagnostics: ReactDiagnostic[] with codes like 'use-state', 'use-effect', 'class-name'
@@ -116,7 +128,7 @@ The migration is a one-shot codemod, **not** a runtime adapter. For runtime comp
 ## Pyreon anti-pattern detector
 
 ```ts
-import { detectPyreonPatterns, hasPyreonPatterns } from '@pyreon/compiler'
+import { detectPyreonPatterns, hasPyreonPatterns } from '@pyreon/compiler/analyze'
 
 const diags = detectPyreonPatterns(
   `const C = ({ state }) => <div>{state}</div>`,
@@ -136,7 +148,7 @@ This is what the MCP `validate({ code })` tool runs. Some shapes are caught synt
 ## Project audits
 
 ```ts
-import { auditIslands, auditSsg, auditTestEnvironment } from '@pyreon/compiler'
+import { auditIslands, auditSsg, auditTestEnvironment } from '@pyreon/compiler/audits'
 
 const islandResult = auditIslands(projectRoot)
 const ssgResult = auditSsg(projectRoot)

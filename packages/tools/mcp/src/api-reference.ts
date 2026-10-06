@@ -1534,7 +1534,7 @@ const { code } = transformJSX_JS("<div>{name()}</div>", "x.tsx")`,
 
   'compiler/analyzeReactivity': {
     signature: 'analyzeReactivity(code: string, filename?: string, options?: { knownSignals?: string[] }): AnalyzeReactivityResult',
-    example: `import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+    example: `import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler/analyze"
 
 const result = analyzeReactivity(
   "const A = (props) => <div>{props.name}</div>",
@@ -1550,7 +1550,7 @@ console.log(formatReactivityLens(code, result)) // annotated-source debug view`,
 
   'compiler/formatReactivityLens': {
     signature: 'formatReactivityLens(code: string, result: AnalyzeReactivityResult): string',
-    example: `import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+    example: `import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler/analyze"
 
 const r = analyzeReactivity(src, "App.tsx")
 process.stdout.write(formatReactivityLens(src, r))`,
@@ -1559,7 +1559,7 @@ process.stdout.write(formatReactivityLens(src, r))`,
 
   'compiler/analyzeValidate': {
     signature: 'analyzeValidate(code: string, filename?: string): ValidateSchemaInfo[]',
-    example: `import { analyzeValidate } from "@pyreon/compiler"
+    example: `import { analyzeValidate } from "@pyreon/compiler/validate"
 
 const [info] = analyzeValidate("const L = s.object({ e: s.string().email() })")
 info.emittable // true`,
@@ -1568,7 +1568,7 @@ info.emittable // true`,
 
   'compiler/emitValidator': {
     signature: 'emitValidator(node: ValidateNode): string',
-    example: `import { analyzeValidate, emitValidator } from "@pyreon/compiler"
+    example: `import { analyzeValidate, emitValidator } from "@pyreon/compiler/validate"
 
 const [info] = analyzeValidate("const S = s.string().email()")
 const src = emitValidator(info.node)
@@ -1579,7 +1579,7 @@ validate("a@b.co").length // 0`,
 
   'compiler/detectReactPatterns': {
     signature: 'detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]',
-    example: `import { detectReactPatterns } from "@pyreon/compiler"
+    example: `import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
 console.log(diags[0]?.code) // "react-use-state"`,
@@ -1588,7 +1588,7 @@ console.log(diags[0]?.code) // "react-use-state"`,
 
   'compiler/migrateReactCode': {
     signature: 'migrateReactCode(code: string, filename?: string): MigrationResult',
-    example: `import { migrateReactCode } from "@pyreon/compiler"
+    example: `import { migrateReactCode } from "@pyreon/compiler/analyze"
 
 const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
     notes: 'One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human. See also: detectReactPatterns.',
@@ -1596,7 +1596,7 @@ const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
 
   'compiler/migratePyreonCode': {
     signature: 'migratePyreonCode(source: string, filename?: string): PyreonMigrationResult',
-    example: `import { migratePyreonCode } from "@pyreon/compiler"
+    example: `import { migratePyreonCode } from "@pyreon/compiler/analyze"
 
 const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
     notes: 'Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). Auto-fixes ONLY the mechanically-safe `detectPyreonPatterns` footguns — `sig(v)`→`sig.set(v)` (signal-write-as-call), `<For key>`→`<For by>` (for-with-key), and dropping `x as unknown as VNodeChild` (as-unknown-as-vnodechild), tracked by `AUTO_FIXABLE_PYREON_CODES`. Span-based, applied back-to-front, non-overlapping, idempotent — so the output is safe to apply verbatim. Returns `{ code, changes, remaining }` where `remaining` is every OTHER detected footgun (props-destructured, on-click-undefined, …) that needs a human. This is why those three codes report `fixable: true`. See also: detectPyreonPatterns, migrateReactCode.',
@@ -1604,7 +1604,7 @@ const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
 
   'compiler/hasReactPatterns': {
     signature: 'hasReactPatterns(code: string): boolean',
-    example: `import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler"
+    example: `import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler/analyze"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))`,
     notes: 'Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners; never reports diagnostics itself. See also: detectReactPatterns.',
@@ -1612,19 +1612,19 @@ if (hasReactPatterns(src)) report(detectReactPatterns(src, file))`,
 
   'compiler/diagnoseError': {
     signature: 'diagnoseError(error: string): ErrorDiagnosis | null',
-    example: `import { diagnoseError } from "@pyreon/compiler"
+    example: `import { diagnoseError } from "@pyreon/compiler/analyze"
 
 const d = diagnoseError("props.when is not a function")
 if (d) console.log(d.cause, d.fix)`,
     notes: 'Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon failure shapes. Returns `null` when the error is unrecognised — callers fall back to the raw message. See also: detectPyreonPatterns.',
-    mistakes: `- Importing it from the main \`@pyreon/compiler\` barrel for CLIENT-SIDE use — the barrel transitively \`import ts from "typescript"\` (via the AST detectors/migrators), dragging the heavy Node-only TS compiler API into the browser bundle. For browser use (the dev throw-time error printer) import from the browser-safe \`@pyreon/compiler/diagnose\` subpath — \`diagnoseError\` + its \`ERROR_PATTERNS\` are pure regex/strings with ZERO \`typescript\` dependency.
+    mistakes: `- Importing it from \`@pyreon/compiler/analyze\` (or the old main barrel, where it no longer lives) for CLIENT-SIDE use — \`/analyze\` transitively \`import ts from "typescript"\` (via the AST detectors/migrators), dragging the heavy Node-only TS compiler API into the browser bundle. For browser use (the dev throw-time error printer) import from the browser-safe \`@pyreon/compiler/diagnose\` subpath — \`diagnoseError\` + its \`ERROR_PATTERNS\` are pure regex/strings with ZERO \`typescript\` dependency.
 - Feeding it a structured Error object — it matches the error STRING (\`error.message\`), not an \`Error\` instance. Pass \`err.message\`.
 - Treating a \`null\` return as a failure — \`null\` just means "no known pattern matched"; callers fall back to showing the raw message. Only a non-null \`ErrorDiagnosis\` carries a cause/fix.`,
   },
 
   'compiler/detectPyreonPatterns': {
     signature: 'detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]',
-    example: `import { detectPyreonPatterns } from "@pyreon/compiler"
+    example: `import { detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectPyreonPatterns(
   "const A = (props) => { const { x } = props; return <i>{x}</i> }",
@@ -1638,7 +1638,7 @@ console.log(diags[0]?.code) // "props-destructured-body"`,
 
   'compiler/hasPyreonPatterns': {
     signature: 'hasPyreonPatterns(code: string): boolean',
-    example: `import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler"
+    example: `import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))`,
     notes: 'Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST walker is the precise gate); only has to avoid skipping a file that might contain a pattern. See also: detectPyreonPatterns.',
@@ -1646,7 +1646,7 @@ if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))`,
 
   'compiler/auditTestEnvironment': {
     signature: 'auditTestEnvironment(startDir: string): TestAuditResult',
-    example: `import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+    example: `import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 const r = auditTestEnvironment(process.cwd())
 console.log(formatTestAudit(r, { minRisk: "high" }))`,
@@ -1655,7 +1655,7 @@ console.log(formatTestAudit(r, { minRisk: "high" }))`,
 
   'compiler/formatTestAudit': {
     signature: 'formatTestAudit(result: TestAuditResult, options?: AuditFormatOptions): string',
-    example: `import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+    example: `import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
     notes: 'Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` | `medium` | `low`). The CLI / MCP surfaces also have a JSON path — this is the text view. See also: auditTestEnvironment.',
@@ -1663,7 +1663,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
 
   'compiler/auditIslands': {
     signature: 'auditIslands(rootDir: string): IslandAuditResult',
-    example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+    example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 const r = auditIslands(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)`,
@@ -1672,7 +1672,7 @@ for (const f of r.findings) console.log(f.code, f.location.relPath)`,
 
   'compiler/formatIslandAudit': {
     signature: 'formatIslandAudit(result: IslandAuditResult, options?: IslandAuditFormatOptions): string',
-    example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+    example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 console.log(formatIslandAudit(auditIslands(".")))`,
     notes: 'Text renderer for an `auditIslands` result — each finding with file path + line/column + an actionable fix suggestion. The `--json` CLI path bypasses this for CI gates. See also: auditIslands.',
@@ -1680,7 +1680,7 @@ console.log(formatIslandAudit(auditIslands(".")))`,
 
   'compiler/auditSsg': {
     signature: 'auditSsg(rootDir: string): SsgAuditResult',
-    example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+    example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 const r = auditSsg(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)`,
@@ -1689,7 +1689,7 @@ for (const f of r.findings) console.log(f.code, f.location.relPath)`,
 
   'compiler/formatSsgAudit': {
     signature: 'formatSsgAudit(result: SsgAuditResult, options?: SsgAuditFormatOptions): string',
-    example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+    example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 console.log(formatSsgAudit(auditSsg(".")))`,
     notes: 'Text renderer for an `auditSsg` result — file path + line/column + actionable fix per finding. CI gates use the JSON path instead. See also: auditSsg.',
@@ -1705,7 +1705,7 @@ const { code, changed } = transformDeferInline(src, "page.tsx")`,
 
   'compiler/generateContext': {
     signature: 'generateContext(cwd: string): ProjectContext',
-    example: `import { generateContext } from "@pyreon/compiler"
+    example: `import { generateContext } from "@pyreon/compiler/audits"
 
 const ctx = generateContext(process.cwd())
 console.log(ctx.routes.length, ctx.islands.length)`,
@@ -5272,7 +5272,7 @@ traffic()            // 'red' (reactive)
 traffic.send('NEXT') // 'green'
 traffic.matches('green') // true
 traffic.can('NEXT')  // true`,
-    notes: 'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. Beyond named events, states support eventless `always` transitions (transient/condition states that resolve synchronously), `final: true` terminal states (`isFinal()` + `onDone()`), and full lifecycle listeners (`onEnter` / `onExit` / `onTransition` / `onDone`). `send(event, payload?)` returns the settled state (after any `always` cascade), and `can(event, payload?)` predicts `send` exactly — both evaluate guards throw-safely (a guard that throws denies the transition rather than crashing). No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects. See also: Machine, MachineConfig.',
+    notes: 'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. Beyond named events, states support eventless `always` transitions (transient/condition states that resolve synchronously), `final: true` terminal states (`isFinal()` + `onDone()`), and full lifecycle listeners (`onEnter` / `onExit` / `onTransition` / `onDone`). `send(event, payload?)` returns the settled state (after any `always` cascade), and `can(event, payload?)` predicts `send` exactly — both evaluate guards throw-safely (a guard that throws denies the transition rather than crashing). Events are processed run-to-completion: a `send()` made while another is running — from an `onEnter`/`onExit`/`onTransition`/`onDone` listener, or from an `effect()`/`watch()` callback that fires when the batch flushes — is queued and drained FIFO before the outer `send()` returns (listener-sent events run in the same batch; watcher/effect-sent events run in the next round, after reactive readers settled). A runaway send loop throws a `[Pyreon]` error after 10,000 events instead of hanging. No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects. See also: Machine, MachineConfig.',
     mistakes: `- Treating \`machine.can(event)\` (no payload) as "is this event declared?" — it now PREDICTS \`send\` exactly by evaluating the guard (throw-safe → denied), so a guarded event with no/invalid payload reports \`false\`
 - Calling \`machine.set()\` — machines are constrained signals, they do not expose \`.set()\`. State changes only happen through \`machine.send(event)\`
 - Using a machine for data storage — machines only hold the current state string. Use regular signals alongside the machine for associated data

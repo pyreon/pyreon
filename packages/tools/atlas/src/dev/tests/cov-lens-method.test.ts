@@ -186,7 +186,7 @@ describe('when the compiler is not installed', () => {
   it('says which package to add rather than answering with no findings', async () => {
     // An empty verdict would render as "nothing is static here" — the exact
     // opposite of what an unanalysed file means.
-    vi.doMock('@pyreon/compiler', () => {
+    vi.doMock('@pyreon/compiler/analyze', () => {
       throw new Error('Cannot find package')
     })
     try {
@@ -194,7 +194,7 @@ describe('when the compiler is not installed', () => {
       const lens = lensMethod({ root, components: [comp('Counter', abs)] })
       await expect(lens({ component: 'Counter' })).rejects.toThrow(/needs @pyreon\/compiler/)
     } finally {
-      vi.doUnmock('@pyreon/compiler')
+      vi.doUnmock('@pyreon/compiler/analyze')
     }
   })
 })

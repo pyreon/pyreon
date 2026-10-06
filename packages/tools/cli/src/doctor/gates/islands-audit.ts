@@ -9,7 +9,7 @@
  * failure mode).
  */
 
-import { auditIslands, type IslandFindingCode } from '@pyreon/compiler'
+import { auditIslands, type IslandFindingCode } from '@pyreon/compiler/audits'
 
 import type { Finding, GateResult, Severity } from '../types'
 
