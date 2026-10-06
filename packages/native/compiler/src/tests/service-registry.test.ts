@@ -25,9 +25,17 @@ describe('createServiceRegistry', () => {
   it('adds a plugin service with its owner and the hook key filled in', () => {
     const registry = createServiceRegistry([plugin('@acme/thing', { services: { useThing: spec } })])
     expect(registry.get('useThing')).toEqual({
-      descriptor: { hook: 'useThing', ...spec },
+      descriptor: { hook: 'useThing', legacyKind: 'service', ...spec },
       owner: '@acme/thing',
     })
+  })
+
+  it('lets a plugin service state its own legacyKind, and defaults to the generic one', () => {
+    const registry = createServiceRegistry([
+      plugin('@acme/thing', { services: { useThing: { ...spec, legacyKind: 'thing' }, useOther: spec } }),
+    ])
+    expect(registry.get('useThing')?.descriptor.legacyKind).toBe('thing')
+    expect(registry.get('useOther')?.descriptor.legacyKind).toBe('service')
   })
 
   it('refuses two owners for one hook and tells the app to pick one', () => {
