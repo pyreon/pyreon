@@ -1,4 +1,4 @@
-import type { ComponentIR, DeclIR } from './types'
+import type { ComponentIR, DeclIR, TypeIR } from './types'
 
 /**
  * What a plugin's {@link ParseRefinement} may edit: the freshly parsed
@@ -62,4 +62,66 @@ export function createParseRefinements(
     if (plugin.refineParse !== undefined) out.push({ owner: plugin.name, refine: plugin.refineParse })
   }
   return Object.freeze(out)
+}
+
+/** What a props-type resolver may ask the parser while it resolves one annotation. */
+export interface PropsTypeContext {
+  /**
+   * The struct the parser declared for an inline object type argument
+   * (`NodeProps<{ label: string }>`), when the resolver asked for it to be
+   * lifted (`liftInlineArg`) — the SAME name the plugin's own literals resolve to.
+   */
+  liftedStruct(inline: TypeIR): string | undefined
+}
+
+/**
+ * How a library's PROPS TYPE (`NodeComponentProps<D>` — imported, not declared
+ * in the consumer's file) resolves to the object shape a component's
+ * parameters are read from. Without it the parser sees an unresolvable named
+ * type and emits a zero-prop component whose body references unbound fields.
+ */
+export interface PropsTypeResolver {
+  /**
+   * Declare ONE struct per distinct inline object type argument, named after
+   * the first component that uses it (`<Component><suffix>`), before the
+   * components are parsed — so the resolved props and the plugin's own literals
+   * agree on a type name.
+   */
+  readonly liftInlineArg?: { readonly suffix: string } | undefined
+  /** The props object type for `Name<args>`, or `undefined` to decline (the type then warns as unresolved). */
+  resolve(type: { readonly name: string; readonly args: readonly TypeIR[] }, ctx: PropsTypeContext): TypeIR | undefined
+}
+
+type PropsTypePlugin = {
+  readonly name: string
+  readonly propsTypes?: Readonly<Record<string, PropsTypeResolver>> | undefined
+}
+
+export interface RegisteredPropsType {
+  readonly owner: string
+  readonly resolver: PropsTypeResolver
+}
+
+/**
+ * Props type name → resolver + owner. A name claimed by two plugins is a
+ * load-time error naming both (the type would resolve differently depending on
+ * plugin order).
+ */
+export function createPropsTypeRegistry(
+  plugins: readonly PropsTypePlugin[],
+): ReadonlyMap<string, RegisteredPropsType> {
+  const out = new Map<string, RegisteredPropsType>()
+  for (const plugin of plugins) {
+    for (const [name, resolver] of Object.entries(plugin.propsTypes ?? {})) {
+      const existing = out.get(name)
+      if (existing !== undefined) {
+        throw new Error(
+          `[Pyreon] props type "${name}" is resolved by both "${existing.owner}" and "${plugin.name}". ` +
+            `A type name resolves one way — remove one of the two plugins from this app.`,
+        )
+      }
+      out.set(name, { owner: plugin.name, resolver })
+    }
+  }
+  return out
 }

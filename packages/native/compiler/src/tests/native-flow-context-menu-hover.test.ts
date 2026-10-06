@@ -2,8 +2,8 @@
 // listeners (a long-press and pointer hover natively), and the emit compiles.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const APP = `
   import { signal } from '@pyreon/reactivity'

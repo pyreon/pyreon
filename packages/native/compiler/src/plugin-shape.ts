@@ -17,7 +17,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
       `[Pyreon] Plugin "${plugin}" element lowering needs a nonempty module string and a nonempty tags array of strings.`,
     )
   }
-  const { retag, emit, styleBase } = lowering
+  const { retag, emit, styleBase, aliasable } = lowering
   if (retag !== undefined && typeof retag !== 'function') {
     throw new Error(
       `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} retag must be a function.`,
@@ -41,6 +41,11 @@ function assertElementLowering(plugin: string, value: unknown): void {
       `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} needs a retag or an emit — a lowering with neither claims tags and does nothing.`,
     )
   }
+  if (aliasable !== undefined && typeof aliasable !== 'boolean') {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} aliasable must be a boolean.`,
+    )
+  }
   if (styleBase !== undefined && typeof styleBase !== 'boolean') {
     throw new Error(
       `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} styleBase must be a boolean.`,
@@ -54,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, unlowered, runtimeTypes, refineParse, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -174,18 +179,100 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       )
     }
   }
+  if (receivers !== undefined) {
+    if (!receivers || typeof receivers !== 'object' || Array.isArray(receivers)) {
+      throw new Error(`[Pyreon] Plugin "${name}" receivers must be an object keyed by declaration type.`)
+    }
+    for (const [type, lowering] of Object.entries(receivers)) {
+      const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
+      if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
+        throw new Error(`[Pyreon] Plugin "${name}" receiver "${type}" needs a swift and/or kotlin lowering.`)
+      }
+    }
+    if (Object.keys(receivers as object).length > 0 && decls === undefined) {
+      throw new Error(
+        `[Pyreon] Plugin "${name}" declares receivers but no decls — a receiver lowering is only reached from a binding one of the plugin's own declarations created.`,
+      )
+    }
+  }
+  if (functions !== undefined) {
+    if (!functions || typeof functions !== 'object' || Array.isArray(functions)) {
+      throw new Error(`[Pyreon] Plugin "${name}" functions must be an object keyed by name.`)
+    }
+    for (const [key, lowering] of Object.entries(functions)) {
+      const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
+      if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
+        throw new Error(`[Pyreon] Plugin "${name}" function "${key}" needs a swift and/or kotlin function.`)
+      }
+    }
+  }
+  if (identifiers !== undefined) {
+    if (!identifiers || typeof identifiers !== 'object' || Array.isArray(identifiers)) {
+      throw new Error(`[Pyreon] Plugin "${name}" identifiers must be an object keyed by name.`)
+    }
+    for (const [key, lowering] of Object.entries(identifiers)) {
+      const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
+      if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
+        throw new Error(`[Pyreon] Plugin "${name}" identifier "${key}" needs a swift and/or kotlin function.`)
+      }
+    }
+  }
+  if (memberReads !== undefined) {
+    const entry = memberReads as { swift?: unknown; kotlin?: unknown } | null
+    if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
+      throw new Error(`[Pyreon] Plugin "${name}" memberReads needs a swift and/or kotlin function.`)
+    }
+  }
+  if (intrinsics !== undefined) {
+    if (!Array.isArray(intrinsics)) {
+      throw new Error(`[Pyreon] Plugin "${name}" intrinsics must be an array of intrinsic lowerings.`)
+    }
+    for (const entry of intrinsics as unknown[]) {
+      const lowering = entry as { tags?: unknown; applies?: unknown; emit?: unknown } | null
+      if (
+        !lowering ||
+        typeof lowering !== 'object' ||
+        !isStringArray(lowering.tags) ||
+        lowering.tags.length === 0 ||
+        typeof lowering.applies !== 'function' ||
+        !lowering.emit ||
+        typeof lowering.emit !== 'object'
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" intrinsic lowering needs a nonempty tags array, an applies function and an emit object.`,
+        )
+      }
+    }
+  }
+  if (prepareEmit !== undefined && typeof prepareEmit !== 'function') {
+    throw new Error(`[Pyreon] Plugin "${name}" prepareEmit must be a synchronous function.`)
+  }
+  if (intrinsicAdvice !== undefined && (typeof intrinsicAdvice !== 'string' || !intrinsicAdvice.trim())) {
+    throw new Error(`[Pyreon] Plugin "${name}" intrinsicAdvice must be a nonempty string.`)
+  }
+  if (propsTypes !== undefined) {
+    if (!propsTypes || typeof propsTypes !== 'object' || Array.isArray(propsTypes)) {
+      throw new Error(`[Pyreon] Plugin "${name}" propsTypes must be an object keyed by type name.`)
+    }
+    for (const [type, resolver] of Object.entries(propsTypes)) {
+      if (!resolver || typeof (resolver as { resolve?: unknown }).resolve !== 'function') {
+        throw new Error(`[Pyreon] Plugin "${name}" propsTypes "${type}" needs a resolve function.`)
+      }
+    }
+  }
   if (unlowered !== undefined) {
     if (!unlowered || typeof unlowered !== 'object' || Array.isArray(unlowered)) {
       throw new Error(`[Pyreon] Plugin "${name}" unlowered must be an object keyed by module.`)
     }
     for (const [module, spec] of Object.entries(unlowered)) {
-      const entry = spec as { advice?: unknown; supported?: unknown } | null
+      const entry = spec as { advice?: unknown; supported?: unknown; dropped?: unknown } | null
       if (
         !entry ||
         typeof entry !== 'object' ||
         typeof entry.advice !== 'string' ||
         !entry.advice.trim() ||
-        (entry.supported !== undefined && !isStringArray(entry.supported))
+        (entry.supported !== undefined && !isStringArray(entry.supported)) ||
+        (entry.dropped !== undefined && !isStringArray(entry.dropped))
       ) {
         throw new Error(
           `[Pyreon] Plugin "${name}" unlowered "${module}" needs a nonempty advice string and, optionally, a supported array of strings.`,

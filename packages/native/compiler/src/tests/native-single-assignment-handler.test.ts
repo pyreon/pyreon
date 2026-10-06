@@ -6,8 +6,7 @@
 // spelling of the same intent lowered fine. Found writing the F3 flow device
 // proof; the single-statement form is the one an author writes first.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const src = (body: string) => `
   import { signal } from '@pyreon/reactivity'

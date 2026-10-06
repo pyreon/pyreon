@@ -3,8 +3,8 @@
 // no native meaning — is reported by name rather than dropped silently.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const app = (edgeBody: string, extraImport = '') => `
   import { createFlow, Flow, BaseEdge, EdgeText, getStraightPath${extraImport}, type EdgeComponentProps } from '@pyreon/flow'

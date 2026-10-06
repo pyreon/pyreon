@@ -148,6 +148,8 @@ describe('code-shaped plugin: load-time errors', () => {
     const registry = createCallRegistry([toyPlugin()])
     expect(() => stampExtDecl(registry, '@acme/toy', 'toy', { type: 'toy', payload: cyclic as never })).toThrow(/not JSON/)
     expect(() => stampExtDecl(registry, '@acme/toy', 'toy', { type: 'toy', payload: { n: NaN } })).toThrow(/not JSON/)
+    // `undefined` slots (an embedded ExprIR's untyped-lambda `paramTypes[0]`) survive structuredClone: allowed.
+    expect(structuredClone(stampExtDecl(registry, '@acme/toy', 'toy', { type: 'toy', payload: { p: [undefined, 'x'] } as never }).payload)).toEqual({ p: [undefined, 'x'] })
     expect(stampExtDecl(registry, '@acme/toy', 'toy', { type: 'toy', payload: { a: [1, 'x', null, { b: true }] } }).payload).toEqual({
       a: [1, 'x', null, { b: true }],
     })

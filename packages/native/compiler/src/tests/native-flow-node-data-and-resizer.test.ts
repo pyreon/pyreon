@@ -9,8 +9,8 @@
 //    different node on the web and the host natively, with no warning.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const INLINE = `
   import { createFlow, Flow, type NodeComponentProps } from '@pyreon/flow'

@@ -28,7 +28,7 @@ const GENERATED = [
   'docs/src/content/docs/lathe.md',
   'docs/src/reference-nav.generated.ts',
   'docs/src/troubleshooting-nav.generated.ts',
-  'packages/native/compiler/src/generated-flow-webview-host.ts',
+  'packages/fundamentals/flow/src/native-plugin/webview-host.generated.ts',
 ]
 
 /** Compare working-tree output with the index, including new generated files. */

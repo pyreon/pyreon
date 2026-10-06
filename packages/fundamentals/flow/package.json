@@ -27,6 +27,11 @@
       "bun": "./src/webview.ts",
       "import": "./lib/webview.js",
       "types": "./lib/types/webview.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -48,8 +53,14 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@pyreon/primitives": "workspace:^"
@@ -57,6 +68,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
@@ -87,6 +99,10 @@
         "PyreonFlowEdgeCanvas.kt",
         "PyreonFlowView.kt",
         "PyreonFlowWebView.kt"
+      ],
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/flow"
       ]
     }
   }

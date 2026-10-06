@@ -21,10 +21,13 @@ import { BUILT_IN_PLUGINS } from './built-in-plugins'
 import { createCallRegistry, type CallRegistry } from './call-lowering'
 import { createElementRegistry, type ElementRegistry } from './element-lowering'
 import type { CompilerPlugin } from './plugin'
+import { createExprRegistry, type ExprRegistry } from './expr-lowering'
 import {
   createParseRefinements,
+  createPropsTypeRegistry,
   createRuntimeTypeRegistry,
   type RegisteredParseRefinement,
+  type RegisteredPropsType,
 } from './parse-extensions'
 import { createScopeRegistry, type ScopeRegistry } from './scope-provider'
 import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
@@ -53,6 +56,10 @@ export interface CompilerRegistries {
   readonly runtimeTypes: ReadonlyMap<string, string>
   /** Plugin parse refinements, in plugin order. */
   readonly parseRefinements: readonly RegisteredParseRefinement[]
+  /** Props type name → resolver (a library's imported props types the parser resolves to object shapes). */
+  readonly propsTypes: ReadonlyMap<string, RegisteredPropsType>
+  /** Receiver, function, member-read, intrinsic and preparation hooks. */
+  readonly exprs: ExprRegistry
 }
 
 /**
@@ -73,6 +80,20 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
       )
     }
   }
+  const exprs = createExprRegistry(ordered)
+  // A function name is claimed like a hook; two claimants would lower it by
+  // whichever branch the parser reaches first.
+  for (const [name, fn] of exprs.functions) {
+    const service = services.get(name)
+    const call = calls.calls.get(name)
+    const other = service?.owner ?? call?.owner
+    if (other !== undefined) {
+      throw new Error(
+        `[Pyreon] "${name}" is claimed by both "${other}" (a hook) and "${fn.owner}" (functions). ` +
+          `A name has exactly one lowering — remove one of the two plugins from this app.`,
+      )
+    }
+  }
   return Object.freeze({
     services,
     serviceTables: createServiceTables(services),
@@ -82,6 +103,8 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     unlowered: createUnloweredRegistry(ordered),
     runtimeTypes: createRuntimeTypeRegistry(ordered),
     parseRefinements: createParseRefinements(ordered),
+    propsTypes: createPropsTypeRegistry(ordered),
+    exprs,
   })
 }
 

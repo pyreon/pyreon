@@ -1,14 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { buildFlowHostHtml } from '../../../../fundamentals/flow/src/webview'
-import { transform } from '../index'
-import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from '../generated-flow-webview-host'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from '../../../../fundamentals/flow/src/native-plugin/webview-host.generated'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SOURCE = `
 import { FlowWebView as HostedFlow } from '@pyreon/flow/webview'

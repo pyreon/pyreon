@@ -21,7 +21,7 @@
  */
 
 import type { EmitContext } from './emit-context'
-import type { ExprIR, ExtDecl, ExtPayload } from './types'
+import type { ExprIR, ExtDecl, ExtPayload, TypeIR } from './types'
 
 /** The call a recognizer is asked about. */
 export interface CallSite {
@@ -41,9 +41,37 @@ export interface ParseContext {
   readonly declName: string
   /** Argument `index` when it is a string LITERAL, else `undefined` (a name, a template, a call, absent). */
   stringLiteralArg(index: number): string | undefined
-  /** Report a limitation to the author, attributed to the declaration. */
+  /** Report a limitation to the author, attributed to the declaration (the message is prefixed `Declaration <name>:`). */
   warn(message: string): void
+  /** Report a limitation to the author exactly as written — for a recognizer whose messages already name the declaration. */
+  report(message: string): void
+  /**
+   * The call's arguments exactly as written (ESTree nodes). A recognizer that
+   * reads a literal config object walks these; {@link ParseContext.expr}
+   * parses any sub-node the emitter should receive as an `ExprIR`.
+   */
+  readonly args: readonly AstNode[]
+  /** The first generic type argument (`createFlow<Row>(…)`) parsed to a type; `{ kind: 'unknown' }` when none was written. */
+  typeArg(): TypeIR
+  /** Parse an AST node to the IR expression the emitters consume. */
+  expr(node: AstNode): ExprIR
+  /**
+   * `node` with an identifier chain resolved through the file's static
+   * initializers (`const nodes = [...]` → the array literal), else `node`.
+   */
+  resolveStatic(node: AstNode | undefined): AstNode | undefined
+  /** `node` with parentheses and TypeScript-only layers (`as`, `satisfies`, `!`) removed. */
+  unwrap(node: AstNode | undefined): AstNode | undefined
+  /** An object property's static key (`a`, `'a'`, `` `a` ``), or `undefined` for a computed one. */
+  propKey(prop: AstNode | undefined): string | undefined
+  /** True for a computed key that is not a static string (`{ [kind]: … }`). */
+  hasDynamicKey(prop: AstNode | undefined): boolean
+  /** The source text of a dynamic key, bracketed, for a warning (`[kind]`). */
+  dynamicKeyText(prop: AstNode): string
 }
+
+/** An ESTree node as the parser produced it. A plugin reads it structurally. */
+export type AstNode = { readonly type: string; readonly [key: string]: unknown }
 
 /**
  * What a recognizer returns. The compiler stamps the owning `plugin` and the
@@ -61,7 +89,29 @@ export interface ExtDeclSpec {
 export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | undefined
 
 /** Renders one declaration type on each target. */
+/**
+ * What a declaration contributes to its component's lifecycle. Both are
+ * optional; a declaration with neither is pure state.
+ */
+export interface DeclLifecycle {
+  /**
+   * Swift attaches a mount-time modifier (`.task`) to its host view, and
+   * SwiftUI ties that task to the host's IDENTITY. A body that is a transparent
+   * conditional re-identifies on every state flip and the task restarts forever,
+   * so a component carrying such a declaration wraps its body in a concrete
+   * stable container. Set it when the declaration's emit appends a mount-time
+   * modifier.
+   */
+  readonly stableHost?: boolean | undefined
+  /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
+  swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
+  /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */
+  kotlin?(decl: ExtDecl, ctx: EmitContext): readonly string[]
+}
+
 export interface DeclEmitter {
+  /** Lifecycle contributions of this declaration type. */
+  readonly lifecycle?: DeclLifecycle | undefined
   /** One declaration line (or lines, joined with a newline). */
   swift(decl: ExtDecl, ctx: EmitContext): string
   /** One line, or several (joined with the same newline-and-indent a built-in multi-line declaration uses). */
@@ -181,6 +231,9 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
 const isJson = (value: unknown, seen: Set<object>): boolean => {
   if (value === null) return true
   switch (typeof value) {
+    // `undefined` survives `structuredClone` and is how the IR itself spells an absent slot (an
+    // untyped lambda parameter's `paramTypes[i]`), so a payload embedding an `ExprIR` carries it.
+    case 'undefined':
     case 'string':
     case 'boolean':
       return true
@@ -221,7 +274,7 @@ export function stampExtDecl(
   const payload = spec.payload ?? {}
   if (!isJson(payload, new Set())) {
     throw new Error(
-      `[Pyreon] Plugin "${owner}" declaration "${spec.type}" has a payload that is not JSON (functions, undefined, NaN, class instances and cycles are refused) — the compiler clones its IR between passes.`,
+      `[Pyreon] Plugin "${owner}" declaration "${spec.type}" has a payload that is not JSON (functions, NaN, class instances and cycles are refused) — the compiler clones its IR between passes.`,
     )
   }
   return { kind: 'ext', plugin: owner, type: spec.type, name, payload }

@@ -12,42 +12,28 @@ import { lowerWebViewDomStorage } from './webview-options'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
-import { allServices, bindServices, emitPluginDecl, findElementLowering, findScopeProvider, lowerPluginMemberCall, serviceFor, serviceLifecycle } from './registry-lookup'
+import {
+  allServices,
+  bindServices,
+  emitPluginDecl,
+  emitPreparations,
+  findElementLowering,
+  findScopeProvider,
+  intrinsicElementAdvice,
+  lowerPluginAssignValue,
+  lowerPluginFunction,
+  lowerPluginIdentifier,
+  lowerPluginIntrinsic,
+  lowerPluginMemberCall,
+  lowerPluginMemberRead,
+  lowerPluginReceiver,
+  pluginLifecycleLines,
+  pluginNeedsStableHost,
+  serviceFor,
+  serviceLifecycle,
+} from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
 import type { ServiceDescriptor } from './services'
-import {
-  HANDLED_FLOW_EDGE_FIELDS,
-  HANDLED_FLOW_NODE_FIELDS,
-  LOWERED_FLOW_CONFIG_PROPERTIES,
-  SWIFT_FLOW_STATE_INIT_LABELS,
-  DOUBLE_FLOW_CONFIG_PROPERTIES,
-  LOWERED_FLOW_METHODS,
-  LOWERED_FLOW_PROPERTY_READS,
-  droppedFlowFieldsWarning,
-  flowSignalWriteWarning,
-  resolveStaticFlowRendererMap,
-  unloweredFlowMemberWarning,
-  HANDLED_FLOW_WEBVIEW_PROPS,
-  collectFlowRendererComponents,
-  flowRectLiteralFields,
-  NODE_RESIZER_FOREIGN_NODE_WARNING,
-  nodeResizerTargetsAnotherNode,
-  classifyFlowPathMember,
-  unloweredFlowLiteralWarning,
-  unsupportedFlowOptionsWarning,
-  flowLayoutOptionsDroppedWarning,
-  FLOW_LAYOUT_OPTION_KEYS,
-  droppedNodeToolbarWarning,
-  addEdgeDropWarnings,
-  FLOW_MARKER_LITERAL_SHAPE,
-  droppedFlowEdgePatchWarning,
-  unifyFlowDataRows,
-  flowDataConflictWarning,
-} from './flow-lowering'
-import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
-import { lowerFlowPlainElement } from './flow-dom'
-import { PALETTE_STROKE, VIEWPORT_PORTAL_WARNING, planBaseEdge, planEdgeText } from './flow-base-edge'
-import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
   isCanonicalPrimitive,
@@ -59,8 +45,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { FLOW_ARBITRARY_PATH_WARNING, intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
-import { resolveFlowPathPaint, type FlowPathPaintValue } from './flow-path-paint'
+import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
   isCompoundExpr,
@@ -73,7 +58,6 @@ import {
   synthLiteralStructName,
   synthTypedStructName,
   namedInlineParamType,
-  isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
@@ -128,7 +112,7 @@ import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
-import { createSwiftEmitContext, type HostStateSlot, type SwiftEmitContext } from './emit-context'
+import { createSwiftEmitContext, type ComponentInfo, type HostStateSlot, type StructRegistry, type SwiftEmitContext, type WebViewFacade } from './emit-context'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -330,88 +314,10 @@ let _optionalSlotsAsRequired: Set<string> = new Set()
  */
 let _moduleViewHelpersSwift: Map<string, ViewHelper> = new Map()
 let _viewHelpersSwift: Map<string, ViewHelper> = new Map()
-type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
-let _flowComponentHandles: Map<string, StaticFlowHandle[]> = new Map()
-let _flowComponentsWithInvalidHandles: Set<string> = new Set()
-type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
-let _flowComponentResizers: Map<string, StaticFlowNodeResizer> = new Map()
-let _flowComponentsWithInvalidResizers: Set<string> = new Set()
-let _flowComponentsWithForeignResizer: Set<string> = new Set()
-type StaticFlowNodeToolbar = {
-  position: string
-  align: string
-  offset: number
-  showOnSelect: boolean
-  selectedOverride?: boolean
-  nodeIdOverride?: string
-  contentComponent: string
-}
-let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar[]> = new Map()
-/**
- * The exact `<NodeToolbar>` elements the up-front extraction lowered. The
- * element emitter decides per TOOLBAR, not per component: a node component
- * with one static toolbar and one inside a conditional lowers the first and
- * must still name the second as dropped. Keyed by IR node (one transform's
- * lifetime), so a WeakSet — nothing to reset or evict.
- */
-const _extractedFlowToolbars: WeakSet<ExprIR> = new WeakSet()
-/** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
-let _flowRendererComponents: Set<string> = new Set()
-/** The `<Flow nodeTypes>` renderers only (a `<NodeToolbar>` lowers nowhere else). */
-let _flowNodeRendererComponents: Set<string> = new Set()
-let _flowComponentsWithInvalidToolbars: Set<string> = new Set()
 let _activeComponentName = ''
 
-function collectStaticFlowNodeToolbars(expr: ExprIR): Extract<ExprIR, { kind: 'jsx-element' }>[] {
-  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return []
-  if (expr.kind === 'jsx-element' && expr.tag === 'NodeToolbar') return [expr]
-  return expr.children.flatMap((child) => child.kind === 'expr' ? collectStaticFlowNodeToolbars(child.expr) : [])
-}
 
-function collectStaticFlowNodeResizer(expr: ExprIR, propsParamName?: string): { config?: StaticFlowNodeResizer; invalid: boolean; foreignNodeId?: boolean } {
-  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
-  if (expr.kind === 'jsx-element' && expr.tag === 'NodeResizer') {
-    const read = (name: string): string | number | boolean | undefined => {
-      const attr = expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
-      return attr?.kind === 'attr' && attr.value.kind === 'literal' ? attr.value.value ?? undefined : undefined
-    }
-    const invalid = ['minWidth', 'minHeight', 'handleSize'].some((name) => expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === name) && typeof read(name) !== 'number') ||
-      expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === 'showEdgeHandles') && typeof read('showEdgeHandles') !== 'boolean'
-    return { invalid, foreignNodeId: nodeResizerTargetsAnotherNode(expr, propsParamName), config: {
-      minWidth: typeof read('minWidth') === 'number' ? read('minWidth') as number : 50,
-      minHeight: typeof read('minHeight') === 'number' ? read('minHeight') as number : 30,
-      handleSize: typeof read('handleSize') === 'number' ? read('handleSize') as number : 8,
-      showEdgeHandles: read('showEdgeHandles') === true,
-    } }
-  }
-  for (const child of expr.children) if (child.kind === 'expr') {
-    const found = collectStaticFlowNodeResizer(child.expr, propsParamName)
-    if (found.config || found.invalid) return found
-  }
-  return { invalid: false }
-}
 
-function collectStaticFlowHandles(expr: ExprIR): { handles: StaticFlowHandle[]; invalid: boolean } {
-  if (expr.kind === 'jsx-fragment' || expr.kind === 'jsx-element') {
-    const nested = expr.children
-      .filter((child) => child.kind === 'expr')
-      .map((child) => collectStaticFlowHandles(child.expr))
-    if (expr.kind === 'jsx-fragment' || expr.tag !== 'Handle') return { handles: nested.flatMap((entry) => entry.handles), invalid: nested.some((entry) => entry.invalid) }
-  } else return { handles: [], invalid: false }
-  const attr = (name: string) => expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
-  const literal = (name: string): string | number | undefined => {
-    const entry = attr(name)
-    if (entry?.kind !== 'attr') return undefined
-    if (entry.value.kind === 'literal' && (typeof entry.value.value === 'string' || typeof entry.value.value === 'number')) return entry.value.value
-    if (entry.value.kind === 'member' && entry.value.object.kind === 'identifier' && entry.value.object.name === 'Position') return entry.value.property.toLowerCase()
-    return undefined
-  }
-  const type = literal('type'), position = literal('position'), id = literal('id'), offset = literal('offset')
-  if (typeof type !== 'string' || typeof position !== 'string') {
-    return { handles: [], invalid: true }
-  }
-  return { handles: [{ ...(typeof id === 'string' ? { id } : {}), type, position, ...(typeof offset === 'number' ? { offset } : {}) }], invalid: false }
-}
 /**
  * Struct name → sorted-field-names key. Phase 2 follow-up to the
  * struct-emit PR. Used by the object-expression emit to detect when
@@ -627,12 +533,6 @@ let _syncedSignalNames: Set<string> = new Set()
 let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
-/** `createFlow(...)` bindings. Its PROPERTY reads (`flow.nodes()`→`flow.nodes`,
- *  edges/viewport/zoom) drop parens; its METHODS (addNode/selectNode/
- *  selectedNodes/…) flow through unchanged — see the call-site rewrite below. */
-let _flowStateNamesSwift: Set<string> = new Set()
-/** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
-let _flowStateLabelNamesSwift: Set<string> = new Set()
 /**
  * Per-component: binding name → service descriptor for every `service`
  * declaration (services.ts). The read-site rewrites consult it: `accessorReads`
@@ -1258,11 +1158,10 @@ export function emitSwift(
   _moduleConstExprs = new Map()
   // Per module: a declaration from a previous file must not make this file's `x.dispatch(...)` lower.
   _pluginScope = createPluginScope()
+  _moduleScope = _pluginScope
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
-  _flowRendererComponents = collectFlowRendererComponents(components, (name) => _moduleConstExprs.get(name))
-  _flowNodeRendererComponents = collectFlowRendererComponents(components, (name) => _moduleConstExprs.get(name), 'nodeTypes')
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
   _structTypedKeyToName = new Map()
@@ -1281,71 +1180,16 @@ export function emitSwift(
   _componentSlotsMap = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
   _moduleViewHelpersSwift = moduleViewHelpers(moduleDecls)
   _viewHelpersSwift = new Map(_moduleViewHelpersSwift)
-  _flowComponentHandles = new Map()
-  _flowComponentsWithInvalidHandles = new Set()
-  _flowComponentResizers = new Map()
-  _flowComponentsWithInvalidResizers = new Set()
-  _flowComponentsWithForeignResizer = new Set()
-  _flowComponentToolbars = new Map()
-  _flowComponentsWithInvalidToolbars = new Set()
-  const flowToolbarComponents: ComponentIR[] = []
-  const usedComponentNames = new Set(components.map((component) => component.name))
-  for (const component of components) {
-    const result = collectStaticFlowHandles(component.returnExpr)
-    _flowComponentHandles.set(component.name, result.handles)
-    if (result.invalid) _flowComponentsWithInvalidHandles.add(component.name)
-    const resizer = collectStaticFlowNodeResizer(component.returnExpr, component.propsParamName)
-    if (resizer.config) _flowComponentResizers.set(component.name, resizer.config)
-    if (resizer.invalid) _flowComponentsWithInvalidResizers.add(component.name)
-    if (resizer.foreignNodeId) _flowComponentsWithForeignResizer.add(component.name)
-    const toolbars = collectStaticFlowNodeToolbars(component.returnExpr)
-    for (const toolbar of toolbars) _extractedFlowToolbars.add(toolbar)
-    if (toolbars.length > 0) {
-      const parsedToolbars: StaticFlowNodeToolbar[] = []
-      for (const [toolbarIndex, toolbar] of toolbars.entries()) {
-      let contentComponent = `${component.name}PyreonNodeToolbar${toolbarIndex || ''}`
-      while (usedComponentNames.has(contentComponent)) contentComponent += '_'
-      usedComponentNames.add(contentComponent)
-      const read = (name: string): unknown => {
-        const entry = toolbar.attrs.find((candidate) => candidate.kind === 'attr' && candidate.name === name)
-        return entry?.kind === 'attr' && entry.value.kind === 'literal' ? entry.value.value : undefined
-      }
-      const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
-      const selectedExpr = toolbar.attrs.find((entry) => entry.kind === 'attr' && entry.name === 'selected')
-      const selectedValue = selectedExpr?.kind === 'attr' ? selectedExpr.value : undefined
-      const selectedUsesNode = selectedValue?.kind === 'identifier' && selectedValue.name === 'selected' || selectedValue?.kind === 'member' && selectedValue.property === 'selected'
-      const nodeIdExpr = toolbar.attrs.find((entry) => entry.kind === 'attr' && entry.name === 'nodeId')
-      const nodeIdValue = nodeIdExpr?.kind === 'attr' ? nodeIdExpr.value : undefined
-      const nodeIdUsesNode = nodeIdValue?.kind === 'identifier' && (nodeIdValue.name === 'id' || nodeIdValue.name === 'nodeId') || nodeIdValue?.kind === 'member' && (nodeIdValue.property === 'id' || nodeIdValue.property === 'nodeId')
-      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect'), selected = read('selected'), nodeId = read('nodeId')
-      const invalid = (has('position') && typeof position !== 'string') ||
-        (has('align') && typeof align !== 'string') ||
-        (has('offset') && typeof offset !== 'number') ||
-        (has('showOnSelect') && typeof showOnSelect !== 'boolean') ||
-        (has('selected') && typeof selected !== 'boolean' && !selectedUsesNode) ||
-        (has('nodeId') && typeof nodeId !== 'string' && !nodeIdUsesNode)
-      parsedToolbars.push({
-        position: typeof position === 'string' ? position : 'top',
-        align: typeof align === 'string' ? align : 'center',
-        offset: typeof offset === 'number' ? offset : 8,
-        showOnSelect: typeof showOnSelect === 'boolean' ? showOnSelect : true,
-        ...(!selectedUsesNode ? { selectedOverride: typeof selected === 'boolean' ? selected : false } : {}),
-        ...(typeof nodeId === 'string' ? { nodeIdOverride: nodeId } : {}),
-        contentComponent,
-      })
-      if (invalid) _flowComponentsWithInvalidToolbars.add(component.name)
-      flowToolbarComponents.push({
-        ...component,
-        name: contentComponent,
-        returnExpr: { kind: 'jsx-fragment', children: toolbar.children },
-      })
-      }
-      _flowComponentToolbars.set(component.name, parsedToolbars)
-    }
+  // Per-file library preparations (`CompilerPlugin.prepareEmit`): a plugin records what it learns about the
+  // file's components and may add components of its own, emitted after the file's.
+  const preparedComponents: ComponentIR[] = []
+  for (const { prepare } of emitPreparations()) {
+    const result = prepare({ components, moduleConst: (name) => _moduleConstExprs.get(name) }, swiftEmitContext(0))
+    if (result?.components !== undefined) preparedComponents.push(...result.components)
   }
-  for (const toolbarComponent of flowToolbarComponents) {
-    _componentNames.add(toolbarComponent.name)
-    _componentPropsMap.set(toolbarComponent.name, toolbarComponent.props)
+  for (const prepared of preparedComponents) {
+    _componentNames.add(prepared.name)
+    _componentPropsMap.set(prepared.name, prepared.props)
   }
   _layoutComponentNames = collectLayoutComponentNames(components)
   // Pre-pass: register each component's `params` prop shape so router
@@ -1482,7 +1326,7 @@ export function emitSwift(
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
-  for (const c of [...components, ...flowToolbarComponents]) componentParts.push(emitSwiftComponent(c))
+  for (const c of [...components, ...preparedComponents]) componentParts.push(emitSwiftComponent(c))
   // Emit synthesized anonymous-object structs (collected during component
   // emit) at module scope. Swift allows top-level type forward refs, so
   // ordering vs the components is irrelevant.
@@ -2449,7 +2293,6 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'debounced-value',
   'fetch',
   'form',
-  'flow-state',
   'hotkey',
   'on-mount',
   'query',
@@ -2597,8 +2440,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
-  _flowStateNamesSwift = new Set()
-  _flowStateLabelNamesSwift = new Set()
   _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
@@ -2659,12 +2500,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'flow-state') {
-      _flowStateNamesSwift.add(d.name)
-      if (d.nodes.some((node) => node.data.kind === 'object' && node.data.fields.some((field) => field.name === 'label'))) {
-        _flowStateLabelNamesSwift.add(d.name)
-      }
-    }
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
@@ -3014,7 +2849,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // around a body that did not need a stable host, which is inert, while
   // under-wrapping is the device-found restart bug.
   const needsStableLifecycleHost = c.decls.some(
-    (d) => LIFECYCLE_HOST_DECL_KINDS.has(d.kind) || serviceLifecycle(d) !== undefined,
+    (d) => LIFECYCLE_HOST_DECL_KINDS.has(d.kind) || serviceLifecycle(d) !== undefined || pluginNeedsStableHost(d),
   )
   if (needsStableLifecycleHost) {
     lines.push(`    ZStack {`)
@@ -3118,13 +2953,11 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`      }`)
   }
-  // `useFlow` owns its state for this component lifetime. Release callback
-  // captures and scheduled work on unmount; singleton `createFlow` remains
-  // caller-owned and is deliberately not disposed here.
+  // A plugin's own declarations may release what they hold when the view goes away
+  // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
-    if (d.kind === 'flow-state' && d.lifecycleOwned === true) {
-      lines.push(`      .onDisappear { ${swiftIdent(d.name)}.dispose() }`)
-    }
+    if (d.kind !== 'ext') continue
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
   }
   // useHotkey → a hidden shortcut Button in `.background`.
   //
@@ -4267,177 +4100,6 @@ function emitSwiftDecl(
   if (d.kind === 'size-class') {
     return `private var ${swiftIdent(d.name)}: String { pyreonSizeClass == .regular ? "regular" : "compact" }`
   }
-  // `@pyreon/flow` — a self-seeding @State PyreonFlowState. Fully
-  // self-contained (no `.onAppear` wiring — unlike table/sync, `createFlow`
-  // OWNS its data, not an external signal), so the whole node/edge literal
-  // config emits straight into the initializer. The row struct comes from
-  // inferring an ARRAY of every node's `data` sub-expression — the same
-  // "infer the element type of an array-of-objects" recipe `table-state`
-  // uses on its `dataBody`, just fed a synthetic array built from the
-  // literal `data` fields instead of a live signal read.
-  if (d.kind === 'flow-state') {
-    // The row struct comes from REGISTERING the first node's `data` field
-    // set via the SAME `synthLiteralStructName` registry every OTHER object
-    // literal in this file resolves through — not from `inferType` on a
-    // synthetic array. `inferType`'s object case only resolves a literal
-    // against an ALREADY-declared struct (see infer-type.ts's own comment:
-    // "the emit synthesizes an anonymous struct for it, but inference can't
-    // name that without the emitter's per-run registry"), so calling it on a
-    // one-off array built here found nothing and produced `Any` — the exact
-    // failure this comment exists to prevent a future edit from
-    // reintroducing. Registering FIRST (via the shared registry) guarantees
-    // this name is the SAME one each node's `data: {...}` literal resolves
-    // to below, since both hit the identical field-set key.
-    const dataRows = d.nodes.flatMap((node) => node.data.kind === 'object' ? [node.data.fields] : [])
-    const firstData = d.nodes[0]?.data
-    const rowFields = firstData?.kind === 'object' ? firstData.fields : []
-    let inferredRowType: TypeIR | undefined
-    let rowType = d.dataType !== undefined ? swiftType(d.dataType) : 'Any'
-    // An inline-object generic (`createFlow<{ label: string }>`) must name the
-    // SAME struct its `data: { label }` literals resolve to; a context-free
-    // `swiftType` cannot, and degraded it to the bare field type (`String`).
-    if (d.dataType?.kind === 'object') {
-      const declared =
-        _structTypedKeyToName.get(structShapeKey(d.dataType.fields)) ??
-        _structFieldsToName.get(d.dataType.fields.map((f) => f.name).sort().join(','))
-      const named = declared ?? synthTypedStructName(d.dataType.fields, _synthExprStructs, _synthExprStructKeys)
-      if (named !== null) {
-        rowType = named
-        inferredRowType = { kind: 'typeRef', name: named, args: [] }
-      }
-    }
-    if (d.dataType === undefined && dataRows.length > 0) {
-      // Unify by field NAMES and TYPES (see unifyFlowDataRows).
-      const { heterogeneous, fields, conflicts } = unifyFlowDataRows(dataRows, (value) => inferType(value, _activeInferCtx))
-      if (conflicts.length > 0) _emitWarnings.push(flowDataConflictWarning(d.name, conflicts, (t) => swiftType(t)))
-      if (heterogeneous) {
-        const name = synthStructName(_synthExprStructs.length)
-        _synthExprStructs.push({ name, fields })
-        inferredRowType = { kind: 'typeRef', name, args: [] }
-        rowType = name
-      } else {
-        rowType = resolveSwiftObjectStructName(rowFields) ?? 'Any'
-      }
-    }
-    const expectedRowType = inferredRowType ?? d.dataType
-    const nodeLits = d.nodes
-      .map((n) => {
-        const parts = [
-          `id: ${swiftStr(n.id)}`,
-          ...(n.type !== undefined ? [`type: ${swiftStr(n.type)}`] : []),
-          `position: PyreonXYPosition(x: ${swiftFlowCoord(n.positionX)}, y: ${swiftFlowCoord(n.positionY)})`,
-          `data: ${withExpectedType(expectedRowType, () => emitSwiftExpr(n.data, 0))}`,
-          ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
-          ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
-          ...(n.draggable !== undefined ? [`draggable: ${n.draggable}`] : []),
-          ...(n.selectable !== undefined ? [`selectable: ${n.selectable}`] : []),
-          ...(n.connectable !== undefined ? [`connectable: ${n.connectable}`] : []),
-          ...(n.focusable !== undefined ? [`focusable: ${n.focusable}`] : []),
-          ...(n.ariaLabel !== undefined ? [`ariaLabel: ${swiftStr(n.ariaLabel)}`] : []),
-          ...(n.hidden !== undefined ? [`hidden: ${n.hidden}`] : []),
-          ...(n.deletable !== undefined ? [`deletable: ${n.deletable}`] : []),
-          ...(n.cssClass !== undefined ? [`className: ${swiftStr(n.cssClass)}`] : []),
-          ...(n.style !== undefined ? [`style: ${swiftStr(n.style)}`] : []),
-          ...(n.parentId !== undefined ? [`parentId: ${swiftStr(n.parentId)}`] : []),
-          ...(n.extent !== undefined ? [`extent: PyreonFlowNodeExtent(minX: ${n.extent[0]}, minY: ${n.extent[1]}, maxX: ${n.extent[2]}, maxY: ${n.extent[3]})`] : []),
-          ...(n.extentParent === true ? ['extentParent: true'] : []),
-          ...(n.expandParent !== undefined ? [`expandParent: ${n.expandParent}`] : []),
-          ...(n.group !== undefined ? [`group: ${n.group}`] : []),
-          ...(n.sourceHandles !== undefined ? [`sourceHandles: ${swiftFlowParsedHandles(n.sourceHandles)}`] : []),
-          ...(n.targetHandles !== undefined ? [`targetHandles: ${swiftFlowParsedHandles(n.targetHandles)}`] : []),
-          ...(n.zIndex !== undefined ? [`zIndex: ${n.zIndex}`] : []),
-        ]
-        return `PyreonFlowNode(${parts.join(', ')})`
-      })
-      .join(', ')
-    const edgeLits = d.edges
-      .map((e) => {
-        const parts = [
-          `id: ${swiftStr(e.id)}`,
-          `source: ${swiftStr(e.source)}`,
-          `target: ${swiftStr(e.target)}`,
-          ...(e.sourceHandle !== undefined ? [`sourceHandle: ${swiftStr(e.sourceHandle)}`] : []),
-          ...(e.targetHandle !== undefined ? [`targetHandle: ${swiftStr(e.targetHandle)}`] : []),
-          ...(e.type !== undefined ? [`type: ${swiftStr(e.type)}`] : []),
-          ...(e.label !== undefined ? [`label: ${swiftStr(e.label)}`] : []),
-          ...(e.animated !== undefined ? [`animated: ${e.animated ? 'true' : 'false'}`, 'animatedSpecified: true'] : []),
-          ...(e.focusable !== undefined ? [`focusable: ${e.focusable}`] : []),
-          ...(e.ariaLabel !== undefined ? [`ariaLabel: ${swiftStr(e.ariaLabel)}`] : []),
-          ...(e.hidden !== undefined ? [`hidden: ${e.hidden}`] : []),
-          ...(e.deletable !== undefined ? [`deletable: ${e.deletable}`] : []),
-          ...(e.reconnectable !== undefined ? [`reconnectable: ${e.reconnectable}`] : []),
-          ...(e.interactionWidth !== undefined ? [`interactionWidth: ${e.interactionWidth}`] : []),
-          ...(e.cssClass !== undefined ? [`className: ${JSON.stringify(e.cssClass)}`] : []),
-          ...(e.style !== undefined ? [`style: ${JSON.stringify(e.style)}`] : []),
-          ...(e.data !== undefined && swiftFlowData(e.data) !== null ? [`data: ${swiftFlowData(e.data)}`] : []),
-          ...(e.pathOptions?.curvature !== undefined ? [`curvature: ${e.pathOptions.curvature}`] : []),
-          ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${e.pathOptions.borderRadius}`] : []),
-          ...(e.pathOptions?.offset !== undefined ? [`pathOffset: ${e.pathOptions.offset}`] : []),
-          ...(e.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(e.markerStart)}`] : []),
-          ...(e.markerEnd !== undefined ? [`markerEnd: ${e.markerEnd === null ? 'nil' : swiftFlowMarker(e.markerEnd)}`, 'markerEndSpecified: true'] : []),
-          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${swiftFlowCoord(p.x)}, y: ${swiftFlowCoord(p.y)})`).join(', ')}]`] : []),
-          ...(e.zIndex !== undefined ? [`zIndex: ${e.zIndex}`] : []),
-        ]
-        return `PyreonFlowEdge(${parts.join(', ')})`
-      })
-      .join(', ')
-    // `minZoom`/`maxZoom` are appended ONLY when the config supplied them, so
-    // an unconfigured `createFlow` emits byte-identically to before.
-    const zoomArgs = [
-      ...(d.minZoom !== undefined ? [`minZoom: ${d.minZoom}`] : []),
-      ...(d.maxZoom !== undefined ? [`maxZoom: ${d.maxZoom}`] : []),
-      ...(d.snapToGrid !== undefined ? [`snapToGrid: ${d.snapToGrid}`] : []),
-      ...(d.snapGrid !== undefined ? [`snapGrid: ${d.snapGrid}`] : []),
-      ...(d.nodeExtent !== undefined ? [`nodeExtent: PyreonFlowNodeExtent(minX: ${d.nodeExtent[0]}, minY: ${d.nodeExtent[1]}, maxX: ${d.nodeExtent[2]}, maxY: ${d.nodeExtent[3]})`] : []),
-      ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd: ${d.defaultMarkerEnd === null ? 'nil' : swiftFlowMarker(d.defaultMarkerEnd)}`] : []),
-      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
-      ...(d.panOnScrollSpeed !== undefined ? [`panOnScrollSpeed: ${d.panOnScrollSpeed}`] : []),
-      ...(['zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
-      ...(d.selectionMode !== undefined ? [`selectionMode: ${swiftStr(d.selectionMode)}`] : []),
-      ...(d.connectionMode !== undefined ? [`connectionMode: ${swiftStr(d.connectionMode)}`] : []),
-      ...(['elevateNodesOnSelect', 'elevateEdgesOnSelect', 'autoPanOnNodeDrag', 'autoPanOnConnect'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
-      ...(d.autoPanSpeed !== undefined ? [`autoPanSpeed: ${d.autoPanSpeed}`] : []),
-      ...(['multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
-      ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
-      ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
-      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType: ${swiftStr(d.defaultEdgeType)}`] : []),
-      ...(d.connectionLineType !== undefined ? [`connectionLineType: ${swiftStr(d.connectionLineType)}`] : []),
-      ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions: PyreonFlowDefaultEdgeOptions(${[
-        ...(d.defaultEdgeOptions.type !== undefined ? [`type: ${swiftStr(d.defaultEdgeOptions.type)}`] : []),
-        ...(d.defaultEdgeOptions.label !== undefined ? [`label: ${swiftStr(d.defaultEdgeOptions.label)}`] : []),
-        ...(d.defaultEdgeOptions.animated !== undefined ? [`animated: ${d.defaultEdgeOptions.animated}`] : []),
-        ...(d.defaultEdgeOptions.focusable !== undefined ? [`focusable: ${d.defaultEdgeOptions.focusable}`] : []),
-        ...(d.defaultEdgeOptions.ariaLabel !== undefined ? [`ariaLabel: ${swiftStr(d.defaultEdgeOptions.ariaLabel)}`] : []),
-        ...(d.defaultEdgeOptions.hidden !== undefined ? [`hidden: ${d.defaultEdgeOptions.hidden}`] : []),
-        ...(d.defaultEdgeOptions.deletable !== undefined ? [`deletable: ${d.defaultEdgeOptions.deletable}`] : []),
-        ...(d.defaultEdgeOptions.reconnectable !== undefined ? [`reconnectable: ${d.defaultEdgeOptions.reconnectable}`] : []),
-        ...(d.defaultEdgeOptions.interactionWidth !== undefined ? [`interactionWidth: ${d.defaultEdgeOptions.interactionWidth}`] : []),
-        ...(d.defaultEdgeOptions.pathOptions?.curvature !== undefined ? [`curvature: ${d.defaultEdgeOptions.pathOptions.curvature}`] : []),
-        ...(d.defaultEdgeOptions.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${d.defaultEdgeOptions.pathOptions.borderRadius}`] : []),
-        ...(d.defaultEdgeOptions.pathOptions?.offset !== undefined ? [`pathOffset: ${d.defaultEdgeOptions.pathOptions.offset}`] : []),
-        ...(d.defaultEdgeOptions.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(d.defaultEdgeOptions.markerStart)}`] : []),
-        ...(d.defaultEdgeOptions.markerEnd !== undefined ? [`markerEnd: ${d.defaultEdgeOptions.markerEnd === null ? 'nil' : swiftFlowMarker(d.defaultEdgeOptions.markerEnd)}`, 'markerEndSpecified: true'] : []),
-      ].join(', ')})`] : []),
-      ...(d.fitView !== undefined ? [`fitView: ${d.fitView}`] : []),
-      ...(d.fitViewPadding !== undefined ? [`fitViewPadding: ${d.fitViewPadding}`] : []),
-      ...(d.historyLimit !== undefined ? [`historyLimit: ${d.historyLimit}`] : []),
-      ...(d.connectionRules !== undefined ? [`connectionRules: [${Object.entries(d.connectionRules).map(([key, outputs]) => `${swiftStr(key)}: [${outputs.map((output) => swiftStr(output)).join(', ')}]`).join(', ')}]`] : []),
-      ...(d.connectionValidator !== undefined ? [`isValidConnection: ${emitSwiftExpr(d.connectionValidator, 0)}`] : []),
-      ...(rowFields.some((field) => field.name === 'label') ? ['searchText: { $0.label }'] : []),
-      ...(d.reducedMotion !== undefined ? [`reducedMotion: ${d.reducedMotion}`] : []),
-      ...(d.deleteKeys !== undefined ? [`deleteKeys: ${d.deleteKeys === null ? 'nil' : `[${d.deleteKeys.map((key) => JSON.stringify(key)).join(', ')}]`}`] : []),
-      ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key] === null ? 'nil' : JSON.stringify(d[key])}`]),
-      ...(d.preventScrolling !== undefined ? [`preventScrolling: ${d.preventScrolling}`] : []),
-    ]
-      // Swift requires labelled arguments in declaration order; sort by the
-      // init's own label order (see SWIFT_FLOW_STATE_INIT_LABELS). Stable, and
-      // a no-op for configs that were already in order.
-      .map((arg, i) => ({ arg, i, rank: swiftFlowInitRank(arg) }))
-      .sort((a, b) => a.rank - b.rank || a.i - b.i)
-      .map(({ arg }) => arg)
-      .join(', ')
-    return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
-  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable
@@ -4486,367 +4148,33 @@ function emitSwiftDecl(
   return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(inlineValueConsts(d.expr!), 0)} }`
 }
 
-/**
- * `addNode({...})` — construct a `PyreonFlowNode(...)` from a call-site
- * object literal. Same field walk as the decl-time recognizer
- * (`tryDeclFromCreateFlow` in parse.ts), but over an already-parsed `ExprIR`
- * rather than a raw AST node, and returning `null` (never warning) for any
- * shape it doesn't recognize — the caller falls through to generic emission,
- * which is correct for the common non-literal case (an identifier already
- * holding a `PyreonFlowNode`).
- */
-function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'object') return null
-  warnDroppedFlowFields(`createFlow binding \`${flowName}\` addNode(...)`, 'node', arg)
-  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
-  const idExpr = field('id')
-  const posExpr = field('position')
-  const dataExpr = field('data')
-  if (!idExpr || !posExpr || posExpr.kind !== 'object' || !dataExpr) return null
-  const posX = posExpr.fields.find((f) => f.name === 'x')?.value
-  const posY = posExpr.fields.find((f) => f.name === 'y')?.value
-  if (!posX || !posY) return null
-  const typeExpr = field('type')
-  const widthExpr = field('width')
-  const heightExpr = field('height')
-  const sourceHandlesExpr = field('sourceHandles')
-  const targetHandlesExpr = field('targetHandles')
-  const extentExpr = field('extent')
-  const extent = extentExpr ? swiftFlowNodeExtentArgs(extentExpr) : null
-  if (extentExpr && !extent) _emitWarnings.push(`createFlow binding \`${flowName}\` addNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
-  const beforeExtentFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable'] as const
-  const afterExtentFields = ['expandParent', 'group'] as const
-  const parts = [
-    `id: ${emitSwiftExpr(idExpr, 0)}`,
-    ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
-    `position: PyreonXYPosition(x: ${swiftFlowCoord(posX)}, y: ${swiftFlowCoord(posY)})`,
-    `data: ${emitSwiftExpr(dataExpr, 0)}`,
-    ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
-    ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
-    ...beforeExtentFields.flatMap((name) => {
-      const value = field(name)
-      return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
-    }),
-    ...(field('class') ? [`className: ${emitSwiftExpr(field('class')!, 0)}`] : []),
-    ...(field('style') ? [`style: ${emitSwiftExpr(field('style')!, 0)}`] : []),
-    ...(field('parentId') ? [`parentId: ${emitSwiftExpr(field('parentId')!, 0)}`] : []),
-    ...(extent ? extent : []),
-    ...afterExtentFields.flatMap((name) => {
-      const value = field(name)
-      return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
-    }),
-    ...(sourceHandlesExpr ? [`sourceHandles: ${swiftFlowHandlesLiteral(sourceHandlesExpr) ?? emitSwiftExpr(sourceHandlesExpr, 0)}`] : []),
-    ...(targetHandlesExpr ? [`targetHandles: ${swiftFlowHandlesLiteral(targetHandlesExpr) ?? emitSwiftExpr(targetHandlesExpr, 0)}`] : []),
-    ...(field('zIndex') ? [`zIndex: Double(${emitSwiftExpr(field('zIndex')!, 0)})`] : []),
-  ]
-  return `PyreonFlowNode(${parts.join(', ')})`
-}
 
-function swiftFlowNodeExtentArgs(expr: ExprIR): string[] | null {
-  if (expr.kind === 'literal' && expr.value === 'parent') return ['extentParent: true']
-  const args = swiftFlowExtentLiteral(expr)
-  return args ? [`extent: PyreonFlowNodeExtent(${args})`] : null
-}
 
-function swiftFlowParsedHandles(handles: StaticFlowHandle[]): string {
-  return `[${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id: ${swiftStr(h.id)}, `}type: ${swiftStr(h.type)}, position: .${h.position}${'offset' in h && typeof h.offset === 'number' ? `, offset: ${h.offset}` : ''})`).join(', ')}]`
-}
 
-const SWIFT_FLOW_INIT_RANK: ReadonlyMap<string, number> = new Map(SWIFT_FLOW_STATE_INIT_LABELS.map((label, i) => [label, i]))
-/** Declaration rank of one `label: value` init argument; an unknown label sorts last (and fails swiftc loudly). */
-function swiftFlowInitRank(arg: string): number {
-  return SWIFT_FLOW_INIT_RANK.get(arg.slice(0, arg.indexOf(':')).trim()) ?? Number.MAX_SAFE_INTEGER
-}
 
-function swiftFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
-  const args = [`type: ${swiftStr(marker.type)}`]
-  if (marker.color !== undefined) args.push(`color: ${swiftStr(marker.color)}`)
-  if (marker.width !== undefined) args.push(`width: ${marker.width}`)
-  if (marker.height !== undefined) args.push(`height: ${marker.height}`)
-  if (marker.strokeWidth !== undefined) args.push(`strokeWidth: ${marker.strokeWidth}`)
-  return `PyreonFlowMarker(${args.join(', ')})`
-}
 
-function swiftFlowMarkerLiteral(expr: ExprIR): string | null {
-  if (expr.kind === 'literal' && expr.value === null) return 'nil'
-  if (expr.kind === 'literal' && typeof expr.value === 'string') return swiftFlowMarker({ type: expr.value.toLowerCase() })
-  if (expr.kind === 'member') return swiftFlowMarker({ type: expr.property.toLowerCase() })
-  if (expr.kind !== 'object') return null
-  const field = (name: string) => expr.fields.find((f) => f.name === name)?.value
-  const type = field('type')
-  const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
-  if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
-  const args = [`type: ${swiftStr(typeName)}`]
-  for (const name of ['color', 'width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name}: ${emitSwiftExpr(value, 0)}`) }
-  return `PyreonFlowMarker(${args.join(', ')})`
-}
 
-function swiftFlowHandlesLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'array') return null
-  const parsed: { id?: string; type: string; position: string }[] = []
-  for (const item of arg.elements) {
-    if (item.kind !== 'object') return null
-    const field = (name: string) => item.fields.find((f) => f.name === name)?.value
-    const type = field('type'), position = field('position'), id = field('id')
-    if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
-    const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
-    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
-    parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
-  }
-  return swiftFlowParsedHandles(parsed)
-}
 
-function swiftFlowDataValue(expr: ExprIR): string | null {
-  if (expr.kind === 'literal') {
-    if (expr.value === null) return '.null'
-    if (typeof expr.value === 'string') return `.string(${JSON.stringify(expr.value)})`
-    if (typeof expr.value === 'number') return `.number(${expr.value})`
-    if (typeof expr.value === 'boolean') return `.bool(${expr.value})`
-    return null
-  }
-  if (expr.kind === 'array') {
-    const values = expr.elements.map(swiftFlowDataValue)
-    return values.some((value) => value === null) ? null : `.array([${values.join(', ')}])`
-  }
-  if (expr.kind === 'object' && (expr.spreads?.length ?? 0) === 0) {
-    const values = expr.fields.map((field) => {
-      const value = swiftFlowDataValue(field.value)
-      return value === null ? null : `${JSON.stringify(field.name)}: ${value}`
-    })
-    return values.some((value) => value === null) ? null : `.object(PyreonFlowData([${values.join(', ')}]))`
-  }
-  return null
-}
 
-function swiftFlowData(expr: ExprIR): string | null {
-  if (expr.kind !== 'object' || (expr.spreads?.length ?? 0) > 0) return null
-  const values = expr.fields.map((field) => {
-    const value = swiftFlowDataValue(field.value)
-    return value === null ? null : `${JSON.stringify(field.name)}: ${value}`
-  })
-  return values.some((value) => value === null) ? null : `PyreonFlowData([${values.join(', ')}])`
-}
 
-/** `addEdge({...})` — the `PyreonFlowEdge` twin of `swiftFlowNodeLiteral`. */
-function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'object') return null
-  warnDroppedFlowFields(`createFlow binding \`${flowName}\` addEdge(...)`, 'edge', arg)
-  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
-  const sourceExpr = field('source')
-  const targetExpr = field('target')
-  if (!sourceExpr || !targetExpr) return null
-  const idExpr = field('id')
-  const typeExpr = field('type')
-  const labelExpr = field('label')
-  const animatedExpr = field('animated')
-  const pathOptionsExpr = field('pathOptions')
-  const markerStartExpr = field('markerStart')
-  const markerEndExpr = field('markerEnd')
-  const waypointsExpr = field('waypoints')
-  const dataExpr = field('data')
-  _emitWarnings.push(...addEdgeDropWarnings(flowName, { pathOptions: pathOptionsExpr, markerStart: markerStartExpr, markerEnd: markerEndExpr }, (m) => swiftFlowMarkerLiteral(m) !== null))
-  const portableData = dataExpr ? swiftFlowData(dataExpr) : null
-  if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
-  const leadingFields = ['sourceHandle', 'targetHandle'] as const
-  const interactionFields = ['focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
-  const parts = [
-    `id: ${idExpr ? emitSwiftExpr(idExpr, 0) : `pyreonFlowEdgeId(source: ${emitSwiftExpr(sourceExpr, 0)}, target: ${emitSwiftExpr(targetExpr, 0)}${field('sourceHandle') ? `, sourceHandle: ${emitSwiftExpr(field('sourceHandle')!, 0)}` : ''}${field('targetHandle') ? `, targetHandle: ${emitSwiftExpr(field('targetHandle')!, 0)}` : ''})`}`,
-    `source: ${emitSwiftExpr(sourceExpr, 0)}`,
-    `target: ${emitSwiftExpr(targetExpr, 0)}`,
-    ...leadingFields.flatMap((name) => { const value = field(name); return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : [] }),
-    ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
-    ...(labelExpr ? [`label: ${emitSwiftExpr(labelExpr, 0)}`] : []),
-    ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`, 'animatedSpecified: true'] : []),
-    ...interactionFields.flatMap((name) => { const value = field(name); return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : [] }),
-    ...(field('class') ? [`className: ${emitSwiftExpr(field('class')!, 0)}`] : []),
-    ...(field('style') ? [`style: ${emitSwiftExpr(field('style')!, 0)}`] : []),
-    ...(portableData ? [`data: ${portableData}`] : []),
-    ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
-      const nativeName = name === 'offset' ? 'pathOffset' : name
-      return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName}: ${emitSwiftExpr(value, 0)}`] : []
-    }) : []),
-    ...(markerStartExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'nil' ? [`markerStart: ${marker}`] : [] })() : []),
-    ...(markerEndExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd: ${marker}`, 'markerEndSpecified: true'] : [] })() : []),
-    ...(waypointsExpr ? (() => {
-      const value = swiftFlowPositionsLiteral(waypointsExpr)
-      return [`waypoints: ${value ?? emitSwiftExpr(waypointsExpr, 0)}`]
-    })() : []),
-    ...(field('zIndex') ? [`zIndex: Double(${emitSwiftExpr(field('zIndex')!, 0)})`] : []),
-  ]
-  return `PyreonFlowEdge(${parts.join(', ')})`
-}
 
-function swiftFlowNodeListLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'array') return null
-  const nodes = arg.elements.map((item) => swiftFlowNodeLiteral(item, flowName))
-  return nodes.some((node) => node === null) ? null : `[${nodes.join(', ')}]`
-}
 
-function swiftFlowEdgeListLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'array') return null
-  const edges = arg.elements.map((item) => swiftFlowEdgeLiteral(item, flowName))
-  return edges.some((edge) => edge === null) ? null : `[${edges.join(', ')}]`
-}
 
-function swiftFlowPositionsLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'array') return null
-  const values: string[] = []
-  for (const item of arg.elements) {
-    const value = swiftFlowPositionLiteral(item)
-    if (value === null) return null
-    values.push(value)
-  }
-  return `[${values.join(', ')}]`
-}
 
-function swiftFlowReconnectLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'object') return null
-  const allowed = new Set(['source', 'target', 'sourceHandle', 'targetHandle'])
-  if (arg.fields.some((field) => !allowed.has(field.name))) return null
-  return arg.fields.map((field) => `, ${field.name}: ${emitSwiftExpr(field.value, 0)}`).join('')
-}
 
-function swiftFlowConnectionLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'object') return null
-  const field = (name: string): ExprIR | undefined => arg.fields.find((f) => f.name === name)?.value
-  const source = field('source'), target = field('target')
-  if (source === undefined || target === undefined) return null
-  const sourceHandle = field('sourceHandle'), targetHandle = field('targetHandle')
-  return `PyreonFlowConnection(source: ${emitSwiftExpr(source, 0)}, target: ${emitSwiftExpr(target, 0)}${sourceHandle ? `, sourceHandle: ${emitSwiftExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle: ${emitSwiftExpr(targetHandle, 0)}` : ''})`
-}
 
-const FLOW_VIEWPORT_KEYS: readonly string[] = ['x', 'y', 'zoom', 'duration']
-const FLOW_SET_CENTER_KEYS: readonly string[] = ['zoom', 'duration']
 
-/**
- * `setViewport` takes `{ x, y, zoom, duration }`; `setCenter(x, y, opts)` takes
- * only `{ zoom, duration }` (its position is the first two arguments, and the
- * native init has no `x`/`y` labels there), so the accepted keys are the
- * caller's.
- */
-function swiftFlowViewportLiteral(arg: ExprIR, keys: readonly string[] = FLOW_VIEWPORT_KEYS): string | null {
-  if (arg.kind !== 'object') return null
-  const allowed = new Set(keys)
-  if (arg.fields.some((field) => !allowed.has(field.name))) return null
-  return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
-}
 
-function resolveSwiftStaticFlowValue(arg: ExprIR): ExprIR {
-  let value = inlineValueConsts(arg)
-  const seen = new Set<string>()
-  for (;;) {
-    while (value.kind === 'paren') value = value.inner
-    if (value.kind !== 'identifier' || seen.has(value.name)) return value
-    const next = _moduleConstExprs.get(value.name)
-    if (next === undefined) return value
-    seen.add(value.name)
-    value = inlineValueConsts(next)
-  }
-}
 
-function swiftFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
-  if (arg === undefined) return undefined
-  if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
-  const duration = arg.fields.find((field) => field.name === 'duration')?.value
-  return duration === undefined ? undefined : emitSwiftExpr(duration, 0)
-}
 
-function swiftFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string | null | undefined {
-  if (arg === undefined) return undefined
-  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
-  const supported = new Set(['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration'])
-  if (arg.fields.some((field) => !supported.has(field.name))) return null
-  const fields = arg.fields.map(({ name, value }) => `${name}: ${emitSwiftExpr(value, indent)}`)
-  return `PyreonFlowLayoutOptions(${fields.join(', ')})`
-}
 
-const FLOW_PATH_HELPERS = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
 
-function swiftFlowPositionExpr(value: ExprIR): string | null {
-  if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `.${value.property.toLowerCase()}`
-  if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `.${value.value}`
-  if (value.kind === 'call') return emitSwiftExpr(value, 0)
-  return null
-}
 
-function swiftFlowGeometryLiteral(arg: ExprIR, fields: readonly string[], typeName: string, indent: number): string | null {
-  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0 || arg.fields.length !== fields.length) return null
-  const values = new Map(arg.fields.map((field) => [field.name, field.value]))
-  if (fields.some((field) => !values.has(field))) return null
-  return `${typeName}(${fields.map((field) => `${field}: ${emitSwiftExpr(values.get(field)!, indent)}`).join(', ')})`
-}
 
-function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
-  if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
-  const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
-  const commonFields = ['sourceX', 'sourceY', 'targetX', 'targetY']
-  const optionalFields = name === 'getStraightPath' ? []
-    : name === 'getWaypointPath' ? ['waypoints']
-    : name === 'getBezierPath' ? ['sourcePosition', 'targetPosition', 'curvature']
-    : name === 'getSmoothStepPath' ? ['sourcePosition', 'targetPosition', 'borderRadius', 'offset']
-    : ['sourcePosition', 'targetPosition', 'offset']
-  const allowed = new Set([...commonFields, ...optionalFields])
-  if (arg.fields.some((field) => !allowed.has(field.name))) return null
-  const required = (key: string): string | null => fields.has(key) ? emitSwiftExpr(fields.get(key)!, indent) : null
-  const sx = required('sourceX'), sy = required('sourceY'), tx = required('targetX'), ty = required('targetY')
-  if (sx === null || sy === null || tx === null || ty === null) return null
-  const position = (key: string, fallback: string): string | null => {
-    const value = fields.get(key)
-    if (value === undefined) return fallback
-    return swiftFlowPositionExpr(value)
-  }
-  if (name === 'getStraightPath') return `pyreonStraightPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty})`
-  if (name === 'getWaypointPath') {
-    const waypoints = fields.get('waypoints')
-    if (waypoints?.kind !== 'array') return null
-    const points = waypoints.elements.map((point) => {
-      if (point.kind !== 'object') return null
-      const x = point.fields.find((field) => field.name === 'x')?.value
-      const y = point.fields.find((field) => field.name === 'y')?.value
-      return x && y ? `PyreonXYPosition(x: ${swiftFlowCoord(x, indent)}, y: ${swiftFlowCoord(y, indent)})` : null
-    })
-    if (points.some((point) => point === null)) return null
-    return `pyreonWaypointPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty}, waypoints: [${points.join(', ')}])`
-  }
-  const sourcePosition = position('sourcePosition', '.bottom'), targetPosition = position('targetPosition', '.top')
-  if (sourcePosition === null || targetPosition === null) return null
-  const common = `sourceX: ${sx}, sourceY: ${sy}, sourcePosition: ${sourcePosition}, targetX: ${tx}, targetY: ${ty}, targetPosition: ${targetPosition}`
-  if (name === 'getBezierPath') return `pyreonBezierPath(${common}${fields.has('curvature') ? `, curvature: ${emitSwiftExpr(fields.get('curvature')!, indent)}` : ''})`
-  const extra = [
-    ...(name === 'getSmoothStepPath' && fields.has('borderRadius') ? [`borderRadius: ${emitSwiftExpr(fields.get('borderRadius')!, indent)}`] : []),
-    ...(fields.has('offset') ? [`offset: ${emitSwiftExpr(fields.get('offset')!, indent)}`] : []),
-  ]
-  return `${name === 'getStepPath' ? 'pyreonStepPath' : 'pyreonSmoothStepPath'}(${common}${extra.length ? `, ${extra.join(', ')}` : ''})`
-}
 
-function swiftFlowExtentLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'array' || arg.elements.length !== 2) return null
-  const [minPoint, maxPoint] = arg.elements
-  if (minPoint?.kind !== 'array' || maxPoint?.kind !== 'array' || minPoint.elements.length !== 2 || maxPoint.elements.length !== 2) return null
-  return `minX: ${emitSwiftExpr(minPoint.elements[0]!, 0)}, minY: ${emitSwiftExpr(minPoint.elements[1]!, 0)}, maxX: ${emitSwiftExpr(maxPoint.elements[0]!, 0)}, maxY: ${emitSwiftExpr(maxPoint.elements[1]!, 0)}`
-}
 
-/** Names every literal field the native node/edge type does not carry. */
-function warnDroppedFlowFields(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
-  if (lit.kind !== 'object') return
-  const handled = kind === 'node' ? HANDLED_FLOW_NODE_FIELDS : HANDLED_FLOW_EDGE_FIELDS
-  const dropped = lit.fields.map((f) => f.name).filter((n) => !handled.has(n))
-  if (dropped.length > 0) _emitWarnings.push(droppedFlowFieldsWarning(site, kind, dropped))
-}
 
-/** `undefined` / `null` in a Swift argument position. */
-function isNilArg(x: ExprIR): boolean {
-  return (x.kind === 'literal' && x.value === null) || (x.kind === 'identifier' && x.name === 'undefined') || (x.kind as string) === 'null' || (x.kind as string) === 'undefined'
-}
 
-/** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
-function swiftFlowPositionLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'object') return null
-  const x = arg.fields.find((f) => f.name === 'x')?.value
-  const y = arg.fields.find((f) => f.name === 'y')?.value
-  if (!x || !y) return null
-  return `PyreonXYPosition(x: ${swiftFlowCoord(x)}, y: ${swiftFlowCoord(y)})`
-}
 
 /**
  * Run `fn` with the given names typed in BOTH inference contexts (they alias
@@ -5436,15 +4764,10 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       }
     case 'assign': {
       const value = emitSwiftExpr(s.value, indent)
-      // A Double-typed Flow config property takes a Double. A numeric literal
-      // already infers as one; an Int EXPRESSION would not compile.
-      const t = s.target
-      const flowDouble =
-        t.kind === 'member' && t.object.kind === 'member' && t.object.property === 'config' &&
-        t.object.object.kind === 'identifier' && _flowStateNamesSwift.has(t.object.object.name) &&
-        DOUBLE_FLOW_CONFIG_PROPERTIES.has(t.property) &&
-        !(s.value.kind === 'literal' && typeof s.value.value === 'number')
-      return `${emitSwiftExpr(s.target, indent)} ${s.op} ${flowDouble ? `Double(${value})` : value}`
+      // A plugin that owns the assignment's receiver may re-spell the VALUE (a Double-typed
+      // config property takes a Double; an Int expression would not compile).
+      const spelled = lowerPluginAssignValue({ target: s.target, op: s.op, value: s.value, emitted: value }, 'swift', _pluginScope, () => swiftEmitContext(indent))
+      return `${emitSwiftExpr(s.target, indent)} ${s.op} ${spelled ?? value}`
     }
     case 'return': {
       const ex = s.expr
@@ -5902,15 +5225,6 @@ function uniqueSwiftStructName(synth: SwiftSynthCtx, base: string): string {
   return `${base}${i}`
 }
 
-/**
- * A flow coordinate as a Swift Double. A literal already converts; an integer
- * EXPRESSION (`col * 200` in a loop) does not, and `Double(_:)` is identity on
- * a Double, so a non-literal is wrapped without needing its inferred type.
- */
-function swiftFlowCoord(x: ExprIR, indent = 0): string {
-  const text = emitSwiftExpr(x, indent)
-  return isNumericLiteralOrNegation(x) ? text : `Double(${text})`
-}
 
 export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): string {
   switch (t.kind) {
@@ -6156,11 +5470,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         return `${e.value}.0`
       }
       return String(e.value)
-    case 'identifier':
-      if (e.name === 'DEFAULT_NODE_WIDTH') return '150'
-      if (e.name === 'DEFAULT_NODE_HEIGHT') return '40'
-      if (e.name === 'DEFAULT_MARKER_END') return 'pyreonFlowDefaultMarkerEnd'
+    case 'identifier': {
+      const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
+      if (constant !== undefined) return constant
       return swiftIdent(e.name)
+    }
     case 'await':
       // M4.5: `await x.method()` — emit the `await` keyword before the awaited
       // expression. Only reachable inside an `async` arrow, whose action
@@ -6197,6 +5511,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'swift', _pluginScope, () => swiftEmitContext(indent))
       if (pluginLowered !== undefined) return pluginLowered
+      // A call, or a chain, rooted at a binding a plugin's declaration created (`flow.nodes.set(x)`).
+      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(indent))
+      if (rooted !== undefined) return rooted
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypes.get(e.callee.name)
         if (paramTypes !== undefined) {
@@ -6205,88 +5522,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypes.set(arg, pt)
           })
         }
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === '__pyreonFlowComputeLayout' && e.args.length >= 2 && e.args.length <= 4) {
-        const options = swiftFlowLayoutOptions(e.args[3], indent)
-        if (options !== null) {
-          const args = [
-            emitSwiftExpr(e.args[0]!, indent),
-            `edges: ${emitSwiftExpr(e.args[1]!, indent)}`,
-            ...(e.args[2] ? [`algorithm: ${emitSwiftExpr(e.args[2]!, indent)}`] : []),
-            ...(options ? [`options: ${options}`] : []),
-          ]
-          return `pyreonComputeFlowLayout(${args.join(', ')})`
-        }
-        _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && FLOW_PATH_HELPERS.has(e.callee.name) && e.args.length === 1) {
-        const lowered = swiftFlowPathHelper(e.callee.name, e.args[0], indent)
-        if (lowered !== null) return lowered
-        _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveMarker' && e.args.length === 1) {
-        const marker = swiftFlowMarkerLiteral(e.args[0]!) ?? emitSwiftExpr(e.args[0]!, indent)
-        return `pyreonResolveFlowMarker(${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'markerId' && e.args.length === 1) {
-        const marker = swiftFlowMarkerLiteral(e.args[0]!) ?? emitSwiftExpr(e.args[0]!, indent)
-        return `pyreonFlowMarkerId(${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveEdgeMarkers' && e.args.length === 2) {
-        const marker = swiftFlowMarkerLiteral(e.args[1]!) ?? emitSwiftExpr(e.args[1]!, indent)
-        return `pyreonResolveFlowEdgeMarkers(${emitSwiftExpr(e.args[0]!, indent)}, defaultMarkerEnd: ${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'collectEdgeMarkers' && e.args.length === 2) {
-        const marker = swiftFlowMarkerLiteral(e.args[1]!) ?? emitSwiftExpr(e.args[1]!, indent)
-        return `pyreonCollectFlowEdgeMarkers(${emitSwiftExpr(e.args[0]!, indent)}, defaultMarkerEnd: ${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
-        const position = swiftFlowPositionExpr(e.args[0]!)
-        if (position !== null) return `pyreonHandlePosition(${position}, nodeX: ${emitSwiftExpr(e.args[1]!, indent)}, nodeY: ${emitSwiftExpr(e.args[2]!, indent)}, nodeWidth: ${emitSwiftExpr(e.args[3]!, indent)}, nodeHeight: ${emitSwiftExpr(e.args[4]!, indent)})`
-        _emitWarnings.push('getHandlePosition requires a literal Position value to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getEdgePath' && (e.args.length === 7 || e.args.length === 8)) {
-        const sourcePosition = swiftFlowPositionExpr(e.args[3]!)
-        const targetPosition = swiftFlowPositionExpr(e.args[6]!)
-        const options = e.args[7]
-        const allowed = new Set(['borderRadius', 'offset', 'curvature'])
-        if (sourcePosition !== null && targetPosition !== null && (options === undefined || (options.kind === 'object' && (options.spreads?.length ?? 0) === 0 && options.fields.every((field) => allowed.has(field.name))))) {
-          const extras = options?.kind === 'object' ? options.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, indent)}`) : []
-          return `pyreonEdgePath(type: ${emitSwiftExpr(e.args[0]!, indent)}, sourceX: ${emitSwiftExpr(e.args[1]!, indent)}, sourceY: ${emitSwiftExpr(e.args[2]!, indent)}, sourcePosition: ${sourcePosition}, targetX: ${emitSwiftExpr(e.args[4]!, indent)}, targetY: ${emitSwiftExpr(e.args[5]!, indent)}, targetPosition: ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
-        }
-        _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getNodeIntersection' && e.args.length === 2) {
-        const box = swiftFlowGeometryLiteral(e.args[0]!, ['x', 'y', 'width', 'height'], 'PyreonFlowRect', indent)
-        const toward = swiftFlowGeometryLiteral(e.args[1]!, ['x', 'y'], 'PyreonXYPosition', indent)
-        if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, toward: ${toward})`
-        _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getEffectiveDimensions' && (e.args.length === 1 || e.args.length === 2)) {
-        if (e.args[0]!.kind !== 'object' && (e.args[1] === undefined || e.args[1]!.kind !== 'object')) {
-          return `pyreonEffectiveDimensions(${emitSwiftExpr(e.args[0]!, indent)}${e.args[1] ? `, measurement: ${emitSwiftExpr(e.args[1], indent)}` : ''})`
-        }
-        _emitWarnings.push('getEffectiveDimensions requires native Flow node/measurement expressions rather than anonymous object literals.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getFloatingEndpoints' && e.args.length === 3) {
-        const dimensions = swiftFlowGeometryLiteral(e.args[2]!, ['sourceW', 'sourceH', 'targetW', 'targetH'], 'PyreonFlowNodeBoxDimensions', indent)
-        if (e.args[0]!.kind !== 'object' && e.args[1]!.kind !== 'object' && dimensions !== null) {
-          return `pyreonGetFloatingEndpoints(${emitSwiftExpr(e.args[0]!, indent)}, targetNode: ${emitSwiftExpr(e.args[1]!, indent)}, dimensions: ${dimensions})`
-        }
-        _emitWarnings.push('getFloatingEndpoints requires native Flow node expressions and a literal { sourceW, sourceH, targetW, targetH } dimensions object.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getSmartHandlePositions' && (e.args.length === 2 || e.args.length === 3)) {
-        const dimensions = e.args[2] === undefined ? undefined : swiftFlowGeometryLiteral(e.args[2], ['sourceW', 'sourceH', 'targetW', 'targetH'], 'PyreonFlowNodeBoxDimensions', indent)
-        if (e.args[0]!.kind !== 'object' && e.args[1]!.kind !== 'object' && dimensions !== null) {
-          return `pyreonGetSmartHandlePositions(${emitSwiftExpr(e.args[0]!, indent)}, targetNode: ${emitSwiftExpr(e.args[1]!, indent)}${dimensions ? `, dimensions: ${dimensions}` : ''})`
-        }
-        _emitWarnings.push('getSmartHandlePositions requires native Flow node expressions and, when provided, a literal { sourceW, sourceH, targetW, targetH } dimensions object.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveHandleAnchor' && (e.args.length === 4 || e.args.length === 5)) {
-        if (e.args[0]!.kind !== 'object' && e.args[3]!.kind !== 'object' && (e.args[4] === undefined || e.args[4]!.kind !== 'object')) {
-          return `pyreonResolveHandleAnchor(${emitSwiftExpr(e.args[0]!, indent)}, handleId: ${emitSwiftExpr(e.args[1]!, indent)}, type: ${emitSwiftExpr(e.args[2]!, indent)}, dimensions: ${emitSwiftExpr(e.args[3]!, indent)}${e.args[4] ? `, measurement: ${emitSwiftExpr(e.args[4], indent)}` : ''})`
-        }
-        _emitWarnings.push('resolveHandleAnchor requires native Flow node, dimensions, and measurement expressions rather than anonymous object literals.')
+        // A plain `name(args)` call a plugin claims (a library helper function).
+        const helper = lowerPluginFunction(e.callee.name, e.args, 'swift', () => swiftEmitContext(indent))
+        if (helper !== undefined) return helper
       }
       // Chart decimators consume `[Double]`; TypeScript `number[]` can be
       // represented as `[Int]` when its initializer is wholly integral.
@@ -6738,371 +5976,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // PyreonFlowState struct-literal ARGUMENTS: `addNode({...})` /
-      // `addEdge({...})` / `updateNodePosition(id, {...})` pass an object
-      // literal where the callee expects a NAMED runtime type
-      // (`PyreonFlowNode<Row>` / `PyreonFlowEdge` / `PyreonXYPosition`).
-      // Swift's type system is nominal, so the generic object-literal path
-      // (which would synthesize its OWN unrelated `__ObjN` struct — same
-      // field names, different type) cannot satisfy the parameter; this
-      // rewrite constructs the RIGHT type by name instead. Falls through to
-      // generic emission (unchanged) when the argument isn't a literal an
-      // already-typed variable reference is the common non-literal case,
-      // and needs no rewrite at all.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _flowStateNamesSwift.has(e.callee.object.name)
-      ) {
-        const flowName = e.callee.object.name
-        const member = e.callee.property
-        const flowPatchArg = e.args[1] === undefined ? undefined : resolveSwiftStaticFlowValue(e.args[1])
-        const flowPatchBody = flowPatchArg?.kind === 'arrow' && flowPatchArg.body.kind === 'paren' ? flowPatchArg.body.inner : flowPatchArg?.kind === 'arrow' ? flowPatchArg.body : undefined
-        const flowPatchCallback = member === 'updateNodeData' && flowPatchArg?.kind === 'arrow' && flowPatchArg.params.length === 1 && flowPatchBody?.kind === 'object' && (flowPatchBody.spreads?.length ?? 0) === 0
-        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (flowPatchArg?.kind !== 'object' || (flowPatchArg.spreads?.length ?? 0) > 0)) {
-          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
-        }
-        if (e.args.length === 0 && member === 'getNodes') return `${swiftIdent(flowName)}.nodes`
-        if (e.args.length === 0 && member === 'getEdges') return `${swiftIdent(flowName)}.edges`
-        if (e.args.length === 0 && member === 'getViewport') return `${swiftIdent(flowName)}.viewport`
-        if (member === '_clearNodeMeasurement' && e.args.length === 1) return `${swiftIdent(flowName)}.clearNodeMeasurement(${emitSwiftExpr(e.args[0]!, indent)})`
-        if (member === '_setNodeMeasurement' && (e.args.length === 3 || e.args.length === 4)) {
-          const baseArgs = `${emitSwiftExpr(e.args[0]!, indent)}, width: ${emitSwiftExpr(e.args[1]!, indent)}, height: ${emitSwiftExpr(e.args[2]!, indent)}`
-          if (e.args.length === 3) return `${swiftIdent(flowName)}.updateNodeMeasurement(${baseArgs})`
-          const handles = e.args[3]!
-          if (handles.kind === 'array') {
-            const emitted = handles.elements.map((item) => {
-              if (item.kind !== 'object') return null
-              const fields = new Map(item.fields.map((field) => [field.name, field.value]))
-              const position = fields.get('position')
-              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || typeof position.value !== 'string') return null
-              return `PyreonFlowMeasuredHandle(id: ${emitSwiftExpr(fields.get('id')!, indent)}, type: ${emitSwiftExpr(fields.get('type')!, indent)}, position: .${position.value}, x: ${emitSwiftExpr(fields.get('x')!, indent)}, y: ${emitSwiftExpr(fields.get('y')!, indent)})`
-            })
-            if (emitted.every((value) => value !== null)) return `${swiftIdent(flowName)}.updateNodeMeasurement(${baseArgs}, handles: [${emitted.join(', ')}])`
-          }
-          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array to lower natively.`)
-        }
-        // Nothing silent inside the boundary: every member that is not in the
-        // v1 surface is NAMED here (it is still emitted as written — the native
-        // build is where it fails, but now the author heard about it first).
-        if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
-          _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
-        }
-        // Every `on*` listener on the port takes a ONE-argument callback, and the
-        // web lets a subscriber ignore that argument (`flow.onConnectStart(() =>
-        // count++)`). A zero-parameter Swift closure in that position is
-        // "contextual type for closure argument list expects 1 argument" —
-        // Kotlin's one-parameter lambda already accepts the bare form.
-        if (member.startsWith('on') && LOWERED_FLOW_METHODS.has(member) && e.args.length === 1) {
-          const callback = e.args[0]!
-          if (callback.kind === 'arrow' && callback.params.length === 0) {
-            const closure = emitSwiftExpr(callback, indent)
-            if (closure.startsWith('{')) return `${swiftIdent(flowName)}.${member}({ _ in${closure.slice(1)})`
-          }
-        }
-        // Swift's labeled parameters: the web call is positional, the port's
-        // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
-        if ((member === 'selectNode' || member === 'selectNodes' || member === 'selectEdge') && e.args.length === 2) {
-          return `${swiftIdent(flowName)}.${member}(${emitSwiftExpr(e.args[0]!, indent)}, additive: ${emitSwiftExpr(e.args[1]!, indent)})`
-        }
-        if (member === 'fitView' && e.args.length >= 1) {
-          const first = e.args[0]!
-          const ids = isNilArg(first) ? 'nil' : emitSwiftExpr(first, indent)
-          const duration = swiftFlowDurationOption(e.args[2])
-          if (duration !== null) return `${swiftIdent(flowName)}.fitView(${ids}${e.args[1] ? `, padding: ${emitSwiftExpr(e.args[1]!, indent)}` : ''}${duration ? `, duration: ${duration}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'fitView', ['duration'], e.args[2]!))
-        }
-        if (member === 'paste' && e.args.length === 1) {
-          const lit = swiftFlowPositionLiteral(resolveSwiftStaticFlowValue(e.args[0]!))
-          if (lit !== null) return `${swiftIdent(flowName)}.paste(${lit})`
-          if (resolveSwiftStaticFlowValue(e.args[0]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'addNode' && e.args.length === 1) {
-          const lit = swiftFlowNodeLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
-          if (lit !== null) return `${swiftIdent(flowName)}.addNode(${lit})`
-        }
-        if (member === 'addEdge' && e.args.length === 1) {
-          const lit = swiftFlowEdgeLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
-          if (lit !== null) return `${swiftIdent(flowName)}.addEdge(${lit})`
-        }
-        if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
-          const lit = swiftFlowPositionLiteral(resolveSwiftStaticFlowValue(e.args[1]!))
-          if (lit !== null) {
-            return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
-          }
-          if (resolveSwiftStaticFlowValue(e.args[1]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(e.callee.object.name, '`updateNodePosition(...)` argument 2', 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
-          const patch = flowPatchArg
-          if (!patch.spreads || patch.spreads.length === 0) {
-            const assignments = patch.fields.map(({ name, value }) => `data.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`).join('; ')
-            return `${swiftIdent(flowName)}.updateNodeData(${emitSwiftExpr(e.args[0]!, indent)}) { data in ${assignments} }`
-          }
-        }
-        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchCallback && flowPatchArg?.kind === 'arrow' && flowPatchBody?.kind === 'object') {
-          const callback = flowPatchArg
-          const assignments = flowPatchBody.fields.map(({ name, value }) => {
-            const resolved = substituteIdentifier(value, callback.params[0]!, { kind: 'identifier', name: 'node' }) ?? value
-            return `data.${swiftIdent(name)} = ${emitSwiftExpr(resolved, indent)}`
-          }).join('; ')
-          return `${swiftIdent(flowName)}.updateNodeDataFromNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in var data = node.data; ${assignments}; return data }`
-        }
-        if (member === 'updateNode' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
-          const patch = flowPatchArg
-          if (!patch.spreads || patch.spreads.length === 0) {
-            warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
-            const statements = patch.fields.flatMap(({ name, value }) => {
-              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
-              // A literal lowers to the native constructor; a NON-literal value
-              // passes through as written (the addNode rule). Only a literal of
-              // the right kind but the wrong shape is dropped — and named.
-              if (name === 'position') {
-                const position = swiftFlowPositionLiteral(value)
-                if (position) return [`node.position = ${position}`]
-                if (value.kind === 'object') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateNode(...) field `position`', 'a `{ x, y }` literal with both coordinates')); return [] }
-                return [`node.position = ${emitSwiftExpr(value, indent)}`]
-              }
-              if (name === 'data' && value.kind === 'object') return value.fields.map((field) => `node.data.${swiftIdent(field.name)} = ${emitSwiftExpr(field.value, indent)}`)
-              if ((name === 'sourceHandles' || name === 'targetHandles')) {
-                const handles = swiftFlowHandlesLiteral(value)
-                if (handles) return [`node.${name} = ${handles}`]
-                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `updateNode(...) field \`${name}\``, "an array of `{ type, position }` literals (a string `type`, a literal side, an optional string `id`)")); return [] }
-                return [`node.${name} = ${emitSwiftExpr(value, indent)}`]
-              }
-              if (name === 'extent') {
-                const extent = swiftFlowNodeExtentArgs(value)
-                if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
-                return extent ? extent.map((part) => part === 'extentParent: true' ? 'node.extent = nil; node.extentParent = true' : `node.${part.replace(':', ' =')}; node.extentParent = false`) : []
-              }
-              if (name === 'class') return [`node.className = ${emitSwiftExpr(value, indent)}`]
-              return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`node.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
-            })
-            return `${swiftIdent(flowName)}.updateNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in ${statements.join('; ')} }`
-          }
-        }
-        if (member === 'updateEdge' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
-          const patch = flowPatchArg
-          if (!patch.spreads || patch.spreads.length === 0) {
-            warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
-            const statements = patch.fields.flatMap(({ name, value }) => {
-              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'pathOptions') {
-                if (value.kind !== 'object' || (value.spreads?.length ?? 0) > 0) { _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, 'pathOptions', 'an inline object literal')); return [] }
-                const unknown = value.fields.filter((field) => !['curvature', 'borderRadius', 'offset'].includes(field.name)).map((field) => field.name)
-                if (unknown.length > 0) _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, `pathOptions.${unknown.join('/')}`, 'one of `curvature`, `borderRadius`, `offset`'))
-                return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`edge.${field.name === 'offset' ? 'pathOffset' : field.name} = ${emitSwiftExpr(field.value, indent)}`] : [])
-              }
-              if (name === 'markerStart' || name === 'markerEnd') { const marker = swiftFlowMarkerLiteral(value); return marker ? [`edge.${name} = ${marker}`, ...(name === 'markerEnd' ? ['edge.markerEndSpecified = true'] : [])] : (_emitWarnings.push(droppedFlowEdgePatchWarning(flowName, name, FLOW_MARKER_LITERAL_SHAPE)), []) }
-              if (name === 'animated') return [`edge.animated = ${emitSwiftExpr(value, indent)}`, 'edge.animatedSpecified = true']
-              if (name === 'waypoints') {
-                const points = swiftFlowPositionsLiteral(value)
-                if (points) return [`edge.waypoints = ${points}`]
-                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateEdge(...) field `waypoints`', 'an array of `{ x, y }` literals, each with both coordinates')); return [] }
-                return [`edge.waypoints = ${emitSwiftExpr(value, indent)}`]
-              }
-              if (name === 'data') { const data = swiftFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`edge.data = ${data}`] : [] }
-              if (name === 'class') return [`edge.className = ${emitSwiftExpr(value, indent)}`]
-              return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`edge.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
-            })
-            return `${swiftIdent(flowName)}.updateEdge(${emitSwiftExpr(e.args[0]!, indent)}) { edge in ${statements.join('; ')} }`
-          }
-        }
-        // React Flow's intersection helpers: a rect literal becomes the engine's
-        // PyreonFlowRect, and the positional `partially` flag gets its label.
-        if ((member === 'getIntersectingNodes' && e.args.length >= 1) || (member === 'isNodeIntersecting' && e.args.length >= 2)) {
-          const target = (arg: ExprIR) => {
-            const rect = flowRectLiteralFields(arg)
-            if (!rect) return emitSwiftExpr(arg, indent)
-            const labels = ['x', 'y', 'width', 'height']
-            return `PyreonFlowRect(${rect.map((v, i) => `${labels[i]}: ${v.kind === 'literal' ? emitSwiftExpr(v, indent) : `Double(${emitSwiftExpr(v, indent)})`}`).join(', ')})`
-          }
-          const rest = member === 'isNodeIntersecting' ? [target(e.args[0]!), target(e.args[1]!)] : [target(e.args[0]!)]
-          const flag = e.args[member === 'isNodeIntersecting' ? 2 : 1]
-          return `${swiftIdent(flowName)}.${member}(${rest.join(', ')}${flag ? `, partially: ${emitSwiftExpr(flag, indent)}` : ''})`
-        }
-        if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
-          const lit = swiftFlowPositionLiteral(e.args[0]!)
-          if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
-          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'zoomTo' && e.args.length >= 1) {
-          const duration = swiftFlowDurationOption(e.args[1])
-          if (duration !== null) return `${swiftIdent(flowName)}.zoomTo(${emitSwiftExpr(e.args[0]!, indent)}${duration ? `, duration: ${duration}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'zoomTo', ['duration'], e.args[1]!))
-        }
-        if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
-          const duration = swiftFlowDurationOption(e.args[0])
-          if (duration !== null) return `${swiftIdent(flowName)}.${member}(${duration ? `duration: ${duration}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, member, ['duration'], e.args[0]!))
-        }
-        if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
-          const point = swiftFlowPositionLiteral(e.args[1]!)
-          if (point !== null) return `${swiftIdent(flowName)}.addEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
-          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
-          const point = swiftFlowPositionLiteral(e.args[2]!)
-          if (point !== null) return `${swiftIdent(flowName)}.updateEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}, ${point})`
-          if (e.args[2]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 3`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'reconnectEdge' && e.args.length === 2) {
-          const args = swiftFlowReconnectLiteral(e.args[1]!)
-          if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'reconnectEdge', ['source', 'target', 'sourceHandle', 'targetHandle'], e.args[1]!))
-        }
-        if (member === 'isValidConnection' && e.args.length === 1) {
-          const connection = swiftFlowConnectionLiteral(e.args[0]!)
-          if (connection !== null) return `${swiftIdent(flowName)}.isValidConnection(${connection})`
-          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ source, target }` literal (with optional `sourceHandle` / `targetHandle`)', 'emitted'))
-        }
-        if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
-          const nodes = swiftFlowNodeListLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
-          if (nodes !== null) return `${swiftIdent(flowName)}.${member}(${nodes})`
-        }
-        if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
-          const edges = swiftFlowEdgeListLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
-          if (edges !== null) return `${swiftIdent(flowName)}.${member}(${edges})`
-        }
-        if (member === 'setViewport' && e.args.length >= 1) {
-          const args = swiftFlowViewportLiteral(resolveSwiftStaticFlowValue(e.args[0]!))
-          const duration = swiftFlowDurationOption(e.args[1])
-          if (args !== null && duration !== null) return `${swiftIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration: ${duration}` : ''})`
-          if (args === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['x', 'y', 'zoom', 'duration'], resolveSwiftStaticFlowValue(e.args[0]!)))
-          if (duration === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['duration'], e.args[1]!))
-        }
-        if (member === 'animateViewport' && e.args.length >= 1) {
-          const args = swiftFlowViewportLiteral(e.args[0]!)
-          if (args !== null) return `${swiftIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration: ${emitSwiftExpr(e.args[1]!, indent)}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'animateViewport', ['x', 'y', 'zoom'], e.args[0]!))
-        }
-        if (member === 'layout') {
-          if (e.args.length === 0) return `${swiftIdent(flowName)}.layout()`
-          const algorithm = emitSwiftExpr(e.args[0]!, indent)
-          if (e.args.length === 1) return `${swiftIdent(flowName)}.layout(${algorithm})`
-          const options = e.args[1]!
-          if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
-            const dropped: string[] = []
-            const fields = options.fields.flatMap(({ name, value }) => {
-              if (name === 'direction' || name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animate' || name === 'animationDuration') return [`${name}: ${emitSwiftExpr(value, indent)}`]
-              dropped.push(name)
-              return []
-            })
-            if (dropped.length > 0) _emitWarnings.push(flowLayoutOptionsDroppedWarning(flowName, dropped))
-            return `${swiftIdent(flowName)}.layout(${algorithm}, options: PyreonFlowLayoutOptions(${fields.join(', ')}))`
-          }
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'layout', FLOW_LAYOUT_OPTION_KEYS, options))
-        }
-        if (member === 'setCenter' && e.args.length >= 2) {
-          const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!, FLOW_SET_CENTER_KEYS) : ''
-          if (options !== null) return `${swiftIdent(flowName)}.setCenter(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}${options ? `, ${options}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setCenter', FLOW_SET_CENTER_KEYS, e.args[2]!))
-        }
-        if (member === 'setNodeExtent' && e.args.length === 1) {
-          if (isNilArg(e.args[0]!)) return `${swiftIdent(flowName)}.clearNodeExtent()`
-          const extent = swiftFlowExtentLiteral(e.args[0]!)
-          if (extent !== null) return `${swiftIdent(flowName)}.setNodeExtent(${extent})`
-        }
-        if (member === 'clampToExtent' && e.args.length >= 1) {
-          const position = swiftFlowPositionLiteral(e.args[0]!)
-          if (position !== null) return `${swiftIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${emitSwiftExpr(arg, indent)}`).join('')})`
-          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'getSnapLines' && e.args.length >= 2) {
-          const position = swiftFlowPositionLiteral(e.args[1]!)
-          if (position !== null) return `${swiftIdent(flowName)}.getSnapLines(${emitSwiftExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, threshold: ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
-          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-      }
-      // Flow lookup computeds are JavaScript Maps. Preserve their canonical
-      // get/has operations while targeting Swift dictionaries.
-      if (
-        e.callee.kind === 'member' &&
-        (e.callee.property === 'get' || e.callee.property === 'has') &&
-        e.callee.object.kind === 'call' &&
-        e.callee.object.args.length === 0 &&
-        e.callee.object.callee.kind === 'member' &&
-        e.callee.object.callee.object.kind === 'identifier' &&
-        _flowStateNamesSwift.has(e.callee.object.callee.object.name) &&
-        ['nodeMap', 'edgeMap', 'measurements'].includes(e.callee.object.callee.property) &&
-        e.args.length === 1
-      ) {
-        const flowName = swiftIdent(e.callee.object.callee.object.name)
-        const webName = e.callee.object.callee.property
-        const nativeName = webName === 'nodeMap' ? 'nodeLookup' : webName === 'edgeMap' ? 'edgeLookup' : webName
-        const lookup = `${flowName}.${nativeName}[${emitSwiftExpr(e.args[0]!, indent)}]`
-        return e.callee.property === 'has' ? `(${lookup} != nil)` : lookup
-      }
-      // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the
-      // native port exposes the collections read-only — name it.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.object.kind === 'identifier' &&
-        _flowStateNamesSwift.has(e.callee.object.object.name) &&
-        LOWERED_FLOW_PROPERTY_READS.has(e.callee.object.property) &&
-        (e.callee.property === 'set' || e.callee.property === 'update')
-      ) {
-        const flowName = e.callee.object.object.name
-        const property = e.callee.object.property
-        if ((property === 'nodes' || property === 'edges') && e.args.length === 1) {
-          const method = property === 'nodes' ? 'setNodes' : 'setEdges'
-          if (e.callee.property === 'set') {
-            const value = resolveSwiftStaticFlowValue(e.args[0]!)
-            const literal = property === 'nodes' ? swiftFlowNodeListLiteral(value, flowName) : swiftFlowEdgeListLiteral(value, flowName)
-            return `${swiftIdent(flowName)}.${method}(${literal ?? emitSwiftExpr(e.args[0]!, indent)})`
-          }
-          return `${swiftIdent(flowName)}.${method}(${emitSwiftExpr(e.args[0]!, indent)})`
-        }
-        if ((property === 'viewport' || property === 'containerSize') && e.args.length === 1) {
-          const method = property === 'viewport' ? 'setViewport' : e.callee.property === 'set' ? 'replaceContainerSize' : 'updateContainerSize'
-          const typeName = property === 'viewport' ? 'PyreonFlowViewport' : 'PyreonFlowContainerSize'
-          const names = property === 'viewport' ? ['x', 'y', 'zoom'] : ['width', 'height']
-          const arg = resolveSwiftStaticFlowValue(e.args[0]!)
-          if (e.callee.property === 'set' && arg.kind === 'object' && (arg.spreads?.length ?? 0) === 0) {
-            const values = new Map(arg.fields.map((field) => [field.name, field.value]))
-            if (names.every((name) => values.has(name))) {
-              return `${swiftIdent(flowName)}.${method}(${typeName}(${names.map((name) => `${name}: ${emitSwiftExpr(values.get(name)!, indent)}`).join(', ')}))`
-            }
-          }
-          const body = arg.kind === 'arrow' ? (arg.body.kind === 'paren' ? arg.body.inner : arg.body) : undefined
-          if (e.callee.property === 'update' && arg.kind === 'arrow' && arg.params.length === 1 && body?.kind === 'object' && (body.spreads ?? []).every((spread) => spread.kind === 'identifier' && spread.name === arg.params[0])) {
-            const values = new Map(body.fields.map((field) => [field.name, field.value]))
-            const param = swiftIdent(arg.params[0]!)
-            if (names.every((name) => values.has(name) || (body.spreads?.length ?? 0) > 0)) return `${swiftIdent(flowName)}.${method} { ${param} in ${typeName}(${names.map((name) => `${name}: ${values.has(name) ? emitSwiftExpr(values.get(name)!, indent) : `${param}.${name}`}`).join(', ')}) }`
-          }
-        }
-        if (property === 'measurements' && e.args.length === 1) {
-          const arg = resolveSwiftStaticFlowValue(e.args[0]!)
-          if (e.callee.property === 'set' && arg.kind === 'new-collection' && arg.collection === 'map' && (arg.entries?.length ?? 0) === 0) {
-            return `${swiftIdent(flowName)}.replaceMeasurements([:])`
-          }
-          if (e.callee.property === 'set') {
-            return `${swiftIdent(flowName)}.replaceMeasurements(${emitSwiftExpr(arg, indent)})`
-          }
-          if (e.callee.property === 'update' && arg.kind === 'arrow') {
-            return `${swiftIdent(flowName)}.updateMeasurements(${emitSwiftExpr(arg, indent)})`
-          }
-        }
-        _emitWarnings.push(flowSignalWriteWarning(flowName, property, e.callee.property))
-      }
-      // PyreonFlowState PROPERTY reads: web `flow.nodes()` / `flow.edges()` /
-      // `flow.viewport()` / `flow.zoom()` are Signal/Computed accessor CALLS —
-      // the native @Observable class exposes them as stored/computed Swift
-      // properties, so the parens must drop (mirrors the table `page`/
-      // `sortColumn` rewrite immediately above). `selectedNodes()`/
-      // `selectedEdges()` stay METHODS on the Swift port (named that way on
-      // purpose, matching the web CALL syntax with no rewrite needed) —
-      // deliberately absent from this list.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _flowStateNamesSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
-      ) {
-        const nativeName = e.callee.property === 'nodeMap' ? 'nodeLookup' : e.callee.property === 'edgeMap' ? 'edgeLookup' : e.callee.property
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(nativeName)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
@@ -8256,17 +7129,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
     }
     case 'member': {
-      if (
-        e.object.kind === 'member' && e.object.property === 'config' &&
-        e.object.object.kind === 'identifier' && _flowStateNamesSwift.has(e.object.object.name)
-      ) {
-        const nativeProperty = LOWERED_FLOW_CONFIG_PROPERTIES.get(e.property)
-        if (nativeProperty !== undefined) return `${swiftIdent(e.object.object.name)}.${nativeProperty}`
-        _emitWarnings.push(`createFlow binding \`${e.object.object.name}\`: \`config.${e.property}\` is not represented by the native Flow configuration.`)
-      }
-      if (e.object.kind === 'identifier' && e.object.name === 'MarkerType' && (e.property === 'Arrow' || e.property === 'ArrowClosed')) {
-        return JSON.stringify(e.property.toLowerCase())
-      }
+      // Reads rooted at a plugin declaration's binding (`flow.config.zoom`), then reads a plugin recognises by shape.
+      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(0))
+      if (rooted !== undefined) return rooted
+      const shaped = lowerPluginMemberRead(e, 'swift', () => swiftEmitContext(0))
+      if (shaped !== undefined) return shaped
       // `Math.PI` is a member READ (the Math CALL mapping never sees it) —
       // emitted verbatim it is "cannot find 'Math' in scope". Swift's
       // constant is `Double.pi`.
@@ -8280,19 +7147,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (k !== null) return k
       }
 
-      if (
-        e.property === 'size' &&
-        e.object.kind === 'call' &&
-        e.object.args.length === 0 &&
-        e.object.callee.kind === 'member' &&
-        e.object.callee.object.kind === 'identifier' &&
-        _flowStateNamesSwift.has(e.object.callee.object.name) &&
-        ['nodeMap', 'edgeMap', 'measurements'].includes(e.object.callee.property)
-      ) {
-        const webName = e.object.callee.property
-        const nativeName = webName === 'nodeMap' ? 'nodeLookup' : webName === 'edgeMap' ? 'edgeLookup' : webName
-        return `${swiftIdent(e.object.callee.object.name)}.${nativeName}.count`
-      }
 
       // `m.size` (Map/Set property) → Swift `.count`, typed off the receiver.
       if (e.property === 'size') {
@@ -9193,9 +8047,59 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
         _usesColorScheme = true
       },
       hostState: swiftHostState,
+      component: () => swiftComponentInfo,
+      isFunctionName: (name) => _functionNames.has(name),
+      child: emitSwiftChild,
+      typeText: swiftType,
+      inferType: (e) => inferType(e, _activeInferCtx),
+      structs: swiftStructRegistry,
+      warnOnce: (message) => {
+        if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
+      },
+      webView: swiftWebViewFacade,
+      fileState: (key, init) => _moduleScope.state(key, init),
+      layoutModifiersFor: (el, handled) => emitSwiftLayoutModifiers(el, handled),
+      inlineConsts: inlineValueConsts,
     },
     indent,
   )
+}
+
+/** The component being emitted, as a plugin reads it (live getters — the emitter's state moves under it). */
+const swiftComponentInfo: ComponentInfo = {
+  get name() {
+    return _activeComponentName
+  },
+  get propsParamName() {
+    return _activePropsParamName
+  },
+  get valueConsts() {
+    return _componentValueConstExprs
+  },
+  isDeclared: (tag) => _componentNames.has(tag),
+}
+
+/** The file's struct registry, as a plugin reads it. */
+const swiftStructRegistry: StructRegistry = {
+  forTypeFields(fields) {
+    const declared =
+      _structTypedKeyToName.get(structShapeKey([...fields])) ??
+      _structFieldsToName.get(fields.map((f) => f.name).sort().join(','))
+    return declared ?? synthTypedStructName([...fields], _synthExprStructs, _synthExprStructKeys)
+  },
+  forLiteralFields: (fields) => resolveSwiftObjectStructName([...fields]),
+  synthesize(fields) {
+    const name = synthStructName(_synthExprStructs.length)
+    _synthExprStructs.push({ name, fields: [...fields] })
+    return name
+  },
+}
+
+/** The WebView plumbing a plugin that hosts a page in `<WebView>` reuses. */
+const swiftWebViewFacade: WebViewFacade = {
+  dynamicAttr: dynamicWebViewAttr,
+  dataArg: swiftWebViewDataArg,
+  messageHandler: emitSwiftMessageHandler,
 }
 
 /**
@@ -9221,7 +8125,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // are `@pyreon/elements` Element — what makes the whole ui-system lower — and
   // the `@pyreon/coolgrid` Container/Row/Col). A lowering either RETAGS to a
   // canonical element and re-enters dispatch, or emits through the facade.
-  const lowering = findElementLowering(tag, (t, mod) => canAliasIntercept(t, mod))
+  const lowering = findElementLowering(tag, (t, mod, imported) => canAliasIntercept(t, mod, imported), _aliasImports.get(tag)?.imported)
   if (lowering !== undefined) {
     const retagged = lowering.retag?.(e, { warn: pushEmitWarning })
     if (retagged !== undefined) return emitSwiftJsx(retagged, indent)
@@ -9349,11 +8253,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // <WebView> — native host (WKWebView via PyreonWebView) for embedding
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
-  if (canAliasIntercept(tag, '@pyreon/flow', 'FlowWebView') && _aliasImports.get(tag)?.imported === 'FlowWebView') {
-    return emitSwiftFlowWebView(e)
-  }
-  if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
-  if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftStandaloneFlowControls(e, indent)
   // Library element hosts (e.g. the `@pyreon/charts` family) lower in the plugin that owns
   // them — claimed by the registry lookup at the top of this function.
   // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
@@ -9432,41 +8331,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
-  if (tag === 'Handle') {
-    for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Handle ${name}> is browser CSS and is not applied natively; handle geometry and interaction still lower.`)
-    return 'EmptyView()'
-  }
-  if (tag === 'NodeResizer') return 'EmptyView()'
-  if (tag === 'NodeToolbar') {
-    for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<NodeToolbar ${name}> is browser CSS and is not applied natively; toolbar placement and content still lower.`)
-    // A toolbar lowers ONLY through the up-front extraction, which needs a
-    // registered NODE renderer AND a static child position; otherwise it
-    // is dropped, and why decides the fix.
-    const registered = _flowNodeRendererComponents.has(_activeComponentName)
-    if (!registered || !_extractedFlowToolbars.has(e)) _emitWarnings.push(droppedNodeToolbarWarning(registered, _activeComponentName))
-    return 'EmptyView()'
-  }
-  if (tag === 'path') return emitSwiftFlowCustomPath(e, indent)
-  if (tag === 'BaseEdge' && !_componentNames.has(tag)) return emitSwiftFlowBaseEdge(e, indent)
-  if (tag === 'EdgeText' && !_componentNames.has(tag)) {
-    const plan = planEdgeText(e)
-    for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
-    if (!plan.text || !plan.x || !plan.y) return 'EmptyView()'
-    return `PyreonFlowEdgeText(x: Double(${emitSwiftExpr(plan.x, indent)}), y: Double(${emitSwiftExpr(plan.y, indent)}), label: ${emitSwiftExpr(plan.text, indent)})`
-  }
-  if (tag === 'ViewportPortal' && !_componentNames.has(tag)) {
-    if (!_emitWarnings.includes(VIEWPORT_PORTAL_WARNING)) _emitWarnings.push(VIEWPORT_PORTAL_WARNING)
-    return 'EmptyView()'
-  }
-  if ((tag === 'div' || tag === 'p' || tag === 'span') && _flowRendererComponents.has(_activeComponentName)) {
-    const lowered = lowerFlowPlainElement(e)
-    if (lowered) return emitSwiftJsx(lowered, indent)
-  }
-  if (tag === 'svg' && _flowRendererComponents.has(_activeComponentName)) return emitSwiftFlowSvg(e, indent)
-  if (tag === 'EdgeLabelRenderer') {
-    const content = e.children.map((child) => `  ${emitSwiftChild(child, indent + 2)}`).join('\n')
-    return `PyreonFlowEdgeLabelRenderer {\n${content}\n${' '.repeat(indent)}}`
-  }
+  // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
+  const intrinsic = lowerPluginIntrinsic(e, 'swift', () => swiftEmitContext(indent))
+  if (intrinsic !== undefined) return intrinsic
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -9496,272 +8363,13 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   return emitSwiftGeneric(e, indent)
 }
 
-function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
-  if (attr === undefined || attr.kind !== 'attr' || attr.value === undefined) {
-    _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
-    return 'EmptyView()'
-  }
-  for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Flow ${name}> is browser CSS and is not applied to the native canvas; use native layout primitives around <Flow> for container sizing and decoration.`)
-  const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
-  const nodeTypes = resolveStaticFlowRendererMap(nodeTypesAttr?.kind === 'attr' ? nodeTypesAttr.value : undefined, (name) => _moduleConstExprs.get(name))
-  if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
-    _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
-  }
-  for (const entry of nodeTypes ?? []) {
-    if (_flowComponentsWithInvalidHandles.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
-    if (_flowComponentsWithInvalidResizers.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
-    if (_flowComponentsWithForeignResizer.has(entry.component)) _emitWarnings.push(NODE_RESIZER_FOREIGN_NODE_WARNING(entry.component))
-    if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
-  }
-  const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
-  const edgeTypes = resolveStaticFlowRendererMap(edgeTypesAttr?.kind === 'attr' ? edgeTypesAttr.value : undefined, (name) => _moduleConstExprs.get(name))
-  if (edgeTypesAttr !== undefined && edgeTypes === undefined) {
-    _emitWarnings.push('<Flow edgeTypes={…}> must be a literal { type: Component } map to lower natively; the native default edge renderer is used.')
-  }
-  const connectionLineAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'connectionLine')
-  const connectionLine = connectionLineAttr?.kind === 'attr' && connectionLineAttr.value?.kind === 'identifier'
-    ? connectionLineAttr.value.name
-    : undefined
-  if (connectionLineAttr !== undefined && connectionLine === undefined) {
-    _emitWarnings.push('<Flow connectionLine={…}> must reference a component identifier to lower natively; the built-in connection line is used.')
-  }
-  const flowChildren = e.children.flatMap(function flatten(child): ChildIR[] {
-    return child.kind === 'expr' && child.expr.kind === 'jsx-fragment'
-      ? child.expr.children.flatMap(flatten)
-      : [child]
-  })
-  const background = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const controls = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const miniMap = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'MiniMap')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const panels = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Panel')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)
-    .filter((panel): panel is Extract<ExprIR, { kind: 'jsx-element' }> => panel?.kind === 'jsx-element')
-  const otherChildren = flowChildren.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
-  const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
-  const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
-  const controlsContentArg = controls?.kind === 'jsx-element' && controls.children.length > 0
-    ? `, controlsContent: { AnyView(Group {\n${controls.children.map((child) => `      ${emitSwiftChild(child, 6)}`).join('\n')}\n    }) }`
-    : ''
-  const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
-  const miniMapNodeColorAttr = miniMap?.kind === 'jsx-element' ? miniMap.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor') : undefined
-  const miniMapNodeColorValue = miniMapNodeColorAttr?.kind === 'attr' ? miniMapNodeColorAttr.value : undefined
-  const miniMapNodeColorIsCallback = miniMapNodeColorValue?.kind === 'arrow' || (miniMapNodeColorValue?.kind === 'identifier' && (_functionNames.has(miniMapNodeColorValue.name) || _moduleConstExprs.get(miniMapNodeColorValue.name)?.kind === 'arrow'))
-  const miniMapNodeColorArg = miniMapNodeColorValue !== undefined && miniMapNodeColorIsCallback
-    ? `, miniMapNodeColor: ${emitSwiftExpr(miniMapNodeColorValue, 0)}`
-    : ''
-  const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
-  const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel: ${emitSwiftExpr(ariaLabelAttr.value, 0)}` : ''
-  const colorModeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'colorMode')
-  const colorModeArg = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `, colorMode: ${emitSwiftExpr(colorModeAttr.value, 0)}` : ''
-  const handleCases = nodeTypes?.flatMap(({ type, component }) => {
-    const handles = _flowComponentHandles.get(component) ?? []
-    return handles.length > 0 ? [`case ${JSON.stringify(type)}: return ${swiftFlowParsedHandles(handles)}`] : []
-  }) ?? []
-  const nodeHandlesArg = handleCases.length > 0
-    ? `, nodeHandles: { pyreonNode in\n    switch pyreonNode.type {\n    ${handleCases.join('\n    ')}\n    default: return []\n    }\n  }`
-    : ''
-  const resizerCases = nodeTypes?.flatMap(({ type, component }) => {
-    const config = _flowComponentResizers.get(component)
-    return config ? [`case ${JSON.stringify(type)}: return PyreonFlowNodeResizerConfig(minWidth: ${config.minWidth}, minHeight: ${config.minHeight}, handleSize: ${config.handleSize}, showEdgeHandles: ${config.showEdgeHandles})`] : []
-  }) ?? []
-  const nodeResizerArg = resizerCases.length > 0
-    ? `, nodeResizer: { pyreonNode in\n    switch pyreonNode.type {\n    ${resizerCases.join('\n    ')}\n    default: return nil\n    }\n  }`
-    : ''
-  const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
-    const configs = _flowComponentToolbars.get(component)
-    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride: ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride: ${JSON.stringify(config.nodeIdOverride)}`})`).join(', ')}]`] : []
-  }) ?? []
-  const nodeToolbarConfigArg = toolbarCases.length > 0
-    ? `, nodeToolbarConfigs: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return []\n    }\n  }`
-    : ''
-  const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
-    const configs = _flowComponentToolbars.get(component)
-    return configs?.length ? [`case ${JSON.stringify(type)}:\n      switch pyreonToolbarIndex {\n${configs.map((config, index) => `      case ${index}: return AnyView(${swiftIdent(config.contentComponent)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))`).join('\n')}\n      default: return nil\n      }`] : []
-  }) ?? []
-  const nodeToolbarArg = toolbarContentCases.length > 0
-    ? `, nodeToolbar: { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging in\n    switch pyreonNode.type {\n    ${toolbarContentCases.join('\n    ')}\n    default: return nil\n    }\n  }`
-    : ''
-  const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdgeTypes: Set([${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')}])`
-    : ''
-  const customEdgeArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdge: { pyreonEdge in\n    switch pyreonEdge.edge.type {\n    ${edgeTypes.map(({ type, component }) => `case ${JSON.stringify(type)}: return AnyView(${swiftIdent(component)}(edge: pyreonEdge.edge, sourceX: { pyreonEdge.sourceX }, sourceY: { pyreonEdge.sourceY }, targetX: { pyreonEdge.targetX }, targetY: { pyreonEdge.targetY }, sourcePosition: { pyreonEdge.sourcePosition }, targetPosition: { pyreonEdge.targetPosition }, selected: { pyreonEdge.selected }, labelX: { pyreonEdge.labelX }, labelY: { pyreonEdge.labelY }))`).join('\n    ')}\n    default: return nil\n    }\n  }`
-    : ''
-  const customConnectionLineArg = connectionLine
-    ? `, customConnectionLineEnabled: true, customConnectionLine: { pyreonLine in AnyView(${swiftIdent(connectionLine)}(sourceX: { pyreonLine.sourceX }, sourceY: { pyreonLine.sourceY }, targetX: { pyreonLine.targetX }, targetY: { pyreonLine.targetY }, sourcePosition: { pyreonLine.sourcePosition }, path: { pyreonLine.path })) }`
-    : ''
-  // A node without a custom `type` renders the web's DefaultNode box — palette
-  // background, text and border, the selected colour while selected — not a
-  // bare label.
-  const nodeLabel = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
-    ? 'String(describing: pyreonNode.data.label)'
-    : 'pyreonNode.id'
-  const nodeSelected = nodeTypes && nodeTypes.length > 0 ? 'pyreonSelected' : `${emitSwiftExpr(attr.value, 0)}.isNodeSelected(pyreonNode.id)`
-  const nodeText = `PyreonFlowDefaultNode(label: ${nodeLabel}, selected: ${nodeSelected})`
-  const renderer = nodeTypes && nodeTypes.length > 0
-    ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${swiftStr(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
-    : nodeText
-  const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${controlsContentArg}${miniMapArg}${miniMapNodeColorArg}${ariaLabelArg}${colorModeArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} in\n  ${renderer}\n}`
-  if (panels.length === 0 && otherChildren.length === 0) return host
-  const overlays = panels.map((panel) => {
-    const position = readStaticAttr(panel, 'position')
-    const hasPosition = panel.attrs.some((a) => a.kind === 'attr' && a.name === 'position')
-    const alignment = position === 'top-right' ? '.topTrailing' : position === 'bottom-left' ? '.bottomLeading' : position === 'bottom-right' ? '.bottomTrailing' : '.topLeading'
-    if (hasPosition && typeof position !== 'string') _emitWarnings.push('<Panel position={…}> must be a string literal to lower natively; top-left is used.')
-    for (const name of ['style', 'class']) if (panel.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Panel ${name}> uses browser CSS and is not applied natively; its position and content still lower.`)
-    const content = panel.children.map((child) => `      ${emitSwiftChild(child, 6)}`).join('\n')
-    return `    Group {\n${content}\n    }\n    .padding(10)\n    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: ${alignment})`
-  })
-  overlays.push(...otherChildren.map((child) => `    ${emitSwiftChild(child, 4)}`))
-  const overlaysCode = overlays.join('\n')
-  // The overlays sit BESIDE the flow view, outside its own scoped colour
-  // mode; re-apply it on the stack so a <Panel> under colorMode="dark"
-  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
-  const colorModeTail = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `\n.pyreonFlowColorMode(${emitSwiftExpr(colorModeAttr.value, 0)})` : ''
-  return `ZStack {\n  ${host}\n${overlaysCode}\n}${colorModeTail}`
-}
 
-function emitSwiftStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const instance = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
-  if (instance?.kind !== 'attr' || instance.value === undefined) {
-    _emitWarnings.push('<Controls> outside <Flow> requires `instance={flow}` for native lowering; it was dropped.')
-    return 'EmptyView()'
-  }
-  const content = e.children.length > 0
-    ? `, extraContent: { AnyView(Group {\n${e.children.map((child) => `    ${emitSwiftChild(child, indent + 4)}`).join('\n')}\n${' '.repeat(indent + 2)}}) }`
-    : ''
-  return `PyreonStandaloneFlowControls(state: ${emitSwiftExpr(instance.value, 0)}, style: ${emitSwiftFlowControls(e)}${content})`
-}
 
-function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
-  let value = attr?.kind === 'attr' ? attr.value : undefined
-  if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
-  // A structured helper result (`get*Path({...}).path`, or a local bound to
-  // one) or the connection line's `path()` keeps its segments; any other `d`
-  // is SVG path data, parsed at runtime into the same segments.
-  const pathMember = value?.kind === 'member' && value.property === 'path'
-    ? classifyFlowPathMember(value.object, _activePropsParamName, _componentValueConstExprs)
-    : undefined
-  const resultCode = value?.kind === 'member' && pathMember === 'object'
-    ? emitSwiftExpr(value.object, indent)
-    : value?.kind === 'member' && pathMember === 'accessor'
-      ? `${swiftIdent(value.property)}()`
-    : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
-      ? emitSwiftExpr(value, indent)
-      : value !== undefined
-        ? `PyreonFlowPathResult(svgPath: ${emitSwiftExpr(value, indent)})`
-        : undefined
-  if (resultCode === undefined) {
-    _emitWarnings.push(FLOW_ARBITRARY_PATH_WARNING)
-    return 'EmptyView()'
-  }
-  const paint = resolveFlowPathPaint(e)
-  _emitWarnings.push(...paint.warnings)
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : emitSwiftExpr(v.expr, indent)
-  const width = paint.width.kind === 'literal' ? String(paint.width.value) : `Double(${emitSwiftExpr(paint.width.expr, indent)})`
-  return `PyreonFlowCustomEdgePath(result: ${resultCode}, color: ${color(paint.stroke)}, width: ${width}, fill: ${color(paint.fill)})`
-}
 
-function emitSwiftFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const plan = planFlowSvg(e)
-  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
-  const num = (n: FlowSvgNumber) => n.kind === 'literal' ? String(n.value) : `Double(${emitSwiftExpr(n.expr, indent)})`
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : emitSwiftExpr(v.expr, indent)
-  const pad = ' '.repeat(indent + 2)
-  const shapes = plan.shapes.map((s) =>
-    `${pad}PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: ${emitSwiftExpr(s.d, indent + 2)}), stroke: ${color(s.paint.stroke)}, strokeWidth: ${s.paint.width.kind === 'literal' ? String(s.paint.width.value) : `Double(${emitSwiftExpr(s.paint.width.expr, indent)})`}, fill: ${color(s.paint.fill)})`,
-  )
-  const args = [
-    ...(plan.width ? [`width: ${num(plan.width)}`] : []),
-    ...(plan.height ? [`height: ${num(plan.height)}`] : []),
-    ...(plan.viewBox ? [`viewBox: [${plan.viewBox.join(', ')}]`] : []),
-    ...(plan.stretch ? ['stretch: true'] : []),
-  ]
-  const body = shapes.length > 0 ? `[\n${shapes.join(',\n')}\n${' '.repeat(indent)}]` : '[]'
-  return `PyreonFlowSvg(${[...args, `shapes: ${body}`].join(', ')})`
-}
 
-function emitSwiftFlowBaseEdge(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const plan = planBaseEdge(e)
-  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
-  if (!plan.path) return 'EmptyView()'
-  const stroke = plan.paint.stroke
-  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'nil' : JSON.stringify(stroke.value)) : emitSwiftExpr(stroke.expr, indent)
-  const width = plan.paint.width.kind === 'literal' ? String(plan.paint.width.value) : `Double(${emitSwiftExpr(plan.paint.width.expr, indent)})`
-  const path = `PyreonFlowBaseEdgePath(result: PyreonFlowPathResult(svgPath: ${emitSwiftExpr(plan.path, indent)}), color: ${color}, width: ${width})`
-  if (!plan.label) return path
-  const pad = ' '.repeat(indent + 2)
-  return `Group {\n${pad}${path}\n${pad}PyreonFlowEdgeText(x: Double(${emitSwiftExpr(plan.label.x, indent)}), y: Double(${emitSwiftExpr(plan.label.y, indent)}), label: ${emitSwiftExpr(plan.label.text, indent)})\n${' '.repeat(indent)}}`
-}
 
-function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<MiniMap ${name}> is browser CSS and is not applied natively; its dimensions, colors, and interactions still lower.`)
-  const expr = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    return attr?.kind === 'attr' && attr.value !== undefined ? emitSwiftExpr(attr.value, 0) : fallback
-  }
-  const str = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    const value = attr?.kind === 'attr' ? attr.value : undefined
-    const callback = value?.kind === 'arrow' || (value?.kind === 'identifier' && (_functionNames.has(value.name) || _moduleConstExprs.get(value.name)?.kind === 'arrow'))
-    return callback ? swiftStr(fallback) : expr(name, swiftStr(fallback))
-  }
-  const num = (name: string, fallback: number): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    if (attr?.kind !== 'attr' || attr.value === undefined) return String(fallback)
-    return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
-  }
-  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  // A static node colour lowers verbatim; an absent one (or a per-node
-  // callback, which travels separately as `miniMapNodeColor`) stays `nil` so
-  // the palette's `minimapNode` — light or dark — decides at render time.
-  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
-  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
-  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprs.get(nodeColorValue.name)?.kind === 'arrow'))
-  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'nil' : emitSwiftExpr(nodeColorValue, 0)
-  return `PyreonFlowMiniMapStyle(nodeColor: ${nodeColor}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
-}
 
-function emitSwiftFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const expr = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    return attr?.kind === 'attr' && attr.value !== undefined ? emitSwiftExpr(attr.value, 0) : fallback
-  }
-  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  const position = readStaticAttr(e, 'position')
-  const positionAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'position')
-  const pos = position === 'top-left' ? '.topLeft' : position === 'top-right' ? '.topRight' : position === 'bottom-right' ? '.bottomRight' : typeof position === 'string' || positionAttr === undefined ? '.bottomLeft' : `PyreonFlowControlsPosition.from(${emitSwiftExpr(positionAttr.kind === 'attr' && positionAttr.value !== undefined ? positionAttr.value : { kind: 'literal', value: 'bottom-left' }, 0)})`
-  return `PyreonFlowControlsStyle(showZoomIn: ${bool('showZoomIn', true)}, showZoomOut: ${bool('showZoomOut', true)}, showFitView: ${bool('showFitView', true)}, showLock: ${bool('showLock', false)}, position: ${pos})`
-}
 
-function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const variant = readStaticAttr(e, 'variant')
-  const variantAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'variant')
-  const resolvedVariant = variant === 'lines' ? '.lines' : variant === 'cross' ? '.cross' : variant === 'dots' || variantAttr === undefined ? '.dots' : `.from(${emitSwiftExpr(variantAttr.kind === 'attr' && variantAttr.value !== undefined ? variantAttr.value : { kind: 'literal', value: 'dots' }, 0)})`
-  const expr = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    return attr?.kind === 'attr' && attr.value !== undefined ? emitSwiftExpr(attr.value, 0) : fallback
-  }
-  const num = (name: string, fallback: number): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    if (attr?.kind !== 'attr' || attr.value === undefined) return String(fallback)
-    return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
-  }
-  // No colour → `nil`: the renderer's palette supplies the light `#dddddd` or
-  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
-  // would silently pin to light under `colorMode="dark"`.
-  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${num('gap', 20)}, size: ${num('size', 1)}, color: ${expr('color', 'nil')})`
-}
 
 /**
  * Emit Pyreon's `<Checkbox checked={x}>` as a SwiftUI `Image` with
@@ -11844,73 +10452,7 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   return `PyreonWebView(${args})${emitSwiftLayoutModifiers(e)}`
 }
 
-function flowWebViewHostHtml(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  read: (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string) => unknown,
-): string {
-  let html = DEFAULT_FLOW_WEBVIEW_HOST_HTML
-  for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
-    const present = e.attrs.some((a) => a.kind === 'attr' && a.name === prop)
-    if (present && read(e, prop) === undefined) {
-      _emitWarnings.push(`<FlowWebView ${prop}={…}>: native host styling must be statically resolvable; using the documented default.`)
-    }
-  }
-  const nodeWidth = read(e, 'nodeWidth')
-  const nodeHeight = read(e, 'nodeHeight')
-  if (typeof nodeWidth === 'number' || typeof nodeHeight === 'number') {
-    html = html.replace(
-      'var NODE_W = 150, NODE_H = 44;',
-      `var NODE_W = ${typeof nodeWidth === 'number' && Number.isFinite(nodeWidth) ? nodeWidth : 150}, NODE_H = ${typeof nodeHeight === 'number' && Number.isFinite(nodeHeight) ? nodeHeight : 44};`,
-    )
-  }
-  const safeColor = (value: string): string => value.replace(/[^#a-zA-Z0-9(),.%\s-]/g, '')
-  const colors = [
-    ['nodeFill', '#ffffff'],
-    ['nodeStroke', '#c9ced6'],
-    ['labelColor', '#1f2933'],
-    ['edgeColor', '#98a2b3'],
-  ] as const
-  for (const [prop, fallback] of colors) {
-    const value = read(e, prop)
-    if (typeof value === 'string') html = html.replaceAll(fallback, safeColor(value))
-  }
-  const background = read(e, 'background')
-  if (typeof background === 'string') {
-    html = html.replace('background:transparent}', `background:${background.replace(/[<>"']/g, '')}}`)
-  }
-  return html
-}
 
-function emitSwiftFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const graph = dynamicWebViewAttr(e, 'graph')
-  if (graph === undefined) {
-    _emitWarnings.push('<FlowWebView>: `graph` is required on native; emitting an empty host.')
-  }
-  const explicitHtml = dynamicWebViewAttr(e, 'html')
-  const generatedHtml = flowWebViewHostHtml(e, readStaticAttr)
-  if (explicitHtml !== undefined) {
-    for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
-      if (e.attrs.some((a) => a.kind === 'attr' && a.name === prop)) {
-        _emitWarnings.push(`<FlowWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its presentation.`)
-      }
-    }
-  }
-  const html = explicitHtml === undefined ? JSON.stringify(generatedHtml) : emitSwiftExpr(explicitHtml, 0)
-  const graphJson = graph === undefined ? '"{\\"nodes\\":[],\\"edges\\":[]}"' : swiftWebViewDataArg(graph)
-  const commands = dynamicWebViewAttr(e, 'commands')
-  const data = commands === undefined
-    ? graphJson
-    : `pyreonFlowWebViewData(graph: ${graphJson}, commands: ${swiftWebViewDataArg(commands)})`
-  const callbacks = ['select', 'message', 'event', 'error'] as const
-  const callbackArgs = callbacks.flatMap((name) => {
-    const attr = e.attrs.find((a) => a.kind === 'event' && a.name === name)
-    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)}: ${emitSwiftMessageHandler(attr.handler)}`] : []
-  })
-  const onMessage = callbackArgs.length === 0
-    ? undefined
-    : `onMessage: { pyreonMsg in pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html: ${html}, data: ${data}${onMessage ? `, ${onMessage}` : ''})${emitSwiftLayoutModifiers(e, HANDLED_FLOW_WEBVIEW_PROPS)}`
-}
 
 /**
  * Emit a `<WebView onMessage={…}>` handler as a Swift `(String) -> Void`
@@ -13486,7 +12028,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     warnCanonicalPrimitiveFellThrough(e.tag)
   }
   if (isIntrinsicElementTag(e.tag) && !_componentNames.has(e.tag)) {
-    const note = intrinsicElementWarning(e.tag)
+    const note = intrinsicElementWarning(e.tag, intrinsicElementAdvice())
     if (!_emitWarnings.includes(note)) _emitWarnings.push(note)
   }
   const pad = ' '.repeat(indent + 2)
@@ -14029,6 +12571,8 @@ function emitSwiftRxCall(
  * `plugin-scope.ts`.
  */
 let _pluginScope: PluginScope = createPluginScope()
+/** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
+let _moduleScope: PluginScope = _pluginScope
 
 let _swiftHostStateSeq = 0
 

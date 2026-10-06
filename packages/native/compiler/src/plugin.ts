@@ -1,7 +1,15 @@
 import type { CompilerRegistries } from './active-registries'
 import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
-import type { ParseRefinement } from './parse-extensions'
+import type {
+  EmitPreparation,
+  FunctionLowering,
+  IdentifierLowering,
+  IntrinsicLowering,
+  MemberReadLowering,
+  ReceiverLowering,
+} from './expr-lowering'
+import type { ParseRefinement, PropsTypeResolver } from './parse-extensions'
 import type { ScopeProvider } from './scope-provider'
 import type { StubAugmentation } from './stub-augmentation'
 import type { ServiceDescriptor } from './services'
@@ -121,6 +129,60 @@ export interface CompilerPlugin<Target extends string = string> {
    * the expression text, or `undefined` to decline. Requires `decls`.
    */
   readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
+  /**
+   * Calls, member reads and assignments ROOTED at a binding one of this plugin's
+   * `decls` created (`flow.fitView()`, `flow.nodes.set(x)`, `flow.config.zoom =
+   * 2`), keyed by the declaration `type`. Generalises `memberCalls`, which sees
+   * only the one-hop `<receiver>.<method>(…)` shape. Each target may decline
+   * (`undefined`); the expression then emits as without the plugin. Requires `decls`.
+   */
+  readonly receivers?: Readonly<Record<string, ReceiverLowering>> | undefined
+  /**
+   * Plain calls `name(args)` this plugin lowers (`getBezierPath({…})`), keyed by
+   * function name. The name is claimed like a hook — imported from `@pyreon/*` or
+   * one of `modules` — and an aliased import is renamed back to it; a same-named
+   * user function or foreign import is left alone. Two owners for one name is a
+   * load-time error.
+   */
+  readonly functions?: Readonly<Record<string, FunctionLowering>> | undefined
+  /**
+   * Member READS the plugin recognises by shape rather than by root binding
+   * (`MarkerType.Arrow`, `props.edge.data.x`). Called for every member read once
+   * a plugin registers it, so the first check must be cheap; each target may
+   * decline (`undefined`).
+   */
+  readonly memberReads?: MemberReadLowering | undefined
+  /**
+   * Bare identifiers that name library constants (`DEFAULT_NODE_WIDTH`), keyed by
+   * name. Two owners for one name is a load-time error.
+   */
+  readonly identifiers?: Readonly<Record<string, IdentifierLowering>> | undefined
+  /**
+   * Lowercase DOM tags (`path`, `svg`, `div`) the plugin claims while a predicate
+   * holds — inside its own renderer components. Unlike `elements` they are not
+   * imported from a package, so the claim is the predicate.
+   */
+  readonly intrinsics?: readonly IntrinsicLowering[] | undefined
+  /**
+   * A per-file pass each emitter runs after the file's components and module
+   * constants are known and before any component is emitted. It may keep
+   * file-scoped memory (`EmitContext.fileState`) and return extra components,
+   * which are emitted after the file's own and registered like them.
+   */
+  readonly prepareEmit?: EmitPreparation | undefined
+  /**
+   * A sentence the "DOM/SVG element has no native lowering" warning appends
+   * (`", or, for … , use …"`) when this plugin is loaded: the route the plugin
+   * offers for markup it cannot lower. Without it the warning carries only the
+   * core's own advice.
+   */
+  readonly intrinsicAdvice?: string | undefined
+  /**
+   * Props types the plugin's library exports (`NodeComponentProps<D>`), keyed by
+   * the type's name: how each resolves to the object shape a component's
+   * parameters are read from. Two owners for one name is a load-time error.
+   */
+  readonly propsTypes?: Readonly<Record<string, PropsTypeResolver>> | undefined
   /**
    * Unlowered-module metadata for the package(s) this plugin owns, keyed by
    * module: the advice the "has NO native lowering" warning names, and the

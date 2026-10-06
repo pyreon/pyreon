@@ -4,7 +4,7 @@
 // because a DOM/CSS/SVG renderer has a supported route: `<FlowWebView>`.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const FLOW_APP = `import { Flow, createFlow } from '@pyreon/flow'
 import type { NodeComponentProps } from '@pyreon/flow'

@@ -20,9 +20,9 @@ import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SWIFT_FLOW_STATE_INIT_LABELS } from '../flow-lowering'
-import { transform } from '../index'
-import { isSwiftcAvailable, isSwiftUIAvailable, validateSwiftWithStubs } from '../validate'
+import { SWIFT_FLOW_STATE_INIT_LABELS } from '../../../../fundamentals/flow/src/native-plugin/lowering'
+import { transform, validateSwiftWithStubs } from './first-party-plugins'
+import { isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
 

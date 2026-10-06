@@ -18,12 +18,85 @@
  */
 
 import type { PluginScope } from './plugin-scope'
-import type { ExprIR, ExtDecl, JsxElementIR, TypeIR } from './types'
+import type { ChildIR, ExprIR, ExtDecl, JsxElementIR, TypeIR } from './types'
 
 export type EmitTarget = 'swift' | 'kotlin'
 
 /** A literal attribute value the compiler can read at compile time. */
 export type StaticAttrValue = string | number | boolean
+
+/** The component being emitted, as a plugin may read it. */
+export interface ComponentInfo {
+  /** The component's name (`''` outside a component). */
+  readonly name: string
+  /** The name of its props parameter (`props` in `(props: P) => …`), when it has one. */
+  readonly propsParamName: string | undefined
+  /** Its body-level `const`s (and their initializers) that are value-shaped — what a JSX attribute may name. */
+  readonly valueConsts: ReadonlyMap<string, ExprIR>
+  /** Whether `tag` names a component declared in the file being emitted (so it is not the plugin's to claim). */
+  isDeclared(tag: string): boolean
+}
+
+/**
+ * The struct registry the emitter keeps for the file: structs the source
+ * declared, and the ones synthesised for object literals. A plugin that builds
+ * a typed container from a literal (a flow's node rows) must resolve to the
+ * SAME names the rest of the file's literals do, so it asks here rather than
+ * keeping a registry of its own.
+ */
+export interface StructRegistry {
+  /**
+   * The struct for an inline object TYPE: a declared one with the same typed
+   * fields, else one with the same field names, else a synthesised one (which
+   * this call registers). `null` when the shape cannot be named.
+   */
+  forTypeFields(fields: readonly { name: string; type: TypeIR }[]): string | null
+  /**
+   * The struct a LITERAL's fields resolve to — the lookup every `{…}` literal in
+   * the file uses (declared by value shape, by field names, by subset, then a
+   * synthesised one). `null` when none applies.
+   */
+  forLiteralFields(fields: readonly { name: string; value: ExprIR }[]): string | null
+  /** Register a NEW synthesised struct with these fields and return its name (a union of heterogeneous rows). */
+  synthesize(fields: readonly { name: string; type: TypeIR }[]): string
+}
+
+/**
+ * The emitter's WebView plumbing, for a plugin that hosts a page in `<WebView>`.
+ * Each member delegates to the helper the core's own `<WebView>` lowering uses.
+ */
+export interface WebViewFacade {
+  /** An attribute's value as a reactive expression (an accessor arrow unwrapped), or `undefined` when absent. */
+  dynamicAttr(el: JsxElementIR, name: string): ExprIR | undefined
+  /** A `data` / `graph` payload as the target's JSON-encoding call. */
+  dataArg(value: ExprIR): string
+  /** A `(message) => …` handler as the target's message callback. */
+  messageHandler(handler: ExprIR): string
+}
+
+/** The emitter state a plugin-facing context reads beyond the basics — what a real emitter supplies and a toy backend may omit. */
+export interface EmitContextBackendExtras {
+  /** The component being emitted. */
+  component(): ComponentInfo
+  /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
+  isFunctionName(name: string): boolean
+  /** `emitSwiftChild` / `emitKotlinChild` — one JSX child at `indent`. */
+  child(child: ChildIR, indent: number): string
+  /** `swiftType` / `kotlinType` — the target spelling of a type. */
+  typeText(type: TypeIR): string
+  /** The emitter's expression-type inference over the active component. */
+  inferType(e: ExprIR): TypeIR
+  /** The file's struct registry. */
+  structs: StructRegistry
+  /** Push `message` unless the sink already holds it. */
+  warnOnce(message: string): void
+  /** The WebView plumbing. */
+  webView: WebViewFacade
+  /** The per-FILE plugin memory (the module scope's state bag). */
+  fileState<T>(key: string, init: () => T): T
+  /** `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` with `handled` props the caller already consumed. */
+  layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
+}
 
 /** What a target emitter supplies; `createEmitContext` adds the pure helpers. */
 export interface EmitContextBackend {
@@ -73,9 +146,11 @@ export interface HostStateSlot {
 }
 
 /** What the Swift emitter supplies beyond {@link EmitContextBackend}. */
-export interface SwiftEmitContextBackend extends EmitContextBackend {
+export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContextBackendExtras {
   /** `resolveFunctionHandler` — the name of the module function an expression refers to, if it is one. */
   handlerName(handler: ExprIR): string | undefined
+  /** `inlineValueConsts` — `expr` with the component's value-shaped `const`s substituted in. */
+  inlineConsts(e: ExprIR): ExprIR
   /** `_usesColorScheme = true`. */
   markColorSchemeUsed(): void
   /** `_hostStateDecls` + `_swiftHostStateSeq`. */
@@ -137,6 +212,30 @@ export interface EmitContext {
   deferred(key: string, fallback?: string): string
   /** Supply the text for `key`; callable from any emit code that learns it later. */
   resolveDeferred(key: string, value: string): void
+  /** The component being emitted: its name, props parameter, value constants. */
+  component(): ComponentInfo
+  /** Whether `name` is a function declared in the file. */
+  isFunctionName(name: string): boolean
+  /** One JSX child, emitted through the full dispatcher at `at` (default: this context's indentation). */
+  child(child: ChildIR, at?: number): string
+  /** The target's spelling of `type`. */
+  typeText(type: TypeIR): string
+  /** The type the emitter infers for `e` in the active component. */
+  inferType(e: ExprIR): TypeIR
+  /** The file's struct registry (declared and synthesised structs). */
+  readonly structs: StructRegistry
+  /** Report a limitation unless the exact message was already reported. */
+  warnOnce(message: string): void
+  /** The WebView plumbing (see {@link WebViewFacade}). */
+  readonly webView: WebViewFacade
+  /**
+   * Plugin memory that lives for ONE FILE: `init` runs the first time `key` is
+   * read, and the value is shared by every component of the file and by
+   * `prepareEmit`. Namespace the key with your plugin name.
+   */
+  fileState<T>(key: string, init: () => T): T
+  /** Like {@link EmitContext.layoutModifiers}, for an element whose `handled` props the caller consumed itself. */
+  layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
 }
 
 /**
@@ -149,15 +248,48 @@ export interface EmitContext {
 export interface SwiftEmitContext extends EmitContext {
   /** The name of the module-level function `handler` refers to, or `undefined` when it is anything else. */
   handlerName(handler: ExprIR): string | undefined
+  /** `expr` with the component's value-shaped `const`s (and their initializers, transitively) substituted in. */
+  inlineConsts(e: ExprIR): ExprIR
   /** Tell the emitter the component reads SwiftUI's colour scheme, so it injects `@Environment(\.colorScheme) pyreonColorScheme`. */
   markColorSchemeUsed(): void
   /** The component's `@State` declaration list (see {@link HostStateSlot}). */
   readonly hostState: HostStateSlot
 }
 
+/** What the Kotlin emitter supplies beyond {@link EmitContextBackend}. */
+export interface KotlinEmitContextBackend extends EmitContextBackend, EmitContextBackendExtras {
+  /** `kotlinIntArg` — an argument to an `Int`-only Kotlin API. */
+  intArg(e: ExprIR, indent: number): string
+}
+
+/**
+ * The context a Kotlin element lowering receives: the shared facade plus the
+ * members only the Kotlin emitter has state for.
+ */
+export interface KotlinEmitContext extends EmitContext {
+  /**
+   * An argument to a Kotlin API whose parameter is `Int` (a subscript, `take`,
+   * a Compose parameter). TS integers are `Long` on Kotlin, so the value
+   * narrows at exactly the call that needs it; a literal is emitted bare.
+   */
+  intArg(e: ExprIR, at?: number): string
+}
+
+export function createKotlinEmitContext(backend: KotlinEmitContextBackend, indent: number): KotlinEmitContext {
+  return {
+    ...createEmitContext('kotlin', backend, indent),
+    intArg: (e, at = indent) => backend.intArg(e, at),
+  }
+}
+
+/** The member `name` of a context built without it: an error naming it (a real emitter supplies every one). */
+function missing(name: string): never {
+  throw new Error(`[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`)
+}
+
 export function createEmitContext(
   target: EmitTarget,
-  backend: EmitContextBackend,
+  backend: EmitContextBackend & Partial<EmitContextBackendExtras>,
   indent: number,
 ): EmitContext {
   return {
@@ -180,6 +312,24 @@ export function createEmitContext(
     state: (key, init) => backend.scope().state(key, init),
     deferred: (key, fallback) => backend.scope().deferred(key, fallback),
     resolveDeferred: (key, value) => backend.scope().resolveDeferred(key, value),
+    component: () => (backend.component ?? (() => missing('component')))(),
+    isFunctionName: (name) => (backend.isFunctionName ?? (() => missing('isFunctionName')))(name),
+    child: (child, at = indent) => (backend.child ?? (() => missing('child')))(child, at),
+    typeText: (type) => (backend.typeText ?? (() => missing('typeText')))(type),
+    inferType: (e) => (backend.inferType ?? (() => missing('inferType')))(e),
+    structs: backend.structs ?? {
+      forTypeFields: () => missing('structs'),
+      forLiteralFields: () => missing('structs'),
+      synthesize: () => missing('structs'),
+    },
+    warnOnce: (message) => (backend.warnOnce ?? (() => missing('warnOnce')))(message),
+    webView: backend.webView ?? {
+      dynamicAttr: () => missing('webView'),
+      dataArg: () => missing('webView'),
+      messageHandler: () => missing('webView'),
+    },
+    fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
+    layoutModifiersFor: (el, handled) => (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
   }
 }
 
@@ -187,6 +337,7 @@ export function createSwiftEmitContext(backend: SwiftEmitContextBackend, indent:
   return {
     ...createEmitContext('swift', backend, indent),
     handlerName: (handler) => backend.handlerName(handler),
+    inlineConsts: (e) => backend.inlineConsts(e),
     markColorSchemeUsed: () => backend.markColorSchemeUsed(),
     hostState: backend.hostState,
   }
