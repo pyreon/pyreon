@@ -997,7 +997,7 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
 // produces.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier) {}
+fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true) {}
 data class PyreonFlowWebViewSelection(val id: String, val data: Any? = null)
 data class PyreonFlowWebViewViewport(val x: Double, val y: Double, val zoom: Double)
 data class PyreonFlowWebViewEvent(val type: String, val id: String? = null, val data: Any? = null, val source: String? = null, val target: String? = null, val viewport: PyreonFlowWebViewViewport? = null)

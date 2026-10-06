@@ -6,6 +6,7 @@
 
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
+import { lowerWebViewDomStorage } from './webview-options'
 import { kotlinStr } from './string-literals'
 import { bindServices, renderKotlinService, serviceFor, type ServiceDescriptor } from './services'
 import {
@@ -9801,8 +9802,11 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     )
     return `PyreonWebView(${kotlinWebViewModifierArg(e).replace(/^, /, '')})`
   }
+  const domStorage = lowerWebViewDomStorage(e, readStaticAttrKotlin, 'kotlin')
+  if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
-  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)})`
+  // `domStorage` rides after `modifier` (its position in the runtime signature).
+  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)}${domStorage.arg === undefined ? '' : `, ${domStorage.arg}`})`
 }
 
 function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { lowerWebViewDomStorage } from './webview-options'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
@@ -11793,7 +11794,11 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
     )
     return `PyreonWebView()${emitSwiftLayoutModifiers(e)}`
   }
-  const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
+  const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
+  if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
+  const args = [content, dataArg, onMsgArg, domStorage.arg]
+    .filter((a) => a !== undefined)
+    .join(', ')
   // The generic tail (`padding`/`margin`, `data-testid` →
   // `.accessibilityIdentifier`, a11y props) every primitive gets. A WebView
   // host that returned before it was structurally unassertable by XCUITest —

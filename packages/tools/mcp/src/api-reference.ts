@@ -1396,7 +1396,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/WebView': {
     signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode',
     example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',
-    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. See also: Web, connectWebHost.',
+    notes: 'Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out). See also: Web, connectWebHost.',
     mistakes: `- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (editors/diagrams)
 - Expecting native look-and-feel — content renders as a web view, not native widgets`,
   },
