@@ -1,0 +1,667 @@
+// Golden-only: a shape harvested from the native-compiler test suite that the rest of the corpus does not reach in the flow lowering
+// (@pyreon/flow native-plugin). Its expected output was recorded from the PRE-MOVE compiler, so a change here is a change of emitted Swift/Kotlin.
+// The canonical PMTC counter — proves the signal → @State round-trip
+// works end-to-end. Per PMTC Phase 0 success criterion 2.
+//
+// On iOS this compiles to a SwiftUI struct with `@State private var
+// count: Int = 0`, displays "Count: \(count)", and increments on
+// button tap. SwiftUI's automatic re-render fires when count changes
+// via `count.set(...)` (the compiler emits as `count = ...` since
+// SwiftUI's @State is a var, not a method).
+
+import { onMount } from '@pyreon/core'
+import type { VNodeChild } from '@pyreon/core'
+import { state, signalOf } from '@pyreon/core/plain'
+import { defineStore } from '@pyreon/store'
+import {
+  useHaptics,
+  useShare,
+  useLinking,
+  useNotifications,
+  useBiometrics,
+  useGeolocation,
+  useImagePicker,
+  useFilePicker,
+  useSizeClass,
+  useColorScheme,
+  useDatabase,
+  useSafeArea,
+  useScreenOrientation,
+  useDeviceInfo,
+  useWakeLock,
+  useDeviceMotion,
+  useSpeech,
+  useAudioRecorder,
+  useBluetooth,
+} from '@pyreon/hooks'
+import { createI18n } from '@pyreon/i18n/core'
+import { createMachine } from '@pyreon/machine'
+import { Background, Controls, createFlow, Flow, Handle, NodeResizer, NodeToolbar, Panel, Position, type ConnectionLineProps, type NodeComponentProps } from '@pyreon/flow'
+import {
+  Button,
+  Inline,
+  Modal,
+  Press,
+  Scroll,
+  Stack,
+  Text,
+  Toggle,
+  useNativeModule,
+} from '@pyreon/primitives'
+import rocketstyle from '@pyreon/rocketstyle'
+
+// ui-system → native proof. `rocketstyle()({ component: Text })` is THE
+// authoring pattern the 67 `@pyreon/ui-components` use, and PMTC lowers it: the
+// dimension cascade resolves at COMPILE time and a reactive `state` flip becomes
+// a native conditional value.
+//
+// The two targets reach it by DIFFERENT mechanisms, which is why this is worth
+// proving on a device rather than in a snapshot: SwiftUI takes
+// `.foregroundColor(cond ? A : B)` (a modifier works on any View), while Compose
+// has no text-colour modifier and needs `color = if (cond) A else B` as a
+// `Text()` CONSTRUCTOR ARG. The Compose side silently dropped the colour until
+// this was fixed — so the Android build is the load-bearing half here.
+const StatusBadge = rocketstyle()({ component: Text }).states(() => ({
+  ok: { color: '#166534' },
+  warn: { color: '#b45309' },
+}))
+
+// Styling proof that a device harness can actually SEE.
+//
+// The badge above proves a reactive dimension re-renders, but deliberately
+// asserts only its label — neither XCUITest nor the Compose test tree can read
+// a rendered colour, and its comment says so rather than implying otherwise.
+// So the static side of the style pipeline (theme cascade → emitted modifier →
+// rendered appearance) had no device coverage at all.
+//
+// GEOMETRY is the part both harnesses can read: XCUITest exposes
+// `element.frame`, and Compose exposes bounds assertions. A `size` dimension
+// driving `width` therefore lowers to something observable —
+// `.frame(width: 120)` on SwiftUI, `.width(120.dp)` on Compose — so a device
+// test can prove the cascade produced a real, measurable layout rather than a
+// modifier the platform silently ignored.
+//
+// Two instances rather than one, asserted RELATIVELY (wide ≈ 2 × narrow): point
+// vs dp vs device scale makes an absolute pixel assertion fragile across
+// simulators, while the RATIO is a property of the emitted style.
+const SizedRule = rocketstyle()({ component: Stack }).sizes(() => ({
+  narrow: { width: 120 },
+  wide: { width: 240 },
+}))
+
+// A named size is intentional here: PMTC currently lowers rocketstyle
+// dimensions to native frame constraints, while a base-only height would leave
+// SwiftUI's GeometryReader without a bounded height and collapse the canvas.
+const NativeFlowFrame = rocketstyle()({ component: Stack }).sizes(() => ({
+  device: { height: 260 },
+}))
+
+// XCUITest gestures are synchronous, so iOS cannot look at the canvas
+// mid-drag. The custom connection line therefore reports its own MOUNT into a
+// store both platforms read back after the drag ends: a count of 1 proves the
+// component rendered during the gesture; 0 before proves it renders only then.
+const useNativeFlowProbe = defineStore('native-flow-probe', () => {
+  let customLineMounts = state(0)
+  const noteCustomLineMount = () => { customLineMounts = customLineMounts + 1 }
+  return { customLineMounts: signalOf<typeof customLineMounts>(customLineMounts), noteCustomLineMount }
+})
+
+type NativeFlowData = { label: string }
+
+// F3 renderer-parity device proof: a custom connection line exists ONLY while
+// a source handle is being dragged, so its identifier appearing mid-drag (and
+// not before or after) is the observable on both targets.
+function NativeConnectionLine(props: ConnectionLineProps) {
+  const probe = useNativeFlowProbe()
+  onMount(() => { probe.store.noteCustomLineMount() })
+  return (
+    <Stack data-testid="native-flow-custom-line">
+      <path d={props.path} style="fill: none; stroke: #2563eb; stroke-width: 3" />
+      <Text>custom line</Text>
+    </Stack>
+  )
+}
+
+function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
+  return (
+    <Stack>
+      <Handle id="in" type="target" position={Position.Left} />
+      <Text>{props.data().label}</Text>
+      <NodeToolbar nodeId={props.id} showOnSelect={false} position="top">
+        <Text>Native flow tools</Text>
+      </NodeToolbar>
+      <Handle id="out" type="source" position={Position.Right} />
+      <NodeResizer minWidth={80} minHeight={44} />
+    </Stack>
+  )
+}
+
+// Render-prop device proof. `Tally` takes a REQUIRED function-as-children
+// render prop and an OPTIONAL view slot. On iOS the optional slot is an
+// optional closure plus per-subset initializers (the omitted one pinned to
+// `EmptyView`); on Android a nullable composable lambda. The callbacks below
+// are BLOCK-bodied — a `const` plus an early `if … return` — which lower to
+// view-builder statements on both targets.
+function Tally(props: { count: number; children: (n: number) => unknown; footer?: VNodeChild }) {
+  return <Stack>{props.children(props.count)}{props.footer}</Stack>
+}
+
+export function Counter() {
+  let count = state<number>(0)
+  // Direct native Flow device proof. This is intentionally NOT the /webview
+  // bridge: PMTC emits PyreonFlowView and the app links the package's actual
+  // SwiftUI/Compose host, state, geometry, handles, and resize sources. The
+  // same declaration is mounted by XCUITest and Android Compose tests.
+  const nativeFlow = createFlow<NativeFlowData>({
+    nodes: [
+      { id: 'native-start', type: 'native', position: { x: 20, y: 30 }, data: { label: 'Native Flow Start' }, width: 150, height: 60, ariaLabel: 'Native Flow Start' },
+      { id: 'native-end', type: 'native', position: { x: 250, y: 130 }, data: { label: 'Native Flow End' }, width: 150, height: 60, ariaLabel: 'Native Flow End' },
+    ],
+    // A pure-red closed arrowhead: the device suites count exact #ff0000 pixels
+    // in the canvas screenshot, which nothing else on this screen paints.
+    edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in', label: 'Native edge', ariaLabel: 'Native flow edge', markerEnd: { type: 'arrowclosed', color: '#ff0000', width: 20, height: 20 } }],
+    // Reduced motion ON at first: a 3s viewport animation must land INSTANTLY.
+    // The suites then flip it off through `config` and prove the same call
+    // animates, so "instant" cannot be mistaken for "animation unsupported".
+    reducedMotion: true,
+    fitView: true,
+    // The device suites' connect drag runs End.out -> Start.in, and fitView
+    // puts both handles INSIDE the canvas's 40pt auto-pan band on a phone
+    // (measured on an iPhone 17 Pro: 33.4pt and 33.6pt from the edges). With
+    // auto-pan on, the graph pans under the held pointer at both ends while
+    // XCUITest's drop point is fixed before the gesture starts, so whether the
+    // release lands within the 6pt drop radius depended on how many auto-pan
+    // frames ran: a timing race that failed on CI and passed locally. No suite
+    // asserts auto-pan, and no viewport frees both handles here (clearing the
+    // band needs zoom < 0.84, where the 44pt resizer targets cover the handle
+    // centre), so the fixture opts out of the one behaviour it does not test.
+    autoPanOnConnect: false,
+  })
+  const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
+  // `colorMode` is reactive: the suites toggle it and count the web's dark
+  // canvas colour (#0b1220) in a screenshot — zero before, many after, zero again.
+  let nativeFlowDark = state(false)
+  // `colorMode="system"` follows the device appearance; the suites switch the
+  // SYSTEM appearance, not this app, and count the same dark pixels.
+  let nativeFlowSystem = state(false)
+  const nativeFlowColorMode = computed(() => (nativeFlowSystem ? 'system' : nativeFlowDark ? 'dark' : 'light'))
+  const nativeFlowProbe = useNativeFlowProbe()
+  // Connect-start count: separates "no drag ever started" from "the custom
+  // connection line did not render" when a device suite fails.
+  let nativeFlowConnectStarts = state(0)
+  onMount(() => { nativeFlow.onConnectStart((_start) => { nativeFlowConnectStarts = nativeFlowConnectStarts + 1 }) })
+  const nativeFlowSelectedNodeCount = computed(() => nativeFlow.selectedNodes().length)
+  const nativeFlowSelectedEdgeCount = computed(() => nativeFlow.selectedEdges().length)
+  const nativeFlowStartPosition = computed(() => {
+    let position = 'gone'
+    for (const node of nativeFlow.nodes()) {
+      if (node.id === 'native-start') position = `${Math.round(node.position.x)},${Math.round(node.position.y)}`
+    }
+    return position
+  })
+  const nativeFlowViewportX = computed(() => Math.round(nativeFlow.viewport().x))
+  const nativeFlowZoomPercent = computed(() => Math.round(nativeFlow.viewport().zoom * 100))
+  const nativeFlowEdgeTarget = computed(() => {
+    let target = 'gone'
+    for (const edge of nativeFlow.edges()) {
+      if (edge.id === 'native-edge') target = edge.target
+    }
+    return target
+  })
+  const nativeFlowStartSize = computed(() => {
+    let label = 'gone'
+    for (const node of nativeFlow.nodes()) {
+      if (node.id === 'native-start') label = `${Math.round(node.width ?? 0)},${Math.round(node.height ?? 0)}`
+    }
+    return label
+  })
+  // M2.7 animations proof — a `<Transition show>` animates a child's
+  // visibility. Native: iOS `.transition(.opacity)` on an `if show { … }`
+  // gate driven by `.animation(.default, value:)` on a stable ZStack; Android
+  // `AnimatedVisibility(visible = show) { … }`. The web-only CSS-class
+  // enter/leave props are ignored on native (each platform animates through
+  // its own system). OBSERVABLE + differentiating — the Toggle Box button
+  // flips `boxVisible`, and the device gate asserts the animated child
+  // ("Animated Box") disappears then reappears, proving the animated
+  // show-gate compiles + toggles on-device (the animation vocabulary v1 is
+  // conditional-visibility fade; spring/keyframe/gesture-driven absent).
+  let boxVisible = state<boolean>(true)
+  // M4.5 / M3.5 async-lowering + biometrics proof — the current biometric-gate
+  // outcome, flipped from INSIDE an async handler. Starts "idle"; the Unlock
+  // button's `async` handler awaits `bio.authenticate(...)` and sets this to
+  // "unlocked"/"denied". On an UNENROLLED simulator/emulator (the CI default)
+  // the gate resolves `false` deterministically with NO system prompt, so the
+  // observable outcome is "Lock: denied" — a clean, hang-free device assertion.
+  let lockStatus = state<string>('idle')
+  // M3.4 image-picker proof — the outcome of a photo pick, flipped from INSIDE
+  // an async handler (the second async-result service after biometrics). Starts
+  // "idle"; the Pick Photo button awaits `picker.pick()` and sets this to
+  // "picked"/"cancelled". The device gate drives the CANCEL path: the system
+  // photo sheet presents, the test dismisses it, and `pick()` resolves null →
+  // "Photo: cancelled". That single assertion proves three things at once — the
+  // picker PRESENTED, the async result flowed back across the sheet dismissal,
+  // and the post-await re-render fired.
+  let photoStatus = state<string>('idle')
+  // M3.8 file-picker proof — the outcome of a DOCUMENT pick (any file, not just
+  // photos), flipped from INSIDE an async handler (the third async-result
+  // service). Same present→cancel→re-render device assertion as the photo
+  // picker, but through the system document browser
+  // (UIDocumentPickerViewController / SAF OpenDocument).
+  let fileStatus = state<string>('idle')
+
+  // Core-UI row closure (Toggle / Modal / Scroll device assertions).
+  let switchOn = state<boolean>(false)
+  let sheetOpen = state<boolean>(false)
+  // M3.1 platform-API proof — a haptic fires on each increment tap.
+  // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
+  // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
+  // Web: `navigator.vibrate(10)`. No observable UI (haptics are physical),
+  // so the device gate proves "builds + runs + the tap does not crash".
+  const haptics = useHaptics()
+  // M3.2 platform-API proof — a Share button opens the system share sheet.
+  // Native: iOS `PyreonShare().url(...)` (UIActivityViewController from the
+  // key window), Android `PyreonShare(ctx).url(...)` (Intent.createChooser).
+  // Web: `navigator.share({ url })`. UNLIKE haptics this IS observable — the
+  // share sheet appears — so the device gate asserts the sheet exists.
+  const share = useShare()
+  // M3.2b platform-API proof — an Open button opens an external URL.
+  // Native: iOS `PyreonLinking().openUrl(...)` (UIApplication.shared.open),
+  // Android `PyreonLinking(ctx).openUrl(...)` (Intent.ACTION_VIEW). Web:
+  // `window.open`. Observable — tapping it backgrounds the app / foregrounds
+  // Safari — so the device gate asserts the app leaves the foreground.
+  const linking = useLinking()
+  // M3.3 platform-API proof — a Notify button posts a local notification.
+  // Native: iOS `PyreonNotifications().notify(...)` (UNUserNotificationCenter),
+  // Android `PyreonNotifications(ctx).notify(...)` (NotificationManager +
+  // channel). Web: Notification API. R4 asserts the tap does not crash
+  // (the banner + permission prompt make a full behavioral assert flaky).
+  const notifs = useNotifications()
+  // M4.5 / M3.5 platform-API proof — a biometric gate whose `authenticate`
+  // returns a Promise<boolean>. THE first async-result service: the Unlock
+  // handler is `async` and `await`s `bio.authenticate('Unlock')`, so PMTC's
+  // async-await lowering wraps that handler in a Swift `Task { … }` / Kotlin
+  // `pyreonAsyncScope.launch { … }` (a sync action slot can't await). This is
+  // the DEVICE proof that the lowering RUNS (not just compiles): the awaited
+  // call completes and the post-await `lockStatus.set(…)` re-renders the text.
+  // Native: iOS `PyreonBiometrics().authenticate(_:)` (LAContext), Android
+  // `PyreonBiometrics().authenticate(...)` (v1 scaffold; real BiometricPrompt +
+  // FragmentActivity is a tracked follow-up). Web: feature-detects
+  // `PublicKeyCredential`, resolves false (WebAuthn ceremony needs a server).
+  const bio = useBiometrics()
+  // Maps/geolocation device proof. The shared-code chain this depends on took
+  // three fixes: the web half did not exist at all (the import did not
+  // resolve), Kotlin's `start` took a host closure so `geo.start()` did not
+  // build on Android, and an optional field interpolated raw rendered
+  // `Optional(37.3349)` instead of the value. All three had to land before a
+  // single line of this could be written.
+  const geo = useGeolocation()
+  // M3.4 platform-API proof — the system photo picker. `pick()` returns a
+  // Promise<string | null> (a URI, or null when cancelled), so the Pick Photo
+  // handler is `async` and rides the same M4.5 `await` lowering as the
+  // biometric gate. Native: iOS `PyreonImagePicker().pick()`
+  // (PHPickerViewController presented from the key window); Android
+  // `PyreonImagePicker()` + a composable-scope `rememberLauncherForActivityResult`
+  // wired to `PickVisualMedia`. Web: a hidden `<input type="file">`. NO
+  // photo-library permission on either platform — both system pickers run out
+  // of process and hand back only the picked asset.
+  const picker = useImagePicker()
+  // M3.8 platform-API proof — the system DOCUMENT picker (any file). `pick()`
+  // returns a Promise<string | null>, riding the same M4.5 `await` lowering.
+  // Native: iOS `PyreonFilePicker().pick()` (UIDocumentPickerViewController from
+  // the key window); Android `PyreonFilePicker()` + a composable-scope
+  // `rememberLauncherForActivityResult` wired to the SAF `OpenDocument`. Web: a
+  // hidden `<input type="file">`. NO storage permission on either platform —
+  // both system pickers run out of process and hand back only the picked file.
+  const files = useFilePicker()
+  // M2.2 adaptive proof — the current horizontal size class, read reactively.
+  // Native: iOS `@Environment(\.horizontalSizeClass)` → "compact"/"regular",
+  // Android `LocalConfiguration.current.screenWidthDp >= 600`. Web:
+  // `matchMedia('(min-width: 600px)')`. OBSERVABLE + differentiating — the
+  // device gate asserts `Size: compact` on an iPhone (and `Size: regular`
+  // on an iPad locally), proving the read reflects the REAL environment.
+  const sizeClass = useSizeClass()
+  // Dark-mode proof — the current color scheme, read reactively. The sibling
+  // of useSizeClass (both are reactive @Environment reads with NO runtime
+  // port / NO permission). Native: iOS `@Environment(\.colorScheme)` →
+  // "light"/"dark", Android `if (isSystemInDarkTheme()) "dark" else "light"`.
+  // Web: `matchMedia('(prefers-color-scheme: dark)')`. OBSERVABLE +
+  // differentiating — the device gate asserts `Theme: light` under the default
+  // Simulator appearance, and `Theme: dark` under `simctl ui appearance dark`
+  // (proven locally), so the read reflects the REAL system appearance rather
+  // than a baked constant (a constant would show the same value in both).
+  const colorScheme = useColorScheme()
+  // Display probes — orientation type + the top safe-area inset. Native: iOS
+  // `PyreonScreenOrientation(probe: UIKitOrientationProbe())` /
+  // `PyreonSafeArea(probe: UIKitSafeAreaProbe())`, Android the
+  // `Android*Probe(ctx)` twins (`PyreonSafeAreaAndroid.kt`). Both classes were
+  // named by the emit and defined NOWHERE on device builds, so any app using
+  // either hook failed to compile; this is the build-time proof that they
+  // resolve. Observable + differentiating: a portrait phone reports
+  // `Orientation: portrait`, and the status bar makes the top inset positive.
+  const orientation = useScreenOrientation()
+  const safeArea = useSafeArea()
+  // Platform-probe hooks. Each lowers to a runtime class constructed with an
+  // engine the emit NAMES — iOS `UIKitDeviceProbe` / `UIKitIdleTimer` /
+  // `CoreMotionSource` / `AVSpeechSynth` / `AVFoundationRecordingEngine` /
+  // `CoreBluetoothScanner`, Android `Android*` twins (`PyreonDeviceProbesAndroid.kt`).
+  // Those engines existed only in the validation stubs, so an app using any
+  // of these hooks could not build; this block is the build-time proof that
+  // they resolve, and the device gates assert the observable state below.
+  // NB the `-` separators: a single space between two `{expr}` containers on one
+  // JSX line is dropped by the PMTC parse (`parseJsxChild` discards a
+  // whitespace-only text child), so `{a} {b}` emits `"\(a)\(b)"`.
+  const deviceInfo = useDeviceInfo()
+  const wake = useWakeLock()
+  const motion = useDeviceMotion()
+  const speech = useSpeech()
+  const recorder = useAudioRecorder()
+  const bt = useBluetooth()
+  // FFI escape-hatch proof — a native module the APP provides, not the
+  // framework. `DeviceInfo` is NOT a Pyreon hook and never will be: it lowers
+  // to `DeviceInfo()` (iOS, `ios/DeviceInfo.swift`) / `DeviceInfo(ctx)`
+  // (Android, `app/src/main/kotlin/com/pyreon/DeviceInfo.kt`) — ordinary
+  // platform classes living in the app's own sources. Method calls pass
+  // through verbatim, so the platform compiler type-checks the surface.
+  //
+  // This is the capability that makes PMTC extensible: before it, EVERY
+  // platform API needed a framework PR (recognition was hard-coded by hook
+  // name), so an app needing Bluetooth / ARKit / a vendor SDK was stuck.
+  //
+  // Load-bearing at BUILD time as well as run time: if the FFI lowering
+  // regressed, `DeviceInfo` would never be constructed and the emitted code
+  // would not compile against the app's class at all.
+  const device = useNativeModule<{ platformName(): string }>('DeviceInfo')
+  // Tier-2 i18n proof — `createI18n({ locale, messages, fallbackLocale? })`
+  // (from `@pyreon/i18n/core`) lowers to the PyreonI18n reactive container:
+  // iOS `@State private var i18n = PyreonI18n(locale: "de", messages: […])`,
+  // Android `val i18n = remember { PyreonI18n(initialLocale = "de", …) }`.
+  // `i18n.t('hello')` flows through unchanged to the runtime `.t()`, which
+  // resolves `messages[locale][key]` (→ the German "Hallo!" here, NOT the
+  // English "Hello!" nor the raw key "hello"). OBSERVABLE + differentiating:
+  // the device gate asserts the rendered text is the CONFIGURED-locale value
+  // "Greeting: Hallo!", proving BOTH table resolution AND locale selection at
+  // runtime — a key-passthrough would show "hello", the wrong locale "Hello!".
+  const i18n = createI18n({
+    locale: 'de',
+    fallbackLocale: 'en',
+    messages: {
+      en: { hello: 'Hello!', welcome: 'Hi {{name}}!', items_one: '{{count}} item', items_other: '{{count}} items' },
+      de: { hello: 'Hallo!', welcome: 'Hallo {{name}}!', items_one: '{{count}} Stück', items_other: '{{count}} Stücke' },
+    },
+  })
+  // Tier-2 state-machine proof — `createMachine({ initial, states })` (from
+  // `@pyreon/machine`) lowers to the PyreonMachine reactive container (iOS
+  // `@State private var power = PyreonMachine(initial: "off", transitions: […])`,
+  // Android `val power = remember { PyreonMachine(…) }`). `power()` reads the
+  // current state; `power.send('TOGGLE')` applies the transition. Both runtimes
+  // back the state reactively (Swift `@Observable`, Compose `mutableStateOf`),
+  // so a transition RE-RENDERS. STRONG interactive device proof: the Toggle
+  // button drives a real state transition — the device gate asserts the text
+  // flips `Power: off` → `Power: on` on tap (a dropped/broken machine would
+  // never transition).
+  // useDatabase device proof — structured local storage that OUTLIVES the
+  // process. Three defects had to be fixed before this line could exist at
+  // all: `get`/`delete`/`find` emitted Swift without argument labels (#2514),
+  // `db.insert({ id, fields })` lowered the record to an anonymous tuple, and
+  // the default backend was in-memory so nothing survived a relaunch.
+  //
+  // `PyreonDatabase` is not observable, so a signal drives the render: the
+  // Save button inserts a record and republishes the count, and `onMount`
+  // reads what is already on disk. That read is the load-bearing half — on a
+  // relaunch it is the ONLY source of the number, so a non-persistent backend
+  // renders "Notes: 0" and the assertion fails.
+  const db = useDatabase()
+  let noteCount = state(0)
+  onMount(() => {
+    noteCount = db.count('notes')
+  })
+
+  const power = createMachine({
+    initial: 'off',
+    states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
+  })
+  return (
+    <Scroll axis="vertical">
+    <Stack>
+      <Text>Count: {count}</Text>
+      <NativeFlowFrame size="device" data-testid="native-flow-frame">
+        <Flow instance={nativeFlow} nodeTypes={{ native: NativeFlowNode }} connectionLine={NativeConnectionLine} colorMode={nativeFlowColorMode()} ariaLabel="Native Flow device proof">
+          <Background variant="dots" />
+          <Controls showLock={true} />
+          <Panel position="bottom-right"><Text data-testid="native-flow-panel">Native panel</Text></Panel>
+        </Flow>
+      </NativeFlowFrame>
+      <Text data-testid="native-flow-edge-count">{nativeFlowEdgeCount}</Text>
+      <Text data-testid="native-flow-selected-node-count">{nativeFlowSelectedNodeCount}</Text>
+      <Text data-testid="native-flow-selected-edge-count">{nativeFlowSelectedEdgeCount}</Text>
+      <Text data-testid="native-flow-start-position">{nativeFlowStartPosition}</Text>
+      <Text data-testid="native-flow-viewport-x">{nativeFlowViewportX}</Text>
+      <Text data-testid="native-flow-zoom-percent">{nativeFlowZoomPercent}</Text>
+      <Text data-testid="native-flow-edge-target">{nativeFlowEdgeTarget}</Text>
+      <Text data-testid="native-flow-start-size">{nativeFlowStartSize}</Text>
+      <Button data-testid="native-flow-prepare-reconnect" onPress={() => {
+        nativeFlow.addNode({ id: 'native-third', type: 'native', position: { x: 250, y: 230 }, data: { label: 'Native Flow Third' }, width: 150, height: 60, ariaLabel: 'Native Flow Third' })
+        nativeFlow.selectEdge('native-edge')
+      }}>Prepare native reconnect</Button>
+      <Button data-testid="native-flow-clear-selection" onPress={() => nativeFlow.clearSelection()}>Clear native selection</Button>
+      {/* ui-system device proof — a rocketstyle component with a REACTIVE
+          dimension. The text flips with the same signal that drives the colour,
+          so the device test can assert the flip actually re-rendered (XCUITest
+          and Compose cannot read a colour, so the colour itself is proven by
+          COMPILING: a wrong Compose constructor arg fails `assembleDebug`). */}
+      <SizedRule size="narrow" data-testid="sized-narrow"><Text>n</Text></SizedRule>
+      <SizedRule size="wide" data-testid="sized-wide"><Text>w</Text></SizedRule>
+      <StatusBadge state={count > 2 ? 'warn' : 'ok'}>
+        Badge: {count > 2 ? 'warn' : 'ok'}
+      </StatusBadge>
+      <Text>Size: {sizeClass}</Text>
+      <Text>Theme: {colorScheme}</Text>
+      <Text>Orientation: {orientation.type()}</Text>
+      <Text>Inset: {safeArea().top > 0 ? 'top' : 'none'}</Text>
+      {/* FFI device proof — the value comes from the app's OWN platform class
+          (iOS returns "iOS", Android returns "Android"), so the rendered text
+          proves a user-defined native module was constructed and called. */}
+      <Text>Device: {device.platformName()}</Text>
+      <Text>Greeting: {i18n.t('hello')}</Text>
+      {/* i18n-row residuals: INTERPOLATION ({{name}} substituted from the
+          values map) + PLURAL-RULE selection (_one vs _other keyed on
+          values.count) — driven by the EXISTING count signal, so the
+          Increment button flips the plural form live: 0 → "0 Stücke"
+          (_other), 1 → "1 Stück" (_one), 2 → "2 Stücke" (_other). */}
+      <Text data-testid="i18n-interp">{i18n.t('welcome', { name: 'Vit' })}</Text>
+      <Text data-testid="i18n-plural">{i18n.t('items', { count: count })}</Text>
+      <Text>Power: {power()}</Text>
+      <Text>Notes: {noteCount}</Text>
+      <Text>Lock: {lockStatus}</Text>
+      <Text data-testid="geo-lat">Geo: {geo.latitude}</Text>
+      <Text>Photo: {photoStatus}</Text>
+      <Text>File: {fileStatus}</Text>
+      {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
+          DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
+          rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
+          PMTC compiler lowers a view-branch ternary to `if cond { … } else
+          { … }`. That this counter COMPILES + runs is the device proof the
+          if/else lowering produces valid Swift/Compose; the compact branch
+          ("Layout: narrow") renders on a phone. */}
+      {sizeClass() === 'regular'
+        ? <Inline><Text>Layout: wide</Text></Inline>
+        : <Stack><Text>Layout: narrow</Text></Stack>}
+      {/* A11y device proof — the cross-platform AccessibilityProps vocab
+          lowers per-target: iOS `.accessibilityLabel(...)`, Android
+          `semantics { contentDescription }`. Differentiating device
+          assertion: this element is queryable in the REAL accessibility tree
+          by its LABEL ("A11y status ready"), NOT by its visible glyph "●" —
+          proving `accessibilityLabel` overrode the accessible name in the
+          live tree. (`accessibilityHidden` stays R2/emit-locked: XCUITest's
+          string queries don't reliably reflect it — a tooling limitation, not
+          an emit gap.) */}
+      <Text accessibilityLabel="A11y status ready">●</Text>
+      <Button
+        onPress={() => {
+          count = count + 1
+          haptics.impact('light')
+        }}
+      >
+        Increment
+      </Button>
+      <Button onPress={() => share.url('https://pyreon.dev')}>Share</Button>
+      <Button onPress={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
+      <Button onPress={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
+      {/* Maps/geolocation device proof. Tapping this starts a real
+          CLLocationManager watch; the Simulator is pre-granted permission and
+          fed a fixed coordinate via `simctl location`, so the assertion is
+          deterministic — the rendered text flips from "Geo: " to the injected
+          latitude, proving the watch started, CoreLocation delivered a fix, the
+          @Observable container updated, and SwiftUI re-rendered. That is a
+          stronger claim than the biometric gate's denied-path proof, which only
+          shows an async handler completing. */}
+      <Button onPress={() => geo.start()}>Locate</Button>
+      {/* Ids are derived from the current count rather than a clock, so the
+          sequence is deterministic across a relaunch and an upsert can never
+          silently collapse two taps into one record. */}
+      <Button
+        onPress={() => {
+          db.insert('notes', { id: String(db.count('notes') + 1), fields: { at: 'tap' } })
+          noteCount = db.count('notes')
+        }}
+      >
+        Save Note
+      </Button>
+
+      {/* M4.5 async-lowering device proof — an ASYNC handler that awaits the
+          biometric gate. PMTC wraps this `async () => { … await … }` in a Swift
+          `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`; a sync action
+          slot cannot await. On an unenrolled Simulator/emulator the gate
+          resolves false (no prompt), so `lockStatus` flips "idle" → "denied",
+          proving the async scope executed AND the post-await re-render fired. */}
+      <Button
+        onPress={async () => {
+          // Set BEFORE the await so a device test can tell a tap that never
+          // reached the handler ("idle") from an await that never returned.
+          lockStatus = 'checking'
+          const ok = await bio.authenticate('Unlock')
+          lockStatus = ok ? 'unlocked' : 'denied'
+        }}
+      >
+        Unlock
+      </Button>
+      {/* M3.4 image-picker device proof — a second ASYNC handler, awaiting the
+          system photo picker. Compare `uri === null` explicitly rather than
+          testing truthiness: JS truthiness is not a native Bool, and the
+          explicit null comparison is what PMTC lowers to `uri == nil` (Swift) /
+          `uri == null` (Kotlin). The device gate taps this, dismisses the
+          presented sheet, and asserts "Photo: cancelled". */}
+      <Button
+        onPress={async () => {
+          const uri = await picker.pick()
+          photoStatus = uri === null ? 'cancelled' : 'picked'
+        }}
+      >
+        Pick Photo
+      </Button>
+      {/* M3.8 file-picker device proof — a third ASYNC handler, awaiting the
+          system DOCUMENT picker (any file, not just photos). Same explicit
+          `uri === null` shape and the same present→cancel→re-render device
+          assertion as the photo picker, through UIDocumentPickerViewController
+          (iOS) / SAF OpenDocument (Android). */}
+      <Button
+        onPress={async () => {
+          const uri = await files.pick()
+          fileStatus = uri === null ? 'cancelled' : 'picked'
+        }}
+      >
+        Pick File
+      </Button>
+      <Button onPress={() => power.send('TOGGLE')}>Toggle Power</Button>
+      <Button onPress={() => { boxVisible = !boxVisible }}>Toggle Box</Button>
+      <Transition show={() => boxVisible}>
+        <Text>Animated Box</Text>
+      </Transition>
+      {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
+          Native: iOS `.onLongPressGesture { count = 0 }`, Android
+          `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms
+          pointer-down polyfill (already in @pyreon/primitives). */}
+      <Press onLongPress={() => { count = 0 }} data-testid="reset-zone">
+        <Text>Hold to reset</Text>
+      </Press>
+      {/* Core-UI row closure — `Toggle` / `Modal` / `Scroll` were the canonical
+          primitives the capability matrix listed as "not individually
+          asserted". They all EMIT and typecheck on both targets; what was
+          missing was a device assertion that they BEHAVE. Each one below flips
+          an observable text so XCUITest can assert the behaviour rather than
+          mere presence (the matrix counts exercised-but-unasserted as 0).
+
+          Toggle → SwiftUI `Toggle(isOn:)` / Compose `Switch`. */}
+      <Toggle
+        value={switchOn}
+        onChange={(next) => { switchOn = next }}
+        data-testid="core-toggle"
+      />
+      <Text data-testid="core-toggle-state">{switchOn ? 'switch on' : 'switch off'}</Text>
+
+      {/* Modal → iOS `.sheet(isPresented:)` / Android `Dialog`. The body text
+          only exists while presented, so existence IS the assertion. */}
+      <Button onPress={() => { sheetOpen = true }} data-testid="core-modal-open">
+        Open Sheet
+      </Button>
+      <Modal open={sheetOpen} onClose={() => { sheetOpen = false }}>
+        <Text data-testid="core-modal-body">Sheet body</Text>
+        <Button onPress={() => { sheetOpen = false }} data-testid="core-modal-close">
+          Close Sheet
+        </Button>
+      </Modal>
+
+      {/* Scroll → iOS `ScrollView` / Android `verticalScroll`. The explicit
+          bounded viewport is required because this proof lives inside the
+          page's outer vertical Scroll; Compose rejects same-axis nested
+          scrollers when the inner one is measured with infinite height.
+          A container is
+          flattened out of the iOS a11y tree unless it carries
+          `.accessibilityElement(children: .contain)`, which the emitter adds
+          for container tags — so querying the container itself is the
+          load-bearing part of this assertion. */}
+      <Stack style={{ height: 64 }}>
+        <Scroll axis="vertical" data-testid="core-scroll">
+          <Text data-testid="core-scroll-child">Scrolled child</Text>
+        </Scroll>
+      </Stack>
+      {/* F3 flow renderer-parity controls, LAST on the page on purpose: every
+          row added above the counter pushes controls the other device tests
+          click without scrolling below the fold (Compose's performClick does
+          not scroll). The F3 tests scroll to what they need. */}
+      <Text data-testid="native-flow-color-mode">{nativeFlowColorMode()}</Text>
+      <Text data-testid="native-flow-custom-line-mounts">{nativeFlowProbe.store.customLineMounts()}</Text>
+      <Text data-testid="native-flow-connect-starts">{nativeFlowConnectStarts}</Text>
+      <Button data-testid="native-flow-toggle-dark" onPress={() => { nativeFlowDark = !nativeFlowDark }}>Toggle native dark</Button>
+      <Button data-testid="native-flow-toggle-system" onPress={() => { nativeFlowSystem = !nativeFlowSystem }}>Toggle native system mode</Button>
+      <Button data-testid="native-flow-animate-zoom" onPress={() => nativeFlow.setViewport({ zoom: 0.5 }, { duration: 3000 })}>Zoom native out slowly</Button>
+      <Button data-testid="native-flow-allow-motion" onPress={() => { nativeFlow.config.reducedMotion = false }}>Allow native motion</Button>
+      <Button data-testid="native-flow-animate-zoom-back" onPress={() => nativeFlow.setViewport({ zoom: 1 }, { duration: 3000 })}>Zoom native back slowly</Button>
+      <Tally count={count}>
+        {(n) => {
+          const doubled = n * 2
+          if (n > 2) return <Text data-testid="rp-block">{`rp big ${doubled}`}</Text>
+          return <Text data-testid="rp-block">{`rp small ${doubled}`}</Text>
+        }}
+      </Tally>
+      <Tally count={count} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
+        {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
+      </Tally>
+      {/* Platform-probe rows, LAST on the page on purpose (see the F3 note above):
+          rows added higher up push controls the other device tests click without
+          scrolling below the fold. The probe tests scroll to what they need. */}
+      <Text data-testid="probe-info">Info: {deviceInfo.platform()}-{deviceInfo.isTouch() ? 'touch' : 'no-touch'}</Text>
+      <Button data-testid="probe-wake" onPress={() => wake.request()}>Keep awake</Button>
+      <Text data-testid="probe-wake-state">Awake: {wake.active() ? 'on' : 'off'}</Text>
+      <Button data-testid="probe-motion" onPress={() => motion.start()}>Start motion</Button>
+      <Text data-testid="probe-motion-state">Motion: {motion.active() ? 'on' : 'off'}-{motion.acceleration().x * motion.acceleration().x + motion.acceleration().y * motion.acceleration().y + motion.acceleration().z * motion.acceleration().z > 1.0 ? 'sampled' : 'idle'}</Text>
+      <Button data-testid="probe-speak" onPress={() => speech.speak('hello')}>Speak</Button>
+      <Text data-testid="probe-speech-state">Speech: {speech.supported() ? 'supported' : 'unsupported'}</Text>
+      <Button data-testid="probe-record" onPress={() => recorder.start()}>Record</Button>
+      <Text data-testid="probe-record-state">Recording: {recorder.recording() ? 'on' : 'off'}</Text>
+      <Button data-testid="probe-scan" onPress={() => bt.scan()}>Scan</Button>
+      <Text data-testid="probe-bt-state">Bluetooth: {bt.available() ? 'available' : 'unavailable'}-{bt.scanning() ? 'scanning' : 'idle'}</Text>
+    </Stack>
+    </Scroll>
+  )
+}
