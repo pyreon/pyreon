@@ -859,14 +859,17 @@ describe('parse.ts — rx callee shapes that are not rx', () => {
 // MISREAD `[k]` as the key "k"); every one now NAMES it and lowers the rest.
 describe('parse.ts — computed-expression keys are named by every literal-config reader', () => {
   it('createMachine: config / state / `on` / event keys', () => {
-    const decl = declsOf(
+    // The machine is the `@pyreon/machine` plugin's `ext` declaration; its payload carries the transition table.
+    const decl = parsePyreon(
       machineApp(`{ [a + b]: 1, id: 'm', initial: 'idle', states: {
         [a + b]: {},
         idle: { [a + b]: 1, 'on': { [a + b]: 'x', GO: 'run' }, after: { T: 'x' } },
         run: { on: { ...back, BACK: 'idle' } },
       } }`),
-    ).find((d) => d.kind === 'machine') as Extract<DeclIR, { kind: 'machine' }>
-    expect(decl.transitions).toEqual({ idle: { GO: 'run' }, run: { BACK: 'idle' } })
+      undefined,
+      { registries: firstPartyCompiler.registries },
+    ).components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'machine') as Extract<DeclIR, { kind: 'ext' }>
+    expect((decl.payload as { transitions: unknown }).transitions).toEqual({ idle: { GO: 'run' }, run: { BACK: 'idle' } })
     const w = warn(swift(machineApp(`{ [a + b]: 1, initial: 'idle', states: { idle: { on: { [a + b]: 'x', GO: 'idle' } } } }`)))
     expect(w).toContain('createMachine declaration `m`: config: the computed key `[a + b]`')
     expect(w).toContain('createMachine declaration `m`: state `idle` `on`: the computed key `[a + b]`')

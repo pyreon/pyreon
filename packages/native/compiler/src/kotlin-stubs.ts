@@ -1574,18 +1574,6 @@ class PyreonI18n(
   }
 }
 
-// PyreonMachine — Gap 4 PR-2 (Strategy-B port for @pyreon/machine).
-// Real impl in @pyreon/native-runtime-kotlin's PyreonMachine.kt.
-class PyreonMachine(initial: String, val transitions: Map<String, Map<String, String>>) {
-  var state: String = initial
-    private set
-  fun send(event: String) { transitions[state]?.get(event)?.let { state = it } }
-  fun matches(s: String): Boolean = state == s
-  fun can(event: String): Boolean = transitions[state]?.containsKey(event) == true
-  fun nextEvents(): List<String> = transitions[state]?.keys?.toList() ?: emptyList()
-  operator fun invoke(): String = state
-}
-
 // @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
 // PyreonCrdt.kt / PyreonSyncedSignal.kt SURFACE.
 // A stub NARROWER than the runtime rejects CORRECT emit; one that is WIDER

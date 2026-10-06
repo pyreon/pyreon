@@ -1075,7 +1075,8 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
         continue
       }
     }
-    // SCOPE-AWARE DECLINE. `createMachine` / `createI18n` / `syncedSignal` are
+    // SCOPE-AWARE DECLINE. `createI18n` / `syncedSignal` and every call a plugin lists in
+    // `componentOnlyCalls` (`createMachine`) are
     // recognised only by the COMPONENT-BODY statement walk — they lower to
     // `remember {}` / an `@State`, which have no meaning at file scope, so the
     // recognizers are structurally unreachable here. Before this, such a
@@ -1089,9 +1090,9 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     if (init.type === 'CallExpression') {
       const scopedName = init.callee?.name as string | undefined
       if (
-        scopedName === 'createMachine' ||
         scopedName === 'createI18n' ||
-        scopedName === 'syncedSignal'
+        scopedName === 'syncedSignal' ||
+        (scopedName !== undefined && activeRegistries().scan.componentOnlyCalls.has(scopedName))
       ) {
         ctx.warnings.push(
           `${scopedName}() lowers to native only INSIDE a component body — it becomes a ` +
@@ -4757,6 +4758,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
     propKey: (prop) => staticPropKey(prop as AnyNode | undefined),
     hasDynamicKey: (prop) => hasDynamicKey(prop as AnyNode | undefined),
     dynamicKeyText: (prop) => dynamicKeyText(prop as AnyNode, ctx),
+    warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     statements: (block) => parseStatementBlock(block as AnyNode, ctx),
     typeArgOf: (other) => parseGenericTypeArg(other as AnyNode, ctx),
@@ -5062,18 +5064,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // diagnostic block so `createI18n` is recognized as a real port.
   const i18nDecl = tryDeclFromCreateI18n(node, ctx)
   if (i18nDecl) return i18nDecl
-
-  // Gap 4 PR-2 (2026-06-05 audit) — full Strategy-B port for
-  // `@pyreon/machine`. `const m = createMachine({ initial, states })`
-  // becomes a PyreonMachine reactive container; method calls
-  // (`.send`/`.matches`/`.can`/`.nextEvents`) flow through unchanged
-  // because the runtime port defines them. `m()` read-current-state
-  // also works unchanged via Swift `callAsFunction()` / Kotlin
-  // `operator fun invoke()`. Runs BEFORE the Tier-2 silent-drop
-  // diagnostic block so `createMachine` is recognized as a real port
-  // (no warning fires).
-  const machineDecl = tryDeclFromCreateMachine(node, ctx)
-  if (machineDecl) return machineDecl
 
   // `@pyreon/sync` — `const doc = new PyreonCrdtDoc(...)` + `const x =
   // syncedSignal({ doc, key, initial })`. The doc is the shared LWW-CRDT
@@ -6248,127 +6238,6 @@ function tryRxNamespaceLowering(
     args: restArgs,
   }
   return { kind: 'computed', name, expr: rxCallExpr }
-}
-
-/**
- * Gap 4 PR-2 (2026-06-05 native-readiness audit) — `createMachine({
- * initial, states })` from `@pyreon/machine` → DeclIR.machine.
- *
- * Extracts the literal `initial` string + the literal `states` map
- * (state name → event map → next state name). Non-literal configs
- * fall through to null so the parent falls through to the Tier-2
- * silent-drop diagnostic (binding emits unresolved with a warning).
- *
- * The `as const` on `initial: 'idle' as const` is unwrapped via the
- * shared `unwrapTypeLayers` helper.
- *
- * Method calls on the binding (`m.send(...)` / `m.matches(...)` /
- * `m.can(...)` / `m.nextEvents()`) flow through emit as-is — the
- * PyreonMachine runtime container defines them. `m()` also works as
- * a current-state read via Swift `callAsFunction()` / Kotlin
- * `operator fun invoke()` — no compiler-side member-access rewriting
- * needed.
- */
-function tryDeclFromCreateMachine(
-  node: AnyNode,
-  ctx: ParseCtx,
-): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  const calleeName = init.callee?.name as string | undefined
-  if (calleeName !== 'createMachine') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const configArg = args[0]
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createMachine declaration \`${name}\`: config argument is not an object literal — emit needs the literal { initial, states } shape to bake the transition table. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Walk the config object: pick out `initial: 'X'` and `states: { ... }`.
-  let initial: string | undefined
-  let statesNode: AnyNode | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `createMachine declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'initial') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        initial = valueNode.value
-      }
-    } else if (keyName === 'states') {
-      statesNode = valueNode
-    }
-  }
-
-  if (!initial) {
-    ctx.warnings.push(
-      `createMachine declaration \`${name}\`: \`initial\` field is missing or not a string literal — required to seed PyreonMachine. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (!statesNode || statesNode.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createMachine declaration \`${name}\`: \`states\` field is missing or not an object literal — required to bake the transition table. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Parse the states map: { stateName: { on: { EVENT: nextState } }, ... }
-  // Empty state objects (`done: {}`) are kept as states with no transitions —
-  // they're valid terminal states.
-  const transitions: Record<string, Record<string, string>> = {}
-  for (const stateProp of (statesNode.properties as AnyNode[] | undefined) ?? []) {
-    if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(stateProp)) {
-      warnDynamicKey(stateProp, `createMachine declaration \`${name}\`: states`, ctx)
-      continue
-    }
-    const stateName = staticPropKey(stateProp)
-    if (!stateName) continue
-    const stateConfig = unwrapTypeLayers(stateProp.value as AnyNode | undefined)
-    transitions[stateName] = {}
-    if (stateConfig?.type !== 'ObjectExpression') continue
-    // Find `on: { EVENT: nextState }`
-    for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
-      if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') continue
-      if (hasDynamicKey(innerProp)) {
-        warnDynamicKey(innerProp, `createMachine declaration \`${name}\`: state \`${stateName}\``, ctx)
-        continue
-      }
-      const innerKey = staticPropKey(innerProp)
-      if (innerKey !== 'on') continue
-      const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
-      if (eventsMap?.type !== 'ObjectExpression') continue
-      for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
-        if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') continue
-        if (hasDynamicKey(eventProp)) {
-          warnDynamicKey(eventProp, `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\``, ctx)
-          continue
-        }
-        const eventName = staticPropKey(eventProp)
-        const evVal = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
-        if (
-          eventName &&
-          evVal?.type === 'Literal' &&
-          typeof evVal.value === 'string'
-        ) {
-          transitions[stateName]![eventName] = evVal.value
-        }
-      }
-    }
-  }
-
-  return { kind: 'machine', name, initial, transitions }
 }
 
 /**

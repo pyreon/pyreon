@@ -515,15 +515,6 @@ function withExpectedType<T>(t: TypeIR | undefined, fn: () => T): T {
  * `signal()` (zero-arg call) emits as bare `signal` for signal reads.
  */
 let _signalNames: Set<string> = new Set()
-/**
- * Per-component: every machine decl name in scope (DeclIR.machine —
- * Gap 4 PR-2). PyreonMachine's `callAsFunction()` requires `m()`
- * (parens preserved) to read current state, NOT bare `m` (which
- * would emit as a property reference and return the PyreonMachine
- * instance itself). Disambiguates `m()` from signal `count()`
- * (parens dropped) and from function `addTodo()` (parens preserved).
- */
-let _machineNames: Set<string> = new Set()
 /** `syncedSignal(...)` bindings — read `x()` (callAsFunction), write `x.set(v)`
  *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
  *  rewrite must skip them (they are facade objects, not bare @State values). */
@@ -1920,9 +1911,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
-  // callAsFunction).
-  _machineNames = new Set()
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
@@ -1979,10 +1967,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    // Gap 4 PR-2: PyreonMachine reads via `m()` (callAsFunction).
-    // Keep machine names OUT of _signalNames (parens preserved) and
-    // OUT of _functionNames (it's a property, not a free function).
-    if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
@@ -3344,32 +3328,6 @@ function emitSwiftDecl(
         ? `, fallbackLocale: ${swiftStr(d.fallbackLocale)}`
         : ''
     return `@State private var ${swiftIdent(d.name)} = PyreonI18n(locale: ${swiftStr(d.locale)}, messages: ${msgLit}${fbArg})`
-  }
-  // Gap 4 PR-2: `const m = createMachine({ initial, states })` → an
-  // @State PyreonMachine seeded with the literal initial state +
-  // transitions table. Method calls (`m.send`/`m.matches`/`m.can`/
-  // `m.nextEvents`) flow through unchanged because the runtime
-  // container defines them. The `m()` read-current-state syntax
-  // also works unchanged via Swift's `callAsFunction()`.
-  if (d.kind === 'machine') {
-    const transEntries = Object.entries(d.transitions)
-      .map(([state, events]) => {
-        const eventEntries = Object.entries(events)
-          .map(
-            ([event, next]) =>
-              `${swiftStr(event)}: ${swiftStr(next)}`,
-          )
-          .join(', ')
-        // Empty inner event map → `[:]` (Swift empty-dict literal);
-        // a bare `[]` parses as empty Array, not Dictionary, and
-        // fails typecheck against the [String: String] inner value.
-        const inner = eventEntries === '' ? '[:]' : `[${eventEntries}]`
-        return `${swiftStr(state)}: ${inner}`
-      })
-      .join(', ')
-    // Empty outer transitions map → `[:]` for the same reason.
-    const transLit = transEntries === '' ? '[:]' : `[${transEntries}]`
-    return `@State private var ${swiftIdent(d.name)} = PyreonMachine(initial: ${swiftStr(d.initial)}, transitions: ${transLit})`
   }
   // `@pyreon/sync` — the doc + each synced signal are declared as TYPED @State
   // with NO inline initializer; they're seeded in the component's generated
@@ -5631,11 +5589,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the snapshot doesn't expose lurking gaps prematurely.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
-          return `${swiftIdent(e.callee.name)}()`
-        }
-        // Gap 4 PR-2: PyreonMachine names need parens preserved so
-        // `m()` invokes `callAsFunction()` and reads the current state.
-        if (_machineNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
         }
         // A syncedSignal `title()` invokes the facade's `callAsFunction()` to

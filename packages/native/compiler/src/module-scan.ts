@@ -77,6 +77,7 @@ type ScanPlugin = {
   readonly scanModule?: ModuleScanner | undefined
   readonly requestSources?: readonly RequestSource[] | undefined
   readonly destructureCalls?: readonly string[] | undefined
+  readonly componentOnlyCalls?: readonly string[] | undefined
 }
 
 export interface ScanRegistry {
@@ -84,6 +85,8 @@ export interface ScanRegistry {
   readonly sources: readonly { readonly owner: string; readonly source: RequestSource }[]
   /** Hooks whose result may be destructured (`const { data } = useQuery(…)`). */
   readonly destructureCalls: ReadonlySet<string>
+  /** Calls that lower only inside a component body (a file-scope declaration of one is reported as misplaced). */
+  readonly componentOnlyCalls: ReadonlySet<string>
 }
 
 /** Build the registry from every plugin's scan-side hooks, in plugin order. */
@@ -91,10 +94,12 @@ export function createScanRegistry(plugins: readonly ScanPlugin[]): ScanRegistry
   const scanners: { owner: string; scan: ModuleScanner }[] = []
   const sources: { owner: string; source: RequestSource }[] = []
   const destructureCalls = new Set<string>()
+  const componentOnlyCalls = new Set<string>()
   for (const plugin of plugins) {
     if (plugin.scanModule !== undefined) scanners.push({ owner: plugin.name, scan: plugin.scanModule })
     for (const source of plugin.requestSources ?? []) sources.push({ owner: plugin.name, source })
     for (const name of plugin.destructureCalls ?? []) destructureCalls.add(name)
+    for (const name of plugin.componentOnlyCalls ?? []) componentOnlyCalls.add(name)
   }
-  return Object.freeze({ scanners: Object.freeze(scanners), sources: Object.freeze(sources), destructureCalls })
+  return Object.freeze({ scanners: Object.freeze(scanners), sources: Object.freeze(sources), destructureCalls, componentOnlyCalls })
 }

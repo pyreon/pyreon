@@ -595,15 +595,6 @@ const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 let _zeroArgFnNames: Set<string> = new Set()
 /** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
 let _zeroArgHelperNames: Set<string> = new Set()
-/**
- * Per-component: every machine decl name (DeclIR.machine — Gap 4
- * PR-2). PyreonMachine has `operator fun invoke()` so `m()` reads
- * current state. Without this set, the call-emit drops parens for
- * unknown zero-arg identifiers (same code path as signal reads),
- * which would emit `m` (a PyreonMachine reference) instead of `m()`
- * (the current state String).
- */
-let _machineNames: Set<string> = new Set()
 /** `syncedSignal(...)` bindings — read `x()` (Kotlin `invoke`), write `x.set(v)`
  *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
  *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
@@ -1411,7 +1402,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _machineNames = new Set()
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
@@ -1453,10 +1443,6 @@ function emitKotlinComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    // Gap 4 PR-2: PyreonMachine. Keep `m` OUT of _signalNames (so
-    // `m()` keeps parens for `operator fun invoke()`) AND OUT of
-    // _functionNames (it's a property, not a free fn).
-    if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
@@ -1820,7 +1806,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _urlStateNames = new Set()
-  _machineNames = new Set()
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
@@ -2280,28 +2265,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         ? `, fallbackLocale = ${kotlinStr(d.fallbackLocale)}`
         : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${kotlinStr(d.locale)}, messages = ${msgLit}${fbArg}) }`
-  }
-  // Gap 4 PR-2: `const m = createMachine({ initial, states })` →
-  // `val m = remember { PyreonMachine(initial = "idle",
-  // transitions = mapOf("idle" to mapOf("FETCH" to "loading"), ...)) }`.
-  // Method calls flow through unchanged (`m.send("X")`, `m.matches("Y")`,
-  // `m.can("Z")`, `m.nextEvents()`); `m()` works via Kotlin
-  // `operator fun invoke()`. Empty transitions map → `mapOf()`.
-  if (d.kind === 'machine') {
-    const entries = Object.entries(d.transitions)
-      .map(([state, events]) => {
-        const ev = Object.entries(events)
-          .map(
-            ([event, next]) =>
-              `${kotlinStr(event)} to ${kotlinStr(next)}`,
-          )
-          .join(', ')
-        const inner = ev === '' ? 'mapOf()' : `mapOf(${ev})`
-        return `${kotlinStr(state)} to ${inner}`
-      })
-      .join(', ')
-    const transLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
-    return `val ${kotlinIdent(d.name)} = remember { PyreonMachine(initial = ${kotlinStr(d.initial)}, transitions = ${transLit}) }`
   }
   // `@pyreon/sync` — `remember { }` blocks run sequentially in composition, so
   // (unlike Swift's @State) the doc and its signals can reference each other
@@ -4347,11 +4310,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // delegated `var by` shape.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
-          return `${kotlinIdent(e.callee.name)}()`
-        }
-        // Gap 4 PR-2: PyreonMachine — `m()` invokes
-        // `operator fun invoke()` to read the current state.
-        if (_machineNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
         if (_syncedSignalNames.has(e.callee.name)) {

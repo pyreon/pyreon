@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, topLevel, items, methodCalls, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, componentOnlyCalls, topLevel, items, methodCalls, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -337,6 +337,7 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   for (const [field, value] of [
     ['destructureCalls', destructureCalls],
+    ['componentOnlyCalls', componentOnlyCalls],
     ['runtimeTypes', runtimeTypes],
     ['modules', modules],
     ['requires', requires],

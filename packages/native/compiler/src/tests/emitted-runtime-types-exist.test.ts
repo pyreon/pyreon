@@ -26,12 +26,19 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FLOW_KOTLIN_STUBS, FLOW_SWIFT_STUBS } from '../../../../fundamentals/flow/src/native-plugin/stubs'
 import { KOTLIN_CHART_VIEW_STUBS, SWIFT_CHART_VIEW_STUBS } from '../../../../fundamentals/charts/src/native-plugin/stubs'
+import { MACHINE_KOTLIN_STUBS, MACHINE_SWIFT_STUBS } from '../../../../fundamentals/machine/src/native-plugin/stubs'
 
 const SRC = resolve(import.meta.dirname, '..')
 const REPO = resolve(SRC, '../../../..')
 // The charts plugin owns its emitters and its type-gate stubs: they live with the library, not the compiler.
 const CHARTS_PLUGIN = join(REPO, 'packages/fundamentals/charts/src/native-plugin')
 const FLOW_PLUGIN = join(REPO, 'packages/fundamentals/flow/src/native-plugin')
+/**
+ * Library-owned plugins whose `native-plugin/` directory holds the emitters (every `.ts` file except the stubs and a
+ * generated blob) beside a `stubs.ts` the compile gates append. A library that moves its lowering into its package adds
+ * its directory here and its stub constants to `STUB_SOURCES` below.
+ */
+const PLUGIN_DIRS: readonly string[] = [FLOW_PLUGIN, join(REPO, 'packages/fundamentals/machine/src/native-plugin')]
 
 /** Pyreon-owned runtime types. Anything else in a stub is an SDK mirror. */
 const OWNED = /^(Pyreon[A-Za-z0-9]*|Media3AudioEngine|AVFoundationAudioEngine|Android[A-Z][A-Za-z0-9]*|UIKit[A-Z][A-Za-z0-9]*|CoreBluetoothScanner|CoreMotionSource|AVFoundationRecordingEngine|AVSpeechSynth)$/
@@ -146,9 +153,11 @@ describe('every Pyreon type the emit names exists in the real runtime', () => {
   for (const f of ['hosts.ts', 'engine-structs.ts', 'swift-hosts.ts', 'swift-plot.ts', 'swift-support.ts', 'kotlin-hosts.ts', 'kotlin-plot.ts', 'kotlin-support.ts']) {
     EMITTERS.push(join(CHARTS_PLUGIN, f))
   }
-  // The flow plugin's lowering + per-target emitters (every file but the stubs and the generated host blob).
-  for (const f of readdirSync(FLOW_PLUGIN).filter((n) => n.endsWith('.ts') && n !== 'stubs.ts' && !n.endsWith('.generated.ts'))) {
-    EMITTERS.push(join(FLOW_PLUGIN, f))
+  // The library-owned plugins' lowering + per-target emitters (every file but the stubs and the generated host blob).
+  for (const dir of PLUGIN_DIRS) {
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.ts') && n !== 'stubs.ts' && !n.endsWith('.generated.ts'))) {
+      EMITTERS.push(join(dir, f))
+    }
   }
 
   it('every scanned emitter file exists (an unreadable path would silently narrow the scan)', () => {
@@ -162,6 +171,8 @@ describe('every Pyreon type the emit names exists in the real runtime', () => {
     ["the charts plugin's Kotlin stubs", () => KOTLIN_CHART_VIEW_STUBS, '.kt'],
     ["the flow plugin's stubs (Swift)", () => FLOW_SWIFT_STUBS, '.swift'],
     ["the flow plugin's stubs (Kotlin)", () => FLOW_KOTLIN_STUBS, '.kt'],
+    ["the machine plugin's stubs (Swift)", () => MACHINE_SWIFT_STUBS, '.swift'],
+    ["the machine plugin's stubs (Kotlin)", () => MACHINE_KOTLIN_STUBS, '.kt'],
   ]
 
   it.each(STUB_SOURCES)(

@@ -264,6 +264,12 @@ export interface CompilerPlugin<Target extends string = string> {
   readonly finishModule?: ModuleFinish | undefined
   /** Hooks of this plugin whose result may be destructured (`const { data, isPending } = useQuery(…)`). */
   readonly destructureCalls?: readonly string[] | undefined
+  /**
+   * Calls of this plugin (a subset of `calls`) that lower ONLY inside a component body — the declaration becomes
+   * a `remember {}` / an `@State`, which has no meaning at file scope. A file-scope declaration of one gets a
+   * named warning saying the placement is wrong, instead of printing the call verbatim into the emit.
+   */
+  readonly componentOnlyCalls?: readonly string[] | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
   readonly requires?: readonly string[] | undefined
   /** Marks a compiler-shipped plugin that a discovered plugin may replace by name. */

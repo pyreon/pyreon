@@ -9,8 +9,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable } from '../validate'
 
 // kotlinc/swiftc invocations cold-start a JVM / frontend per fixture;
 // under parallel-suite load a single compile can take 20-30s — beyond

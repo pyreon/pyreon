@@ -71,6 +71,12 @@ export interface ParseContext {
   hasDynamicKey(prop: AstNode | undefined): boolean
   /** The source text of a dynamic key, bracketed, for a warning (`[kind]`). */
   dynamicKeyText(prop: AstNode): string
+  /**
+   * Report that `prop`'s computed key is only known at runtime, so the entry cannot be read at compile
+   * time (the compiler's own wording, so every plugin names the limit the same way). `where` is the
+   * prefix, e.g. `createMachine declaration \`m\`: config`.
+   */
+  warnDynamicKey(prop: AstNode, where: string): void
   /** The statically-known string an argument denotes — a literal, or a module-scope `const` holding one — else `null`. */
   staticString(node: AstNode | null | undefined): string | null
   /** The statements of a function body (`{ … }`) parsed to IR, for a recognizer that carries a callback. */

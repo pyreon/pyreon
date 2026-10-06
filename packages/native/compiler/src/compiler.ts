@@ -200,6 +200,7 @@ export function createCompiler<Target extends string = never>(
       scanModule: plugin.scanModule,
       requestSources: plugin.requestSources,
       destructureCalls: plugin.destructureCalls,
+      componentOnlyCalls: plugin.componentOnlyCalls,
       topLevel: plugin.topLevel,
       items: plugin.items,
       methodCalls: plugin.methodCalls,
