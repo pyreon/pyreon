@@ -1221,8 +1221,16 @@ export async function runCli(argv: readonly string[]): Promise<number> {
             `browser verdicts stay skip): ${summary.notDriven.join(', ')}\n`,
         )
       }
+      if (summary.unmatched.length > 0) {
+        err(
+          `[Pyreon] atlas verify-browser: ${summary.unmatched.length} browser result(s) match NO scenario in ${summary.catalogPath ?? 'atlas-catalog.json'} ` +
+            `and were NOT merged: ${summary.unmatched.join(', ')}.\n` +
+            `  The scan and the workbench derived different ids for the same scenario — re-run \`atlas scan\` with this version, ` +
+            `and if it persists report it (scenario ids must not depend on the checkout location).\n`,
+        )
+      }
       if (summary.catalogPath) out(`  → ${summary.catalogPath}\n`)
-      return summary.snapshotsFailed > 0 ? 1 : 0
+      return summary.snapshotsFailed > 0 || summary.unmatched.length > 0 ? 1 : 0
     } catch (error) {
       err(`${String((error as Error)?.message ?? error)}\n`)
       return 1

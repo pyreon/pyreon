@@ -187,7 +187,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 3,
       snapshotsCreated: 2,
       snapshotsFailed: 0,
-      notDriven: [],
+      notDriven: [], unmatched: [],
       catalogPath: '/tmp/atlas-catalog.json',
     }))
     const runCli = await load()
@@ -204,7 +204,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 1,
       snapshotsCreated: 0,
       snapshotsFailed: 1,
-      notDriven: [],
+      notDriven: [], unmatched: [],
     }))
     const runCli = await load()
     expect(await runCli(['verify-browser', dir])).toBe(1)
@@ -218,7 +218,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 1,
       snapshotsCreated: 0,
       snapshotsFailed: 0,
-      notDriven: ['Workbench--default'],
+      notDriven: ['Workbench--default'], unmatched: [],
     }))
     const runCli = await load()
     expect(await runCli(['verify-browser', dir])).toBe(0)
@@ -226,12 +226,26 @@ describe('atlas verify-browser', () => {
     expect(outText()).toContain('not drivable')
   })
 
+  it('exits NON-ZERO and names a browser result that matched no catalog scenario (#3823)', async () => {
+    mockRunner(() => ({
+      scenarios: 2,
+      coverageMeasured: 2,
+      snapshotsCreated: 0,
+      snapshotsFailed: 0,
+      notDriven: [],
+      unmatched: ['example-glyph-abs-one--default'],
+    }))
+    const runCli = await load()
+    expect(await runCli(['verify-browser', dir])).toBe(1)
+    expect(errText()).toContain('example-glyph-abs-one--default')
+  })
+
   it('passes --update-snapshots through as a re-baseline request', async () => {
     let seen: unknown
     vi.doMock('../../verify-browser/runner', () => ({
       runBrowserVerify: async (options: unknown) => {
         seen = options
-        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [] }
+        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [] }
       },
     }))
     const runCli = await load()
@@ -246,7 +260,7 @@ describe('atlas verify-browser', () => {
     vi.doMock('../../verify-browser/runner', () => ({
       runBrowserVerify: async (options: Record<string, unknown>) => {
         seen = options
-        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [] }
+        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [] }
       },
     }))
     const runCli = await load()

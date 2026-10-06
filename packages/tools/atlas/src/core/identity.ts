@@ -136,3 +136,30 @@ export function ambiguousComponentMessage(lookup: string, candidates: readonly s
     `(${candidates.join(', ')}). Ask for one of those keys.`
   )
 }
+
+/**
+ * A scan-root-relative, `/`-separated path — the ONLY path identity is derived
+ * from.
+ *
+ * Pure string work on purpose (no `node:path`): it must give byte-identical
+ * output for a Windows `\\` path, a POSIX path, and a checkout that moved.
+ * `root` and `file` must be in the same form (both absolute, or both relative
+ * to the same base) — discovery builds `file` by joining onto `root`, so the
+ * root is always a literal prefix.
+ */
+export function scanRelativePath(root: string, file: string): string {
+  const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\.\//, '')
+  const r = norm(root).replace(/\/$/, '')
+  const f = norm(file)
+  if (r === '' || r === '.') return f
+  return f.startsWith(`${r}/`) ? f.slice(r.length + 1) : f
+}
+
+/**
+ * The path identity qualifies from: the stamped `scanPath`, else the
+ * separator-normalised `source` for hand-built components that never went
+ * through discovery (tests, `createCatalogGraph` called with metadata only).
+ */
+export function identityPath(component: { scanPath?: string; source?: string }): string | undefined {
+  return component.scanPath ?? component.source?.replace(/\\/g, '/')
+}

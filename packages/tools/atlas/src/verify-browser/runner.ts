@@ -94,6 +94,14 @@ export interface BrowserVerifySummary {
    * run is legible instead of silently partial.
    */
   notDriven: string[]
+  /**
+   * Browser results whose scenario id is in NO catalog entry — present only
+   * when a catalog was merged into. Non-empty means the two surfaces derived
+   * different ids for the same scenario (identity drift), so those verdicts
+   * were measured and then dropped; the CLI exits non-zero rather than let
+   * that read as a clean run.
+   */
+  unmatched: string[]
   catalogPath?: string
 }
 
@@ -272,6 +280,7 @@ export async function runBrowserVerify(
 
   const results: ScenarioBrowserResult[] = []
   const notDriven: string[] = []
+  const unmatched: string[] = []
   const snapshotOutcomes: SnapshotOutcome[] = []
   let coverageMeasured = 0
   let axeChecked = 0
@@ -287,6 +296,20 @@ export async function runBrowserVerify(
     const catalog = (await page.evaluate(
       `(() => { const m = globalThis.__ATLAS_MODEL__; return { components: m.catalog.components.map((c) => ({ id: c.id, name: c.name, scenarios: (c.scenarios ?? []).map((s) => ({ id: s.id })) })) } })()`,
     )) as PageCatalog
+
+    // The page's ids are the join key AND the snapshot filenames: a repeat
+    // would let one scenario's baseline/verdict serve another.
+    const seenIds = new Set<string>()
+    for (const component of catalog.components) {
+      for (const scenario of component.scenarios ?? []) {
+        if (seenIds.has(scenario.id)) {
+          throw new Error(
+            `[Pyreon] atlas verify-browser: scenario id "${scenario.id}" appears more than once in the workbench catalog (component "${component.name}") — verdicts and snapshots are keyed by id, so they would overwrite each other.`,
+          )
+        }
+        seenIds.add(scenario.id)
+      }
+    }
 
     mkdirSync(snapshotDir, { recursive: true })
 
@@ -409,6 +432,8 @@ export async function runBrowserVerify(
   }
   if (data) {
     const byId = new Map(results.map((r) => [r.id, r]))
+    const known = new Set(data.components.flatMap((c) => c.scenarios.map((s) => s.id)))
+    for (const r of results) if (!known.has(r.id)) unmatched.push(r.id)
     for (const component of data.components) {
       for (const scenario of component.scenarios) {
         const r = byId.get(scenario.id)
@@ -429,6 +454,7 @@ export async function runBrowserVerify(
     axeChecked,
     axeFailed,
     notDriven,
+    unmatched,
     ...(wrote ? { catalogPath: wrote } : {}),
   }
 }
