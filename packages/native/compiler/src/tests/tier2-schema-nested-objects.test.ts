@@ -7,7 +7,7 @@
 //   4. Multi-level nesting (object inside array inside object) works.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Gap 4 v3.2 — nested z.object() shapes', () => {
   // ─────────────────── nested object field (Swift) ───────────────────

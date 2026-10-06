@@ -7,7 +7,7 @@
 // X.label / X.placeholder directly.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `
 import { withField } from '@pyreon/validate'

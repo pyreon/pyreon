@@ -40,6 +40,8 @@ describe('plugin boundary', () => {
 describe.each([
   ['@pyreon/charts', 'charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
   ['@pyreon/flow', 'flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
+  ['@pyreon/validation', 'validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
+  ['@pyreon/validate', 'validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
 ] as const)('package-owned plugin boundary (%s)', (_pkg, dirName, expected) => {
   const CHARTS_PLUGIN = join(SRC, `../../../fundamentals/${dirName}/src/native-plugin`)
   const COMPILER_SPECIFIER = /['"]@pyreon\/native-compiler(?:\/([^'"]*))?['"]/

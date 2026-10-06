@@ -363,7 +363,7 @@ export async function resolveNativeCompiler(): Promise<{
       validateKotlinFiles?: (codes: readonly string[], options?: unknown) => ReturnType<CompileFn>
     }
     // The libraries own their native lowering: each ships a plugin in its OWN package
-    // (`@pyreon/http`, `@pyreon/query`), loaded here from the project's installs — resolved, never
+    // (`@pyreon/http`, `@pyreon/query`, `@pyreon/validate`, `@pyreon/validation`), loaded here from the project's installs — resolved, never
     // fetched — exactly as `pyreon-native` discovers them. A library the project does not have simply
     // contributes nothing, and a lowering that depends on it then reports as unlowered.
     const { plugins, stubs } = await loadLibraryPlugins()
@@ -397,6 +397,8 @@ async function loadLibraryPlugins(): Promise<{ plugins: unknown[]; stubs: unknow
   const loaders: (() => Promise<Record<string, unknown>>)[] = [
     () => import('@pyreon/http/native-plugin' as string),
     () => import('@pyreon/query/native-plugin' as string),
+    () => import('@pyreon/validate/native-plugin' as string),
+    () => import('@pyreon/validation/native-plugin' as string),
   ]
   for (const load of loaders) {
     try {

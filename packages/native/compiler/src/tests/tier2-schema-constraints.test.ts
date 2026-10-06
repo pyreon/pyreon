@@ -3,7 +3,7 @@
 // .max(), .email(), .url(), .uuid() at runtime.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Gap 4 v2.1 — schema constraint enforcement', () => {
   it('Swift: string .min() and .max() emit length guards', () => {

@@ -209,6 +209,8 @@ export interface ItemRegistry {
   emitter(plugin: string, type: string): ModuleItemEmitter | undefined
   /** Method name → recognizers in plugin order. A call with no claimant costs one `Map.get`. */
   readonly methodCalls: ReadonlyMap<string, readonly { readonly owner: string; readonly recognize: MethodCallRecognizer }[]>
+  /** Recognizers registered under `'*'` — they see every method call, after the ones keyed by its own name. */
+  readonly anyMethodCalls: readonly { readonly owner: string; readonly recognize: MethodCallRecognizer }[]
   readonly exprEmitters: ReadonlyMap<string, ReadonlyMap<string, ExprEmitter>>
   exprEmitter(plugin: string, type: string): ExprEmitter | undefined
   readonly structRefinements: readonly { readonly owner: string; readonly refine: StructRefinement }[]
@@ -227,6 +229,7 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
   const topLevel: { owner: string; recognize: TopLevelRecognizer }[] = []
   const emitters = new Map<string, ReadonlyMap<string, ModuleItemEmitter>>()
   const methodCalls = new Map<string, { owner: string; recognize: MethodCallRecognizer }[]>()
+  const anyMethodCalls: { owner: string; recognize: MethodCallRecognizer }[] = []
   const exprEmitters = new Map<string, ReadonlyMap<string, ExprEmitter>>()
   const structRefinements: { owner: string; refine: StructRefinement }[] = []
   const finishers: { owner: string; finish: ModuleFinish }[] = []
@@ -234,6 +237,10 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
     if (plugin.topLevel !== undefined) topLevel.push({ owner: plugin.name, recognize: plugin.topLevel })
     if (plugin.items !== undefined) emitters.set(plugin.name, new Map(Object.entries(plugin.items)))
     for (const [method, recognize] of Object.entries(plugin.methodCalls ?? {})) {
+      if (method === '*') {
+        anyMethodCalls.push({ owner: plugin.name, recognize })
+        continue
+      }
       const list = methodCalls.get(method) ?? []
       list.push({ owner: plugin.name, recognize })
       methodCalls.set(method, list)
@@ -247,6 +254,7 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),
     methodCalls,
+    anyMethodCalls: Object.freeze(anyMethodCalls),
     exprEmitters,
     exprEmitter: (plugin, type) => exprEmitters.get(plugin)?.get(type),
     structRefinements: Object.freeze(structRefinements),

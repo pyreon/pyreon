@@ -36,7 +36,7 @@ import {
   swiftObservableIdent,
   withObservableMembers,
 } from '../identifier-safety'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

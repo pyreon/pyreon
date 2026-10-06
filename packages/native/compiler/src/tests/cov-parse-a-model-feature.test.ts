@@ -11,7 +11,7 @@
 // including the quoted-key spelling (`{ 'state': { 'count': 1 } }`), which is
 // the same object as the bare one and has to read identically.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 

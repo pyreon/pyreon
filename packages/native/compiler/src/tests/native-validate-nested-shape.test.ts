@@ -16,7 +16,7 @@
  * a real wrapper function) were unaffected.
  */
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('the s DSL lowers a NESTED s.object() field', () => {
   const src = `import { s } from '@pyreon/validate'

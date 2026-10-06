@@ -28,7 +28,7 @@
 
 import { activeRegistries } from './active-registries'
 import type { ExtExprIR, ItemBindings } from './module-items'
-import type { ExtModuleItem, ParseResult, ZodSchemaDefnIR } from './types'
+import type { ExtModuleItem, ParseResult } from './types'
 
 /** The renamed value binding for a value/type pair named `name`, unique against `taken`. */
 function valueNameFor(name: string, taken: ReadonlySet<string>): string {
@@ -98,8 +98,6 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
   if (typeNames.size === 0) return
   const valueNames = [
     ...result.moduleDecls.map((d) => d.name),
-    ...result.zodSchemas.map((z) => z.bindingName),
-    ...result.fieldMetas.map((f) => f.bindingName),
     ...result.features.map((f) => f.bindingName),
     ...result.moduleItems.flatMap((item) => itemBindings(item)?.names(item) ?? []),
   ]
@@ -142,39 +140,13 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
   }
   if (renames.size === 0) return
 
-  // A renamed schema's NESTED structs follow it. `s.object({ author:
-  // s.object({…}) })` synthesizes an auxiliary schema named after its parent
-  // (`Book_Author`), so without this the parent became `BookValue` while its
-  // children kept `Book_…` — consistent, compiling, and needlessly confusing.
-  // Only an aux name that still carries the parent's prefix is renamed, and
-  // only onto a name nothing else took.
-  const auxOf = (defs: readonly ZodSchemaDefnIR[] | undefined): ZodSchemaDefnIR[] =>
-    (defs ?? []).flatMap((a) => [a, ...auxOf(a.auxSchemas)])
-  for (const zs of result.zodSchemas) for (const aux of auxOf(zs.auxSchemas)) taken.add(aux.bindingName)
-  for (const zs of result.zodSchemas) {
-    const to = renames.get(zs.bindingName)
-    if (to === undefined) continue
-    const prefix = `${zs.bindingName}_`
-    for (const aux of auxOf(zs.auxSchemas)) {
-      if (!aux.bindingName.startsWith(prefix) || renames.has(aux.bindingName)) continue
-      const candidate = `${to}_${aux.bindingName.slice(prefix.length)}`
-      if (taken.has(candidate)) continue
-      taken.add(candidate)
-      renames.set(aux.bindingName, candidate)
-    }
-  }
-
-  // Each plugin item renames its own payload, and may add the names that follow a renamed primary.
+  // Each plugin item renames its own payload, and may add the names that follow a renamed primary (a schema's
+  // nested `Book_Author` follows `Book`).
   for (const item of result.moduleItems) itemBindings(item)?.rename(item, renames, taken)
   for (const d of result.moduleDecls) d.name = renames.get(d.name) ?? d.name
-  for (const defs of [result.zodSchemas, result.fieldMetas, result.features]) {
-    for (const d of defs) d.bindingName = renames.get(d.bindingName) ?? d.bindingName
-  }
-  for (const zs of result.zodSchemas) {
-    for (const aux of auxOf(zs.auxSchemas)) aux.bindingName = renames.get(aux.bindingName) ?? aux.bindingName
-  }
+  for (const f of result.features) f.bindingName = renames.get(f.bindingName) ?? f.bindingName
   const exprEmitters = activeRegistries().items
-  for (const root of [...valueRoots, result.moduleDecls, result.zodSchemas, result.fieldMetas, result.features]) {
+  for (const root of [...valueRoots, result.moduleDecls, result.features]) {
     for (const n of walk(root)) {
       if (n.kind === 'ext-expr') {
         const e = n as unknown as ExtExprIR

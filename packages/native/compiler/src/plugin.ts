@@ -247,7 +247,8 @@ export interface CompilerPlugin<Target extends string = string> {
   readonly items?: Readonly<Record<string, ModuleItemEmitter>> | undefined
   /**
    * Method calls `<receiver>.<method>(…)` this plugin recognizes by SHAPE, keyed by METHOD name
-   * (`safeParse`). Each recognizer returns an `ext-expr` spec, `undefined` to decline, or `null` to claim
+   * (`safeParse`); the key `'*'` sees EVERY method call, after the recognizers keyed by its own name
+   * (for a plugin that must warn about any method on a binding it owns). Each recognizer returns an `ext-expr` spec, `undefined` to decline, or `null` to claim
    * a call it reported as unsupported. Pair it with `exprs`.
    */
   readonly methodCalls?: Readonly<Record<string, MethodCallRecognizer>> | undefined

@@ -34,6 +34,7 @@ describe('the compiler carries no chart knowledge of its own', () => {
 describe('@pyreon/native-compiler/plugin-api', () => {
   it('exports the version, the walker and the pure spelling helpers a plugin uses', () => {
     expect(Object.keys(pluginApi).sort()).toEqual([
+      'KOTLIN_INT',
       'NATIVE_COMPILER_PLUGIN_API_VERSION',
       'dynamicKeyText',
       'forEachExpr',
@@ -41,8 +42,10 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'isNullishLiteral',
       'isNumericLiteralOrNegation',
       'kotlinIdent',
+      'kotlinMember',
       'kotlinStr',
       'literalScalar',
+      'localBase',
       'propName',
       'readEntryNodes',
       'readJsonLiteral',
@@ -50,6 +53,7 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'readObjectProp',
       'staticPropKey',
       'substituteIdentifier',
+      'swiftCodingKeysLines',
       'swiftIdent',
       'swiftStr',
       'topLevelDeclarators',

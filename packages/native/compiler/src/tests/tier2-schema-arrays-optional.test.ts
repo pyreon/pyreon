@@ -3,7 +3,7 @@
 // emitted Swift/Kotlin types and parse() behavior for these shapes.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Gap 4 v2.2 — schema arrays + optional/nullable', () => {
   // ───────────────────────────────── Swift ─────────────────────────────────

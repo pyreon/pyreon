@@ -105,5 +105,6 @@ export {
 } from './plugin-ast'
 export { forEachExpr } from './expr-walk'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
-export { kotlinIdent, swiftIdent } from './identifier-safety'
+export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
+export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'
 export { kotlinStr, swiftStr } from './string-literals'

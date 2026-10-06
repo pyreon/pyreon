@@ -24,7 +24,7 @@
 // declined field is no worse off than before — it is just no longer silent.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

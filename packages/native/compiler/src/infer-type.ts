@@ -1532,13 +1532,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     // The declared generics ARE the type — a SizedMap<K, V> behaves as a map
     // at every use site (`m.get(k)` yields V), so downstream inference reads
     // it exactly like the built-in.
-    // Standalone-validation: `s.object({ … }).safeParse(x)` yields a
-    // `PyreonParseResult<T>`, not a TypeIR the inferer models — but its fields
-    // (`.success`/`.data`) are typed in the `member` case above, and the value
-    // is rarely stored bare, so `unknown` here is sufficient and never a broken
-    // emit (a `const r = …safeParse(x)` becomes `let r: Any`, which compiles).
-    case 'schema-validate':
-      return { kind: 'unknown' }
     // A plugin's own expression: typed by its owner (`ExprEmitter.typing.type`), `unknown` without one.
     case 'ext-expr':
       return pluginExprType(expr) ?? { kind: 'unknown' }
@@ -2028,14 +2021,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         ECMASCRIPT_MATH_CONSTANTS.includes(expr.property)
       ) {
         return { kind: 'number', float: true }
-      }
-      // Standalone-validation: `s.object({ … }).safeParse(x).success` is a Bool
-      // (`.data` is the optional validated value → left unknown). Reading this
-      // off the `schema-validate` node keeps the wrapping `computed`'s type
-      // precise (`Bool`, not `Any`).
-      if (expr.object.kind === 'schema-validate') {
-        if (expr.property === 'success') return { kind: 'boolean' }
-        return { kind: 'unknown' }
       }
       // A member read on a plugin's own expression, typed by its owner (`ExprEmitter.typing.member`).
       if (expr.object.kind === 'ext-expr') {

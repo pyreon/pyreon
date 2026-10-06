@@ -248,6 +248,35 @@ export function App() {
     expect(bare.code).toContain('thing.convert(1')
   })
 
+  it("methodCalls '*': sees every method call after the recognizers keyed by its name, so a plugin can warn about any method on a binding it owns", () => {
+    const seen: string[] = []
+    const plugin = unitsPlugin({
+      methodCalls: {
+        convert: () => undefined,
+        '*': (site, ctx) => {
+          seen.push(site.method)
+          const receiver = site.receiver as { name?: string }
+          return receiver.name === 'Meters' ? ctx.unsupported(site.node, `\`Meters.${site.method}(…)\``, 'only `convert` lowers.') : undefined
+        },
+      },
+    })
+    const { code, warnings } = testNativePlugin(
+      plugin,
+      `import { defineUnit } from '@acme/units'
+${HEAD}const Meters = defineUnit('m')
+export function App() {
+  const a = Meters.explode(1)
+  const b = other.keep(1)
+  return <Stack><Text>{String(a)}</Text><Text>{String(b)}</Text></Stack>
+}`,
+      { target },
+    )
+    expect(seen).toEqual(['explode', 'keep'])
+    expect(warnings.some((w) => w.includes('`Meters.explode(…)` is not supported in native (PMTC) — only `convert` lowers.'))).toBe(true)
+    // A call the wildcard declines is the ordinary call.
+    expect(code).toContain('other.keep(1')
+  })
+
   it('bindings: a value that shares a type name is renamed, and the item, its follow-on name and the expression follow', () => {
     const { code } = testNativePlugin(
       unitsPlugin(),
@@ -375,9 +404,7 @@ describe('module-item registry, hash lane and shape', () => {
     moduleDecls: [],
     stores: [],
     models: [],
-    fieldMetas: [],
     features: [],
-    zodSchemas: [],
     moduleItems: [],
     helperFns: [],
     styledComponents: [],
@@ -388,26 +415,36 @@ describe('module-item registry, hash lane and shape', () => {
     ...over,
   })
 
+  // The FNV-1a the compiler hashes with, applied to the JSON of the legacy 13-slot array.
+  const fnv = (text: string): string => {
+    let h = 0x811c9dc5
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i)
+      h = Math.imul(h, 0x01000193) >>> 0
+    }
+    return h.toString(36)
+  }
+  const legacyKey = (fieldMetas: unknown[], zodSchemas: unknown[], extra: unknown[] = []): string =>
+    fnv(JSON.stringify([[], [], [], [], [], [], fieldMetas, [], zodSchemas, [], [], [], [], ...extra]))
+
   it('legacyList: an item hashes where the closed array it replaced stood, with its payload as the element', () => {
-    const compiler = createCompiler({ plugins: [unitsPlugin()] })
     const payload = { bindingName: 'Meters', symbol: 'm', fields: ['label'] }
-    const asItem = parsed({ moduleItems: [{ plugin: '@acme/units', type: 'unit', name: 'Meters', payload }] })
-    const tag = withRegistries(compiler.registries, () => moduleTag(asItem))
-    // The same payload where a closed core array held it (`zodSchemas` below).
-    const lanes = createCompiler({
-      plugins: [unitsPlugin({ items: { unit: { ...unitsPlugin().items!.unit!, legacyList: 'zodSchemas' } } })],
-    })
-    const asLane = withRegistries(lanes.registries, () => moduleTag(parsed({ moduleItems: asItem.moduleItems })))
-    const asArray = withRegistries(lanes.registries, () => moduleTag(parsed({ zodSchemas: [payload as never] })))
-    expect(asLane).toBe(asArray)
-    // An item with NO lane hashes as an extra trailing element, so it still moves the tag.
-    expect(tag).not.toBe(withRegistries(compiler.registries, () => moduleTag(parsed({}))))
-    expect(asLane).not.toBe(withRegistries(lanes.registries, () => moduleTag(parsed({}))))
+    const item = { plugin: '@acme/units', type: 'unit', name: 'Meters', payload }
+    const withLane = (lane: 'fieldMetas' | 'zodSchemas' | undefined) =>
+      createCompiler({
+        plugins: [unitsPlugin({ items: { unit: { ...unitsPlugin().items!.unit!, ...(lane !== undefined ? { legacyList: lane } : {}) } } })],
+      })
+    const tag = (compiler: ReturnType<typeof createCompiler>) => withRegistries(compiler.registries, () => moduleTag(parsed({ moduleItems: [item] })))
+    // The lane's position (and only the lane's) decides the hash: slot 6 for the metadata array, slot 8 for the schema array.
+    expect(tag(withLane('zodSchemas'))).toBe(legacyKey([], [payload]))
+    expect(tag(withLane('fieldMetas'))).toBe(legacyKey([payload], []))
+    // An item with NO lane hashes as one extra trailing element, so it still moves the tag.
+    expect(tag(withLane(undefined))).toBe(legacyKey([], [], [[item]]))
   })
 
-  it('a module with no plugin items hashes exactly as it did before the seam existed', () => {
-    const base = withRegistries(createCompiler().registries, () => moduleTag(parsed({})))
-    expect(base).toBe(withRegistries(createCompiler({ plugins: [unitsPlugin()] }).registries, () => moduleTag(parsed({}))))
+  it('a module with no plugin items hashes as the empty 13-slot array', () => {
+    const compiler = createCompiler({ plugins: [unitsPlugin()] })
+    expect(withRegistries(compiler.registries, () => moduleTag(parsed({})))).toBe(legacyKey([], []))
   })
 
   it('assertPluginShape rejects malformed module-level members by name', () => {

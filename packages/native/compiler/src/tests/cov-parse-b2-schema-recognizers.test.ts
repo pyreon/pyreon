@@ -7,7 +7,7 @@
 // by its text, or a silent bail (no struct at all).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const AK = `import { arktypeSchema } from '@pyreon/validation'

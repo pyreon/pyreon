@@ -37,6 +37,11 @@
       "bun": "./src/arktype.ts",
       "import": "./lib/arktype.js",
       "types": "./lib/types/arktype.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -54,11 +59,20 @@
     "lint": "oxlint .",
     "bench:validation": "NODE_ENV=production bun bench/validation-bench.ts"
   },
+  "peerDependencies": {
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/core": "workspace:^",
     "@pyreon/form": "workspace:^",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/store": "workspace:^",
@@ -70,5 +84,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/validation"
+      ]
+    }
   }
 }
