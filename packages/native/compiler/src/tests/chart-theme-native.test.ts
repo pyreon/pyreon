@@ -8,11 +8,11 @@
 // way the web canvas host does; a host without a theme emits as before,
 // except that the title colour is the web's.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 import { kotlinTheme, swiftTheme } from './chart-theme-text'
 const SW = swiftTheme()
 const KT = kotlinTheme()
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const HEAD = `import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'src', children: [{ name: 'core', value: 50 }] }, { name: 'docs', value: 30 }]

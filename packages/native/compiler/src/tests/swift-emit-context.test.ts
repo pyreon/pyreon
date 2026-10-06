@@ -10,6 +10,8 @@ const lowering = (emit: (el: JsxElementIR, ctx: SwiftEmitContext) => string): Co
   name: '@acme/toy',
   apiVersion: 1,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { swift: emit } }],
+  // The scope itself belongs to a plugin: the core opens it around `<PyreonUI mode>`'s children, the toy supplies the value.
+  scopes: [{ module: '@pyreon/ui-core', tags: ['PyreonUI'], enter: () => ({ pinned: true }) }],
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>

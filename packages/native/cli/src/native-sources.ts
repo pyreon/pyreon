@@ -45,7 +45,7 @@
 //
 // Node fs only — no runtime deps.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 /** A native platform the resolver targets. */
@@ -125,6 +125,30 @@ export function findPackageDir(name: string, fromDir: string): string | null {
   for (let i = 0; i < 64; i++) {
     const candidate = join(dir, 'node_modules', name)
     if (existsSync(join(candidate, 'package.json'))) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+/**
+ * The directory of the nearest `package.json` at or above `path` (a file or a directory), or null.
+ *
+ * The app a source tree belongs to is the PACKAGE that contains it, which is not the process's working
+ * directory: a monorepo example is built from the repo root against `examples/<app>/src`, and the repo
+ * root declares none of the libraries that app imports.
+ */
+export function nearestPackageDir(path: string): string | null {
+  let dir = resolve(path)
+  // A file or a not-yet-created output path: start from its directory.
+  try {
+    if (!statSync(dir).isDirectory()) dir = dirname(dir)
+  } catch {
+    dir = dirname(dir)
+  }
+  for (let i = 0; i < 64; i++) {
+    if (readManifest(dir) !== null) return dir
     const parent = dirname(dir)
     if (parent === dir) break
     dir = parent

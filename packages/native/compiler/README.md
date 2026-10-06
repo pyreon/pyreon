@@ -109,10 +109,11 @@ fields never break an older plugin:
   (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`) are on
   the shared `EmitContext`). A target with no function falls through to the core, so
   a plugin may lower one target at a time. A `(module, tag)` pair claimed by two
-  owners is a load-time error naming both. The built-in `@pyreon/elements`,
-  `@pyreon/coolgrid` and `@pyreon/charts` lowerings are `builtIn` plugins
-  registered the same way (the charts plugin lowers every chart host on both
-  targets — `plugins/charts/swift*.ts` and `kotlin*.ts`).
+  owners is a load-time error naming both. The built-in `@pyreon/elements` and
+  `@pyreon/coolgrid` lowerings are `builtIn` plugins registered the same way. The
+  `@pyreon/charts` lowerings are NOT built in: the plugin ships in `@pyreon/charts`
+  itself (`@pyreon/charts/native-plugin`, found through `pyreon.native.plugin`) and
+  `pyreon-native` loads it when a source file imports the package.
 - `calls` + `decls` — code-shaped lowering: `calls` maps a hook/function name to a
   recognizer `(call, ctx: ParseContext) => { type, payload? } | undefined`
   (`undefined` declines and the parser falls through as if the plugin were absent);
@@ -120,14 +121,13 @@ fields never break an older plugin:
   rendering the plugin's open `ext` declaration through the `EmitContext` facade.
   `payload` must be JSON (the IR is cloned between passes). A name is claimed under
   the same rule as a service hook, and two owners for one name — or a name that is
-  also a service — is a load-time error naming both. The built-in `createChartHandle()`
-  lowering is a `@pyreon/charts` plugin declaration registered this way.
+  also a service — is a load-time error naming both. `createChartHandle()` is
+  lowered this way by the `@pyreon/charts` plugin.
 - `memberCalls` — call EXPRESSIONS: keyed by method name, `{ swift(call, ctx),
   kotlin(call, ctx) } => string | undefined` lowers `<receiver>.<method>(…)` when
   `<receiver>` is a binding one of the plugin's own `decls` created (so two plugins
   may both claim `dispatch`: the receiver decides). `undefined` declines. Requires
-  `decls`. The built-in `chart.dispatch({...})` lowering is a `@pyreon/charts`
-  `memberCalls` entry. Inside a lowering, `ctx.expr(e)` / `ctx.exprAs(type, e)` emit
+  `decls`. `chart.dispatch({...})` is a `@pyreon/charts` `memberCalls` entry. Inside a lowering, `ctx.expr(e)` / `ctx.exprAs(type, e)` emit
   a sub-expression, `ctx.decls(plugin, type)` reads the component's declarations,
   `ctx.state(key, init)` is per-component memory, and `ctx.deferred(key, fallback?)`
   / `ctx.resolveDeferred(key, value)` substitute a value that is only known after the
@@ -137,7 +137,15 @@ fields never break an older plugin:
   `{ [module]: { advice, supported?: string[] } }`. Merged into
   `compiler.registries.unlowered`; a module supplied by two plugins is a load-time
   error, and a plugin's entry wins over the compiler's own hand-maintained one. The
-  `@pyreon/charts` entry is supplied by the built-in charts plugin.
+  `@pyreon/charts` entry is supplied by the charts plugin.
+- `scopes` — compile-time colour-scope providers: `[{ module, tags, enter(el, { warn, outer }),
+  transparent? }]`. `<PyreonUI mode>` / `<ColorModeProvider mode>` (and a plugin's own
+  scope-only element, `transparent: true`) open a scope around their children; `enter`
+  returns the value a plugin's elements read back with `ctx.colorScope<T>()`. The core
+  owns the plumbing; the value is the plugin's. One owner per `(module, tag)`.
+- `stubs` — `{ swift?(source), kotlin?(source) }`: extra type-gate stub text this plugin's
+  emit needs, passed by the caller of the compile gates as `ValidateOptions.augment`
+  (`validateSwiftWithStubs(src, { augment: [plugin.stubs] })`). The compiler never reads it.
 - `runtimeTypes` — type names the plugin's runtime declares (`['TooltipContent']`), so a
   helper typed against one resolves instead of warning "can't be resolved". Merged into
   `compiler.registries.runtimeTypes`; one name declared by two plugins is a load-time
@@ -215,3 +223,14 @@ Pure TypeScript — `bun run test` runs the compiler's own suite (parse/emit fix
 - [PMTC Supported TypeScript](https://pyreon.dev/docs/pmtc-supported-typescript) — the subset this package lowers, and what it refuses.
 - [Native Packages](https://pyreon.dev/docs/native-packages) — this package's place among the other five.
 - [`@pyreon/native-cli`](../cli/) — the CLI that walks a source tree and drives this package.
+
+## Writing a plugin: `@pyreon/native-compiler/plugin-api`
+
+A plugin shipped by a library imports from `@pyreon/native-compiler/plugin-api` and nothing
+else in this package: the IR types, the `EmitContext` / `ParseContext` facades and the plugin
+protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`,
+`substituteIdentifier`, and the pure spelling helpers `swiftStr` / `kotlinStr` / `swiftIdent` /
+`kotlinIdent`. Declare the compiler as an optional peer + a dev dependency, point
+`package.json` → `pyreon.native.plugin` at the built entry (default export = the plugin) and
+list the import specifiers that activate it in `pyreon.native.modules`. `@pyreon/charts` is
+the reference (`packages/fundamentals/charts/src/native-plugin/`).

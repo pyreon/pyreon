@@ -10,7 +10,7 @@
  * is exactly the shared members.
  */
 
-import type { EmitContext } from '../../emit-context'
+import type { EmitContext } from '@pyreon/native-compiler/plugin-api'
 import { createContextSlot, sharedHost } from './facade'
 
 const slot = createContextSlot<EmitContext>('Kotlin', 'withKotlinContext')

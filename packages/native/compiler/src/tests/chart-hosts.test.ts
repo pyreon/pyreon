@@ -10,17 +10,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { UNLOWERED_CHART_HOSTS } from '../chart-hosts'
-import { transform } from '../index'
+import { UNLOWERED_CHART_HOSTS } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 import { kotlinTheme, kotlinThemeLiteral, swiftTheme, swiftThemeLiteral } from './chart-theme-text'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftTypecheck,
-  validateSwiftWithStubs,
-} from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
 // The un-themed host follows the runtime colour scheme — its theme text per target.

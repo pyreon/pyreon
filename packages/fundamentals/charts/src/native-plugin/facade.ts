@@ -20,9 +20,8 @@
  * (`tests/plugin-boundary.test.ts`).
  */
 
-import type { RawChartTheme } from '../../chart-hosts'
-import type { EmitContext, StaticAttrValue } from '../../emit-context'
-import type { ExprIR, ExtDecl, JsxElementIR, TypeIR } from '../../types'
+import type { RawChartTheme } from './hosts'
+import type { EmitContext, ExprIR, ExtDecl, JsxElementIR, StaticAttrValue, TypeIR } from '@pyreon/native-compiler/plugin-api'
 
 export interface ContextSlot<C extends EmitContext> {
   /** The installed context; throws outside {@link ContextSlot.run}. */

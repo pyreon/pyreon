@@ -54,7 +54,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, calls, decls, memberCalls, unlowered, runtimeTypes, refineParse, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, unlowered, runtimeTypes, refineParse, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -83,6 +83,39 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       throw new Error(`[Pyreon] Plugin "${name}" elements must be an array of element lowerings.`)
     }
     for (const entry of elements as unknown[]) assertElementLowering(name, entry)
+  }
+  if (scopes !== undefined) {
+    if (!Array.isArray(scopes)) {
+      throw new Error(`[Pyreon] Plugin "${name}" scopes must be an array of colour-scope providers.`)
+    }
+    for (const entry of scopes as unknown[]) {
+      const provider = entry as Record<string, unknown> | null
+      if (
+        !provider ||
+        typeof provider !== 'object' ||
+        typeof provider.module !== 'string' ||
+        !provider.module.trim() ||
+        !isStringArray(provider.tags) ||
+        provider.tags.length === 0 ||
+        typeof provider.enter !== 'function' ||
+        (provider.transparent !== undefined && typeof provider.transparent !== 'boolean')
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" colour-scope provider needs a nonempty module string, a nonempty tags array of strings and an enter function.`,
+        )
+      }
+    }
+  }
+  if (stubs !== undefined) {
+    const entry = stubs as { swift?: unknown; kotlin?: unknown } | null
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      (entry.swift !== undefined && typeof entry.swift !== 'function') ||
+      (entry.kotlin !== undefined && typeof entry.kotlin !== 'function')
+    ) {
+      throw new Error(`[Pyreon] Plugin "${name}" stubs must be an object with swift and/or kotlin functions.`)
+    }
   }
   if (calls !== undefined) {
     if (!calls || typeof calls !== 'object' || Array.isArray(calls)) {

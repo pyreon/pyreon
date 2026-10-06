@@ -1,15 +1,12 @@
-import { CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from '../../chart-hosts'
-import type { ChartHostTarget, ChartThemeText } from '../../chart-hosts'
-import { substituteIdentifier } from '../../expr-utils'
-import { kotlinIdent } from '../../identifier-safety'
-import { kotlinStr } from '../../string-literals'
-import type { ExprIR, TypeIR } from '../../types'
+import { CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import type { ChartHostTarget, ChartThemeText } from './hosts'
+import { kotlinIdent, kotlinStr, substituteIdentifier, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './kotlin-facade'
 
 // ---------------------------------------------------------------------------
 // `@pyreon/charts` family hosts → PyreonChartCanvas (the Compose Canvas
 // that walks the generated engine's draw list). Mirror of the Swift emitter
-// (`swift-support.ts`); see chart-hosts.ts for the per-host table.
+// (`swift-support.ts`); see hosts.ts for the per-host table.
 // ---------------------------------------------------------------------------
 
 export const KOTLIN_CHART_TARGET: ChartHostTarget = {

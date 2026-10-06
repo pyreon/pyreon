@@ -243,7 +243,7 @@ fun Box(
 }
 
 // BoxWithConstraints — the container-sized host the chart-host emit uses
-// (chart-hosts.ts): maxWidth is the Dp the draw list is laid out for.
+// (@pyreon/charts native-plugin hosts.ts): maxWidth is the Dp the draw list is laid out for.
 class BoxWithConstraintsScope {
   val maxWidth: Dp = Dp(0f)
   val maxHeight: Dp = Dp(0f)
@@ -527,11 +527,11 @@ class PointerInputScope {
   // awaitEachGesture — one block per gesture, receiver AwaitPointerEventScope.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun awaitEachGesture(block: suspend AwaitPointerEventScope.() -> Unit) {}
-  // The chart-host tap emit (chart-hosts.ts): a tap position in px.
+  // The chart-host tap emit (@pyreon/charts native-plugin hosts.ts): a tap position in px.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}
   suspend fun detectTransformGestures(onGesture: (Offset, Offset, Float, Float) -> Unit) {}
-  // <PlotChart navigator> (chart-hosts.ts): the strip's drag overlay. The real
+  // <PlotChart navigator> (@pyreon/charts native-plugin hosts.ts): the strip's drag overlay. The real
   // signature — onDrag takes (PointerInputChange, Offset) — so a wrong shape fails here.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectDragGestures(
@@ -975,12 +975,6 @@ fun rememberNavController(): NavController = NavController()
 // without requiring the consuming app to set up router-kotlin during
 // the validate gate. Real apps depend on the actual PyreonLink from
 // @pyreon/native-router-kotlin.
-@Composable
-@Suppress("UNUSED_PARAMETER")
-fun <T> PyreonPieChart(data: List<T>, value: (T) -> Number, label: (T) -> String, color: ((T) -> String)? = null, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Boolean = true, modifier: Modifier = Modifier) {}
-@Composable
-@Suppress("UNUSED_PARAMETER")
-fun PyreonGaugeChart(value: Double, min: Double = 0.0, max: Double = 100.0, width: Double = 240.0, height: Double = 140.0, thickness: Double = 22.0, trackColor: String = "rgba(132,150,165,0.22)", valueColor: String = "#0f766e", showValue: Boolean = true, modifier: Modifier = Modifier) {}
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) {
@@ -2672,53 +2666,5 @@ class PyreonAuth<User> {
   fun signInSucceeded(user: User) {}
   fun signInFailed(failure: Throwable) {}
   fun signOut() {}
-}
-`
-
-/**
- * The Compose canvas (+ the two runtime helpers the chart hosts call) for a
- * `@pyreon/charts` host emit; validate.ts appends the REAL engine and
- * draw-list data classes next to this. Lives here so the stub-coverage
- * ratchet counts `PyreonChartCanvas` as covered. The signature mirrors
- * runtime-kotlin `PyreonChartCanvas.kt` exactly.
- */
-export const KOTLIN_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts hosts (chart-hosts.ts emit) ----
-@Composable
-@Suppress("UNUSED_PARAMETER")
-fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier, durationMs: Double = 350.0, universal: Boolean = false, animated: Boolean = true) {}
-@Composable
-fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) { content(1.0) }
-@Composable
-@Suppress("UNUSED_PARAMETER")
-fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Long, first: Long = 0L, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {}
-@Composable
-fun PyreonChartClock(content: @Composable (Double) -> Unit) { content(0.0) }
-fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
-fun pyreonChartColor(s: String): Color = Color(0)
-fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> = cmds
-fun pyreonShiftCmdsXY(cmds: List<PyreonDrawCmd>, dx: Double, dy: Double): List<PyreonDrawCmd> = cmds
-fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> = cmds
-fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
-fun pyreonChartDouble(v: Double): Double = v
-fun pyreonChartDouble(v: Int): Double = v.toDouble()
-fun pyreonChartDouble(v: Long): Double = v.toDouble()
-fun pyreonChartString(v: String): String = v
-fun pyreonChartString(v: Double): String = ""
-fun pyreonChartString(v: Int): String = ""
-fun pyreonChartString(v: Long): String = ""
-fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
-fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
-fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""
-fun pyreonShareChartImage(context: Context, cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float, name: String) {}
-class PyreonChartHandle {
-  var zoom: ZoomWindow = ZoomWindow(start = 0.0, end = 1.0)
-  var hover: Long = -1L
-  var selected: List<Long> = listOf()
-  var hidden: List<Long> = listOf()
-  var seriesCount: Long = 0L
-  var brushType: String = ""
-  var areas: List<BrushArea> = listOf()
-  fun dispatch(action: ChartActionInput) {}
 }
 `

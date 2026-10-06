@@ -7,8 +7,8 @@
 //        visible category over the plot.
 // Both read the SAME A11yInput the description does.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwift } from '../validate'
+import { transform, validateKotlin } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable, validateSwift } from '../validate'
 
 const head = `import { PlotChart, bars, line } from '@pyreon/charts/engine'
 interface Row { m: string; v: number; w: number }

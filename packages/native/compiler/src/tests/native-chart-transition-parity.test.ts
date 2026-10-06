@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const ROOT = join(import.meta.dirname, '../../../..')
 const SWIFT = join(ROOT, 'native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift')

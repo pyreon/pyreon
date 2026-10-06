@@ -3,7 +3,7 @@
 // emitters' existing indicator lowering runs unchanged. The contract is that
 // the two spellings emit BYTE-IDENTICAL Swift and Kotlin, with no warning.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const head = `interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'a', v: 3 }, { m: 'b', v: 5 }, { m: 'c', v: 4 }, { m: 'd', v: 8 }]

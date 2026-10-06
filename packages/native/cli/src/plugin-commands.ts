@@ -86,6 +86,11 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   for (const { lowering, owner } of elements) {
     lines.push(`  ${lowering.module}  ${lowering.tags.join(', ')}  ${owner}`)
   }
+  const scopes = compiler.registries.scopes.entries
+  lines.push(`colour-scope providers (${scopes.length}):`)
+  for (const { provider, owner } of scopes) {
+    lines.push(`  ${provider.module}  ${provider.tags.join(', ')}  ${owner}`)
+  }
   const calls = [...compiler.registries.calls.calls].sort(([a], [b]) => a.localeCompare(b))
   lines.push(`call recognizers (${calls.length}):`)
   for (const [hook, { owner }] of calls) {

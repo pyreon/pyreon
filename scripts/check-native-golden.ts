@@ -12,7 +12,8 @@
  * (code + warnings) per entry against a committed golden file:
  *
  *   - every `packages/native/compiler/src/fixtures/*.tsx`
- *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` (shapes that warn by design)
+ *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` and `packages/fundamentals/charts/native-golden/*.tsx`
+ *     (shapes that warn by design; the chart ones are owned by `@pyreon/charts`, whose plugin they exercise)
  *   - every shared example source `examples/native-STAR/src/*.tsx` (the
  *     `entry-client.tsx` web bootstraps are not PMTC input)
  *   - every `REGISTRY` snippet in `check-native-coverage.ts` (one per package
@@ -39,7 +40,7 @@ import { fileURLToPath } from 'node:url'
 
 // `import.meta.dir` is Bun-only; tests import these scripts under vitest, so derive it portably.
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
-import { transform } from '../packages/native/compiler/src/index'
+import { transform } from './native-first-party-plugins'
 import type { TargetLanguage } from '../packages/native/compiler/src/types'
 import { REGISTRY } from './check-native-coverage'
 
@@ -124,11 +125,19 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
   }
   // Golden-only sources: shapes that warn by design (non-literal sizes) or lean on
   // an unresolvable import, so the zero-warning fixtures gate cannot hold them.
-  const goldenOnly = join(root, 'packages/native/compiler/src/golden-fixtures')
-  for (const f of readdirOrEmpty(goldenOnly).filter((n) => n.endsWith('.tsx')).sort()) {
+  // A fixture's key and compile filename do not name its directory (`golden-fixtures/…` for both), so
+  // moving a fixture between the two owners never moves its hash.
+  const goldenOnlyDirs = [
+    join(root, 'packages/native/compiler/src/golden-fixtures'),
+    join(root, 'packages/fundamentals/charts/native-golden'),
+  ]
+  const goldenOnly = goldenOnlyDirs
+    .flatMap((dir) => readdirOrEmpty(dir).filter((n) => n.endsWith('.tsx')).map((n) => ({ dir, n })))
+    .sort((a, b) => a.n.localeCompare(b.n))
+  for (const { dir, n: f } of goldenOnly) {
     out.push({
       key: `golden-fixture:${f}`,
-      source: readFileSync(join(goldenOnly, f), 'utf8'),
+      source: readFileSync(join(dir, f), 'utf8'),
       filename: `golden-fixtures/${f}`,
     })
   }

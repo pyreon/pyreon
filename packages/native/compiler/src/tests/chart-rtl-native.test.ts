@@ -6,9 +6,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, chartChromeUnlowered } from '../chart-hosts'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform, validateKotlin } from './charts-plugin'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, chartChromeUnlowered } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
 const read = (p: string): string => readFileSync(join(REPO, p), 'utf8')

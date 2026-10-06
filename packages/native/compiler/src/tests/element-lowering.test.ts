@@ -1,6 +1,7 @@
 import { createPluginScope } from '../plugin-scope'
 import { describe, expect, it } from 'vitest'
-import { BUILT_IN_PLUGINS, createCompiler, transform, type CompilerPlugin } from '../index'
+import { chartsPlugin, transform } from './charts-plugin'
+import { BUILT_IN_PLUGINS, createCompiler, type CompilerPlugin } from '../index'
 import { createElementRegistry, type ElementLowering } from '../element-lowering'
 import { createEmitContext, type EmitContextBackend } from '../emit-context'
 import type { JsxElementIR } from '../types'
@@ -12,15 +13,19 @@ const claimAll = () => true
 const claimNone = () => false
 
 const builtIns = createElementRegistry(BUILT_IN_PLUGINS)
+// Every first-party plugin the CLI loads for an app that uses the library: the compiler's own plus the charts one.
+const withCharts = createElementRegistry([chartsPlugin, ...BUILT_IN_PLUGINS])
 
 describe('element lowering registry', () => {
-  it('holds charts, coolgrid and elements, registered through the same path a plugin uses', () => {
+  it('holds coolgrid and elements, registered through the same path a plugin uses; charts arrives only with its plugin', () => {
     expect(builtIns.find('Row', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Col', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Element', claimAll)?.module).toBe('@pyreon/elements')
-    expect(builtIns.find('PieChart', claimAll)?.module).toBe('@pyreon/charts')
+    expect(builtIns.find('PieChart', claimAll)).toBeUndefined()
     expect(builtIns.find('Stack', claimAll)).toBeUndefined()
-    expect(builtIns.entries.map((e) => e.owner)).toEqual(['@pyreon/charts', '@pyreon/elements', '@pyreon/coolgrid'])
+    expect(builtIns.entries.map((e) => e.owner)).toEqual(['@pyreon/elements', '@pyreon/coolgrid'])
+    expect(withCharts.find('PieChart', claimAll)?.module).toBe('@pyreon/charts')
+    expect(withCharts.entries.map((e) => e.owner)).toEqual(['@pyreon/charts', '@pyreon/elements', '@pyreon/coolgrid'])
   })
 
   it('the guard decides: a refused (tag, module) is not claimed', () => {

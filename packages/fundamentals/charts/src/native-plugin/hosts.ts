@@ -2,7 +2,7 @@
 // from.
 //
 // Every plot family's GEOMETRY is generated into the native runtimes
-// (PyreonChartEngine.swift / .kt, see gen-chart-engine.ts), and both runtimes
+// (PyreonChartEngine.swift / .kt, see gen-native-engine.ts), and both runtimes
 // ship `PyreonChartCanvas`, a Canvas that walks the engine's flat draw list.
 // What was missing was the HOST: on the web `<SankeyChart nodes links>` is a
 // component that lays out into its canvas element; natively that component
@@ -19,10 +19,12 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { DEFAULT_PALETTE, palettes, visualMap, visualStripOf } from '@pyreon/charts/engine'
-import type { VisualMapOptions, VisualMapSpec } from '@pyreon/charts/engine'
-import type { AttrIR, ExprIR } from './types'
-import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
+import { DEFAULT_PALETTE } from '../engine/palette'
+import { palettes } from '../engine/palettes'
+import { visualMap, visualStripOf } from '../engine/visual-map'
+import type { VisualMapOptions, VisualMapSpec } from '../engine/visual-map'
+import type { AttrIR, ExprIR } from '@pyreon/native-compiler/plugin-api'
+import { CHART_ENGINE_STRUCTS } from './engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
 export interface ChartHostTarget {

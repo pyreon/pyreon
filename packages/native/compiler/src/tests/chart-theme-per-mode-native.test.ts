@@ -3,7 +3,7 @@
 // `<ColorModeProvider>` / `<PyreonUI>` pinned above it, wherever it sits
 // relative to the provider. The same layering the web provider does.
 import { describe, expect, it } from 'vitest'
-import { chartThemeScope, colorModeScope, CHART_THEMES } from '../chart-hosts'
+import { chartThemeScope, colorModeScope, CHART_THEMES } from '../../../../fundamentals/charts/src/native-plugin/hosts'
 import type { ExprIR } from '../types'
 
 const lit = (value: string | number): ExprIR => ({ kind: 'literal', value } as ExprIR)

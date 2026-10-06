@@ -31,7 +31,7 @@ export const EXEMPT: Record<string, string> = {
   PyreonChartCanvas:
     'Compose Canvas + android.graphics.Paint — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json)',
   PyreonChartEngine:
-    'GENERATED (gen-chart-engine.ts) — references the canvas-owned PyreonChartPt/Rect/DrawCmd, so a single-file stub compile would need a drift-prone copy; verified END-TO-END by @pyreon/native-compiler native-chart-engine-generated.test.ts (regenerate + byte-equality + kotlinc compile with the canvas types extracted verbatim)',
+    'GENERATED (gen-native-engine.ts) — references the canvas-owned PyreonChartPt/Rect/DrawCmd, so a single-file stub compile would need a drift-prone copy; verified END-TO-END by @pyreon/native-compiler native-chart-engine-generated.test.ts (regenerate + byte-equality + kotlinc compile with the canvas types extracted verbatim)',
 }
 
 /**

@@ -11,9 +11,9 @@
 // the emitters cannot re-derive it and the positions cannot diverge again.
 
 import { describe, expect, it } from 'vitest'
-import { chartChromeUnlowered, PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../chart-hosts'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck, validateSwiftWithStubs } from '../validate'
+import { chartChromeUnlowered, PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

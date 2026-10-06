@@ -1,21 +1,20 @@
 // The compiler's grammar-tag table must agree with the grammar the web ships.
 //
-// `GRAMMAR_MARK_TAGS` is the compiler's copy of a set that is really owned by
-// `@pyreon/charts`' grammar. When `stackedArea` was added, the compiler's copy
+// `GRAMMAR_MARK_TAGS` is the charts native plugin's copy of a set that is really owned by
+// `@pyreon/charts`' grammar (the plugin lives in the same package, but the grammar's
+// components are web code the compile-time table cannot import). When `stackedArea` was added, the compiler's copy
 // got a tag entry the web grammar had no component for — so the same source
 // compiled natively and rendered nothing in a browser. A
-// copy of a set in a package that cannot import the original is exactly where
+// copy of a set that cannot import the original is exactly where
 // that happens, so the agreement is asserted rather than assumed.
 //
-// The charts package is not a dependency of this one (and should not become
-// one for a test), so the expected table is written out here and the charts
-// side asserts the same shape from its own end in
+// The expected table is written out here and the charts web side asserts the same shape from its own end in
 // `packages/fundamentals/charts/src/engine/grammar-parity.test.tsx`. Two
 // declarations, one contract, both checked — and the pair is what fails when
 // someone adds a mark to one side only.
 import { describe, expect, it } from 'vitest'
-import { GRAMMAR_INDICATOR_TAGS, GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS, PLOT_SPREAD_MARKS } from '../chart-hosts'
-import { defaultRegistries } from '../active-registries'
+import { GRAMMAR_INDICATOR_TAGS, GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS, PLOT_SPREAD_MARKS } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { chartsCompiler } from './charts-plugin'
 
 /** Mirrors `GRAMMAR_TAG_KINDS` in the charts package's grammar-parity test. */
 const EXPECTED: Readonly<Record<string, string>> = {
@@ -70,7 +69,7 @@ describe("the import allowlist knows every grammar tag too", () => {
   // Asserted from the tag map rather than from a written-out list, so a mark
   // added or renamed later cannot pass by being forgotten in both places.
   it('every LOWERED mark name is a supported @pyreon/charts import', () => {
-    const entry = defaultRegistries().unlowered.get('@pyreon/charts')
+    const entry = chartsCompiler.registries.unlowered.get('@pyreon/charts')
     expect(entry, '@pyreon/charts is not in the module table at all').toBeDefined()
     // Derived from EVERY lowering table, not just the grammar's: a mark the
     // emitters lower and the allowlist has not heard of reports a native
@@ -88,7 +87,7 @@ describe("the import allowlist knows every grammar tag too", () => {
   })
 
   it('and every mark KIND a grammar tag maps to, which is the array form of the same thing', () => {
-    const entry = defaultRegistries().unlowered.get('@pyreon/charts')
+    const entry = chartsCompiler.registries.unlowered.get('@pyreon/charts')
     const missing = [...new Set(Object.values(GRAMMAR_MARK_TAGS))].filter((k) => entry!.supported?.has(k) !== true)
     expect(missing).toEqual([])
   })

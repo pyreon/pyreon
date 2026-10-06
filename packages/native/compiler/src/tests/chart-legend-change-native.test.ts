@@ -8,9 +8,9 @@
 // just wrote it.
 
 import { describe, expect, it } from 'vitest'
-import { PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../chart-hosts'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // `x` is typed `(d, i) => string` on the web — a NUMERIC axis is `xValue`.
 // Worth stating because the wrong shape is easy to write and PMTC emits

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { withSwiftContext, host } from '../plugins/charts/swift-facade'
+import { transform } from './charts-plugin'
+import { withSwiftContext, host } from '../../../../fundamentals/charts/src/native-plugin/swift-facade'
 import type { SwiftEmitContext } from '../emit-context'
 
 // The Swift chart hosts are the built-in `@pyreon/charts` plugin's `emit.swift`. These specs pin the

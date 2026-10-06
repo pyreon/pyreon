@@ -613,7 +613,7 @@ describe('@pyreon/native-cli build', () => {
   })
 
   it('Kotlin <PlotChart dataZoom> pulls the transform-gesture import', () => {
-    // The pinch + pan emit (chart-hosts.ts) calls `detectTransformGestures`
+    // The pinch + pan emit (`@pyreon/charts` native-plugin `hosts.ts`) calls `detectTransformGestures`
     // inside `.pointerInput`; both live in sub-packages the star imports do
     // not cover. The validate loop cannot see a missing import (stubs), so
     // without this arm the first zoomed chart fails the real gradle build.

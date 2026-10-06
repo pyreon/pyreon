@@ -6,12 +6,12 @@
 // present), so a legend function that does not exist natively, or a tooltip
 // options struct whose fields drifted, fails here rather than on a device.
 import { describe, expect, it } from 'vitest'
-import { chartChromeUnlowered } from '../chart-hosts'
-import { transform } from '../index'
+import { chartChromeUnlowered } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 import { kotlinTheme, swiftTheme } from './chart-theme-text'
 const SW = swiftTheme()
 const KT = kotlinTheme()
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const TREEMAP = `import { TreemapChart } from '@pyreon/charts'
 import type { TreeNode } from '@pyreon/charts'

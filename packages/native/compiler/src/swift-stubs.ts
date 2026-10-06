@@ -592,7 +592,7 @@ extension View {
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G, including mask: GestureMask) -> some View { self }
-  // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (chart-hosts.ts).
+  // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (@pyreon/charts native-plugin hosts.ts).
   public func gesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func contentShape<S: Shape>(_ shape: S) -> some View { self }
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
@@ -1612,17 +1612,6 @@ public final class PyreonCrashReporter {
   public func breadcrumb(_ message: String) {}
   public func clear() {}
 }
-// Mirrors PyreonChartCanvas.swift's radial wrappers EXACTLY (init signatures
-// incl. defaults) — a looser stub masks, a narrower one manufactures bugs.
-public struct PyreonPieChart<T>: View {
-  public init(data: [T], value: @escaping (T) -> Double, label: @escaping (T) -> String, color: ((T) -> String)? = nil, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Bool = true) {}
-  public init(data: [T], value: @escaping (T) -> Int, label: @escaping (T) -> String, color: ((T) -> String)? = nil, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Bool = true) {}
-  public var body: some View { EmptyView() }
-}
-public struct PyreonGaugeChart: View {
-  public init(value: Double, min: Double = 0.0, max: Double = 100.0, width: Double = 240.0, height: Double = 140.0, thickness: Double = 22.0, trackColor: String = "rgba(132,150,165,0.22)", valueColor: String = "#0f766e", showValue: Bool = true) {}
-  public var body: some View { EmptyView() }
-}
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never
@@ -2273,64 +2262,5 @@ public struct AsyncImage: View {
     @ViewBuilder placeholder: () -> P
   ) {}
   public typealias Body = Never
-}
-`
-
-/**
- * The two views a `@pyreon/charts` host emit needs that the generated
- * engine never declares. validate.ts appends the REAL engine + canvas types
- * next to this when a chart host is present; the view stubs live here so the
- * stub-coverage ratchet counts `PyreonChartCanvas` as covered. The init
- * mirrors runtime-swift `PyreonChartCanvas.swift` exactly.
- */
-export const SWIFT_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts hosts (chart-hosts.ts emit) ----
-public struct GeometryProxy { public var size: CGSize = CGSize() }
-public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
-public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
-public final class PyreonChartHandle {
-  public var zoom = ZoomWindow(start: 0.0, end: 1.0)
-  public var hover: Int = -1
-  public var selected: [Int] = []
-  public var hidden: [Int] = []
-  public var seriesCount: Int = 0
-  public var brushType: String = ""
-  public var areas: [BrushArea] = []
-  public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
-  public func dispatch(_ action: ChartActionInput) {}
-}
-public struct GeometryReader<Content: View>: View {
-  public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
-  public typealias Body = Never
-}
-public struct PyreonChartCanvas: View {
-  public var cmds: [PyreonDrawCmd]
-  public var fontFamily: String?
-  public var durationMs: Double
-  public var universal: Bool
-  public var animated: Bool
-  public init(cmds: [PyreonDrawCmd], durationMs: Double = 350.0, universal: Bool = false, animated: Bool = true, fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily; self.durationMs = durationMs; self.universal = universal; self.animated = animated }
-  public var body: some View { EmptyView() }
-}
-public func pyreonChartColor(_ s: String) -> Color { Color.clear }
-public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
-public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
-public func pyreonTransposeCmds(_ cmds: [PyreonDrawCmd]) -> [PyreonDrawCmd] { cmds }
-public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [PyreonDrawCmd] { cmds }
-public struct PyreonChartEntrance<Content: View>: View {
-  public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {}
-  public typealias Body = Never
-}
-public struct PyreonChartClock<Content: View>: View {
-  public init(@ViewBuilder content: @escaping (Double) -> Content) {}
-  public typealias Body = Never
-}
-// Mirrors runtime-swift PyreonChartDescriptor.swift: VoiceOver's chart data.
-public struct PyreonChartDescriptor {
-  public let input: A11yInput
-  public init(_ input: A11yInput) { self.input = input }
-}
-extension View {
-  public func accessibilityChartDescriptor(_ descriptor: PyreonChartDescriptor) -> some View { self }
 }
 `

@@ -5,9 +5,9 @@
 // and a `cannot find 'Number' in scope` that no warning count would have shown.
 
 import { describe, expect, it } from 'vitest'
-import { CHART_HOSTS } from '../chart-hosts'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { CHART_HOSTS } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const CHORD = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'

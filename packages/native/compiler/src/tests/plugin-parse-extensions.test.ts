@@ -4,6 +4,7 @@ import { forEachExpr } from '../expr-walk'
 import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
+import { chartsCompiler } from './charts-plugin'
 
 // Two parse-side plugin extensions, exercised by a third-party toy plugin (no chart code involved):
 //   - `runtimeTypes`  type names the plugin's RUNTIME declares, so a helper typed against one resolves
@@ -76,13 +77,13 @@ describe('CompilerPlugin.runtimeTypes', () => {
     expect(run(a)).toBe(0)
   })
 
-  it('the built-in charts plugin still supplies the generated engine structs', () => {
+  it('the charts plugin supplies the generated engine structs', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 import type { TooltipContent } from '@pyreon/charts/engine'
 function tip(c: TooltipContent): string { return c.title }
 export function App() { return (<Stack><Text>x</Text></Stack>) }
 `
-    expect(unresolved(createCompiler().transform(src, { target: 'swift', filename: 'a.tsx' }).warnings)).toEqual([])
+    expect(unresolved(chartsCompiler.transform(src, { target: 'swift', filename: 'a.tsx' }).warnings)).toEqual([])
   })
 
   it('shape validation rejects a non-array', () => {

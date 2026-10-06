@@ -1,14 +1,11 @@
-import { CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from '../../chart-hosts'
-import type { ChartHostTarget, ChartThemeText } from '../../chart-hosts'
-import { swiftIdent } from '../../identifier-safety'
-import { swiftStr } from '../../string-literals'
-import { substituteIdentifier } from '../../expr-utils'
-import type { ExprIR, TypeIR } from '../../types'
+import { CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import type { ChartHostTarget, ChartThemeText } from './hosts'
+import { substituteIdentifier, swiftIdent, swiftStr, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './swift-facade'
 
 // ---------------------------------------------------------------------------
 // `@pyreon/charts` family hosts → PyreonChartCanvas (the SwiftUI Canvas
-// that walks the generated engine's draw list). See chart-hosts.ts.
+// that walks the generated engine's draw list). See hosts.ts.
 // ---------------------------------------------------------------------------
 
 export const SWIFT_CHART_TARGET: ChartHostTarget = {

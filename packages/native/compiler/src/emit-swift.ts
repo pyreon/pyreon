@@ -11,7 +11,7 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
-import { allServices, bindServices, emitPluginDecl, findElementLowering, lowerPluginMemberCall, serviceFor, serviceLifecycle } from './registry-lookup'
+import { allServices, bindServices, emitPluginDecl, findElementLowering, findScopeProvider, lowerPluginMemberCall, serviceFor, serviceLifecycle } from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
 import type { ServiceDescriptor } from './services'
 import {
@@ -137,8 +137,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { chartThemeScope, colorModeScope, literalColorMode } from './chart-hosts'
-import type { RawChartTheme } from './chart-hosts'
+import { literalColorMode } from './color-mode'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   binderName,
@@ -9188,7 +9187,7 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       action: emitSwiftAction,
       handlerName: resolveFunctionHandler,
       constExpr: (name) => _moduleConstExprs.get(name),
-      colorScope: () => _chartThemeScope ?? undefined,
+      colorScope: () => _colorScope ?? undefined,
       markColorSchemeUsed: () => {
         _usesColorScheme = true
       },
@@ -9241,13 +9240,13 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     // A literal `mode` pins the framework-wide colour mode for the charts below
     // (web: PyreonUI provides `useColorMode`); a reactive one keeps the
     // platform scheme, silently, as it always has here.
-    const prevScope = _chartThemeScope
-    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined, false) ?? null
+    const prevScope = _colorScope
+    _colorScope = enterColorScope(e, prevScope)
     try {
       const p = ' '.repeat(indent + 2)
       return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     } finally {
-      _chartThemeScope = prevScope
+      _colorScope = prevScope
     }
   }
 
@@ -9354,25 +9353,14 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftStandaloneFlowControls(e, indent)
-  // `@pyreon/charts` family hosts (PyreonChartCanvas over the generated engine)
-  // lower in the built-in `@pyreon/charts` plugin (plugins/charts/swift*.ts) —
-  // claimed by the registry lookup at the top of this function.
-  // `<ChartThemeProvider>` provides a theme through CONTEXT on the web; the
-  // native hosts take their theme by prop (chart-hosts.ts chartThemeFields),
-  // so the provider is transparent here — children render, and the emit
-  // names the gap once so nobody expects the provider to recolour them.
-  // `<ChartThemeProvider mode theme>` provides a theme through CONTEXT on the
-  // web. Natively it is a compile-time SCOPE: the resolved theme is pushed
-  // while its children are emitted, and a chart host without its own `theme`
-  // reads it (chart-hosts.ts chartThemeScope / chartThemeFields). Saved and
-  // restored around the children — providers nest, and a sibling must not
-  // inherit.
+  // Library element hosts (e.g. the `@pyreon/charts` family) lower in the plugin that owns
+  // them — claimed by the registry lookup at the top of this function.
   // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
-  // mode; natively a compile-time scope the chart hosts below read. Children
-  // render as they are.
+  // mode; natively a compile-time scope the plugins' own elements read
+  // (`EmitContext.colorScope`). Children render as they are.
   if (tag === 'ColorModeProvider' && canAliasIntercept(tag, '@pyreon/core')) {
-    const prevScope = _chartThemeScope
-    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined) ?? null
+    const prevScope = _colorScope
+    _colorScope = enterColorScope(e, prevScope)
     try {
       const inner = ' '.repeat(indent + 2)
       // A literal mode also pins SwiftUI's colour scheme for the subtree, so a
@@ -9382,17 +9370,19 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
       const env = pinned === undefined ? '' : `.environment(\\.colorScheme, .${pinned})`
       return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}${env}`
     } finally {
-      _chartThemeScope = prevScope
+      _colorScope = prevScope
     }
   }
-  if (tag === 'ChartThemeProvider') {
-    const prev = _chartThemeScope
-    _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)
+  // A scope-only provider element (a library's own, e.g. a chart theme provider): transparent wrapper, children under the scope.
+  const scopeProvider = findScopeProvider(tag, canAliasIntercept)
+  if (scopeProvider?.transparent === true) {
+    const prev = _colorScope
+    _colorScope = scopeProvider.enter(e, { warn: pushEmitWarning, outer: prev ?? undefined }) ?? null
     try {
       const inner = ' '.repeat(indent + 2)
       return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     } finally {
-      _chartThemeScope = prev
+      _colorScope = prev
     }
   }
   // Phase 5 — walled tags. SwiftUI has no equivalent for these three:
@@ -10485,6 +10475,16 @@ function forRowBodySwift(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR
 }
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
+/**
+ * The colour scope a provider element (`<PyreonUI mode>`, `<ColorModeProvider mode>`) opens for its children:
+ * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
+ */
+function enterColorScope(e: Extract<ExprIR, { kind: 'jsx-element' }>, outer: object | null): object | null {
+  const provider = findScopeProvider(e.tag, canAliasIntercept)
+  if (provider === undefined) return outer
+  return provider.enter(e, { warn: pushEmitWarning, outer: outer ?? undefined }) ?? null
+}
+
 function pushEmitWarning(w: string): void {
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
 }
@@ -14027,8 +14027,8 @@ let _pluginScope: PluginScope = createPluginScope()
 
 let _swiftHostStateSeq = 0
 
-/** The enclosing `<ChartThemeProvider>`'s resolved theme, while its children are emitted. */
-let _chartThemeScope: RawChartTheme | null = null
+/** The compile-time colour scope the enclosing provider opened (opaque: the plugin that owns the provider types it), while its children are emitted. */
+let _colorScope: object | null = null
 
 let _hostStateDecls: string[] = []
 

@@ -6,7 +6,7 @@ import { createRegistries } from '../active-registries'
 import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
-import { transform } from '../index'
+import { chartsCompiler, transform } from './charts-plugin'
 
 // A third-party plugin that uses every facade surface added in this slice:
 //   - `memberCalls`      `toy.ping(expr)` is lowered by the plugin that owns `toy`
@@ -236,9 +236,9 @@ export function App() { return <Text>{String(pipe)}</Text> }`,
     expect(warnings.some((w) => w.includes('Instead: PLUGIN ADVICE'))).toBe(true)
   })
 
-  it('the built-in charts entry is registry data now, and the default compile still warns with its text', () => {
+  it('the charts entry is registry data from the plugin, and a compile with it loaded warns with its text', () => {
     expect(createRegistries([]).unlowered.size).toBe(0)
-    const compiler = createCompiler()
+    const compiler = chartsCompiler
     expect(compiler.registries.unlowered.get('@pyreon/charts')?.owner).toBe('@pyreon/charts')
     expect(compiler.registries.unlowered.get('@pyreon/charts')?.supported?.has('createChartHandle')).toBe(true)
     const { warnings } = compiler.transform(

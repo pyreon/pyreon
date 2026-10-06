@@ -1,4 +1,4 @@
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 const APP =
   'interface Slice { value: number }; export function Example() { return <Text>hello</Text> }'
 const shadows = (source: string) =>

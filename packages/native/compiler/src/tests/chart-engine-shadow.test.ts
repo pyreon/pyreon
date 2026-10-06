@@ -9,9 +9,9 @@
 // caught it, and that gate covers this repo's examples and nobody else's.
 
 import { describe, expect, it } from 'vitest'
-import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from '../chart-engine-structs'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from '../../../../fundamentals/charts/src/native-plugin/engine-structs'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const COLLIDES = `import { PieChart } from '@pyreon/charts/engine'
 interface Slice { value: number; label: string }
