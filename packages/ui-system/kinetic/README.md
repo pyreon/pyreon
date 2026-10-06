@@ -229,6 +229,10 @@ const RevealSection = kinetic('section')
 
 Full docs: [pyreon.dev/docs/kinetic](https://pyreon.dev/docs/kinetic) (or `docs/src/content/docs/kinetic.md` in this repo).
 
+## Native (iOS / Android)
+
+A `kinetic('div').preset(…)` box bound to a local `const` lowers to the canonical `<Transition>` driven by a mount flag; a box with no preset degrades to a plain container. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT

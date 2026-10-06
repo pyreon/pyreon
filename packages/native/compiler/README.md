@@ -92,10 +92,9 @@ fields never break an older plugin:
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
   value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
   initialiser and `kotlin` lines). `createCompiler` builds one registry from every
-  plugin's `services` — the built-in table arrives as the built-in
-  `@pyreon/hooks` plugin (a generated copy of the library's own
-  `@pyreon/hooks/native-plugin`; an installed, newer one replaces it by name),
-  through the same path; two owners for one hook is a
+  plugin's `services` — `@pyreon/hooks`' table arrives through the discovered
+  `@pyreon/hooks/native-plugin` like every other library's lowering (the compiler
+  ships no table and no built-in plugin); two owners for one hook is a
   load-time error naming both, because silently picking one would make the emit
   depend on plugin order. The registry is `compiler.services` and
   `context.services`, and it is the one the parser and both emitters read, so a
@@ -109,10 +108,9 @@ fields never break an older plugin:
   (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`) are on
   the shared `EmitContext`). A target with no function falls through to the core, so
   a plugin may lower one target at a time. A `(module, tag)` pair claimed by two
-  owners is a load-time error naming both. The built-in `@pyreon/elements` and
-  `@pyreon/coolgrid` lowerings are `builtIn` plugins registered the same way. The
-  `@pyreon/charts` lowerings are NOT built in: the plugin ships in `@pyreon/charts`
-  itself (`@pyreon/charts/native-plugin`, found through `pyreon.native.plugin`) and
+  owners is a load-time error naming both. No lowering is built in: `@pyreon/elements`,
+  `@pyreon/coolgrid`, `@pyreon/charts` and the rest ship their plugin in their own
+  package (`<pkg>/native-plugin`, found through `pyreon.native.plugin`) and
   `pyreon-native` loads it when a source file imports the package.
 - `calls` + `decls` — code-shaped lowering: `calls` maps a hook/function name to a
   recognizer `(call, ctx: ParseContext) => { type, payload? } | undefined`
@@ -165,7 +163,19 @@ fields never break an older plugin:
 - `builtIn` — marks a compiler-shipped plugin. `createCompiler({ discovered })`
   lets a discovered plugin with the same name replace it silently; an explicit
   `plugins` entry of the same name is still a duplicate error and wins over a
-  discovered one.
+  discovered one. No plugin ships built in today (`BUILT_IN_PLUGINS` is empty); the
+  mechanism is kept for a future compiler-shipped plugin.
+- Later additive members (each documented in `.agents/guides/multiplatform/README.md`,
+  "The plugin protocol"): `declCalls` (a declaration recognized by callee SHAPE, with
+  `{ signal }` / `{ computed }` verdicts), `tier2Calls` (the standing Tier-2
+  diagnostic for a call the package does not lower, without claiming its name),
+  `receivers`, `functions`, `identifiers`, `memberReads`, `intrinsics`, `refModifiers`,
+  `prepareEmit`, `propsTypes`, `runtimeTypes`, `refineParse`, `scanModule`,
+  `requestSources`, `topLevel` + `items` (slots `models` / `declarations` / `data`),
+  `methodCalls` + `exprs`, `callExprs`, `refineStructs`, `finishModule`,
+  `rewriteElement`, `destructureCalls`, `componentOnlyCalls`, `persistence` and
+  `stubs`. `DeclEmitter.typing` types both the call read (`callRead`) and the
+  property read (`member`) of a declaration's container.
 
 `SUPPORTED_PLUGIN_API_VERSIONS` lists every version this compiler loads.
 

@@ -291,6 +291,10 @@ isError() && (
 
 Full docs: [pyreon.dev/docs/feature](https://pyreon.dev/docs/feature) (or `docs/src/content/docs/feature.md` in this repo).
 
+## Native (iOS / Android)
+
+A top-level `defineFeature({ name, schema })` with a literal `{ field: 'string' | 'number' | 'boolean' }` schema lowers to a schema struct plus a binding exposing `name` and `initialValues`; every other shape draws the Tier-2 diagnostic. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT

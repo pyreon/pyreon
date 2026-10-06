@@ -53,3 +53,7 @@ class SizedMap<K, V> {
   [Symbol.iterator](): IterableIterator<[K, V]>
 }
 ```
+
+## Native (iOS / Android)
+
+`new SizedMap<K, V>({ maxEntries, lru })` lowers to the `PyreonSizedMap` class both native runtimes ship; the option object must be a literal. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.

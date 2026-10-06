@@ -228,6 +228,10 @@ Every storage signal wraps a base `signal()` with a facade that **forwards `_v` 
 
 Full docs: [pyreon.dev/docs/storage](https://pyreon.dev/docs/storage) (or `docs/src/content/docs/storage.md` in this repo).
 
+## Native (iOS / Android)
+
+`useStorage`, `useSessionStorage` and `useMemoryStorage` lower to PERSISTED native signals (`@AppStorage` on SwiftUI, a persisted `mutableStateOf` on Compose) for the scalar and list shapes the native runtimes persist. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT
