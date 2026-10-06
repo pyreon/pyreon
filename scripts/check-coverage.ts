@@ -1277,10 +1277,10 @@ export function describeProblem(p: CoverageProblem): string {
     }
     return (
       `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
-      `    This job runs on main pushes, so the failure is main-branch evidence. If the\n` +
-      `    same spec is green in the Test cells, it fails only under coverage\n` +
-      `    instrumentation load \u2014 deflake the NAMED test (see testing.md "the message\n` +
-      `    is the artifact"); do not re-run past it.`
+      `    This test failed on the measured checkout. If the same spec is green in\n` +
+      `    the Test cells, compare its diagnostics and coverage environment to fix\n` +
+      `    the underlying cause (see testing.md "the message is the artifact"); do\n` +
+      `    not re-run past it.`
     )
   }
   if (p.timedOut) {

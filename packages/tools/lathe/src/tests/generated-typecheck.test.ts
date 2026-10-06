@@ -23,6 +23,7 @@ import { ALL_PLUGINS, resolveConfig, type ClientName, type PluginName, type Vali
 import { generate } from '../core/generate'
 import { emitSchemaAgreement } from '../emit/schema'
 import { banner } from '../emit/writer'
+import { generatedDiagnostics, TYPECHECK_BUDGET } from './helpers/typecheck'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TC_ROOT = join(HERE, '.generated', 'typecheck')
@@ -30,7 +31,6 @@ const CORE = join(HERE, '..', '..', '..', '..', 'core', 'core', 'src', 'index.ts
 
 // Each fixture runs the real TypeScript compiler over generated clients and
 // their imports. One case crossed the shared 20s limit under pre-push load.
-const TYPECHECK_BUDGET = { timeout: 60_000 }
 
 /**
  * A spec carrying the shapes most likely to produce un-typecheckable output.
@@ -296,12 +296,7 @@ function diagnose(
   // Only generated-file diagnostics were asserted before. Keep real module
   // resolution and imported types, without checking every framework source
   // again for each fixture (the workspace typecheck covers those files).
-  return entries
-    .flatMap((entry) => {
-      const file = program.getSourceFile(entry)
-      if (!file) throw new Error(`TypeScript did not load generated fixture ${entry}`)
-      return [...program.getSyntacticDiagnostics(file), ...program.getSemanticDiagnostics(file)]
-    })
+  return generatedDiagnostics(program, entries)
     .map(
       (d) =>
         `${d.file?.fileName.slice(root.length + 1) ?? '?'}: TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`,

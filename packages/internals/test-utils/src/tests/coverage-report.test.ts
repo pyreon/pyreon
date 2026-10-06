@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import { classifyCoverageExecution, runCoverage } from '../../../../../scripts/check-coverage'
 
@@ -15,7 +16,7 @@ Lines : 100% ( 1/1 )`
 const execution = (output: string, code = 1) => ({ output, code, signal: null, timedOut: false })
 
 function fixture(expected: number, extraSource = '', after = '') {
-  const root = mkdtempSync(join(repoRoot, '.cache', 'vitest-report-fixture-'))
+  const root = mkdtempSync(join(tmpdir(), 'pyreon-vitest-report-fixture-'))
   roots.push(root)
   symlinkSync(join(repoRoot, 'node_modules'), join(root, 'node_modules'), 'junction')
   mkdirSync(join(root, 'src'))
