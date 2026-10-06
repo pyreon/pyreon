@@ -3,15 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 /**
  * `useStream` over `@pyreon/http/stream` — SSE and NDJSON — lowers to the
