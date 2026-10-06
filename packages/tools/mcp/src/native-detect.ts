@@ -21,23 +21,34 @@ export const NATIVE_CHECKS_SKIPPED_NOTE =
   '`@pyreon/native-compiler` is not installed. Install it (`bun add -d @pyreon/native-compiler`) ' +
   'to also catch web-only imports and unsupported enum/class declarations that break the iOS/Android build.'
 
-const isModuleNotFound = (err: unknown): boolean => {
-  const code = (err as { code?: unknown } | null)?.code
-  return (
-    code === 'ERR_MODULE_NOT_FOUND' ||
-    code === 'MODULE_NOT_FOUND' ||
-    /Cannot find (?:module|package) '@pyreon\/native-compiler/.test(String((err as Error)?.message))
-  )
-}
+// Only a miss of the PEER ITSELF is "not installed": the message names the
+// missing specifier, so a transitive miss inside the audit (say `oxc-parser`)
+// names a different package and surfaces as the defect it is.
+const PEER = '@pyreon/native-compiler'
 
-/** Dynamic import of the audit subpath; `undefined` when the optional peer is absent. */
-export async function loadNativeDetector(): Promise<NativeDetectorModule | undefined> {
+const isPeerMissing = (err: unknown, peer: string): boolean =>
+  new RegExp(`Cannot find (?:module|package) '${peer}(?:/[^']*)?'`).test(
+    String((err as Error | null)?.message),
+  )
+
+/**
+ * Dynamic import of the audit subpath; `undefined` when the optional peer is
+ * absent. `specifier` exists so a test can point the REAL loader at an
+ * unresolvable name -- the default keeps a literal `import()`.
+ */
+export async function loadNativeDetector(
+  specifier?: string,
+): Promise<NativeDetectorModule | undefined> {
   try {
-    return (await import('@pyreon/native-compiler/audit')) as NativeDetectorModule
+    const mod =
+      specifier === undefined
+        ? await import('@pyreon/native-compiler/audit')
+        : await import(/* @vite-ignore */ specifier)
+    return mod as NativeDetectorModule
   } catch (err) {
-    // Only a missing peer is "not installed". A throw while the module
-    // evaluates is a real defect and must not be reported as an absence.
-    if (isModuleNotFound(err)) return undefined
+    if (isPeerMissing(err, specifier === undefined ? PEER : specifier.split('/').slice(0, 2).join('/'))) {
+      return undefined
+    }
     throw err
   }
 }

@@ -33,24 +33,36 @@ export const NATIVE_COMPILER_NOT_INSTALLED =
   '@pyreon/native-compiler is not installed — install it to audit multiplatform sources ' +
   '(`bun add -d @pyreon/native-compiler`, or the equivalent for your package manager)'
 
-const isModuleNotFound = (err: unknown): boolean => {
-  const code = (err as { code?: unknown } | null)?.code
-  // Bun reports a bare specifier miss as ERR_MODULE_NOT_FOUND / MODULE_NOT_FOUND;
-  // the message check covers runtimes that omit the code. Anything ELSE (a
-  // throw while the audit module evaluates) is a real bug and must surface.
-  return (
-    code === 'ERR_MODULE_NOT_FOUND' ||
-    code === 'MODULE_NOT_FOUND' ||
-    /Cannot find (?:module|package) '@pyreon\/native-compiler/.test(String((err as Error)?.message))
-  )
-}
+// Only a miss of the PEER ITSELF is "not installed". The message names the
+// missing specifier (node: "Cannot find package '<spec>' imported from ...",
+// bun: "Cannot find module '<spec>' from ..."), so a transitive miss INSIDE the
+// audit (say `oxc-parser`) names a different package and is correctly treated
+// as the defect it is. The error code alone cannot make that distinction.
+const PEER = '@pyreon/native-compiler'
 
-/** Dynamic import of the audit subpath; `undefined` when the peer is absent. */
-export const loadNativeAudit = async (): Promise<NativeAuditModule | undefined> => {
+const isPeerMissing = (err: unknown, peer: string): boolean =>
+  new RegExp(`Cannot find (?:module|package) '${peer}(?:/[^']*)?'`).test(
+    String((err as Error | null)?.message),
+  )
+
+/**
+ * Dynamic import of the audit subpath; `undefined` when the peer is absent.
+ * `specifier` exists so a test can point the REAL loader at an unresolvable
+ * name -- the default keeps a literal `import()` so bundlers see the edge.
+ */
+export const loadNativeAudit = async (
+  specifier?: string,
+): Promise<NativeAuditModule | undefined> => {
   try {
-    return (await import('@pyreon/native-compiler/audit')) as NativeAuditModule
+    const mod =
+      specifier === undefined
+        ? await import('@pyreon/native-compiler/audit')
+        : await import(/* @vite-ignore */ specifier)
+    return mod as NativeAuditModule
   } catch (err) {
-    if (isModuleNotFound(err)) return undefined
+    if (isPeerMissing(err, specifier === undefined ? PEER : specifier.split('/').slice(0, 2).join('/'))) {
+      return undefined
+    }
     throw err
   }
 }

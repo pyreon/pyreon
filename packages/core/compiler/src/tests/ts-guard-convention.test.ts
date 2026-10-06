@@ -62,9 +62,10 @@ describe('assertClassicTs convention — guard precedes every classic-API parse'
         }
       }
     }
-    // Sanity: the convention has real coverage (13 sites at time of writing —
-    // a collapse to 0 means the scan broke, not that the code got clean).
-    expect(sites).toBeGreaterThanOrEqual(10)
+    // Sanity: the convention has real coverage (9 sites now that the native
+    // audit, which held two, moved to @pyreon/native-compiler -- a collapse to 0
+    // means the scan broke, not that the code got clean).
+    expect(sites).toBeGreaterThanOrEqual(8)
     expect(violations).toEqual([])
   })
 })
