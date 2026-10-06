@@ -6,7 +6,7 @@
 // SAME idiomatic native emit the hand-written `.set(x().map(...))`
 // form produces (no IIFE, no closure-invocation noise).
 
-import { hashServiceDeclsAsLegacy } from './services'
+import { hashServiceDeclsAsLegacy } from './registry-lookup'
 import type { AttrIR, ChildIR, DeclIR, ExprIR, ParseResult, StructIR, TypeIR } from './types'
 
 /**

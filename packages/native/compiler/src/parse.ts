@@ -5,11 +5,14 @@
 // either passed through as unknown or surfaces a warning.
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
+import { GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
-import { SERVICES, SERVICE_BY_HOOK } from './services'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
+import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
+import { findService, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
+import type { UnloweredModule } from './unlowered-modules'
+import { stampExtDecl, type ParseContext } from './call-lowering'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -43,7 +46,6 @@ import type {
 import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
-import { isElementLoweringTag } from './element-lowering'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
 import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
@@ -410,7 +412,28 @@ const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
  */
 let _objectLiteralDepth = 0
 
-export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
+/** Options for {@link parsePyreon}. */
+export interface ParseOptions {
+  /**
+   * The registries (service hooks, element lowerings) to parse against. When
+   * omitted the ACTIVE registries are used — those of the `createCompiler`
+   * transform in progress — else the built-in defaults.
+   */
+  readonly registries?: CompilerRegistries | undefined
+}
+
+export function parsePyreon(
+  source: string,
+  filename = 'input.tsx',
+  options: ParseOptions = {},
+): ParseResult {
+  const { registries } = options
+  return registries === undefined
+    ? parsePyreonWithPlain(source, filename)
+    : withRegistries(registries, () => parsePyreonWithPlain(source, filename))
+}
+
+function parsePyreonWithPlain(source: string, filename: string): ParseResult {
   // Plain-Mode shared source: run the SAME source-to-source pre-pass the web
   // compiler runs (`@pyreon/compiler/plain` — a light subpath: magic-string +
   // oxc-parser only), so PMTC parses the classic shapes it already
@@ -518,7 +541,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
-  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, NATIVE_LOWERED_HOOKS))
+  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
@@ -1375,7 +1398,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     const isWebviewBridgeImport = subpath === 'webview'
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
-      !UNLOWERED_PYREON_MODULES.has(pkg) &&
+      findUnloweredModule(pkg, UNLOWERED_PYREON_MODULES) === undefined &&
       !seen.has(pkg) &&
       !isWebviewBridgeImport
     ) {
@@ -2787,9 +2810,7 @@ function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
  * if-chains below) is what makes the complement nameable. A drift test asserts
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
-export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
-  // Plain service containers — the hook list lives in services.ts (SERVICES).
-  ...SERVICES.map((s) => s.hook),
+const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useAuth', 'useColorMode', 'useColorScheme',
   'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
   'useHotkey', 'useLoaderData', 'useMap',
@@ -2814,6 +2835,31 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // component-unmount disposal emitted by both native frontends.
   'useFlow',
 ])
+
+// Derived once per registry (keyed on the registry itself, so the entry dies with
+// the compiler instance that owns it).
+const LOWERED_HOOKS = new WeakMap<object, ReadonlySet<string>>()
+
+/**
+ * The hooks the parser lowers for `registries` (default: the active ones): the
+ * hand-written set above plus every registered service hook and plugin-recognized
+ * call, so a plugin's lowering never trips the "no native lowering" warning.
+ */
+export function nativeLoweredHooks(
+  registries: CompilerRegistries = activeRegistries(),
+): ReadonlySet<string> {
+  const key = registries
+  let set = LOWERED_HOOKS.get(key)
+  if (set === undefined) {
+    set = new Set([
+      ...registries.serviceTables.hooks,
+      ...registries.calls.names,
+      ...NATIVE_LOWERED_STATIC_HOOKS,
+    ])
+    LOWERED_HOOKS.set(key, set)
+  }
+  return set
+}
 
 /**
  * Control-flow components from `@pyreon/core` that do NOT lower to native.
@@ -2898,24 +2944,6 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  * and `@pyreon/state-tree`'s `model()` lowers cleanly, so none of them is
  * listed.
  */
-interface UnloweredModule {
-  /** What to do instead, named per module — a generic refusal leaves the author guessing. */
-  readonly advice: string
-  /** Exports from this module that DO lower and must stay silent. */
-  readonly supported?: ReadonlySet<string>
-  /**
-   * Warn ONLY these exports, leaving everything else silent.
-   *
-   * Required for @pyreon/core and @pyreon/reactivity, where the overwhelming
-   * majority of exports lower (`signal`, `computed`, `effect`, `h`, `Fragment`,
-   * `Show`, `For`, …) and only a handful do not. Listing what is SUPPORTED
-   * there would mean enumerating almost the whole public surface and
-   * false-warning on anything missed — the @pyreon/rx over-generalisation at
-   * much larger scale, in the two most-used packages in the framework.
-   */
-  readonly unsupported?: ReadonlySet<string>
-}
-
 const RX_V1_METHODS = new Set([
   'filter',
   'map',
@@ -3010,123 +3038,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       advice:
         '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, literal `<Flow edgeTypes={{ type: Component }}>` maps whose renderer uses the shipped path helpers, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<EdgeLabelRenderer>`, `<BaseEdge>` and `<EdgeText>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Arbitrary SVG path strings or browser-only DOM/CSS inside a custom renderer still require NativeIOS/NativeAndroid branches or the `@pyreon/flow/webview` bridge',
       supported: LOWERED_FLOW_RUNTIME_EXPORTS,
-    },
-  ],
-  [
-    '@pyreon/charts',
-    {
-      // Most of `/plot`'s hosts lower to a native PyreonChartCanvas over the
-      // GENERATED PyreonChartEngine geometry — web and native draw the same
-      // byte-locked math: the two ACCESSOR hosts (Pie/Funnel), the five FRAME
-      // hosts with a fixed layout of their own (Gauge/Candlestick/Heatmap/
-      // Radar/Plot), and the eight two-prop CHART_HOSTS (Sankey/Graph/
-      // Treemap/Sunburst/Tree/River/Gantt/Polar — nodes+links or a values
-      // record, dispatched through `emitSwiftChartHost`/`emitKotlinChartHost`
-      // in chart-hosts.ts).
-      advice:
-        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); anything else stays web — keep it in a `<Web>` branch',
-      supported: new Set([
-        // DERIVED from the registries that actually do the lowering, rather
-        // than re-typed. The two disagreed the moment a host was added:
-        // `<ChordChart>` emitted a correct `renderChord(layoutChord(…))` AND
-        // warned that it "has NO native lowering", because it was in
-        // CHART_HOSTS and not in this list. A warning that contradicts the
-        // emit beside it is worse than either being wrong alone — a reader
-        // cannot tell which half to believe.
-        ...Object.keys(CHART_HOSTS),
-        ...Object.keys(ACCESSOR_CHART_HOSTS),
-        ...Object.keys(FRAME_CHART_HOSTS),
-        'MapChart',
-        // A host's `visualMap={visualMap({ … })}` runs the engine's own builder at compile time (chart-hosts.ts `chartVisualMap`).
-        'visualMap',
-        // Theme surface: the provider is a TRANSPARENT wrapper on native (its
-        // children render; per-chart `theme` props do the theming there), and
-        // `chartThemes` / `palettes` are compiler-known constants a `theme`
-        // literal resolves at compile time (chart-hosts.ts CHART_THEMES /
-        // NAMED_PALETTES).
-        'ChartThemeProvider',
-        // The imperative handle lowers to a PyreonChartHandle (its `dispatch` runs the crossing reducer).
-        'createChartHandle',
-        'chartThemes',
-        'palettes',
-        // The grammar: <Chart> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
-        'Chart',
-        'Bar',
-        'Line',
-        'Area',
-        'Dot',
-        'Rule',
-        'Axis',
-        'Tooltip',
-        'Legend',
-        'Zoom',
-        'Toolbox',
-        'Label',
-        // The family marks: <Chart> with one of these desugars to the row-array host it names.
-        'Arc',
-        'Stage',
-        'Cell',
-        'Candle',
-        // The scale switches and the binned mark: `<Scale>` desugars to spec
-        // fields, `<Histogram>` warns by name in the desugar (the row
-        // reshape is web-side) — neither is a missing symbol.
-        'Scale',
-        'Histogram',
-        // The indicator marks desugar to the array form's `sma` / `ema` /
-        // `trend` / `...bollinger` calls, which the emitters lower.
-        'Sma',
-        'Ema',
-        'Trend',
-        'Bollinger',
-        'channel',
-        // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
-        // array literal — the structural marks-array pass (chart-hosts.ts /
-        // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
-        // `bubble` handling) recognizes and lowers these; without this
-        // entry the generic web-only-import check ALSO flagged every one
-        // of them as "has NO native lowering", duplicating (and
-        // contradicting) the structural pass's own, more specific report.
-        'area',
-        'bars',
-        'bubble',
-        'groupedBars',
-        'line',
-        'points',
-        'stackedBars',
-        'waterfall',
-        'stackedArea',
-        'band',
-        // Indicator marks — derived series over the crossing arithmetic in
-        // `indicator-values.ts` (`sma` → `smaValues`).
-        'sma',
-        'ema',
-        'trend',
-        // The one that arrives as an array SPREAD, expanded to its two
-        // Series by the emitters.
-        'bollinger',
-        'StackedArea',
-        'Band',
-        'smooth',
-        'step',
-        // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).
-        'binValues',
-        // Decimation, same shape (decimate-values.ts is in ENGINE_FILES). NOT
-        // `lttb`: that one takes `Pt[]`, which is why the arithmetic was split
-        // out of it — it genuinely stays web and must keep warning by name.
-        'lttbIndices',
-        'minMaxBuckets',
-        // Formatter constructors — a chart's `format`/`xFormat`/`yFormat`/
-        // `y2Format` prop lowers a bare name (`plain`, `compact`) or a
-        // factory CALL (`fixed(2)`, `currency("$", 2)`, `percent(1)`) via
-        // `swift{,Kotlin}ChartFormatter` — same false-positive shape as the
-        // mark constructors above.
-        'compact',
-        'currency',
-        'date',
-        'fixed',
-        'percent',
-        'plain',
-      ]),
     },
   ],
   [
@@ -3294,7 +3205,7 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       : src
     const isWebviewBridge =
       src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
-    const entry = UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(srcRoot)
+    const entry = findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(srcRoot, UNLOWERED_PYREON_MODULES)
     if (entry === undefined || isWebviewBridge) continue
     // A type-only import (`import type { X }` or the per-specifier `import {
     // type X }`) is TS-erased before this code ever runs — it names no
@@ -3389,7 +3300,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       const imported = spec.imported?.name ?? spec.imported?.value
       if (typeof imported !== 'string') continue
       if (!/^use[A-Z]/.test(imported)) continue
-      if (NATIVE_LOWERED_HOOKS.has(imported)) continue
+      if (nativeLoweredHooks().has(imported)) continue
       if (seen.has(imported)) continue
       seen.add(imported)
       // Prefer the package's OWN advice when it has one. The generic tail
@@ -3402,7 +3313,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       const advSrcRoot = src.startsWith('@pyreon/')
         ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
         : src
-      const moduleAdvice = (UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(advSrcRoot))?.advice
+      const moduleAdvice = (findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(advSrcRoot, UNLOWERED_PYREON_MODULES))?.advice
       ctx.warnings.push(
         `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
           moduleAdvice
@@ -7625,6 +7536,22 @@ function unwrapTypeLayers(node: AnyNode | undefined): AnyNode | undefined {
   return current
 }
 
+/** The facade a plugin's `CallRecognizer` reads the call through; each member delegates to parser state. */
+function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseContext {
+  return {
+    declName,
+    stringLiteralArg(index) {
+      const arg = (call.arguments as AnyNode[] | undefined)?.[index]
+      return (arg?.type === 'Literal' || arg?.type === 'StringLiteral') && typeof arg.value === 'string'
+        ? arg.value
+        : undefined
+    },
+    warn: (message) => {
+      ctx.warnings.push(`Declaration ${declName}: ${message}`)
+    },
+  }
+}
+
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
@@ -7651,7 +7578,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // alias).
   const DESTRUCTURE_CONTAINER_HOOKS = new Set([
     // Service descriptors that declare `destructure` (services.ts).
-    ...SERVICES.filter((x) => x.destructure === true).map((x) => x.hook),
+    ...activeRegistries().serviceTables.destructureHooks,
     'useFetch',
     'useQuery',
     'useForm',
@@ -8869,7 +8796,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `useCamera`) — no arguments, no reactive state; every call is a member
   // method that flows through unchanged. The whole lowering is the descriptor
   // in services.ts, rendered by both emitters from this one declaration.
-  const service = calleeName === undefined ? undefined : SERVICE_BY_HOOK.get(calleeName)
+  const service = calleeName === undefined ? undefined : findService(calleeName)
   if (service !== undefined) {
     return { kind: 'service', name, hook: service.hook }
   }
@@ -8878,11 +8805,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // through unchanged (string arg) — the runtime container hands the URL
   // to the OS (iOS `UIApplication.shared.open`, Android
   // `Intent.ACTION_VIEW`). Like useShare, Android needs a Context.
-  // `const chart = createChartHandle()` from `@pyreon/charts` → a
-  // PyreonChartHandle: observable fields the bound PlotChart reads and writes,
-  // and a `dispatch` that runs the crossing `applyChartAction` reducer.
-  if (calleeName === 'createChartHandle') {
-    return { kind: 'chart-handle', name }
+  // A call a PLUGIN recognizes (`CompilerPlugin.calls`) — e.g. `createChartHandle()`
+  // from `@pyreon/charts`. Sits where the hand-written by-name branches did, so a
+  // recognizer that declines (`undefined`) falls through to everything below.
+  const recognized = calleeName === undefined ? undefined : activeRegistries().calls.calls.get(calleeName)
+  if (recognized !== undefined && calleeName !== undefined) {
+    const spec = recognized.recognizer(
+      { callee: calleeName, argCount: init.arguments?.length ?? 0 },
+      parseContextFor(name, init, ctx),
+    )
+    if (spec !== undefined) return stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
   }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
@@ -13431,7 +13363,7 @@ function warnIfHookInsideRenderCallback(
   // it should have been declared in the parent component.
   const HOOK_NAMES = new Set([
     // Every service descriptor (services.ts).
-    ...SERVICES.map((x) => x.hook),
+    ...activeRegistries().serviceTables.hooks,
     'signal',
     'computed',
     'useStorage',

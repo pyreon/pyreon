@@ -29,7 +29,7 @@
 // ============================================================================
 
 import { isCanonicalPrimitive } from './canonical-primitives'
-import { isStyleBasePrimitive } from './element-lowering'
+import { isStyleBasePrimitive } from './registry-lookup'
 import { DEFAULT_THEME, resolveThemeToken, type ThemeTable } from './theme-native'
 import type { ExprIR, RocketstyleComponentIR } from './types'
 

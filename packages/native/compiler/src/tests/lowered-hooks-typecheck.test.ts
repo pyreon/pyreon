@@ -36,8 +36,10 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { NATIVE_LOWERED_HOOKS } from '../parse'
+import { nativeLoweredHooks } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+
+const NATIVE_LOWERED_HOOKS = nativeLoweredHooks()
 
 /** One minimal, REALISTIC call per hook — the shape an author would write. */
 const USAGES: ReadonlyArray<readonly [string, string, string]> = [
@@ -195,6 +197,12 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
   [
     'useLoaderData',
     'already warns — a documented, disclosed gap rather than a silent one.',
+  ],
+  [
+    'createChartHandle',
+    'claimed by the built-in @pyreon/charts plugin (a plugin call name, so it joins the allowlist) and ' +
+      'type-checked on both targets by chart-handle-native.test.ts, which needs the generated chart-engine ' +
+      'structs and the bound <PlotChart handle> this one-hook template cannot express.',
   ],
 ])
 

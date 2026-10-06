@@ -1,5 +1,5 @@
 /**
- * Load-independent complexity assertions.
+ * Relative-cost complexity assertions.
  *
  * WHY THIS EXISTS
  *
@@ -22,9 +22,10 @@
  * THE FIX
  *
  * Measure the same operation at two input sizes IN THE SAME PROCESS, back to
- * back, and assert on the RATIO. Contention, CPU speed, thermal state and GC
- * pressure hit both measurements, so they cancel. What survives is the growth
- * curve — which is the invariant these tests were always trying to state.
+ * back, and assert on the RATIO. This reduces sensitivity to machine speed,
+ * but unequal scheduling, JIT and GC costs can still skew a sample. Tests of
+ * this helper's sampling policy use a deterministic clock; measurements of
+ * real operations keep the default performance clock.
  *
  * For a scale factor k:  linear ⇒ ratio ≈ k · quadratic ⇒ ratio ≈ k².
  * The default bound sits between them, nearer the quadratic end so that ordinary
@@ -56,16 +57,23 @@ export interface ComplexityOptions {
    * Default 1.
    */
   minMs?: number
+  /** Monotonic millisecond clock. Defaults to `performance.now`; injectable for deterministic policy tests. */
+  clock?: () => number
   /** Shown in the failure message. */
   label?: string
 }
 
-function timeBest(run: (n: number) => void, n: number, samples: number): number {
+function timeBest(
+  run: (n: number) => void,
+  n: number,
+  samples: number,
+  clock: () => number,
+): number {
   let best = Number.POSITIVE_INFINITY
   for (let i = 0; i < samples; i++) {
-    const t0 = performance.now()
+    const t0 = clock()
     run(n)
-    const dt = performance.now() - t0
+    const dt = clock() - t0
     if (dt < best) best = dt
   }
   return best
@@ -105,6 +113,7 @@ export function measureComplexity(
   const maxRatio = options.maxRatio ?? scale * 3
   const samples = options.samples ?? 5
   const minMs = options.minMs ?? 1
+  const clock = options.clock ?? (() => performance.now())
 
   // Grow the base until the small run is above timer granularity, or we give up.
   // Without this a sub-microsecond op yields ratio = 0/0 and the test asserts
@@ -131,12 +140,12 @@ export function measureComplexity(
   const FLAT_MIN_GROWTH = 2
   const FLAT_NOISE_FLOOR_MS = 0.05
   let n = baseN
-  let baseMs = timeBest(run, n, samples)
+  let baseMs = timeBest(run, n, samples, clock)
   const history = [baseMs]
   let flatInN = false
   for (let i = 0; i < 24 && baseMs < minMs; i++) {
     n *= 2
-    baseMs = timeBest(run, n, samples)
+    baseMs = timeBest(run, n, samples, clock)
     history.push(baseMs)
     const earlier = history[history.length - 1 - FLAT_LOOKBACK]
     if (
@@ -150,7 +159,7 @@ export function measureComplexity(
   }
 
   const scaledN = n * scale
-  let scaledMs = timeBest(run, scaledN, samples)
+  let scaledMs = timeBest(run, scaledN, samples, clock)
   let ratio = baseMs > 0 ? scaledMs / baseMs : Number.POSITIVE_INFINITY
 
   // min-of-K is stable in the mean but not immune: a scheduler steal landing on
@@ -164,8 +173,8 @@ export function measureComplexity(
   // only, so a real regression still fails fast.
   if (baseMs >= minMs && ratio > maxRatio) {
     const retrySamples = samples * 3
-    const baseRetry = timeBest(run, n, retrySamples)
-    const scaledRetry = timeBest(run, scaledN, retrySamples)
+    const baseRetry = timeBest(run, n, retrySamples, clock)
+    const scaledRetry = timeBest(run, scaledN, retrySamples, clock)
     if (baseRetry > 0) {
       baseMs = baseRetry
       scaledMs = scaledRetry
@@ -195,8 +204,8 @@ export function measureComplexity(
 /**
  * Assert that `run` does not grow quadratically with its input.
  *
- * Load-independent: both measurements happen back to back in the same process,
- * so machine speed and contention cancel out of the ratio.
+ * Both measurements happen back to back in the same process to reduce
+ * sensitivity to machine speed. Unequal contention can still skew the ratio.
  *
  * ```ts
  * expectSubQuadratic((n) => isMarkdownId('#'.repeat(n) + 'foo'), 10_000, {
@@ -214,9 +223,7 @@ export function expectSubQuadratic(
 ): ComplexityResult {
   const result = measureComplexity(run, baseN, options)
   if (!result.ok) {
-    throw new Error(
-      `[Pyreon] expected sub-quadratic growth but measured ${result.detail}`,
-    )
+    throw new Error(`[Pyreon] expected sub-quadratic growth but measured ${result.detail}`)
   }
   return result
 }

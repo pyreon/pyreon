@@ -3,7 +3,7 @@
  * Runs test coverage for all packages and reports failures.
  *
  * Usage:
- *   bun scripts/check-coverage.ts              # full coverage (slow, ~200s)
+ *   bun scripts/check-coverage.ts              # all testable packages
  *   bun scripts/check-coverage.ts --floor-only # config check only (~5s)
  *
  * Reads coverage thresholds from each package's vitest.config.ts.
@@ -16,10 +16,9 @@
  * PR-time fast gate (~5s) — proves the floor / exemption invariant holds
  * but does NOT detect actual coverage regressions in a PR's changes.
  *
- * The full run (no flag) is the canonical safety net, executed on
- * `push: main` and `merge_group` only — main is never allowed to
- * regress, but PRs get fast feedback instead of paying the 200s+ cost
- * on every iteration.
+ * The full run (no flag) is the canonical safety net on main and merge
+ * groups. Coverage-infrastructure PRs also execute it; ordinary PRs
+ * measure only their directly changed packages.
  *
  * ## Coverage floor (PR #323 → #324 → #1266 → #1279 → THIS PR)
  *
@@ -46,10 +45,12 @@
  * threshold differs from what's listed, the check fails so the
  * exemption is updated in lockstep with real package improvements.
  */
-import { spawn, spawnSync } from 'node:child_process'
-import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { readdirSync, existsSync, readFileSync, appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
+import { captureCoverageProcess, type CoverageExecution } from './coverage-process'
 import { isModuleEntry } from './is-entry'
 import { isTestPath } from './test-paths'
 
@@ -152,7 +153,7 @@ const timeoutFor = (pkg: string): number =>
  * binary or a node-less environment fails ONCE with a message, not 72 times
  * with per-package noise.
  */
-const VITEST_ENTRY = join(process.cwd(), 'node_modules', 'vitest', 'vitest.mjs')
+const VITEST_ENTRY = join(import.meta.dirname, '..', 'node_modules', 'vitest', 'vitest.mjs')
 
 /**
  * Packages that legitimately have NO instrumentable source, so a coverage run
@@ -444,7 +445,8 @@ export interface VitestFailure {
  * The blob is one giant line: Jest-shaped `{ testResults: [ {
  * assertionResults: [...] } ] }` with a trailing coverageMap. Parse the LAST
  * `{`-prefixed line that yields `testResults`; cap what we keep so a mass
- * failure doesn't flood the gate's error line. Pure — unit-tested.
+ * failure doesn't flood the gate's error line. Vitest 5 file reports are
+ * appended here as compact JSON without their coverage map. Pure — unit-tested.
  */
 export function extractVitestFailures(stdout: string): VitestFailure[] | null {
   const lines = stdout.split('\n').filter((l) => l.trimStart().startsWith('{'))
@@ -456,7 +458,14 @@ export function extractVitestFailures(stdout: string): VitestFailure[] | null {
       continue
     }
     const doc = parsed as {
+      success?: boolean
+      numFailedTests?: number
+      numFailedTestSuites?: number
+      numRuntimeErrorTestSuites?: number
       testResults?: Array<{
+        name?: string
+        status?: string
+        message?: string
         assertionResults?: Array<{
           fullName?: string
           title?: string
@@ -468,11 +477,32 @@ export function extractVitestFailures(stdout: string): VitestFailure[] | null {
     if (!Array.isArray(doc.testResults)) continue
     const failures: VitestFailure[] = []
     for (const tr of doc.testResults) {
+      const before = failures.length
       for (const a of tr.assertionResults ?? []) {
         if (a.status !== 'failed') continue
         const message = usefulFailureMessage(a.failureMessages?.[0], stdout)
         failures.push({ name: a.fullName ?? a.title ?? '(unnamed test)', message })
       }
+      // Setup/teardown failures can fail a suite after every assertion passed.
+      if (tr.status === 'failed' && failures.length === before) {
+        failures.push({
+          name: tr.name ?? '(failed suite)',
+          message: usefulFailureMessage(tr.message, stdout),
+        })
+      }
+    }
+    if (
+      failures.length === 0 &&
+      (doc.success === false ||
+        (doc.numFailedTests ?? 0) > 0 ||
+        (doc.numFailedTestSuites ?? 0) > 0 ||
+        (doc.numRuntimeErrorTestSuites ?? 0) > 0)
+    ) {
+      failures.push({
+        name: '(Vitest run)',
+        message:
+          'Vitest reported failed tests, suites, or runtime errors without a named assertion.',
+      })
     }
     return failures
   }
@@ -684,7 +714,7 @@ export interface PackageSelection<T extends { name: string }> {
  * `--skip` exists so a package whose suite is toolchain-bound
  * (`@pyreon/native-compiler`: hundreds of real swiftc/kotlinc spawns) can be
  * measured in its OWN job with the verdict cache restored and an honest cap,
- * while `Coverage (Full)` keeps its 15-minute budget for the other ~80. Before
+ * while `Coverage (Full)` measures the remaining packages. Before
  * it, that one package sat inside the shared 4-way pool with a cold cache and
  * pinned the whole job at its cap on every main push — a dead gate.
  *
@@ -762,58 +792,66 @@ interface CoverageProblem {
 }
 
 /** Run coverage for a single package asynchronously. */
-function runCoverage(
+export async function runCoverage(
   pkgDir: string,
   pkgName: string,
   threshold: number,
+  timeoutMs = timeoutFor(pkgName),
 ): Promise<CoverageResult | CoverageProblem> {
-  return new Promise((resolve) => {
-    // Vitest runs under NODE, explicitly — never under whatever the shebang
-    // happens to resolve to.
-    //
-    // `@vitest/coverage-v8` drives coverage through `node:inspector`'s
-    // Profiler API. Bun's inspector does not implement it: under bun the run
-    // dies in ~2s with `Error: Coverage APIs are not supported`, ZERO tests
-    // execute, the coverage table prints 0% for every file, and the
-    // text-summary block never prints (thresholds abort first). That is not
-    // hypothetical — it is exactly what turned every main push red on
-    // 2026-08-04 (72/72 packages "NO COVERAGE OUTPUT"): the previous spawn was
-    // `bun run test`, which leaves the vitest binary's `#!/usr/bin/env node`
-    // shebang to decide the runtime from ambient PATH. Locally that found
-    // node; on the runner, between two pushes five hours apart with no
-    // relevant repo change, it stopped finding it — an environmental flip we
-    // do not control. Every measured package's test script is exactly
-    // `vitest run` (verified across all six package dirs), so invoking the
-    // vitest entry directly is faithful, and pinning the runtime removes the
-    // whole class instead of depending on PATH luck.
-    // `--coverage.reporter=text-summary` EXPLICITLY, for the same reason the
-    // runtime is explicit: the parser reads the istanbul text-summary block,
-    // and whether the AMBIENT default reporter set includes it turned out to
-    // vary by environment (observed 2026-08-04: the identical vitest version
-    // printed the block on macOS and not on Linux). A gate must ask for the
-    // output it parses, not hope the default includes it. Side benefit: the
-    // CLI list REPLACES the default ['text','html','clover','json'], so
-    // children stop writing html/clover/json reports nobody reads — less work
-    // per package.
-    // `--coverage.reportOnFailure` because its false default couples two
-    // independent facts: one failing test (vitest exit 1) suppresses the
-    // ENTIRE coverage report, so the gate reads "no parseable summary" when
-    // the truth is "measured fine, one test flaked". With the flag, a
-    // failing-test run still prints the summary — the gate then reports BOTH
-    // the named failure and the measured numbers instead of a mystery.
-    const child = spawn(
+  // Vitest runs under NODE, explicitly — never under whatever the shebang
+  // happens to resolve to.
+  //
+  // `@vitest/coverage-v8` drives coverage through `node:inspector`'s
+  // Profiler API. Bun's inspector does not implement it: under bun the run
+  // dies in ~2s with `Error: Coverage APIs are not supported`, ZERO tests
+  // execute, the coverage table prints 0% for every file, and the
+  // text-summary block never prints (thresholds abort first). That is not
+  // hypothetical — it is exactly what turned every main push red on
+  // 2026-08-04 (72/72 packages "NO COVERAGE OUTPUT"): the previous spawn was
+  // `bun run test`, which leaves the vitest binary's `#!/usr/bin/env node`
+  // shebang to decide the runtime from ambient PATH. Locally that found
+  // node; on the runner, between two pushes five hours apart with no
+  // relevant repo change, it stopped finding it — an environmental flip we
+  // do not control. Every measured package's test script is exactly
+  // `vitest run` (verified across all six package dirs), so invoking the
+  // vitest entry directly is faithful, and pinning the runtime removes the
+  // whole class instead of depending on PATH luck.
+  // `--coverage.reporter=text-summary` EXPLICITLY, for the same reason the
+  // runtime is explicit: the parser reads the istanbul text-summary block,
+  // and whether the AMBIENT default reporter set includes it turned out to
+  // vary by environment (observed 2026-08-04: the identical vitest version
+  // printed the block on macOS and not on Linux). A gate must ask for the
+  // output it parses, not hope the default includes it. Side benefit: the
+  // CLI list REPLACES the default ['text','html','clover','json'], so
+  // children stop writing html/clover/json reports nobody reads — less work
+  // per package.
+  // `--coverage.reportOnFailure` because its false default couples two
+  // independent facts: one failing test (vitest exit 1) suppresses the
+  // ENTIRE coverage report, so the gate reads "no parseable summary" when
+  // the truth is "measured fine, one test flaked". With the flag, a
+  // failing-test run still prints the summary — the gate then reports BOTH
+  // the named failure and the measured numbers instead of a mystery.
+  // Vitest 5 writes JSON to a file even when no outputFile was configured.
+  // An owned, fresh path prevents a prior run's report from establishing success.
+  const reportDir = mkdtempSync(join(tmpdir(), 'pyreon-coverage-report-'))
+  const reportPath = join(reportDir, 'results.json')
+  const statusPath = join(reportDir, 'status.json')
+  try {
+    const execution = await captureCoverageProcess(
       'node',
       [
         VITEST_ENTRY,
         'run',
         '--coverage',
         '--reporter=json',
+        `--reporter=${join(import.meta.dirname, 'coverage-reporter.ts')}`,
+        `--outputFile=${reportPath}`,
         '--coverage.reporter=text-summary',
         '--coverage.reportOnFailure',
       ],
       {
         cwd: pkgDir,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        timeoutMs,
         // Tell the suite it is running UNDER coverage instrumentation. A
         // handful of specs measure TIME (a growth ratio, a wall-clock
         // ceiling); V8 coverage adds a per-basic-block cost plus GC pressure
@@ -827,6 +865,7 @@ function runCoverage(
         env: {
           ...process.env,
           PYREON_COVERAGE_RUN: '1',
+          PYREON_COVERAGE_STATUS_FILE: statusPath,
           // The native-compiler suite spawns real swiftc/kotlinc per file.
           // Its vitest config runs files serially only under this flag (the
           // native TEST cells set it); a coverage run that leaves it unset
@@ -837,90 +876,151 @@ function runCoverage(
       },
     )
 
-    let stdout = ''
-    child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString()
-    })
-    child.stderr.on('data', (data: Buffer) => {
-      stdout += data.toString()
-    })
-
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill('SIGTERM')
-    }, timeoutFor(pkgName))
-
-    child.on('close', (code, signal) => {
-      clearTimeout(timer)
-
-      const outcome = parseCoverageOutput(stdout)
-      // A non-zero exit with named test failures is its OWN outcome — even
-      // when the summary parsed. Without this branch, `reportOnFailure` would
-      // quietly LAUNDER a main-branch test failure into a green coverage row
-      // (the Test cells run the same specs uninstrumented, so a failure that
-      // only reproduces under coverage load would vanish entirely).
-      // A non-zero exit with ZERO failed tests + a parsed summary is vitest's
-      // own threshold enforcement — fall through to `measured`, where this
-      // gate applies its floors itself.
-      const failures = code !== 0 && !timedOut ? extractVitestFailures(stdout) : null
-      if (failures && failures.length > 0) {
-        const named = failures
-          .slice(0, 3)
-          .map((f) => `"${f.name}"${f.message ? ` — ${f.message}` : ''}`)
-          .join('; ')
-        const measuredNote =
-          outcome.kind === 'measured'
-            ? ` Coverage WAS measured (${outcome.statements}% stmts / ${outcome.branches}% branch).`
-            : ''
-        resolve({
-          package: pkgName,
-          kind: 'tests-failed',
-          timedOut: false,
-          failedTests: failures,
-          error:
-            `${failures.length} test(s) FAILED under the coverage run (exit=${code ?? 'null'}): ` +
-            `${named}${failures.length > 3 ? `; +${failures.length - 3} more` : ''}.${measuredNote}`,
-          outputTail: tailOf(stdout),
-        })
-      } else if (outcome.kind === 'measured') {
-        resolve({
-          package: pkgName,
-          statements: outcome.statements,
-          branches: outcome.branches,
-          functions: outcome.functions,
-          lines: outcome.lines,
-          pass: outcome.statements >= threshold,
-          threshold,
-          // Filled by the caller, which owns the declared-threshold policy.
-          shortfalls: [],
-        })
-      } else {
-        // How the child ENDED is the first diagnostic for an unparseable run —
-        // a SIGKILL/137 here is the runner OOM-killing the coverage remap,
-        // which reads as "printed the json report, then nothing" and cost a
-        // root-causing round when it wasn't named (main run 30922462710).
-        resolve({
-          package: pkgName,
-          kind: outcome.kind,
-          timedOut,
-          error: `child ended with exit=${code ?? 'null'} signal=${signal ?? 'none'}`,
-          outputTail: tailOf(stdout),
-        })
+    if (!execution.timedOut && !execution.error && !execution.signal) {
+      try {
+        const report = JSON.parse(readFileSync(reportPath, 'utf8')) as {
+          testResults?: unknown[]
+          success?: boolean
+          numFailedTests?: number
+          numFailedTestSuites?: number
+          numRuntimeErrorTestSuites?: number
+        }
+        if (!Array.isArray(report.testResults) || typeof report.success !== 'boolean')
+          throw new Error('missing testResults or success verdict')
+        const status = JSON.parse(readFileSync(statusPath, 'utf8')) as {
+          reason?: string
+          errors?: Array<{ name: string; message: string }>
+        }
+        if (
+          !Array.isArray(status.errors) ||
+          !['passed', 'failed', 'interrupted'].includes(status.reason ?? '')
+        ) {
+          throw new Error('missing run completion or unhandled-error verdict')
+        }
+        if (status.reason === 'interrupted') throw new Error('Vitest run was interrupted')
+        const succeeded = report.success && status.reason === 'passed' && status.errors.length === 0
+        const testResults = [...report.testResults]
+        if (status.errors.length) {
+          testResults.push({
+            assertionResults: status.errors.map((error) => ({
+              fullName: `Unhandled ${error.name}`,
+              status: 'failed',
+              failureMessages: [error.message],
+            })),
+          })
+        }
+        if (
+          execution.code !== 0 ||
+          !succeeded ||
+          (report.numFailedTests ?? 0) > 0 ||
+          (report.numFailedTestSuites ?? 0) > 0 ||
+          (report.numRuntimeErrorTestSuites ?? 0) > 0
+        ) {
+          // Compact the file for the existing parser; omit the large coverage map.
+          execution.output += `\n${JSON.stringify({ testResults, success: succeeded, numFailedTests: report.numFailedTests, numFailedTestSuites: report.numFailedTestSuites, numRuntimeErrorTestSuites: (report.numRuntimeErrorTestSuites ?? 0) + status.errors.length })}`
+        }
+      } catch (error) {
+        execution.error = `fresh Vitest JSON report could not be read: ${String(error)}`
       }
-    })
+    }
+    return classifyCoverageExecution(execution, pkgName, threshold)
+  } finally {
+    rmSync(reportDir, { recursive: true, force: true })
+  }
+}
 
-    child.on('error', (err) => {
-      clearTimeout(timer)
-      resolve({
-        package: pkgName,
-        kind: 'unparseable',
-        timedOut,
-        error: String(err),
-        outputTail: tailOf(stdout),
-      })
-    })
-  })
+/** Incomplete executions cannot establish coverage, even if a summary printed. */
+export function classifyCoverageExecution(
+  execution: CoverageExecution,
+  pkgName: string,
+  threshold: number,
+): CoverageResult | CoverageProblem {
+  const { output: stdout, code, signal, timedOut, error } = execution
+  if (timedOut || error || signal) {
+    return {
+      package: pkgName,
+      kind: 'unparseable',
+      timedOut,
+      error:
+        error ??
+        `${timedOut ? 'coverage deadline exceeded; ' : ''}` +
+          `child ended with exit=${code ?? 'null'} signal=${signal ?? 'none'}`,
+      outputTail: tailOf(stdout),
+    }
+  }
+  const outcome = parseCoverageOutput(stdout)
+  // A non-zero exit with named test failures is its OWN outcome — even
+  // when the summary parsed. Without this branch, `reportOnFailure` would
+  // quietly LAUNDER a main-branch test failure into a green coverage row
+  // (the Test cells run the same specs uninstrumented, so a failure that
+  // only reproduces under coverage load would vanish entirely).
+  // An all-green report and an explicit coverage-threshold diagnostic can
+  // explain exit 1. Other nonzero exits cannot establish coverage. This gate
+  // applies its own declared/ratcheted floors to threshold-only measurements.
+  const failures = extractVitestFailures(stdout)
+  if (failures && failures.length > 0) {
+    const named = failures
+      .slice(0, 3)
+      .map((f) => `"${f.name}"${f.message ? ` — ${f.message}` : ''}`)
+      .join('; ')
+    const measuredNote =
+      outcome.kind === 'measured'
+        ? ` Coverage WAS measured (${outcome.statements}% stmts / ${outcome.branches}% branch).`
+        : ''
+    return {
+      package: pkgName,
+      kind: 'tests-failed',
+      timedOut: false,
+      failedTests: failures,
+      error:
+        `${failures.length} test(s) FAILED under the coverage run (exit=${code ?? 'null'}): ` +
+        `${named}${failures.length > 3 ? `; +${failures.length - 3} more` : ''}.${measuredNote}`,
+      outputTail: tailOf(stdout),
+    }
+  } else if (
+    code !== 0 &&
+    !(
+      code === 1 &&
+      failures !== null &&
+      /ERROR: Coverage for .+ does not meet .+ threshold/.test(stdout)
+    )
+  ) {
+    // A parsed percentage cannot explain an unknown process failure. Only a
+    // fresh all-green report plus Vitest's threshold diagnostic is eligible.
+    return {
+      package: pkgName,
+      kind: 'unparseable',
+      timedOut: false,
+      error: `child ended with exit=${code ?? 'null'} without a proven threshold-only failure`,
+      outputTail: tailOf(stdout),
+    }
+  } else if (outcome.kind === 'measured') {
+    return {
+      package: pkgName,
+      statements: outcome.statements,
+      branches: outcome.branches,
+      functions: outcome.functions,
+      lines: outcome.lines,
+      pass: outcome.statements >= threshold,
+      threshold,
+      // Filled by the caller, which owns the declared-threshold policy.
+      shortfalls: [],
+    }
+  } else {
+    // How the child ENDED is the first diagnostic for an unparseable run.
+    // A signal or a deadline already returned above (`timedOut || error ||
+    // signal`), so by here the child exited on its own: the signal is always
+    // none, and a SIGKILL/137 — the runner OOM-killing the coverage remap,
+    // which reads as "printed the json report, then nothing" (main run
+    // 30922462710) — was named by that earlier branch.
+    return {
+      package: pkgName,
+      kind: outcome.kind,
+      timedOut,
+      error: `child ended with exit=${code ?? 'null'} signal=none`,
+      outputTail: tailOf(stdout),
+    }
+  }
 }
 
 interface PackageInfo {
@@ -1052,7 +1152,11 @@ async function runWithConcurrency(
       const pkg = queue.shift()
       if (!pkg) break
 
-      // ONE atomic line per package, written when that package finishes.
+      const started = performance.now()
+      const wallStarted = Date.now()
+      console.log(`  Starting coverage: ${pkg.name} at ${new Date(wallStarted).toISOString()}`)
+
+      // Every progress/result line names its package, even with four workers.
       //
       // This was a newline-less `Testing <name>...` followed by the result in
       // a separate log after the await. With four workers that interleaves:
@@ -1062,6 +1166,9 @@ async function runWithConcurrency(
       // `@pyreon/atlas`'s 79.72% appeared beside `@pyreon/zero`, which reads
       // as a real finding about entirely the wrong package.
       const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
+      console.log(
+        `  Finished coverage: ${pkg.name} (${((performance.now() - started) / 1000).toFixed(1)}s active; ${((Date.now() - wallStarted) / 1000).toFixed(1)}s wall) at ${new Date().toISOString()}`,
+      )
       if ('statements' in outcome) {
         // Compare the three metrics the gate used to ignore. Done HERE rather
         // than inside runCoverage so the measurement stays a pure function of
@@ -1107,14 +1214,17 @@ async function runWithConcurrency(
                 ? 'TIMED OUT'
                 : 'NO COVERAGE OUTPUT'
         console.log(`  ${pkg.name}: \u274c ${why}`)
+        // Preserve actionable diagnostics even if a later suite or the job
+        // deadline prevents the final table from being printed.
+        console.log(describeProblem(outcome))
       }
     }
   }
 
   // Nested-build packages run AFTER the pool drains, one at a time — see
   // SERIAL_PACKAGES. Partitioning the queue rather than lowering CONCURRENCY
-  // globally keeps the other ~67 packages at full parallelism, so the gate's
-  // wall clock barely moves while the memory peak drops to one heavy suite.
+  // globally keeps the other packages parallel while bounding the memory
+  // peak to one nested-build suite. The job must budget for BOTH phases.
   const serial = queue.filter((p) => SERIAL_PACKAGES.has(p.name))
   const parallel = queue.filter((p) => !SERIAL_PACKAGES.has(p.name))
   queue.length = 0
@@ -1172,10 +1282,10 @@ export function describeProblem(p: CoverageProblem): string {
     }
     return (
       `${p.package}: ${p.error ?? 'tests failed under the coverage run'}\n` +
-      `    This job runs on main pushes, so the failure is main-branch evidence. If the\n` +
-      `    same spec is green in the Test cells, it fails only under coverage\n` +
-      `    instrumentation load \u2014 deflake the NAMED test (see testing.md "the message\n` +
-      `    is the artifact"); do not re-run past it.`
+      `    This test failed on the measured checkout. If the same spec is green in\n` +
+      `    the Test cells, compare its diagnostics and coverage environment to fix\n` +
+      `    the underlying cause (see testing.md "the message is the artifact"); do\n` +
+      `    not re-run past it.`
     )
   }
   if (p.timedOut) {
@@ -1285,7 +1395,7 @@ const isFloorOnly = process.argv.includes('--floor-only')
  * `--only a,b` restricts the run to named packages.
  *
  * This exists so coverage can be enforced at PR time for the packages a PR
- * actually touches. The full run is `push:main`-only, and that cadence is why
+ * actually touches. Full measurement ordinarily lands on main; that cadence is why
  * this gate has now rotted twice inside a month: nothing measures coverage
  * while a change is still reviewable, so drift lands freely and surfaces on
  * main, where a red gate blocks nobody and gets re-run past.
@@ -1338,13 +1448,13 @@ if (floorErrors.length > 0) {
 }
 
 // P3a — floor-only mode: pure config gate, no test execution. Used as
-// the PR-time fast path; full coverage runs on push:main + merge_group.
+// the PR-time fast path; infrastructure PRs also execute the full gate.
 if (isFloorOnly) {
   console.log(
     `\n✅ Floor-config check passed (${packages.length} packages, ` +
       `MINIMUM_FLOOR=${MINIMUM_FLOOR}% / MINIMUM_BRANCH_FLOOR=${MINIMUM_BRANCH_FLOOR}%, ` +
       `${Object.keys(BELOW_FLOOR_EXEMPTIONS).length} exemptions current).\n` +
-      `Full coverage runs on push:main + merge_group.\n`,
+      `Full coverage runs on push:main, merge_group and coverage-infrastructure PRs.\n`,
   )
   process.exit(0)
 }

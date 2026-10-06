@@ -63,11 +63,14 @@ Specs can assert broken behaviour (a `??` that swallowed an explicit `null`; an 
 
 ## Timeouts and CI-only failures
 
+- Tests of timing helpers must exercise policy with an injected monotonic clock and deterministic work, rather than run microbenchmarks inside the required coverage pool. `measureComplexity` accepts `clock`; its controls count real linear/nested-loop work, calibration, fastest samples, resampling and flat-growth stops. The default remains `performance.now` for measurements of real operations. Ratios reduce sensitivity to machine speed, but unequal contention can still skew them; do not claim load independence or retry the helper's own unit tests into passing.
+
 - For browser debounce/quiet-period contracts, install Playwright's clock before navigation, pause after hydration, and advance the exact delay. Assert the pre-deadline state and timer restart on a later input. A generous wall-clock assertion still depends on hosted timer delivery; increasing it does not prove cancellation or the quiet period. Run reliability controls with `--retries=0`.
 
 Reference: `packages/fundamentals/sync/src/tests/ws-relay.test.ts`.
 
 - A stream-resume fixture must wait for the consumer to receive its first complete event before dropping the socket. A fixed disconnect timer races receipt and may never exercise `Last-Event-ID` resume under load. Register the stream's cleanup with the test context's `onTestFinished` so even a test timeout closes it.
+- Generated runtime fixtures must remain immutable after import. Use a unique directory per client graph, finish importing its shared configuration module before dependent modules, and reset runtime settings between cases instead of deleting and rewriting imported files. Retain the graph only for the suite and remove its owned directories and references at teardown. File-change invalidation can otherwise separate configured state from endpoints that retain an earlier module instance; a passing isolated rerun does not prove the cause of a sporadic failure.
 - An observer that schedules an animation frame is not flushed by `setTimeout(0)`. Wait for the observable verdict with `vi.waitFor`, and detach the observer/DOM in test cleanup rather than guessing an event-loop delay.
 
 - **The wall-clock backstop must exceed the composed internal budgets.** A test that awaits three sequential `waitFor`s needs a vitest timeout above three budgets, or vitest kills it with an opaque "test timed out" that hides the descriptive error.
@@ -161,7 +164,7 @@ Any functional test can lose component state when another worker's cold imports 
 
 ## The native compile-validation suite is verdict-cached
 
-`@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc`/`kotlinc`. Verdicts are content-addressed on disk (`validate-cache.ts`), keyed on validator kind, compiler version, exact stub text and the exact bytes compiled. The full suite runs about 397s uncached and about 6s warm.
+`@pyreon/native-compiler`'s `validate.ts` spawns real `swiftc`/`kotlinc`. Verdicts are content-addressed on disk (`validate-cache.ts`), keyed on validator kind, compiler version, exact stub text and the exact bytes compiled. Real-SDK fixtures also invoke the compilers directly, outside that cache; a warm validator cache does not imply a cheap complete suite.
 
 Kotlin cache misses are served by one warm compiler JVM per run (`src/kotlin-daemon.ts`): the package's `globalSetup` starts it and passes its spool directory to workers via `PYREON_KOTLIN_DAEMON_SPOOL`. Every failure path falls back to per-check `kotlinc`; `kotlin-daemon.test.ts` asserts both paths agree on accepted and rejected emits. `PYREON_KOTLIN_DAEMON=0` forces the plain path — use it when you distrust a verdict.
 

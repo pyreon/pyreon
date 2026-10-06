@@ -1,10 +1,14 @@
+import type { CompilerRegistries } from './active-registries'
+import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
+import type { ElementLowering } from './element-lowering'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
+import type { UnloweredSpec } from './unlowered-modules'
 import type { EmitOptions, ParseResult, TargetLanguage, TransformResult } from './types'
 
 /**
  * Bump ONLY when the plugin protocol or shared IR changes incompatibly.
- * Additive optional fields (`services`, `modules`, `requires`, `builtIn`) never
+ * Additive optional fields (`services`, `elements`, `calls`, `decls`, `memberCalls`, `unlowered`, `modules`, `requires`, `builtIn`) never
  * bump it — an older plugin simply does not use them.
  */
 export const NATIVE_COMPILER_PLUGIN_API_VERSION = 1 as const
@@ -44,8 +48,9 @@ export interface CompilerContext {
   warn(message: string): void
   /**
    * Hook name → service descriptor + owning plugin, built once at
-   * `createCompiler` time. The parser and emitters will read it instead of the
-   * module-level `SERVICES` table.
+   * `createCompiler` time. The parser and emitters read the same registry
+   * (through the compiler's scoped registries), so a plugin's hook is lowered
+   * on both targets.
    */
   readonly services: ServiceRegistry
 }
@@ -69,10 +74,51 @@ export interface CompilerPlugin<Target extends string = string> {
    */
   readonly services?: Readonly<Record<string, ServiceSpec>> | undefined
   /**
-   * Import specifiers this plugin applies to (`@acme/camera`, matched exactly
-   * or as a `name/` prefix). Metadata for tooling; a package-owned plugin is
-   * lazily activated from the `pyreon.native.modules` manifest field because
-   * the activation decision must be made WITHOUT loading the plugin.
+   * JSX element lowerings this plugin contributes: tags imported from a
+   * package that retag to another element or emit target code through the
+   * `EmitContext` facade. A `(module, tag)` pair claimed by two owners is a
+   * load-time error naming both.
+   */
+  readonly elements?: readonly ElementLowering[] | undefined
+  /**
+   * Calls this plugin RECOGNIZES, keyed by hook / function name
+   * (`createChartHandle`). A recognizer reads the call through the `ParseContext`
+   * facade and returns the plugin's own declaration (type + JSON payload), or
+   * `undefined` to decline — the parser then continues as if the plugin were
+   * absent. A name is claimed under the same rule as a `services` hook: when it
+   * is imported from `@pyreon/*` or from one of `modules`. Two owners for one
+   * name is a load-time error. Pair it with `decls`.
+   */
+  readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  /**
+   * How this plugin's declarations render on each target, keyed by the
+   * declaration `type` a `calls` recognizer returns. The emitter receives the
+   * `EmitContext` facade and returns declaration text.
+   */
+  readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
+  /**
+   * Call EXPRESSIONS this plugin lowers, keyed by method name (`dispatch`):
+   * `<receiver>.<method>(…)` where `<receiver>` is a binding one of THIS plugin's
+   * `decls` created. The plugin never sees a call on any other receiver, so two
+   * plugins may both claim `dispatch` — the receiver decides. Each target returns
+   * the expression text, or `undefined` to decline. Requires `decls`.
+   */
+  readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
+  /**
+   * Unlowered-module metadata for the package(s) this plugin owns, keyed by
+   * module: the advice the "has NO native lowering" warning names, and the
+   * exports that DO lower and must stay silent. A module supplied by two
+   * plugins is a load-time error; a plugin's entry wins over the compiler's own
+   * hand-maintained one.
+   */
+  readonly unlowered?: Readonly<Record<string, UnloweredSpec>> | undefined
+  /**
+   * Import specifiers this plugin serves (`@acme/camera`, matched exactly or as
+   * a `name/` prefix). A hook in `services` is claimed when it is imported from
+   * `@pyreon/*` OR from one of these — so a package-owned plugin's hook lowers
+   * from its own package. A package-owned plugin is also lazily activated from
+   * the `pyreon.native.modules` manifest field, because that decision must be
+   * made WITHOUT loading the plugin.
    */
   readonly modules?: readonly string[] | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
@@ -98,7 +144,9 @@ export interface CompilerConfig<Target extends string = never> {
 
 export interface NativeCompiler<Target extends string = TargetLanguage> {
   readonly targets: readonly Target[]
-  /** The service registry every pass sees (built-in table + plugin services). */
+  /** The service registry every pass sees (built-in + plugin services). */
   readonly services: ServiceRegistry
+  /** Everything this instance owns: services, derived tables, element lowerings. */
+  readonly registries: CompilerRegistries
   transform(source: string, options: CompilerOptions<Target>): TransformResult
 }
