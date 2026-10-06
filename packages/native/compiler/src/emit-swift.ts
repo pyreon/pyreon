@@ -11,7 +11,7 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
-import { serviceFor } from './services'
+import { bindServices, SERVICES, serviceFor, serviceLifecycle, type ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -632,21 +632,14 @@ let _sortableNames: Set<string> = new Set()
 let _flowStateNamesSwift: Set<string> = new Set()
 /** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
 let _flowStateLabelNamesSwift: Set<string> = new Set()
-/** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
- *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
- *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
- *  container (same accessor semantics as useColorScheme). Without this, `net()`
- *  emitted a bare `net` → `if net { }` (uncompilable — the container isn't Bool). */
-let _netStatusNames: Set<string> = new Set()
-/** Per-component: `useAppState()` decl names. `useAppState()` returns a web
- *  ACCESSOR (`() => 'active'|…`), so shared code reads it as `state()`; on
- *  native the accessor call lowers to the `state.phase` read on the
- *  PyreonAppState container (same accessor semantics as useOnline). */
-let _appStateNames: Set<string> = new Set()
-/** Per-component: `useCrashReporter()` decl names. Reactive member reads
- *  (`crash.lastCrash`/`crash.hadCrash`) are plain @Observable properties on
- *  Swift (no rewrite); `start()` is auto-called on the stable host. */
-let _crashNames: Set<string> = new Set()
+/**
+ * Per-component: binding name → service descriptor for every `service`
+ * declaration (services.ts). The read-site rewrites consult it: `accessorReads`
+ * (web accessor call → native property), `callRead` (`net()` → `net.isOnline`).
+ * Rebuilt at the start of each component, so a name bound to a service in one
+ * component can never rewrite a same-named value in another.
+ */
+let _serviceBindings: Map<string, ServiceDescriptor> = new Map()
 /**
  * Per-component: `useDatabase()` decl names.
  *
@@ -1228,15 +1221,7 @@ export function emitSwift(
   // resets per component and happens to take precedence in the shapes
   // tested, which is why no wrong emit has been observed — but relying on
   // that is relying on an accident.
-  _bluetoothSwift = new Set()
-  _clipboardSwift = new Set()
-  _deviceInfoSwift = new Set()
-  _motionSwift = new Set()
-  _orientationSwift = new Set()
-  _recorderSwift = new Set()
-  _safeAreaSwift = new Set()
-  _speechSwift = new Set()
-  _wakeLockSwift = new Set()
+  _serviceBindings = new Map()
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
@@ -1432,21 +1417,6 @@ export function emitSwift(
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
   _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
   _pureStateSwift = new Map()
-  _bluetoothSwift = new Set()
-  _clipboardSwift = new Set()
-  for (const c of components) {
-    for (const d of c.decls ?? []) {
-      if (d.kind === 'bluetooth') _bluetoothSwift.add(d.name)
-      if (d.kind === 'wake-lock') _wakeLockSwift.add(d.name)
-      if (d.kind === 'device-info') _deviceInfoSwift.add(d.name)
-      if (d.kind === 'safe-area') _safeAreaSwift.add(d.name)
-      if (d.kind === 'screen-orientation') _orientationSwift.add(d.name)
-      if (d.kind === 'device-motion') _motionSwift.add(d.name)
-      if (d.kind === 'speech') _speechSwift.add(d.name)
-      if (d.kind === 'audio-recorder') _recorderSwift.add(d.name)
-      if (d.kind === 'clipboard') _clipboardSwift.add(d.name)
-    }
-  }
   // State fields + views are READ (`counter.count()` on web, since a state
   // field is a signal); actions are CALLED. The two registries are what let
   // the call-site rewrite tell them apart.
@@ -1551,7 +1521,7 @@ export function emitSwift(
   _storeMethodNames = new Map()
   _modelInstances = new Map()
   _pureStateSwift = new Map()
-  _clipboardSwift = new Set()
+  _serviceBindings = new Map()
   _modelReadNames = new Map()
   _modelMethodNames = new Map()
   _needsSwiftKeepAliveWrapper = false
@@ -1576,22 +1546,6 @@ let _structDefs: StructIR[] = []
 let _modelInstances: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
 let _pureStateSwift: ReturnType<typeof pureStateBindings> = new Map()
-/** `useBluetooth()` bindings — its reactive reads drop their parens. */
-let _bluetoothSwift: Set<string> = new Set()
-/** `useWakeLock()` bindings — its reactive reads drop their parens. */
-let _wakeLockSwift: Set<string> = new Set()
-/** `useDeviceInfo()` bindings — its reads are properties, so parens drop. */
-let _deviceInfoSwift: Set<string> = new Set()
-/** `useSafeArea()` bindings — the sole accessor becomes `.insets`. */
-let _safeAreaSwift: Set<string> = new Set()
-/** `useScreenOrientation()` bindings — reads are properties. */
-let _orientationSwift: Set<string> = new Set()
-/** `useDeviceMotion()` bindings — reads drop parens. */
-let _motionSwift: Set<string> = new Set()
-/** `useSpeech()` bindings — reads drop parens. */
-let _speechSwift: Set<string> = new Set()
-/** `useAudioRecorder()` bindings — reads are properties/state. */
-let _recorderSwift: Set<string> = new Set()
 /**
  * `useDebouncedValue` bindings → the SOURCE signal's own initial expression.
  *
@@ -1619,8 +1573,6 @@ let _debouncedSeedSwift: Map<string, string> = new Map()
 // per-decl; non-pure seeds; walker-uncovered nodes) warn LOUDLY and keep the
 // old emit, which the residual check guarantees is never silently wrong-er.
 let _siblingSignalSeeds: Map<string, ExprIR> = new Map()
-/** `useClipboard()` bindings — its reactive reads drop their parens. */
-let _clipboardSwift: Set<string> = new Set()
 /** Set while emitting a model view/action body — the factory's `self`
  * param name. Distinct from `_activePropsParamName` (which also carries it,
  * for the member-expression rewrite) so the signal-READ rewrite below can
@@ -2492,16 +2444,12 @@ let _activePropsParamName: string | undefined
  * node keyed on a stable `Unit`, which recomposition does not cancel.
  */
 const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
-  'app-state',
-  'crash-reporter',
   'debounced-value',
   'fetch',
   'form',
   'flow-state',
   'hotkey',
-  'network-status',
   'on-mount',
-  'push',
   'query',
   'rate-limited',
   'sortable',
@@ -2646,9 +2594,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _sortableNames = new Set()
   _flowStateNamesSwift = new Set()
   _flowStateLabelNamesSwift = new Set()
-  _netStatusNames = new Set()
-  _appStateNames = new Set()
-  _crashNames = new Set()
+  _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
   _i18nNames = new Set()
@@ -2714,9 +2660,6 @@ function emitSwiftComponent(c: ComponentIR): string {
         _flowStateLabelNamesSwift.add(d.name)
       }
     }
-    if (d.kind === 'network-status') _netStatusNames.add(d.name)
-    if (d.kind === 'app-state') _appStateNames.add(d.name)
-    if (d.kind === 'crash-reporter') _crashNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
@@ -3065,7 +3008,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // when it carries an `onSubmit`: over-wrapping is a redundant `ZStack`
   // around a body that did not need a stable host, which is inert, while
   // under-wrapping is the device-found restart bug.
-  const needsStableLifecycleHost = c.decls.some((d) => LIFECYCLE_HOST_DECL_KINDS.has(d.kind))
+  const needsStableLifecycleHost = c.decls.some(
+    (d) => LIFECYCLE_HOST_DECL_KINDS.has(d.kind) || serviceLifecycle(d) !== undefined,
+  )
   if (needsStableLifecycleHost) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
@@ -3209,37 +3154,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        .opacity(0)`)
     lines.push(`      )`)
   }
-  // network-status: START the live monitor. The runtime shipped a real
-  // NWPathMonitor behind `start()` from inception — and nothing ever called
-  // it, so `useOnline()` on iOS was frozen at its initial `true` forever
-  // (the same never-wired class the Android edge had before
-  // rememberPyreonNetworkStatus; found 2026-08-04 while root-causing the
-  // Android offline test). Masked because the simulator is always online and
-  // no iOS test toggles connectivity — `Online: true` is indistinguishable
-  // from a working hook on an online device. `.onDisappear { stop() }`
-  // releases the monitor with the screen; both attach to the ZStack host
-  // above, so branch flips can't spuriously stop it.
-  for (const d of c.decls) {
-    if (d.kind !== 'network-status') continue
-    const name = swiftIdent(d.name)
-    lines.push(`      .onAppear { ${name}.start() }`)
-    lines.push(`      .onDisappear { ${name}.stop() }`)
-  }
-  // push: START the self-owned receipt pipeline. The runtime shipped a pure
-  // container with a `start(register:)` seam the app was expected to wire —
-  // and nothing wired it, so `usePush()` rendered its initial state forever
-  // (the same never-wired class as network-status, found in the same sweep).
-  // The no-arg `start()` installs a container-owned UNUserNotificationCenter
-  // delegate + requests authorization; `simctl push` delivers through exactly
-  // that pipeline, credential-free. The APNs TOKEN half genuinely needs
-  // AppDelegate wiring + credentials and stays injected (`start(register:)`
-  // wins if the app called it first — both are idempotent).
-  for (const d of c.decls) {
-    if (d.kind !== 'push') continue
-    const name = swiftIdent(d.name)
-    lines.push(`      .onAppear { ${name}.start() }`)
-    lines.push(`      .onDisappear { ${name}.stop() }`)
-  }
   // table-state: wire the reactive data source in `.onAppear`, where the
   // closure can capture the view's @State (a @State initializer cannot). The
   // read happens during body evaluation via `table.rows()`, so SwiftUI tracks
@@ -3271,24 +3185,28 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        )`)
     lines.push(`      }`)
   }
-  // app-state: START the lifecycle observers. The runtime wired REAL
-  // UIApplication notifications behind start() from inception — and no emit
-  // ever called it, so useAppState() was frozen at its initial "active"
-  // forever (the THIRD member of the never-wired class, after
-  // network-status and push; found by pattern-hunting the remaining
-  // start(register) seams).
-  for (const d of c.decls) {
-    if (d.kind !== 'app-state') continue
-    const name = swiftIdent(d.name)
-    lines.push(`      .onAppear { ${name}.start() }`)
-    lines.push(`      .onDisappear { ${name}.stop() }`)
-  }
-  // crash-reporter: install the uncaught-exception hook + rehydrate the last
-  // launch's report on appear (the never-wired-class fix — start() was never
-  // called, so lastCrash/hadCrash stayed frozen).
-  for (const d of c.decls) {
-    if (d.kind !== 'crash-reporter') continue
-    lines.push(`      .onAppear { ${swiftIdent(d.name)}.start() }`)
+  // Service lifecycle (services.ts `lifecycle`): START the live monitor. These
+  // runtimes shipped a real monitor behind `start()` — NWPathMonitor, the
+  // UIApplication lifecycle notifications, the uncaught-exception hook, the
+  // push receipt pipeline — and nothing ever called it, so `useOnline()`
+  // stayed frozen at its initial `true`, `usePush()` / `useAppState()` at
+  // their seed (the NEVER-WIRED class; masked because a simulator is always
+  // online and no test toggled connectivity). `.onDisappear { stop() }`
+  // releases the monitor with the screen; both attach to the ZStack host
+  // above, so branch flips can't spuriously stop it. `'start'` services
+  // (the crash reporter) have nothing to release. The set of services that
+  // need this is DATA, so a new reactive container cannot ship frozen by
+  // omission: `check-native-lifecycle-wiring` gates the registry against it.
+  // Emitted in SERVICES order (not declaration order), so a component with
+  // several keeps one stable modifier order.
+  for (const svc of SERVICES) {
+    if (svc.lifecycle === undefined) continue
+    for (const d of c.decls) {
+      if (d.kind !== 'service' || d.hook !== svc.hook) continue
+      const name = swiftIdent(d.name)
+      lines.push(`      .onAppear { ${name}.start() }`)
+      if (svc.lifecycle === 'start-stop') lines.push(`      .onDisappear { ${name}.stop() }`)
+    }
   }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
@@ -4129,33 +4047,12 @@ function emitSwiftDecl(
     // emitSwiftComponent (mirrors the useFetch `.task` harness).
     return `@State private var ${swiftIdent(d.name)} = PyreonForm(${parts.join(', ')})`
   }
-  // Phase 4: `const net = useOnline()` → an @State PyreonNetworkStatus. The
-  // `net.isOnline` read is a plain @Observable property (no rewrite on Swift).
-  if (d.kind === 'network-status') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonNetworkStatus()`
-  }
-  // Phase 5 (M3.7): `const state = useAppState()` → an @State PyreonAppState.
-  // The `state.phase` read is a plain @Observable String property (no rewrite).
-  if (d.kind === 'app-state') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonAppState()`
-  }
-  // `const crash = useCrashReporter()` → an @State PyreonCrashReporter. Reads
-  // (`crash.lastCrash`/`crash.hadCrash`) are plain @Observable properties.
-  if (d.kind === 'crash-reporter') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonCrashReporter()`
-  }
-  // Phase 5: native data/services hooks → @State container instantiation.
-  // Swift containers expose reactive fields via @Observable (read bare, no
-  // rewrite) + default (or generic-only) constructors. The lifecycle
-  // auto-start (geolocation.start / websocket.connect / push.start) is a
-  // tracked follow-up — the binding + reactive reads ship now; the
-  // `onMount(() => ws.connect())` escape hatch LOWERS (see the on-mount
-  // decl harness) — Swift threads the url into connect(to:); Kotlin's
-  // connect needs a host transport (named warning) until the default-
-  // OkHttp-transport follow-up lands.
-  if (d.kind === 'geolocation') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonGeolocation()`
-  }
+  // Native data/services hooks without a descriptor (websocket takes a URL
+  // from the call). Swift containers expose reactive fields via @Observable
+  // (read bare, no rewrite); the `onMount(() => ws.connect())` escape hatch
+  // LOWERS (see the on-mount decl harness) — Swift threads the url into
+  // connect(to:); Kotlin's connect needs a host transport (named warning)
+  // until the default-OkHttp-transport follow-up lands.
   if (d.kind === 'websocket') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
   }
@@ -4175,12 +4072,6 @@ function emitSwiftDecl(
   if (d.kind === 'fieldArray') {
     const init = d.initial.length === 0 ? '' : `[${d.initial.map((v) => swiftStr(v)).join(', ')}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonFieldArray(${init})`
-  }
-  if (d.kind === 'push') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonPushNotifications()`
-  }
-  if (d.kind === 'payments') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonPayments()`
   }
   if (d.kind === 'map') {
     return `@State private var ${swiftIdent(d.name)} = PyreonMapState()`
@@ -4226,38 +4117,6 @@ function emitSwiftDecl(
   // `useToggle` / `useCounter` — a plain @State field. The mutators are
   // rewritten at their use sites (see the call case), so there is no runtime
   // and no wrapper type.
-  // `useBluetooth()` → the discovery container. The scanner is injected so
-  // the runtime's logic stays testable without a radio; the app supplies the
-  // CoreBluetooth one.
-  if (d.kind === 'bluetooth') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonBluetooth(scanner: CoreBluetoothScanner())`
-  }
-  // `useWakeLock()` -> the idle-timer container. The controller is injected
-  // so the held/released machine stays testable without UIKit; the app
-  // supplies the real one.
-  if (d.kind === 'audio-recorder') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonAudioRecorder(engine: AVFoundationRecordingEngine())`
-  }
-  if (d.kind === 'speech') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonSpeech(synth: AVSpeechSynth())`
-  }
-  if (d.kind === 'device-motion') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonDeviceMotion(source: CoreMotionSource())`
-  }
-  if (d.kind === 'wake-lock') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonWakeLock(controller: UIKitIdleTimer())`
-  }
-  // `useDeviceInfo()` -> the device description. The probe is injected so the
-  // shape stays testable without UIKit; the app supplies the real one.
-  if (d.kind === 'device-info') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonDeviceInfo(probe: UIKitDeviceProbe())`
-  }
-  if (d.kind === 'safe-area') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonSafeArea(probe: UIKitSafeAreaProbe())`
-  }
-  if (d.kind === 'screen-orientation') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonScreenOrientation(probe: UIKitOrientationProbe())`
-  }
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
@@ -4276,13 +4135,6 @@ function emitSwiftDecl(
     }
     const seed = `[${d.grants.map((g) => swiftStr(g)).join(', ')}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`
-  }
-  // Phase 4: `const cb = useClipboard()` → an @State PyreonClipboard.
-  // Reads are method calls (`cb.copy("hi")`) + a Bool field
-  // (`cb.copied`), so no `.value` rewrite — Swift exposes both as
-  // plain properties on the @Observable container.
-  if (d.kind === 'clipboard') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonClipboard()`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → an @State
   // instance of the APP's own class. Identical shape to the built-in
@@ -6824,89 +6676,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `PyreonModel_${modelId}.shared.${member}(${args})`
         }
       }
-      // useBluetooth's reactive reads. On the web they are accessors
-      // (`bt.scanning()`); on Swift the same members are stored properties,
-      // so the read drops its parens — otherwise the web-correct spelling
-      // calls a Bool. Same inversion `model()`'s state fields had.
+      // Service accessor reads (services.ts `accessorReads`). On the web these
+      // members are ACCESSORS (`bt.scanning()`, `cb.copied()`, and the hook's
+      // own documented example is `{() => copied() ? …}`); on Swift the same
+      // members are stored properties, so the web-correct spelling would CALL a
+      // Bool ("cannot call value of non-function type 'Bool'") and the parens
+      // drop. Same inversion `model()`'s state fields had.
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
-        _bluetoothSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
-        ['scanning', 'devices', 'error', 'available'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // useWakeLock's reactive reads — same inversion: `w.active()` is
-      // web-correct and would CALL a Bool here, so the parens drop.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _wakeLockSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['active', 'supported'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // useDeviceInfo's reads — properties on Swift, so the web-correct
-      // accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _deviceInfoSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['platform', 'model', 'osVersion', 'isTouch', 'screen'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // useSafeArea returns a SINGLE accessor, so `s()` is a bare call on the
-      // binding itself rather than a member call. It becomes the runtime's
-      // `.insets` property, so `s().top` lowers to `s.insets.top`.
-      if (
-        e.callee.kind === 'identifier' &&
-        _safeAreaSwift.has(e.callee.name) &&
-        e.args.length === 0
-      ) {
-        return `${swiftIdent(e.callee.name)}.insets`
-      }
-      // useScreenOrientation's reads — properties on this target, so the
-      // web-correct accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _orientationSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['type', 'angle'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // useDeviceMotion's reads — the accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _motionSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['active', 'supported', 'acceleration', 'rotation'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // useSpeech's reads — the accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _speechSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['speaking', 'supported'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // useAudioRecorder's reads — the accessor spelling drops its parens.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _recorderSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['recording', 'error', 'supported'].includes(e.callee.property)
+        _serviceBindings.get(e.callee.object.name)?.accessorReads?.includes(e.callee.property) === true
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
@@ -6938,21 +6718,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
           if (m === 'reset') return `${field} = ${clamp(String(info.initial))}`
         }
-      }
-      // useClipboard's reactive reads. On the web `copied` and `text` are
-      // ACCESSORS (`copied: () => boolean`, and the hook's own documented
-      // example is `{() => copied() ? …}`); on Swift the same members are
-      // stored properties, so the web-correct spelling failed with "cannot
-      // call value of non-function type 'Bool'". Same inversion model()'s
-      // state fields and useBluetooth's reads had.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _clipboardSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['copied', 'text'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // PyreonTableState PROPERTY reads: web `t.page()` / `t.sortColumn()` /
       // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
@@ -7738,19 +7503,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (_syncedSignalNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
         }
-        // `useOnline()` returns a web ACCESSOR (`() => boolean`), so shared code
-        // reads it as `net()`. Lower that accessor call to the container's
-        // `isOnline` property so ONE source works on web + native (the bare
-        // `net` fall-through emitted `if net { }` — uncompilable, not a Bool).
-        // The `net.isOnline` member form still works (passes through as-is).
-        if (_netStatusNames.has(e.callee.name)) {
-          return `${swiftIdent(e.callee.name)}.isOnline`
-        }
-        // `useAppState()` accessor `state()` → the `phase` String read (bare
-        // @Observable property). Same footgun as useOnline — without this,
-        // `state()` falls to a bare `state` → `if state {` (uncompilable).
-        if (_appStateNames.has(e.callee.name)) {
-          return `${swiftIdent(e.callee.name)}.phase`
+        // A web service accessor is CALLED (`net()`, `state()`, `s()`); natively
+        // the container exposes the value as a property (services.ts
+        // `callRead`). The bare identifier would fall through to `if net { }` —
+        // uncompilable, the container isn't a Bool — so the call lowers to the
+        // property read (`net.isOnline`, `state.phase`, `s.insets`).
+        const callRead = _serviceBindings.get(e.callee.name)?.callRead
+        if (callRead !== undefined) {
+          return `${swiftIdent(e.callee.name)}.${callRead}`
         }
         return swiftIdent(e.callee.name)
       }

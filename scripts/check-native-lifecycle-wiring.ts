@@ -30,6 +30,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { SERVICES } from '../packages/native/compiler/src/services'
 
 export interface LifecycleEntry {
   /** the native class name, identical on Swift + Kotlin */
@@ -37,7 +38,15 @@ export interface LifecycleEntry {
   /** the lifecycle verb it exposes */
   method: 'start' | 'connect'
   policy: 'auto' | 'manual'
-  /** AUTO only: the ComponentIR decl.kind the emit wires it under */
+  /**
+   * AUTO, descriptor-backed: the hook whose `ServiceDescriptor` (services.ts)
+   * declares `lifecycle`. The descriptor is the single source of truth for
+   * "this container is auto-started": Swift's `.onAppear { start() }` loop and
+   * Kotlin's self-installing `rememberPyreon<Container>()` factory are both
+   * rendered from it.
+   */
+  hook?: string
+  /** AUTO, hand-wired: the ComponentIR decl.kind the emit wires it under */
   declKind?: string
   /** MANUAL only: why it is deliberately not auto-started */
   why?: string
@@ -50,10 +59,10 @@ export interface LifecycleEntry {
 export const LIFECYCLE_REGISTRY: LifecycleEntry[] = [
   // ── AUTO: a reactive monitor whose start()/stop() drives a signal. MUST be
   // wired in both emits, or the hook ships frozen at its initial value.
-  { container: 'PyreonNetworkStatus', method: 'start', policy: 'auto', declKind: 'network-status' },
-  { container: 'PyreonAppState', method: 'start', policy: 'auto', declKind: 'app-state' },
-  { container: 'PyreonPushNotifications', method: 'start', policy: 'auto', declKind: 'push' },
-  { container: 'PyreonCrashReporter', method: 'start', policy: 'auto', declKind: 'crash-reporter' },
+  { container: 'PyreonNetworkStatus', method: 'start', policy: 'auto', hook: 'useOnline' },
+  { container: 'PyreonAppState', method: 'start', policy: 'auto', hook: 'useAppState' },
+  { container: 'PyreonPushNotifications', method: 'start', policy: 'auto', hook: 'usePush' },
+  { container: 'PyreonCrashReporter', method: 'start', policy: 'auto', hook: 'useCrashReporter' },
   { container: 'PyreonWebSocket', method: 'connect', policy: 'auto', declKind: 'websocket' },
 
   // ── MANUAL: start()/connect() is a deliberate user action or needs a
@@ -131,19 +140,41 @@ export function discoverLifecycleContainers(
 }
 
 export interface WiringProblem {
-  kind: 'unclassified' | 'auto-not-wired' | 'manual-no-rationale' | 'registry-stale'
+  kind:
+    | 'unclassified'
+    | 'auto-not-wired'
+    | 'manual-no-rationale'
+    | 'registry-stale'
+    | 'lifecycle-unregistered'
   container: string
   detail: string
 }
 
 /**
  * The pure verifier. Given the discovered containers, the registry, and the two
- * emit source texts, return every problem. Empty array = pass.
+ * emit source texts and the service descriptors, return every problem. Empty
+ * array = pass.
  */
+export interface LifecycleService {
+  hook: string
+  swift: string
+  kotlin: readonly string[]
+  lifecycle?: 'start' | 'start-stop' | undefined
+}
+
+/**
+ * The Swift emit renders every descriptor `lifecycle` from ONE loop over
+ * SERVICES. If that loop is gone, no descriptor's lifecycle is wired no matter
+ * what the descriptors say — so the gate checks the loop itself, not only data.
+ */
+const SWIFT_LIFECYCLE_LOOP =
+  /for \(const svc of SERVICES\)[\s\S]{0,400}\.onAppear \{ \$\{name\}\.start\(\) \}/
+
 export function verifyLifecycleWiring(
   discovered: Map<string, { method: 'start' | 'connect'; files: string[] }>,
   registry: LifecycleEntry[],
   emits: { swift: string; kotlin: string },
+  services: readonly LifecycleService[] = SERVICES,
 ): WiringProblem[] {
   const problems: WiringProblem[] = []
   const byContainer = new Map(registry.map((e) => [e.container, e]))
@@ -172,7 +203,42 @@ export function verifyLifecycleWiring(
 
   // (3) AUTO entries must be wired in BOTH emits; MANUAL entries need a reason.
   for (const e of registry) {
-    if (e.policy === 'auto') {
+    if (e.policy === 'auto' && e.hook !== undefined) {
+      const svc = services.find((x) => x.hook === e.hook)
+      if (svc === undefined) {
+        problems.push({
+          kind: 'auto-not-wired',
+          container: e.container,
+          detail: `is AUTO via hook ${e.hook} but services.ts has no descriptor for it — nothing lowers the hook, so ${e.container} is never constructed or started.`,
+        })
+        continue
+      }
+      if (svc.lifecycle === undefined) {
+        problems.push({
+          kind: 'auto-not-wired',
+          container: e.container,
+          detail: `is AUTO but the ${e.hook} descriptor declares no \`lifecycle\` — Swift never emits .onAppear{ ${e.method}() }, so ${e.container} ships frozen on iOS.`,
+        })
+      }
+      if (!SWIFT_LIFECYCLE_LOOP.test(emits.swift)) {
+        problems.push({
+          kind: 'auto-not-wired',
+          container: e.container,
+          detail: `is AUTO via ${e.hook} but emit-swift.ts has no \`for (const svc of SERVICES)\` loop emitting .onAppear{ start() } — every descriptor lifecycle is unwired, so ${e.container} ships frozen on iOS.`,
+        })
+      }
+      // Android has no emit-side wiring: the descriptor's Kotlin line must be
+      // the SELF-INSTALLING factory, because a bare `remember { Container() }`
+      // is the never-wired class itself (the container reports its initial
+      // value forever).
+      if (!svc.kotlin.some((l) => l.includes(`remember${e.container}(`))) {
+        problems.push({
+          kind: 'auto-not-wired',
+          container: e.container,
+          detail: `is AUTO but the ${e.hook} descriptor's Kotlin lines do not call the self-installing remember${e.container}() factory — a bare remember { } leaves ${e.container} frozen on Android.`,
+        })
+      }
+    } else if (e.policy === 'auto') {
       const kind = e.declKind ?? ''
       const lit = `'${kind}'`
       if (!emits.swift.includes(lit)) {
@@ -194,6 +260,19 @@ export function verifyLifecycleWiring(
         kind: 'manual-no-rationale',
         container: e.container,
         detail: `is MANUAL but has no rationale. Add \`why\` explaining why it is not auto-started on appear.`,
+      })
+    }
+  }
+
+  // (4) The reverse direction: a descriptor that declares a `lifecycle` but is
+  // absent from the registry is a container nobody classified.
+  for (const svc of services) {
+    if (svc.lifecycle === undefined) continue
+    if (!registry.some((e) => e.hook === svc.hook)) {
+      problems.push({
+        kind: 'lifecycle-unregistered',
+        container: svc.hook,
+        detail: `declares lifecycle '${svc.lifecycle}' in services.ts but has no AUTO entry (hook: '${svc.hook}') in LIFECYCLE_REGISTRY.`,
       })
     }
   }

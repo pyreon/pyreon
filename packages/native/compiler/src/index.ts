@@ -2,9 +2,23 @@
 import { createCompiler } from './compiler'
 import type { EmitOptions, TransformResult } from './types'
 
-export { createCompiler } from './compiler'
+export { createCompiler, BUILT_IN_PLUGINS } from './compiler'
 export { swiftBackend, kotlinBackend } from './backends'
-export { NATIVE_COMPILER_PLUGIN_API_VERSION } from './plugin'
+export { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
+export { assertPluginShape } from './plugin-shape'
+export {
+  BUILT_IN_SERVICE_OWNER,
+  createServiceRegistry,
+  orderPlugins,
+  selectDiscovered,
+  serviceSpecsOf,
+} from './service-registry'
+export type { RegisteredService, ServiceRegistry, DiscoveredSelection } from './service-registry'
+export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
+export type { PluginSources, ServiceTypeFinding } from './plugin-verify'
+export { SERVICES, renderKotlinService } from './services'
+export { parsePyreon } from './parse'
+export type { ServiceDescriptor } from './services'
 export type * from './plugin'
 export type * from './types'
 export {

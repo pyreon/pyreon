@@ -340,41 +340,6 @@ export type DeclIR =
        */
       schemaName?: string
     }
-  /**
-   * Phase 4 — connectivity flag via `useOnline()` from `@pyreon/hooks` (the
-   * native subset). Emits the PyreonNetworkStatus reactive container:
-   *   Swift  → @State private var net = PyreonNetworkStatus()
-   *   Kotlin → val net = rememberPyreonNetworkStatus()  (self-installing callback)
-   *
-   * `useOnline()` takes no arguments. The reactive read is `net.isOnline` —
-   * a plain @Observable property on Swift, a Compose `MutableState` (`.value`)
-   * on Kotlin (same field-read rewrite as useForm's MutableState fields).
-   */
-  | { kind: 'network-status'; name: string }
-  /**
-   * Phase 5 (M3.7) — app lifecycle phase via `useAppState()` from `@pyreon/hooks`.
-   * Emits the PyreonAppState reactive container:
-   *   Swift  → @State private var state = PyreonAppState()
-   *   Kotlin → val state = remember { PyreonAppState() }
-   *
-   * `useAppState()` takes no arguments. The reactive read is `state.phase`
-   * (a `String`: "active"|"inactive"|"background") — a plain @Observable
-   * property on Swift, a Compose `MutableState` (`.value`) on Kotlin. The web
-   * accessor `state()` lowers to `state.phase` / `state.phase.value`.
-   */
-  | { kind: 'app-state'; name: string }
-  /**
-   * Crash reporting via `useCrashReporter()` from `@pyreon/hooks`. Emits the
-   * PyreonCrashReporter reactive container:
-   *   Swift  → @State private var crash = PyreonCrashReporter()
-   *   Kotlin → val crash = remember { rememberPyreonCrashReporter() }
-   * Reactive member reads (`crash.lastCrash` / `crash.hadCrash`) append
-   * `.value` on Kotlin (Compose MutableState), read bare on Swift
-   * (@Observable) — the useFetch divergence. Imperative methods
-   * (`recordError` / `breadcrumb` / `clear`) pass through; `start()` is
-   * auto-called on the stable host (the never-wired-class fix).
-   */
-  | { kind: 'crash-reporter'; name: string }
   // `const client = createQueryClient()`. The client exists on the web because
   // `useQuery` reads it from `<QueryClientProvider>`; the native `useQuery`
   // lowering is self-contained and has no client to hold. So the binding
@@ -459,27 +424,6 @@ export type DeclIR =
       bounds?: { min?: number; max?: number }
     }
   /**
-   * Phase 4 — clipboard service via `const clipboard = useClipboard()`
-   * from `@pyreon/hooks`. Emits the PyreonClipboard reactive wrapper
-   * the runtime ports ship:
-   *   Swift  → @State private var clipboard = PyreonClipboard()
-   *   Kotlin → val clipboard = remember { PyreonClipboard() }
-   *
-   * `useClipboard()` takes no arguments. Reads are method calls
-   * (`clipboard.copy("hi")` + `clipboard.copied` field read), so unlike
-   * useFetch / useForm there is NO `.value` field-read rewrite — the
-   * methods read the underlying reactive flag internally. The `copied`
-   * field reads as a plain Bool / Boolean property on both targets
-   * (auto-resets to false ~2s after each copy — matches the web
-   * @pyreon/hooks contract).
-   *
-   * V1 supports the single-binding form `const cb = useClipboard()`
-   * only. Destructure form `const { copy, copied } = useClipboard()`
-   * is a documented follow-up — needs the per-key rewrite logic that
-   * `params-destructure` uses.
-   */
-  | { kind: 'clipboard'; name: string }
-  /**
    * `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)`.
    *
    * Unlike `useDebouncedValue`, these return a CALLABLE carrying
@@ -499,15 +443,6 @@ export type DeclIR =
       /** The wrapped callback, emitted as the runtime's action closure. */
       fn: Extract<DeclIR, { kind: 'function' }>
     }
-  /** `useBluetooth()` — discovery-only BLE (PyreonBluetooth). */
-  | { kind: 'bluetooth'; name: string }
-  | { kind: 'wake-lock'; name: string }
-  | { kind: 'device-info'; name: string }
-  | { kind: 'safe-area'; name: string }
-  | { kind: 'screen-orientation'; name: string }
-  | { kind: 'device-motion'; name: string }
-  | { kind: 'speech'; name: string }
-  | { kind: 'audio-recorder'; name: string }
   /**
    * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
    *
@@ -648,7 +583,6 @@ export type DeclIR =
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
   | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
-  | { kind: 'geolocation'; name: string }
   /**
    * `useStream((ctx) => openEventStream(…) | openNdjsonStream(…))` — SSE or
    * NDJSON over the native stream runtime (`PyreonStream`, co-located in
@@ -708,8 +642,6 @@ export type DeclIR =
   | { kind: 'database'; name: string }
   | { kind: 'secureStorage'; name: string }
   | { kind: 'fieldArray'; name: string; initial: string[] }
-  | { kind: 'push'; name: string }
-  | { kind: 'payments'; name: string }
   | { kind: 'map'; name: string }
   | { kind: 'auth'; name: string; userType: TypeIR }
   /**
