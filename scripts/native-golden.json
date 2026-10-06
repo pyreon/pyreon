@@ -2011,6 +2011,16 @@
       "bytes": 337,
       "warnings": 0
     },
+    "golden-fixture:dnd-40.tsx|swift": {
+      "sha": "27804b671a98430b61a2fe0b0cbc0d2ee0344ba0f76c97e4ad93244266d01074",
+      "bytes": 640,
+      "warnings": 1
+    },
+    "golden-fixture:dnd-40.tsx|kotlin": {
+      "sha": "ec21138273211860fec8b8e58f1b570765bed366e5fadc22b4a568df3a983b30",
+      "bytes": 677,
+      "warnings": 1
+    },
     "golden-fixture:element-lowering-user.tsx|swift": {
       "sha": "020962f01e4f1c10f692ef8dc829bae3d0f8eeb4b9a0020df12277d1a791d391",
       "bytes": 333,
@@ -5459,6 +5469,16 @@
     "golden-fixture:table-19.tsx|kotlin": {
       "sha": "30b5e22e5591dac41b4a74b690b8d51466c769206986133d4d409f7109dd3950",
       "bytes": 388,
+      "warnings": 1
+    },
+    "golden-fixture:table-20.tsx|swift": {
+      "sha": "a2582a41bb9422690de961af501328c459e7b0046fc57f246cb5ce93314df7df",
+      "bytes": 845,
+      "warnings": 1
+    },
+    "golden-fixture:table-20.tsx|kotlin": {
+      "sha": "4f8ca075e1fa54a0463556bb4dfc283056fc2373ef3af637ebe2c164887d106f",
+      "bytes": 978,
       "warnings": 1
     },
     "golden-fixture:toast-01.tsx|swift": {
