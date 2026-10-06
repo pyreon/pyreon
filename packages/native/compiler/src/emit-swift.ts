@@ -11,7 +11,8 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
-import { allServices, bindServices, findElementLowering, serviceFor, serviceLifecycle } from './registry-lookup'
+import { allServices, bindServices, emitPluginDecl, findElementLowering, serviceFor, serviceLifecycle } from './registry-lookup'
+import { CHART_HANDLE_SERIES_PATTERN, isChartHandleDecl } from './plugins/charts'
 import type { ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
@@ -2669,6 +2670,8 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch' || d.kind === 'query') _fetchNamesSwift.add(d.name)
     if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
+    // The host emit and `x.dispatch(...)` read the handle names; they come from the declarations.
+    if (isChartHandleDecl(d)) _chartHandleNames.add(d.name)
     if (d.kind === 'stream') _streamNamesSwift.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
@@ -3357,7 +3360,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     _hostStateDecls = []
   }
   // A handle's series count comes from the chart bound to it, known only once the body has emitted.
-  const joined = lines.join('\n').replace(/__PYREON_HANDLE_SERIES_(\w+)__/g, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
+  const joined = lines.join('\n').replace(CHART_HANDLE_SERIES_PATTERN, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
   _chartHandleSeries.clear()
   _pureStateSwift = new Map()
   return joined
@@ -4153,12 +4156,8 @@ function emitSwiftDecl(
   if (d.kind === 'service') {
     return `@State private var ${swiftIdent(d.name)} = ${serviceFor(d.hook).swift}`
   }
-  // `const chart = createChartHandle()` → an @Observable PyreonChartHandle; its name is
-  // remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
-  if (d.kind === 'chart-handle') {
-    _chartHandleNames.add(d.name)
-    return `@State private var ${swiftIdent(d.name)} = PyreonChartHandle(seriesCount: __PYREON_HANDLE_SERIES_${d.name}__)`
-  }
+  // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
+  if (d.kind === 'ext') return emitPluginDecl(d, 'swift', swiftEmitContext(2))
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`
@@ -9148,6 +9147,7 @@ function swiftEmitContext(indent: number) {
       emit: emitSwiftJsx,
       staticAttr: readStaticAttr,
       stringLiteral: swiftStr,
+      identifier: swiftIdent,
       warn: (message) => {
         _emitWarnings.push(message)
       },

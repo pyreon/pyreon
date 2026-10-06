@@ -10,6 +10,9 @@
  * `swift` / `kotlin` functions hold every target difference; the facade has no
  * per-target logic of its own.
  *
+ * Also the context a `DeclEmitter` (`call-lowering.ts`) receives, so the same
+ * facade serves element lowerings and declaration emitters.
+ *
  * Add a method here only when a plugin needs it, and add its row to the
  * "Element lowering plugins" table in `.agents/guides/multiplatform/README.md`.
  */
@@ -29,6 +32,8 @@ export interface EmitContextBackend {
   staticAttr(el: JsxElementIR, name: string): StaticAttrValue | undefined
   /** `swiftStr` / `kotlinStr` — a quoted, escaped string literal. */
   stringLiteral(value: string): string
+  /** `swiftIdent` / `kotlinIdent` — a binding name made safe as a target identifier (keywords escaped). */
+  identifier(name: string): string
   /** Push onto the emitter's warning sink (surfaced as `result.warnings`). */
   warn(message: string): void
 }
@@ -45,6 +50,8 @@ export interface EmitContext {
   staticAttr(el: JsxElementIR, name: string): StaticAttrValue | undefined
   /** A quoted string literal in the target language. */
   stringLiteral(value: string): string
+  /** A name made safe as an identifier in the target language (reserved words escaped). */
+  ident(name: string): string
   /** Report a lowering limitation to the author. */
   warn(message: string): void
 }
@@ -61,6 +68,7 @@ export function createEmitContext(
     pad: (n = indent) => ' '.repeat(n),
     staticAttr: (el, name) => backend.staticAttr(el, name),
     stringLiteral: (value) => backend.stringLiteral(value),
+    ident: (name) => backend.identifier(name),
     warn: (message) => backend.warn(message),
   }
 }

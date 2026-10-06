@@ -12,7 +12,9 @@
 import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ServiceDescriptor } from './services'
-import type { DeclIR } from './types'
+import { emitExtDecl } from './call-lowering'
+import type { EmitContext } from './emit-context'
+import type { DeclIR, ExtDecl } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
 export function findService(hook: string): ServiceDescriptor | undefined {
@@ -25,12 +27,13 @@ export function allServices(): readonly ServiceDescriptor[] {
 }
 
 /**
- * Does `source` serve `hook` for the plugin that owns it? True when the owner
- * declared `modules` and `source` is one of them or a sub-path of one. Built-in
+ * Does `source` serve `hook` for the plugin that owns it — as a service or as a
+ * recognized call? True when the owner declared `modules` and `source` is one of them or a sub-path of one. Built-in
  * hooks declare none, so they stay `@pyreon/*`-only.
  */
-export function serviceClaimsSource(hook: string, source: string): boolean {
-  const modules = activeRegistries().services.get(hook)?.modules
+export function hookClaimsSource(hook: string, source: string): boolean {
+  const registries = activeRegistries()
+  const modules = registries.services.get(hook)?.modules ?? registries.calls.calls.get(hook)?.modules
   return modules?.some((m) => source === m || source.startsWith(`${m}/`)) ?? false
 }
 
@@ -50,6 +53,11 @@ export function isElementLoweringTag(name: string): boolean {
 /** True when `name` is a tag a registered lowering marks usable as a style base. */
 export function isStyleBasePrimitive(name: string): boolean {
   return activeRegistries().elements.isStyleBase(name)
+}
+
+/** Render a plugin-owned (`ext`) declaration through its owner's emitter, against the active registries. */
+export function emitPluginDecl(d: ExtDecl, target: 'swift' | 'kotlin', ctx: EmitContext): string {
+  return emitExtDecl(activeRegistries().calls, d, target, ctx)
 }
 
 /** The descriptor for a `service` declaration; the parser only emits known hooks. */
@@ -87,9 +95,24 @@ export function bindServices(decls: readonly DeclIR[]): Map<string, ServiceDescr
  */
 export function hashServiceDeclsAsLegacy(_key: string, value: unknown): unknown {
   if (value !== null && typeof value === 'object') {
-    const v = value as { kind?: unknown; hook?: unknown; name?: unknown }
+    const v = value as {
+      kind?: unknown
+      hook?: unknown
+      name?: unknown
+      plugin?: unknown
+      type?: unknown
+      payload?: unknown
+    }
     if (v.kind === 'service' && typeof v.hook === 'string') {
       return { kind: serviceFor(v.hook).legacyKind, name: v.name }
+    }
+    // A built-in plugin declaration that used to be a closed `kind` hashes as it
+    // did then, so the struct names `moduleTag` derives do not move with the refactor.
+    if (v.kind === 'ext' && typeof v.plugin === 'string' && typeof v.type === 'string') {
+      const legacyKind = activeRegistries().calls.emitter(v.plugin, v.type)?.legacyKind
+      if (legacyKind !== undefined) {
+        return { kind: legacyKind, name: v.name, ...(v.payload as object) }
+      }
     }
   }
   return value

@@ -86,11 +86,18 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   for (const { lowering, owner } of elements) {
     lines.push(`  ${lowering.module}  ${lowering.tags.join(', ')}  ${owner}`)
   }
+  const calls = [...compiler.registries.calls.calls].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`call recognizers (${calls.length}):`)
+  for (const [hook, { owner }] of calls) {
+    const types = [...(compiler.registries.calls.emitters.get(owner)?.keys() ?? [])]
+    lines.push(`  ${hook}  ${owner}  decls: ${types.length > 0 ? types.join(', ') : '-'}`)
+  }
   lines.push(`discovered plugins (${discovered.length}):`)
   for (const found of discovered) {
     const services = Object.keys(found.plugin.services ?? {})
+    const callNames = Object.keys(found.plugin.calls ?? {})
     lines.push(
-      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}`,
+      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}`,
     )
   }
   const undeclared = listPluginPackages(appDir).length - discovered.length
@@ -185,10 +192,19 @@ export function explainReport(
   let swiftEmit: string
   let kotlinEmit: string
   const decls: { name: string; hook: string }[] = []
+  const pluginDecls: { name: string; plugin: string; type: string; payload: string }[] = []
   try {
     for (const component of parsePyreon(source, filename, { registries: compiler.registries }).components) {
       for (const decl of component.decls) {
         if (decl.kind === 'service') decls.push({ name: decl.name, hook: decl.hook })
+        if (decl.kind === 'ext') {
+          pluginDecls.push({
+            name: decl.name,
+            plugin: decl.plugin,
+            type: decl.type,
+            payload: JSON.stringify(decl.payload),
+          })
+        }
       }
     }
     swiftEmit = compiler.transform(source, { target: 'swift', filename }).code
@@ -218,6 +234,14 @@ export function explainReport(
       lines.push(`${prefix}${line}${i === kotlinLines.length - 1 ? `  (${status})` : ''}`)
     })
   }
+  // A call a plugin recognized: its owner, the declaration type, and whether that
+  // plugin's emitter exists in THIS compiler (a declaration whose plugin is not loaded cannot emit).
+  for (const { name, plugin, type, payload } of pluginDecls) {
+    const emitter = compiler.registries.calls.emitter(plugin, type)
+    lines.push(
+      `  ${name} = ${type}  [call recognizer, owner: ${plugin}]  payload: ${payload}${emitter === undefined ? '  (NO emitter registered — not emitted)' : ''}`,
+    )
+  }
   const imports = importedTags(source)
   for (const { lowering, owner } of compiler.registries.elements.entries) {
     const used = lowering.tags.filter(
@@ -233,6 +257,6 @@ export function explainReport(
       lines.push(`  ${hook}() is registered but was not lowered as a service declaration in this file`)
     }
   }
-  if (lines.length === 1) lines.push('  no service hooks or element lowerings found')
+  if (lines.length === 1) lines.push('  no service hooks, call recognizers or element lowerings found')
   return { lines, exitCode: 0 }
 }

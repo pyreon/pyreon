@@ -86,7 +86,7 @@ modules with a default plugin export; CLI target selection remains iOS/Android.
 
 ### Services, modules, requires (additive; API version stays 1)
 
-Five optional fields were added without a version bump, because additive
+Seven optional fields were added without a version bump, because additive
 fields never break an older plugin:
 
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
@@ -106,6 +106,15 @@ fields never break an older plugin:
   A `(module, tag)` pair claimed by two owners is a load-time error naming both.
   The built-in `@pyreon/elements` and `@pyreon/coolgrid` lowerings are `builtIn`
   plugins registered the same way.
+- `calls` + `decls` — code-shaped lowering: `calls` maps a hook/function name to a
+  recognizer `(call, ctx: ParseContext) => { type, payload? } | undefined`
+  (`undefined` declines and the parser falls through as if the plugin were absent);
+  `decls` maps that `type` to a `DeclEmitter` `{ swift(decl, ctx), kotlin(decl, ctx) }`
+  rendering the plugin's open `ext` declaration through the `EmitContext` facade.
+  `payload` must be JSON (the IR is cloned between passes). A name is claimed under
+  the same rule as a service hook, and two owners for one name — or a name that is
+  also a service — is a load-time error naming both. The built-in `createChartHandle()`
+  lowering is a `@pyreon/charts` plugin declaration registered this way.
 - `requires` — plugin names that must be loaded. A missing one or a cycle is a
   load-time error naming the plugins; passes run in `requires` order (input
   order otherwise).
