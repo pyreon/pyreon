@@ -1,8 +1,10 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+// The examples use `@pyreon/charts` hosts, whose emit and type-gate stubs live in that package's
+// plugin — so compile and validate through the plugin-loaded helpers, not the bare compiler.
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 
 /**
  * Every shipped `examples/native-*` app must COMPILE on both targets.
