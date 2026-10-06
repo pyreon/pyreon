@@ -37,6 +37,7 @@ import {
   pluginAsyncState,
   tailLifecycleDecls,
   pluginLifecycleLines,
+  persistenceFor,
   pluginDeclIsCallable,
   pluginDeclUsesRouter,
   pluginNeedsStableHost,
@@ -2916,39 +2917,21 @@ function emitSwiftDecl(
           ? swiftType(t, synth, d.name)
           : (synthSwiftSignalAnnotation(d.initial) ?? type)
     }
-    // G5 — persistent signal via `useStorage<T>('key', default)`. SwiftUI's
-    // `@AppStorage("key")` property wrapper writes through to UserDefaults
-    // and triggers re-renders on change (same reactive contract as @State).
-    //
-    // Phase 2 follow-up — when the declared type is NOT one of @AppStorage's
-    // native types (String / Int / Double / Bool / URL / Data /
-    // RawRepresentable), emit a Codable-Data bridge: the actual @AppStorage
-    // slot stores a `Data` JSON blob; a computed property wraps it for
-    // type-safe read/write via JSONEncoder/Decoder. This closes G5's
-    // known typecheck caveat (`@AppStorage([Todo])` was rejected by
-    // `swiftc -typecheck`); now `[Todo]` round-trips cleanly via JSON.
-    //
-    // Native types (String, enums via RawRepresentable, etc.) continue
-    // to use the direct shape — no bridge overhead when not needed.
+    // A signal that outlives the process (`storageKey`): the loaded plugin's persistence backend owns the declaration —
+    // its own runtime wrapper, or SwiftUI's `@AppStorage` for the types the platform persists directly (scalars,
+    // RawRepresentable enums, optionals of them). The core decides only WHICH, not what the primitive is called.
     if (d.storageKey !== undefined) {
-      if (isAppStorageNativeType(d.type)) {
-        return `@AppStorage(${swiftStr(d.storageKey)}) private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
-      }
-      // Phase 2.5: non-native types use @PyreonAppStorage from
-      // @pyreon/native-runtime-swift — collapses the previous
-      // 14-line @AppStorage(Data) + Codable bridge to one line. Same
-      // UserDefaults backing, same Binding<T> projection via `$name`,
-      // same silent-fallback failure semantics.
-      //
-      // Consumer apps must `import PyreonRuntime` for the wrapper to
-      // resolve. The compiler doesn't auto-emit imports — same
-      // convention as @AppStorage (which requires `import SwiftUI`).
-      //
-      // Pre-2.5 (still in git history): a hand-rolled bridge with a
-      // `@AppStorage` Data slot + computed property doing JSON
-      // round-trip via JSONEncoder/Decoder. Identical behaviour at
-      // runtime; just dramatically more emit code.
-      return `@PyreonAppStorage(${swiftStr(d.storageKey)}) private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
+      return persistenceFor(d.storageKey).swift(
+        {
+          name: d.name,
+          key: d.storageKey,
+          type: anno,
+          initial,
+          nativeType: isAppStorageNativeType(d.type),
+          emptyList: false,
+        },
+        swiftEmitContext(0),
+      )
     }
     return `@State private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
   }

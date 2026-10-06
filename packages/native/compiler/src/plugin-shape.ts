@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, componentOnlyCalls, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, componentOnlyCalls, persistence, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -153,7 +153,7 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   if (calls !== undefined && Object.keys(calls as object).length > 0 && decls === undefined) {
     throw new Error(
-      `[Pyreon] Plugin "${name}" declares calls but no decls — a recognizer returns a declaration type that needs an emitter.`,
+      `[Pyreon] Plugin "${name}" declares calls but no decls — a recognizer returns a declaration type that needs an emitter (a plugin whose recognizers only return signals declares \`decls: {}\`).`,
     )
   }
   if (memberCalls !== undefined) {
@@ -345,6 +345,12 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       if (typeof recognizer !== 'function') {
         throw new Error(`[Pyreon] Plugin "${name}" methodCalls.${method} must be a synchronous function.`)
       }
+    }
+  }
+  if (persistence !== undefined) {
+    const backend = persistence as { swift?: unknown; kotlin?: unknown } | null
+    if (!backend || typeof backend !== 'object' || typeof backend.swift !== 'function' || typeof backend.kotlin !== 'function') {
+      throw new Error(`[Pyreon] Plugin "${name}" persistence needs swift and kotlin functions.`)
     }
   }
   if (callExprs !== undefined && typeof callExprs !== 'function') {

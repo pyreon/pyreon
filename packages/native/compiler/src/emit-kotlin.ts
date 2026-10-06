@@ -29,6 +29,7 @@ import {
   lowerPluginReceiver,
   lowerPluginRefModifiers,
   pluginAsyncState,
+  persistenceFor,
   pluginDeclIsCallable,
   pluginLifecycleLines,
   tailLifecycleDecls,
@@ -1875,60 +1876,27 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
     const initial = withExpectedTypeKotlin(d.type, () => emitKotlinExpr(d.initial, 0))
     _activeEnumType = undefined
-    // G5 — persistent signal via `useStorage<T>('key', default)`. Compose's
-    // `rememberSaveable` saves/restores state across configuration changes
-    // (rotation, dark-mode flip) and process death-restoration. Same
-    // `by` delegate as `remember` → bare reads / writes at use sites
-    // continue to work without parens.
-    //
-    // Phase 2 follow-up — Compose Saver glue. When the type is NOT
-    // natively Saveable (Bundle-compatible primitives + enums), emit
-    // a kotlinx-serialization JSON-backed `Saver<T, String>` passed
-    // via `rememberSaveable(saver = ...)`. Closes G5's known caveat
-    // ("`rememberSaveable<List<Todo>>` needs a custom Saver"). The
-    // emit assumes the consumer's Compose project includes the
-    // `kotlinx-serialization-json` runtime dep (same kotlinx-
-    // serialization plugin that #857 already requires for the
-    // `@Serializable` data class annotation).
-    //
-    // Native types continue to use the direct shape — no Saver
-    // overhead when not needed. Native iff `kind in {string,
-    // number, boolean}` OR a known enum (G6 emit produces enum
-    // class with Bundle-friendly String raw value).
-    const isStorage = d.storageKey !== undefined
-    const usesPyreonRuntime = isStorage && !isRememberSaveableNativeType(d.type)
     const typeStr = kotlinType(d.type, ctx, d.name)
-
-    // Phase 2.5: non-native storage types use rememberPyreonStorage<T>
-    // from @pyreon/native-runtime-kotlin — collapses the
-    // previous 4-line Saver boilerplate to one line at the call site.
-    // Same MutableState<T> projection, same `by` delegate, but with
-    // a pluggable backend (InMemoryBackend default, DataStoreBackend
-    // for real cross-launch persistence).
-    //
-    // Consumer apps must `import com.pyreon.runtime.rememberPyreonStorage`
-    // for the symbol to resolve. The compiler doesn't auto-emit imports —
-    // same convention as @AppStorage on iOS (requires `import SwiftUI`).
-    //
-    // Pre-2.5: hand-rolled `Saver<T, String>` inlining `Json.encodeToString` /
-    // `Json.decodeFromString`. Identical Compose-state behaviour at runtime;
-    // just dramatically more emit code AND tied to `rememberSaveable`'s
-    // configuration-change semantics rather than real cross-launch
-    // persistence. The new shape (when backed by DataStoreBackend in real
-    // apps) survives process restart too — matching the iOS @AppStorage
-    // contract.
-    if (usesPyreonRuntime) {
-      if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
-        return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${kotlinStr(d.storageKey)}, listOf())`
-      }
-      return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${kotlinStr(d.storageKey)}, ${initial})`
+    // A signal that outlives the process (`storageKey`): the loaded plugin's persistence backend either owns the whole
+    // declaration (its own runtime, for the types Compose cannot save) or names the `remember`-like delegate and keeps
+    // the core's own `mutableStateOf` line (null seeds, empty lists and all). The core decides only WHICH: native iff
+    // `kind in {string, number, boolean}` or a known enum (Bundle-friendly String raw value).
+    let wrapperFn = 'remember'
+    if (d.storageKey !== undefined) {
+      const persisted = persistenceFor(d.storageKey).kotlin(
+        {
+          name: d.name,
+          key: d.storageKey,
+          type: typeStr,
+          initial,
+          nativeType: isRememberSaveableNativeType(d.type),
+          emptyList: d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0,
+        },
+        kotlinEmitContext(0),
+      )
+      if ('line' in persisted) return persisted.line
+      wrapperFn = persisted.wrapper
     }
-
-    // Native types continue to use the direct shape — no Pyreon runtime
-    // dependency when not needed. Native iff `kind in {string, number,
-    // boolean}` OR a known enum (G6 emit produces enum class with
-    // Bundle-friendly String raw value).
-    const wrapperFn = isStorage ? 'rememberSaveable' : 'remember'
     if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
       return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${typeStr}>(listOf()) }`
     }

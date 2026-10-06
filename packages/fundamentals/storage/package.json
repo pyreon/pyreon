@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -42,11 +47,18 @@
     "bench:storage": "NODE_ENV=production bun bench/storage-bench.ts"
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -70,7 +82,11 @@
           "PyreonSecureStorage.kt",
           "PyreonSecureStorageAndroid.kt"
         ]
-      }
+      },
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/storage"
+      ]
     }
   }
 }

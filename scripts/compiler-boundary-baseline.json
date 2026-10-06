@@ -7,11 +7,10 @@
       "@pyreon/rx": 2,
       "@pyreon/sized-map": 1,
       "@pyreon/state-tree": 1,
-      "@pyreon/storage": 1,
       "@pyreon/store": 1,
       "@pyreon/ui-core": 2
     },
-    "hooks": 103
+    "hooks": 90
   },
   "compiler": {
     "packages": {

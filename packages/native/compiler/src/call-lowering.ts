@@ -113,12 +113,32 @@ export interface ExtDeclSpec {
 }
 
 /**
+ * A call that is a plain SIGNAL: the core builds the `signal` declaration (reads, writes, `.update`, type inference and
+ * struct synthesis are all its own), and the plugin only says which argument holds the initial value and whether the
+ * signal outlives the process. See `signal-persistence.ts`.
+ */
+export interface SignalSpec {
+  /** The call argument holding the initial value; absent, the initial is `0` exactly as for `signal()`. */
+  readonly initial?: AstNode | undefined
+  /**
+   * Persist the signal across launches under this compile-time key. Rendered by the loaded plugin's
+   * `persistence`; omit for a signal that lives and dies with the process (a session or memory store).
+   */
+  readonly persistKey?: string | undefined
+}
+
+/** A recognizer's verdict for a call that is a plain signal (see {@link SignalSpec}). */
+export interface SignalDeclSpec {
+  readonly signal: SignalSpec
+}
+
+/**
  * Returns the declaration, `undefined` to DECLINE (the parser falls through to the rest of its chain, as if
  * the plugin were absent), or `null` to CLAIM the call without declaring anything: the recognizer reported why
  * the call cannot lower, and the binding must not fall through to a generic emit that would reference a symbol
  * neither target has.
  */
-export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | undefined | null
+export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | SignalDeclSpec | undefined | null
 
 /** Renders one declaration type on each target. */
 /**

@@ -22,6 +22,7 @@ import type {
 } from './module-items'
 import type { ParseRefinement, PropsTypeResolver } from './parse-extensions'
 import type { ScopeProvider } from './scope-provider'
+import type { SignalPersistence } from './signal-persistence'
 import type { StubAugmentation } from './stub-augmentation'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
@@ -284,6 +285,12 @@ export interface CompilerPlugin<Target extends string = string> {
    * named warning saying the placement is wrong, instead of printing the call verbatim into the emit.
    */
   readonly componentOnlyCalls?: readonly string[] | undefined
+  /**
+   * How a signal that outlives the process (a recognizer's `SignalDeclSpec` with a `persistKey`) is declared on each
+   * target — the library's own persistence primitive. A compiler has exactly one backend; two plugins declaring one is
+   * a load-time error. See `signal-persistence.ts`.
+   */
+  readonly persistence?: SignalPersistence | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
   readonly requires?: readonly string[] | undefined
   /** Marks a compiler-shipped plugin that a discovered plugin may replace by name. */

@@ -16,7 +16,7 @@ import {
 } from './plugin-ast'
 import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
-import { stampExtDecl, type AstNode, type ParseContext } from './call-lowering'
+import { stampExtDecl, type AstNode, type ExtDeclSpec, type ParseContext, type SignalDeclSpec } from './call-lowering'
 import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
@@ -987,8 +987,9 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
  *   - declarators inside function bodies (already handled by
  *     tryDeclFromVarDeclarator)
  *   - declarators whose init is a CallExpression to `signal` / `computed`
- *     / `useStorage` (those are component-scope reactive decls, not
- *     module-level bindings — caught by tryComponentFromTopLevel)
+ *     (those are component-scope reactive decls, not module-level
+ *     bindings — caught by tryComponentFromTopLevel); a plugin's
+ *     `componentOnlyCalls` get the same treatment below
  *   - destructured patterns (`const { a, b } = obj`) — Phase 3
  *   - non-init declarators (`let x` without value) — defensive bail
  */
@@ -1013,19 +1014,14 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     if (!name) continue // destructured — skip silently
     const init = declarator.init as AnyNode | undefined
     if (!init) continue // bare `let x` — skip
-    // Skip declarators whose init is a `signal()` / `computed()` /
-    // `useStorage()` call — those belong inside a component, not at
-    // module scope. They shouldn't show up here (the parser walks
+    // Skip declarators whose init is a `signal()` / `computed()` call — those
+    // belong inside a component, not at module scope. They shouldn't show up here (the parser walks
     // function bodies separately), but defensive bail catches any
     // shape where a user accidentally writes `const x = signal(0)` at
     // module scope (which would be a runtime bug in Pyreon anyway).
     if (init.type === 'CallExpression') {
       const calleeName = init.callee?.name as string | undefined
-      if (
-        calleeName === 'signal' ||
-        calleeName === 'computed' ||
-        calleeName === 'useStorage'
-      ) {
+      if (calleeName === 'signal' || calleeName === 'computed') {
         ctx.warnings.push(
           `Module-level binding ${name} initializes via ${calleeName}() — these belong inside a component. Skipped.`,
         )
@@ -1457,8 +1453,7 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   // `pure-state` DeclIR.
   'useToggle', 'useCounter',
   'useSecureStorage',
-  'useSizeClass', 'useStorage', 'useWebSocket',
-  'useSessionStorage', 'useMemoryStorage',
+  'useSizeClass', 'useWebSocket',
   'useDebouncedValue',
   'useDebouncedCallback', 'useThrottledCallback',
   // Pure timing over a callback — lowered at STATEMENT position.
@@ -1643,26 +1638,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       advice:
         'these have no native emit — build class strings inline instead of `cx()`, destructure props directly instead of `splitProps()`, and use a plain counter or a stable literal instead of `createUniqueId()`; `lazy()` has no native code-splitting equivalent',
       unsupported: new Set(['lazy', 'cx', 'createUniqueId', 'splitProps']),
-    },
-  ],
-  [
-    '@pyreon/storage',
-    {
-      // Three of the five backends lower. The two that do not are the two
-      // with no native analogue AT ALL, and saying which is which is the
-      // point — the generic line left an author guessing whether their
-      // backend was merely unimplemented or genuinely impossible.
-      //
-      //   useStorage        → @AppStorage / rememberPyreonStorage (persistent)
-      //   useSessionStorage → plain state (the process IS the session)
-      //   useMemoryStorage  → plain state (definitionally process-scoped)
-      //   useCookie         → no analogue: cookies are an HTTP/browser
-      //                       concept; a native app has no cookie jar its
-      //                       own UI reads from
-      //   useIndexedDB      → no analogue: use `useDatabase()`, which lowers
-      //                       to SQLite on both targets
-      advice:
-        '`useStorage(key, initial)` DOES lower on both targets (as do `useSessionStorage` and `useMemoryStorage`) — use a hook rather than the factory. `useCookie` and `useIndexedDB` have no native analogue at all: a native app has no cookie jar, and for structured local data `useDatabase()` lowers to SQLite on both targets',
     },
   ],
 ])
@@ -4720,7 +4695,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...activeRegistries().scan.destructureCalls,
     'useFetch',
     'useForm',
-    'useStorage',
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
@@ -5115,65 +5089,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
     const type = hasGeneric ? generic : inferTypeFromInitial(initial)
     return { kind: 'signal', name, type, initial }
-  }
-  // `useSessionStorage` / `useMemoryStorage` — process-scoped storage, so
-  // the honest native mapping is a plain state field with NO persistence.
-  //
-  // On the web, sessionStorage survives a reload and dies with the tab.
-  // Native has neither a tab nor a reload: the process IS the session, so
-  // in-memory state is the exact analogue rather than an approximation of
-  // one. `useMemoryStorage` is definitionally that on every platform.
-  //
-  // Emitting them as a `signal` decl WITHOUT a storageKey is what makes
-  // this correct: the same IR `useStorage` produces, minus the @AppStorage /
-  // rememberSaveable persistence that would wrongly outlive the process.
-  if (calleeName === 'useSessionStorage' || calleeName === 'useMemoryStorage') {
-    const initialArg = init.arguments?.[1]
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
-    const generic = parseGenericTypeArg(init, ctx)
-    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
-    const type = hasGeneric ? generic : inferTypeFromInitial(initial)
-    return { kind: 'signal', name, type, initial }
-  }
-
-  // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
-  // PERSISTENT signal. Same shape as `signal()` plus a storage-key
-  // string. The emitter routes storage signals to platform-idiomatic
-  // persistence primitives:
-  //   Swift   →  @AppStorage("key") private var x: T = default
-  //   Kotlin  →  var x by rememberSaveable { mutableStateOf(default) }
-  // The `_signalNames` set in the emitters picks up storage signals
-  // automatically (since they're DeclIR.signal), so `todos()` correctly
-  // drops parens at call sites without a separate `_storageNames` set.
-  if (calleeName === 'useStorage') {
-    const type = parseGenericTypeArg(init, ctx)
-    const keyArg = init.arguments?.[0]
-    const initialArg = init.arguments?.[1]
-    // The storage key MUST be a string literal — anything else (template
-    // string, identifier, member access) can't be baked into the
-    // `@AppStorage(...)` string at compile time. Conservative — fall
-    // through to undeclared if the key isn't a static literal.
-    // A module-scope `const` counts as a literal here: the value is known at
-    // build time, which is the only thing the bake needs. Sharing the key with
-    // whatever else reads that slot is the ordinary way to write this.
-    const storageKey = staticStringArg(keyArg, ctx)
-    if (storageKey === null) {
-      ctx.warnings.push(
-        `Declaration ${name}: useStorage needs a statically-known key — an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit, so a computed or imported one cannot be resolved at build time. Got ${keyArg?.type ?? 'nothing'}.`,
-      )
-      return null
-    }
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
-    // Same initial-literal inference as plain `signal()` (no-generic
-    // form only) — @AppStorage needs a concrete native type, so `Any`
-    // is even worse here.
-    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
-    const inferredType = hasGeneric ? type : inferTypeFromInitial(initial)
-    return { kind: 'signal', name, type: inferredType, initial, storageKey }
   }
   if (calleeName === 'computed') {
     const arg = init.arguments?.[0]
@@ -5647,7 +5562,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       parseContextFor(name, init, ctx),
     )
     if (spec === null) return null
-    if (spec !== undefined) return stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
+    if (spec !== undefined) return declFromSpec(recognized.owner, name, spec, init, ctx)
   }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
@@ -5921,6 +5836,26 @@ function tryRxNamespaceLowering(
 }
 
 /**
+ * A recognizer's verdict as a declaration: a plain SIGNAL (`{ signal }`, built here with the core's own rules so a
+ * library's signal reads, writes, infers and synthesizes structs exactly like `signal()`), else the plugin's own `ext`
+ * declaration.
+ *
+ * The type is the written generic when there is one, else it is inferred from the initial literal — the contract
+ * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
+ * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
+ */
+function declFromSpec(owner: string, name: string, spec: ExtDeclSpec | SignalDeclSpec, call: AnyNode, ctx: ParseCtx): DeclIR {
+  if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
+  const { initial: initialArg, persistKey } = spec.signal
+  const initial: ExprIR = initialArg ? parseExpr(initialArg as AnyNode, ctx) : { kind: 'literal', value: 0 }
+  const hasGeneric = ((call.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+  const type = hasGeneric ? parseGenericTypeArg(call, ctx) : inferTypeFromInitial(initial)
+  return persistKey === undefined
+    ? { kind: 'signal', name, type, initial }
+    : { kind: 'signal', name, type, initial, storageKey: persistKey }
+}
+
+/**
  * `const x = new Name(…)` where a plugin claims `Name` (`CompilerPlugin.calls`): the recognizer
  * receives `construct: true`. `null` when the shape is not a constructor of a claimed name, or the
  * plugin declined.
@@ -5936,7 +5871,7 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     { callee: calleeName, argCount: init.arguments?.length ?? 0, construct: true },
     parseContextFor(name, init, ctx),
   )
-  return spec === undefined || spec === null ? null : stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
+  return spec === undefined || spec === null ? null : declFromSpec(recognized.owner, name, spec, init, ctx)
 }
 
 /**
@@ -8276,7 +8211,6 @@ function warnIfHookInsideRenderCallback(
     ...activeRegistries().calls.names,
     'signal',
     'computed',
-    'useStorage',
     'useFetch',
     'useForm',
     'useNativeModule',

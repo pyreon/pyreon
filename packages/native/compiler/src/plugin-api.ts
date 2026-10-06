@@ -39,6 +39,8 @@ export type {
 export type {
   AstNode,
   CallRecognizer,
+  SignalDeclSpec,
+  SignalSpec,
   CallSite,
   DeclEmitter,
   DeclLifecycle,
@@ -88,6 +90,7 @@ export type {
   ReceiverTargetLowering,
 } from './expr-lowering'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
+export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } from './signal-persistence'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export type { UnloweredSpec } from './unlowered-modules'
 export type { ServiceDescriptor } from './services'

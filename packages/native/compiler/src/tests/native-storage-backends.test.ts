@@ -18,7 +18,7 @@
 //                       both targets, which is the answer the author wants.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const app = (hook: string) => `import { ${hook} } from '@pyreon/storage'
 import { Text } from '@pyreon/primitives'
@@ -68,4 +68,22 @@ describe('backends with no analogue decline BY NAME', () => {
     expect(w).toContain('useDatabase()')
     expect(w).toContain('SQLite')
   })
+})
+
+// The module-scope decline moved from a hand-written `useStorage` check in the parser to the plugin's
+// `componentOnlyCalls`, which also covers the two process-scoped backends (they used to fall through to a verbatim emit).
+describe('a storage hook declared at file scope is named, not printed verbatim', () => {
+  for (const hook of ['useStorage', 'useSessionStorage', 'useMemoryStorage'] as const) {
+    it(`${hook}: says the placement is wrong, on both targets`, () => {
+      const src = `import { ${hook} } from '@pyreon/storage'
+import { Text } from '@pyreon/primitives'
+const kept = ${hook}('k', 1)
+export function App() { return <Text>x</Text> }`
+      for (const target of ['swift', 'kotlin'] as const) {
+        const w = transform(src, { target }).warnings.join('\n')
+        expect(w, target).toContain(`${hook}() lowers to native only INSIDE a component body`)
+        expect(w, target).toContain('`kept` is declared at file scope')
+      }
+    })
+  }
 })

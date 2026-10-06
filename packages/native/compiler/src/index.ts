@@ -36,6 +36,8 @@ export type {
   DeclEmitter,
   ExtDeclSpec,
   MemberCallLowering,
+  SignalDeclSpec,
+  SignalSpec,
   MemberCallSite,
   ParseContext,
   RegisteredCall,
@@ -53,6 +55,7 @@ export type {
 } from './module-items'
 export type { UnloweredModule, UnloweredSpec } from './unlowered-modules'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
+export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } from './signal-persistence'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'

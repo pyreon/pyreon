@@ -12,6 +12,7 @@
 import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ScopeProvider } from './scope-provider'
+import type { SignalPersistence } from './signal-persistence'
 import type { ServiceDescriptor } from './services'
 import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle, type DeclSwiftInit } from './call-lowering'
 import {
@@ -511,6 +512,17 @@ export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): A
   const emitter = activeRegistries().calls.emitter(d.plugin, d.type)?.asyncState
   if (emitter === undefined) return undefined
   return target === 'swift' ? emitter.swift(d, ctx) : emitter.kotlin(d, ctx)
+}
+
+/** The persistence backend that renders `storageKey` signals; throws, naming the key, when none is loaded. */
+export function persistenceFor(key: string): SignalPersistence {
+  const registered = activeRegistries().persistence
+  if (registered === undefined) {
+    throw new Error(
+      `[Pyreon] a signal persists under the key ${JSON.stringify(key)} but no loaded plugin declares \`persistence\` — the plugin that recognized it must declare how it is rendered.`,
+    )
+  }
+  return registered.persistence
 }
 
 /** True when `d` is an `ext` declaration whose binding is callable (a zero-argument call of it keeps its parentheses). */

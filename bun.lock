@@ -2041,6 +2041,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2050,8 +2051,12 @@
         "zustand": "^5.0.15",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/store": {
       "name": "@pyreon/store",

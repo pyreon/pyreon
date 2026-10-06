@@ -850,8 +850,8 @@ public struct PyreonFilePicker { public init() {}; public func pick() async -> S
 // emit uses it) drives runtime reactivity; these only satisfy conformance.
 public protocol PyreonStoreProtocol: AnyObject {}
 public protocol PyreonModelProtocol: AnyObject {}
-// AppStorage - SwiftUI's own wrapper, which \`useStorage\` emits for SCALAR
-// values (a struct value routes to PyreonAppStorage below instead). Stripped
+// AppStorage - SwiftUI's own wrapper, which a persisted signal (\`useStorage\`) emits for SCALAR
+// values (a struct value routes to the library's own PyreonAppStorage instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was
 // UNGATED. Mirrors SwiftUI's REAL constrained overloads rather than a loose
 // generic: a permissive \`<Value>\` would MASK an emit that ever sent an
@@ -871,10 +871,6 @@ extension AppStorage where Value == Double {
 }
 extension AppStorage where Value == Bool {
   public init(wrappedValue: Value, _ key: String) { self._key = key }
-}
-@propertyWrapper public struct PyreonAppStorage<Value> {
-  public init(wrappedValue: Value, _ key: String) {}
-  public var wrappedValue: Value { get { fatalError() } nonmutating set {} }
 }
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-swift's
 // PyreonNetworkStatus.swift surface the emit touches: the no-arg constructor

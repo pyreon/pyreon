@@ -36,6 +36,8 @@ import { tablePlugin } from '../packages/fundamentals/table/src/native-plugin/pl
 import { tableStubs } from '../packages/fundamentals/table/src/native-plugin/stubs'
 import { dndPlugin } from '../packages/fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../packages/fundamentals/dnd/src/native-plugin/stubs'
+import { storagePlugin } from '../packages/fundamentals/storage/src/native-plugin/plugin'
+import { storageStubs } from '../packages/fundamentals/storage/src/native-plugin/stubs'
 import { urlStatePlugin } from '../packages/fundamentals/url-state/src/native-plugin/plugin'
 import { permissionsPlugin } from '../packages/fundamentals/permissions/src/native-plugin/plugin'
 import { permissionsStubs } from '../packages/fundamentals/permissions/src/native-plugin/stubs'
@@ -44,10 +46,10 @@ import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, elementsPlugin, coolgridPlugin])
+export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, storagePlugin, elementsPlugin, coolgridPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs, storageStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 
