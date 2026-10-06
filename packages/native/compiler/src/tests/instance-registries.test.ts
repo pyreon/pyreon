@@ -11,6 +11,7 @@ import {
   type ElementLowering,
 } from '../index'
 import { testNativePlugin } from '../testing'
+import { hooksPlugin } from './first-party-plugins'
 
 const SERVICE_SPEC = {
   swift: 'AcmeGadget()',
@@ -102,9 +103,9 @@ describe('a third-party plugin lowers services AND elements end to end', () => {
 describe('conflicts are load-time errors naming both owners', () => {
   const retag = (el: Parameters<NonNullable<ElementLowering['retag']>>[0]) => el
 
-  it('a plugin service claiming a built-in hook', () => {
+  it('a plugin service claiming a hook the hooks plugin owns', () => {
     expect(() =>
-      createCompiler({ plugins: [{ name: 'A', apiVersion: 1, services: { useShare: SERVICE_SPEC } }] }),
+      createCompiler({ plugins: [hooksPlugin, { name: 'A', apiVersion: 1, services: { useShare: SERVICE_SPEC } }] }),
     ).toThrow(/hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/)
   })
 
@@ -158,8 +159,9 @@ describe('conflicts are load-time errors naming both owners', () => {
     expect(() => bad([{ module: 'm', tags: ['A'], retag: 1 }])).toThrow(/retag must be a function/)
   })
 
-  it('built-in plugins are marked builtIn', () => {
+  it('built-in plugins are marked builtIn — and none ship: every library is discovered', () => {
     expect(BUILT_IN_PLUGINS.every((p) => p.builtIn === true)).toBe(true)
+    expect(BUILT_IN_PLUGINS).toHaveLength(0)
   })
 })
 

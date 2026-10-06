@@ -15,7 +15,7 @@ import {
   verifyLifecycleWiring,
   type NativeFile,
 } from '../../../../../scripts/check-native-lifecycle-wiring'
-import { SERVICES } from '../../../../native/compiler/src/services'
+import { HOOKS_SERVICE_DESCRIPTORS as SERVICES } from '../../../../../scripts/native-first-party-plugins'
 
 const swiftFile = (name: string, verb: 'start' | 'connect' | 'begin'): NativeFile => ({
   path: `packages/fundamentals/hooks/native/swift/${name}.swift`,

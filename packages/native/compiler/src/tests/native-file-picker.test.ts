@@ -13,7 +13,7 @@
 // emit is exactly the class a string-match gate waves through (the M2.8 lesson).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

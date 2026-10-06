@@ -1,5 +1,6 @@
 import { chartsCompiler, chartsPlugin } from './charts-plugin'
-import { BUILT_IN_PLUGINS, createCompiler, transform, SUPPORTED_PLUGIN_API_VERSIONS, swiftBackend, type CompilerModule, type CompilerPlugin } from '../index'
+import { hooksPlugin } from './first-party-plugins'
+import { createCompiler, transform, SUPPORTED_PLUGIN_API_VERSIONS, swiftBackend, type CompilerModule, type CompilerPlugin } from '../index'
 import { parsePyreon } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck, validateSwiftWithStubs } from '../validate'
 const APP = 'export function Example() { return <Text>hello</Text> }'
@@ -295,7 +296,6 @@ describe('instance-owned compiler plugins', () => {
     [{ plugins: [null] }, /nonempty name/],
     [{ plugins: [plugin({ name: '' })] }, /nonempty name/],
     [{ plugins: [plugin(), plugin()] }, /Duplicate native compiler plugin/],
-    [{ plugins: [plugin({ name: BUILT_IN_PLUGINS[0]!.name })] }, /Duplicate native compiler plugin/],
     [{ plugins: [{ ...plugin(), apiVersion: 2 }] }, /supports API 1/],
     [{ plugins: [plugin({ transformIR: 1 as never })] }, /transformIR must be/],
     [{ plugins: [plugin({ prepareIR: 1 as never })] }, /prepareIR must be/],
@@ -375,7 +375,7 @@ describe('additive protocol fields (apiVersion stays 1)', () => {
   it('hands the registry to every pass', () => {
     let seen: ReadonlySet<string> | undefined
     createCompiler({
-      plugins: [plugin({ transformIR: (_m, context) => void (seen = new Set(context.services.keys())) })],
+      plugins: [hooksPlugin, plugin({ transformIR: (_m, context) => void (seen = new Set(context.services.keys())) })],
     }).transform(APP, { target: 'swift' })
     expect(seen?.has('useShare')).toBe(true)
   })

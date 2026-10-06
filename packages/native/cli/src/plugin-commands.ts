@@ -4,7 +4,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import {
-  BUILT_IN_PLUGINS,
   createCompiler,
   parsePyreon,
   renderKotlinService,
@@ -55,7 +54,7 @@ export function verifyDiscovered(appDir: string, found: DiscoveredPlugin): Servi
 }
 
 /**
- * `plugins [--verify]`: built-in plugins, the service registry with each
+ * `plugins [--verify]`: the service registry with each
  * hook's owner, and every package-declared plugin. Loads every declared plugin
  * (a listing has no `--source` to be lazy against).
  */
@@ -71,11 +70,6 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
       lines: [`[pyreon-native] ${error instanceof Error ? error.message : String(error)}`],
       exitCode: 2,
     }
-  }
-  const replaced = new Set(discovered.map((d) => d.plugin.name))
-  lines.push('built-in plugins:')
-  for (const plugin of BUILT_IN_PLUGINS) {
-    lines.push(`  ${plugin.name}${replaced.has(plugin.name) ? '  (replaced by a discovered plugin)' : ''}`)
   }
   lines.push(`services (${compiler.services.size}):`)
   for (const [hook, { owner }] of [...compiler.services].sort(([a], [b]) => a.localeCompare(b))) {

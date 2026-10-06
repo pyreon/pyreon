@@ -15,9 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { dndPlugin, queryPlugin, tablePlugin } from './first-party-plugins'
-import { SERVICES } from '../services'
+import { dndPlugin, queryPlugin, SERVICES, tablePlugin, transform } from './first-party-plugins'
 
 const SWIFT = readFileSync(join(resolve(import.meta.dirname, '..'), 'emit-swift.ts'), 'utf8')
 

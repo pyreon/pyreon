@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PARSE_SRC = readFileSync(join(HERE, '../parse.ts'), 'utf8')

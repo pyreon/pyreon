@@ -9,6 +9,7 @@
 // The emit is verified HERE, not in those packages, because this package owns the toolchain
 // lanes — the warm Kotlin compiler daemon, the 180s spec timeout, the real-SDK swiftc job.
 import { createCompiler } from '../compiler'
+import type { ServiceDescriptor } from '../services'
 import type { EmitOptions, TransformResult } from '../types'
 import * as validate from '../validate'
 import { FIRST_PARTY_PLUGINS, FIRST_PARTY_VALIDATE_OPTIONS } from '../../../../../scripts/native-first-party-plugins'
@@ -34,6 +35,7 @@ import { tableStubs } from '../../../../fundamentals/table/src/native-plugin/stu
 import { dndPlugin } from '../../../../fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../../../../fundamentals/dnd/src/native-plugin/stubs'
 import { kineticPlugin } from '../../../../ui-system/kinetic/src/native-plugin/plugin'
+import hooksPlugin from '../../../../fundamentals/hooks/src/native-plugin'
 import { featurePlugin } from '../../../../fundamentals/feature/src/native-plugin/plugin'
 import { rxPlugin } from '../../../../fundamentals/rx/src/native-plugin/plugin'
 import { sizedMapPlugin } from '../../../../core/sized-map/src/native-plugin/plugin'
@@ -48,7 +50,7 @@ import { coolgridPlugin } from '../../../../ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../../../../fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../../../../fundamentals/sync/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, permissionsPlugin, permissionsStubs, urlStatePlugin, storagePlugin, storageStubs, sizedMapPlugin, rxPlugin, featurePlugin, sizedMapStubs, kineticPlugin, elementsPlugin, coolgridPlugin }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, permissionsPlugin, permissionsStubs, urlStatePlugin, storagePlugin, storageStubs, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, sizedMapStubs, kineticPlugin, elementsPlugin, coolgridPlugin }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
@@ -63,3 +65,10 @@ export const validateSwiftWithStubs = (source: string) => validate.validateSwift
 export const validateSwiftFilesWithStubs = (sources: readonly string[]) => validate.validateSwiftFilesWithStubs(sources, FIRST_PARTY_VALIDATE_OPTIONS)
 export const validateKotlin = (source: string) => validate.validateKotlin(source, FIRST_PARTY_VALIDATE_OPTIONS)
 export const validateKotlinFiles = (sources: readonly string[]) => validate.validateKotlinFiles(sources, FIRST_PARTY_VALIDATE_OPTIONS)
+
+/** The `@pyreon/hooks` plain-service table as descriptors, in the plugin's own (meaningful) order. */
+export const SERVICES: readonly ServiceDescriptor[] = Object.entries(hooksPlugin.services).map(([hook, spec]) => ({
+  ...spec,
+  hook,
+  legacyKind: (spec as { legacyKind?: string }).legacyKind ?? 'service',
+}))

@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createCompiler } from '@pyreon/native-compiler'
 import { main, mainWithPlugins } from '../cli'
 
 // `plugins` and `explain` are the two subcommands that need plugin loading, so
@@ -9,7 +8,22 @@ import { main, mainWithPlugins } from '../cli'
 // (argv in, exit code + console out) rather than the report builders, which
 // have their own specs in discover-plugins.test.ts.
 
-const SHARE_APP = `export function Example() {
+// `@pyreon/hooks` ships its own plugin; the compiler carries no copy, so an app's `useShare` lowers only through the discovered package.
+const HOOKS_PLUGIN = `export default {
+  name: '@pyreon/hooks',
+  apiVersion: 1,
+  modules: ['@pyreon/hooks'],
+  services: {
+    useShare: {
+      legacyKind: 'share',
+      swift: 'PyreonShare()',
+      kotlin: ['val {id}Ctx = LocalContext.current', 'val {id} = remember { PyreonShare({id}Ctx) }'],
+    },
+  },
+}`
+
+const SHARE_APP = `import { useShare } from '@pyreon/hooks'
+export function Example() {
   const share = useShare()
   return <Text>hello</Text>
 }`
@@ -23,7 +37,19 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'pyreon-native-subcmd-'))
   app = join(root, 'app')
   mkdirSync(join(app, 'src'), { recursive: true })
-  writeFileSync(join(app, 'package.json'), JSON.stringify({ name: 'app', dependencies: {} }))
+  const hooksDir = join(app, 'node_modules', '@pyreon', 'hooks')
+  mkdirSync(join(hooksDir, 'native'), { recursive: true })
+  writeFileSync(
+    join(hooksDir, 'package.json'),
+    JSON.stringify({ name: '@pyreon/hooks', version: '1.0.0', pyreon: { native: { plugin: 'native/plugin.mjs', modules: ['@pyreon/hooks'] } } }),
+  )
+  writeFileSync(join(hooksDir, 'native', 'plugin.mjs'), HOOKS_PLUGIN)
+  // `plugins --verify` checks every Swift/Kotlin type a service names against what the package ships.
+  mkdirSync(join(hooksDir, 'native', 'swift'), { recursive: true })
+  mkdirSync(join(hooksDir, 'native', 'kotlin'), { recursive: true })
+  writeFileSync(join(hooksDir, 'native', 'swift', 'Share.swift'), 'final class PyreonShare {}')
+  writeFileSync(join(hooksDir, 'native', 'kotlin', 'Share.kt'), 'class PyreonShare')
+  writeFileSync(join(app, 'package.json'), JSON.stringify({ name: 'app', dependencies: { '@pyreon/hooks': '1' } }))
   writeFileSync(join(app, 'src', 'Example.tsx'), SHARE_APP)
   logs = []
   errors = []
@@ -63,17 +89,15 @@ describe('pyreon-native explain', () => {
     expect(await mainWithPlugins(['explain', file, `--app=${app}`])).toBe(0)
     const out = logs.join('\n')
     expect(out).toContain('useShare()')
-    // Whoever owns the service (the compiler itself, or a package plugin such as
-    // @pyreon/hooks once a library owns its lowering) — read it, don't hardcode it.
-    const owner = createCompiler().services.get('useShare')?.owner
-    expect(owner, 'useShare must be a registered service for this spec to mean anything').toBeDefined()
-    expect(out).toContain(`owner: ${owner}`)
+    // The service is the discovered `@pyreon/hooks` package's: it is named as the owner.
+    expect(out).toContain('owner: @pyreon/hooks')
   })
 
   it('works with plugin discovery switched off', async () => {
     const file = join(app, 'src', 'Example.tsx')
     expect(await mainWithPlugins(['explain', file, `--app=${app}`, '--no-plugins'])).toBe(0)
-    expect(logs.join('\n')).toContain('useShare()')
+    // Nothing ships inside the compiler: with discovery off no library's hooks lower.
+    expect(logs.join('\n')).toContain('no service hooks, call recognizers or element lowerings found')
   })
 
   it('loads an explicitly passed plugin before explaining', async () => {

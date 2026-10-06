@@ -7,7 +7,6 @@ export { swiftBackend, kotlinBackend } from './backends'
 export { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
 export { assertPluginShape } from './plugin-shape'
 export {
-  BUILT_IN_SERVICE_OWNER,
   createServiceRegistry,
   orderPlugins,
   selectDiscovered,
@@ -63,7 +62,7 @@ export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } fr
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'
-export { SERVICES, renderKotlinService } from './services'
+export { renderKotlinService } from './services'
 export { parsePyreon } from './parse'
 export type { ParseOptions } from './parse'
 export type { ServiceDescriptor } from './services'

@@ -10,7 +10,7 @@
 // silent — a later expression typed by a dead parameter.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const kt = (src: string) => transform(src, { target: 'kotlin' })
 

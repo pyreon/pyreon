@@ -57,8 +57,6 @@ export const COMPILERS: readonly CompilerSpec[] = [
     // primitives is the cross-target authoring API PMTC exists to lower; core/compiler are the substrate.
     contract: ['primitives', 'core', 'compiler', 'reactivity', 'native-compiler'],
     generated: [
-      // @pyreon/hooks' own plugin, copied by scripts/gen-native-builtin-plugins.ts (freshness-gated).
-      'built-in-services.generated.ts',
       // The web-only package list: DERIVED from every package manifest's `multiplatform` declaration (tier
       // 'web-only' and no `nativeFrontend`) by `check-multiplatform-tier --write-table`, which also gates that it
       // stays in sync. It is data the compiler carries so a standalone `transform()` can name a web-only import, not

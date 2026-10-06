@@ -1,12 +1,22 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BUILT_IN_PLUGINS, createCompiler, SERVICES } from '@pyreon/native-compiler'
+import { createCompiler } from '@pyreon/native-compiler'
 import { explainReport, pluginsReport } from '../plugin-commands'
 
-// The edge branches of the two reports: a plugin that fails to load, a
-// built-in a discovered plugin replaced, versionless/serviceless packages, and
+// The edge branches of the two reports: a plugin that fails to load, versionless/serviceless packages, and
 // every way `explain` can disagree with what the compiler actually emitted.
+
+// `@pyreon/hooks`' plugin as the compiler sees it once discovered (the compiler carries no copy of it).
+
+const HOOKS = {
+  name: '@pyreon/hooks',
+  apiVersion: 1 as const,
+  modules: ['@pyreon/hooks'],
+  services: {
+    useShare: { legacyKind: 'share', swift: 'PyreonShare()', kotlin: ['val {id}Ctx = LocalContext.current', 'val {id} = remember { PyreonShare({id}Ctx) }'] },
+  },
+}
 
 const SHARE_SOURCE = `export function Example() {
   const share = useShare()
@@ -14,7 +24,7 @@ const SHARE_SOURCE = `export function Example() {
 }`
 
 describe('explainReport — where the registry and the emit disagree', () => {
-  const real = createCompiler()
+  const real = createCompiler({ plugins: [HOOKS] })
   const shareEntry = real.services.get('useShare')!
   const emit = (code: string) => ({ code }) as ReturnType<typeof real.transform>
 
@@ -77,8 +87,8 @@ describe('explainReport — where the registry and the emit disagree', () => {
     expect(lines.join('\n')).toContain('plain string')
   })
 
-  it('has built-in services to explain at all (the fixture is real)', () => {
-    expect(SERVICES.some((s) => s.hook === 'useShare')).toBe(true)
+  it('has services to explain at all (the fixture is real)', () => {
+    expect(real.services.has('useShare')).toBe(true)
   })
 })
 
@@ -133,14 +143,6 @@ describe('pluginsReport — discovery edge cases', () => {
     addPackage('@acme/versioned', `export default { name: 'versioned', apiVersion: 1 }`, { version: '2.3.4' })
     const { lines } = await pluginsReport(app, false)
     expect(lines.find((l) => l.includes('@acme/versioned'))).toContain('@acme/versioned@2.3.4')
-  })
-
-  it('marks a built-in plugin as replaced when a discovered plugin takes its name', async () => {
-    const builtIn = BUILT_IN_PLUGINS.find((p) => p.builtIn === true)
-    expect(builtIn, 'fixture needs at least one replaceable built-in plugin').toBeDefined()
-    addPackage('@acme/swap', `export default { name: ${JSON.stringify(builtIn!.name)}, apiVersion: 1 }`)
-    const { lines } = await pluginsReport(app, false)
-    expect(lines.join('\n')).toContain('(replaced by a discovered plugin)')
   })
 
   it('lists the elements and unlowered modules a plugin contributes on its row', async () => {

@@ -30,7 +30,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SERVICES } from '../packages/native/compiler/src/services'
+import { HOOKS_SERVICE_DESCRIPTORS as SERVICES } from './native-first-party-plugins'
 
 export interface LifecycleEntry {
   /** the native class name, identical on Swift + Kotlin */

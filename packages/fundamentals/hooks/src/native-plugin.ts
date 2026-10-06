@@ -10,12 +10,9 @@
  * types below are imported as TYPES only, so this package gains no runtime
  * dependency on the compiler.
  *
- * This file is the SOURCE OF TRUTH. `@pyreon/native-compiler` keeps a
- * generated copy (`src/built-in-services.generated.ts`, written by
- * `scripts/gen-native-builtin-plugins.ts`) so a zero-config `transform()` needs
- * no library installed; an app whose `@pyreon/hooks` is newer than the compiler
- * has this plugin discovered from `pyreon.native.plugin` and it REPLACES the
- * built-in of the same name. The declaration ORDER is meaningful (the Swift
+ * This file is the ONLY copy. `@pyreon/native-compiler` carries no hooks table (it used to keep a
+ * generated one): the plugin is discovered from `pyreon.native.plugin` when a source imports
+ * `@pyreon/hooks`, like every other library's. The declaration ORDER is meaningful (the Swift
  * lifecycle modifiers emit in registry order) — do not sort it.
  *
  * `legacyKind` keeps each hook's synthesized struct names identical to the

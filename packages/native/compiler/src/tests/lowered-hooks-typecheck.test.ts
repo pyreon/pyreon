@@ -35,12 +35,16 @@
 // iOS. Device evidence covers the path the example takes, not the API surface.
 
 import { describe, expect, it } from 'vitest'
-import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { hooksPlugin, transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { withRegistries } from '../active-registries'
+import { createCompiler } from '../compiler'
 import { FIRST_PARTY_PLUGINS } from '../../../../../scripts/native-first-party-plugins'
 import { nativeLoweredHooks } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
-const NATIVE_LOWERED_HOOKS = nativeLoweredHooks()
+// The allowlist as a compiler with `@pyreon/hooks` loaded sees it: the platform-service hooks are that plugin's, and every other
+// library's claims are checked against its own plugin below.
+const NATIVE_LOWERED_HOOKS = withRegistries(createCompiler({ plugins: [hooksPlugin] }).registries, () => nativeLoweredHooks())
 
 /** One minimal, REALISTIC call per hook — the shape an author would write. */
 const USAGES: ReadonlyArray<readonly [string, string, string]> = [
