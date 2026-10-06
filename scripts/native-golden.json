@@ -2901,6 +2901,76 @@
       "bytes": 1670,
       "warnings": 1
     },
+    "golden-fixture:hooks-containers-01.tsx|swift": {
+      "sha": "9bffc56ae7076d03e1c6c2818f868d99d6017a77a8b2d3a88520235fd04598ac",
+      "bytes": 607,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-01.tsx|kotlin": {
+      "sha": "3927f93ca885ff934c1ec3ee3e79d6748790a8815ba63f090503dea86d23b6ed",
+      "bytes": 678,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-02.tsx|swift": {
+      "sha": "b5ed2d154f18d4552853787ad5f0fb10f7fe5de23a105976e3804e93eae7cf6f",
+      "bytes": 701,
+      "warnings": 2
+    },
+    "golden-fixture:hooks-containers-02.tsx|kotlin": {
+      "sha": "f281d0c8c66b3fec69bb853da4090b58c5d11a93979151aa94dff6d5e04634bb",
+      "bytes": 724,
+      "warnings": 2
+    },
+    "golden-fixture:hooks-containers-03.tsx|swift": {
+      "sha": "a043c559012d913810c1f5a02473071b4d388b8e387e55de1cf1ce1218dd09b9",
+      "bytes": 1566,
+      "warnings": 2
+    },
+    "golden-fixture:hooks-containers-03.tsx|kotlin": {
+      "sha": "7360759405a7cb76e345558532e87f78154e7900046ce3e41485aa4b90c2a8b3",
+      "bytes": 1945,
+      "warnings": 2
+    },
+    "golden-fixture:hooks-containers-04.tsx|swift": {
+      "sha": "fb65dac776716c7b8e462c4ceb7b62e9885cac9dd2ad1a90a8ca9590db4e7917",
+      "bytes": 736,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-04.tsx|kotlin": {
+      "sha": "89dd9bee244e8510660aa65d8f804f0625e49eea90e7213a9b86d2285d54b75f",
+      "bytes": 961,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-05.tsx|swift": {
+      "sha": "7b877fe91da527cb6d9fb1e5969f31013524452bc11aa37615e45d4b3fdc2664",
+      "bytes": 682,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-05.tsx|kotlin": {
+      "sha": "1e6a5ed0774bdcb51b994d9e1faea909add5db6a022850b0c7879f53d049d932",
+      "bytes": 836,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-06.tsx|swift": {
+      "sha": "3518c0e2df460d254211138e414c4fdef14d89f7c07db48ee61cdf2f4a1c473c",
+      "bytes": 761,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-06.tsx|kotlin": {
+      "sha": "d4c8432b4c161a25119559a7c8d2cc51fc0a5e31a9b3f054d124d4d7d812480e",
+      "bytes": 914,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-containers-07.tsx|swift": {
+      "sha": "71fca4d225b278013c0b148d2495a58f5294c10fc647d3491c3ad7571d8b6884",
+      "bytes": 366,
+      "warnings": 1
+    },
+    "golden-fixture:hooks-containers-07.tsx|kotlin": {
+      "sha": "8df2130b2dc4a1e851f77497510ef47d78384b24a16c9b81b80c9da363dd5499",
+      "bytes": 547,
+      "warnings": 1
+    },
     "golden-fixture:hooks-fetch-01.tsx|swift": {
       "sha": "a90a5ae4b478862f6175b75e7a2001cc0860baa542192d626ae47112dbb9c93a",
       "bytes": 1768,
