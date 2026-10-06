@@ -359,6 +359,25 @@ export default defineConfig({
     }),
   },
   {
+    // On `@pyreon/runtime-dom` versions before the explicit-whitespace fix, the
+    // hydration cursor skipped EVERY whitespace-only text node as "server
+    // formatting", so a client child that was itself `{' '}` found the cursor
+    // already past the server's space, warned `expected TextNode, got 1`, and
+    // inserted a SECOND space (`<span>One</span>  <span>Two</span>`). Only the
+    // `text` + `got 1` (an element where the text should be) shape is matched;
+    // a genuine divergence of that shape reads the same, so the entry teaches
+    // both causes. Fixed forward — this teaches the residual and the old shape.
+    pattern: /Hydration mismatch \(text\): expected TextNode, got 1 at /,
+    diagnose: () => ({
+      cause:
+        'Hydration expected a text node and found an ELEMENT. Two causes. (1) On `@pyreon/runtime-dom` versions before the explicit-whitespace fix, an explicitly rendered whitespace-only child (`<First />{\' \'}<span/>`) was skipped by the hydration cursor as "server formatting" and a duplicate space was inserted — upgrade. (2) The client renders text where the server rendered an element (a real server/client divergence).',
+      fix: 'Upgrade `@pyreon/runtime-dom` if the text in question is only whitespace (`{\' \'}`) — the walker now decides whitespace by the client VNODE, not by the DOM alone. Otherwise make the first client render match the server render (branch on `typeof window`/`Date.now()`/locale only inside `onMount`).',
+      fixCode: `// Works on current versions: the explicit space is adopted, not duplicated
+<div><First />{' '}<span>Two</span></div>`,
+      related: 'https://pyreon.dev/docs/troubleshooting/ssr',
+    }),
+  },
+  {
     // The residual footgun left by compiled-template hydration ADOPTION.
     // Hydration now binds a component's root `_tpl` against the SERVER nodes
     // instead of cloning, which is what makes typed input, focus and scroll
