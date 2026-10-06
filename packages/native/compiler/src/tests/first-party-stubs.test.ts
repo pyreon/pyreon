@@ -4,7 +4,7 @@
 // input that names the runtime type gets a stub that declares it on the right target.
 import { describe, expect, it } from 'vitest'
 import { FIRST_PARTY_VALIDATE_OPTIONS } from '../../../../../scripts/native-first-party-plugins'
-import { a11yStubs, dndStubs, i18nStubs, machineStubs, tableStubs, toastStubs } from './first-party-plugins'
+import { a11yStubs, dndStubs, i18nStubs, machineStubs, syncStubs, tableStubs, toastStubs } from './first-party-plugins'
 
 describe('first-party stub augmentations', () => {
   it('are loaded into the compile gates the repo scripts use', () => {
@@ -14,6 +14,7 @@ describe('first-party stub augmentations', () => {
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(a11yStubs)
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(tableStubs)
     expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(dndStubs)
+    expect(FIRST_PARTY_VALIDATE_OPTIONS.augment).toContain(syncStubs)
   })
 
   it('append nothing to an emit that names none of their runtime types', () => {
@@ -50,5 +51,10 @@ describe('first-party stub augmentations', () => {
     expect(dndStubs.kotlin?.('Modifier.pyreonSortableItem(s, "k")')).toContain('fun <T> Modifier.pyreonSortableItem')
     // The shared CoreGraphics mirror stays in the core bundle: the gesture stubs need CGPoint without any drag library.
     expect(dndStubs.swift?.('PyreonSortableState')).not.toContain('struct CGPoint')
+  })
+
+  it('the sync stubs declare the CRDT doc and the synced-signal facade on the target that names them', () => {
+    expect(syncStubs.swift?.('@State private var doc: PyreonCrdtDoc')).toContain('final class PyreonCrdtDoc')
+    expect(syncStubs.kotlin?.('val title = remember { PyreonSyncedSignal(doc, "k", "x") }')).toContain('class PyreonSyncedSignal')
   })
 })

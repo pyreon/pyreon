@@ -153,7 +153,7 @@ function checkCalls(
  * distinct member, so a loop writing through `transact` does not produce N
  * copies of the same advice.
  */
-export function warnUnlowerdCrdtMembers(
+export function warnUnloweredCrdtMembers(
   program: AnyNode,
   warnings: string[],
   source?: string,

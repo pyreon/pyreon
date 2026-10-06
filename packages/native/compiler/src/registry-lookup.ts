@@ -13,7 +13,7 @@ import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ScopeProvider } from './scope-provider'
 import type { ServiceDescriptor } from './services'
-import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle } from './call-lowering'
+import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle, type DeclSwiftInit } from './call-lowering'
 import {
   rootReceiverName,
   type EmitPreparation,
@@ -480,6 +480,17 @@ export function midLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
     .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.midOrder! }))
     .sort((a, b) => a.order - b.order || a.i - b.i)
     .map((entry) => entry.d)
+}
+
+/** The ext declarations of `decls` that seed the generated SwiftUI `init()`, in init order (`order`, then declaration order). */
+export function swiftInitDecls(decls: readonly DeclIR[]): { readonly decl: ExtDecl; readonly init: DeclSwiftInit }[] {
+  const out: { decl: ExtDecl; init: DeclSwiftInit; index: number }[] = []
+  decls.forEach((d, index) => {
+    if (d.kind !== 'ext') return
+    const init = activeRegistries().calls.emitter(d.plugin, d.type)?.swiftInit
+    if (init !== undefined) out.push({ decl: d, init, index })
+  })
+  return out.sort((a, b) => a.init.order - b.init.order || a.index - b.index).map(({ decl, init }) => ({ decl, init }))
 }
 
 /** True when `d` is an `ext` declaration that emits its lifecycle in declaration order (before the compiler's own modifiers). */

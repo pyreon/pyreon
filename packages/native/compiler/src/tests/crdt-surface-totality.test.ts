@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parsePyreon } from '../parse'
-import { CRDT_DOC_SURFACE, CRDT_MAP_SURFACE } from '../parse-crdt-surface'
+import { CRDT_DOC_SURFACE, CRDT_MAP_SURFACE } from '../../../../fundamentals/sync/src/native-plugin/crdt-surface'
+import { firstPartyCompiler } from './first-party-plugins'
 
 /**
- * The classification in `parse-crdt-surface.ts` is only worth anything if it is
+ * The classification in `@pyreon/sync`'s `native-plugin/crdt-surface.ts` is only worth anything if it is
  * TOTAL over the web contract. A hand-maintained allowlist rots the moment
  * `CrdtDoc` grows a member — and the rot is silent, because an unclassified
  * member simply never warns and the user meets it as a compiler error inside a
@@ -83,7 +84,7 @@ describe('CRDT surface classification is total over the web contract', () => {
 })
 
 describe('un-lowered CRDT members warn instead of emitting silently', () => {
-  const warn = (src: string) => parsePyreon(src, 'App.tsx').warnings.join('\n')
+  const warn = (src: string) => parsePyreon(src, 'App.tsx', { registries: firstPartyCompiler.registries }).warnings.join('\n')
 
   it('warns on doc.transact — the member the web contract REQUIRES writes to use', () => {
     const w = warn(`

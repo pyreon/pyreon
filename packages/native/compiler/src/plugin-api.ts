@@ -42,6 +42,7 @@ export type {
   CallSite,
   DeclEmitter,
   DeclLifecycle,
+  DeclSwiftInit,
   ExtDeclSpec,
   MemberCallLowering,
   MemberCallSite,

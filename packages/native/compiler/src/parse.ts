@@ -5,7 +5,6 @@
 // either passed through as unknown or surfaces a warning.
 
 import { forEachExpr } from './expr-walk'
-import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
 import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
 import {
@@ -421,13 +420,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
-  // `@pyreon/sync` CRDT members with no native counterpart. PMTC reproduces a
-  // member call VERBATIM, so an un-lowered one fails the Swift/Kotlin build
-  // inside a GENERATED file naming a method the user never wrote in that
-  // language. Program-level because a call can appear anywhere (a handler, a
-  // nested closure), not only in a declaration.
-  warnUnlowerdCrdtMembers(ast.program as AnyNode, ctx.warnings, source)
-
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -1053,8 +1045,8 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
         continue
       }
     }
-    // SCOPE-AWARE DECLINE. `syncedSignal` and every call a plugin lists in
-    // `componentOnlyCalls` (`createMachine`) are
+    // SCOPE-AWARE DECLINE. Every call a plugin lists in `componentOnlyCalls` (`createMachine`,
+    // `createI18n`, `syncedSignal`) is
     // recognised only by the COMPONENT-BODY statement walk — they lower to
     // `remember {}` / an `@State`, which have no meaning at file scope, so the
     // recognizers are structurally unreachable here. Before this, such a
@@ -1067,10 +1059,7 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     // that is in fact already implemented one scope down.
     if (init.type === 'CallExpression') {
       const scopedName = init.callee?.name as string | undefined
-      if (
-        scopedName === 'syncedSignal' ||
-        (scopedName !== undefined && activeRegistries().scan.componentOnlyCalls.has(scopedName))
-      ) {
+      if (scopedName !== undefined && activeRegistries().scan.componentOnlyCalls.has(scopedName)) {
         ctx.warnings.push(
           `${scopedName}() lowers to native only INSIDE a component body — it becomes a ` +
             `\`remember {}\` / \`@State\`, which has no meaning at module scope. \`${name}\` is ` +
@@ -4966,21 +4955,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
-  // `@pyreon/sync` — `const doc = new PyreonCrdtDoc(...)` + `const x =
-  // syncedSignal({ doc, key, initial })`. The doc is the shared LWW-CRDT
-  // document; each synced signal is a `Signal<T>` view over one scalar key.
-  // Run BEFORE the Tier-2 silent-drop block so both are recognized as real
-  // ports (no warning fires).
-  const crdtDocDecl = tryDeclFromCrdtDoc(node, ctx)
-  if (crdtDocDecl) return crdtDocDecl
-
   // A constructor a plugin claims (`new QueryClient()` from `@pyreon/query`): `CompilerPlugin.calls`
   // recognizers also see `new Name(…)` with `construct` set.
   const constructed = tryPluginConstruct(node, ctx)
   if (constructed) return constructed
-
-  const syncedSignalDecl = tryDeclFromSyncedSignal(node, ctx)
-  if (syncedSignalDecl) return syncedSignalDecl
 
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
   // the remaining 3 callees. `createI18n` and `createMachine` are NOT in the
@@ -6145,111 +6123,6 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   )
   return spec === undefined || spec === null ? null : stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
 }
-
-/**
- * `const doc = new PyreonCrdtDoc(...)` from `@pyreon/sync` → a `crdt-doc` decl.
- * The actor id, if a string literal, is baked; otherwise (a `createActorId()`
- * call, an identifier, or no argument) the emit generates a fresh UUID.
- */
-function tryDeclFromCrdtDoc(node: AnyNode, _ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'NewExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'PyreonCrdtDoc') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const actorArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (actorArg?.type === 'Literal' && typeof actorArg.value === 'string') {
-    return { kind: 'crdt-doc', name, actorLiteral: actorArg.value }
-  }
-  return { kind: 'crdt-doc', name }
-}
-
-/**
- * `const x = syncedSignal({ doc, key, initial })` from `@pyreon/sync` → a
- * `synced-signal` decl. v1 lowers a SCALAR synced signal (string/number/boolean
- * initial) over a `doc` identifier that references a `new PyreonCrdtDoc(...)`
- * binding. Anything outside that shape warns + silent-drops (falls back to the
- * web-only diagnostic).
- */
-function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'syncedSignal') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: argument must be an object literal { doc, key, initial } to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  let docBinding: string | undefined
-  let key: string | undefined
-  let map: string | undefined
-  let initialValue: string | number | boolean | undefined
-  let scalarType: 'string' | 'double' | 'bool' | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `syncedSignal declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'doc') {
-      if (valueNode?.type === 'Identifier') docBinding = valueNode.name as string
-    } else if (keyName === 'key') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') key = valueNode.value
-    } else if (keyName === 'map') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') map = valueNode.value
-    } else if (keyName === 'initial' && valueNode?.type === 'Literal') {
-      const v = valueNode.value
-      if (typeof v === 'string') {
-        initialValue = v
-        scalarType = 'string'
-      } else if (typeof v === 'number') {
-        initialValue = v
-        scalarType = 'double'
-      } else if (typeof v === 'boolean') {
-        initialValue = v
-        scalarType = 'bool'
-      }
-    }
-  }
-
-  if (!docBinding) {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: \`doc\` must reference a \`new PyreonCrdtDoc(...)\` binding by identifier. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (key === undefined) {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: \`key\` must be a string literal. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (initialValue === undefined || !scalarType) {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: \`initial\` must be a string, number, or boolean literal (native v1 lowers scalar synced signals). Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  return {
-    kind: 'synced-signal',
-    name,
-    docBinding,
-    key,
-    scalarType,
-    initialValue,
-    ...(map !== undefined ? { map } : {}),
-  }
-}
-
 
 /**
  * Phase 4 — pull literal string elements out of an array argument

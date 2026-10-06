@@ -12,7 +12,6 @@
       "@pyreon/state-tree": 1,
       "@pyreon/storage": 1,
       "@pyreon/store": 1,
-      "@pyreon/sync": 1,
       "@pyreon/ui-core": 2
     },
     "hooks": 109

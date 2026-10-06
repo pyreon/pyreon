@@ -173,9 +173,31 @@ export interface AsyncState {
   readonly error: string
 }
 
+/**
+ * What a declaration contributes to its component's generated SwiftUI `init()`. A `@State` property initializer cannot
+ * reference another property (a synced signal's initializer names the doc), so a container that must be built from
+ * its siblings is declared TYPED with no initializer and seeded here. The compiler writes the `init(…)` header (the
+ * component's props, as the memberwise init would take them) and their assignments, then every contribution in
+ * `order` (then declaration order), then the closing brace. Compose has no equivalent: its `remember {}` blocks run
+ * sequentially, so a declaration can name an earlier one directly.
+ */
+export interface DeclSwiftInit {
+  /** Where among the plugin declarations' init lines this one lands (lower first): a doc before the signals that name it. */
+  readonly order: number
+  /**
+   * Why the optional-slot initializers cannot coexist with the generated `init()` — the clause the "its optional render
+   * props are emitted as required" warning gives (`its synced state already needs a generated init() that seeds it, …`).
+   */
+  readonly optionalSlotReason: string
+  /** The init body lines for `decl` (unindented — the compiler indents them). */
+  lines(decl: ExtDecl, ctx: EmitContext): readonly string[]
+}
+
 export interface DeclEmitter {
   /** Lifecycle contributions of this declaration type. */
   readonly lifecycle?: DeclLifecycle | undefined
+  /** Lines this declaration seeds in the component's generated SwiftUI `init()` (see {@link DeclSwiftInit}). */
+  readonly swiftInit?: DeclSwiftInit | undefined
   /** How expressions over this declaration's container are typed. */
   readonly typing?: DeclTyping | undefined
   /**

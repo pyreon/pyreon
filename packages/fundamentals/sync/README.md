@@ -373,6 +373,10 @@ a native target needs to be a real peer in the sync graph.
 - **Scalar fields only in v1.** Objects/arrays stored as whole values replace coarsely (correct, but a change re-fires the whole field).
 - **The in-memory adapter is not a CRDT.** It's a last-writer-wins test double for exercising the bridge; it does not model logical clocks, tombstones, or offline merge.
 
+## Native (iOS / Android)
+
+`new PyreonCrdtDoc()` and `syncedSignal({ doc, key, initial })` lower to the CRDT doc and `PyreonSyncedSignal` facade on SwiftUI and Compose (scalar synced signals over one doc); a web `CrdtDoc` / `CrdtMap` member with no native counterpart (`transact`, `destroy`) draws a named warning. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## License
 
 MIT

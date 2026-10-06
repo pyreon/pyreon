@@ -30,6 +30,7 @@ import {
   lowerPluginMemberCall,
   lowerPluginMemberRead,
   isHeadLifecycleDecl,
+  swiftInitDecls,
   midLifecycleDecls,
   lowerPluginReceiver,
   lowerPluginRefModifiers,
@@ -516,10 +517,6 @@ function withExpectedType<T>(t: TypeIR | undefined, fn: () => T): T {
  * `signal()` (zero-arg call) emits as bare `signal` for signal reads.
  */
 let _signalNames: Set<string> = new Set()
-/** `syncedSignal(...)` bindings — read `x()` (callAsFunction), write `x.set(v)`
- *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
- *  rewrite must skip them (they are facade objects, not bare @State values). */
-let _syncedSignalNames: Set<string> = new Set()
 /**
  * Per-component: binding name → service descriptor for every `service`
  * declaration (services.ts). The read-site rewrites consult it: `accessorReads`
@@ -1901,7 +1898,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _syncedSignalNames = new Set()
   _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
@@ -1954,7 +1950,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
@@ -2055,9 +2050,7 @@ function emitSwiftComponent(c: ComponentIR): string {
       ? null
       : optionalSlotNames.length > MAX_SWIFT_OPTIONAL_SLOTS
         ? `it has ${optionalSlotNames.length} optional render props, and each subset needs its own initializer (at most ${MAX_SWIFT_OPTIONAL_SLOTS} are lowered, ${2 ** MAX_SWIFT_OPTIONAL_SLOTS} initializers)`
-        : c.decls.some((d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal')
-          ? 'its synced state already needs a generated init() that seeds it, and the optional-slot initializers cannot'
-          : null
+        : (swiftInitDecls(c.decls)[0]?.init.optionalSlotReason ?? null)
   _optionalSlotsAsRequired = optionalSlotFallback === null ? new Set() : new Set(optionalSlotNames)
   const initParams: SwiftInitParam[] = []
   const propLines = c.props.map((p) => {
@@ -2217,16 +2210,11 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
-  // `@pyreon/sync` — a doc + its synced signals are declared as TYPED @State
-  // above; seed them in a generated init() (a synced signal's @State
-  // initializer references the doc, which a plain @State cannot do). Props are
-  // threaded as init params (reproducing SwiftUI's memberwise init) so the
-  // component can still take props. Docs are created + seeded before signals so
-  // each signal can reference its doc's local.
-  const syncDecls = c.decls.filter(
-    (d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal',
-  )
-  if (syncDecls.length > 0 && !isLayout) {
+  // A plugin's declarations that are declared TYPED with no initializer (a `@State` initializer cannot reference another
+  // property) are seeded in a generated init() (`DeclEmitter.swiftInit`). Props are threaded as init params (reproducing
+  // SwiftUI's memberwise init) so the component can still take props.
+  const seededDecls = swiftInitDecls(c.decls)
+  if (seededDecls.length > 0 && !isLayout) {
     const params = c.props
       .map((p) =>
         typeIsOptional(p.type)
@@ -2238,22 +2226,8 @@ function emitSwiftComponent(c: ComponentIR): string {
     for (const p of c.props) {
       lines.push(`    self.${swiftIdent(p.name)} = ${swiftIdent(p.name)}`)
     }
-    for (const d of syncDecls) {
-      if (d.kind === 'crdt-doc') {
-        const actor =
-          d.actorLiteral !== undefined ? swiftStr(d.actorLiteral) : 'UUID().uuidString'
-        lines.push(`    let ${swiftIdent(d.name)} = PyreonCrdtDoc(actor: ${actor})`)
-        lines.push(`    _${swiftIdent(d.name)} = State(initialValue: ${swiftIdent(d.name)})`)
-      }
-    }
-    for (const d of syncDecls) {
-      if (d.kind === 'synced-signal') {
-        const mapArg = d.map !== undefined ? `map: ${swiftStr(d.map)}, ` : ''
-        const initial = syncedInitialSwift(d.scalarType, d.initialValue)
-        lines.push(
-          `    _${swiftIdent(d.name)} = State(initialValue: PyreonSyncedSignal(doc: ${swiftIdent(d.docBinding)}, ${mapArg}key: ${swiftStr(d.key)}, initial: ${initial}))`,
-        )
-      }
+    for (const { decl, init } of seededDecls) {
+      for (const line of init.lines(decl, swiftEmitContext(2))) lines.push(`    ${line}`)
     }
     lines.push(`  }`)
   }
@@ -2796,11 +2770,6 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
   return stmts.map(mapStmt)
 }
 
-/** Swift type for a synced signal's scalar (`number` → `Double`). */
-function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
-  return scalar === 'string' ? 'String' : scalar === 'double' ? 'Double' : 'Bool'
-}
-
 /**
  * One template-literal interpoland. A Double goes through the runtime's
  * `pyreonNumberString`, because Swift interpolation prints a whole-valued
@@ -2826,17 +2795,6 @@ function resolveSwiftStructFields(
   }
   return []
 }
-
-/** Swift literal for a synced signal's initial scalar value. */
-function syncedInitialSwift(
-  scalar: 'string' | 'double' | 'bool',
-  value: string | number | boolean,
-): string {
-  if (scalar === 'string') return swiftStr(String(value))
-  if (scalar === 'bool') return value ? 'true' : 'false'
-  return String(value)
-}
-
 
 /**
  * SwiftUI `KeyEquivalent` for a parsed hotkey base key.
@@ -3245,17 +3203,6 @@ function emitSwiftDecl(
   }
   // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
   if (d.kind === 'ext') return emitPluginDecl(d, 'swift', swiftEmitContext(2))
-  // `@pyreon/sync` — the doc + each synced signal are declared as TYPED @State
-  // with NO inline initializer; they're seeded in the component's generated
-  // `init()` (emitSwiftComponent), because a synced signal's initializer must
-  // reference the doc and one @State cannot reference another at property init.
-  if (d.kind === 'crdt-doc') {
-    return `@State private var ${swiftIdent(d.name)}: PyreonCrdtDoc`
-  }
-  if (d.kind === 'synced-signal') {
-    return `@State private var ${swiftIdent(d.name)}: PyreonSyncedSignal<${syncedSignalSwiftType(d.scalarType)}>`
-  }
-  // (see swiftSortKeyExpr below for the `by` key coercion)
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
   // (added at the component-emit level via _usesColorScheme). Returns
@@ -5434,11 +5381,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the snapshot doesn't expose lurking gaps prematurely.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
-          return `${swiftIdent(e.callee.name)}()`
-        }
-        // A syncedSignal `title()` invokes the facade's `callAsFunction()` to
-        // read the current value (parens preserved, like a machine read).
-        if (_syncedSignalNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
         }
         // A web service accessor is CALLED (`net()`, `state()`, `s()`); natively

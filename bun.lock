@@ -2085,6 +2085,7 @@
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/core": "workspace:^",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2093,6 +2094,7 @@
         "ws": "^8.22.0",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "ws": "^8.21.3",
       },

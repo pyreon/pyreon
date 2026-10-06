@@ -596,10 +596,6 @@ const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 let _zeroArgFnNames: Set<string> = new Set()
 /** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
 let _zeroArgHelperNames: Set<string> = new Set()
-/** `syncedSignal(...)` bindings — read `x()` (Kotlin `invoke`), write `x.set(v)`
- *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
- *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
-let _syncedSignalNames: Set<string> = new Set()
 /**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
@@ -1395,7 +1391,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _syncedSignalNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1433,7 +1428,6 @@ function emitKotlinComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
@@ -1779,7 +1773,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _urlStateNames = new Set()
-  _syncedSignalNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1866,17 +1859,6 @@ function resolveKotlinStructFields(elem: TypeIR): { name: string; type: TypeIR }
     if (s) return s.fields
   }
   return []
-}
-
-/** Kotlin literal for a synced signal's initial scalar value (`number` → Double). */
-function syncedInitialKotlin(
-  scalar: 'string' | 'double' | 'bool',
-  value: string | number | boolean,
-): string {
-  if (scalar === 'string') return kotlinStr(String(value))
-  if (scalar === 'bool') return value ? 'true' : 'false'
-  // A Double literal so `PyreonSyncedSignal<Double>` is inferred (JS number).
-  return Number.isInteger(value as number) ? `${value}.0` : String(value)
 }
 
 /** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
@@ -2197,22 +2179,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // descriptor in services.ts (see `renderKotlinService`).
   if (d.kind === 'service') {
     return renderKotlinService(serviceFor(d.hook), kotlinIdent(d.name))
-  }
-  // `@pyreon/sync` — `remember { }` blocks run sequentially in composition, so
-  // (unlike Swift's @State) the doc and its signals can reference each other
-  // directly; no synthesized init needed. `title()` / `title.set(v)` flow
-  // through unchanged (the facade defines `invoke` / `set`).
-  if (d.kind === 'crdt-doc') {
-    const actor =
-      d.actorLiteral !== undefined
-        ? kotlinStr(d.actorLiteral)
-        : 'java.util.UUID.randomUUID().toString()'
-    return `val ${kotlinIdent(d.name)} = remember { PyreonCrdtDoc(${actor}) }`
-  }
-  if (d.kind === 'synced-signal') {
-    const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
-    const mapArg = d.map !== undefined ? `, ${kotlinStr(d.map)}` : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${kotlinStr(d.key)}, ${initial}${mapArg}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -4172,9 +4138,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // delegated `var by` shape.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
-          return `${kotlinIdent(e.callee.name)}()`
-        }
-        if (_syncedSignalNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
         // A web service accessor is CALLED (`net()`, `state()`, `s()`);
