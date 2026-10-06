@@ -95,6 +95,8 @@ import islands from 'virtual:pyreon/islands-registry'
 hydrateIslandsAuto(islands)
 ```
 
+The dev boot audit uses the nearest application package, so island names in independent sibling apps do not conflict. Closing or replacing the dev server cancels pending audits and context writes and removes its context watcher.
+
 `hydrate: 'never'` islands are deliberately OMITTED from the registry — the strategy ships zero client JS, so registering a loader (which would pull the component into the client bundle graph) would defeat it. Manual `hydrateIslands({ … })` stays public for non-Vite consumers.
 
 ## Rocketstyle collapse (opt-in, build-only)

@@ -11,7 +11,10 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
-import { bindServices, SERVICES, serviceFor, serviceLifecycle, type ServiceDescriptor } from './services'
+import { allServices, bindServices, emitPluginDecl, findElementLowering, lowerPluginMemberCall, serviceFor, serviceLifecycle } from './registry-lookup'
+import { chartHandleSeriesKey, isChartHandleDecl } from './plugins/charts'
+import { createPluginScope, type PluginScope } from './plugin-scope'
+import type { ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -126,7 +129,6 @@ import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { createEmitContext } from './emit-context'
-import { findElementLowering } from './element-lowering'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -136,7 +138,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -1253,9 +1255,8 @@ export function emitSwift(
     }
   }
   _moduleConstExprs = new Map()
-  // Per module: a handle name from a previous file must not make this file's `x.dispatch(...)` lower.
-  _chartHandleNames.clear()
-  _chartHandleSeries.clear()
+  // Per module: a declaration from a previous file must not make this file's `x.dispatch(...)` lower.
+  _pluginScope = createPluginScope()
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
@@ -2499,6 +2500,9 @@ function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
 }
 
 function emitSwiftComponent(c: ComponentIR): string {
+  // A fresh plugin scope per component; the outer one is restored at the end (and a file start installs a new module scope).
+  const outerPluginScope = _pluginScope
+  _pluginScope = createPluginScope(c.decls)
   // Local binding names may repeat in unrelated components. Seed the kind,
   // bounds and reset value together, and release them with this component.
   _pureStateSwift = pureStateBindings(c.decls)
@@ -3197,9 +3201,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (the crash reporter) have nothing to release. The set of services that
   // need this is DATA, so a new reactive container cannot ship frozen by
   // omission: `check-native-lifecycle-wiring` gates the registry against it.
-  // Emitted in SERVICES order (not declaration order), so a component with
+  // Emitted in service-registry order (not declaration order), so a component with
   // several keeps one stable modifier order.
-  for (const svc of SERVICES) {
+  for (const svc of allServices()) {
     if (svc.lifecycle === undefined) continue
     for (const d of c.decls) {
       if (d.kind !== 'service' || d.hook !== svc.hook) continue
@@ -3356,9 +3360,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.splice(pyreonHostStateAt, 0, ..._hostStateDecls.map((l) => `  ${l}`))
     _hostStateDecls = []
   }
-  // A handle's series count comes from the chart bound to it, known only once the body has emitted.
-  const joined = lines.join('\n').replace(/__PYREON_HANDLE_SERIES_(\w+)__/g, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
-  _chartHandleSeries.clear()
+  // A plugin's deferred values (a chart handle's series count) are known only once the body has emitted.
+  const joined = _pluginScope.finalize(lines.join('\n'))
+  _pluginScope = outerPluginScope
   _pureStateSwift = new Map()
   return joined
 }
@@ -4153,12 +4157,8 @@ function emitSwiftDecl(
   if (d.kind === 'service') {
     return `@State private var ${swiftIdent(d.name)} = ${serviceFor(d.hook).swift}`
   }
-  // `const chart = createChartHandle()` → an @Observable PyreonChartHandle; its name is
-  // remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
-  if (d.kind === 'chart-handle') {
-    _chartHandleNames.add(d.name)
-    return `@State private var ${swiftIdent(d.name)} = PyreonChartHandle(seriesCount: __PYREON_HANDLE_SERIES_${d.name}__)`
-  }
+  // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
+  if (d.kind === 'ext') return emitPluginDecl(d, 'swift', swiftEmitContext(2))
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`
@@ -6193,17 +6193,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // literal's — and writes every leaf the way ECMAScript does.
       return `PyreonJSON.stringify(${emitSwiftExpr(e.arg, indent)})`
     case 'call': {
-      if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNames.has(e.callee.object.name)) {
-        const f = chartActionFields(e.args[0])
-        if (f === null) {
-          _emitWarnings.push(`<${e.callee.object.name}.dispatch>: native needs an inline action object with a literal \`type\` ({ type: 'select', index: 2 }); the call is skipped.`)
-          return '()'
-        }
-        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1' : `Int(${emitSwiftExpr(x, indent)})`)
-        const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `Double(${emitSwiftExpr(x, indent)})`)
-        const areas = f.areas === undefined ? '[]' : withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitSwiftExpr(f.areas!, indent))
-        return `${swiftIdent(e.callee.object.name)}.dispatch(ChartActionInput(type: ${emitSwiftExpr(f.type!, indent)}, index: ${int(f.index)}, series: ${int(f.series)}, start: ${dbl(f.start, '0.0')}, end: ${dbl(f.end, '1.0')}, brushType: ${f.brushType === undefined ? '""' : emitSwiftExpr(f.brushType, indent)}, areas: ${areas}))`
-      }
+      // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
+      const pluginLowered = lowerPluginMemberCall(e, 'swift', _pluginScope, () => swiftEmitContext(indent))
+      if (pluginLowered !== undefined) return pluginLowered
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypes.get(e.callee.name)
         if (paramTypes !== undefined) {
@@ -9148,9 +9140,13 @@ function swiftEmitContext(indent: number) {
       emit: emitSwiftJsx,
       staticAttr: readStaticAttr,
       stringLiteral: swiftStr,
+      identifier: swiftIdent,
       warn: (message) => {
         _emitWarnings.push(message)
       },
+      expr: emitSwiftExpr,
+      exprAs: (type, e, at) => withExpectedType(type, () => emitSwiftExpr(e, at)),
+      scope: () => _pluginScope,
     },
     indent,
   )
@@ -14197,10 +14193,12 @@ function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number):
   return `(${emitSwiftExpr(handler, indent)})(${hitExpr})`
 }
 
-/** Names declared `createChartHandle()` in the module being emitted — their `dispatch` calls lower to `ChartActionInput`. */
-const _chartHandleNames = new Set<string>()
-/** Handle name → the series count of the chart bound to it (substituted into the declaration at component end). */
-const _chartHandleSeries = new Map<string, number>()
+/**
+ * The current component's plugin scope (its ext declarations, plugin state,
+ * deferred substitutions) — a fresh one per component and per file, see
+ * `plugin-scope.ts`.
+ */
+let _pluginScope: PluginScope = createPluginScope()
 
 let _swiftHostStateSeq = 0
 
@@ -15012,7 +15010,9 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
 function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handleAttr = chartAttrExpr(e, 'handle')
   if (handleAttr === undefined) return emitSwiftPlotHostCore(e, indent, undefined)
-  if (handleAttr.kind !== 'identifier' || !_chartHandleNames.has(handleAttr.name)) {
+  // The host asks the component's DECLARATIONS whether the name is a chart handle — never a plugin's state.
+  const handleDecl = handleAttr.kind === 'identifier' ? _pluginScope.declByName(handleAttr.name) : undefined
+  if (handleAttr.kind !== 'identifier' || handleDecl === undefined || !isChartHandleDecl(handleDecl)) {
     _emitWarnings.push('<PlotChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the chart renders without the handle.')
     return emitSwiftPlotHostCore(e, indent, undefined)
   }
@@ -15651,7 +15651,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   // The handle's `legendInverseSelect` flips over the series this chart draws. The count is baked into the handle's
   // declaration at compile time rather than written from the chart: a device run showed that writing the @Observable
   // handle from the host's `.onAppear` stopped the host's drag gestures from ever firing.
-  if (handle !== undefined) _chartHandleSeries.set(handle, marksV.elements.length)
+  if (handle !== undefined) _pluginScope.resolveDeferred(chartHandleSeriesKey(handle), String(marksV.elements.length))
   const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
   if (onZoom?.kind === 'event') {
     if (windowed) gesture += `.onChange(of: [pyreonZoom.start, pyreonZoom.end]) { ${swiftChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`

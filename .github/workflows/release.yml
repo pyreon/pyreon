@@ -284,6 +284,7 @@ jobs:
       # scheduled companion (`published-state.yml`) catches the class where
       # this whole workflow crashed before reaching this step.
       - name: Verify npm received the release
+        timeout-minutes: 10
         # PUBLISH path only. On the Version-PR path nothing publishes, so
         # repo-version > npm-latest is the EXPECTED state whenever a prior
         # release is pending — the gate would (and did, 2026-06-11) fail
@@ -298,7 +299,7 @@ jobs:
         # moment publishing finishes — same source of truth as the finalize
         # step's phase 1.
         if: always() && hashFiles('publish-result.json') != ''
-        run: bun scripts/check-published-state.ts
+        run: bun scripts/check-published-state.ts --wait-for-publish
 
   # ── Prerelease snapshot (release/** branches) ────────────────────
   # Pushes to `release/**` branches publish a `next` npm tag — useful for
@@ -433,7 +434,8 @@ jobs:
       - name: Build + republish (idempotent — already-published versions are skipped)
         run: bun run release
       - name: Verify npm now matches the released version
-        run: bun scripts/check-published-state.ts
+        timeout-minutes: 10
+        run: bun scripts/check-published-state.ts --wait-for-publish
 
   prerelease:
     if: startsWith(github.ref, 'refs/heads/release/')

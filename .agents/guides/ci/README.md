@@ -16,7 +16,21 @@ Read before adding or changing a workflow, job, required check, or cache key.
   expensive runners idle until cheap deterministic checks prove the commit is
   worth testing.
 - Every gate step inside `Fast Gates` / `Build` runs with `if: ${{ !cancelled() }}`, so one push reports every red gate.
+- Job-level preflight and aggregate verdicts must also respect cancellation.
+  `Test` uses `!cancelled()` so failed prerequisites still produce a verdict,
+  while superseded PR runs release their concurrency slot. An `always()` job
+  can survive ordinary cancellation and leave the newest run pending.
+- Bootstrap build deadlines must settle the runtime, not just the build promise.
+  The shared bounded-process helper stops owned POSIX descendants and destroys
+  inherited pipes. Bootstrap allows 250ms output drainage after parent exit;
+  incomplete drainage fails closed. Windows cleanup targets the direct child.
 - Matrices and decide outputs are fail-closed. A detection error runs the full set, because a skipped required check reports success to branch protection.
+- Generated-output freshness must reject failed Git comparisons and include
+  new unstaged files within the generator-owned paths. Empty stdout alone
+  does not prove freshness; unrelated working-tree edits remain outside the check.
+- Generated troubleshooting navigation lists categories without persisting entry
+  totals. Independent catalog additions must merge into a fresh index without
+  conflicts over derived counters; category pages retain every entry and fix.
 - Expensive matrices use `fail-fast: true`, and sequential batches stop on the
   first real failure. Preserve diagnostics/upload/cache steps with
   `if: always()` rather than continuing expensive test work after red.
@@ -44,7 +58,9 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `Test` validates `toJSON(needs)` after its dependencies finish. Install and Fast Gates must succeed; each selected matrix must succeed; only explicitly unselected matrices may skip. Missing, malformed, or contradictory selection outputs fail. Healthy runs make no jobs-API calls. Failed runs request job links once, with a ten-second total deadline; unavailable or stale API data cannot change the failed verdict.
 - `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
   bypassing Fast Gates or a matrix from disabling cancellation.
-- `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue.
+- `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue. Coverage-infrastructure PRs also run `Coverage (Full)`; native coverage retains its main/merge-group scope.
+  Superseded coverage PR runs cancel by PR ref; main and merge-group runs finish
+  and coalesce pending work. The static CI policy gate guards both behaviors.
 
 ## Other workflows
 
@@ -76,6 +92,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Gate reference
 
+- **Coverage (Full)**: main and merge groups measure every testable workspace except the native compiler, which retains its separate cached coverage job. Coverage-infrastructure PRs also run the full gate before merging. The four-worker pool is followed by three serial nested-build suites; budget for both phases. The full job has a 35m backstop, a 25m coverage step and a 3m always-run log upload. Each package logs its start and duration, so a partial run identifies work still in flight. Per-package deadlines terminate the owned POSIX process group (TERM, then KILL after 1s) and settle even if inherited pipes stay open. Timed-out/signalled executions fail even after printing a summary. No package thresholds are relaxed. Optional native binaries must not control JavaScript fallback coverage: syntax, live-option and lens assertions run independently, with Rust parity checked additionally when the binary is installed.
 - **audit-types** (`bun run audit-types --all --strict`): flags public-interface fields with zero non-type references (typed-but-unimplemented). New HIGH findings block. Fix the runtime, or add to `EXEMPT_FIELDS` in `scripts/audit-types.ts` with a rationale.
 - **verify-modes** (`bun run verify-modes`): `vite build` for every example × mode, asserting rendered content, not just a green build. New cells must check content.
 - **check-bundle-budgets** / **check-import-budgets**: gzipped main-entry and minimal-import sizes against `scripts/{bundle,import}-budgets.json`, measured on built `lib/` with a `NODE_ENV=production` define. Rebuild each changed package before measuring locally; source-resolving tests and typechecks can pass while these gates measure yesterday's library. Run both size gates after that rebuild. For intentional growth, `--update` and review the diff.
@@ -90,8 +107,8 @@ Branch protection pins 15 required contexts in two authorities that must stay id
   - Changesets fixed group (all packages share one version).
   - `check-release-readiness`: `publishConfig.access`, exact provenance repository identity and fixed-group coverage. The publisher shares the repository check and rejects the whole selected plan before any manifest rewrite or publish if its metadata is missing or mismatched.
   - Native coverage allows a cold verdict cache: a 60-minute measurement ceiling inside a 75-minute job, with per-compile and per-test deadlines still enforced. Stub/compiler changes invalidate cached verdicts.
-  - `Release Build` and the publishing workflow reject high-severity locked dependency advisories with `bun audit --audit-level=high`. The isolated Verify Modes workerd tool installs with `npm ci` from `scripts/verify-modes-tools/package-lock.json` and audits that tree too; update the lock together with its manifest.
-  - `check-published-state`: every publishable package, not sentinels. A partial release where some packages lag the cut version is red and names each lagging package.
+  - `Release Build` and the publishing workflow reject high-severity locked dependency advisories with `bun audit --audit-level=high`. The isolated Verify Modes workerd tool installs with `npm ci` from `scripts/verify-modes-tools/package-lock.json` and audits that tree too; update the lock together with its manifest. Its Sharp override pins the patched 0.35.5 transitive dependency while retaining the existing Wrangler runtime version and the high-severity audit.
+  - `check-published-state`: every publishable package, not sentinels. A partial release where some packages lag the cut version is red and names each lagging package. Post-publish steps pass `--wait-for-publish`: only successfully submitted packages in the current `publish-result.json` receive a 5m visibility window before full verification; each lookup has a 10s bound and the step has 10m. Daily checks and resume detection stay immediate. This avoids treating npm processing delay as a failed publication.
   - `scripts/publish.ts` retries only npm errors with evidence of being transient (5xx, dropped sockets). Never 404/403/conflict, and never `E422 Error verifying sigstore provenance bundle`, which reproduces on every attempt (a manifest missing `repository` causes it).
   - `release.yml`'s `resume-detect` / `resume-publish` republish lagging packages from the release tag (never main), once per version.
   - A new package's first publish needs a one-time manual OIDC trusted-publisher bootstrap.

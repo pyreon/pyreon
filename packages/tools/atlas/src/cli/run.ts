@@ -739,6 +739,12 @@ Usage: atlas <command> [dir] [options]
                       then stays the scan's static name check)
     --axe-min-impact <minor|moderate|serious|critical>
                       ignore axe violations below this impact (default minor)
+    --settle-ms <ms>  capture only after the preview has been unchanged (DOM,
+                      geometry, canvas pixels) for this long (default 300)
+    --settle-timeout <ms>
+                      hard cap on that wait (default 5000); a preview still
+                      changing then FAILS its snapshot (capture-unsettled)
+                      instead of recording an arbitrary frame
   atlas --help        show this help (also: atlas <command> --help)
   atlas --version     print the installed version
 `
@@ -809,6 +815,8 @@ export function flagValue(args: readonly string[], flag: string): string | undef
  */
 const VALUE_FLAGS = new Set([
   '--axe-min-impact',
+  '--settle-ms',
+  '--settle-timeout',
   '--out',
   '--title',
   '--base',
@@ -868,7 +876,7 @@ const COMMAND_FLAGS: Record<string, { flags: readonly string[]; positionals: num
   build: { flags: ['--out', '--title', '--base', '--dir'], positionals: 1 },
   verify: { flags: ['--json', '--check', '--cwd', '--no-mount'], positionals: 1 },
   'verify-browser': {
-    flags: ['--update-snapshots', '--no-axe', '--axe-min-impact'],
+    flags: ['--update-snapshots', '--no-axe', '--axe-min-impact', '--settle-ms', '--settle-timeout'],
     positionals: 1,
   },
 }
@@ -1196,9 +1204,25 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       return 1
     }
     const axeImpact = impactArg as (typeof IMPACTS)[number] | undefined
+    const ms = (flag: string): number | undefined | 'bad' => {
+      const raw = flagValue(rest, flag)
+      if (raw === undefined) return undefined
+      const n = Number(raw)
+      return Number.isFinite(n) && n >= 0 && /^\d+$/.test(raw) ? n : 'bad'
+    }
+    const settleMs = ms('--settle-ms')
+    const settleTimeoutMs = ms('--settle-timeout')
+    for (const [flag, v] of [['--settle-ms', settleMs], ['--settle-timeout', settleTimeoutMs]] as const) {
+      if (v === 'bad') {
+        err(`atlas: ${flag} must be a non-negative whole number of milliseconds (got "${flagValue(rest, flag)}")\n`)
+        return 1
+      }
+    }
     try {
       const summary = await runBrowserVerify({
         cwd: dir ?? '.',
+        ...(typeof settleMs === 'number' ? { settleMs } : {}),
+        ...(typeof settleTimeoutMs === 'number' ? { settleTimeoutMs } : {}),
         ...(rest.includes('--update-snapshots') ? { updateSnapshots: true } : {}),
         ...(rest.includes('--no-axe')
           ? { axe: false as const }
@@ -1235,6 +1259,13 @@ export async function runCli(argv: readonly string[]): Promise<number> {
             `(reactive coverage NOT measured; the run continued): ` +
             summary.navigatedAway.map((n) => `${n.id} → ${n.url}`).join(', ') +
             '\n',
+        )
+      }
+      if (summary.unsettled.length > 0) {
+        err(
+          `[Pyreon] atlas verify-browser: ${summary.unsettled.length} scenario(s) never held still, so NO screenshot was taken (capture-unsettled): ` +
+            `${summary.unsettled.join(', ')}.\n` +
+            `  A preview with an endless animation cannot be baselined; make it finish, or raise --settle-timeout.\n`,
         )
       }
       if (summary.catalogPath) out(`  → ${summary.catalogPath}\n`)

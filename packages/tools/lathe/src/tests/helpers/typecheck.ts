@@ -17,6 +17,21 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '.generated', 'tc')
 const CORE = join(HERE, '..', '..', '..', '..', '..', 'core', 'core', 'src')
 
+/** Real compiler fixtures retain a bounded budget under coverage load. */
+export const TYPECHECK_BUDGET = { timeout: 60_000 }
+
+/** Check authored fixture files while still resolving all imported types. */
+export function generatedDiagnostics(
+  program: ts.Program,
+  entries: readonly string[],
+): ts.Diagnostic[] {
+  return entries.flatMap((entry) => {
+    const file = program.getSourceFile(entry)
+    if (!file) throw new Error(`TypeScript did not load generated fixture ${entry}`)
+    return [...program.getSyntacticDiagnostics(file), ...program.getSemanticDiagnostics(file)]
+  })
+}
+
 export interface TypecheckOptions {
   /** Extra consumer-side source files, keyed by path relative to the output root. */
   extra?: Record<string, string>
@@ -40,7 +55,9 @@ export function typecheckSpec(
   const result = generate(spec, cfg)
   const root = join(ROOT, name)
   rmSync(root, { recursive: true, force: true })
-  const files = result.files.filter((f) => /\.tsx?$/.test(f.path) && !f.path.endsWith('.native.tsx'))
+  const files = result.files.filter(
+    (f) => /\.tsx?$/.test(f.path) && !f.path.endsWith('.native.tsx'),
+  )
   const written: string[] = []
   const write = (path: string, contents: string): void => {
     const abs = join(root, path)
@@ -76,13 +93,12 @@ export function typecheckSpec(
     lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
     ...(options.noUnused ? { noUnusedLocals: true, noUnusedParameters: true } : {}),
   })
-  const errors = ts
-    .getPreEmitDiagnostics(program)
-    .filter((d) => d.file?.fileName.startsWith(root) === true)
-    .map(
-      (d) =>
-        `${d.file?.fileName.slice(root.length + 1) ?? '?'}: TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`,
-    )
+  // The workspace gate checks imported framework implementations once.
+  // Checking them again here then filtering them out only wastes time.
+  const errors = generatedDiagnostics(program, written).map(
+    (d) =>
+      `${d.file?.fileName.slice(root.length + 1) ?? '?'}: TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`,
+  )
   return { errors, result, root }
 }
 

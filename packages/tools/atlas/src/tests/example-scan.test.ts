@@ -14,7 +14,7 @@
  * one unless something asserts the catalog has content.
  */
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { runScan } from '../cli/run'
 
 /**
@@ -30,16 +30,23 @@ import { runScan } from '../cli/run'
 const EXAMPLE = resolve(import.meta.dirname, '../../../../../examples/atlas-workshop')
 
 describe('scanning the atlas-workshop example', () => {
-  it('discovers the component library, not just the shell', async () => {
+  let result: Awaited<ReturnType<typeof runScan>>
+  // One real scan supplies these read-only assertions. Four independent scans
+  // repeated cold Vite/config/type discovery; under full-suite load the first
+  // two crossed 20s and continued running while later tests started new scans
+  // (2026-10-05: 45s file duration). Allow 120s for the cold/instrumented setup
+  // and await completion before inspecting any part of the resulting catalog.
+  beforeAll(async () => {
     // `write: false` — a test must not drop build artifacts into the example.
-    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
+    result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
+  }, 120_000)
 
+  it('discovers the component library, not just the shell', () => {
     expect(result.components, 'the example must catalog a real library').toBeGreaterThanOrEqual(3)
     expect(result.scenarios, 'components without scenarios teach an agent nothing').toBeGreaterThan(5)
   })
 
-  it('reads real prop types into controls, including unions and accessors', async () => {
-    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
+  it('reads real prop types into controls, including unions and accessors', () => {
     // The guide is the agent-facing rendering; asserting on it covers both the
     // extraction and the presentation in one pass.
     const guide = result.guide
@@ -56,9 +63,7 @@ describe('scanning the atlas-workshop example', () => {
     expect(guide).toMatch(/required:[^\n]*label/)
   })
 
-  it('reports verified, failing and unverified separately', async () => {
-    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
-
+  it('reports verified, failing and unverified separately', () => {
     // The three counts must add up — a scenario cannot be two of them, and a
     // missing bucket is how "unverified" used to hide inside "verified".
     expect(result.verified + result.failed + result.unverified).toBe(result.scenarios)
@@ -69,8 +74,7 @@ describe('scanning the atlas-workshop example', () => {
     expect(result.failed, 'the empty-label scenario must still fail a11y').toBeGreaterThan(0)
   })
 
-  it('names what is wrong in the guide, not just that something is', async () => {
-    const result = await runScan({ cwd: EXAMPLE, write: false, mount: false })
+  it('names what is wrong in the guide, not just that something is', () => {
     expect(result.guide).toMatch(/avoid:[^\n]*accessible name/)
   })
 })

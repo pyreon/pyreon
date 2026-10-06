@@ -198,3 +198,17 @@ export function renameCompatJsxAttributes(code: string, id: string): string {
   })
   return edits.length === 0 ? code : splice(code, edits)
 }
+
+/** Real bare island() call positions; examples in literals/comments are inert. */
+export function islandCallOffsets(code: string, id: string): ReadonlySet<number> {
+  const offsets = new Set<number>()
+  if (!code.includes('island')) return offsets
+  const program = parse(code, id, langOf(id))
+  if (!program) return offsets
+  walk(program, (node) => {
+    if (node.type !== 'CallExpression') return
+    const callee = node.callee as Node
+    if (callee.type === 'Identifier' && callee.name === 'island') offsets.add(callee.start)
+  })
+  return offsets
+}

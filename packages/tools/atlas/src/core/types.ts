@@ -187,6 +187,8 @@ export type FindingCode =
   | 'coverage-errored'
   | 'snapshot-differs'
   | 'snapshot-failed'
+  /** The preview never held still (an endless animation) so no screenshot was taken. */
+  | 'capture-unsettled'
   | 'baseline-created'
   | 'baseline-updated'
   /** The click-walk's default actions / window / dialog / history effects were suppressed. */

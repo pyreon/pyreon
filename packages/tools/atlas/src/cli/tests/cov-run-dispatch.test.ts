@@ -187,7 +187,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 3,
       snapshotsCreated: 2,
       snapshotsFailed: 0,
-      notDriven: [], unmatched: [], navigatedAway: [],
+      notDriven: [], unmatched: [], navigatedAway: [], unsettled: [],
       catalogPath: '/tmp/atlas-catalog.json',
     }))
     const runCli = await load()
@@ -204,10 +204,36 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 1,
       snapshotsCreated: 0,
       snapshotsFailed: 1,
-      notDriven: [], unmatched: [], navigatedAway: [],
+      notDriven: [], unmatched: [], navigatedAway: [], unsettled: [],
     }))
     const runCli = await load()
     expect(await runCli(['verify-browser', dir])).toBe(1)
+  })
+
+  it('forwards --settle-ms/--settle-timeout and names a scenario that never settled (#3837)', async () => {
+    let seen: Record<string, unknown> = {}
+    vi.doMock('../../verify-browser/runner', () => ({
+      runBrowserVerify: async (o: Record<string, unknown>) => {
+        seen = o
+        return {
+          scenarios: 1, coverageMeasured: 1, snapshotsCreated: 0, snapshotsFailed: 1,
+          notDriven: [], unmatched: [], navigatedAway: [], unsettled: ['x-endless--default'],
+        }
+      },
+    }))
+    const runCli = await load()
+    expect(await runCli(['verify-browser', dir, '--settle-ms', '150', '--settle-timeout=2000'])).toBe(1)
+    expect(seen.settleMs).toBe(150)
+    expect(seen.settleTimeoutMs).toBe(2000)
+    expect(errText()).toContain('x-endless--default')
+    expect(errText()).toContain('capture-unsettled')
+  })
+
+  it('rejects a non-numeric --settle-ms before doing any work', async () => {
+    mockRunner(() => ({}))
+    const runCli = await load()
+    expect(await runCli(['verify-browser', dir, '--settle-ms', 'soon'])).toBe(1)
+    expect(errText()).toContain('--settle-ms')
   })
 
   it('NAMES the scenarios it could not drive, rather than counting them silently', async () => {
@@ -218,7 +244,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 1,
       snapshotsCreated: 0,
       snapshotsFailed: 0,
-      notDriven: ['Workbench--default'], unmatched: [], navigatedAway: [],
+      notDriven: ['Workbench--default'], unmatched: [], navigatedAway: [], unsettled: [],
     }))
     const runCli = await load()
     expect(await runCli(['verify-browser', dir])).toBe(0)
@@ -245,7 +271,7 @@ describe('atlas verify-browser', () => {
     vi.doMock('../../verify-browser/runner', () => ({
       runBrowserVerify: async (options: unknown) => {
         seen = options
-        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [], navigatedAway: [] }
+        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [], navigatedAway: [], unsettled: [] }
       },
     }))
     const runCli = await load()
@@ -260,7 +286,7 @@ describe('atlas verify-browser', () => {
     vi.doMock('../../verify-browser/runner', () => ({
       runBrowserVerify: async (options: Record<string, unknown>) => {
         seen = options
-        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [], navigatedAway: [] }
+        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [], navigatedAway: [], unsettled: [] }
       },
     }))
     const runCli = await load()

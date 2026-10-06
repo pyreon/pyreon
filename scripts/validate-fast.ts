@@ -35,6 +35,8 @@
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
  *   - check-native-golden   (the native compiler's emitted Swift/Kotlin changed for the golden corpus)
  *   - check-compiler-boundary (library knowledge inside a compiler grew above its committed baseline)
+ *   - gen-native-builtin-plugins (the compiler's generated copy of a library-owned plugin is stale)
+ *   - check-native-plugin-types (a library-owned plugin names a Swift/Kotlin type nothing declares)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
@@ -164,6 +166,11 @@ const GATES: Gate[] = [
   // the boundary refactor (golden), and library knowledge inside either compiler may only shrink.
   { name: 'check-native-golden', cmd: 'bun scripts/check-native-golden.ts' },
   { name: 'check-compiler-boundary', cmd: 'bun scripts/check-compiler-boundary.ts' },
+  // A library owns its native lowering (e.g. @pyreon/hooks' native-plugin.ts); the compiler keeps a
+  // GENERATED copy so zero-config transform() needs no library. Stale copy = silently old lowering.
+  { name: 'gen-native-builtin-plugins', cmd: 'bun scripts/gen-native-builtin-plugins.ts --check' },
+  // Every Swift/Kotlin type a library-owned plugin names is declared in shipped sources (no phantom capability).
+  { name: 'check-native-plugin-types', cmd: 'bun scripts/check-native-plugin-types.ts' },
   { name: 'check-gates-wired', cmd: 'bun scripts/check-gates-wired.ts' },
   { name: 'check-skip-guards', cmd: 'bun scripts/check-skip-guards.ts' },
   { name: 'check-component-docs', cmd: 'bun scripts/check-component-docs.ts' },

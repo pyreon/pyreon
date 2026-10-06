@@ -242,12 +242,14 @@ describe('describeProblem discriminates a dead worker from a failed assertion', 
     expect(out).not.toContain('deflake the NAMED test')
   })
 
-  it('an ordinary assertion failure still says to deflake the named test', () => {
+  it('an ordinary assertion failure preserves the named test and checkout evidence', () => {
     const out = problem(
       '1 test(s) FAILED under the coverage run (exit=1): "widget renders" — ' +
         'AssertionError: expected 1 to be 2',
     )
-    expect(out).toContain('deflake the NAMED test')
+    expect(out).toContain('widget renders')
+    expect(out).toContain('measured checkout')
+    expect(out).not.toContain('main-branch evidence')
     expect(out).not.toContain('WORKER DIED')
   })
 

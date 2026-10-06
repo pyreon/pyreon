@@ -163,12 +163,13 @@ export interface LifecycleService {
 }
 
 /**
- * The Swift emit renders every descriptor `lifecycle` from ONE loop over
- * SERVICES. If that loop is gone, no descriptor's lifecycle is wired no matter
+ * The Swift emit renders every descriptor `lifecycle` from ONE loop over the
+ * registered services (`allServices()` — the active compiler's registry, which
+ * holds the built-in `SERVICES` plus every plugin's). If that loop is gone, no descriptor's lifecycle is wired no matter
  * what the descriptors say — so the gate checks the loop itself, not only data.
  */
 const SWIFT_LIFECYCLE_LOOP =
-  /for \(const svc of SERVICES\)[\s\S]{0,400}\.onAppear \{ \$\{name\}\.start\(\) \}/
+  /for \(const svc of (?:SERVICES|allServices\(\))\)[\s\S]{0,400}\.onAppear \{ \$\{name\}\.start\(\) \}/
 
 export function verifyLifecycleWiring(
   discovered: Map<string, { method: 'start' | 'connect'; files: string[] }>,
