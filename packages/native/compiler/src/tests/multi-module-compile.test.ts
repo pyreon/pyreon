@@ -33,14 +33,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlinFiles,
-  validateSwiftFilesWithStubs,
-} from '../validate'
+import { transform, validateKotlinFiles, validateSwiftFilesWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
 const BOOKSHELF = join(REPO, 'examples/lathe-bookshelf/src/gen')
