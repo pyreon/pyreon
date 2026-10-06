@@ -113,7 +113,7 @@ describe('explicit whitespace text children hydrate in place', () => {
         null,
         h('i', null, 'x'),
         ' ',
-        h(For, { each: items, by: (n: number) => n }, (n: number) => h('em', null, String(n))),
+        h(For, { each: items, by: (n: number) => n, children: (n: number) => h('em', null, String(n)) }),
         ' ',
         h(Show, { when: () => true }, h('b', null, 'y')),
         ' ',
@@ -129,9 +129,11 @@ describe('explicit whitespace text children hydrate in place', () => {
       h(
         'ul',
         null,
-        h(For, { each: items, by: (n: number) => n }, (n: number) =>
-          h('li', null, h('i', null, String(n)), ' ', h('b', null, 'y'), ' '),
-        ),
+        h(For, {
+          each: items,
+          by: (n: number) => n,
+          children: (n: number) => h('li', null, h('i', null, String(n)), ' ', h('b', null, 'y'), ' '),
+        }),
       ),
     )
     expect(r.after).toBe(r.before)
