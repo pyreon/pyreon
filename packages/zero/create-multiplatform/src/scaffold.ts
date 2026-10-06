@@ -278,20 +278,23 @@ packages:
   PyreonRouter:
     path: PyreonPackages/native-router-swift
 
-preBuildScripts:
-  # SRCROOT is the .xcodeproj dir (ios/); scripts/ lives at the project
-  # root, one level up.
-  - script: |
-      bash "\${SRCROOT}/../scripts/build-ios.sh"
-    name: '[Pyreon] Compile src/App.tsx → generated/App.swift'
-    runOnlyWhenInstalling: false
-    basedOnDependencyAnalysis: false
-
 targets:
   ${pascal}:
     type: application
     platform: iOS
     deploymentTarget: '17.0'
+    # XcodeGen reads \`preBuildScripts\` ONLY on a target. At the project root
+    # it is accepted without error and silently produces zero script phases,
+    # so Xcode would never recompile src/ (tests/scaffold-xcodegen.test.ts
+    # asserts the generated .pbxproj, not just this YAML).
+    preBuildScripts:
+      # SRCROOT is the .xcodeproj dir (ios/); scripts/ lives at the project
+      # root, one level up.
+      - script: |
+          bash "\${SRCROOT}/../scripts/build-ios.sh"
+        name: '[Pyreon] Compile src/App.tsx → generated/App.swift'
+        runOnlyWhenInstalling: false
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: PyreonRuntime
       - package: PyreonRouter
@@ -411,7 +414,9 @@ mkdir -p "\${PROJECT_DIR}/ios/generated"
 # ios/PyreonPackages. Both are constant paths in project.yml, so hoisted and
 # pnpm installs work. Runs before the compile so a package installed since the
 # last build is present for this one.
-npx pyreon-native wire --ios-out="\${PROJECT_DIR}/ios"
+# --app is explicit: Xcode runs this phase with cwd = ios/, which has no
+# package.json, so wire's cwd-based app-root discovery would exit 1.
+npx pyreon-native wire --app="\${PROJECT_DIR}" --ios-out="\${PROJECT_DIR}/ios"
 
 npx pyreon-native build --target=ios --source="\${PROJECT_DIR}/src" --out="\${PROJECT_DIR}/ios/generated"
 # Asset pipeline: shared assets/ → Assets.xcassets (skipped when empty).

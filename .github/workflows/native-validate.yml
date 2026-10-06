@@ -730,6 +730,15 @@ jobs:
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+      - name: Scaffold + example iOS projects — XcodeGen emits the script phase
+        # XcodeGen reads `preBuildScripts` only on a target; at the YAML root it
+        # silently generates ZERO script phases, so Xcode never ran the TSX ->
+        # Swift hook (#3841). Needs real xcodegen, which this runner (unlike the
+        # ubuntu job) can install. Required: an absent xcodegen FAILS the test.
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          cd packages/zero/create-multiplatform
+          PYREON_REQUIRE_NATIVE_VALIDATE=1 bunx vitest run src/tests/scaffold-xcodegen.test.ts
       - name: Co-located native sources — compile + RUN the Swift tests (real SDK)
         # `check-native-cosource` compiles every `packages/*/*/native/swift` and
         # RUNS its tests, but only where the full SwiftUI/Observation SDK exists.
