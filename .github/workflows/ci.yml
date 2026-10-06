@@ -1477,6 +1477,11 @@ jobs:
           echo "Binary OK: $(ls -la $BIN)"
       - name: Test (Rust binary) — @pyreon/compiler suite against the binary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        # This job built and asserted the binary above, so specs that guard
+        # "a skipped native backend is not coverage" are held to it HERE (the
+        # unit-test cells build no binary and leave this unset).
+        env:
+          PYREON_REQUIRE_NATIVE_COMPILER: '1'
         run: bun run --filter='@pyreon/compiler' test
       # Measure the packages this PR actually touches (`--changed-only`: the
       # DIRECTLY-changed workspaces, never the dependent closure — coverage
