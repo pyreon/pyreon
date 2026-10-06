@@ -867,6 +867,8 @@
       "dependencies": {
         "@pyreon/charts": "workspace:*",
         "@pyreon/hooks": "workspace:*",
+        "@pyreon/http": "workspace:*",
+        "@pyreon/query": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/core": "workspace:*",
