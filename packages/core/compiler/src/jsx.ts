@@ -6277,23 +6277,14 @@ const DOM_PROPS = new Set([
   'indeterminate',
 ])
 
-const STATEFUL_CALLS = new Set([
-  'signal',
-  'computed',
-  'effect',
-  'batch',
-  'createSelector',
-  'createContext',
-  'createReactiveContext',
-  'useContext',
-  'useRef',
-  'createRef',
-  'useForm',
-  'useQuery',
-  'useMutation',
-  'defineStore',
-  'useStore',
-])
+/**
+ * Names the `useX` / `createX` convention (`isFactoryConventionName`) CANNOT
+ * reach. Every other stateful callee — `useForm`, `useQuery`, `useRef`,
+ * `createContext`, … — is covered by the convention and must NOT be listed
+ * here (a name listed in both places is two sources of truth that drift).
+ * Locked by `tests/stateful-call-names.test.ts`.
+ */
+const STATEFUL_CALLS = new Set(['signal', 'computed', 'effect', 'batch', 'defineStore'])
 
 /**
  * A callee name that follows the framework-wide HOOK / FACTORY naming

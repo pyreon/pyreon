@@ -224,24 +224,9 @@ fn is_stateful_call(name: &str) -> bool {
     if is_factory_convention_name(name) {
         return true;
     }
-    matches!(
-        name,
-        "signal"
-            | "computed"
-            | "effect"
-            | "batch"
-            | "createSelector"
-            | "createContext"
-            | "createReactiveContext"
-            | "useContext"
-            | "useRef"
-            | "createRef"
-            | "useForm"
-            | "useQuery"
-            | "useMutation"
-            | "defineStore"
-            | "useStore"
-    )
+    // Only the names the `use`/`create` convention cannot reach — every other
+    // stateful callee is covered above. Mirrors `STATEFUL_CALLS` in jsx.ts.
+    matches!(name, "signal" | "computed" | "effect" | "batch" | "defineStore")
 }
 
 fn is_pure_call(name: &str) -> bool {
