@@ -6,7 +6,7 @@
 // emits `.value`; the CALL form (with parens) was the gap.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, validateKotlin } from '../validate'
 
 const app = (body: string) =>

@@ -108,7 +108,9 @@ export function isFrameworkType(name: string): boolean {
 // blind spot this ratchet exists to prevent.
 const emitSources = [
   ...['emit-swift.ts', 'emit-kotlin.ts', 'services.ts'].map((f) => readFileSync(join(COMPILER_SRC, f), 'utf8')),
-  readFileSync(join(REPO, 'packages/fundamentals/hooks/src/native-plugin.ts'), 'utf8'),
+  ...['native-plugin.ts', 'native-plugin/fetch.ts', 'native-plugin/containers.ts'].map((f) =>
+    readFileSync(join(REPO, 'packages/fundamentals/hooks/src', f), 'utf8'),
+  ),
 ]
 const swiftStubs = readFileSync(join(COMPILER_SRC, 'swift-stubs.ts'), 'utf8')
 const kotlinStubs = readFileSync(join(COMPILER_SRC, 'kotlin-stubs.ts'), 'utf8')

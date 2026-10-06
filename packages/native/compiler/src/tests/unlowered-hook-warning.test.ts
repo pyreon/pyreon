@@ -108,7 +108,8 @@ describe('a Pyreon hook with no native lowering', () => {
     )
     expect(setBlock, 'NATIVE_LOWERED_STATIC_HOOKS not found').toBeTruthy()
     const listed = [...setBlock![1]!.matchAll(/'(use[A-Za-z]+)'/g)].map((m) => m[1]!)
-    expect(listed.length).toBeGreaterThan(20)
+    // The stateful containers and useFetch moved into @pyreon/hooks' plugin (phase 3m), so the core set shrank.
+    expect(listed.length).toBeGreaterThan(10)
 
     // Each must appear OUTSIDE the set literal — i.e. in the parser's actual
     // recognition logic.

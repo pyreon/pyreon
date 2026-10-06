@@ -477,12 +477,7 @@ export type DeclIR =
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
   | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
-  | { kind: 'websocket'; name: string; url: string }
-  | { kind: 'database'; name: string }
-  | { kind: 'secureStorage'; name: string }
   | { kind: 'fieldArray'; name: string; initial: string[] }
-  | { kind: 'map'; name: string }
-  | { kind: 'auth'; name: string; userType: TypeIR }
   /**
    * Phase B6 (native readiness audit 2026-06, partial CRIT-4 closure).
    * `const data = useLoaderData<User>()` binding — reads the active

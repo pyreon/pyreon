@@ -506,6 +506,11 @@ export function pluginCallReadType(d: ExtDecl, property: string): TypeIR | undef
   return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.callRead?.(d, property)
 }
 
+/** The return type of the method call `<binding>.<method>(…)` on a plugin declaration's container, by its owner's typing. */
+export function pluginMethodReturnType(d: ExtDecl, method: string): TypeIR | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.methodReturn?.(d, method)
+}
+
 /** The type of the property read `<binding>.<property>` on a plugin declaration's container, by its owner's typing. */
 export function pluginMemberReadType(d: ExtDecl, property: string): TypeIR | undefined {
   return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.member?.(d, property)

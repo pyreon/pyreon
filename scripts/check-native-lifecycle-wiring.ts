@@ -307,9 +307,13 @@ function main(): number {
     return 1
   }
   const discovered = discoverLifecycleContainers(files)
+  // A decl-kind AUTO container (the socket) is wired by the OWNING plugin since phase 3m: `useWebSocket` synthesizes its
+  // connect-on-mount in @pyreon/hooks' `containers.ts` (`prepareEmit`), which both emits then lower as an ordinary on-mount.
+  // The plugin source is therefore part of what "wired in both emits" is checked against.
+  const wiring = readFileSync(join(root, 'packages/fundamentals/hooks/src/native-plugin/containers.ts'), 'utf8')
   const emits = {
-    swift: readFileSync(join(root, 'packages/native/compiler/src/emit-swift.ts'), 'utf8'),
-    kotlin: readFileSync(join(root, 'packages/native/compiler/src/emit-kotlin.ts'), 'utf8'),
+    swift: readFileSync(join(root, 'packages/native/compiler/src/emit-swift.ts'), 'utf8') + '\n' + wiring,
+    kotlin: readFileSync(join(root, 'packages/native/compiler/src/emit-kotlin.ts'), 'utf8') + '\n' + wiring,
   }
   const problems = verifyLifecycleWiring(discovered, LIFECYCLE_REGISTRY, emits)
 

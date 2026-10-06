@@ -1154,16 +1154,15 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
 const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
-  'useAuth', 'useColorMode', 'useColorScheme',
-  'useDatabase', 'useFieldArray', 'useForm',
-  'useHotkey', 'useLoaderData', 'useMap',
+  'useColorMode', 'useColorScheme',
+  'useFieldArray', 'useForm',
+  'useHotkey', 'useLoaderData',
   'useNativeModule', 'useNavigate',
   'useParams',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter',
-  'useSecureStorage',
-  'useSizeClass', 'useWebSocket',
+  'useSizeClass',
   'useDebouncedValue',
   'useDebouncedCallback', 'useThrottledCallback',
   // Pure timing over a callback — lowered at STATEMENT position.
@@ -4225,11 +4224,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'useColorMode',
     'useSizeClass',
     'useNetworkStatus',
-    'useWebSocket',
-    'useSecureStorage',
-    'useDatabase',
-    'useMap',
-    'useAuth',
   ])
   if (
     node.id?.type === 'ObjectPattern' &&
@@ -4946,19 +4940,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useSizeClass') {
     return { kind: 'size-class', name }
   }
-  if (calleeName === 'useSecureStorage') {
-    // Lowered for real (the v1 warn-drop is gone): the deferral's stated
-    // blocker — "Kotlin has no auto-constructible backend" — was resolved by
-    // `KeystoreSecureBackend(context)` (PyreonSecureStorageAndroid.kt), so
-    // both targets now construct a REAL encrypted default: Swift
-    // `PyreonSecureStorage()` (Keychain), Kotlin
-    // `PyreonSecureStorage(ctx)` (AndroidKeyStore AES-GCM) via the same
-    // Context-threading shape as `useDatabase`.
-    return { kind: 'secureStorage', name }
-  }
-  if (calleeName === 'useDatabase') {
-    return { kind: 'database', name }
-  }
   // `useFieldArray(['a', 'b'])` — the dynamic form-list container
   // (PyreonFieldArray on both targets, mirroring the web @pyreon/form
   // surface). The initial must be an array of string literals (or absent)
@@ -4986,32 +4967,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
     }
     return { kind: 'fieldArray', name, initial }
-  }
-  if (calleeName === 'useMap') {
-    return { kind: 'map', name }
-  }
-  // `useAuth<User>()` — generic over the app's user type (mirrors
-  // useFetch<T>'s generic capture). No-generic form falls back to a
-  // placeholder type the emit handles.
-  if (calleeName === 'useAuth') {
-    return { kind: 'auth', name, userType: parseGenericTypeArg(init, ctx) }
-  }
-  // `useStream((ctx) => openEventStream((c) => ep({ … }), { … }))` from
-  // `useWebSocket('wss://…')` — the URL must be a string literal so it can
-  // be baked into the emitted connect call (same rule as useFetch).
-  if (calleeName === 'useWebSocket') {
-    const urlArg = init.arguments?.[0]
-    if (
-      !urlArg ||
-      (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
-      typeof urlArg.value !== 'string'
-    ) {
-      ctx.warnings.push(
-        `Declaration ${name}: useWebSocket url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
-      )
-      return null
-    }
-    return { kind: 'websocket', name, url: urlArg.value }
   }
   // Fallback — `const foo = <call>` binding an arbitrary call result that
   // none of the factory/hook branches above claimed: a signal/computed READ
@@ -7442,11 +7397,6 @@ function warnIfHookInsideRenderCallback(
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
-    'useWebSocket',
-    'useSecureStorage',
-    'useDatabase',
-    'useMap',
-    'useAuth',
   ])
   for (const child of children) {
     if (child?.type !== 'JSXExpressionContainer') continue

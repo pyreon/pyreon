@@ -15,7 +15,7 @@
 // arguments, so an unlabelled emit fails on iOS ONLY.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 const run = (src: string) => transform(src, { target: 'swift' })

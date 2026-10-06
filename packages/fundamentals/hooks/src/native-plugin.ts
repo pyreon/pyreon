@@ -25,6 +25,7 @@
  * fails otherwise.
  */
 import type { CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
+import { containerPlugin } from './native-plugin/containers'
 import { fetchDecl, fetchReceiver, FETCH_TYPE, recognizeFetch } from './native-plugin/fetch'
 
 const num = { kind: 'number' as const }
@@ -37,11 +38,13 @@ const nativePlugin = {
   apiVersion: 1,
   modules: ['@pyreon/hooks'],
   // Code-shaped lowerings, beside the data-only service table below: `useFetch<T>(url, init?)` and its container.
-  calls: { useFetch: recognizeFetch },
+  calls: { useFetch: recognizeFetch, ...containerPlugin.calls },
   // `const { data, isPending } = useFetch(url)` aliases onto the container.
-  destructureCalls: ['useFetch'],
-  decls: { [FETCH_TYPE]: fetchDecl },
-  receivers: { [FETCH_TYPE]: fetchReceiver },
+  destructureCalls: ['useFetch', ...containerPlugin.destructureCalls],
+  decls: { [FETCH_TYPE]: fetchDecl, ...containerPlugin.decls },
+  receivers: { [FETCH_TYPE]: fetchReceiver, ...containerPlugin.receivers },
+  // The websocket's implicit connect-on-mount (see `containers.ts`).
+  prepareEmit: containerPlugin.prepareEmit,
   services: {
     // M3.2 — share sheet. iOS presents a UIActivityViewController from the key
     // window itself; Android needs a Context (hoisted from LocalContext because

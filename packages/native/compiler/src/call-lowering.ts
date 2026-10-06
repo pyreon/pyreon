@@ -217,6 +217,12 @@ export interface DeclTyping {
    * to a nil test.
    */
   member?(decl: ExtDecl, property: string): TypeIR | undefined
+  /**
+   * The type a METHOD call on the container returns (`secrets.read('k')`, `db.get(c, id)`), or `undefined`. A method whose
+   * runtime return is optional is returned as a nullable union, so a local seeded from it classifies for the optional-condition
+   * lowering (`if (token) { … }`) instead of emitting a bare optional as a condition.
+   */
+  methodReturn?(decl: ExtDecl, method: string): TypeIR | undefined
 }
 
 /** The conditions `<Suspense>` / `<ErrorBoundary>` OR over, as target text. */

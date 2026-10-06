@@ -105,7 +105,6 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
-  synthesizeWebSocketAutoConnect,
   registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
@@ -527,57 +526,9 @@ let _signalNames: Set<string> = new Set()
  */
 let _serviceBindings: Map<string, ServiceDescriptor> = new Map()
 /**
- * Per-component: `useDatabase()` decl names.
- *
- * Swift API-design convention gives `PyreonDatabase` LABELLED arguments
- * (`delete(_ collection: String, id: String)`), while the shared TS surface is
- * positional (`db.delete('tx', id)`). The generic pass-through emitted the
- * arguments positionally, producing `db.delete("tx", "a")` — which does not
- * compile ("missing argument label 'id:' in call").
- *
- * `swiftc -parse` accepts it (labels are a TYPE-level concern), so this shipped
- * unnoticed: `get`, `delete` and `find` have NEVER produced compilable Swift.
- * Surfaced the moment the showcase-app emit was type-checked (M-gate.1f) — the
- * gate paying for itself again.
- *
- * Kotlin is unaffected: named arguments are optional there, so the positional
- * call is already valid.
- */
-let _databaseNames: Set<string> = new Set()
-/**
- * The labels `PyreonDatabase` declares, per method, for arguments AFTER the
- * leading unlabelled collection name. `null` = that position is unlabelled.
- * Mirrors runtime-swift EXACTLY; a method absent here keeps the plain
- * positional emit (`insert`, `all`, `count` take one unlabelled argument).
- */
-const SWIFT_DATABASE_ARG_LABELS: Record<string, readonly (string | null)[]> = {
-  get: ['id'],
-  delete: ['id'],
-  find: ['field', 'equals'],
-}
-
-/**
- * The SAME defect, generalised past the one service it was first found on.
- *
- * `SWIFT_DATABASE_ARG_LABELS` above fixed `PyreonDatabase` when the type gate
- * surfaced it, but the CLASS is "any native service method whose Swift
- * signature labels its arguments, called positionally from the shared TS
- * surface". `PyreonMapState` is another member and was still broken:
- * `map.moveTo(37.3, -122.0)` and `map.removeMarker('a')` — the primary map API
- * — emitted positionally and failed with "missing argument labels
- * 'latitude:longitude:'". Kotlin accepted the identical source, since named
- * arguments are optional there.
- *
- * Enumerated rather than guessed: every `public func` in runtime-swift with a
- * labelled parameter was listed, then each was probed for reachability from TS.
- * `PyreonGeolocation.update` and the `PyreonWebSocket` internals are NOT on the
- * hook surface, `selectMarker(_ id:)` is unlabelled natively, and
- * `PyreonSecureStorage` is not lowered at all (deferred in v1) — so map is the
- * only reachable gap left.
- *
- * Labels here cover EVERY argument position, `null` meaning unlabelled — the
- * database table's "labels after a leading unlabelled argument" shape cannot
- * express `moveTo`, where the FIRST argument is labelled too.
+ * Native service methods whose Swift signature LABELS its arguments while the shared TS surface is positional, keyed by decl
+ * kind. Labels cover EVERY argument position, `null` meaning unlabelled. (The containers `@pyreon/hooks` owns —
+ * `PyreonDatabase`, `PyreonMapState`, `PyreonSecureStorage` — apply their labels through their own plugin's receivers.)
  */
 const SWIFT_SERVICE_ARG_LABELS: Record<
   string,
@@ -587,21 +538,6 @@ const SWIFT_SERVICE_ARG_LABELS: Record<
     // move(from:to:) is the one labelled method; the rest are unlabelled
     // positionals mirroring the web surface.
     move: ['from', 'to'],
-  },
-  secureStorage: {
-    // write(key:value:) — key FIRST everywhere (web/Swift/Kotlin); the
-    // labels make a crossed positional call uncompilable rather than a
-    // silent wrong-key write (both parameters are String).
-    write: ['key', 'value'],
-    read: ['key'],
-    remove: ['key'],
-    contains: ['key'],
-  },
-  map: {
-    // moveTo(latitude:longitude:zoom:) — zoom is defaulted, so BOTH the
-    // 2-argument and 3-argument calls are legal and both must be labelled.
-    moveTo: ['latitude', 'longitude', 'zoom'],
-    removeMarker: ['id'],
   },
 }
 
@@ -635,11 +571,8 @@ let _moduleItems: ExtModuleItem[] = []
  * off it — an unused parameter is an unexercised contract.
  */
 let _formSubmitParamsSwift: string[] = []
-// websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
-// hook carries the url) lowers to the runtime's `connect(to: URL)`.
-let _websocketUrlsSwift: Map<string, string> = new Map()
 /**
-* The component's ASYNC SOURCES in declaration order — every plugin
+ * The component's ASYNC SOURCES in declaration order — every plugin
  * declaration that declares an `asyncState` (`useFetch`, `useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
  */
 let _asyncDeclsSwift: DeclIR[] = []
@@ -1743,10 +1676,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
   // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
   widenFloatSignals(c, _storeDefs, _structDefs, _moduleConstTypes)
-  // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
-  // decls with no explicit .connect() — reuses the on-mount harness +
-  // connect url-threading. Mutates c.decls (idempotent).
-  synthesizeWebSocketAutoConnect(c)
   // Shape A: pass file-scope helper return types so the computeds pre-inference
   // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
   // build would be too late — the computed type is already cached).
@@ -1820,11 +1749,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _serviceBindings = bindServices(c.decls)
-  _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
   _formNamesSwift = new Set()
   _formSubmitParamsSwift = []
-  _websocketUrlsSwift = new Map()
   _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
@@ -1870,7 +1797,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
       _serviceKindByNameSwift.set(d.name as string, d.kind)
@@ -1878,7 +1804,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
     if (pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
-    if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -2930,32 +2855,9 @@ function emitSwiftDecl(
     // emitSwiftComponent (mirrors the useFetch `.task` harness).
     return `@State private var ${swiftIdent(d.name)} = PyreonForm(${parts.join(', ')})`
   }
-  // Native data/services hooks without a descriptor (websocket takes a URL
-  // from the call). Swift containers expose reactive fields via @Observable
-  // (read bare, no rewrite); the `onMount(() => ws.connect())` escape hatch
-  // LOWERS (see the on-mount decl harness) — Swift threads the url into
-  // connect(to:); Kotlin's connect needs a host transport (named warning)
-  // until the default-OkHttp-transport follow-up lands.
-  if (d.kind === 'websocket') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
-  }
-  if (d.kind === 'database') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
-  }
-  if (d.kind === 'secureStorage') {
-    // Keychain-backed default (`KeychainSecureBackend`) — persists across
-    // relaunches on its own; no Context equivalent needed on iOS.
-    return `@State private var ${swiftIdent(d.name)} = PyreonSecureStorage()`
-  }
   if (d.kind === 'fieldArray') {
     const init = d.initial.length === 0 ? '' : `[${d.initial.map((v) => swiftStr(v)).join(', ')}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonFieldArray(${init})`
-  }
-  if (d.kind === 'map') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonMapState()`
-  }
-  if (d.kind === 'auth') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonAuth<${swiftType(d.userType)}>()`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a COMPUTED
   // property reading the active router's loaderData entry for the
@@ -4896,53 +4798,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
         return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
       }
-      // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
-      // is the primary write, and the object literal was lowered by the
-      // generic path into an anonymous TUPLE — `(id: "1", fields: __Obj0(...))`
-      // — which is not a `PyreonRecord`, so the call never compiled. `insert`
-      // is the only way to get data in, which is why no gated app has ever
-      // rendered FROM the database.
-      //
-      // `swiftc -parse` waves it through (a tuple is syntactically fine), so
-      // this needed the type gate to see, exactly like the argument labels
-      // below. Field values are emitted AS WRITTEN: `fields` is
-      // `[String: String]`, and silently wrapping a number in `String(...)`
-      // would hide a real mistake behind a coercion.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _databaseNames.has(e.callee.object.name) &&
-        e.callee.property === 'insert' &&
-        e.args.length === 2 &&
-        e.args[1]?.kind === 'object'
-      ) {
-        const lit = e.args[1] as Extract<ExprIR, { kind: 'object' }>
-        const idField = lit.fields.find((f) => f.name === 'id')
-        const fieldsField = lit.fields.find((f) => f.name === 'fields')
-        const unknown = lit.fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
-        if (idField && unknown.length === 0) {
-          const parts = [`id: ${emitSwiftExpr(idField.value, indent)}`]
-          if (fieldsField) {
-            if (fieldsField.value.kind === 'object') {
-              const entries = fieldsField.value.fields
-                .map((f) => `${swiftStr(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
-                .join(', ')
-              parts.push(`fields: [${entries === '' ? ':' : entries}]`)
-            } else {
-              // A variable holding the dictionary — pass it through.
-              parts.push(`fields: ${emitSwiftExpr(fieldsField.value, indent)}`)
-            }
-          }
-          const collection = emitSwiftExpr(e.args[0]!, indent)
-          return `${swiftIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
-        }
-        // Recognized shape didn't match — say why before falling through to
-        // the doomed generic path below.
-        warnDatabaseInsertShape(e.callee.object.name, lit.fields)
-      }
       // Native-service argument labels, for services whose Swift signature
       // labels its arguments while the shared TS surface is positional. Same
-      // defect the PyreonDatabase block below fixes, generalised past the one
+      // defect the argument-label rewrites fix, generalised past the one
       // service it was first found on — `map.moveTo(37.3, -122.0)` emitted
       // positionally and failed swiftc with "missing argument labels
       // 'latitude:longitude:'". Kotlin needs no equivalent: named arguments
@@ -4962,21 +4820,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (
             _fieldArrayNamesSwift.has(recv) &&
             (e.callee.property === 'items' || e.callee.property === 'length')
-          ) {
-            return `${swiftIdent(recv)}.${e.callee.property}`
-          }
-          // WebSocket read-field unwrap — `ws.isConnected()` etc. are web
-          // signal READS; the Swift runtime declares them as PROPERTIES
-          // (`public private(set) var isConnected: Bool`), so the call
-          // parens must go. Kotlin has had this unwrap since the hook
-          // landed (_wsNames in emit-kotlin); Swift never did — the
-          // lowered-hooks matrix missed it because its usage never READ a
-          // field, only sent.
-          if (
-            _websocketUrlsSwift.has(recv) &&
-            ['lastMessage', 'messages', 'isConnected', 'error'].includes(
-              e.callee.property,
-            )
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
@@ -5000,36 +4843,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const labelled = e.args.map((a, i) => {
             const src = emitSwiftExpr(a, indent)
             const label = labels[i]
-            return label === null || label === undefined ? src : `${label}: ${src}`
-          })
-          return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
-        }
-      }
-      // PyreonDatabase argument labels. The shared TS surface is positional
-      // (`db.delete('tx', id)`), but Swift API-design convention gives the
-      // runtime labelled arguments (`delete(_ collection: String, id: String)`).
-      // The generic member-call emit is positional, so `get` / `delete` / `find`
-      // produced Swift that does not compile ("missing argument label 'id:'").
-      // `swiftc -parse` waves that through — labels are a type-level concern —
-      // so it shipped unnoticed until the showcase emit was type-checked.
-      //
-      // Kotlin needs no equivalent: named arguments are optional there, so its
-      // positional emit is already valid.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _databaseNames.has(e.callee.object.name) &&
-        typeof e.callee.property === 'string' &&
-        SWIFT_DATABASE_ARG_LABELS[e.callee.property] !== undefined
-      ) {
-        const labels = SWIFT_DATABASE_ARG_LABELS[e.callee.property]!
-        // Only rewrite when the arity matches the declared surface; anything
-        // else falls through to the generic emit so a genuinely wrong call
-        // still surfaces as a compiler error rather than being papered over.
-        if (e.args.length === labels.length + 1) {
-          const emitted = e.args.map((a) => emitSwiftExpr(a, indent))
-          const labelled = emitted.map((src, i) => {
-            const label = i === 0 ? null : labels[i - 1]
             return label === null || label === undefined ? src : `${label}: ${src}`
           })
           return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
@@ -5206,19 +5019,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Each rewrite preserves the semantic intent. Methods with the
       // same name AND semantics on both targets (`.filter`, `.map`,
       // `.reduce`) pass through unchanged.
-      // `ws.connect()` — the TS hook surface is 0-arg (useWebSocket(url)
-      // carries the url); the Swift runtime's signature is
-      // `connect(to: URL)`. Thread the decl's url through. The bare
-      // 0-arg emit failed "missing argument for parameter 'to'".
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 'connect' &&
-        e.callee.object.kind === 'identifier' &&
-        _websocketUrlsSwift.has(e.callee.object.name) &&
-        e.args.length === 0
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.connect(to: URL(string: ${swiftStr(_websocketUrlsSwift.get(e.callee.object.name)!)})!)`
-      }
       if (e.callee.kind === 'member') {
         const obj = emitSwiftExpr(e.callee.object, indent)
         // A method call on an OPTIONAL receiver keeps the chain optional:
@@ -6747,44 +6547,6 @@ function warnUntypeableObjectLiteral(fields: { name: string; value: ExprIR }[]):
       `silently produce the wrong bytes at runtime. Annotate the declaration ` +
       `(\`signal<Shape>({ … })\`, or \`const x: Shape = { … }\`) — an annotated literal lowers ` +
       `to a real struct on both targets.`,
-  )
-}
-
-/**
- * `db.insert(collection, <literal>)` reached the record recognizer above and
- * did not match its `{ id, fields }` shape — every OTHER object-literal shape
- * still falls through to the GENERIC struct-synthesis path a few lines below,
- * and that fallthrough was silent: `warnUntypeableObjectLiteral`'s question is
- * "could a struct be synthesized at all", and the common mistake here — a
- * FLAT domain object (`{ id, description, amount }`, no `fields` key) — answers
- * yes. The struct compiles fine on its own. It just isn't `PyreonRecord`, the
- * NOMINAL type `insert`'s real signature requires on both targets, so the call
- * is guaranteed to fail to build regardless of how well-typed the individual
- * fields are — a struct with matching structure still doesn't satisfy a
- * nominally-typed Swift/Kotlin parameter. That guarantee is what makes this
- * warning TOTAL rather than best-effort, unlike `warnUntypeableObjectLiteral`:
- * there is no shape reaching this function that still compiles.
- *
- * An `id`-only literal (no `fields` key at all) is legitimate — both runtimes
- * default `fields` to empty — and is handled by the recognizer above, so it
- * never reaches here.
- */
-function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: ExprIR }[]): void {
-  const hasId = fields.some((f) => f.name === 'id')
-  const unknown = fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
-  const given = fields.map((f) => f.name).join(', ') || '(empty)'
-  const reasons: string[] = []
-  if (!hasId) reasons.push('no `id` field')
-  if (unknown.length > 0) {
-    const names = unknown.map((f) => `\`${f.name}\``).join(', ')
-    const plural = unknown.length === 1 ? ['is', 'it'] : ['are', 'them']
-    reasons.push(`${names} ${plural[0]} not \`id\`/\`fields\` — nest ${plural[1]} under \`fields: { ... }\``)
-  }
-  _emitWarnings.push(
-    `${dbName}.insert(...) argument { ${given} } is not the { id, fields } shape 'PyreonRecord' requires ` +
-      `(${reasons.join('; ')}). No struct synthesized here can satisfy insert's PyreonRecord parameter — ` +
-      `Swift/Kotlin are nominally typed, so this will NOT compile. Write ` +
-      `\`db.insert(collection, { id, fields: { ...columns } })\`.`,
   )
 }
 

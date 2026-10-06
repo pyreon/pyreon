@@ -14,7 +14,7 @@
 //     the missing-`id` reason, the SINGULAR unknown-field wording and the
 //     empty-literal `(empty)` rendering are exercised here.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 
