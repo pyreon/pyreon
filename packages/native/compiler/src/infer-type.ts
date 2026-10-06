@@ -21,6 +21,7 @@
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
+import { ERROR_OBJECT, SERVICE_BY_HOOK } from './services'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -472,37 +473,12 @@ function widenFloatSignalDecls(
  * `fetch.data` is deliberately absent — the member case below already types it
  * from the call's generic.
  */
-/**
- * A service container's `error` is an error OBJECT on both runtimes (`Error?`
- * on Swift, `Throwable?` on Kotlin) and on the web — never a string. It was
- * typed `string` here, which was harmless while conditions only nil-tested
- * it, and wrong the moment a condition needs JS truthiness: `if (q.error())`
- * would have tested `isEmpty` on an `Error`. An error object is truthy
- * whenever it is present, so the nil test is the faithful lowering.
- */
-const ERROR_OBJECT: TypeIR = { kind: 'typeRef', name: 'Error', args: [] }
 
 const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> = new Map([
-  [
-    'geolocation',
-    new Map<string, TypeIR>([
-      ['latitude', { kind: 'number' }],
-      ['longitude', { kind: 'number' }],
-      ['accuracy', { kind: 'number' }],
-      ['error', ERROR_OBJECT],
-    ]),
-  ],
   [
     'websocket',
     new Map<string, TypeIR>([
       ['lastMessage', { kind: 'string' }],
-      ['error', ERROR_OBJECT],
-    ]),
-  ],
-  [
-    'payments',
-    new Map<string, TypeIR>([
-      ['purchasing', { kind: 'string' }],
       ['error', ERROR_OBJECT],
     ]),
   ],
@@ -533,10 +509,6 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
     // a container that cannot fail is dead surface, and if map ever gains I/O
     // the field should arrive with the failure it reports.
     new Map<string, TypeIR>([['selectedMarkerId', { kind: 'string' }]]),
-  ],
-  [
-    'push',
-    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
   ],
   [
     'fetch',
@@ -591,6 +563,29 @@ const SERVICE_METHOD_RETURNS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> =
     ]),
   ],
 ])
+
+/**
+ * The key a declaration's service typing is filed under. A descriptor-backed
+ * `service` declaration files under its HOOK (`useGeolocation`, whose
+ * `optionalFields` live in services.ts); every other container under its decl
+ * kind, in the tables below. Hook names start `use`, decl kinds never do, so
+ * the two namespaces cannot collide.
+ */
+function serviceTypingKey(d: DeclIR): string | undefined {
+  if (d.kind === 'service') {
+    return SERVICE_BY_HOOK.get(d.hook)?.optionalFields === undefined ? undefined : d.hook
+  }
+  return SERVICE_OPTIONAL_FIELDS.has(d.kind) || SERVICE_METHOD_RETURNS.has(d.kind)
+    ? d.kind
+    : undefined
+}
+
+/** The declared-optional type of `<key>.<prop>`, from whichever table owns `key`. */
+function serviceOptionalField(key: string, prop: string): TypeIR | undefined {
+  const svc = SERVICE_BY_HOOK.get(key)
+  if (svc !== undefined) return svc.optionalFields?.[prop]
+  return SERVICE_OPTIONAL_FIELDS.get(key)?.get(prop)
+}
 
 /**
  * File-scope helper return types, overlaid with the component's OWN nested
@@ -689,13 +684,10 @@ export function buildInferenceCtx(
     // Service-container binding -> decl kind, so a member read on one can be
     // typed against SERVICE_OPTIONAL_FIELDS above.
     services: new Map(
-      decls.flatMap((d) =>
-        'name' in d &&
-        typeof d.name === 'string' &&
-        (SERVICE_OPTIONAL_FIELDS.has(d.kind) || SERVICE_METHOD_RETURNS.has(d.kind))
-          ? [[d.name, d.kind] as const]
-          : [],
-      ),
+      decls.flatMap((d) => {
+        const key = 'name' in d && typeof d.name === 'string' ? serviceTypingKey(d) : undefined
+        return key === undefined ? [] : [[(d as { name: string }).name, key] as const]
+      }),
     ),
     stores: new Map(
       storeDefs.map((s) => {
@@ -2070,7 +2062,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // `37.3349` and nothing.
       if (expr.object.kind === 'identifier') {
         const svcKind = ctx.services.get(expr.object.name)
-        const field = svcKind ? SERVICE_OPTIONAL_FIELDS.get(svcKind)?.get(expr.property) : undefined
+        const field = svcKind ? serviceOptionalField(svcKind, expr.property) : undefined
         if (field) return { kind: 'union', branches: [field, { kind: 'null' }] }
       }
       // Component props read through the param (`props.qty`) — the
