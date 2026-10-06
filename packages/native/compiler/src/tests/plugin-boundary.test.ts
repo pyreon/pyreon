@@ -23,7 +23,7 @@ describe('plugin boundary', () => {
   const files = walk(PLUGINS)
 
   it('scans the plugins directory (a vacuous scan would pass on nothing)', () => {
-    expect(files).toEqual(expect.arrayContaining(['coolgrid.ts', 'elements.ts', 'services.ts']))
+    expect(files).toEqual(expect.arrayContaining(['services.ts']))
   })
 
   it.each(files)('%s imports nothing from emit-swift, emit-kotlin or parse', (file) => {
@@ -38,12 +38,14 @@ describe('plugin boundary', () => {
 // The charts plugin is the first-party instance; the same rule holds for any plugin
 // shipped by a library.
 describe.each([
-  ['@pyreon/charts', 'charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
-  ['@pyreon/flow', 'flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
-  ['@pyreon/validation', 'validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
-  ['@pyreon/validate', 'validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
+  ['@pyreon/charts', 'fundamentals/charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
+  ['@pyreon/flow', 'fundamentals/flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
+  ['@pyreon/validation', 'fundamentals/validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
+  ['@pyreon/validate', 'fundamentals/validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
+  ['@pyreon/elements', 'ui-system/elements', ['plugin.ts']],
+  ['@pyreon/coolgrid', 'ui-system/coolgrid', ['plugin.ts']],
 ] as const)('package-owned plugin boundary (%s)', (_pkg, dirName, expected) => {
-  const CHARTS_PLUGIN = join(SRC, `../../../fundamentals/${dirName}/src/native-plugin`)
+  const CHARTS_PLUGIN = join(SRC, `../../../${dirName}/src/native-plugin`)
   const COMPILER_SPECIFIER = /['"]@pyreon\/native-compiler(?:\/([^'"]*))?['"]/
   const COMPILER_RELATIVE = /['"](?:\.\.\/)+native\/compiler\//
   const charts = walk(CHARTS_PLUGIN).filter((f) => !f.includes('tests/'))

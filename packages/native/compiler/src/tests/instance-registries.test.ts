@@ -108,10 +108,11 @@ describe('conflicts are load-time errors naming both owners', () => {
     ).toThrow(/hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/)
   })
 
-  it('a plugin element claiming a built-in (module, tag)', () => {
+  it('a plugin element claiming another plugin\'s (module, tag)', () => {
     expect(() =>
       createCompiler({
         plugins: [
+          { name: '@pyreon/coolgrid', apiVersion: 1, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
           { name: 'A', apiVersion: 1, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
         ],
       }),
@@ -131,13 +132,13 @@ describe('conflicts are load-time errors naming both owners', () => {
 
   it('a discovered plugin replacing a builtIn plugin by name is NOT a conflict', () => {
     const replacement: CompilerPlugin = {
-      name: '@pyreon/coolgrid',
+      name: '@pyreon/hooks',
       apiVersion: 1,
-      elements: [{ module: '@pyreon/coolgrid', tags: ['Row', 'Col', 'Container'], retag }],
+      elements: [{ module: '@pyreon/hooks', tags: ['Row', 'Col', 'Container'], retag }],
     }
     const compiler = createCompiler({ discovered: [replacement] })
-    expect(compiler.registries.elements.entries.filter((e) => e.owner === '@pyreon/coolgrid')).toHaveLength(1)
-    expect(compiler.registries.elements.entries.find((e) => e.owner === '@pyreon/coolgrid')?.lowering).toBe(
+    expect(compiler.registries.elements.entries.filter((e) => e.owner === '@pyreon/hooks')).toHaveLength(1)
+    expect(compiler.registries.elements.entries.find((e) => e.owner === '@pyreon/hooks')?.lowering).toBe(
       replacement.elements![0],
     )
     const services = createCompiler({

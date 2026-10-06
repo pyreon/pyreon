@@ -7,7 +7,7 @@
 // default attrs).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { parseAttrsDefn } from '../attrs-native'
 import { DEFAULT_THEME } from '../theme-native'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'

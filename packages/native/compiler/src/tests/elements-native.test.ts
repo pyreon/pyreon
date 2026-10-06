@@ -6,11 +6,12 @@
 // ui-system-style components (rocketstyle over Element) lower to iOS/Android.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isStyleBasePrimitive as isElementsPrimitive } from '../registry-lookup'
-import { elementToStack } from '../plugins/elements'
+import { elementsPlugin, transform } from './first-party-plugins'
+import { createElementRegistry } from '../element-lowering'
+import { elementToStack } from '../../../../ui-system/elements/src/native-plugin/plugin'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
 
+const isElementsPrimitive = (tag: string): boolean => createElementRegistry([elementsPlugin]).isStyleBase(tag)
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 

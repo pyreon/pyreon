@@ -1672,23 +1672,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     },
   ],
   [
-    '@pyreon/elements',
-    {
-      // Measured every export: only `Element` lowers (to Stack). Text, List,
-      // Overlay and Portal all failed both targets SILENTLY — Overlay and
-      // Portal are inherently DOM (positioning, document-level mounting), and
-      // the Text/List variants are the rich web-only siblings of the canonical
-      // primitives.
-      //
-      // Inverse shape to @pyreon/rx: there, one export lowered and the rest did
-      // not, so `supported` carries the exception in both cases rather than
-      // splitting the map into two mechanisms.
-      advice:
-        'only `Element` lowers (to Stack) — Text / List / Overlay / Portal are DOM-based; use the canonical `Text` / `Stack` from @pyreon/primitives, or keep them in a `<Web>` branch',
-      supported: new Set(['Element']),
-    },
-  ],
-  [
     '@pyreon/storage',
     {
       // Three of the five backends lower. The two that do not are the two

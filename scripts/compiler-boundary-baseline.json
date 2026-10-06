@@ -1,8 +1,6 @@
 {
   "native-compiler": {
     "packages": {
-      "@pyreon/coolgrid": 1,
-      "@pyreon/elements": 2,
       "@pyreon/feature": 1,
       "@pyreon/kinetic": 1,
       "@pyreon/kinetic-presets": 1,

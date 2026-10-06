@@ -1,7 +1,8 @@
 import { createPluginScope } from '../plugin-scope'
 import { describe, expect, it } from 'vitest'
 import { chartsPlugin, transform } from './charts-plugin'
-import { BUILT_IN_PLUGINS, createCompiler, type CompilerPlugin } from '../index'
+import { coolgridPlugin, elementsPlugin } from './first-party-plugins'
+import { createCompiler, type CompilerPlugin } from '../index'
 import { createElementRegistry, type ElementLowering } from '../element-lowering'
 import { createEmitContext, type EmitContextBackend } from '../emit-context'
 import type { JsxElementIR } from '../types'
@@ -12,12 +13,14 @@ const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 const claimAll = () => true
 const claimNone = () => false
 
-const builtIns = createElementRegistry(BUILT_IN_PLUGINS)
-// Every first-party plugin the CLI loads for an app that uses the library: the compiler's own plus the charts one.
-const withCharts = createElementRegistry([chartsPlugin, ...BUILT_IN_PLUGINS])
+// The ui-system's two layout plugins, as the CLI loads them for an app that imports `@pyreon/elements` / `@pyreon/coolgrid`.
+const UI_PLUGINS = [elementsPlugin, coolgridPlugin]
+const builtIns = createElementRegistry(UI_PLUGINS)
+// Every first-party plugin the CLI loads for an app that uses the library: the ui-system's own plus the charts one.
+const withCharts = createElementRegistry([chartsPlugin, ...UI_PLUGINS])
 
 describe('element lowering registry', () => {
-  it('holds coolgrid and elements, registered through the same path a plugin uses; charts arrives only with its plugin', () => {
+  it('holds coolgrid and elements when their plugins are loaded; charts arrives only with its plugin', () => {
     expect(builtIns.find('Row', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Col', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Element', claimAll)?.module).toBe('@pyreon/elements')
@@ -43,10 +46,10 @@ describe('element lowering registry', () => {
       name,
       elements: [{ module, tags: ['Row'], retag: (el: JsxElementIR) => el }],
     })
-    expect(() => createElementRegistry([...BUILT_IN_PLUGINS, grid('@acme/grid', '@pyreon/coolgrid')])).toThrow(
+    expect(() => createElementRegistry([...UI_PLUGINS, grid('@acme/grid', '@pyreon/coolgrid')])).toThrow(
       /<Row> from @pyreon\/coolgrid is claimed by both "@pyreon\/coolgrid" and "@acme\/grid"/,
     )
-    const both = createElementRegistry([...BUILT_IN_PLUGINS, grid('@acme/grid', '@acme/grid')])
+    const both = createElementRegistry([...UI_PLUGINS, grid('@acme/grid', '@acme/grid')])
     expect(both.find('Row', (_t, mod) => mod === '@acme/grid')?.module).toBe('@acme/grid')
     expect(both.find('Row', (_t, mod) => mod === '@pyreon/coolgrid')?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Row', (_t, mod) => mod === '@acme/grid')).toBeUndefined()

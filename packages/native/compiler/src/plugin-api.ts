@@ -108,6 +108,7 @@ export {
   unwrapTypeLayers,
 } from './plugin-ast'
 export { forEachExpr } from './expr-walk'
+export { unconsumedSlotWarning } from './jsx-slot-attrs'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
 export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'

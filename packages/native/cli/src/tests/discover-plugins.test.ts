@@ -219,7 +219,6 @@ describe('plugins and explain reports', () => {
     setApp(['@acme/badge'], "import '@acme/badge'")
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
-    expect(lines).toContain('  @pyreon/elements')
     // Library knowledge arrives with the library's own plugin, never from the compiler.
     expect(lines).not.toContain('  @pyreon/charts')
     expect(lines).toContain('  useShare  @pyreon/hooks')
@@ -361,10 +360,16 @@ export function A() { return <Button onClick={() => useShare().text('hi')}>x</Bu
     expect(lines.join('\n')).toContain('useShare() is registered but was not lowered as a service declaration in this file')
   })
 
-  it('the plugins listing shows element lowerings with their owners', async () => {
+  it('the plugins listing shows element lowerings with their owners (only the compiler-less app has none)', async () => {
+    expect((await pluginsReport(app, false)).lines).toContain('element lowerings (0):')
+    addPackage(
+      '@acme/grid',
+      declares(),
+      pluginModule('@acme/grid', "elements: [{ module: '@acme/grid', tags: ['Container', 'Row', 'Col'], retag: (el) => el }]"),
+    )
+    setApp(['@acme/grid'], "import '@acme/grid'")
     const { lines } = await pluginsReport(app, false)
-    expect(lines).toContain('  @pyreon/coolgrid  Container, Row, Col  @pyreon/coolgrid')
-    expect(lines).toContain('  @pyreon/elements  Element  @pyreon/elements')
+    expect(lines).toContain('  @acme/grid  Container, Row, Col  @acme/grid')
   })
 })
 
