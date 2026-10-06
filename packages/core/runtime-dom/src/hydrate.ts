@@ -147,6 +147,79 @@ function isWhitespaceOnly(s: string): boolean {
   return true
 }
 
+/**
+ * Whitespace-only text nodes a text VNODE has already claimed. A claimed node
+ * is still in the DOM, directly behind the cursor, so without this a later
+ * whitespace vnode would adopt it a second time. Weak: never pins a node, and
+ * only whitespace nodes explicitly rendered by the client tree ever enter it.
+ */
+const claimedWhitespace = new WeakSet<Node>()
+
+/**
+ * The whitespace-only text node `firstReal` skipped immediately BEFORE the
+ * cursor, or null.
+ *
+ * WHY THIS EXISTS (#3832). `firstReal`/`nextReal` skip whitespace-only text
+ * unconditionally because the walk cannot know, at skip time, what the next
+ * VNODE is — and server formatting whitespace and an explicitly rendered
+ * `{' '}` are the SAME BYTES in the DOM, so the DOM alone can never decide.
+ * The decision belongs to the vnode side: a text vnode that is itself
+ * whitespace-only is exactly the consumer entitled to the node the cursor
+ * walked past, so it looks BACK for it. Every other vnode keeps skipping.
+ *
+ * `cursor` is the walker's current position (null = end of the range, in which
+ * case the range's end is `anchor`, or the parent's last child). Formatting
+ * comments between the whitespace and the cursor are what `firstReal` skipped
+ * too, so they are walked over; a STRUCTURAL marker ends the search — it
+ * belongs to another construct.
+ */
+function skippedWhitespaceBefore(
+  cursor: ChildNode | null,
+  parent: Node,
+  anchor: Node | null,
+): Text | null {
+  let p: ChildNode | null = cursor
+    ? cursor.previousSibling
+    : anchor
+      ? anchor.previousSibling
+      : (parent.lastChild as ChildNode | null)
+  // Walk back over formatting comments AND empty text nodes (the latter are the
+  // ones hydration itself inserts for `''` children — they hold no content, and
+  // `isWhitespaceOnly('')` is vacuously true, so they must never be claimed).
+  while (
+    p !== null &&
+    (p.nodeType === Node.COMMENT_NODE ||
+      (p.nodeType === Node.TEXT_NODE && (p as Text).data.length === 0))
+  ) {
+    if (p.nodeType === Node.TEXT_NODE) {
+      p = p.previousSibling
+      continue
+    }
+    const d = (p as Comment).data
+    if (
+      d === ASYNC_START_MARKER ||
+      d === ASYNC_END_MARKER ||
+      d.startsWith('k:') ||
+      d === 'pyreon-for' ||
+      d === '/pyreon-for' ||
+      d === '$' ||
+      d === '/$'
+    ) {
+      return null
+    }
+    p = p.previousSibling
+  }
+  if (
+    p !== null &&
+    p.nodeType === Node.TEXT_NODE &&
+    isWhitespaceOnly((p as Text).data) &&
+    !claimedWhitespace.has(p)
+  ) {
+    return p as Text
+  }
+  return null
+}
+
 /** Advance past a node, skipping whitespace-only text and comments */
 function nextReal(node: ChildNode): ChildNode | null {
   return firstReal(node.nextSibling)
@@ -1124,6 +1197,27 @@ function hydrateChild(
       const tn = document.createTextNode('')
       parent.insertBefore(tn, domNode ?? anchor)
       return [() => tn.remove(), domNode]
+    }
+    // EXPLICIT whitespace: the cursor has already walked past the server's
+    // whitespace node (see `skippedWhitespaceBefore`), so this vnode claims it
+    // from behind. Only when the cursor is not itself a text node that carries
+    // this text (a MERGED node such as ' x' is found at the cursor and handled
+    // by the prefix branch below, never both).
+    if (
+      isWhitespaceOnly(expected) &&
+      !(domNode?.nodeType === Node.TEXT_NODE && (domNode as Text).data.startsWith(expected))
+    ) {
+      const ws = skippedWhitespaceBefore(domNode, parent, anchor)
+      if (ws !== null && ws.data.startsWith(expected)) {
+        // The cursor stays where it is — it is already past this node. A longer
+        // node (adjacent whitespace vnodes merged by the parser) is split so the
+        // remainder stays claimable by the next whitespace vnode.
+        if (ws.data.length > expected.length) {
+          ws.splitText(expected.length)
+        }
+        claimedWhitespace.add(ws)
+        return [() => ws.remove(), domNode]
+      }
     }
     if (domNode?.nodeType === Node.TEXT_NODE) {
       const data = (domNode as Text).data

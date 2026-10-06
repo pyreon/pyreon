@@ -74,10 +74,10 @@ export function genSpec(r: () => number, depth: number, sigs: SigSpec[], phrasin
   const roll = r()
   if (depth > 3 || roll < 0.14) {
     return r() < 0.7
-      ? { k: 'text', s: pick(r, ['hello', 'x', 'a b', 'témû', '<&>"', '0', '']) }
+      ? { k: 'text', s: pick(r, ['hello', 'x', 'a b', 'témû', '<&>"', '0', '', ' ', '  ', '\n', '\t', ' x ']) }
       : { k: 'num', n: Math.floor(r() * 100) }
   }
-  if (roll < 0.24) return { k: 'rtext', sig: newSig('string', pick(r, ['alpha', 'beta', ''])) }
+  if (roll < 0.24) return { k: 'rtext', sig: newSig('string', pick(r, ['alpha', 'beta', '', ' '])) }
   if (roll < 0.3) {
     return {
       k: 'show',
