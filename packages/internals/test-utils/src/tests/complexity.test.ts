@@ -1,162 +1,157 @@
-import { describe, expect, it } from 'vitest'
 import { expectSubQuadratic, measureComplexity } from '../complexity'
 
-// A helper that guards complexity is only worth having if it FAILS on a
-// genuinely quadratic function. These tests are the proof — they run a real
-// O(n) and a real O(n²) through it and assert opposite verdicts.
-
-/** O(n) — one pass. */
-function linear(n: number): number {
-  let acc = 0
-  for (let i = 0; i < n; i++) acc += i
-  return acc
+// Count the work performed by real loops, rather than timing a microbenchmark
+// inside a concurrent coverage run. The helper still uses performance.now by
+// default; these controls exercise its calibration, sampling and verdicts.
+function linear(n: number, tick: () => void): void {
+  for (let i = 0; i < n; i++) tick()
 }
 
-/** O(n²) — nested pass. Kept cheap per-iteration so base sizes stay small. */
-function quadratic(n: number): number {
-  let acc = 0
-  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) acc += 1
-  return acc
+function quadratic(n: number, tick: () => void): void {
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) tick()
 }
 
-
-// These specs assert a measured wall-clock RATIO, which makes them
-// micro-benchmarks — and this repo's bench discipline is explicit that timing
-// measurements must not run concurrently. They do run concurrently here: the
-// package's 55 test files share a parallel runner, so a scheduler steal landing
-// on one size and not the other skews the ratio.
-//
-// Observed three distinct failures from this one file, none of them real:
-//   - quadratic ratio compressed below the bound (min-of-2 was too few samples)
-//   - `baseMs >= minMs` violated (0.939 vs 1) — see the growth spec for why
-//     the implementation does not actually guarantee that
-//   - a genuinely LINEAR run measured ratio 33.05 against a bound of 24
-//
-// A bounded retry is the proportionate answer: contention does not reproduce
-// across three attempts, while a real complexity regression fails all three.
-// It is NOT a way to paper over a wrong assertion — the growth spec's bad
-// assertion was fixed outright rather than retried into submission.
-const TIMING_RETRIES = 2
+function counted(work: (n: number, tick: () => void) => void) {
+  let ticks = 0
+  return {
+    run: (n: number) =>
+      work(n, () => {
+        ticks++
+      }),
+    clock: () => ticks / 4,
+  }
+}
 
 describe('measureComplexity', () => {
-  it('reports a ratio near the scale factor for a linear function', { retry: TIMING_RETRIES }, () => {
-    const r = measureComplexity((n) => void linear(n), 200_000, { scale: 8, samples: 3 })
-    expect(r.baseMs).toBeGreaterThan(0)
-    // Linear ⇒ ~8x. Allow a wide band: this must not itself be flaky.
-    expect(r.ratio).toBeLessThan(24)
+  it('reports the scale factor for linear work', () => {
+    const { run, clock } = counted(linear)
+    const r = measureComplexity(run, 4, { clock, scale: 8, samples: 3 })
+    expect(r.baseMs).toBe(1)
+    expect(r.ratio).toBe(8)
     expect(r.ok).toBe(true)
   })
 
-  it('reports a ratio far above the scale factor for a quadratic function', { retry: TIMING_RETRIES }, () => {
-    // `samples: 2` gave min-of-2, which is not enough stabilization for the
-    // helper's own test under full-suite saturation: a scheduler steal landing
-    // on the base run compresses the ratio below the bound and reds a PR that
-    // changed nothing. The helper's default is 5; use it.
-    const r = measureComplexity((n) => void quadratic(n), 400, { scale: 8, samples: 5 })
-    // Quadratic ⇒ ~64x. Assert well clear of the linear expectation rather
-    // than near 64, so the test states the DISTINCTION, not a magic number.
-    expect(r.ratio).toBeGreaterThan(24)
+  it('reports the squared scale factor for quadratic work', () => {
+    const { run, clock } = counted(quadratic)
+    const r = measureComplexity(run, 4, { clock, scale: 8, samples: 5 })
+    expect(r.ratio).toBe(64)
     expect(r.ok).toBe(false)
   })
 
-  it('grows the base size until the run is measurable', { retry: TIMING_RETRIES }, () => {
-    // A trivially fast op at n=1 would time as 0ms and make the ratio 0/0.
-    //
-    // `samples: 1` meant a single unstabilized reading drove the growth loop.
-    // And this asserted `baseMs >= minMs`, which the implementation does NOT
-    // guarantee — TWO paths exit with it lower:
-    //   1. the flat-in-n break, which only requires baseMs >= 0.05ms, and
-    //      which noise can trigger on a genuinely growing run;
-    //   2. the maxRatio retry, which reassigns `baseMs = baseRetry` from a
-    //      fresh measurement that can land under minMs.
-    // Asserting it made this spec fail under load while the helper was
-    // behaving exactly as designed. The real contract is that the loop GREW
-    // the input and produced a usable, non-zero measurement.
-    const r = measureComplexity((n) => void linear(n), 1, { minMs: 1, samples: 3 })
-    expect(r.baseN).toBeGreaterThan(1)
-    expect(r.baseMs).toBeGreaterThan(0)
+  it('grows the base size until the run is measurable', () => {
+    const { run, clock } = counted(linear)
+    const r = measureComplexity(run, 1, { clock, minMs: 1, samples: 3 })
+    expect(r.baseN).toBe(4)
+    expect(r.baseMs).toBe(1)
+    expect(r.ok).toBe(true)
+  })
+
+  it('uses the fastest sample from the injected clock', () => {
+    const durations = [2, 1, 3, 20, 8, 12]
+    let calls = 0
+    let elapsed = 0
+    const r = measureComplexity(
+      () => {
+        elapsed += durations[calls++] ?? 1
+      },
+      4,
+      {
+        clock: () => elapsed,
+        samples: 3,
+      },
+    )
+    expect(r).toMatchObject({ baseN: 4, baseMs: 1, scaledMs: 8, ratio: 8, ok: true })
+    expect(calls).toBe(6)
+  })
+
+  it('remeasures both sizes once when contention skews the first scaled samples', () => {
+    const durations = [1, 1, 32, 32, ...Array<number>(6).fill(1), ...Array<number>(6).fill(8)]
+    let calls = 0
+    let elapsed = 0
+    const r = measureComplexity(
+      () => {
+        elapsed += durations[calls++] ?? 1
+      },
+      4,
+      {
+        clock: () => elapsed,
+        samples: 2,
+      },
+    )
+    expect(r).toMatchObject({ baseMs: 1, scaledMs: 8, ratio: 8, ok: true })
+    expect(calls).toBe(16)
+  })
+
+  it('uses performance.now by default', () => {
+    const times = [0, 2, 5, 7, 11, 17, 18, 24]
+    let calls = 0
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => times[calls++] ?? 24)
+    let result: ReturnType<typeof measureComplexity>
+    try {
+      result = measureComplexity(() => {}, 4, { scale: 3, samples: 2 })
+    } finally {
+      now.mockRestore()
+    }
+    expect(result).toMatchObject({ baseMs: 2, scaledMs: 6, ratio: 3, ok: true })
+    expect(calls).toBe(8)
   })
 
   it('marks an unmeasurable run instead of silently passing', () => {
-    // minMs unreachable within the growth budget ⇒ ok=false and a stated reason.
-    const r = measureComplexity(() => {}, 1, { minMs: 1_000_000 })
+    const r = measureComplexity(() => {}, 1, { clock: () => 0, minMs: 1_000_000 })
     expect(r.ok).toBe(false)
     expect(r.detail).toContain('UNMEASURABLE')
   })
 
-  it('stops growing a run whose cost is FLAT in n, instead of doubling into an OOM', () => {
-    // The shape that killed `@pyreon/router`'s suite on main: the caller asserts
-    // "cost does not grow with n", so growing n can never reach minMs — and the
-    // caller's run() retained an O(n) fixture per size, so 24 doublings became a
-    // 4GB heap death that took 95 results down silently.
-    //
-    // This run is deliberately ALLOCATION-FREE, so that with the flat-stop
-    // reverted this spec fails on the assertions below rather than exhausting
-    // the heap — a regression test must fail loudly, not crash the worker.
+  it('stops growing a run whose cost is flat in n, instead of doubling into an OOM', () => {
     let sink = 0
-    const flatInN = (_n: number): void => {
-      for (let i = 0; i < 300_000; i++) sink += i
-    }
-
-    const r = measureComplexity(flatInN, 8, { minMs: 1_000, samples: 1 })
-
+    const { run, clock } = counted((_n, tick) => {
+      for (let i = 0; i < 4; i++) {
+        sink++
+        tick()
+      }
+    })
+    const r = measureComplexity(run, 8, { clock, minMs: 1_000, samples: 1 })
     expect(sink).toBeGreaterThan(0)
     expect(r.ok).toBe(false)
-    // The verdict must NAME the cause and the fix, or the next author repeats it.
     expect(r.detail).toContain('FLAT in n')
     expect(r.detail).toContain('more iterations inside run()')
-    // …and it must have stopped EARLY: the full budget is 24 doublings, which
-    // from 8 reaches 134 million.
-    expect(r.baseN).toBeLessThan(8 * 2 ** 10)
+    expect(r.baseN).toBe(8 * 2 ** 4)
   })
 
-  it('bounds a run that RETAINS a fixture per size — the shape that killed the worker', () => {
-    // The router's `treeFor(n)` cached every tree it built, so each doubling
-    // added an O(n) fixture that was never released. Reproduced in miniature:
-    // what must hold is that growth STOPS while a verdict is still possible,
-    // rather than running the full budget (from 4096 that reaches 68 billion).
-    // The retained fixture is CAPPED, unlike the router's. That is deliberate:
-    // an uncapped one reproduces the original failure exactly — with the stop
-    // reverted this spec exhausted the heap and took three sibling results down
-    // with it, which is the reporting failure this whole change is about. A
-    // regression test must fail on an assertion, not by killing the worker. The
-    // cap keeps the SHAPE (a fixture retained per size, never released) while
-    // bounding the damage, and `baseN` is what actually carries the verdict.
+  it('bounds a run that retains a fixture per size — the shape that killed the worker', () => {
+    // Keep real retained allocations, capped so a missing stop fails an
+    // assertion rather than killing the worker. Count each filled slot.
     const kept: number[][] = []
-    const retains = (n: number): void => {
+    const { run, clock } = counted((n, tick) => {
       const size = Math.min(n, 50_000)
       const fixture = new Array<number>(size)
-      for (let i = 0; i < size; i++) fixture[i] = i
-      kept.push(fixture) // never released — this is the shape under test
-    }
-
-    // minMs deliberately unreachable, so only a stop condition can end the loop.
-    const r = measureComplexity(retains, 4096, { minMs: 60_000, samples: 1 })
-
+      for (let i = 0; i < size; i++) {
+        fixture[i] = i
+        tick()
+      }
+      kept.push(fixture)
+    })
+    const r = measureComplexity(run, 4096, { clock, minMs: 60_000, samples: 1 })
     expect(r.ok).toBe(false)
     expect(r.detail).toContain('UNMEASURABLE')
-    // Without the stop, growth runs the full budget: 4096 * 2**24 = 68 billion.
     expect(r.baseN).toBeLessThan(4096 * 2 ** 10)
     expect(kept.length).toBeGreaterThan(0)
   })
 })
 
 describe('expectSubQuadratic', () => {
-  it('passes a linear function', { retry: TIMING_RETRIES }, () => {
-    expect(() =>
-      expectSubQuadratic((n) => void linear(n), 200_000, { label: 'linear', samples: 3 }),
-    ).not.toThrow()
+  it('passes linear work', () => {
+    const { run, clock } = counted(linear)
+    expect(() => expectSubQuadratic(run, 4, { clock, label: 'linear', samples: 3 })).not.toThrow()
   })
 
-  it('throws on a quadratic function, naming the observed curve', { retry: TIMING_RETRIES }, () => {
-    let message = ''
-    try {
-      expectSubQuadratic((n) => void quadratic(n), 400, { label: 'quadratic', samples: 2 })
-    } catch (error) {
-      message = (error as Error).message
-    }
-    expect(message).toContain('expected sub-quadratic growth')
-    expect(message).toContain('quadratic')
-    expect(message).toContain('ratio')
+  it('throws on quadratic work, naming the observed curve', () => {
+    const { run, clock } = counted(quadratic)
+    expect(() => expectSubQuadratic(run, 4, { clock, label: 'quadratic', samples: 2 })).toThrow(
+      'expected sub-quadratic growth but measured quadratic:',
+    )
+    expect(() => expectSubQuadratic(run, 4, { clock, label: 'quadratic', samples: 2 })).toThrow(
+      'ratio 64.00',
+    )
   })
 })

@@ -29,7 +29,7 @@
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, test } from 'vitest'
+import { parseSync } from 'oxc-parser'
 import { transformJSX_JS } from '../jsx'
 
 type NativeTransform = (
@@ -56,7 +56,7 @@ try {
   }
   nativeTransform = native.transformJsx
 } catch {
-  // Native not available — suite skips (same convention as native-equivalence).
+  // Native parity skips; JavaScript grammar and live-option checks still run.
 }
 
 const describeNative = nativeTransform ? describe : describe.skip
@@ -381,7 +381,7 @@ const MODES: {
 ]
 
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
-  test(`${SEEDS} seeds × 3 modes are byte-identical`, { timeout: SWEEP_TIMEOUT_MS }, () => {
+  test(`${SEEDS} seeds × ${MODES.length} modes are byte-identical`, { timeout: SWEEP_TIMEOUT_MS }, () => {
     const failures: string[] = []
     let firstDivergence = ''
     for (let seed = 1; seed <= SEEDS; seed++) {
@@ -433,6 +433,33 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
     expect(failures, `divergent seeds: ${failures.join(', ')}${firstDivergence}`).toEqual([])
   })
 
+})
+
+// Optional native installation must not decide whether the fallback is tested.
+// Parsing is an independent oracle: two backends could agree on invalid code.
+describe('seeded JavaScript fallback — client + SSR', () => {
+  test(
+    `${SEEDS} seeds × ${MODES.length} modes parse cleanly`,
+    { timeout: SWEEP_TIMEOUT_MS },
+    () => {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const src = genComponent(seed)
+        for (const { label, ssr, ssrTemplate, templatizeComponentChildren: tcc } of MODES) {
+          const output = transformJSX_JS(src, 'fuzz.tsx', {
+            ssr,
+            ssrTemplate,
+            templatizeComponentChildren: tcc === true,
+          }).code
+          expect(output, `empty output: seed=${seed} mode=${label}`).not.toBe('')
+          expect(
+            parseSync('fuzz.tsx', output).errors,
+            `invalid output: seed=${seed} mode=${label}\n${src}\n${output}`,
+          ).toEqual([])
+        }
+      }
+    },
+  )
+
   // A differential mode that never changes the output is a mode that proves
   // nothing — it would pass byte-identically against a backend where the option
   // was never implemented at all. This pins that the `client-tpl-components`
@@ -441,38 +468,42 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
   // from) and the mixed form (`_mountSlot` + `<!>`). Thresholds are ~⅓ below the
   // observed values so ordinary grammar drift doesn't red it, while a mode that
   // silently went dead does.
-  test(`the ${MODES[3]!.label} mode actually changes the emit`, { timeout: SWEEP_TIMEOUT_MS }, () => {
-    let differs = 0
-    let appendForm = 0
-    let componentSlotForm = 0
-    // A component hole is emitted as its own JSX (`_mountSlot(<Comp />, …)`), so
-    // an uppercase tag right after the paren is the placeholder form and nothing
-    // else — an expression hole is `_mountSlot(expr` or `_mountSlot(() =>`.
-    const COMPONENT_SLOT = /_mountSlot\(<[A-Z]/
-    for (let seed = 1; seed <= SEEDS; seed++) {
-      const src = genComponent(seed)
-      const off = transformJSX_JS(src, 'fuzz.tsx', {}).code
-      const on = transformJSX_JS(src, 'fuzz.tsx', { templatizeComponentChildren: true }).code
-      if (off !== on) differs++
-      if (on.includes('_mountChild(')) appendForm++
-      if (COMPONENT_SLOT.test(on)) componentSlotForm++
-    }
-    // Measured at SEEDS=5000: differs=890 (17.8%), append=890, componentSlot=0.
-    // The floor is well under the observed rate so ordinary grammar drift does
-    // not red it, while a mode that went dead does. It was 0.2 when the option
-    // also emitted a placeholder form; declining those shapes instead of
-    // absorbing them is what moved the rate, and 890/5000 is the honest figure.
-    expect(differs, 'option had no effect on any seed').toBeGreaterThan(SEEDS * 0.1)
-    // Not a coincidence, and the sharpest statement of what the option now does:
-    // it changes the emit EXACTLY when it absorbs. Every shape it declines bails
-    // to `h()`, which is byte-identical to the option being off.
-    expect(appendForm, 'the option changed an emit without absorbing').toBe(differs)
-    // A component NEVER goes through a `<!>` placeholder any more: the shapes
-    // that used to (static content after a component) bail the whole element to
-    // `h()` instead, because a placeholder-bearing template cannot be adopted by
-    // hydration and so cost more retention than the absorb ever bought. This
-    // counted ~19% of seeds before that change, so it is a live assertion over
-    // the grammar, not a vacuous zero.
-    expect(componentSlotForm, 'component placeholder form must no longer exist').toBe(0)
-  })
+  test(
+    `the ${MODES[3]!.label} mode actually changes the emit`,
+    { timeout: SWEEP_TIMEOUT_MS },
+    () => {
+      let differs = 0
+      let appendForm = 0
+      let componentSlotForm = 0
+      // A component hole is emitted as its own JSX (`_mountSlot(<Comp />, …)`), so
+      // an uppercase tag right after the paren is the placeholder form and nothing
+      // else — an expression hole is `_mountSlot(expr` or `_mountSlot(() =>`.
+      const COMPONENT_SLOT = /_mountSlot\(<[A-Z]/
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const src = genComponent(seed)
+        const off = transformJSX_JS(src, 'fuzz.tsx', {}).code
+        const on = transformJSX_JS(src, 'fuzz.tsx', { templatizeComponentChildren: true }).code
+        if (off !== on) differs++
+        if (on.includes('_mountChild(')) appendForm++
+        if (COMPONENT_SLOT.test(on)) componentSlotForm++
+      }
+      // Measured at SEEDS=5000: differs=890 (17.8%), append=890, componentSlot=0.
+      // The floor is well under the observed rate so ordinary grammar drift does
+      // not red it, while a mode that went dead does. It was 0.2 when the option
+      // also emitted a placeholder form; declining those shapes instead of
+      // absorbing them is what moved the rate, and 890/5000 is the honest figure.
+      expect(differs, 'option had no effect on any seed').toBeGreaterThan(SEEDS * 0.1)
+      // Not a coincidence, and the sharpest statement of what the option now does:
+      // it changes the emit EXACTLY when it absorbs. Every shape it declines bails
+      // to `h()`, which is byte-identical to the option being off.
+      expect(appendForm, 'the option changed an emit without absorbing').toBe(differs)
+      // A component NEVER goes through a `<!>` placeholder any more: the shapes
+      // that used to (static content after a component) bail the whole element to
+      // `h()` instead, because a placeholder-bearing template cannot be adopted by
+      // hydration and so cost more retention than the absorb ever bought. This
+      // counted ~19% of seeds before that change, so it is a live assertion over
+      // the grammar, not a vacuous zero.
+      expect(componentSlotForm, 'component placeholder form must no longer exist').toBe(0)
+    },
+  )
 })

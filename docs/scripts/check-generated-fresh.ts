@@ -31,34 +31,65 @@ const GENERATED = [
   'packages/native/compiler/src/generated-flow-webview-host.ts',
 ]
 
-const gen = spawnSync('bun', [join(HERE, 'gen-all.ts')], { stdio: 'inherit' })
-if (gen.status !== 0) {
-  console.error('[check-generated-fresh] a generator failed — see output above')
-  process.exit(1)
+/** Compare working-tree output with the index, including new generated files. */
+export function readGeneratedDiff(root: string, paths: readonly string[]): string {
+  const names: string[] = []
+  for (const args of [
+    ['diff', '--name-only'],
+    ['ls-files', '--others', '--exclude-standard'],
+  ]) {
+    const result = spawnSync('git', [...args, '--', ...paths], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+    if (result.error || result.status !== 0) {
+      const reason =
+        result.error?.message ||
+        result.stderr.trim() ||
+        `exit=${result.status}, signal=${result.signal ?? 'none'}`
+      throw new Error(`git ${args[0]} failed: ${reason}`)
+    }
+    names.push(...result.stdout.trim().split('\n').filter(Boolean))
+  }
+  return names.join('\n')
 }
 
-const flowHost = spawnSync('bun', [join(REPO_ROOT, 'scripts/gen-flow-webview-host.ts')], {
-  stdio: 'inherit',
-})
-if (flowHost.status !== 0) {
-  console.error('[check-generated-fresh] the Flow WebView host generator failed — see output above')
-  process.exit(1)
-}
+if (import.meta.main) {
+  const gen = spawnSync('bun', [join(HERE, 'gen-all.ts')], { stdio: 'inherit' })
+  if (gen.status !== 0) {
+    console.error('[check-generated-fresh] a generator failed — see output above')
+    process.exit(1)
+  }
 
-const diff = spawnSync('git', ['diff', '--name-only', '--', ...GENERATED], {
-  cwd: REPO_ROOT,
-  encoding: 'utf8',
-})
-const drifted = (diff.stdout ?? '').trim()
-if (drifted) {
-  console.error(
-    '[check-generated-fresh] ✗ generated docs are STALE — regenerate + commit:\n' +
-      drifted
-        .split('\n')
-        .map((f) => `  ${f}`)
-        .join('\n') +
-      '\n\nFix: `bun docs/scripts/gen-all.ts` then commit the result.',
-  )
-  process.exit(1)
+  const flowHost = spawnSync('bun', [join(REPO_ROOT, 'scripts/gen-flow-webview-host.ts')], {
+    stdio: 'inherit',
+  })
+  if (flowHost.status !== 0) {
+    console.error(
+      '[check-generated-fresh] the Flow WebView host generator failed — see output above',
+    )
+    process.exit(1)
+  }
+
+  let drifted: string
+  try {
+    drifted = readGeneratedDiff(REPO_ROOT, GENERATED)
+  } catch (error) {
+    console.error(
+      `[check-generated-fresh] comparison failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    process.exit(1)
+  }
+  if (drifted) {
+    console.error(
+      '[check-generated-fresh] ✗ generated docs are STALE — regenerate + commit:\n' +
+        drifted
+          .split('\n')
+          .map((f) => `  ${f}`)
+          .join('\n') +
+        '\n\nFix: `bun docs/scripts/gen-all.ts` then commit the result.',
+    )
+    process.exit(1)
+  }
+  console.warn('[check-generated-fresh] ✓ all generated docs are in sync with source')
 }
-console.warn('[check-generated-fresh] ✓ all generated docs are in sync with source')
