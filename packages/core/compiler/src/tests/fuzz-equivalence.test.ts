@@ -250,10 +250,30 @@ function genComponent(seed: number): string {
   if (helpers.length && rnd() < 0.25) {
     body.push(`  const ${helpers[0]} = (v) => String(v)`)
   }
+  // Lexical-scope probe (#3815): a SIBLING function re-using the names App
+  // registers as prop-derived / signal / helper — as plain locals, an import,
+  // a module const, or free references — placed before OR after App. Neither
+  // backend may carry App's registrations into it, and both must agree.
+  const sibNames = [...(props ? ['derived'] : []), ...signals.slice(0, 1), ...helpers.slice(0, 1)]
+  const sibling: string[] = []
+  if (sibNames.length && rnd() < 0.5) {
+    // 0 = const, 2 = let, 1/3 = free reference (no declaration at all)
+    const form = Math.floor(rnd() * 4)
+    sibling.push('function Other() {')
+    for (const n of sibNames) {
+      if (form === 0) sibling.push(`  const ${n} = "o"`)
+      else if (form === 2) sibling.push(`  let ${n} = 1`)
+    }
+    sibling.push(`  return <p>${sibNames.map((n) => `{${n}}`).join('')}</p>`)
+    sibling.push('}')
+  }
+  const before = rnd() < 0.5
+  if (before) lines.push(...sibling)
   lines.push(`function App(${props ? 'props' : ''}) {`)
   lines.push(...body)
   lines.push(`  return ${genElement(c)}`)
   lines.push(`}`)
+  if (!before) lines.push(...sibling)
   return lines.join('\n')
 }
 

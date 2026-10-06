@@ -48,7 +48,6 @@ import {
   type AuditRisk,
   auditIslands,
   auditTestEnvironment,
-  detectNativePatterns,
   formatIslandAudit,
   formatTestAudit,
 } from '@pyreon/compiler/audits'
@@ -57,6 +56,7 @@ import { spawnSync } from 'node:child_process'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
+import { detectNative, NATIVE_CHECKS_SKIPPED_NOTE } from './native-detect'
 import {
   MISSING_REPORT_MESSAGE,
   loadReport,
@@ -204,10 +204,13 @@ server.tool(
     // breaks the PMTC native build (web-only imports, dropped interface/enum/
     // class). The AI's per-keystroke one-shot feedback loop, complementing
     // `pyreon doctor --check-native`.
-    const nativeDiags = detectNativePatterns(code, fname)
+    const { diags: nativeDiags, skipped: nativeSkipped } = await detectNative(code, fname)
+    const nativeNote = nativeSkipped ? `\n\n${NATIVE_CHECKS_SKIPPED_NOTE}` : ''
 
     if (reactDiags.length === 0 && pyreonDiags.length === 0 && nativeDiags.length === 0) {
-      return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
+      return textResult(
+        `✓ No issues found. The code follows Pyreon patterns correctly.${nativeNote}`,
+      )
     }
 
     type Diag = {
@@ -230,7 +233,7 @@ server.tool(
       .join('\n\n')
 
     return textResult(
-      `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}`,
+      `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}${nativeNote}`,
     )
   },
 )

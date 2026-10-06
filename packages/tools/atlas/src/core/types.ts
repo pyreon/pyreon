@@ -189,6 +189,10 @@ export type FindingCode =
   | 'snapshot-failed'
   | 'baseline-created'
   | 'baseline-updated'
+  /** The click-walk's default actions / window / dialog / history effects were suppressed. */
+  | 'interaction-side-effects-suppressed'
+  /** The scenario navigated away from the workbench; the run reloaded it and continued. */
+  | 'navigated-away'
   // ── reasons a check did not run ──────────────────────────────────────────
   /** Measurable only in a real browser. */
   | 'browser-only'
@@ -336,8 +340,18 @@ export interface ComponentIntelligence {
   axes: readonly VariantAxis[]
   scenarios: readonly Scenario[]
   tags: readonly string[]
-  /** source file path, when known */
+  /** source file path, when known (cwd-relative OR absolute depending on the caller — loading only, never identity) */
   source?: string
+  /**
+   * The source file's path RELATIVE TO ITS SCAN ROOT, always `/`-separated.
+   *
+   * This — not `source` — is what identity (`pathQualifier`, hence scenario
+   * ids) is derived from. `source` is whatever the caller's `cwd` made it
+   * (relative for `atlas scan`, absolute for the dev server the browser runner
+   * boots), so qualifying from it gave the Node and browser catalogs different
+   * ids for the same component. Stamped once at discovery.
+   */
+  scanPath?: string
   /**
    * Why the component's module could not be loaded, when the scan tried and
    * failed. Present only then: it is what lets every runtime check that could

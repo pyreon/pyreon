@@ -23,7 +23,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { auditIslands, formatIslandAudit } from '../island-audit'
 import { auditSsg, formatSsgAudit } from '../ssg-audit'
-import { auditNative, detectNativePatterns } from '../native-audit'
 
 let root: string
 
@@ -301,92 +300,5 @@ describe('the SSG audit finds route files, and only route files', () => {
     expect(auditSsg(root).findings.map((f) => f.code)).not.toContain(
       'dynamic-route-missing-get-static-paths',
     )
-  })
-})
-
-describe('the native audit reports what cannot cross to iOS/Android', () => {
-  const shared = (body: string) => detectNativePatterns(`import '@pyreon/primitives'\n${body}`, 'shared.tsx')
-
-  it('names a WEB-ONLY import in a shared-source file', () => {
-    // The control. A shared file importing a web-only package compiles on the
-    // web and produces a native app missing that feature, with the loss
-    // reported nowhere unless this audit says so.
-    const diags = shared("import { mount } from '@pyreon/runtime-dom'\nexport const x = mount\n")
-    expect(diags.length).toBeGreaterThan(0)
-    expect(diags[0]?.message).toContain('@pyreon/runtime-dom')
-  })
-
-  it('stays SILENT in a file that is not shared source', () => {
-    // The audit is scoped by the `@pyreon/primitives` import — the marker that
-    // says "this file is meant to cross". Reporting on every web file would
-    // bury the findings that matter under the whole app.
-    expect(
-      detectNativePatterns("import { mount } from '@pyreon/runtime-dom'\n", 'web-only.tsx'),
-    ).toEqual([])
-  })
-
-  it('reports an ENUM, which has no native counterpart', () => {
-    // A TS enum lowers to a runtime object the native emitters cannot
-    // represent. The message has to name the alternative, or the author is
-    // told only that their code is wrong.
-    const diags = shared('export enum Mode { A, B }\n')
-    const enumDiag = diags.find((d) => /enum/i.test(d.message))
-    expect(enumDiag, 'the enum is reported').toBeTruthy()
-    // The remedy travels WITH the finding, in `suggested` — a diagnostic that
-    // says only "this is unsupported" leaves the author to guess, and the
-    // guess for an enum is usually a class, which is also unsupported.
-    expect(enumDiag?.suggested).toContain('string-literal union')
-  })
-
-  it('reports a CLASS, and points at the shape that does cross', () => {
-    const diags = shared('export class Store { x = 1 }\n')
-    const classDiag = diags.find((d) => /class/i.test(d.message))
-    expect(classDiag, 'the class is reported').toBeTruthy()
-    expect(classDiag?.suggested).toContain('defineStore')
-  })
-
-  it('names an ANONYMOUS declaration rather than printing undefined', () => {
-    const diags = shared('export default class { x = 1 }\n')
-    expect(diags.some((d) => d.message.includes('<anonymous>'))).toBe(true)
-  })
-
-  it('orders diagnostics by position, so two runs read the same', () => {
-    const diags = shared('export class B { x = 1 }\nexport enum A { X }\n')
-    const keys = diags.map((d) => d.line * 1000 + d.column)
-    expect(keys).toEqual([...keys].sort((a, b) => a - b))
-  })
-
-  it('reports NOTHING for a shared file that is genuinely portable', () => {
-    // The quiet direction: an audit that fires on portable code gets ignored.
-    expect(shared("import { signal } from '@pyreon/reactivity'\nexport const c = signal(0)\n")).toEqual(
-      [],
-    )
-  })
-
-  it('walks a whole TREE and counts the shared files it found', () => {
-    // The project-level entry. A walk that finds nothing reports a clean
-    // multiplatform story for an app that has never been checked.
-    repo()
-    write(
-      'packages/app/src/shared.tsx',
-      "import '@pyreon/primitives'\nimport { mount } from '@pyreon/runtime-dom'\nexport const x = mount\n",
-    )
-    write('packages/app/src/web.tsx', "import { mount } from '@pyreon/runtime-dom'\nexport const y = mount\n")
-    const r = auditNative(root)
-    expect(r.summary.multiplatformFiles, 'one shared file, not two').toBe(1)
-    expect(r.findings.map((f) => f.code)).toContain('web-only-package-import')
-  })
-
-  it('skips node_modules, build output and test directories while walking', () => {
-    // Findings in a dependency are not the author\'s to fix, and a walk into
-    // `node_modules` takes minutes.
-    repo()
-    const bad = "import '@pyreon/primitives'\nimport { mount } from '@pyreon/runtime-dom'\nexport const x = mount\n"
-    write('packages/app/node_modules/dep/src/a.tsx', bad)
-    write('packages/app/lib/a.tsx', bad)
-    write('packages/app/dist/a.tsx', bad)
-    write('packages/app/src/__tests__/a.tsx', bad)
-    write('packages/app/.cache/a.tsx', bad)
-    expect(auditNative(root).summary.multiplatformFiles).toBe(0)
   })
 })

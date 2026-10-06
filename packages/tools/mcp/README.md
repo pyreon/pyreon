@@ -66,7 +66,7 @@ bunx @pyreon/mcp     # starts stdio MCP server
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `mcp_overview`               | Discoverability map: every tool's "when to use" + example, in one call — call this first                    |
 | `get_api`                    | Look up any Pyreon API — signature, summary, example, common mistakes                                        |
-| `validate`                   | Run `detectReactPatterns` + `detectPyreonPatterns` + `detectNativePatterns` against a code snippet           |
+| `validate`                   | Run `detectReactPatterns` + `detectPyreonPatterns` + `detectNativePatterns` (from `@pyreon/native-compiler`, optional) against a code snippet           |
 | `explain_reactivity`         | The compiler's per-expression reactivity VERDICT for a snippet (live / baked-static / footgun)               |
 | `migrate_react`              | One-shot React → Pyreon codemod (`useState` → `signal`, `className` → `class`, …)                            |
 | `migrate_pyreon`             | Auto-fixes the mechanically-safe Pyreon footguns (`sig(v)` → `sig.set(v)`, `<For key>` → `<For by>`, …)      |

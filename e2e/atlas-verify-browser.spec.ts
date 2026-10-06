@@ -16,7 +16,7 @@
  * spec fails.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 
@@ -105,4 +105,55 @@ test('scan → create baselines → compare → merged catalog verdicts', () => 
   // Merged verdicts recompute checked with the browser pair included.
   const sample = driven.find((s) => s.verify && s.verify.checked >= 3)
   expect(sample, 'a scenario with ≥3 non-skip checks after merge').toBeTruthy()
+})
+
+// #3823 — two same-named components in different directories. The Node scan and
+// the dev server the browser runner boots reached the same files through
+// different roots (cwd-relative vs absolute), so their scenario ids differed
+// and no browser verdict could merge (`notDriven` held both, silently).
+//
+// The fixture lives INSIDE the workshop so `@pyreon/*` resolves from its
+// node_modules; it is created and removed by the test.
+test('same-named components in different directories merge their browser verdicts', () => {
+  test.setTimeout(600_000)
+  const FX = join(WORKSHOP, '.fx-collision-e2e')
+  rmSync(FX, { recursive: true, force: true })
+  try {
+    for (const d of ['one', 'two']) {
+      mkdirSync(join(FX, 'src', d), { recursive: true })
+      writeFileSync(
+        join(FX, 'src', d, 'Glyph.tsx'),
+        `export default function Glyph() { return <span>${d}</span> }\n`,
+      )
+    }
+    writeFileSync(
+      join(FX, 'atlas.config.ts'),
+      `export default { title: 'Collision', projects: [{ name: 'Example', dir: 'src' }] }\n`,
+    )
+
+    const scan = spawnSync('node', [BIN, 'scan', FX], { cwd: ROOT, encoding: 'utf8', timeout: 300_000 })
+    expect(scan.status, scan.stderr).toBe(0)
+    const run = spawnSync('node', [BIN, 'verify-browser', FX], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 300_000,
+    })
+    // Exit 0 also proves nothing was `unmatched` (the runner now exits 1 then).
+    expect(run.status, run.stderr).toBe(0)
+    expect(run.stdout).toContain('2 scenario(s)')
+    expect(run.stdout).not.toContain('not drivable')
+
+    const catalog = JSON.parse(readFileSync(join(FX, 'atlas-catalog.json'), 'utf8')) as CatalogJson
+    const scenarios = catalog.components.flatMap((c) => c.scenarios)
+    expect(scenarios.map((s) => s.id).sort()).toEqual([
+      'example-glyph-one--default',
+      'example-glyph-two--default',
+    ])
+    // Both verdicts merged: the browser-only snapshot check is no longer a skip.
+    for (const s of scenarios) expect(s.verify?.snapshot.status, s.id).not.toBe('skip')
+    // Snapshot filenames carry no checkout path.
+    expect(existsSync(join(FX, 'atlas-snapshots', 'example-glyph-one--default.png'))).toBe(true)
+  } finally {
+    rmSync(FX, { recursive: true, force: true })
+  }
 })

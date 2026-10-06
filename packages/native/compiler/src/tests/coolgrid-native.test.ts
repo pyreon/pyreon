@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { coolgridToStack, isCoolgridTag } from '../coolgrid-native'
+import { coolgridToStack, isCoolgridTag } from '../plugins/coolgrid'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })

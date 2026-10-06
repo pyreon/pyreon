@@ -42,44 +42,24 @@ describe('jsx.ts — the baseline inlining', () => {
 })
 
 describe('jsx.ts — BLOCK-level re-bindings shadow the whole block', () => {
-  it('an OBJECT-PATTERN re-binding (via rest) shadows it', () => {
-    const out = inlinedOuter('  const { a, ...cls } = o;')
-    expect(out).toContain('_setClass(__root, cls)')
-    expect(out).not.toContain('_setClass(__root, (props.cls))')
-  })
+  // The re-binding lives in a NESTED block (a same-block `const cls` twice is a
+  // SyntaxError in real JS, so it cannot model a shadow). The inner JSX use
+  // resolves to the block's own binding and stays bare; the OUTER use after the
+  // block still inlines the prop-derived const.
+  const rebound = (decl: string): void => {
+    const out = inlinedOuter(`  { ${decl}; g(<i class={cls}/>) }`)
+    expect(out).toContain('_setClass(__root, (props.cls))')
+    expect(out).toContain('<i class={cls}/>')
+    expect(out).not.toContain('<i class={(props.cls)}/>')
+  }
 
-  it('an OBJECT-PATTERN re-binding by plain key shadows it', () => {
-    const out = inlinedOuter('  const { cls } = o;')
-    expect(out).toContain('_setClass(__root, cls)')
-    expect(out).not.toContain('_setClass(__root, (props.cls))')
-  })
-
-  it('a RENAMED object-pattern re-binding shadows the LOCAL name', () => {
-    const out = inlinedOuter('  const { a: cls } = o;')
-    expect(out).toContain('_setClass(__root, cls)')
-    expect(out).not.toContain('_setClass(__root, (props.cls))')
-  })
-
-  it('an ARRAY-PATTERN re-binding shadows it', () => {
-    const out = inlinedOuter('  const [cls] = o;')
-    expect(out).toContain('_setClass(__root, cls)')
-  })
-
-  it('an array pattern with a DEFAULT still binds the name', () => {
-    const out = inlinedOuter('  const [cls = 1] = o;')
-    expect(out).toContain('_setClass(__root, cls)')
-    expect(out).not.toContain('_setClass(__root, (props.cls))')
-  })
-
-  it('a FUNCTION DECLARATION of the same name shadows it', () => {
-    const out = inlinedOuter('  function cls() {}')
-    expect(out).toContain('_setClass(__root, cls)')
-  })
-
-  it('a CLASS DECLARATION of the same name shadows it', () => {
-    const out = inlinedOuter('  class cls {}')
-    expect(out).toContain('_setClass(__root, cls)')
-  })
+  it('an OBJECT-PATTERN re-binding (via rest) shadows it', () => rebound('const { a, ...cls } = o'))
+  it('an OBJECT-PATTERN re-binding by plain key shadows it', () => rebound('const { cls } = o'))
+  it('a RENAMED object-pattern re-binding shadows the LOCAL name', () => rebound('const { a: cls } = o'))
+  it('an ARRAY-PATTERN re-binding shadows it', () => rebound('const [cls] = o'))
+  it('an array pattern with a DEFAULT still binds the name', () => rebound('const [cls = 1] = o'))
+  it('a FUNCTION DECLARATION of the same name shadows it', () => rebound('function cls() {}'))
+  it('a CLASS DECLARATION of the same name shadows it', () => rebound('class cls {}'))
 
   it('a declaration of a DIFFERENT name does not shadow it', () => {
     const out = inlinedOuter('  const other = 1;')
@@ -97,22 +77,30 @@ describe('jsx.ts — scoped re-bindings shadow only their OWN subtree', () => {
 
   it('a CATCH parameter shadows inside the handler only', () => {
     const out = bothWays('  try {} catch (cls) { g(<i class={cls}/>) }')
-    expect(out).toContain('<i class={() => cls}/>')
+    // The shadowed local is a plain value (not a prop-derived accessor), so it
+    // stays bare — it is NOT rewritten to `props.cls` and not accessor-wrapped.
+    expect(out).toContain('<i class={cls}/>')
   })
 
   it('a `for (let cls …)` head shadows inside the loop only', () => {
     const out = bothWays('  for (let cls = 0;;) { g(<i class={cls}/>) }')
-    expect(out).toContain('<i class={() => cls}/>')
+    // The shadowed local is a plain value (not a prop-derived accessor), so it
+    // stays bare — it is NOT rewritten to `props.cls` and not accessor-wrapped.
+    expect(out).toContain('<i class={cls}/>')
   })
 
   it('a `for…of` head shadows inside the loop only', () => {
     const out = bothWays('  for (const cls of xs) { g(<i class={cls}/>) }')
-    expect(out).toContain('<i class={() => cls}/>')
+    // The shadowed local is a plain value (not a prop-derived accessor), so it
+    // stays bare — it is NOT rewritten to `props.cls` and not accessor-wrapped.
+    expect(out).toContain('<i class={cls}/>')
   })
 
   it('a `for…in` head shadows inside the loop only', () => {
     const out = bothWays('  for (const cls in xs) { g(<i class={cls}/>) }')
-    expect(out).toContain('<i class={() => cls}/>')
+    // The shadowed local is a plain value (not a prop-derived accessor), so it
+    // stays bare — it is NOT rewritten to `props.cls` and not accessor-wrapped.
+    expect(out).toContain('<i class={cls}/>')
   })
 
   it('a `for (;;)` with NO declaration in the head does not shadow', () => {

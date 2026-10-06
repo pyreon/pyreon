@@ -94,8 +94,29 @@ export interface BrowserVerifySummary {
    * run is legible instead of silently partial.
    */
   notDriven: string[]
+  /**
+   * Browser results whose scenario id is in NO catalog entry — present only
+   * when a catalog was merged into. Non-empty means the two surfaces derived
+   * different ids for the same scenario (identity drift), so those verdicts
+   * were measured and then dropped; the CLI exits non-zero rather than let
+   * that read as a clean run.
+   */
+  unmatched: string[]
+  /**
+   * Scenarios whose interaction pass was ABORTED because the component left
+   * the workbench document (a `location.assign`, a programmatic
+   * `form.submit()`, …) — something an in-page guard cannot prevent. Their
+   * coverage verdict is a skip naming the destination; the run carried on.
+   */
+  navigatedAway: { id: string; url: string }[]
   catalogPath?: string
 }
+
+/** What the interaction pass reported (or why it could not). */
+type CoverageOutcome =
+  | { status: 'skip' | 'error' | 'crashed'; reason: string }
+  | { status: 'navigated'; url: string }
+  | { status: 'done'; percent: number; total: number; uncovered: number; suppressed: string[] }
 
 /** The workbench catalog shape the bridge exposes (subset the runner reads). */
 interface PageCatalog {
@@ -240,6 +261,75 @@ export function comparePngs(a: Buffer, b: Buffer): PngComparison {
   }
 }
 
+/**
+ * The in-page guard installed around the click-walk. Verification drives
+ * handlers, it does not follow them: a default action (an anchor's navigation,
+ * a form submit, a download) would unload the workbench and abort every
+ * remaining scenario, and a window/dialog/history side effect would escape the
+ * scenario document.
+ *
+ * Default actions are cancelled in the CAPTURE phase on `window`, but
+ * `defaultPrevented` is reported as `false` to the app: a router `<Link>`
+ * bails on `e.defaultPrevented`, so a plainly-prevented event would skip the
+ * very handler the walk exists to exercise. `window.open` / `alert` /
+ * `confirm` / `prompt`, `history.pushState|replaceState` and
+ * `HTMLFormElement.submit` are stubbed for the duration and restored in a
+ * `finally`. Every suppression is recorded and returned so it is REPORTED.
+ *
+ * What it cannot stop — `location.assign|replace|href = …`, which Chromium
+ * makes unforgeable — is caught from the outside (see `armNavigationWatch`).
+ */
+export const INTERACTION_GUARD_SOURCE = `(() => {
+  const suppressed = []
+  const note = (what) => { suppressed.push(what) }
+  const realPrevent = Event.prototype.preventDefault
+  const cancel = (e, what) => {
+    realPrevent.call(e)
+    // The app must still see an un-prevented event (see the docblock).
+    try { Object.defineProperty(e, 'defaultPrevented', { get: () => false, configurable: true }) } catch {}
+    note(what)
+  }
+  const onClick = (e) => {
+    const t = e.target && e.target.closest ? e.target : null
+    const a = t && t.closest('a[href]')
+    if (a) return cancel(e, a.hasAttribute('download') ? 'download' : /^(mailto|tel):/i.test(a.getAttribute('href') || '') ? 'mailto/tel link' : 'anchor navigation')
+    const b = t && t.closest('button,input')
+    if (b && b.form && (b.type === 'submit' || (b.tagName === 'BUTTON' && !b.hasAttribute('type')))) return cancel(e, 'form submit')
+    if (b && b.type === 'reset') return cancel(e, 'form reset')
+  }
+  const onSubmit = (e) => cancel(e, 'form submit')
+  window.addEventListener('click', onClick, true)
+  window.addEventListener('submit', onSubmit, true)
+  const saved = {
+    open: window.open, alert: window.alert, confirm: window.confirm, prompt: window.prompt,
+    push: history.pushState, replace: history.replaceState, submit: HTMLFormElement.prototype.submit,
+  }
+  window.open = () => { note('window.open'); return null }
+  window.alert = () => { note('alert') }
+  window.confirm = () => { note('confirm'); return false }
+  window.prompt = () => { note('prompt'); return null }
+  history.pushState = () => { note('history.pushState') }
+  history.replaceState = () => { note('history.replaceState') }
+  HTMLFormElement.prototype.submit = function () { note('form.submit()') }
+  return {
+    suppressed,
+    uninstall() {
+      window.removeEventListener('click', onClick, true)
+      window.removeEventListener('submit', onSubmit, true)
+      window.open = saved.open; window.alert = saved.alert; window.confirm = saved.confirm; window.prompt = saved.prompt
+      history.pushState = saved.push; history.replaceState = saved.replace
+      HTMLFormElement.prototype.submit = saved.submit
+    },
+  }
+})()`
+
+/** Collapse a suppression list into a stable `anchor navigation ×2, alert` summary. */
+export function summarizeSuppressed(list: readonly string[]): string {
+  const counts = new Map<string, number>()
+  for (const w of list) counts.set(w, (counts.get(w) ?? 0) + 1)
+  return [...counts].map(([w, n]) => (n > 1 ? `${w} ×${n}` : w)).join(', ')
+}
+
 export async function runBrowserVerify(
   options: BrowserVerifyOptions = {},
 ): Promise<BrowserVerifySummary> {
@@ -272,8 +362,10 @@ export async function runBrowserVerify(
 
   const results: ScenarioBrowserResult[] = []
   const notDriven: string[] = []
+  const unmatched: string[] = []
   const snapshotOutcomes: SnapshotOutcome[] = []
   let coverageMeasured = 0
+  const navigatedAway: { id: string; url: string }[] = []
   let axeChecked = 0
   let axeFailed = 0
   const axeOpts = options.axe === false ? null : (options.axe ?? {})
@@ -281,12 +373,61 @@ export async function runBrowserVerify(
   const browser = await chromium.launch()
   try {
     const page = await browser.newPage()
-    await page.goto(server.url)
-    await page.waitForSelector('[data-testid="atlas-shell"]')
+
+    // Side effects the in-page guard cannot reach are caught from OUTSIDE the
+    // document: a dialog is dismissed, a popup closed, a download cancelled,
+    // and main-frame navigations are remembered so a scenario that left the
+    // workbench can name where it went. None of these may stall the run.
+    const navigations: string[] = []
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) navigations.push(frame.url())
+    })
+    page.on('dialog', (d) => void d.dismiss().catch(() => {}))
+    page.on('popup', (p) => void p.close().catch(() => {}))
+    page.on('download', (d) => void d.cancel().catch(() => {}))
+
+    // The workbench document carries a run token. A document that has been
+    // replaced (navigation, reload) does not — and unlike `__ATLAS_MODEL__`
+    // that cannot be faked by a SPA-fallback page that boots the workbench
+    // again at a different route.
+    const TOKEN = '__ATLAS_VERIFY_DOC__'
+    const bootWorkbench = async (): Promise<void> => {
+      await page.goto(server.url)
+      await page.waitForSelector('[data-testid="atlas-shell"]')
+      await page.evaluate(`globalThis.${TOKEN} = true`)
+    }
+    const docAlive = async (): Promise<boolean> => {
+      try {
+        return (await page.evaluate(`globalThis.${TOKEN} === true`)) === true
+      } catch {
+        return false
+      }
+    }
+    const selectScenario = (componentId: string, scenarioId: string): string =>
+      `(async () => {
+        globalThis.__ATLAS_MODEL__.selectScenario(${JSON.stringify(componentId)}, ${JSON.stringify(scenarioId)})
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      })()`
+
+    await bootWorkbench()
 
     const catalog = (await page.evaluate(
       `(() => { const m = globalThis.__ATLAS_MODEL__; return { components: m.catalog.components.map((c) => ({ id: c.id, name: c.name, scenarios: (c.scenarios ?? []).map((s) => ({ id: s.id })) })) } })()`,
     )) as PageCatalog
+
+    // The page's ids are the join key AND the snapshot filenames: a repeat
+    // would let one scenario's baseline/verdict serve another.
+    const seenIds = new Set<string>()
+    for (const component of catalog.components) {
+      for (const scenario of component.scenarios ?? []) {
+        if (seenIds.has(scenario.id)) {
+          throw new Error(
+            `[Pyreon] atlas verify-browser: scenario id "${scenario.id}" appears more than once in the workbench catalog (component "${component.name}") — verdicts and snapshots are keyed by id, so they would overwrite each other.`,
+          )
+        }
+        seenIds.add(scenario.id)
+      }
+    }
 
     mkdirSync(snapshotDir, { recursive: true })
 
@@ -301,8 +442,11 @@ export async function runBrowserVerify(
         // workbench chrome — scoring them would measure the workbench, not the
         // component. Fresh nodes carry absolute fire counts from creation,
         // which is exactly the session-baseline semantic of the coverage kit.
-        const coverage = (await page.evaluate(
-          `(async () => {
+        navigations.length = 0
+        let coverage: CoverageOutcome
+        try {
+          coverage = (await page.evaluate(
+            `(async () => {
             const m = globalThis.__ATLAS_MODEL__
             const v = globalThis.__ATLAS_VERIFY__
             const bridge = globalThis.__PYREON_DEVTOOLS__ && globalThis.__PYREON_DEVTOOLS__.reactive
@@ -314,18 +458,48 @@ export async function runBrowserVerify(
               await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
               const surface = m.previewElement()
               const clickable = surface ? surface.querySelectorAll('button,[role="button"],a[href],input,select') : []
-              for (const el of clickable) el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-              await new Promise((r) => requestAnimationFrame(r))
+              const guard = ${INTERACTION_GUARD_SOURCE}
+              let suppressed = []
+              try {
+                for (const el of clickable) el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+                await new Promise((r) => requestAnimationFrame(r))
+                // A navigation a handler queued (location.assign) commits a
+                // few ms later; wait inside the page so the document being
+                // destroyed is OBSERVED here, not discovered by a later step.
+                if (clickable.length > 0) await new Promise((r) => setTimeout(r, 60))
+              } finally {
+                guard.uninstall()
+                suppressed = guard.suppressed
+              }
               const fresh = bridge.getGraph().nodes.filter((n) => !before.has(n.id))
               const report = v.computeReactiveCoverage(fresh)
-              return { status: 'done', percent: report.percent, total: report.total, uncovered: report.uncovered }
+              return { status: 'done', percent: report.percent, total: report.total, uncovered: report.uncovered, suppressed }
             } catch (err) {
               return { status: 'error', reason: String(err && err.message || err) }
             }
           })()`,
-        )) as
-          | { status: 'skip' | 'error'; reason: string }
-          | { status: 'done'; percent: number; total: number; uncovered: number }
+          )) as CoverageOutcome
+        } catch (err) {
+          // The evaluate itself died (typically "Execution context was
+          // destroyed"): isolate it to THIS scenario instead of aborting.
+          coverage = { status: 'crashed', reason: err instanceof Error ? err.message : String(err) }
+        }
+
+        // A replaced document means the component navigated away in a way the
+        // guard cannot stop. Reload the workbench, reselect the scenario (so
+        // axe + the snapshot judge the un-interacted render) and carry on.
+        if (!(await docAlive())) {
+          const url = navigations.at(-1) ?? 'an unknown location'
+          navigatedAway.push({ id: scenario.id, url })
+          coverage = { status: 'navigated', url }
+          try {
+            await bootWorkbench()
+            await page.evaluate(selectScenario(component.id, scenario.id))
+          } catch {
+            // The next scenario retries the boot; this one's axe/snapshot
+            // report their own failure rather than aborting the run.
+          }
+        }
 
         let reactivityCoverage: VerifyCheck
         if (coverage.status === 'done') {
@@ -340,8 +514,22 @@ export async function runBrowserVerify(
                   : `measured in real Chromium: ${coverage.percent}% of ${coverage.total} reactive node(s) fired` +
                     (coverage.uncovered > 0 ? `; ${coverage.uncovered} never re-fired` : ''),
               ),
+              ...(coverage.suppressed.length > 0
+                ? [
+                    finding(
+                      'interaction-side-effects-suppressed',
+                      `the click-walk's side effects were suppressed to keep the scenario inside the workbench: ${summarizeSuppressed(coverage.suppressed)} (handlers still ran)`,
+                    ),
+                  ]
+                : []),
             ],
           }
+        } else if (coverage.status === 'navigated') {
+          reactivityCoverage = skipped(
+            'navigated-away',
+            `interaction pass aborted: the scenario navigated away from the workbench to ${coverage.url}, which no in-page guard can prevent (location.assign / location.href / …). The workbench was reloaded and the run continued; reactive coverage was NOT measured for this scenario.`,
+            'Call handlers that navigate through the router (a client-side route change) or guard the call, so the preview can be driven without leaving the document.',
+          )
         } else if (coverage.status === 'skip') {
           reactivityCoverage = skipped('not-run', coverage.reason)
         } else {
@@ -409,6 +597,8 @@ export async function runBrowserVerify(
   }
   if (data) {
     const byId = new Map(results.map((r) => [r.id, r]))
+    const known = new Set(data.components.flatMap((c) => c.scenarios.map((s) => s.id)))
+    for (const r of results) if (!known.has(r.id)) unmatched.push(r.id)
     for (const component of data.components) {
       for (const scenario of component.scenarios) {
         const r = byId.get(scenario.id)
@@ -429,6 +619,8 @@ export async function runBrowserVerify(
     axeChecked,
     axeFailed,
     notDriven,
+    unmatched,
+    navigatedAway,
     ...(wrote ? { catalogPath: wrote } : {}),
   }
 }
@@ -570,8 +762,18 @@ export function writeAtomic(path: string, content: string): void {
   }
 }
 
+/** The union of what the page events we listen to hand us (frame / dialog / popup / download). */
+interface PlaywrightEventArg {
+  url(): string
+  dismiss(): Promise<void>
+  close(): Promise<void>
+  cancel(): Promise<void>
+}
+
 /** Minimal structural page type — playwright's types stay out of the graph. */
 interface PageLike {
+  on(event: string, handler: (arg: PlaywrightEventArg) => void): unknown
+  mainFrame(): unknown
   goto(url: string): Promise<unknown>
   waitForSelector(sel: string): Promise<unknown>
   evaluate(script: string): Promise<unknown>

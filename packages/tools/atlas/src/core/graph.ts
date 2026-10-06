@@ -18,7 +18,7 @@ import type {
   VerifyVerdict,
 } from './types'
 import { CHECK_KEYS } from './types'
-import { componentKey, fileQualifierFor, pathQualifierFor, resolveComponent } from './identity'
+import { componentKey, fileQualifierFor, identityPath, pathQualifierFor, resolveComponent } from './identity'
 
 /** A single search match, ranked by `score` (higher = better). */
 export interface SearchHit {
@@ -113,9 +113,9 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
       // and spreading a growing Map plus a linear scan per collision is O(n²)
       // on exactly that shape (~990k iterations for 995 files).
       const sibling = siblingByName.get(nameKey(ci))
-      let incoming = pathQualifierFor(ci.source)
-      const held = sibling ? pathQualifierFor(sibling.source) : undefined
-      if (!incoming || !held || incoming === held) incoming = fileQualifierFor(ci.source)
+      let incoming = pathQualifierFor(identityPath(ci))
+      const held = sibling ? pathQualifierFor(identityPath(sibling)) : undefined
+      if (!incoming || !held || incoming === held) incoming = fileQualifierFor(identityPath(ci))
       if (incoming) {
         const qualified = { ...ci, pathQualifier: incoming }
         put(componentKey(qualified), qualified)
@@ -130,11 +130,11 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
     // Directory first, then FILENAME when the directory is shared. A generated
     // icon package puts 995 `Glyph` files in one directory, so directory alone
     // still collapsed 994 of them.
-    let incoming = pathQualifierFor(ci.source)
-    let held = pathQualifierFor(existing.source)
+    let incoming = pathQualifierFor(identityPath(ci))
+    let held = pathQualifierFor(identityPath(existing))
     if (!incoming || !held || incoming === held) {
-      incoming = fileQualifierFor(ci.source)
-      held = fileQualifierFor(existing.source)
+      incoming = fileQualifierFor(identityPath(ci))
+      held = fileQualifierFor(identityPath(existing))
     }
     // Genuinely nothing to tell them apart — keep the last, as before.
     if (!incoming || !held || incoming === held) {

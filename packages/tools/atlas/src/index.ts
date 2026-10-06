@@ -12,7 +12,7 @@
  */
 import type { CatalogGraph, ComponentIntelligence, Scenario, VariantMatrix } from './core'
 import type { AtlasPlugin } from './plugins'
-import { createCatalogGraph, qualifyIdentities } from './core'
+import { createCatalogGraph, duplicateScenarioIds, qualifyIdentities } from './core'
 import { createPluginRegistry, recommendedPlugins } from './plugins'
 
 // NO singleton sentinel here, DELIBERATELY (the lint/mcp/cli tool-package
@@ -119,6 +119,16 @@ export function createAtlas(config: AtlasConfig = {}): Atlas {
       }
 
       // 4. graph — assemble, then let plugins run a final pass over the whole graph
+      // Scenario ids are the join key for browser verdicts and snapshot files;
+      // a repeat silently merges two scenarios into one, so refuse it here
+      // rather than let a verdict land on the wrong component.
+      const duplicates = duplicateScenarioIds(enriched)
+      if (duplicates.size > 0) {
+        const lines = [...duplicates].map(([id, owners]) => `  ${id} (${owners.join(', ')})`)
+        throw new Error(
+          `[Pyreon] atlas: ${duplicates.size} scenario id(s) are not unique — verdicts and snapshots are keyed by id, so these would overwrite each other:\n${lines.join('\n')}\n  Rename the duplicate scenario, or give the same-named components distinct export names.`,
+        )
+      }
       const graph = createCatalogGraph(enriched)
       await registry.runGraph({ graph })
       return graph

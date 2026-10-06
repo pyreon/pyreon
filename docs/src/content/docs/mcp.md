@@ -263,7 +263,7 @@ Check a code snippet for anti-patterns. **Three AST-based detectors** run in par
 
 - **`detectReactPatterns`** — "coming from React" mistakes: `useState`, `useEffect`, `useMemo`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes on signals, React-package imports.
 - **`detectPyreonPatterns`** — "using Pyreon wrong" mistakes: `<For>` missing `by`, props destructured at the component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs.
-- **`detectNativePatterns`** — multiplatform (PMTC) hazards that compile for web but silently break the native build: web-only imports and dropped top-level `interface` / `enum` / `class` declarations. This detector **only fires when the snippet imports `@pyreon/primitives`**, so a pure-web snippet never false-positives on it.
+- **`detectNativePatterns`** — multiplatform (PMTC) hazards that compile for web but silently break the native build: web-only imports and dropped top-level `interface` / `enum` / `class` declarations. This detector lives in `@pyreon/native-compiler/audit` (an optional peer of the MCP server) and **only fires when the snippet imports `@pyreon/primitives`**, so a pure-web snippet never false-positives on it. When `@pyreon/native-compiler` is not installed, a snippet that imports `@pyreon/primitives` still gets the React and Pyreon checks, and the response says the native checks were skipped and how to install them — it never reports an unqualified "No issues found" for code the native checks would have examined.
 
 **Parameters:**
 
@@ -1258,7 +1258,7 @@ A few architectural notes worth knowing:
 
 - **Manifest-driven.** `get_api` reads `api-reference.ts`, which is generated from each package's `manifest.ts` via `bun run gen-docs`. A marker-pair protocol (`<gen-docs:api-reference:start @pyreon/<name>>`) lets some packages be generated and others stay hand-written during incremental migration. `mcp_overview` reads this package's own manifest at runtime — so the overview, the `get_api` database, and this docs page share one source.
 - **Project-context caching.** Each `createServer()` instance keeps its own cached scan of routes, components, and islands. The cache auto-resets when `process.cwd()` changes between invocations, so one server can operate across multiple projects in a single session.
-- **AST-based detectors.** `validate`, `diagnose`, and `explain_error` reuse the static detectors from `@pyreon/compiler` (`detectReactPatterns`, `detectPyreonPatterns`, `detectNativePatterns`) — the same code paths that back the lint rules — so a detection in the IDE matches a detection in CI.
+- **AST-based detectors.** `validate`, `diagnose`, and `explain_error` reuse the static detectors from `@pyreon/compiler` (`detectReactPatterns`, `detectPyreonPatterns`) and `@pyreon/native-compiler/audit` (`detectNativePatterns`) — the same code paths that back the lint rules — so a detection in the IDE matches a detection in CI.
 - **Read-only + deterministic.** Every tool returns text. Nothing in the server mutates files, and no LLM is embedded — the consuming agent does the reasoning, a human gates any change.
 
 The project-scanning tools (`get_routes`, `get_components`, `get_content_*`) use the TypeScript-based scanner from `@pyreon/compiler` to analyze the actual project source. Results are cached per working directory and regenerated when the directory changes.

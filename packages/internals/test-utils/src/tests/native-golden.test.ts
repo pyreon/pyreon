@@ -33,9 +33,9 @@ describe('check-native-golden — digest and diff', () => {
 describe('check-native-golden — the corpus', () => {
   const corpus = collectCorpus()
 
-  it('covers fixtures, shared examples and the coverage-registry snippets', () => {
+  it('covers fixtures, golden-only fixtures, shared examples and the coverage-registry snippets', () => {
     const kinds = new Set(corpus.map((c) => c.key.split(':')[0]))
-    expect([...kinds].sort()).toEqual(['example', 'fixture', 'registry'])
+    expect([...kinds].sort()).toEqual(['example', 'fixture', 'golden-fixture', 'registry'])
     expect(corpus.length).toBeGreaterThan(60)
   })
 
