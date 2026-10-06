@@ -12,7 +12,7 @@
  * (code + warnings) per entry against a committed golden file:
  *
  *   - every `packages/native/compiler/src/fixtures/*.tsx`
- *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` and `packages/fundamentals/{charts,flow,http,query,validate}/native-golden/*.tsx`
+ *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` and every package's own `native-golden/` directory
  *     (shapes that warn by design; the chart ones are owned by `@pyreon/charts`, whose plugin they exercise)
  *   - every shared example source `examples/native-STAR/src/*.tsx` (the
  *     `entry-client.tsx` web bootstraps are not PMTC input)
@@ -127,14 +127,14 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
   // an unresolvable import, so the zero-warning fixtures gate cannot hold them.
   // A fixture's key and compile filename do not name its directory (`golden-fixtures/…` for both), so
   // moving a fixture between the two owners never moves its hash.
-  const goldenOnlyDirs = [
-    join(root, 'packages/native/compiler/src/golden-fixtures'),
-    join(root, 'packages/fundamentals/charts/native-golden'),
-    join(root, 'packages/fundamentals/flow/native-golden'),
-    join(root, 'packages/fundamentals/http/native-golden'),
-    join(root, 'packages/fundamentals/query/native-golden'),
-    join(root, 'packages/fundamentals/validate/native-golden'),
-  ]
+  // Every package that owns its native lowering keeps the fixtures that exercise it in its OWN
+  // `native-golden/` directory (a library moved into a package takes its fixtures with it), so the
+  // list is the directories that exist rather than a list to remember to extend.
+  const packagesRoot = join(root, 'packages')
+  const ownedDirs = readdirOrEmpty(packagesRoot)
+    .sort()
+    .flatMap((category) => readdirOrEmpty(join(packagesRoot, category)).sort().map((pkg) => join(packagesRoot, category, pkg, 'native-golden')))
+  const goldenOnlyDirs = [join(root, 'packages/native/compiler/src/golden-fixtures'), ...ownedDirs]
   const goldenOnly = goldenOnlyDirs
     .flatMap((dir) => readdirOrEmpty(dir).filter((n) => n.endsWith('.tsx')).map((n) => ({ dir, n })))
     .sort((a, b) => a.n.localeCompare(b.n))
