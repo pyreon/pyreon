@@ -15,6 +15,7 @@ function emitNative(emit: typeof emitSwift, module: CompilerModule, context: Com
     module.fieldMetas,
     module.features,
     module.zodSchemas,
+    module.moduleItems,
     context.options.fonts ?? {},
     module.helperFns,
     module.styledComponents,

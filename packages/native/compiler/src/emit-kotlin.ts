@@ -17,6 +17,10 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  lowerPluginExpr,
+  formFieldValidators,
+  itemsInSlot,
+  lowerPluginItem,
   lowerPluginIntrinsic,
   lowerPluginMemberCall,
   lowerPluginMemberRead,
@@ -178,6 +182,7 @@ import type {
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
+  ExtModuleItem,
   HotkeyModifier,
 } from './types'
 
@@ -536,6 +541,8 @@ let _fetchNames: Set<string> = new Set()
 let _formNames: Set<string> = new Set()
 // zodSchema binding name -> its STRING field names (mirror of the Swift map).
 let _zodStringFieldsKotlin: Map<string, string[]> = new Map()
+// The file's plugin-owned module items — what `useForm({ schema })` resolves its per-field validators against.
+let _moduleItems: ExtModuleItem[] = []
 /**
  * The onSubmit param name currently in scope — mirror of
  * `_formSubmitParamsSwift`. `PyreonForm`'s onSubmit receives a
@@ -726,6 +733,7 @@ export function emitKotlin(
   fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
   zodSchemas: ZodSchemaDefnIR[] = [],
+  moduleItems: ExtModuleItem[] = [],
   // fonts: Android resolves at runtime via pyreonFont(res/font), so
   // the map is accepted for signature symmetry but unused here.
   _fonts: Record<string, string> = {},
@@ -908,6 +916,7 @@ export function emitKotlin(
   for (const m of models) parts.push(emitKotlinModel(m))
   // Gap 4 follow-up — withField metadata data classes.
   for (const fm of fieldMetas) parts.push(emitKotlinFieldMeta(fm))
+  for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Gap 4 follow-up — feature v1: emit per-feature schema data class
   // + module-scope object.
   for (const f of features) parts.push(emitKotlinFeature(f))
@@ -934,6 +943,8 @@ export function emitKotlin(
     parts.push(emitKotlinZodSchema(zs))
   }
   for (const zs of zodSchemas) emitKotlinSchemaTree(zs)
+  _moduleItems = moduleItems
+  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -2639,7 +2650,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // STRING field, delegating to the schema's own `validateField`. Explicit
     // `validators` win, being per-field and more specific.
     if (d.schemaName !== undefined) {
-      const fields = _zodStringFieldsKotlin.get(d.schemaName)
+      const provided = formFieldValidators(_moduleItems, d.schemaName)
+      const fields = _zodStringFieldsKotlin.get(d.schemaName) ?? provided?.fields
       if (fields === undefined) {
         _emitWarnings.push(
           `useForm({ schema: ${d.schemaName} }): no top-level zodSchema/valibotSchema/arkTypeSchema declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
@@ -2650,7 +2662,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           .filter((f) => !explicit.has(f))
           .map(
             (f) =>
-              `${kotlinStr(f)} to { v: String -> PyreonZodSchema_${d.schemaName}.validateField(${kotlinStr(f)}, v) }`,
+              provided !== undefined && !_zodStringFieldsKotlin.has(d.schemaName!)
+                ? `${kotlinStr(f)} to { v: String -> ${provided.validators.kotlin(provided.item, f, 'v')} }`
+                : `${kotlinStr(f)} to { v: String -> PyreonZodSchema_${d.schemaName}.validateField(${kotlinStr(f)}, v) }`,
           )
         if (entries.length > 0) {
           const existing = parts.findIndex((p) => p.startsWith('validators = mapOf('))
@@ -4210,6 +4224,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // it. The argument lowers to a `Map<String, Any?>` (never a data class).
       return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinSchemaInput(e.arg, indent)})`
     }
+    case 'ext-expr':
+      return lowerPluginExpr(e, 'kotlin', () => kotlinEmitContext(indent))
     case 'json-stringify':
       // `JSON.stringify(x)` → the runtime's web-identical serializer. kotlinx
       // keeps declaration order (the source literal's), but writes a whole

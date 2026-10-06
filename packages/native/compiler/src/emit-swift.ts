@@ -22,6 +22,10 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  lowerPluginExpr,
+  formFieldValidators,
+  itemsInSlot,
+  lowerPluginItem,
   lowerPluginIntrinsic,
   lowerPluginMemberCall,
   lowerPluginMemberRead,
@@ -191,6 +195,7 @@ import type {
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
+  ExtModuleItem,
   HotkeyModifier,
 } from './types'
 
@@ -639,6 +644,8 @@ let _formNamesSwift: Set<string> = new Set()
 // wire per-field validators without threading the schema list through every
 // decl emitter. String-only because a form Field is a text input.
 let _zodStringFieldsSwift: Map<string, string[]> = new Map()
+// The file's plugin-owned module items — what `useForm({ schema })` resolves its per-field validators against.
+let _moduleItems: ExtModuleItem[] = []
 /**
  * The onSubmit param name currently in scope, if any — a STACK so a nested
  * form emit can't clobber the outer one.
@@ -1107,6 +1114,7 @@ export function emitSwift(
   fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
   zodSchemas: ZodSchemaDefnIR[] = [],
+  moduleItems: ExtModuleItem[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
   styledComponents: StyledComponentIR[] = [],
@@ -1300,6 +1308,7 @@ export function emitSwift(
   for (const m of models) parts.push(emitSwiftModel(m))
   // Gap 4 follow-up — withField metadata structs.
   for (const fm of fieldMetas) parts.push(emitSwiftFieldMeta(fm))
+  for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Gap 4 follow-up — feature v1: emit per-feature schema struct +
   // module-scope const exposing initialValues + name.
   for (const f of features) parts.push(emitSwiftFeature(f))
@@ -1328,6 +1337,8 @@ export function emitSwift(
     parts.push(emitSwiftZodSchema(zs))
   }
   for (const zs of zodSchemas) emitSchemaTree(zs)
+  _moduleItems = moduleItems
+  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -3710,7 +3721,8 @@ function emitSwiftDecl(
     // Explicit `validators` win: they are per-field and more specific, so a
     // field carrying both keeps the hand-written one.
     if (d.schemaName !== undefined) {
-      const fields = _zodStringFieldsSwift.get(d.schemaName)
+      const provided = formFieldValidators(_moduleItems, d.schemaName)
+      const fields = _zodStringFieldsSwift.get(d.schemaName) ?? provided?.fields
       if (fields === undefined) {
         _emitWarnings.push(
           `useForm({ schema: ${d.schemaName} }): no top-level zodSchema/valibotSchema/arkTypeSchema declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
@@ -3721,7 +3733,9 @@ function emitSwiftDecl(
           .filter((f) => !explicit.has(f))
           .map(
             (f) =>
-              `${swiftStr(f)}: { v in PyreonZodSchema_${d.schemaName}.validateField(${swiftStr(f)}, v) }`,
+              provided !== undefined && !_zodStringFieldsSwift.has(d.schemaName!)
+                ? `${swiftStr(f)}: { v in ${provided.validators.swift(provided.item, f, 'v')} }`
+                : `${swiftStr(f)}: { v in PyreonZodSchema_${d.schemaName}.validateField(${swiftStr(f)}, v) }`,
           )
         if (entries.length > 0) {
           const existing = parts.findIndex((p) => p.startsWith('validators: ['))
@@ -5350,6 +5364,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // dynamic `[String: Any]` dictionary (never a synthesized struct).
       return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitSwiftSchemaInput(e.arg, indent)})`
     }
+    case 'ext-expr':
+      return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
     case 'json-stringify':
       // `JSON.stringify(x)` → the runtime's web-identical serializer. Not
       // `JSONEncoder`: the bytes leave the device (a request body, a cache key)

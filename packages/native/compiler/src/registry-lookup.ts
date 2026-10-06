@@ -26,7 +26,8 @@ import {
 import type { PluginScope } from './plugin-scope'
 import type { UnloweredModule } from './unlowered-modules'
 import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
-import type { DeclIR, ExprIR, ExtDecl, TypeIR } from './types'
+import { emitExtExpr, emitModuleItem, findFieldValidators, fieldValidatorsAdvice, type ExtExprIR } from './module-items'
+import type { DeclIR, ExprIR, ExtDecl, ExtModuleItem, TypeIR } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
 export function findService(hook: string): ServiceDescriptor | undefined {
@@ -152,6 +153,11 @@ export function hashServiceDeclsAsLegacy(_key: string, value: unknown): unknown 
     }
     if (v.kind === 'service' && typeof v.hook === 'string') {
       return { kind: serviceFor(v.hook).legacyKind, name: v.name }
+    }
+    // A plugin expression that used to be a closed `ExprIR` kind hashes as that kind did.
+    if (v.kind === 'ext-expr' && typeof v.plugin === 'string' && typeof v.type === 'string') {
+      const legacy = activeRegistries().items.exprEmitter(v.plugin, v.type)?.legacyHash
+      if (legacy !== undefined) return legacy(value as ExtExprIR)
     }
     // A built-in plugin declaration that used to be a closed `kind` hashes as it
     // did then, so the struct names `moduleTag` derives do not move with the refactor.
@@ -454,4 +460,57 @@ export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): A
 /** True when `d` is an `ext` declaration whose type needs a stable host view on Swift. */
 export function pluginNeedsStableHost(d: DeclIR): boolean {
   return d.kind === 'ext' && extDeclLifecycle(d)?.stableHost === true
+}
+
+/** The type of an `ext-expr` node, by its owner's typing (`unknown` without one). */
+export function pluginExprType(e: ExtExprIR): TypeIR | undefined {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.type?.(e)
+}
+
+/** The type of `<ext-expr>.<property>` when the owner types member reads on its node, else `undefined`. */
+export function pluginExprMemberType(e: ExtExprIR, property: string): TypeIR | undefined {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.member?.(e, property)
+}
+
+/** Render an `ext-expr` on `target` through its owner's emitter. */
+export function lowerPluginExpr(e: ExtExprIR, target: 'swift', ctx: () => SwiftEmitContext): string
+export function lowerPluginExpr(e: ExtExprIR, target: 'kotlin', ctx: () => KotlinEmitContext): string
+export function lowerPluginExpr(
+  e: ExtExprIR,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string {
+  return emitExtExpr(activeRegistries().items, e, target, ctx())
+}
+
+/** The hash lane (`ModuleItemEmitter.legacyList`) an item belongs to, if any. */
+export function itemLegacyList(item: ExtModuleItem): string | undefined {
+  return activeRegistries().items.emitter(item.plugin, item.type)?.legacyList
+}
+
+/** The items that emit in `slot` (see `ModuleItemEmitter.after`), in file order. */
+export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'features'): ExtModuleItem[] {
+  const registry = activeRegistries().items
+  return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'features') === slot)
+}
+
+/** Render a file-scope item on `target` through its owner's emitter: one string per declaration. */
+export function lowerPluginItem(item: ExtModuleItem, target: 'swift', ctx: () => SwiftEmitContext): readonly string[]
+export function lowerPluginItem(item: ExtModuleItem, target: 'kotlin', ctx: () => KotlinEmitContext): readonly string[]
+export function lowerPluginItem(
+  item: ExtModuleItem,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): readonly string[] {
+  return emitModuleItem(activeRegistries().items, item, target, ctx())
+}
+
+/** The per-field validators a plugin item named `name` offers a form (`useForm({ schema: name })`). */
+export function formFieldValidators(items: readonly ExtModuleItem[], name: string) {
+  return findFieldValidators(activeRegistries().items, items, name)
+}
+
+/** What the "no declaration by that name" warning says declares a validating item, from every loaded plugin. */
+export function formSchemaAdvice(): string | undefined {
+  return fieldValidatorsAdvice(activeRegistries().items)
 }

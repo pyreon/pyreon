@@ -289,7 +289,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   })
 }
 
-const isJson = (value: unknown, seen: Set<object>): boolean => {
+export const isJson = (value: unknown, seen: Set<object>): boolean => {
   if (value === null) return true
   switch (typeof value) {
     // `undefined` survives `structuredClone` and is how the IR itself spells an absent slot (an

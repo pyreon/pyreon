@@ -18,6 +18,7 @@ import {
 import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
 import { stampExtDecl, type AstNode, type ParseContext } from './call-lowering'
+import { stampExtExpr, stampModuleItem, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -48,6 +49,7 @@ import type {
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
+  ExtModuleItem,
 } from './types'
 import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
@@ -330,6 +332,8 @@ interface ParseCtx {
    * marks each matching schema `emitSafeParseResult` so the method exists.
    */
   safeParseResultBindings?: Set<string>
+  /** Items plugins synthesized outside a declaration (`ModuleParseContext.addItem`), appended after the declaration-level ones. */
+  lateModuleItems: ExtModuleItem[]
 }
 
 
@@ -438,6 +442,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     skipTopLevel: [],
     loweredImports: new Set(),
     responseDecodes: [],
+    lateModuleItems: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
@@ -557,6 +562,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const fieldMetas: FieldMetaDefnIR[] = []
   const features: FeatureDefnIR[] = []
   const zodSchemas: ZodSchemaDefnIR[] = []
+  const moduleItems: ExtModuleItem[] = []
   const styledComponents: StyledComponentIR[] = []
   const rocketstyleComponents: RocketstyleComponentIR[] = []
   const attrsComponents: AttrsComponentIR[] = []
@@ -618,6 +624,14 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     const md = tryModelDefnFromTopLevel(node, ctx)
     if (md) {
       models.push(md)
+      continue
+    }
+    // A file-scope declaration a plugin recognizes (`CompilerPlugin.topLevel`): the first plugin to
+    // return an item owns the node. Placed with the core's own module-level recognizers, ahead of the
+    // catch-alls below that would reproduce an unclaimed declaration verbatim.
+    const claimedItem = tryPluginTopLevel(node, ctx)
+    if (claimedItem) {
+      moduleItems.push(claimedItem)
       continue
     }
     // Gap 4 follow-up — @pyreon/validate withField metadata.
@@ -788,6 +802,11 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // so an `Int` field fails to decode the very payload the web accepts. The
   // schema is the evidence; see the function.
   refineStructFloatsFromResponseSchemas(structs, zodSchemas, ctx)
+  // The same step for plugin-owned items (`CompilerPlugin.refineStructs`): a plugin's schema items may
+  // settle a decode struct's `Int` vs `Double` fields from the decode sites other plugins recorded.
+  for (const { refine } of activeRegistries().items.structRefinements) {
+    refine({ structs, items: moduleItems, decodes: ctx.responseDecodes })
+  }
 
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
@@ -853,6 +872,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     }
   }
 
+  // Items plugins synthesized outside a declaration, then each plugin's last pass over the whole list.
+  moduleItems.push(...ctx.lateModuleItems)
+  runModuleFinishers(moduleItems, ctx)
+
   const result: ParseResult = {
     imports: (ast.program.body as AnyNode[])
       .filter((node) => node.type === 'ImportDeclaration')
@@ -866,6 +889,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     fieldMetas,
     features,
     zodSchemas,
+    moduleItems,
     styledComponents,
     rocketstyleComponents,
     attrsComponents,
@@ -5226,6 +5250,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     skipTopLevel: [],
     loweredImports: new Set(),
     responseDecodes: [],
+    lateModuleItems: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
@@ -6372,6 +6397,96 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
     },
   }
   return facade
+}
+
+/** The facade a plugin's module-level recognizers read the parser through. */
+function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext {
+  return {
+    source: ctx.source,
+    report: (message) => {
+      ctx.warnings.push(message)
+    },
+    fileState: <T>(key: string, init: () => T): T => {
+      if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
+      return ctx.pluginState.get(key) as T
+    },
+    staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
+    expr: (node) => parseExpr(node as AnyNode, ctx),
+    unsupported: (node, what, hint) => {
+      unsupportedExpr(ctx, node as AnyNode, what, hint)
+      return null
+    },
+    addItem: (spec: ExtItemSpec) => {
+      ctx.lateModuleItems.push(stampModuleItem(activeRegistries().items, owner, spec))
+    },
+  }
+}
+
+/** Run a plugin hook, naming the plugin when it throws (a plugin failure must not read as a parser bug). */
+function runPluginHook<T>(owner: string, hook: string, run: () => T): T {
+  try {
+    return run()
+  } catch (cause) {
+    throw new Error(
+      `[Pyreon] Native compiler plugin "${owner}" failed in ${hook}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    )
+  }
+}
+
+/** The file-scope item a plugin's `topLevel` recognizer claims `node` as, or `undefined`. */
+function tryPluginTopLevel(node: AnyNode, ctx: ParseCtx): ExtModuleItem | undefined {
+  const registry = activeRegistries().items
+  for (const { owner, recognize } of registry.topLevel) {
+    const spec = runPluginHook(owner, 'topLevel', () => recognize(node as AstNode, moduleParseContextFor(ctx, owner)))
+    if (spec !== undefined) return stampModuleItem(registry, owner, spec)
+  }
+  return undefined
+}
+
+/**
+ * `<receiver>.<method>(…)` claimed by a plugin's `methodCalls` recognizer: the open `ext-expr` node, or the
+ * empty literal every unsupported expression becomes (`null` verdict), or `undefined` when nobody claims it.
+ */
+function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
+  const registry = activeRegistries().items
+  if (registry.methodCalls.size === 0) return undefined
+  const callee = node.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression' || callee.computed) return undefined
+  if (callee.property?.type !== 'Identifier') return undefined
+  const method = callee.property.name as string
+  const recognizers = registry.methodCalls.get(method)
+  if (recognizers === undefined) return undefined
+  const site: MethodCallSite = {
+    node: node as AstNode,
+    receiver: callee.object as AstNode,
+    method,
+    args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
+  }
+  for (const { owner, recognize } of recognizers) {
+    const verdict = runPluginHook(owner, `methodCalls.${method}`, () => recognize(site, moduleParseContextFor(ctx, owner)))
+    if (verdict === undefined) continue
+    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
+  }
+  return undefined
+}
+
+/** Run every plugin's `finishModule` over the finished item list. */
+function runModuleFinishers(items: ExtModuleItem[], ctx: ParseCtx): void {
+  for (const { owner, finish } of activeRegistries().items.finishers) {
+    runPluginHook(owner, 'finishModule', () =>
+      finish({
+        items,
+        report: (message) => {
+          ctx.warnings.push(message)
+        },
+        fileState: <T>(key: string, init: () => T): T => {
+          if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
+          return ctx.pluginState.get(key) as T
+        },
+      }),
+    )
+  }
 }
 
 /** The first registered request source that resolves `name`, or `undefined`. */
@@ -9936,6 +10051,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             : 'no native lowering for this shape yet — a serialization bridge is a tracked follow-up.',
         )
       }
+      // A method call a plugin recognizes by shape (`CompilerPlugin.methodCalls`).
+      const pluginCall = tryPluginMethodCall(node, ctx)
+      if (pluginCall !== undefined) return pluginCall
       // Standalone `@pyreon/validate` schema validation:
       // `s.object({ … }).safeParse(x)` → `schema-validate` ExprIR. The schema
       // struct is synthesized + hoisted; a wrapping `.success` / `.data` member

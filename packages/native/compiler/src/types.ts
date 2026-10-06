@@ -97,6 +97,23 @@ export interface ExtDecl {
   readonly payload: ExtPayload
 }
 
+/**
+ * The open FILE-SCOPE declaration: a plugin's own top-level item (a schema, a metadata record), emitted
+ * beside the file's structs and enums and read by name from elsewhere in the file. A plugin's `topLevel`
+ * recognizer produces one (the compiler stamps `plugin`), and the same plugin's `items[type]` emitter renders
+ * it. `payload` must be JSON — the pass pipeline clones the IR with `structuredClone`; unlike an
+ * {@link ExtDecl}'s it is mutable, because a plugin's own refinement passes edit it in place.
+ */
+export interface ExtModuleItem {
+  /** The owning plugin's `name`. */
+  plugin: string
+  /** The plugin-local item type (a key of that plugin's `items`). */
+  type: string
+  /** The binding the item declares. */
+  name: string
+  payload: { [key: string]: ExtValue }
+}
+
 
 export type DeclIR =
   /**
@@ -1019,6 +1036,12 @@ export type ExprIR =
    */
   | { kind: 'schema-validate'; schemaName: string; arg: ExprIR }
   /**
+   * The open expression: a plugin's own expression (`<receiver>.<method>(…)` its `methodCalls` recognizer
+   * claimed), rendered and typed by the same plugin's `exprs[type]`. The compiler stamps `plugin`; `payload`
+   * is JSON and `args` are the sub-expressions the plugin asked the parser for.
+   */
+  | { kind: 'ext-expr'; plugin: string; type: string; payload: ExtPayload; args: ExprIR[] }
+  /**
    * An imperative `@pyreon/toast` call — `toast("msg")` or a preset
    * `toast.success("msg")` / `.error` / `.warning` / `.info` / `.loading`.
    * Lowers to `PyreonToast.shared.add(message, type:)` (Swift) /
@@ -1722,6 +1745,12 @@ export interface ParseResult {
    * per-binding struct + module-scope const.
    */
   zodSchemas: ZodSchemaDefnIR[]
+  /**
+   * File-scope items plugins own (see {@link ExtModuleItem}): declarations a plugin's `topLevel` recognizer
+   * claimed, then the ones its expression recognizers synthesized. Emitted in plugin-declared slots beside the
+   * core's own module items.
+   */
+  moduleItems: ExtModuleItem[]
   /**
    * Top-level pure-logic HELPER functions — a function that takes value
    * parameters and returns a non-JSX value (`function dbl(x: number) { return

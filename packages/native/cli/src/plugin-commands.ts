@@ -112,6 +112,16 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   for (const [type, owner] of runtimeTypes) {
     lines.push(`  ${type}  ${owner}`)
   }
+  const items = compiler.registries.items
+  lines.push(`module items (${items.emitters.size === 0 ? 0 : [...items.emitters.values()].reduce((n, m) => n + m.size, 0)}):`)
+  for (const [owner, types] of [...items.emitters].sort(([a], [b]) => a.localeCompare(b))) {
+    lines.push(`  ${owner}  ${[...types.keys()].join(', ')}${items.topLevel.some((t) => t.owner === owner) ? '  topLevel' : ''}`)
+  }
+  const methodCalls = [...items.methodCalls].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`method-call recognizers (${methodCalls.length}):`)
+  for (const [method, owners] of methodCalls) {
+    lines.push(`  .${method}()  ${owners.map((o) => o.owner).join(', ')}`)
+  }
   const refinements = compiler.registries.parseRefinements
   lines.push(`parse refinements (${refinements.length}):`)
   for (const { owner } of refinements) {
@@ -125,7 +135,7 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
     const unloweredNames = Object.keys(found.plugin.unlowered ?? {})
     const runtimeTypeNames = found.plugin.runtimeTypes ?? []
     lines.push(
-      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}${memberNames.length > 0 ? `  memberCalls: ${memberNames.join(', ')}` : ''}${unloweredNames.length > 0 ? `  unlowered: ${unloweredNames.join(', ')}` : ''}${runtimeTypeNames.length > 0 ? `  runtimeTypes: ${runtimeTypeNames.join(', ')}` : ''}${found.plugin.refineParse !== undefined ? '  refineParse' : ''}`,
+      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}${memberNames.length > 0 ? `  memberCalls: ${memberNames.join(', ')}` : ''}${unloweredNames.length > 0 ? `  unlowered: ${unloweredNames.join(', ')}` : ''}${runtimeTypeNames.length > 0 ? `  runtimeTypes: ${runtimeTypeNames.join(', ')}` : ''}${found.plugin.refineParse !== undefined ? '  refineParse' : ''}${found.plugin.refineStructs !== undefined ? '  refineStructs' : ''}${found.plugin.finishModule !== undefined ? '  finishModule' : ''}`,
     )
   }
   const undeclared = listPluginPackages(appDir).length - discovered.length
