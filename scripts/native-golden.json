@@ -431,6 +431,506 @@
       "bytes": 12326,
       "warnings": 2
     },
+    "golden-fixture:chart-swift-01.tsx|swift": {
+      "sha": "ff808ff8d324cf1d0adafb24d9b4e6c08e6abc7956e7806fbd02968bbd106a50",
+      "bytes": 325,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-01.tsx|kotlin": {
+      "sha": "2950f1d48742c8848752d6c6ff88c0ef27ec1f8b363fc34803a39d06f2f87c99",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-02.tsx|swift": {
+      "sha": "b096283b872eb02c1943eb89da323e86d92941de5dc20c2b5f22363245db243d",
+      "bytes": 325,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-02.tsx|kotlin": {
+      "sha": "b495fcfd95c5207bfbba671a27eb64e259504c590473c335b97be9ef683ec0ae",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-03.tsx|swift": {
+      "sha": "30472ebadaa08c47019a1d2e66e175d280be38c987c2da847e12c1cca17bf311",
+      "bytes": 325,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-03.tsx|kotlin": {
+      "sha": "c62fdb08efd11a31fe42f59f95c55a4651e310fb81c7e385da82dca82181dbed",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-04.tsx|swift": {
+      "sha": "9b231fa7e6d44ed137a40669acb0ed5a71180f503b8014afcb9e7afca2ba8b64",
+      "bytes": 5805,
+      "warnings": 2
+    },
+    "golden-fixture:chart-swift-04.tsx|kotlin": {
+      "sha": "0b1b90542def36bceb9642b1c9feb13dec8bb8d983b766af0068e5662430f6da",
+      "bytes": 6522,
+      "warnings": 2
+    },
+    "golden-fixture:chart-swift-05.tsx|swift": {
+      "sha": "dce63db0cc4003136b6c922b9c44685937b5dbf2e26222ddddb3c2da1967857e",
+      "bytes": 398,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-05.tsx|kotlin": {
+      "sha": "877d05ce70e5a42e490c3ddec6cee32c97bdf41edd0dde9398e912e4c1444504",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-06.tsx|swift": {
+      "sha": "4455567c59e97cbe316871b89aa02a2f09d8fe864c0f0f8c5d32a067019ffc33",
+      "bytes": 62,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-06.tsx|kotlin": {
+      "sha": "5e2059371226647d201cb34b8cae04f7cad9373f27e0f7396a0f4bba41dd4c44",
+      "bytes": 123,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-07.tsx|swift": {
+      "sha": "ee623fd2e8c07d3b094a069306f00e990a4af89e0551ffe9b9e1a1fdf11a4b4e",
+      "bytes": 325,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-07.tsx|kotlin": {
+      "sha": "25b1dfb1115d45814e2f7a8029ad446d89379ff9b2e44e5d19b313486ec87e1b",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-08.tsx|swift": {
+      "sha": "5428f0d39792ec3aa4c001b1e785b8e6792d4e75ee35d57415d2b14761bee877",
+      "bytes": 325,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-08.tsx|kotlin": {
+      "sha": "1312d4ff201417b50b303ce7a16a616a1b48c4f3349523e0452337f19c2fa69c",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-09.tsx|swift": {
+      "sha": "5f56b6ac81eb6d21df4391f8818d2c345bd4341c7f14eba7e0ca3dcd6de78990",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-09.tsx|kotlin": {
+      "sha": "0dffe633868a30a710f36b9968ce99a837b800a0c27a744c28c4ba509b219aca",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-10.tsx|swift": {
+      "sha": "00340aaca0325fdeec13bd9dfb8df7bea1627bae763ad2e71b066543fa94a0be",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-10.tsx|kotlin": {
+      "sha": "705101f9cb0ba4d4d5536addf686b6ac3f334fb867f9492630950ae69957152d",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-11.tsx|swift": {
+      "sha": "0020ff5716a91772208d85d807c91ce06eda37f8062952eaaf34d213c68c53ba",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-11.tsx|kotlin": {
+      "sha": "1a6aa92c8a5f179d4ae40f4b5cd6adf06cba186f626ace167d153f602f78dd18",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-12.tsx|swift": {
+      "sha": "d98efe74583141bf80ba1a50cbbf7ba5be4fa8faf24b101a079e1d6329642854",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-12.tsx|kotlin": {
+      "sha": "3ad7795738dc80d9ab7d2760f070e80b60d4f6eeb54a033085cc26af0dbb8e70",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-13.tsx|swift": {
+      "sha": "4cf389570c880d3731c22583d34811cb5b2089b290d12b4ebe6d25c0f91c9e3e",
+      "bytes": 2311,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-13.tsx|kotlin": {
+      "sha": "ca9eb0c45d30fdb89200c1c64898d007f0ba954e157ed8446bf26aa9a3be4aa4",
+      "bytes": 2504,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-14.tsx|swift": {
+      "sha": "f2f4646a1256b2b5babaf9765ce4c8187dbb44843c7377b2532f9a5993f4dc34",
+      "bytes": 3161,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-14.tsx|kotlin": {
+      "sha": "f3822e7c931fbc48b06b281dfa9fdeab1c220921358cd4a7a85c18e37b23350a",
+      "bytes": 3581,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-15.tsx|swift": {
+      "sha": "d7c1afa9ac9f52c6f82304b479cb69e76b3e7cb01c360822b1ab21aa5b57e90a",
+      "bytes": 576,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-15.tsx|kotlin": {
+      "sha": "0f71e39bd3d06718e0a705e6da9d626bb5aeee3db86e39f4b3e1960da6c9edb4",
+      "bytes": 624,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-16.tsx|swift": {
+      "sha": "ca78c9bf4ad172119f1870ac588c8b65ac1a37f08937a29127ef4a8ca917f247",
+      "bytes": 576,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-16.tsx|kotlin": {
+      "sha": "f4c97e6fdd2192ee5ce0fdac319f64a6df5ea04adff8b0268653749375edf71f",
+      "bytes": 624,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-17.tsx|swift": {
+      "sha": "cc324158ab831f852d856301011422f1067ac468dac4bfb66b0897e1e726e65a",
+      "bytes": 2826,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-17.tsx|kotlin": {
+      "sha": "f565bd1b0c45a65fab615155c0ad93d01ff752329aaf88e71b8a02863414cb08",
+      "bytes": 3184,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-18.tsx|swift": {
+      "sha": "0ef9e997af1d8479b0888e16939aefce729ad6089b85d4927584566f72405f9d",
+      "bytes": 1516,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-18.tsx|kotlin": {
+      "sha": "e8c40baac5b46d17562d93ff7f8a8143ea4f9786cdaf9916c1b394de115b3d61",
+      "bytes": 1711,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-19.tsx|swift": {
+      "sha": "baa12785e11fcc8295544b20ce35d563810922ab01629c50d5a14e02f2d6b86d",
+      "bytes": 325,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-19.tsx|kotlin": {
+      "sha": "efc6b81619f10c0bf940516dee2a40ca2081c0e36a0e9edaa34df6bf7f8275f3",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-20.tsx|swift": {
+      "sha": "3ab8e5fdd5c16995045e751d0752cdd28b8b1cce99e4eff25eac4c55b9463de1",
+      "bytes": 576,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-20.tsx|kotlin": {
+      "sha": "3517728da98bd5a93225d034bb74448f36960183c42d8a0cc30165ddde0b0771",
+      "bytes": 624,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-21.tsx|swift": {
+      "sha": "c4ad34fd666335b33cedc1db991ff0efeac8d1ecd3093b0ba5e4835dcfd49489",
+      "bytes": 576,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-21.tsx|kotlin": {
+      "sha": "961d23ca8c75e08792ed1fe5b7927693caa3003acf43e7b226ce2c8259181d3d",
+      "bytes": 624,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-22.tsx|swift": {
+      "sha": "89c7b0e294b8f0ec6f94021adf8540a63b9e4a0f63ef6649fab7e310de77ead4",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-22.tsx|kotlin": {
+      "sha": "09916d365cddb391e59c1406f1a835799e7dbe8962c2122bfbb9fad0551b143f",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-23.tsx|swift": {
+      "sha": "6549c5be7dda0f2e8a89cd03e43c542f3123e6cf50bbd6c96a216cbd1d49e2c5",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-23.tsx|kotlin": {
+      "sha": "cba566e12d8344c53bee3ea2741b3c018f159f633948d74748c40b55fc95e8ab",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-24.tsx|swift": {
+      "sha": "c29ab311fd5727a5bd5153b320e67e0791d7c22aed408ac8a6141a369fca347c",
+      "bytes": 9697,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-24.tsx|kotlin": {
+      "sha": "7b8bc7bb3834c8170726874a496a1f517ececa93380f17b75d99dfbbbc5af3d8",
+      "bytes": 10587,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-25.tsx|swift": {
+      "sha": "7e7e905890e2541a42d49fce805f3b88f1a638cc0a3b0715ba95ae26865d86cc",
+      "bytes": 549,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-25.tsx|kotlin": {
+      "sha": "156ad720f6447c8ddfb8bf73cb3153ccdf7df2364e8b43c7176f4ad5f156a2d6",
+      "bytes": 611,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-26.tsx|swift": {
+      "sha": "1398aca51fd920b81e06b69310c261e167645cdffde494fac7878c250fcc741a",
+      "bytes": 428,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-26.tsx|kotlin": {
+      "sha": "e94184c8f31868f08ccebf1b001aacacc177876c84f79e6037cb2a3c7efc988a",
+      "bytes": 465,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-27.tsx|swift": {
+      "sha": "64fc14d5560eeceab90abf128a37b3735a784b4c095d405220c720e985e6987b",
+      "bytes": 6504,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-27.tsx|kotlin": {
+      "sha": "6f4ebe94b123bc4443e1f2b6bbc6bc74e65490e70503383a6db27d657b43cd19",
+      "bytes": 6236,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-28.tsx|swift": {
+      "sha": "91f8ecf6779796f2cecc5bfd40b3c7f800e33d64e7229e9125bbcea46d913530",
+      "bytes": 428,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-28.tsx|kotlin": {
+      "sha": "a207908924f17e841828e99bbff6329a3f7e95249ec0d5eb9ca9712248a779d5",
+      "bytes": 465,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-29.tsx|swift": {
+      "sha": "50a15a498a1e51e5ff88ea5a1b94965675647f884e5c4c7325bcb27da8552986",
+      "bytes": 2973,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-29.tsx|kotlin": {
+      "sha": "96b6f65a9fe09e96778b712f1b967fab7b46ffcff67479548cd2d77e2e063802",
+      "bytes": 3375,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-30.tsx|swift": {
+      "sha": "f430e3e7aa8732ff73649aeebe45e5ef571f32438f95c875660301d95b3694c7",
+      "bytes": 345,
+      "warnings": 2
+    },
+    "golden-fixture:chart-swift-30.tsx|kotlin": {
+      "sha": "2b0d69b17a94e2d5bfd5ca667f8121b61e9b7affea7b37006b3813fc7dd04b15",
+      "bytes": 354,
+      "warnings": 2
+    },
+    "golden-fixture:chart-swift-31.tsx|swift": {
+      "sha": "665b3539d73c7486d4a697a1373e8827161c8972611983f28796baaf363ffbda",
+      "bytes": 5177,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-31.tsx|kotlin": {
+      "sha": "4e61af1e4fbccf048e65c0103052097f5951f2413e5b0c495faabd766bc06fbb",
+      "bytes": 5747,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-32.tsx|swift": {
+      "sha": "6753935e93c12d968a3dbeb4ea9add6780ff952464491bb9ab8cf2de73f2112e",
+      "bytes": 5421,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-32.tsx|kotlin": {
+      "sha": "1fbff7543b08ef524cee50eb74ede04f25a765ce60128359c5e76e5690269fc5",
+      "bytes": 5746,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-33.tsx|swift": {
+      "sha": "df09025ade278e7d7b66d8c626b0a78cdffe41fc47e42af46f5a22e99b5eb70e",
+      "bytes": 5061,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-33.tsx|kotlin": {
+      "sha": "071f4938531f186f9a4fe0f7868af9d8d68670daa0340afe168d02f62391b82d",
+      "bytes": 5184,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-34.tsx|swift": {
+      "sha": "e3fea859d03bde1c33e6e72f51f088aafffaf21849f22dbfc3ef70bbcaaa2989",
+      "bytes": 3158,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-34.tsx|kotlin": {
+      "sha": "1ca6d5ad7f702f01b27602d963ca9f7e4f251b32d55a92e838b29b0748b68c36",
+      "bytes": 3598,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-35.tsx|swift": {
+      "sha": "b7720b6a8ac315ae78b95715634e6d43c6dd5592b7ff894300b49a03c1fc5f3c",
+      "bytes": 2854,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-35.tsx|kotlin": {
+      "sha": "f14c20738642159c00de9ccb7885352e1a362bad0755bcbb0d7dfa479983bc37",
+      "bytes": 3290,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-36.tsx|swift": {
+      "sha": "389d9c1752a04d07b2ebb5cb13fd601f8131208e0fd96fce8627ff6574f338ff",
+      "bytes": 4698,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-36.tsx|kotlin": {
+      "sha": "f854f904cf23543d827de7097351da48a58add9a2c632d601831d25680ac612a",
+      "bytes": 5357,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-37.tsx|swift": {
+      "sha": "f29ba141145f9bcebc9eb1cd573faa93c50b55ab0cc3d07923b537e54f0afcf1",
+      "bytes": 4644,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-37.tsx|kotlin": {
+      "sha": "6df6475a102418939d4be501f093ff8b5fa48e4259a70a24e87038edac28d5cc",
+      "bytes": 4793,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-38.tsx|swift": {
+      "sha": "6f92a6285647d08f024814803baaf8107643ed5456fd37a221e53ef7ea95f74b",
+      "bytes": 413,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-38.tsx|kotlin": {
+      "sha": "852271710c64991a613ded924d86303afd0784a99b32d2bbafde41b6c9bdbb09",
+      "bytes": 451,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-39.tsx|swift": {
+      "sha": "940b73fed419c1c54d2dcf001b005a20e0d6cacb09029c5e729b3dbe627abc72",
+      "bytes": 413,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-39.tsx|kotlin": {
+      "sha": "a5d0c1387923b8f7f79ffb423761c4f95ed3275e50ccdb6aaf1476f19d7f6f7d",
+      "bytes": 451,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-40.tsx|swift": {
+      "sha": "70d62af730394a4294ffaf0fbc8f4d4382b06bfea2c84d63c0e794724203b453",
+      "bytes": 3467,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-40.tsx|kotlin": {
+      "sha": "9cdcaef562e55602898ba743c1fbfbf0dbe258b45ec9c795dc3bb3d05d820aba",
+      "bytes": 3878,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-41.tsx|swift": {
+      "sha": "e741da2b56aa1376999335718ba54fb50290ae425590443705eba13c36d12f78",
+      "bytes": 413,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-41.tsx|kotlin": {
+      "sha": "716613250d042bf197819aa392e60874eaf9e80d0578dc4755d4d57c5aa57efb",
+      "bytes": 451,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-42.tsx|swift": {
+      "sha": "75dad0dec74a682460c1e03d3c7d59c540567d6f40fbfb58d7f51e95a1a03ccc",
+      "bytes": 413,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-42.tsx|kotlin": {
+      "sha": "727d8952854917682999646b1ccfdeb09a253814ce7eea495d66e45b613dfcef",
+      "bytes": 451,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-43.tsx|swift": {
+      "sha": "48dcbae060c0dffb570cd608448427b547ff40aaa52346bb3d37782b029cfcfd",
+      "bytes": 413,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-43.tsx|kotlin": {
+      "sha": "c09ab8922922c575a2f7b7bfb148beb91d01e68f1c91bfe67fbbc96f87daadc1",
+      "bytes": 451,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-44.tsx|swift": {
+      "sha": "540fc51f5061a887b38d208e8f9e343faa74ef89e29c7f87b731caaa794dbe96",
+      "bytes": 401,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-44.tsx|kotlin": {
+      "sha": "f608123a1bb72ec0549463c5fce7cb5ca1fb295d788c8079c48c87c2d6ef9487",
+      "bytes": 438,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-45.tsx|swift": {
+      "sha": "f7fe96d97e13be3ff2454e4aab10c9e1a72cd36943c7745fe78f06d9e42f9fce",
+      "bytes": 2926,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-45.tsx|kotlin": {
+      "sha": "e85c895b08f1c89ef5d6653c1c9e8955a901b07c97c8df0afed3a647e5f8d8fa",
+      "bytes": 3272,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-46.tsx|swift": {
+      "sha": "f184b8d85c0cb3058e26c2c6bd688f1ced57fcd77d6192a9fa98a6febefbb374",
+      "bytes": 9141,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-46.tsx|kotlin": {
+      "sha": "9d1374cf59204dc452cea0a66372bbb11759371abb3922e1aabd6db9b0a5a572",
+      "bytes": 8899,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-47.tsx|swift": {
+      "sha": "7cd6558adc94c182aa657f4cfa9bef4ccd5dc533c31ffe2c42a54eb9d1767832",
+      "bytes": 4053,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-47.tsx|kotlin": {
+      "sha": "21a431e0671d4fd380f29b9297bd450bb3c2c3c73b7d60ede639a0d55a26994f",
+      "bytes": 4484,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-48.tsx|swift": {
+      "sha": "75104a2aa5d316139294be9c595ebf11ee645771a1c8eb477e6c74aba595b28b",
+      "bytes": 3240,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-48.tsx|kotlin": {
+      "sha": "e43264876ad5c66cf896191627e3e6af97a4473d65a30f243f23e09f583d12b5",
+      "bytes": 3608,
+      "warnings": 0
+    },
+    "golden-fixture:chart-swift-49.tsx|swift": {
+      "sha": "cb16978ce7964970e46516b91c2edd65d8cd80c61054c4fd2c8fe88509dc1d27",
+      "bytes": 4399,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-49.tsx|kotlin": {
+      "sha": "6291374a453568945a372add28da982fccd0cdd360a5cf68aad1f1bdca4d333d",
+      "bytes": 4723,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-theme-scope.tsx|swift": {
+      "sha": "5df7e3ea9f589766c467cb888c640a6cb8b7d06132a8d1ce895795ac948e38a0",
+      "bytes": 6750,
+      "warnings": 1
+    },
+    "golden-fixture:chart-swift-theme-scope.tsx|kotlin": {
+      "sha": "df1674beb364fafce5ecb4d15d002f5215dc5b58fb83ba08e742b6c354e397fd",
+      "bytes": 7685,
+      "warnings": 1
+    },
     "golden-fixture:element-lowering-user.tsx|swift": {
       "sha": "020962f01e4f1c10f692ef8dc829bae3d0f8eeb4b9a0020df12277d1a791d391",
       "bytes": 333,

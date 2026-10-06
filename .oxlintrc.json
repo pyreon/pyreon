@@ -223,6 +223,16 @@
         "jsx-a11y/click-events-have-key-events": "off",
         "jsx-a11y/no-static-element-interactions": "off"
       }
+    },
+    {
+      "files": [
+        "packages/native/compiler/src/golden-fixtures/**"
+      ],
+      "rules": {
+        "no-unused-vars": "off",
+        "import/no-duplicates": "off",
+        "no-console": "off"
+      }
     }
   ],
   "settings": {

@@ -14,12 +14,13 @@ const claimNone = () => false
 const builtIns = createElementRegistry(BUILT_IN_PLUGINS)
 
 describe('element lowering registry', () => {
-  it('holds coolgrid and elements, registered through the same path a plugin uses', () => {
+  it('holds charts, coolgrid and elements, registered through the same path a plugin uses', () => {
     expect(builtIns.find('Row', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Col', claimAll)?.module).toBe('@pyreon/coolgrid')
     expect(builtIns.find('Element', claimAll)?.module).toBe('@pyreon/elements')
+    expect(builtIns.find('PieChart', claimAll)?.module).toBe('@pyreon/charts')
     expect(builtIns.find('Stack', claimAll)).toBeUndefined()
-    expect(builtIns.entries.map((e) => e.owner)).toEqual(['@pyreon/elements', '@pyreon/coolgrid'])
+    expect(builtIns.entries.map((e) => e.owner)).toEqual(['@pyreon/charts', '@pyreon/elements', '@pyreon/coolgrid'])
   })
 
   it('the guard decides: a refused (tag, module) is not claimed', () => {

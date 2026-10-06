@@ -102,10 +102,16 @@ fields never break an older plugin:
   plugin's hook is lowered end to end (on both targets) when it is imported from
   `@pyreon/*` or from one of the plugin's `modules`.
 - `elements` — JSX element lowerings (`{ module, tags, retag?, emit?: { swift?,
-  kotlin? }, styleBase? }`; `emit` functions receive the `EmitContext` facade).
-  A `(module, tag)` pair claimed by two owners is a load-time error naming both.
-  The built-in `@pyreon/elements` and `@pyreon/coolgrid` lowerings are `builtIn`
-  plugins registered the same way.
+  kotlin? }, styleBase? }`; `emit.kotlin` receives the `EmitContext` facade and
+  `emit.swift` a `SwiftEmitContext`, which adds the members only the Swift emitter
+  has state for: `stringAttr`, `layoutModifiers`, `action`, `handlerName`,
+  `constExpr`, a read-only `colorScope<T>()`, `markColorSchemeUsed()` and the
+  `hostState` slot). A target with no function falls through to the core, so a
+  plugin may lower one target at a time. A `(module, tag)` pair claimed by two
+  owners is a load-time error naming both. The built-in `@pyreon/elements`,
+  `@pyreon/coolgrid` and `@pyreon/charts` lowerings are `builtIn` plugins
+  registered the same way (the charts plugin lowers every chart host on Swift; its
+  Kotlin emission is still the core's).
 - `calls` + `decls` — code-shaped lowering: `calls` maps a hook/function name to a
   recognizer `(call, ctx: ParseContext) => { type, payload? } | undefined`
   (`undefined` declines and the parser falls through as if the plugin were absent);

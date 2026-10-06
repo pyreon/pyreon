@@ -40,9 +40,46 @@ export interface EmitContextBackend {
   /** `emitSwiftExpr` / `emitKotlinExpr` — an expression, at `indent`. */
   expr(e: ExprIR, indent: number): string
   /** The same, with `type` steering how an object / array literal is typed (`withExpectedType`). */
-  exprAs(type: TypeIR, e: ExprIR, indent: number): string
+  exprAs(type: TypeIR | undefined, e: ExprIR, indent: number): string
   /** The emitter's current per-component scope (declarations, state, deferred substitutions). */
   scope(): PluginScope
+}
+
+/**
+ * The Swift emitter's per-component `@State` declaration list — the lines the
+ * component body receives ahead of its own statements. A host that needs
+ * private view state (a zoom window, a hover index) declares it here; the
+ * emitter inserts the lines when the component ends.
+ */
+export interface HostStateSlot {
+  /** Add one declaration line (`@State private var … = …`). */
+  declare(line: string): void
+  /** The component's declarations so far, in order. */
+  lines(): readonly string[]
+  /** Replace every declaration from index `start` on (a host that renames or drops what it declared). */
+  replaceFrom(start: number, lines: readonly string[]): void
+  /** A number never returned before in this file — for suffixing a name two hosts would otherwise share. */
+  freshSuffix(): number
+}
+
+/** What the Swift emitter supplies beyond {@link EmitContextBackend}. */
+export interface SwiftEmitContextBackend extends EmitContextBackend {
+  /** `readStringAttrExpr` — a string attribute as Swift text (a literal, or an interpolation of the expression). */
+  stringAttr(el: JsxElementIR, name: string, indent: number): string | undefined
+  /** `emitSwiftLayoutModifiers` — the modifier chain for the element's styling props. */
+  layoutModifiers(el: JsxElementIR): string
+  /** `emitSwiftAction` — an event handler as a Swift closure body. */
+  action(handler: ExprIR, indent: number): string
+  /** `resolveFunctionHandler` — the name of the module function an expression refers to, if it is one. */
+  handlerName(handler: ExprIR): string | undefined
+  /** `_moduleConstExprs.get` — a module-level `const`'s initializer. */
+  constExpr(name: string): ExprIR | undefined
+  /** `_chartThemeScope` — the compile-time colour-mode scope enclosing the element (opaque; the plugin that stored it types it). */
+  colorScope(): object | undefined
+  /** `_usesColorScheme = true`. */
+  markColorSchemeUsed(): void
+  /** `_hostStateDecls` + `_swiftHostStateSeq`. */
+  hostState: HostStateSlot
 }
 
 export interface EmitContext {
@@ -61,10 +98,10 @@ export interface EmitContext {
   ident(name: string): string
   /** Report a lowering limitation to the author. */
   warn(message: string): void
-  /** An expression emitted through the full dispatcher, at this context's indentation. */
-  expr(e: ExprIR): string
-  /** An expression emitted with `type` as the expected type (steers an object / array literal's struct). */
-  exprAs(type: TypeIR, e: ExprIR): string
+  /** An expression emitted through the full dispatcher, at `at` (default: this context's indentation). */
+  expr(e: ExprIR, at?: number): string
+  /** An expression emitted with `type` as the expected type (steers an object / array literal's struct); `undefined` clears an inherited expectation. */
+  exprAs(type: TypeIR | undefined, e: ExprIR, at?: number): string
   /** The ext declarations of `(plugin, type)` in the component being emitted. */
   decls(plugin: string, type: string): readonly ExtDecl[]
   /**
@@ -85,6 +122,37 @@ export interface EmitContext {
   resolveDeferred(key: string, value: string): void
 }
 
+/**
+ * The context a Swift element lowering receives: the shared facade plus the
+ * members only the Swift emitter has state for today. A member moves up to
+ * {@link EmitContext} when the Kotlin emitter supplies it too.
+ */
+export interface SwiftEmitContext extends EmitContext {
+  /** A string attribute as Swift text — a literal, or an interpolation of the expression — or `undefined` when absent. */
+  stringAttr(el: JsxElementIR, name: string, at?: number): string | undefined
+  /** The modifier chain (`.padding(…).background(…)`) for the element's own styling props. */
+  layoutModifiers(el: JsxElementIR): string
+  /** An event handler as a Swift closure body, at `at` (default: this context's indentation). */
+  action(handler: ExprIR, at?: number): string
+  /** The name of the module-level function `handler` refers to, or `undefined` when it is anything else. */
+  handlerName(handler: ExprIR): string | undefined
+  /** The initializer of the module-level `const` named `name`, or `undefined`. */
+  constExpr(name: string): ExprIR | undefined
+  /**
+   * The compile-time colour-mode scope enclosing the element, as the value its
+   * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
+   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>` /
+   * `<ChartThemeProvider>` handling (saved and restored in `finally`, so
+   * providers nest and a sibling inherits nothing). The facade does not know
+   * the value's type; the plugin that reads it names it (`colorScope<T>()`).
+   */
+  colorScope<T extends object>(): T | undefined
+  /** Tell the emitter the component reads SwiftUI's colour scheme, so it injects `@Environment(\.colorScheme) pyreonColorScheme`. */
+  markColorSchemeUsed(): void
+  /** The component's `@State` declaration list (see {@link HostStateSlot}). */
+  readonly hostState: HostStateSlot
+}
+
 export function createEmitContext(
   target: EmitTarget,
   backend: EmitContextBackend,
@@ -99,11 +167,25 @@ export function createEmitContext(
     stringLiteral: (value) => backend.stringLiteral(value),
     ident: (name) => backend.identifier(name),
     warn: (message) => backend.warn(message),
-    expr: (e) => backend.expr(e, indent),
-    exprAs: (type, e) => backend.exprAs(type, e, indent),
+    expr: (e, at = indent) => backend.expr(e, at),
+    exprAs: (type, e, at = indent) => backend.exprAs(type, e, at),
     decls: (plugin, type) => backend.scope().decls(plugin, type),
     state: (key, init) => backend.scope().state(key, init),
     deferred: (key, fallback) => backend.scope().deferred(key, fallback),
     resolveDeferred: (key, value) => backend.scope().resolveDeferred(key, value),
+  }
+}
+
+export function createSwiftEmitContext(backend: SwiftEmitContextBackend, indent: number): SwiftEmitContext {
+  return {
+    ...createEmitContext('swift', backend, indent),
+    stringAttr: (el, name, at = indent) => backend.stringAttr(el, name, at),
+    layoutModifiers: (el) => backend.layoutModifiers(el),
+    action: (handler, at = indent) => backend.action(handler, at),
+    handlerName: (handler) => backend.handlerName(handler),
+    constExpr: (name) => backend.constExpr(name),
+    colorScope: <T extends object>() => backend.colorScope() as T | undefined,
+    markColorSchemeUsed: () => backend.markColorSchemeUsed(),
+    hostState: backend.hostState,
   }
 }

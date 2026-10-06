@@ -52,7 +52,8 @@
       {
         "exemptPaths": [
           "__tests__/",
-          ".test."
+          ".test.",
+          "packages/native/compiler/src/golden-fixtures/"
         ]
       }
     ],
@@ -263,8 +264,22 @@
     "pyreon/no-signal-call-write": "error",
     "pyreon/no-signal-in-form-initial-values": "warn",
     "pyreon/no-signal-in-loop": "error",
-    "pyreon/no-signal-in-props": "error",
-    "pyreon/no-signal-leak": "error",
+    "pyreon/no-signal-in-props": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/native/compiler/src/golden-fixtures/"
+        ]
+      }
+    ],
+    "pyreon/no-signal-leak": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/native/compiler/src/golden-fixtures/"
+        ]
+      }
+    ],
     "pyreon/no-signal-read-in-attrs-callback": "error",
     "pyreon/no-storage-write-as-call": "error",
     "pyreon/no-store-outside-provider": "error",
