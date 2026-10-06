@@ -25,6 +25,7 @@ import {
   lowerPluginMemberCall,
   lowerPluginMemberRead,
   isHeadLifecycleDecl,
+  midLifecycleDecls,
   lowerPluginReceiver,
   pluginAsyncState,
   pluginLifecycleLines,
@@ -599,8 +600,6 @@ let _zeroArgHelperNames: Set<string> = new Set()
  *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
  *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
 let _syncedSignalNames: Set<string> = new Set()
-/** `createTableState(...)` bindings — property reads drop parens; methods flow through. */
-let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
 /**
@@ -1399,7 +1398,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _syncedSignalNames = new Set()
-  _tableNames = new Set()
   _sortableNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1439,7 +1437,6 @@ function emitKotlinComponent(c: ComponentIR): string {
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
-    if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -1630,6 +1627,11 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(body)
     lines.push(`  }`)
   }
+  // A plugin container that binds its source and sinks here (`midOrder`): closures over the component's own state,
+  // which is not in scope inside the container's own initializer.
+  for (const d of midLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
+  }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
   // first composition (Compose's async-on-mount hook), driving the
   // PyreonFetch state machine begin → resolve|reject. The suspendable HTTP
@@ -1801,7 +1803,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _functionNames = new Set()
   _urlStateNames = new Set()
   _syncedSignalNames = new Set()
-  _tableNames = new Set()
   _sortableNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1866,13 +1867,6 @@ function kotlinSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
   const emitted = emitKotlinExpr(d.keyBody, 2)
   const t = inferType(d.keyBody, _kotlinExprInferCtx)
   return t.kind === 'string' ? emitted : `(${emitted}).toString()`
-}
-
-/** A PyreonCell expression for a table column, chosen by the field's type. */
-function kotlinTableCell(fieldType: TypeIR | undefined, expr: string): string {
-  if (fieldType?.kind === 'string') return `PyreonCell.Str(${expr})`
-  if (fieldType?.kind === 'number') return `PyreonCell.Num((${expr}).toDouble())`
-  return `PyreonCell.Str("${'$'}{${expr}}")`
 }
 
 /** The row struct's Kotlin type name — a named typeRef, or the synthesized
@@ -2254,24 +2248,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
     const mapArg = d.map !== undefined ? `, ${kotlinStr(d.map)}` : ''
     return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${kotlinStr(d.key)}, ${initial}${mapArg}) }`
-  }
-  // `@pyreon/table` — Compose's sequential `remember` lets the data lambda
-  // reference the row signal directly (no @State cross-ref like Swift), so it's
-  // passed in the constructor. Reading it inside `rows()` during composition
-  // tracks the signal → a row change recomposes.
-  if (d.kind === 'table-state') {
-    const dt = inferType(d.dataBody, _kotlinExprInferCtx)
-    const elem: TypeIR = dt.kind === 'array' ? dt.element : { kind: 'unknown' }
-    const rowType = resolveKotlinRowTypeName(elem)
-    const fields = resolveKotlinStructFields(elem)
-    const cols = d.columns
-      .map((c) => {
-        const f = fields.find((x) => x.name === c.id)
-        return `PyreonTableColumn(${kotlinStr(c.id)}) { ${kotlinTableCell(f?.type, `it.${kotlinIdent(c.id)}`)} }`
-      })
-      .join(', ')
-    const pageArg = d.pageSize > 0 ? `, ${d.pageSize}` : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonTableState<${rowType}>({ ${emitKotlinExpr(d.dataBody, 2)} }, listOf(${cols})${pageArg}) }`
   }
   // `@pyreon/dnd` — the PyreonSortableState engine. `remember` keeps ONE
   // instance across recompositions (the drag state lives in it); the reactive
@@ -4063,16 +4039,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
-      // PyreonTableState property reads drop parens (methods flow through).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _tableNames.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-      }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
       // NaN on failure; the `?:` default keeps a non-null Int/Double.
@@ -5665,6 +5631,8 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       child: emitKotlinChild,
       // Against the component's own `KotlinCtx`: an inline object type (a query's `{ data: { id: string } }`) synthesizes a named data class there.
       typeText: (type) => kotlinType(type, _activeKotlinCtx),
+      rowType: resolveKotlinRowTypeName,
+      rowFields: resolveKotlinStructFields,
       inferType: (e) => inferType(e, _kotlinExprInferCtx),
       structs: kotlinStructRegistry,
       warnOnce: (message) => {

@@ -84,6 +84,10 @@ export interface EmitContextBackendExtras {
   child(child: ChildIR, indent: number): string
   /** `swiftType` / `kotlinType` — the target spelling of a type. */
   typeText(type: TypeIR): string
+  /** The target type name of a typed container's element (a table row, a sortable item) — see {@link EmitContext.rowType}. */
+  rowType(element: TypeIR): string
+  /** The fields of a typed container's element — see {@link EmitContext.rowFields}. */
+  rowFields(element: TypeIR): readonly { name: string; type: TypeIR }[]
   /** The emitter's expression-type inference over the active component. */
   inferType(e: ExprIR): TypeIR
   /** The file's struct registry. */
@@ -222,6 +226,15 @@ export interface EmitContext {
   child(child: ChildIR, at?: number): string
   /** The target's spelling of `type`. */
   typeText(type: TypeIR): string
+  /**
+   * The target type name a typed container's ELEMENT spells to: a declared struct, the struct synthesized for an
+   * inline object, or the scalar's own type — what a generic container (`PyreonTableState<Row>`) is instantiated
+   * with. Unlike {@link EmitContext.typeText} it resolves against the component being emitted, so an element whose
+   * struct the component itself synthesized names that struct.
+   */
+  rowType(element: TypeIR): string
+  /** The fields of a container element: an inline object's own, or the declared / synthesized struct a type reference names. */
+  rowFields(element: TypeIR): readonly { name: string; type: TypeIR }[]
   /** The type the emitter infers for `e` in the active component. */
   inferType(e: ExprIR): TypeIR
   /** The file's struct registry (declared and synthesised structs). */
@@ -325,6 +338,8 @@ export function createEmitContext(
     isFunctionName: (name) => (backend.isFunctionName ?? (() => missing('isFunctionName')))(name),
     child: (child, at = indent) => (backend.child ?? (() => missing('child')))(child, at),
     typeText: (type) => (backend.typeText ?? (() => missing('typeText')))(type),
+    rowType: (element) => (backend.rowType ?? (() => missing('rowType')))(element),
+    rowFields: (element) => (backend.rowFields ?? (() => missing('rowFields')))(element),
     inferType: (e) => (backend.inferType ?? (() => missing('inferType')))(e),
     structs: backend.structs ?? {
       forTypeFields: () => missing('structs'),

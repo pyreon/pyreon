@@ -29,8 +29,10 @@ import { toastPlugin } from '../../../../fundamentals/toast/src/native-plugin/pl
 import { toastStubs } from '../../../../fundamentals/toast/src/native-plugin/stubs'
 import { a11yPlugin } from '../../../../fundamentals/a11y/src/native-plugin/plugin'
 import { a11yStubs } from '../../../../fundamentals/a11y/src/native-plugin/stubs'
+import { tablePlugin } from '../../../../fundamentals/table/src/native-plugin/plugin'
+import { tableStubs } from '../../../../fundamentals/table/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })

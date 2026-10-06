@@ -141,6 +141,14 @@ export interface DeclLifecycle {
    * in declaration order before them. It exists so a moved lifecycle keeps the position it had.
    */
   readonly tailOrder?: number | undefined
+  /**
+   * Emit this declaration's lines where the compiler wires a state container to the component's own inputs,
+   * ordered by this number (then by declaration order): on SwiftUI after the hotkey modifiers and before the
+   * platform-service lifecycle, on Compose after the form wiring and before the timers. A container whose source
+   * and sinks are closures over the component's own state binds them there, because a property initializer cannot
+   * capture `self`. A declaration with neither `midOrder` nor `tailOrder` is emitted in declaration order, first.
+   */
+  readonly midOrder?: number | undefined
   /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
   swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
   /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */

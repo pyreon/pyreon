@@ -898,10 +898,8 @@ describe('parse.ts — computed-expression keys are named by every literal-confi
   })
 
   it('createTableState: config + column keys', () => {
-    const d = declsOf(tableApp(`{ [a + b]: 1, data: () => rows(), columns: [{ [a + b]: 'x', id: 'name' }] }`)).find(
-      (x) => x.kind === 'table-state',
-    ) as Extract<DeclIR, { kind: 'table-state' }>
-    expect(d.columns).toEqual([{ id: 'name' }])
+    const d = extDecl(declsOf(tableApp(`{ [a + b]: 1, data: () => rows(), columns: [{ [a + b]: 'x', id: 'name' }] }`)), 'table-state')
+    expect(payloadOf(d).columns).toEqual([{ id: 'name' }])
   })
 
   it('useSortable: a computed key is skipped', () => {

@@ -32,11 +32,13 @@ import { toastPlugin } from '../packages/fundamentals/toast/src/native-plugin/pl
 import { toastStubs } from '../packages/fundamentals/toast/src/native-plugin/stubs'
 import { a11yPlugin } from '../packages/fundamentals/a11y/src/native-plugin/plugin'
 import { a11yStubs } from '../packages/fundamentals/a11y/src/native-plugin/stubs'
+import { tablePlugin } from '../packages/fundamentals/table/src/native-plugin/plugin'
+import { tableStubs } from '../packages/fundamentals/table/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin])
+export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 

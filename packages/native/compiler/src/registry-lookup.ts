@@ -439,9 +439,20 @@ export function tailLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
     .map((entry) => entry.d)
 }
 
+/** The ext declarations of `decls` whose lifecycle is a MID one, in emit order (`midOrder`, then declaration order). */
+export function midLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
+  const mid = decls.filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.midOrder !== undefined)
+  return mid
+    .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.midOrder! }))
+    .sort((a, b) => a.order - b.order || a.i - b.i)
+    .map((entry) => entry.d)
+}
+
 /** True when `d` is an `ext` declaration that emits its lifecycle in declaration order (before the compiler's own modifiers). */
 export function isHeadLifecycleDecl(d: DeclIR): d is ExtDecl {
-  return d.kind === 'ext' && extDeclLifecycle(d)?.tailOrder === undefined
+  if (d.kind !== 'ext') return false
+  const lifecycle = extDeclLifecycle(d)
+  return lifecycle?.tailOrder === undefined && lifecycle?.midOrder === undefined
 }
 
 /** The type of the zero-arg call read `<binding>.<property>()` on a plugin declaration, or `undefined`. */

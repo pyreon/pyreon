@@ -1603,40 +1603,6 @@ class PyreonSyncedSignal<T>(
   // Mirror of the runtime's dispose(); its absence rejected correct code.
   fun dispose() {}
 }
-// @pyreon/table — the PyreonTableState engine. Mirrors PyreonTableState.kt.
-sealed class PyreonCell {
-  data class Str(val v: String) : PyreonCell()
-  data class Num(val v: Double) : PyreonCell()
-  object None : PyreonCell()
-}
-class PyreonTableColumn<T>(val id: String, val accessor: (T) -> PyreonCell)
-class PyreonTableState<T>(
-  dataProvider: () -> List<T>,
-  columns: List<PyreonTableColumn<T>> = emptyList(),
-  pageSize: Long = 0L,
-  rowId: ((T, Long) -> String)? = null,
-  filterFn: ((T, String, List<PyreonTableColumn<T>>) -> Boolean)? = null,
-) {
-  fun rows(): List<T> = emptyList()
-  fun pageCount(): Long = 1L
-  fun filteredCount(): Long = 0L
-  fun selectedIds(): List<String> = emptyList()
-  fun toggleSort(c: String) {}
-  fun setFilter(q: String) {}
-  fun setPage(i: Long) {}
-  fun nextPage() {}
-  fun prevPage() {}
-  fun isSelected(id: String): Boolean = false
-  fun toggleSelected(id: String) {}
-  fun clearSelection() {}
-  fun rowId(row: T, index: Long): String = ""
-  val page: Long get() = 0L
-  val sortColumn: String? get() = null
-  val sortDirection: String get() = "asc"
-  val filterValue: String get() = ""
-  val selected: List<String> get() = emptyList()
-}
-
 // @pyreon/dnd — the PyreonSortableState engine. Mirrors PyreonSortable.kt.
 // The Modifier extensions it pairs with (PyreonSortableModifier.kt) are
 // mirrored as Modifier MEMBERS below, the same shape testTag/semantics use —

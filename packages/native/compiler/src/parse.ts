@@ -1666,23 +1666,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     },
   ],
   [
-    '@pyreon/table',
-    {
-      // The blanket line calls a package "renders via the DOM / a browser-only
-      // library", which is simply FALSE here: TanStack Table is HEADLESS. It
-      // also stops short of naming the native answer, which this package's own
-      // manifest states plainly — native lists are `<For>` + primitives.
-      //
-      // The row-model RENDER surface (getRowModel / getVisibleCells /
-      // flexRender) is what has no native analogue; the SORT/FILTER state is
-      // ordinary logic an author can hold in signals today, so the fix is a
-      // real one rather than "give up".
-      advice:
-        "`createTableState({ data, columns, pageSize })` LOWERS to the native PyreonTableState engine — render its `rows()` with `<For>` + primitives. The TanStack-backed `useTable` (getRowModel / getVisibleCells / flexRender) is the WEB render surface with no native analogue; keep it behind a `<Web>` branch",
-      supported: new Set(['createTableState']),
-    },
-  ],
-  [
     '@pyreon/permissions',
     {
       // The previous advice — "`usePermissions()` DOES lower — use the hook
@@ -5021,12 +5004,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const syncedSignalDecl = tryDeclFromSyncedSignal(node, ctx)
   if (syncedSignalDecl) return syncedSignalDecl
 
-  // `@pyreon/table` — `const t = createTableState({ data, columns, pageSize })`
-  // lowers to the @Observable PyreonTableState engine. Runs BEFORE the Tier-2
-  // silent-drop block so it is recognized as a real port.
-  const tableStateDecl = tryDeclFromCreateTableState(node, ctx)
-  if (tableStateDecl) return tableStateDecl
-
   // `@pyreon/dnd` — `const s = useSortable({ items, by, onReorder })` lowers to
   // the PyreonSortableState engine. Same placement rationale as the table
   // state above: recognized as a real port before the silent-drop block.
@@ -6302,85 +6279,6 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }
 }
 
-
-/**
- * `const t = createTableState({ data, columns, pageSize })` from `@pyreon/table`
- * → a `table-state` decl. v1 lowers: `data: () => <expr>` (the reactive row
- * source), `columns: [{ id }]` (string ids, default `row[id]` accessor), and an
- * optional numeric `pageSize`. Anything outside that shape warns + silent-drops.
- */
-function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'createTableState') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createTableState declaration \`${name}\`: argument must be an object literal { data, columns, pageSize } to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  let dataBody: ExprIR | undefined
-  let pageSize = 0
-  const columns: { id: string }[] = []
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `createTableState declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'data') {
-      if (
-        (valueNode?.type === 'ArrowFunctionExpression' ||
-          valueNode?.type === 'FunctionExpression') &&
-        valueNode.body?.type !== 'BlockStatement'
-      ) {
-        dataBody = parseExpr(valueNode.body as AnyNode, ctx)
-      }
-    } else if (keyName === 'pageSize') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'number') {
-        pageSize = valueNode.value
-      }
-    } else if (keyName === 'columns' && valueNode?.type === 'ArrayExpression') {
-      for (const el of (valueNode.elements as AnyNode[] | undefined) ?? []) {
-        const col = unwrapTypeLayers(el)
-        if (col?.type !== 'ObjectExpression') continue
-        for (const cp of (col.properties as AnyNode[] | undefined) ?? []) {
-          if (cp?.type !== 'Property' && cp?.type !== 'ObjectProperty') continue
-          if (hasDynamicKey(cp)) {
-            warnDynamicKey(cp, `createTableState declaration \`${name}\`: column`, ctx)
-            continue
-          }
-          const ckName = staticPropKey(cp)
-          const cv = unwrapTypeLayers(cp.value as AnyNode | undefined)
-          if (ckName === 'id' && cv?.type === 'Literal' && typeof cv.value === 'string') {
-            columns.push({ id: cv.value })
-          }
-        }
-      }
-    }
-  }
-
-  if (!dataBody) {
-    ctx.warnings.push(
-      `createTableState declaration \`${name}\`: \`data\` must be an expression-body getter (\`() => rows\`) to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (columns.length === 0) {
-    ctx.warnings.push(
-      `createTableState declaration \`${name}\`: needs at least one \`columns: [{ id }]\` entry with a string id to lower natively (v1). Falling back to silent-drop.`,
-    )
-    return null
-  }
-  return { kind: 'table-state', name, dataBody, pageSize, columns }
-}
 
 /**
  * `const s = useSortable({ items, by, onReorder, axis? })` from `@pyreon/dnd`

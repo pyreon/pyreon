@@ -338,6 +338,10 @@ directly.
 
 - **`createTableState` is a SEPARATE engine, not `useTable` with fewer features** — its `TableColumn`/`TableState` shapes don't interop with TanStack column defs or `flexRender`; pick one per table. Reach for it when the table needs to render on iOS/Android via PMTC, or when a `useTable`-only import's TanStack weight isn't worth paying for a plain sort/filter/paginate list.
 
+## Native (iOS / Android)
+
+`createTableState({ data, columns, pageSize })` lowers to the `PyreonTableState` engine on SwiftUI and Compose (sort / filter / paginate / select over a reactive row source). The TanStack-backed `useTable` render surface has no native analogue. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/table](https://pyreon.dev/docs/table) (or `docs/src/content/docs/table.md` in this repo).

@@ -30,6 +30,7 @@ import {
   lowerPluginMemberCall,
   lowerPluginMemberRead,
   isHeadLifecycleDecl,
+  midLifecycleDecls,
   lowerPluginReceiver,
   pluginAsyncState,
   tailLifecycleDecls,
@@ -519,10 +520,6 @@ let _signalNames: Set<string> = new Set()
  *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
  *  rewrite must skip them (they are facade objects, not bare @State values). */
 let _syncedSignalNames: Set<string> = new Set()
-/** `createTableState(...)` bindings. Its PROPERTY reads (`t.page()`→`t.page`,
- *  sortColumn/sortDirection/filterValue) drop parens; its METHODS (rows/
- *  toggleSort/setFilter/…) flow through unchanged. */
-let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
 /**
@@ -1773,7 +1770,6 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'on-mount',
   'rate-limited',
   'sortable',
-  'table-state',
   'tick',
 ])
 
@@ -1909,7 +1905,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _syncedSignalNames = new Set()
-  _tableNames = new Set()
   _sortableNames = new Set()
   _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
@@ -1964,7 +1959,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
-    if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
@@ -2041,6 +2035,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Swift doesn't require that ordering at file scope, but it keeps the
   // file readable and byte-mirrors the Kotlin emit's layout.
   const synth: SwiftSynthCtx = { componentName: c.name, structs: [] }
+  _activeSynth = synth
   // Optional props (`label?: string` → union-with-undefined) emit as
   // `var label: String? = nil` — the explicit `= nil` default is what
   // makes the MEMBERWISE initializer's parameter omittable, so a call
@@ -2458,15 +2453,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        .opacity(0)`)
     lines.push(`      )`)
   }
-  // table-state: wire the reactive data source in `.onAppear`, where the
-  // closure can capture the view's @State (a @State initializer cannot). The
-  // read happens during body evaluation via `table.rows()`, so SwiftUI tracks
-  // the source signal and a row change re-renders.
-  for (const d of c.decls) {
-    if (d.kind !== 'table-state') continue
-    lines.push(
-      `      .onAppear { ${swiftIdent(d.name)}.setData { ${emitSwiftExpr(d.dataBody, 8)} } }`,
-    )
+  // A plugin container that binds its source and sinks here (`midOrder`) — closures over the component's own state,
+  // which a property initializer cannot capture.
+  for (const d of midLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
   }
   // sortable: wire the item source + key extractor + reorder sink, same
   // `.onAppear` rationale as table-state (a @State initializer cannot capture
@@ -2596,6 +2586,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's deferred values (a chart handle's series count) are known only once the body has emitted.
   const joined = _pluginScope.finalize(lines.join('\n'))
   _pluginScope = outerPluginScope
+  _activeSynth = undefined
   _pureStateSwift = new Map()
   return joined
 }
@@ -2865,15 +2856,7 @@ function swiftSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
   return t.kind === 'string' ? emitted : `"\\(${emitted})"`
 }
 
-/** A PyreonCell expression for a table column, chosen by the field's type. */
-function swiftTableCell(fieldType: TypeIR | undefined, expr: string): string {
-  if (fieldType?.kind === 'string') return `.string(${expr})`
-  if (fieldType?.kind === 'number') return `.number(Double(${expr}))`
-  // Total fallback (bool/enum/unknown) — stringify so comparison stays defined.
-  return `.string("\\(${expr})")`
-}
-
-/** The row struct's fields, whether inline-object or a named (synthesized) struct. */
+/** The row struct's fields, whether inline-object or a named struct. */
 function resolveSwiftStructFields(
   elem: TypeIR,
   synth: SwiftSynthCtx | undefined,
@@ -3313,24 +3296,6 @@ function emitSwiftDecl(
   }
   if (d.kind === 'synced-signal') {
     return `@State private var ${swiftIdent(d.name)}: PyreonSyncedSignal<${syncedSignalSwiftType(d.scalarType)}>`
-  }
-  // `@pyreon/table` — a self-seeding @State PyreonTableState. The reactive data
-  // source is wired in `.onAppear` (emitSwiftComponent), so the initializer has
-  // no `self` reference and stays self-contained. Column accessors are codegen'd
-  // from the row struct's inferred field types.
-  if (d.kind === 'table-state') {
-    const dt = inferType(d.dataBody, inferCtx)
-    const elem: TypeIR = dt.kind === 'array' ? dt.element : { kind: 'unknown' }
-    const rowType = swiftType(elem, synth)
-    const fields = resolveSwiftStructFields(elem, synth)
-    const cols = d.columns
-      .map((c) => {
-        const f = fields.find((x) => x.name === c.id)
-        return `PyreonTableColumn(id: ${swiftStr(c.id)}, accessor: { ${swiftTableCell(f?.type, `$0.${swiftIdent(c.id)}`)} })`
-      })
-      .join(', ')
-    const pageArg = d.pageSize > 0 ? `, pageSize: ${d.pageSize}` : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonTableState<${rowType}>(columns: [${cols}]${pageArg})`
   }
   // (see swiftSortKeyExpr below for the `by` key coercion)
   // `@pyreon/dnd` — a self-seeding @State PyreonSortableState. Same shape as
@@ -4411,6 +4376,9 @@ interface SwiftSynthCtx {
   structs: StructIR[]
 }
 
+/** The struct-synthesis context of the component being emitted — what `EmitContext.rowType` / `rowFields` resolve against. */
+let _activeSynth: SwiftSynthCtx | undefined
+
 /**
  * `UserPage` + `params` → `UserPageParam`; `TasksListPage` + `tasks` →
  * `TasksListPageTask`. EXACT mirror of emit-kotlin's
@@ -5154,8 +5122,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (m === 'reset') return `${field} = ${clamp(String(info.initial))}`
         }
       }
-      // PyreonTableState PROPERTY reads: web `t.page()` / `t.sortColumn()` /
-      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
+      // PyreonForm PROPERTY reads: web `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
       // the native `PyreonForm` exposes them as stored Bool properties. Without
       // this the web-correct spelling emitted `form.isValid()`, which swiftc
       // rejects with "cannot call value of non-function type 'Bool'". Same
@@ -5166,18 +5133,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _formNamesSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['isValid', 'isSubmitting'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // `t.sortDirection()` / `t.filterValue()` are accessor calls, but on Swift
-      // these are stored properties — drop the parens. Its METHODS (rows /
-      // pageCount / toggleSort / setFilter / …) keep parens (flow through).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _tableNames.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
@@ -7220,6 +7175,8 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       isFunctionName: (name) => _functionNames.has(name),
       child: emitSwiftChild,
       typeText: swiftType,
+      rowType: (element) => swiftType(element, _activeSynth),
+      rowFields: (element) => resolveSwiftStructFields(element, _activeSynth),
       inferType: (e) => inferType(e, _activeInferCtx),
       structs: swiftStructRegistry,
       warnOnce: (message) => {

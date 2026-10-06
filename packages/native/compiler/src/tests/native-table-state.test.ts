@@ -9,8 +9,7 @@
 // and both targets validate against the compiler stubs.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 const usersTable = `

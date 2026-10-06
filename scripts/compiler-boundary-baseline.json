@@ -14,10 +14,9 @@
       "@pyreon/storage": 1,
       "@pyreon/store": 1,
       "@pyreon/sync": 1,
-      "@pyreon/table": 1,
       "@pyreon/ui-core": 2
     },
-    "hooks": 113
+    "hooks": 112
   },
   "compiler": {
     "packages": {
