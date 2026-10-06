@@ -5,7 +5,7 @@
  */
 import { type Dirent, readdirSync, readFileSync } from 'node:fs'
 import { extname, join, relative, sep } from 'node:path'
-import type { ComponentIntelligence } from '../core'
+import { type ComponentIntelligence, scanRelativePath } from '../core'
 import type { AtlasPlugin } from '../plugins'
 import { defineAtlasPlugin } from '../plugins'
 import { discoverRocketstyle, type RocketstyleDiscoveryOptions } from './rocketstyle'
@@ -80,9 +80,14 @@ function walk(
   }
 }
 
+/** The directory discovery walks — the root identity paths are relative to. */
+function scanRootOf(options: DiscoverOptions): string {
+  return join(options.cwd ?? '.', options.dir ?? 'src')
+}
+
 /** Every source file discovery would scan, in deterministic order. */
 export function listComponentFiles(options: DiscoverOptions = {}): string[] {
-  const root = join(options.cwd ?? '.', options.dir ?? 'src')
+  const root = scanRootOf(options)
   const files: string[] = []
   walk(root, root, options.extensions ?? DEFAULT_EXTENSIONS, options.ignore ?? DEFAULT_IGNORE, files)
   return files.sort() // deterministic order
@@ -123,7 +128,8 @@ export function discoverComponents(options: DiscoverOptions = {}): ComponentInte
       const dedupeKey = `${comp.name}@${comp.source ?? file}`
       if (seen.has(dedupeKey)) continue
       seen.add(dedupeKey)
-      out.push(options.project ? { ...comp, project: options.project } : comp)
+      const stamped = { ...comp, scanPath: scanRelativePath(scanRootOf(options), comp.source ?? file) }
+      out.push(options.project ? { ...stamped, project: options.project } : stamped)
     }
   }
   return out
@@ -163,9 +169,15 @@ export function fileDiscoveryPlugin(
       // function is. Missing it here would leave those components unqualified
       // and re-open the collision for exactly the components the static scan
       // cannot see, which is the hardest case to notice.
-      const stamped = resolved.project
-        ? extra.map((c) => ({ ...c, project: resolved.project! }))
-        : extra
+      // `scanPath` too: identity is derived from it, and the rocketstyle pass
+      // builds its components from a bare file list, so it is stamped here —
+      // the one place both discovery passes meet — rather than per emitter.
+      const scanRoot = scanRootOf(resolved)
+      const stamped = extra.map((c) => ({
+        ...c,
+        ...(c.source !== undefined ? { scanPath: scanRelativePath(scanRoot, c.source) } : {}),
+        ...(resolved.project ? { project: resolved.project } : {}),
+      }))
       return [...scanned, ...stamped]
     },
   })
