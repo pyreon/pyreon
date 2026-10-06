@@ -10,7 +10,8 @@ import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FI
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
 import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
-import { findService, isElementLoweringTag, serviceClaimsSource } from './registry-lookup'
+import { findService, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
+import { stampExtDecl, type ParseContext } from './call-lowering'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -539,7 +540,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
-  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), serviceClaimsSource))
+  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
@@ -2834,22 +2835,26 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useFlow',
 ])
 
-// Derived once per registry (keyed on its service tables, so the entry dies with
-// the compiler instance that owns them).
+// Derived once per registry (keyed on the registry itself, so the entry dies with
+// the compiler instance that owns it).
 const LOWERED_HOOKS = new WeakMap<object, ReadonlySet<string>>()
 
 /**
  * The hooks the parser lowers for `registries` (default: the active ones): the
- * hand-written set above plus every registered service hook, so a plugin's
- * service never trips the "no native lowering" warning.
+ * hand-written set above plus every registered service hook and plugin-recognized
+ * call, so a plugin's lowering never trips the "no native lowering" warning.
  */
 export function nativeLoweredHooks(
   registries: CompilerRegistries = activeRegistries(),
 ): ReadonlySet<string> {
-  const key = registries.serviceTables
+  const key = registries
   let set = LOWERED_HOOKS.get(key)
   if (set === undefined) {
-    set = new Set([...registries.serviceTables.hooks, ...NATIVE_LOWERED_STATIC_HOOKS])
+    set = new Set([
+      ...registries.serviceTables.hooks,
+      ...registries.calls.names,
+      ...NATIVE_LOWERED_STATIC_HOOKS,
+    ])
     LOWERED_HOOKS.set(key, set)
   }
   return set
@@ -7665,6 +7670,22 @@ function unwrapTypeLayers(node: AnyNode | undefined): AnyNode | undefined {
   return current
 }
 
+/** The facade a plugin's `CallRecognizer` reads the call through; each member delegates to parser state. */
+function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseContext {
+  return {
+    declName,
+    stringLiteralArg(index) {
+      const arg = (call.arguments as AnyNode[] | undefined)?.[index]
+      return (arg?.type === 'Literal' || arg?.type === 'StringLiteral') && typeof arg.value === 'string'
+        ? arg.value
+        : undefined
+    },
+    warn: (message) => {
+      ctx.warnings.push(`Declaration ${declName}: ${message}`)
+    },
+  }
+}
+
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
@@ -8918,11 +8939,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // through unchanged (string arg) — the runtime container hands the URL
   // to the OS (iOS `UIApplication.shared.open`, Android
   // `Intent.ACTION_VIEW`). Like useShare, Android needs a Context.
-  // `const chart = createChartHandle()` from `@pyreon/charts` → a
-  // PyreonChartHandle: observable fields the bound PlotChart reads and writes,
-  // and a `dispatch` that runs the crossing `applyChartAction` reducer.
-  if (calleeName === 'createChartHandle') {
-    return { kind: 'chart-handle', name }
+  // A call a PLUGIN recognizes (`CompilerPlugin.calls`) — e.g. `createChartHandle()`
+  // from `@pyreon/charts`. Sits where the hand-written by-name branches did, so a
+  // recognizer that declines (`undefined`) falls through to everything below.
+  const recognized = calleeName === undefined ? undefined : activeRegistries().calls.calls.get(calleeName)
+  if (recognized !== undefined && calleeName !== undefined) {
+    const spec = recognized.recognizer(
+      { callee: calleeName, argCount: init.arguments?.length ?? 0 },
+      parseContextFor(name, init, ctx),
+    )
+    if (spec !== undefined) return stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
   }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port

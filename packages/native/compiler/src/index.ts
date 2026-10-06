@@ -28,6 +28,16 @@ export type {
   RegisteredElementLowering,
   RetagContext,
 } from './element-lowering'
+export { createCallRegistry } from './call-lowering'
+export type {
+  CallRecognizer,
+  CallRegistry,
+  CallSite,
+  DeclEmitter,
+  ExtDeclSpec,
+  ParseContext,
+  RegisteredCall,
+} from './call-lowering'
 export type { EmitContext, EmitTarget, StaticAttrValue } from './emit-context'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'

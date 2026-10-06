@@ -144,6 +144,7 @@ describe('EmitContext', () => {
     },
     staticAttr: (_e, name) => (name === 'a' ? 'v' : undefined),
     stringLiteral: (v) => JSON.stringify(v),
+    identifier: (n) => `_${n}`,
     warn: (m) => {
       calls.push(`warn:${m}`)
     },
@@ -159,6 +160,7 @@ describe('EmitContext', () => {
     expect(ctx.staticAttr(el, 'a')).toBe('v')
     expect(ctx.staticAttr(el, 'b')).toBeUndefined()
     expect(ctx.stringLiteral('q')).toBe('"q"')
+    expect(ctx.ident('x')).toBe('_x')
     ctx.warn('w')
     expect(calls).toEqual(['emit:X@4', 'emit:X@6', 'warn:w'])
   })

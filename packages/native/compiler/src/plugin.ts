@@ -1,4 +1,5 @@
 import type { CompilerRegistries } from './active-registries'
+import type { CallRecognizer, DeclEmitter } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
@@ -6,7 +7,7 @@ import type { EmitOptions, ParseResult, TargetLanguage, TransformResult } from '
 
 /**
  * Bump ONLY when the plugin protocol or shared IR changes incompatibly.
- * Additive optional fields (`services`, `elements`, `modules`, `requires`, `builtIn`) never
+ * Additive optional fields (`services`, `elements`, `calls`, `decls`, `modules`, `requires`, `builtIn`) never
  * bump it — an older plugin simply does not use them.
  */
 export const NATIVE_COMPILER_PLUGIN_API_VERSION = 1 as const
@@ -78,6 +79,22 @@ export interface CompilerPlugin<Target extends string = string> {
    * load-time error naming both.
    */
   readonly elements?: readonly ElementLowering[] | undefined
+  /**
+   * Calls this plugin RECOGNIZES, keyed by hook / function name
+   * (`createChartHandle`). A recognizer reads the call through the `ParseContext`
+   * facade and returns the plugin's own declaration (type + JSON payload), or
+   * `undefined` to decline — the parser then continues as if the plugin were
+   * absent. A name is claimed under the same rule as a `services` hook: when it
+   * is imported from `@pyreon/*` or from one of `modules`. Two owners for one
+   * name is a load-time error. Pair it with `decls`.
+   */
+  readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  /**
+   * How this plugin's declarations render on each target, keyed by the
+   * declaration `type` a `calls` recognizer returns. The emitter receives the
+   * `EmitContext` facade and returns declaration text.
+   */
+  readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
   /**
    * Import specifiers this plugin serves (`@acme/camera`, matched exactly or as
    * a `name/` prefix). A hook in `services` is claimed when it is imported from

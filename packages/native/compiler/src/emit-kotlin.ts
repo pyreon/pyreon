@@ -7,7 +7,8 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { kotlinStr } from './string-literals'
-import { bindServices, findElementLowering, serviceFor } from './registry-lookup'
+import { bindServices, emitPluginDecl, findElementLowering, serviceFor } from './registry-lookup'
+import { isChartHandleDecl } from './plugins/charts'
 import { renderKotlinService, type ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
@@ -2169,6 +2170,8 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'form') _formNames.add(d.name)
     // Phase 5: native data/services hook decl names (for the .value rewrite).
     if (d.kind === 'websocket') _wsNames.add(d.name)
+    // The host emit and `x.dispatch(...)` read the handle names; they come from the declarations.
+    if (isChartHandleDecl(d)) _chartHandleNamesKotlin.add(d.name)
     if (d.kind === 'stream') _streamNames.add(d.name)
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
@@ -3080,12 +3083,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // sibling val (can't live in the non-Composable `remember` lambda) and
   // injected, the same shape clipboard uses. Methods (`share.text("hi")`)
   // flow through unchanged.
-  // `const chart = createChartHandle()` → a remembered PyreonChartHandle (Compose state fields); its
-  // name is remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
-  if (d.kind === 'chart-handle') {
-    _chartHandleNamesKotlin.add(d.name)
-    return `val ${kotlinIdent(d.name)} = remember { PyreonChartHandle() }`
-  }
+  // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
+  if (d.kind === 'ext') return emitPluginDecl(d, 'kotlin', kotlinEmitContext(2))
   // Plain service containers — one generic branch rendered from the
   // descriptor in services.ts (see `renderKotlinService`).
   if (d.kind === 'service') {
@@ -7572,6 +7571,7 @@ function kotlinEmitContext(indent: number) {
       emit: emitKotlinJsx,
       staticAttr: readStaticAttrKotlin,
       stringLiteral: kotlinStr,
+      identifier: kotlinIdent,
       warn: (message) => {
         _emitWarnings.push(message)
       },
