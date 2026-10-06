@@ -105,7 +105,7 @@ describe('conflicts are load-time errors naming both owners', () => {
   it('a plugin service claiming a built-in hook', () => {
     expect(() =>
       createCompiler({ plugins: [{ name: 'A', apiVersion: 1, services: { useShare: SERVICE_SPEC } }] }),
-    ).toThrow(/hook "useShare" is claimed by both "native-compiler" and "A"/)
+    ).toThrow(/hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/)
   })
 
   it('a plugin element claiming a built-in (module, tag)', () => {
@@ -141,7 +141,7 @@ describe('conflicts are load-time errors naming both owners', () => {
       replacement.elements![0],
     )
     const services = createCompiler({
-      discovered: [{ name: 'native-compiler', apiVersion: 1, services: { useShare: SERVICE_SPEC } }],
+      discovered: [{ name: '@pyreon/hooks', apiVersion: 1, services: { useShare: SERVICE_SPEC } }],
     })
     expect(services.services.get('useShare')?.descriptor.swift).toBe('AcmeGadget()')
     expect(services.services.has('useOnline')).toBe(false)

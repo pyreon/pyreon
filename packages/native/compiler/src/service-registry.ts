@@ -1,11 +1,13 @@
+import { HOOKS_PLUGIN_NAME } from './built-in-services.generated'
 import type { CompilerPlugin, ServiceSpec } from './plugin'
 import type { ServiceDescriptor } from './services'
 
 /**
- * Name of the built-in plugin that carries the compiler's own `SERVICES` table
- * (see `plugins/services.ts`). Also the owner recorded for those hooks.
+ * Name of the built-in plugin that carries the `@pyreon/hooks` service table
+ * (see `plugins/services.ts`). Also the owner recorded for those hooks. It is the
+ * library's own package name so the library's discovered plugin replaces it.
  */
-export const BUILT_IN_SERVICE_OWNER = 'native-compiler'
+export const BUILT_IN_SERVICE_OWNER = HOOKS_PLUGIN_NAME
 
 export interface RegisteredService {
   readonly descriptor: ServiceDescriptor
@@ -37,7 +39,7 @@ export function serviceSpecsOf(
  *
  * @example
  * const registry = createServiceRegistry([builtInServices, { name: '@acme/camera', services: { useShare: … } }])
- * // throws: hook "useShare" is claimed by both "native-compiler" and "@acme/camera"
+ * // throws: hook "useShare" is claimed by both "@pyreon/hooks" and "@acme/camera"
  */
 export function createServiceRegistry(plugins: readonly ServicePlugin[]): ServiceRegistry {
   const registry = new Map<string, RegisteredService>()

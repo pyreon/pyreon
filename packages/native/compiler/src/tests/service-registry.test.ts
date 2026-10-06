@@ -49,7 +49,7 @@ describe('createServiceRegistry', () => {
 
   it('refuses a plugin claiming a built-in hook', () => {
     expect(() => createServiceRegistry([...BUILT_IN_PLUGINS, plugin('A', { services: { useShare: spec } })])).toThrow(
-      /hook "useShare" is claimed by both "native-compiler" and "A"/,
+      /hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/,
     )
   })
 

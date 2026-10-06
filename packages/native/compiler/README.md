@@ -93,7 +93,9 @@ fields never break an older plugin:
   value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
   initialiser and `kotlin` lines). `createCompiler` builds one registry from every
   plugin's `services` — the built-in table arrives as the built-in
-  `native-compiler` plugin, through the same path; two owners for one hook is a
+  `@pyreon/hooks` plugin (a generated copy of the library's own
+  `@pyreon/hooks/native-plugin`; an installed, newer one replaces it by name),
+  through the same path; two owners for one hook is a
   load-time error naming both, because silently picking one would make the emit
   depend on plugin order. The registry is `compiler.services` and
   `context.services`, and it is the one the parser and both emitters read, so a

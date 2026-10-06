@@ -196,7 +196,7 @@ describe('plugins and explain reports', () => {
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
     expect(lines).toContain('  @pyreon/charts')
-    expect(lines).toContain('  useShare  native-compiler')
+    expect(lines).toContain('  useShare  @pyreon/hooks')
     expect(lines).toContain('  useBadge  badge')
     expect(lines).toContain('  badge  @acme/badge@1.2.3  services: useBadge')
   })
@@ -225,9 +225,52 @@ describe('plugins and explain reports', () => {
     const { lines, exitCode } = explainReport(source, join(app, 'A.tsx'), createCompiler(), app)
     expect(exitCode).toBe(0)
     const text = lines.join('\n')
-    expect(text).toContain('share = useShare()  [owner: native-compiler]')
+    expect(text).toContain('share = useShare()  [owner: @pyreon/hooks]')
     expect(text).toContain('swift:  @State private var share = PyreonShare()  (emitted)')
     expect(text).toContain('val share = remember { PyreonShare(shareCtx) }  (emitted)')
+  })
+})
+
+describe("a package-owned '@pyreon/hooks' plugin replaces the built-in of the same name", () => {
+  const SHARE_SOURCE =
+    "import { useShare } from '@pyreon/hooks'\nexport function Example() { const share = useShare(); return <Button onClick={() => share.text('hi')}>x</Button> }"
+  // ONE hook, a different Swift container: if replacement is real the emitted text changes, and the
+  // built-in's other hooks (useOnline, …) are gone because the discovered plugin owns the name wholesale.
+  const REPLACEMENT = pluginModule(
+    '@pyreon/hooks',
+    "services: { useShare: { legacyKind: 'share', swift: 'NewerShare()', kotlin: ['val {id} = remember { NewerShare() }'] } }",
+  )
+  const build = (...extra: string[]) =>
+    mainWithPlugins(['build', '--target=ios', `--source=${join(app, 'src')}`, `--out=${join(root, 'out')}`, `--app=${app}`, ...extra])
+  const emitted = () => readFileSync(join(root, 'out', 'Example.swift'), 'utf8')
+
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    addPackage('@pyreon/hooks', declares({ modules: ['@pyreon/hooks'] }), REPLACEMENT)
+    setApp(['@pyreon/hooks'], SHARE_SOURCE)
+  })
+
+  it('loads without a duplicate-owner error and the emitted text comes from the discovered plugin', async () => {
+    expect(await build()).toBe(0)
+    expect(emitted()).toContain('@State private var share = NewerShare()')
+    expect(emitted()).not.toContain('PyreonShare()')
+  })
+
+  it('--no-plugins keeps the built-in copy (so the difference above is the replacement, not the source)', async () => {
+    expect(await build('--no-plugins')).toBe(0)
+    expect(emitted()).toContain('@State private var share = PyreonShare()')
+  })
+
+  it('the registry attributes the hook to the single owner, and the built-in is not also loaded', async () => {
+    const found = await discoverPlugins(app, join(app, 'src'))
+    const compiler = createCompiler({ discovered: found.map((f) => f.plugin) })
+    expect(compiler.services.get('useShare')?.owner).toBe('@pyreon/hooks')
+    expect(compiler.services.get('useShare')?.descriptor.swift).toBe('NewerShare()')
+    expect(compiler.services.has('useOnline')).toBe(false)
+    const report = await pluginsReport(app, false)
+    expect(report.exitCode).toBe(0)
+    expect(report.lines.join('\n')).not.toContain('claimed by both')
   })
 })
 
