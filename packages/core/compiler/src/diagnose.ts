@@ -41,7 +41,7 @@ export interface ErrorPattern {
 /** Which new `@pyreon/compiler` subpath an export moved to (see the matching `ERROR_PATTERNS` entry). */
 function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' {
   if (/^(?:analyzeValidate|emitSchemaSource|emitValidator|isEmittable)$/.test(name)) return 'validate'
-  if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext|detectNativePatterns)/.test(name)) return 'audits'
+  if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext)/.test(name)) return 'audits'
   return 'analyze'
 }
 
@@ -2173,6 +2173,24 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
     }),
   },
   {
+    // The multiplatform (PMTC) project audit moved OUT of `@pyreon/compiler`
+    // -- the web compiler -- into `@pyreon/native-compiler`, the package that
+    // owns the native story and the web-only package map the audit reads. It
+    // was never on the main entry, so an importer hits the same four error
+    // shapes as the entry below, against either the main entry or `/audits`.
+    // Quotes as \x22 / \x27 escapes for the same lexical-scanner reason as the
+    // charts entry above.
+    pattern:
+      /(?:Module \x27\x22@pyreon\/compiler(?:\/audits)?\x22\x27 has no exported member \x27(auditNative|detectNativePatterns)\x27|The requested module \x27@pyreon\/compiler(?:\/audits)?\x27 does not provide an export named \x27(auditNative|detectNativePatterns)\x27|\x22(auditNative|detectNativePatterns)\x22 is not exported by \x22[^\x22]*compiler[^\x22]*\x22|No matching export in \x22[^\x22]*compiler[^\x22]*\x22 for import \x22(auditNative|detectNativePatterns)\x22)/,
+    diagnose: (m) => {
+      const name = m.slice(1).find((g) => g !== undefined) ?? ''
+      return {
+        cause: `\`${name}\` is no longer exported by \`@pyreon/compiler\`. The multiplatform project audit moved out of the WEB compiler into the native compiler package, under its \`/audit\` subpath — it is the native story, so it lives beside the native compiler and the web-only package map it reads.`,
+        fix: `Import \`${name}\` from the \`/audit\` subpath of the native compiler package (installing that package if the project does not have it). \`pyreon doctor --check-native\` and the MCP \`validate\` tool load it lazily and skip with an install hint when it is absent.`,
+      }
+    },
+  },
+  {
     // The main entry of `@pyreon/compiler` stopped re-exporting everything that
     // parses with the TypeScript compiler API: those exports moved to three
     // subpaths so a consumer that only needs `transformJSX` does not load it.
@@ -2182,7 +2200,7 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
     // Quotes as \x22 / \x27 escapes for the same lexical-scanner reason as the
     // charts entry above.
     pattern:
-      /(?:Module \x27\x22@pyreon\/compiler\x22\x27 has no exported member \x27(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x27|The requested module \x27@pyreon\/compiler\x27 does not provide an export named \x27(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x27|\x22(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x22 is not exported by \x22[^\x22]*compiler[^\x22]*\x22|No matching export in \x22[^\x22]*compiler[^\x22]*\x22 for import \x22(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|auditNative|detectNativePatterns|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x22)/,
+      /(?:Module \x27\x22@pyreon\/compiler\x22\x27 has no exported member \x27(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x27|The requested module \x27@pyreon\/compiler\x27 does not provide an export named \x27(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x27|\x22(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x22 is not exported by \x22[^\x22]*compiler[^\x22]*\x22|No matching export in \x22[^\x22]*compiler[^\x22]*\x22 for import \x22(detectReactPatterns|hasReactPatterns|migrateReactCode|detectPyreonPatterns|hasPyreonPatterns|migratePyreonCode|AUTO_FIXABLE_PYREON_CODES|analyzeReactivity|formatReactivityLens|firesToCreationSiteFindings|mergeFireDataIntoFindings|auditTestEnvironment|formatTestAudit|auditIslands|formatIslandAudit|auditSsg|formatSsgAudit|generateContext|analyzeValidate|emitSchemaSource|emitValidator|isEmittable)\x22)/,
     diagnose: (m) => {
       const name = m.slice(1).find((g) => g !== undefined) ?? ''
       const subpath = compilerExportSubpath(name)

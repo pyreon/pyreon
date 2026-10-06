@@ -9,6 +9,7 @@ import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TA
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { SERVICES, SERVICE_BY_HOOK } from './services'
+import { WEB_ONLY_PACKAGES } from './web-only-packages'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -1339,73 +1340,6 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  * no warnings — those run in the main pass). Lets the store-aliasing
  * diagnostic resolve hook names independent of declaration order.
  */
-/**
- * `@pyreon/*` packages that render via the DOM / a browser-only library
- * and have NO native (Swift/Kotlin) emit — the "web-only-rich" Layer 3b
- * of the multiplatform model. Importing one into a native-compiled file
- * is a mistake: PMTC emits an unresolved component/hook reference that
- * fails the native build cryptically. Conservative + curated (NOT derived
- * from the `@pyreon/runtime-dom` peer-dep, which over-counts packages like
- * `@pyreon/form` / `@pyreon/i18n` that DO have native ports). Anything
- * PMTC recognises — `@pyreon/{primitives,reactivity,core,store,router,
- * i18n,machine,state-tree,form,validation,validate,query,storage,
- * permissions,hooks,rx,url-state,hotkeys}` — is deliberately EXCLUDED.
- */
-/**
- * Packages with no native emit at all — importing one into shared source is a
- * build failure waiting to happen, so warn at parse time with the fix.
- *
- * DERIVED from every package manifest's `multiplatform` declaration: a package
- * lands here when it declares `tier: 'web-only'` AND no `nativeFrontend`.
- *
- * This list used to be hand-written, and it rotted in both directions —
- * twice. `@pyreon/sync` and `@pyreon/rich-text` were MISSING, so
- * `syncedSignal(...)` / `createRichTextEditor(...)` emitted verbatim and died
- * with "cannot find … in scope" and no diagnostic. `@pyreon/toast` went STALE
- * the other way once its core started lowering to PyreonToast, warning that a
- * working API was unusable. Both were repaired after the fact, by hand, with a
- * comment — which is what a silent-hole generator looks like from the inside.
- *
- * Packages that lower only PART of their surface (toast, a11y, query) declare
- * `nativeFrontend` in their manifest and are correctly absent here; their
- * unlowered halves are still caught by the per-hook and per-construct warns.
- */
-// <gen:web-only-packages:start>
-// GENERATED — do not edit by hand. Derived from every package manifest's
-// `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)
-// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also
-// gates that this stays in sync. Edit the MANIFEST, not this list.
-//
-// The value is the manifest's `rationale` — the per-package reason the
-// warning quotes, so one blanket line does not have to serve packages as
-// different as a linter, a `<head>` manager and an animation engine.
-const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
-  ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
-  ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
-  ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
-  ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
-  ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
-  ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
-  ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
-  ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
-  ['@pyreon/lathe', "the code generator — build-time tooling that emits app code, not app runtime itself"],
-  ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
-  ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
-  ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
-  ['@pyreon/rich-text', "wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath"],
-  ['@pyreon/runtime-dom', "the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns)"],
-  ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
-  ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],
-  ['@pyreon/testing', "the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory"],
-  ['@pyreon/ui-components', ""],
-  ['@pyreon/ui-primitives', ""],
-  ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],
-  ['@pyreon/virtual', "DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack)"],
-  ['@pyreon/zero', "the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero"],
-  ['@pyreon/zero-content', "markdown/MDX content pipeline for zero's web rendering"],
-])
-// <gen:web-only-packages:end>
-
 /**
  * Warn (once per package) on top-level imports of a web-only `@pyreon/*`
  * package — they have no native emit. Names the escape-hatch fix so the

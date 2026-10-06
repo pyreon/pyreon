@@ -2391,12 +2391,17 @@
       },
       "devDependencies": {
         "@pyreon/ansi": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:*",
         "typescript": ">=5.0.0 <7.0.0",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/tools/config": {
       "name": "@pyreon/config",
@@ -2542,9 +2547,16 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:*",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/tools/preact-compat": {
       "name": "@pyreon/preact-compat",

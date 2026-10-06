@@ -13,8 +13,7 @@ export default defineNodeConfig({
   // Beyond the long-standing jsx.ts edge-case tail, the drift came from the
   // PMTC/audit-era modules landing with integration-tier coverage:
   // validate-emit.ts (56% — swiftc/kotlinc validation loops run in the
-  // `test (native)` CI cell, not vitest), native-audit.ts (56% — same),
-  // diagnose.ts (63% — the throw-time fix-printer catalog, exercised by
+  // `test (native)` CI cell, not vitest), diagnose.ts (63% — the throw-time fix-printer catalog, exercised by
   // e2e/dev-error-printer.spec.ts). Aspiration stays 95/95 — raise back in
   // lockstep as targeted tests land (BELOW_FLOOR_EXEMPTIONS entry in
   // scripts/check-coverage.ts mirrors these numbers).

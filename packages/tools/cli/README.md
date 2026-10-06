@@ -115,7 +115,7 @@ The file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tes
 | `dependency-fabric` | architecture | fast | The workspace's dependency fabric via the project's OWN installed `@pyreon/loom` — phantom deps, version drift, runtime cycles, prod-imports-of-dev-deps, peer mismatches. Skips (never installs) when loom isn't present |
 | `ssg-audit` | architecture | fast | `_404.tsx` placement, dynamic routes missing `getStaticPaths` (warn — legit under `mode: 'ssr'`/`'isr'`), non-literal `revalidate` exports |
 | `content-audit` | architecture | fast | `@pyreon/zero-content` — missing frontmatter title, broken internal link, orphaned `.md` file |
-| `native-audit` | architecture | fast | Multiplatform (PMTC) hazards in `.tsx` files importing `@pyreon/primitives` — web-only package imports, native-unsupported top-level decls |
+| `native-audit` | architecture | fast | Multiplatform (PMTC) hazards in `.tsx` files importing `@pyreon/primitives` — web-only package imports, native-unsupported top-level decls. Needs the optional peer `@pyreon/native-compiler`; skips with an install hint when absent |
 | `audit-tests` | testing | fast | Mock-vnode test patterns (the silent-metadata-drop bug class) |
 | `check-dedup` | architecture | fast | Duplicate `@pyreon/*` versions in the lockfile |
 | `audit-leak-classes` | `best-practices` (advisory) | fast | Memory-leak class heuristics (A / C / D / I) — advisory, excluded from grade + `--ci` |

@@ -43,7 +43,13 @@
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
+    "@pyreon/native-compiler": "workspace:*",
     "typescript": ">=5.0.0 <7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@pyreon/compiler": "workspace:^",
@@ -51,6 +57,7 @@
   },
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
