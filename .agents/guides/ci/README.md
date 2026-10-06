@@ -52,6 +52,8 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
   bypassing Fast Gates or a matrix from disabling cancellation.
 - `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue. Coverage-infrastructure PRs also run `Coverage (Full)`; native coverage retains its main/merge-group scope.
+  Superseded coverage PR runs cancel by PR ref; main and merge-group runs finish
+  and coalesce pending work. The static CI policy gate guards both behaviors.
 
 ## Other workflows
 

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import {
   findCiFailFastViolations,
   findCiSchedulingViolations,
+  findCoverageConcurrencyViolations,
   findNativeCacheSnapshotViolations,
   parseJobBlocks,
 } from '../../../../../scripts/check-ci-fail-fast'
@@ -17,6 +18,33 @@ const expensive = [
   'release-build',
   'bootstrap-exit-codes',
 ]
+
+describe('full coverage concurrency', () => {
+  const ci = readFileSync(
+    new URL('../../../../../.github/workflows/ci-main.yml', import.meta.url),
+    'utf8',
+  )
+  it('cancels superseded PR coverage while preserving running main coverage', () => {
+    expect(findCoverageConcurrencyViolations(ci)).toEqual([])
+  })
+  it.each(['true', 'false', "${{ github.event_name == 'pull_request' }}"])(
+    'rejects unconditional or ambiguous cancellation: %s',
+    (condition) => {
+      expect(
+        findCoverageConcurrencyViolations(
+          ci.replace(/^ {2}cancel-in-progress:.*$/m, `  cancel-in-progress: ${condition}`),
+        ),
+      ).toHaveLength(1)
+    },
+  )
+  it('rejects per-run groups that let obsolete PRs occupy separate lanes', () => {
+    expect(
+      findCoverageConcurrencyViolations(
+        ci.replace('ci-main-${{ github.ref }}', 'ci-main-${{ github.run_id }}'),
+      ),
+    ).toHaveLength(1)
+  })
+})
 
 const workflow = (overrides: Record<string, string> = {}) => `jobs:
 ${expensive

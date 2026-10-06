@@ -29,7 +29,9 @@ on:
 
 concurrency:
   group: ci-main-${{ github.ref }}
-  cancel-in-progress: false
+  # Latest PR head wins. Main/merge-group runs finish and coalesce pending work.
+  # Use the same boolean expression as ci.yml (avoid a string-valued false).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && true || false }}
 
 permissions:
   contents: read
