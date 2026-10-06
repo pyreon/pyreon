@@ -75,6 +75,15 @@ const SWIFT_KEYWORDS = new Set([
   // Expressions + types
   'as', 'Any', 'catch', 'false', 'is', 'nil', 'super', 'self', 'Self', 'throw',
   'throws', 'true', 'try',
+  // Found by probing swiftc itself (every word below fails as an unescaped
+  // identifier): `precedencegroup` is a declaration keyword, and `await`
+  // fails as a local/parameter name (it parses as an expression prefix).
+  // Both are legal TS/JSON/OpenAPI names. `async` parses as a closure EFFECT
+  // in `{ async in … }` (so a `<For>` item or lambda parameter named `async`
+  // loses its name), though it is an ordinary identifier everywhere else;
+  // `unsafe` (Swift 6.2) is the same effect-keyword shape, and `willSet`/`didSet`
+  // break a closure parameter inside a result-builder body (`ForEach { didSet in … }`).
+  'precedencegroup', 'await', 'async', 'unsafe', 'willSet', 'didSet',
 ])
 
 // Kotlin reserved (hard) keywords — same backtick-escape mechanism:
@@ -93,6 +102,19 @@ const KOTLIN_KEYWORDS = new Set([
 ])
 
 /**
+ * A LOCAL-variable base for a name that is derived from a user name
+ * (`<field>Val`, `<field>Raw`): identifier-safe and never keyword-escaped,
+ * because the emitter always appends a suffix — so `where` becomes
+ * `whereVal`, a plain identifier on both targets — while a non-identifier
+ * name (`'my-key'`) still yields something a declaration can carry.
+ * Declarations/accesses of the NAME ITSELF use `swiftIdent`/`kotlinMember`,
+ * never this.
+ */
+export function localBase(name: string): string {
+  return PLAIN_IDENT.test(name) ? name : safeIdent(name).replace(/[^A-Za-z0-9_]/g, '_')
+}
+
+/**
  * Backtick-escape a Swift identifier if it collides with a reserved
  * keyword. Idempotent for non-keywords.
  *
@@ -108,13 +130,58 @@ const KOTLIN_KEYWORDS = new Set([
  * emit stays human-readable for non-colliding names.
  */
 export function swiftIdent(name: string): string {
+  return swiftIdentIn(name, _observableMembers)
+}
+
+function swiftIdentIn(name: string, observable: ReadonlySet<string> | null): string {
   // A name that is not an identifier at all (`my-key`, `has space` — a
   // quoted object key reaching a struct field / member access) is camelCased
   // and stripped of the rest; Swift has no way to quote those. Every reader
   // of the same name (declaration, memberwise init label, member access)
   // goes through this one function, so they agree.
   if (!PLAIN_IDENT.test(name)) name = safeIdent(name).replace(/[^A-Za-z0-9_]/g, '_')
-  return SWIFT_KEYWORDS.has(name) ? '`' + name + '`' : name
+  if (!SWIFT_KEYWORDS.has(name)) return name
+  return observable?.has(name) === true ? name + '_' : '`' + name + '`'
+}
+
+// ── @Observable members ────────────────────────────────────────────────────
+//
+// Swift's `@Observable` macro cannot take a BACKTICKED property name: it
+// expands each stored property into a `_<name>` backing store, which for
+// `` `where` `` is the literal text `` _`where` `` — "consecutive declarations
+// on a line must be separated by ';'" (verified with swiftc 6.4; reproduces
+// with a hand-written `@Observable final class A { var `where`: Int = 1 }`).
+// Every other position — struct fields, locals, parameters, member access —
+// accepts the backtick form, so the keyword name has to be spelled
+// differently ONLY on a store/model singleton: a trailing underscore
+// (`where_`, which the macro backs with `_where_`).
+//
+// The spelling must be identical at the declaration, at every identifier
+// inside the store's own computeds/methods, and at every component-side
+// `useStore().store.where`. The first two ride a scoped set consulted by
+// `swiftIdent` (so the 585 existing call sites need no change); the third
+// calls `swiftObservableIdent` directly.
+
+let _observableMembers: ReadonlySet<string> | null = null
+
+/**
+ * Run `fn` with `names` treated as @Observable-class members: `swiftIdent`
+ * spells a keyword among them `name_` instead of backticking it. Saved and
+ * RESTORED (never reset to null) so nested emits compose.
+ */
+export function withObservableMembers<T>(names: Iterable<string>, fn: () => T): T {
+  const prev = _observableMembers
+  _observableMembers = new Set(names)
+  try {
+    return fn()
+  } finally {
+    _observableMembers = prev
+  }
+}
+
+/** The spelling of a store/model MEMBER from OUTSIDE its singleton. */
+export function swiftObservableIdent(name: string): string {
+  return SWIFT_KEYWORDS.has(name) ? name + '_' : swiftIdentIn(name, null)
 }
 
 /**
@@ -144,6 +211,17 @@ export function kotlinMember(name: string): string {
   if (!KOTLIN_UNQUOTABLE.test(name)) return '`' + name + '`'
   const fallback = safeIdent(name).replace(/[^A-Za-z0-9_]/g, '_')
   return KOTLIN_KEYWORDS.has(fallback) ? '`' + fallback + '`' : fallback
+}
+
+/**
+ * A Kotlin ENUM ENTRY name. Entries start a member position inside the
+ * enum body, where `init` (an initializer block) and `constructor` parse as
+ * declarations — soft keywords that are legal identifiers everywhere else,
+ * so `kotlinMember` alone leaves `enum class K { init, … }` a syntax error.
+ */
+export function kotlinEnumEntry(value: string): string {
+  const m = kotlinMember(value)
+  return m === 'init' || m === 'constructor' ? '`' + m + '`' : m
 }
 
 /**

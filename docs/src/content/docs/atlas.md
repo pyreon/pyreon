@@ -226,9 +226,10 @@ pyreon atlas verify-browser .
 # atlas verify-browser: 26 scenario(s) — coverage measured on 26, 0 baseline(s) created, 0 visual diff(s).
 ```
 
-Two of the five checks are claims only a real browser can make. This command boots the workbench headlessly (playwright-core is an **optional** peer — `scan`/`dev` work without it), drives every scenario through the workbench model, and:
+Reactive coverage and snapshots are claims only a real browser can make, and so is the full axe-core accessibility run. This command boots the workbench headlessly (playwright-core is an **optional** peer — `scan`/`dev` work without it), drives every scenario through the workbench model, and:
 
 - measures **reactive coverage** on the page's own devtools bridge — the same reactivity instance your components run on — reporting how many reactive nodes the scenario created and which never re-fired;
+- runs **axe-core** against the live preview of every scenario and folds the result into the `a11y` verdict: violations fail it (code `axe-violation`, one finding per rule with its impact, help text and first offending node); axe's "needs a human" items are kept as an `axe-incomplete` finding on a pass; a run that could not happen is a `skip` with the reason (`axe-core did not run: …`), never a pass. The scan's static name check is kept — either side failing fails the verdict. `--no-axe` skips it (the verdict then stays the static check, and the summary says so); `--axe-min-impact <minor|moderate|serious|critical>` ignores lower-impact violations. Page-level rules (landmarks, `region`, h1) are off, since a preview is a fragment. Violations do not change the exit code — read the catalog (or `atlas verify --check`); only visual diffs exit non-zero;
 - captures a **visual snapshot** of the preview and compares it against a per-scenario baseline (a perceptual YIQ comparison that forgives anti-aliasing). First run creates baselines; later runs fail on real diffs and write an `.actual.png` beside the baseline, plus a `.diff.png` with the differing pixels in red. `--update-snapshots` re-baselines.
 
 Both verdicts merge back into `atlas-catalog.json`. Baselines are machine-specific (font antialiasing) — keep `atlas-snapshots/` gitignored and let each environment create its own.
@@ -259,7 +260,7 @@ Every scenario carries a `verify` verdict with three honest states — a check e
 
 | Check | What it claims | Where it runs |
 |---|---|---|
-| `a11y` | static accessibility rules (empty labels, missing names) | `atlas scan` |
+| `a11y` | static accessibility rules (empty labels, missing names) at scan time; **axe-core** on the rendered preview once `atlas verify-browser` has run | `atlas scan`, then `atlas verify-browser` |
 | `interaction` | mounted + interacted without throwing — your `play` script, or an automatic click-walk | `atlas scan` |
 | `leak` | repeated mounts don't accumulate reactive-graph nodes past GC | `atlas scan` (needs a GC hook: `bun`, or `node --expose-gc`) |
 | `reactivityCoverage` | reactive nodes measured in real Chromium; findings carry the numbers | `atlas verify-browser` |
