@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { auditNative } from '../native-audit'
+import { auditNative } from '../audit'
 
 let dir: string
 const write = (rel: string, src: string) => {

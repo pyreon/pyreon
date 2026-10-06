@@ -1,5 +1,5 @@
 /**
- * `WEB_ONLY_PACKAGES` in native-audit.ts is a hand-maintained mirror of each
+ * `WEB_ONLY_PACKAGES` (originally a copy inside native-audit.ts) was a hand-maintained mirror of each
  * package's declared `multiplatform: { tier }`. Nothing asserted that, and it
  * went stale: elements / styler / rocketstyle / coolgrid gained native frontends
  * and moved to tier `shared`, but stayed on the list — so the audit reported the
@@ -22,9 +22,9 @@ import { describe, expect, it } from 'vitest'
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..')
 
 function listedWebOnly(): string[] {
-  const src = readFileSync(join(REPO_ROOT, 'packages/core/compiler/src/native-audit.ts'), 'utf8')
+  const src = readFileSync(join(REPO_ROOT, 'packages/native/compiler/src/web-only-packages.ts'), 'utf8')
   const block = /const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map\(\[(.*?)\]\)/s.exec(src)
-  if (!block?.[1]) throw new Error('WEB_ONLY_PACKAGES block not found in native-audit.ts')
+  if (!block?.[1]) throw new Error('WEB_ONLY_PACKAGES block not found in web-only-packages.ts')
   return [...block[1].matchAll(/\['(@pyreon\/[a-z-]+)'/g)].map((m) => m[1]!)
 }
 

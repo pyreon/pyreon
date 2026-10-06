@@ -72,7 +72,6 @@ describe('@pyreon/compiler main entry is TypeScript-free', () => {
       'project-scanner',
       'island-audit',
       'ssg-audit',
-      'native-audit',
       'content-audit',
       'test-audit',
       'ts.ts',

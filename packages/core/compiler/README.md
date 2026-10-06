@@ -67,7 +67,7 @@ The main entry is lean and **does not load the TypeScript compiler API**. Everyt
 | --- | --- | --- |
 | `@pyreon/compiler` | `transformJSX` / `transformJSX_JS`, rocketstyle-collapse scan, `transformDeferInline`, Plain Mode (`detectPlain` / `transformPlain` / `migrateToPlain`), fs-route convention, island naming | no |
 | `@pyreon/compiler/analyze` | pattern detectors + codemods (`detectReactPatterns`, `detectPyreonPatterns`, `migrate*`, `diagnoseError`), Reactivity Lens (`analyzeReactivity`, LPIH helpers) | yes |
-| `@pyreon/compiler/audits` | `pyreon doctor` audits (test-environment / islands / SSG / native / content) and the project scanner `generateContext` | yes |
+| `@pyreon/compiler/audits` | `pyreon doctor` audits (test-environment / islands / SSG / content) and the project scanner `generateContext` | yes |
 | `@pyreon/compiler/validate` | `@pyreon/validate` analyzer + emitters (`analyzeValidate`, `emitValidator`, `emitSchemaSource`) | yes |
 | `@pyreon/compiler/diagnose`, `/plain`, `/fs-route-convention` | browser-safe / pre-pass subpaths | no |
 

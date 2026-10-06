@@ -9,7 +9,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { auditIslands } from '../island-audit'
-import { auditNative, detectNativePatterns } from '../native-audit'
 import { detectPyreonPatterns, type PyreonDiagnosticCode } from '../pyreon-intercept'
 import { migrateReactCode } from '../react-intercept'
 
@@ -88,40 +87,6 @@ describe('island-audit — import() argument shapes', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // native-audit — non-string module specifiers + non-scoped package roots
 // ═══════════════════════════════════════════════════════════════════════════
-
-describe('native-audit — module specifier shapes', () => {
-  const TEMPLATE_SPEC = 'import lib from `./lib`\n'
-
-  it('skips a NON-string-literal module specifier in the project walk', () => {
-    const t = makeTree('native', 'package.json')
-    t.write(
-      'src/a.tsx',
-      `${TEMPLATE_SPEC}import { Stack } from '@pyreon/primitives'\nimport { rules } from '@pyreon/lint'\n`,
-    )
-    const r = auditNative(t.root)
-    // The template-literal specifier is skipped; the two real ones are read.
-    expect(r.summary.multiplatformFiles).toBe(1)
-    expect(r.findings.map((f) => f.code)).toContain('web-only-package-import')
-  })
-
-  it('skips a NON-string-literal module specifier in the snippet detector', () => {
-    const diags = detectNativePatterns(
-      `${TEMPLATE_SPEC}import { Stack } from '@pyreon/primitives'\nimport { rules } from '@pyreon/lint'\n`,
-    )
-    expect(diags.map((d) => d.code)).toContain('native-web-only-import')
-  })
-
-  it('derives the root of a NON-scoped specifier during the project walk', () => {
-    const t = makeTree('native', 'package.json')
-    t.write(
-      'src/a.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport get from 'lodash/get'\n`,
-    )
-    const r = auditNative(t.root)
-    expect(r.summary.multiplatformFiles).toBe(1)
-    expect(r.findings.map((f) => f.code)).not.toContain('web-only-package-import')
-  })
-})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // pyreon-intercept — remaining detector arms

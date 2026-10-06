@@ -128,7 +128,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 
 ## `pyreon doctor`
 
-- 15 gates: react-patterns, pyreon-patterns, lint, distribution, doc-claims, islands-audit, ssg-audit, content-audit, native-audit, audit-tests, check-dedup, audit-leak-classes, dependency-fabric, plus the slow audit-types and bundle-budgets. Sources: `packages/tools/cli/src/doctor/gates/`.
+- 15 gates: react-patterns, pyreon-patterns, lint, distribution, doc-claims, islands-audit, ssg-audit, content-audit, native-audit (needs the optional peer `@pyreon/native-compiler`; skips with an install hint when absent), audit-tests, check-dedup, audit-leak-classes, dependency-fabric, plus the slow audit-types and bundle-budgets. Sources: `packages/tools/cli/src/doctor/gates/`.
 - `doctor --check-islands` audits the nearest package manifest, including flat apps and author `src/lib`; pass the workspace root explicitly to compare packages and examples across the repo.
 - Flags: `--full`, `--fix`, `--json`, `--gha`, `--ci`, `--only`, `--skip`, `--roots`, `--check-ssg`, `--check-islands`, `--audit-tests`.
 - 0–100 score. The advisory `best-practices` category is excluded from the grade and from `--ci`.
