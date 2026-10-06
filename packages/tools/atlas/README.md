@@ -257,6 +257,16 @@ including rocketstyle chains and a chain sharing a plain component's name; use
 the qualified keys listed by the ambiguity diagnostic. A barrel re-export of
 the same component under the same export name adds no duplicate entry.
 
+The qualifier is the component's directory **relative to its scan root**
+(`Glyph@one`, scenario id `example-glyph-one--default`), `/`-separated, so ids
+are identical on every machine, checkout location, invocation form and OS. If
+you committed baselines for a same-named collision from an older version they
+were keyed on a path-dependent id (`example-glyph-src-one--default…png`, or an
+absolute checkout path for browser runs) — delete those files and re-run
+`atlas verify-browser` to create baselines under the stable ids. Unique names
+are unaffected. A browser verdict whose id matches nothing in the catalog now
+exits non-zero instead of being dropped.
+
 ## `atlas check` — the catalog as a guardrail
 
 ```bash

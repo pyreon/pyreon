@@ -15,8 +15,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseAntiPatterns, type AntiPatternEntry } from '../../packages/tools/mcp/src/anti-patterns'
+import {
+  parseAntiPatterns,
+  type AntiPatternEntry,
+} from '../../packages/tools/mcp/src/anti-patterns'
 import { escFlow, yaml } from './_md-safe'
+import { renderTroubleshootingIndex } from './troubleshooting-index'
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SRC = join(REPO_ROOT, '.agents', 'rules', 'anti-patterns.md')
@@ -77,25 +81,19 @@ for (const [cat, { heading, items }] of byCat) {
     out.push('---')
     out.push('')
   }
-  writeFileSync(join(OUT_DIR, `${cat}.md`), out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n')
+  writeFileSync(
+    join(OUT_DIR, `${cat}.md`),
+    out
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd() + '\n',
+  )
   navItems.push({ text: heading, slug: `troubleshooting/${cat}` })
   pageCount++
 }
 
 // Index page.
-const idx: string[] = ['---', `title: ${yaml('Troubleshooting')}`, `description: ${yaml('Common Pyreon mistakes and their fixes, grouped by area — the error & anti-pattern reference.')}`, '---', '']
-idx.push('# Troubleshooting')
-idx.push('')
-idx.push(
-  `Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (${entries.length} entries) — the same source MCP \`get_anti_patterns\` serves to AI agents. Many are caught automatically by [\`@pyreon/lint\`](/docs/lint), \`pyreon doctor\`, or MCP \`validate\`; the detector code is noted on each entry that has one.`,
-)
-idx.push('')
-idx.push('## Categories')
-idx.push('')
-for (const [cat, { heading, items }] of byCat) {
-  idx.push(`- **[${heading}](/docs/troubleshooting/${cat})** — ${items.length} ${items.length === 1 ? 'entry' : 'entries'}`)
-}
-writeFileSync(join(DOCS, 'troubleshooting.md'), idx.join('\n') + '\n')
+writeFileSync(join(DOCS, 'troubleshooting.md'), renderTroubleshootingIndex(byCat))
 
 // Sidebar nav fragment — a dedicated Troubleshooting tier.
 const group = { text: 'Troubleshooting', tier: 'Troubleshooting', collapsed: true, items: navItems }

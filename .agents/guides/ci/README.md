@@ -28,6 +28,9 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - Generated-output freshness must reject failed Git comparisons and include
   new unstaged files within the generator-owned paths. Empty stdout alone
   does not prove freshness; unrelated working-tree edits remain outside the check.
+- Generated troubleshooting navigation lists categories without persisting entry
+  totals. Independent catalog additions must merge into a fresh index without
+  conflicts over derived counters; category pages retain every entry and fix.
 - Expensive matrices use `fail-fast: true`, and sequential batches stop on the
   first real failure. Preserve diagnostics/upload/cache steps with
   `if: always()` rather than continuing expensive test work after red.
