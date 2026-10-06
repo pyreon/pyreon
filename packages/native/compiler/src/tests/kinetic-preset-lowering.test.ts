@@ -14,7 +14,7 @@
 // stable-identity host a `.onAppear` needs.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

@@ -70,7 +70,7 @@ export type {
   StructRefinementTarget,
   TopLevelRecognizer,
 } from './module-items'
-export type { ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
+export type { JsxElementRewrite, JsxRewriteContext, ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
 export type { ParseRefinement, ParseRefinementTarget, PropsTypeContext, PropsTypeResolver } from './parse-extensions'
 export type {
   CallExprIR,

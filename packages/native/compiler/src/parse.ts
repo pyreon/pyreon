@@ -18,7 +18,7 @@ import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule
 import type { UnloweredModule } from './unlowered-modules'
 import { stampExtDecl, type AstNode, type ExtDeclSpec, type ParseContext, type SignalDeclSpec } from './call-lowering'
 import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
-import type { ModuleScan, ResolvedRequest } from './module-scan'
+import type { JsxRewriteContext, ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -38,6 +38,7 @@ import type {
   ParseResult,
   RocketstyleComponentIR,
   RouteIR,
+  JsxElementIR,
   StatementIR,
   StoreDefnIR,
   StructIR,
@@ -146,41 +147,17 @@ interface ParseCtx {
    */
   storeAliases: Map<string, string>
   /**
-   * Module bindings created by the `kinetic()` factory (`const Box =
-   * kinetic('div').preset('fade')`). The factory is a WEB CSS-class engine with
-   * no native analogue, so the binding must not reach the emit: a verbatim
-   * `private let Box = kinetic("div")…` references a function that exists on
-   * neither target and fails the native build. Same treatment as
-   * `createHttp()` metadata and `defineTheme()`.
-   *
-   * The name is kept (not just skipped) because unlike those two this binding
-   * is USED AS A JSX TAG, so `<Box>` must lower to something — a plain
-   * container, which is what the animation degrades to.
-   */
-  /**
-   * Kinetic factory bindings, mapped to the `.preset('x')` in their chain (or
-   * undefined when the chain declares none). The preset is what makes the
-   * lowering possible: it names an animation both targets already know, via the
-   * same table `<Transition name>` uses.
-   */
-  kineticFactoryNames: Map<string, string | undefined>
-  /** Local names bound to the `kinetic` import (supports `as` renaming). */
-  kineticImportNames: Set<string>
-  /**
    * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
    * only fixes a component's type argument. It compiles to the component
    * itself, so the alias is a TAG rename: `<RevenueBar>` lowers as `<Bar>`.
    */
   typedComponentAliases: Map<string, string>
   /**
-   * Set while parsing a component whose tree used a PRESET-bearing kinetic
-   * binding, so the component gets one synthesized mount flag. One per
-   * component, not per binding: every kinetic box in a component enters on the
-   * same mount, so they can share the flag.
+   * Declarations a plugin's element rewrite asked for (`JsxRewriteContext.requestComponentDecls`), by key: applied to the
+   * component when it is finished. One per key per component, not per element — every box of one kind enters on the same
+   * mount, so they share what they asked for.
    */
-  kineticMountPending: boolean
-  /** local name -> exported name, for presets imported from kinetic-presets. */
-  kineticPresetImports: Map<string, string>
+  componentDeclRequests: Map<string, { head: DeclIR[]; tail: DeclIR[] }>
   /**
    * Local names imported from `@pyreon/rx`, mapped to their ORIGINAL export
    * name (so `import { map as project }` resolves).
@@ -331,11 +308,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
-    kineticFactoryNames: new Map(),
-    kineticImportNames: new Set(),
     typedComponentAliases: new Map(),
-    kineticMountPending: false,
-    kineticPresetImports: new Map(),
+    componentDeclRequests: new Map(),
     rxImportedNames: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -409,7 +383,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
-  collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
   // Plugin pre-passes (`CompilerPlugin.scanModule`): a library records the facts its top-level
@@ -561,13 +534,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // native runtime, so it must not fall through to the module-decl catch-all and emit an
     // unresolved binding that fails the native build (the same treatment defineTheme gets).
     if (ctx.skipTopLevel.some((skip) => skip(node))) continue
-    // A `const Box = kinetic('div').preset('fade')` is a WEB animation-engine
-    // binding. Skipped for the same reason as `createHttp` above: emitting it
-    // verbatim produces `private let Box = kinetic("div")…`, a call to a
-    // function that exists on neither target, so the whole native build fails.
-    // The pre-pass has already recorded the name and warned; `<Box>` lowers to
-    // a plain container.
-    if (isKineticFactoryNode(node, ctx)) continue
     if (isTypedAliasNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
@@ -1170,17 +1136,6 @@ function warnDynamicKey(prop: AnyNode, where: string, ctx: ParseCtx): void {
   )
 }
 
-/**
- * Collect `kinetic()` factory bindings in a PRE-PASS, before any component body
- * is parsed.
- *
- * A pre-pass rather than a check inside the top-level loop, because the JSX tag
- * rewrite has to be in place no matter where the component sits relative to the
- * `const` in source order. TS forces the const first for a value reference, but
- * a hoisted `function` component can legally appear above it, and getting the
- * order wrong here would emit an unresolved tag for exactly one file layout —
- * the kind of bug that reproduces on nobody's machine.
- */
 /** The component an instantiation expression names: `Bar<Row>` → `'Bar'`, following an alias of an alias. */
 function instantiatedComponent(init: AnyNode | undefined, ctx: ParseCtx): string | undefined {
   if (init?.type !== 'TSInstantiationExpression') return undefined
@@ -1206,202 +1161,6 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
     const n = d.id?.name as string | undefined
     return typeof n === 'string' && ctx.typedComponentAliases.has(n)
   })
-}
-
-function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
-  const decls = topLevelDeclarators(node)
-  if (decls.length === 0) return false
-  return decls.every((d) => {
-    const n = d.id?.name as string | undefined
-    return typeof n === 'string' && ctx.kineticFactoryNames.has(n)
-  })
-}
-
-function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    // Named presets from @pyreon/kinetic-presets are the DOCUMENTED way to use
-    // the factory (`kinetic('div').preset(fadeUp)`), so an identifier argument
-    // has to resolve or the package's own example does not animate.
-    if (node.source?.value === '@pyreon/kinetic-presets') {
-      for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-        if (spec.type === 'ImportSpecifier') {
-          const local = spec.local?.name
-          const imported = spec.imported?.name
-          if (typeof local === 'string' && typeof imported === 'string') {
-            ctx.kineticPresetImports.set(local, imported)
-          }
-        }
-      }
-      continue
-    }
-    if (node.source?.value !== '@pyreon/kinetic') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'kinetic') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.kineticImportNames.add(local)
-      }
-    }
-  }
-  if (ctx.kineticImportNames.size === 0) return
-  for (const node of body) {
-    for (const d of topLevelDeclarators(node)) {
-      const name = d.id?.name as string | undefined
-      const init = d.init as AnyNode | undefined
-      if (typeof name !== 'string' || !init) continue
-      if (!basesOnKineticCall(init, ctx)) continue
-      const preset = presetOfKineticChain(init, ctx)
-      ctx.kineticFactoryNames.set(name, preset)
-      if (preset !== undefined) continue // a preset LOWERS — see the tag rewrite
-      // An UNMAPPED named preset is a different failure from "no preset at all",
-      // and blaming the factory for it sends the author to the wrong place: the
-      // chain is right, that particular animation just has no native analogue.
-      const packName = unmappedPresetPackName(init, ctx)
-      if (packName !== undefined) {
-        ctx.warnings.push(
-          `\`${name}\`: the \`${packName}\` preset has no native analogue — iOS and Android know ` +
-            `fade / scale / scale-in / slide-up|down|left|right, and mapping anything else to the ` +
-            `nearest one would silently animate the WRONG thing. \`<${name}>\` renders as a plain ` +
-            `container on iOS/Android. Pick a preset in that vocabulary to animate on all three.`,
-        )
-        continue
-      }
-      ctx.warnings.push(
-        `\`${name}\` is built by the \`kinetic()\` factory, which does not lower to native: it ` +
-          `drives animation through CSS classes and rAF over a real CSSOM, and neither target has ` +
-          `one. \`<${name}>\` renders as a plain container on iOS/Android — the layout and ` +
-          `children are preserved, the animation is dropped. For an animation that DOES cross, use ` +
-          `\`<Transition show name="fade">\` from \`@pyreon/primitives\`, whose preset vocabulary ` +
-          `lowers to SwiftUI \`.transition\`/\`.animation\` and Compose \`AnimatedVisibility\`.`,
-      )
-    }
-  }
-}
-
-/**
- * Does this expression chain BOTTOM OUT in a call to the `kinetic` import?
- *
- * The factory is a builder — `kinetic('div').preset('fade').duration(200)` — so
- * the callee is a member chain of arbitrary depth and only its base identifies
- * it. Matching the outermost callee instead would recognise a bare
- * `kinetic('div')` and miss every chained form, which is the shape everyone
- * actually writes.
- */
-/**
- * The `.preset('fade')` argument in a kinetic builder chain, if any.
- *
- * Walks the whole chain rather than only the outermost call, because
- * `.preset()` is rarely last (`kinetic('div').preset('fade').duration(200)`).
- */
-/** Shared by the rewrite and the synthesis; internal, so `__`-prefixed. */
-const KINETIC_MOUNT_FLAG = '__kineticIn'
-
-/**
- * Map a `@pyreon/kinetic-presets` export name onto the native preset
- * vocabulary, or undefined when it has no analogue.
- *
- * Only UNAMBIGUOUS names map. The pack ships 123 presets and native knows
- * seven, so most of them (backInDown, blurScale, bounceIn, flip*, rotate*, …)
- * have nothing to lower to. Mapping those to the nearest fade would silently
- * animate the wrong thing, which is worse than declining by name — and the
- * decline is what the author can act on.
- *
- * Diagonal and magnitude variants (fadeDownLeft, slideUpBig) are deliberately
- * NOT mapped: native has neither a diagonal nor a distance parameter, so a
- * mapping would drop half the intent without saying so.
- */
-/** The kinetic-presets export a chain names, when it maps to nothing native. */
-function unmappedPresetPackName(expr: AnyNode, ctx: ParseCtx): string | undefined {
-  let cur: AnyNode | undefined = expr
-  while (cur) {
-    if (cur.type === 'CallExpression') {
-      const callee = cur.callee as AnyNode | undefined
-      if (
-        callee?.type === 'MemberExpression' &&
-        (callee.property?.name as string | undefined) === 'preset'
-      ) {
-        const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
-        if (arg?.type === 'Identifier') {
-          const exported = ctx.kineticPresetImports.get(arg.name as string)
-          if (exported !== undefined && nativePresetForPackName(exported) === undefined) {
-            return exported
-          }
-        }
-      }
-      cur = callee
-      continue
-    }
-    if (cur.type === 'MemberExpression') {
-      cur = cur.object as AnyNode | undefined
-      continue
-    }
-    return undefined
-  }
-  return undefined
-}
-
-function nativePresetForPackName(name: string): string | undefined {
-  const exact: Readonly<Record<string, string>> = {
-    fade: 'fade',
-    fadeUp: 'slide-up',
-    fadeDown: 'slide-down',
-    fadeLeft: 'slide-left',
-    fadeRight: 'slide-right',
-    slideUp: 'slide-up',
-    slideDown: 'slide-down',
-    slideLeft: 'slide-left',
-    slideRight: 'slide-right',
-    scaleIn: 'scale-in',
-    scale: 'scale',
-  }
-  return exact[name]
-}
-
-function presetOfKineticChain(expr: AnyNode, ctx?: ParseCtx): string | undefined {
-  let cur: AnyNode | undefined = expr
-  while (cur) {
-    if (cur.type === 'CallExpression') {
-      const callee = cur.callee as AnyNode | undefined
-      if (
-        callee?.type === 'MemberExpression' &&
-        (callee.property?.name as string | undefined) === 'preset'
-      ) {
-        const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
-        if (arg?.type === 'Literal' && typeof arg.value === 'string') return arg.value as string
-        if (arg?.type === 'Identifier' && ctx !== undefined) {
-          const exported = ctx.kineticPresetImports.get(arg.name as string)
-          if (exported !== undefined) return nativePresetForPackName(exported)
-        }
-      }
-      cur = callee
-      continue
-    }
-    if (cur.type === 'MemberExpression') {
-      cur = cur.object as AnyNode | undefined
-      continue
-    }
-    return undefined
-  }
-  return undefined
-}
-
-function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
-  let cur: AnyNode | undefined = expr
-  while (cur) {
-    if (cur.type === 'CallExpression') {
-      const callee = cur.callee as AnyNode | undefined
-      const name = callee?.name as string | undefined
-      if (typeof name === 'string') return ctx.kineticImportNames.has(name)
-      cur = callee
-      continue
-    }
-    if (cur.type === 'MemberExpression') {
-      cur = cur.object as AnyNode | undefined
-      continue
-    }
-    return false
-  }
-  return false
 }
 
 /**
@@ -3321,11 +3080,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
     // here rather than sharing the parent's.
-    kineticFactoryNames: new Map(),
-    kineticImportNames: new Set(),
     typedComponentAliases: new Map(),
-    kineticMountPending: false,
-    kineticPresetImports: new Map(),
+    componentDeclRequests: new Map(),
     rxImportedNames: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -4108,30 +3864,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   for (const w of deferredPropsWarnings) ctx.warnings.push(w)
   for (const w of droppedStmtWarnings) ctx.warnings.push(w)
 
-  if (ctx.kineticMountPending) {
-    // Synthesized, not hand-written: a signal that starts false and an on-mount
-    // that flips it. Both reuse paths already proven — the on-mount harness
-    // even carries the SwiftUI stable-identity host that a `.task`/`.onAppear`
-    // needs, so the enter fires once instead of thrashing per recomposition.
-    decls.unshift({
-      kind: 'signal',
-      name: KINETIC_MOUNT_FLAG,
-      type: { kind: 'boolean' },
-      initial: { kind: 'literal', value: false },
-    })
-    decls.push({
-      kind: 'on-mount',
-      body: [
-        {
-          kind: 'assign',
-          target: { kind: 'identifier', name: KINETIC_MOUNT_FLAG },
-          op: '=',
-          value: { kind: 'literal', value: true },
-        },
-      ],
-    })
-    ctx.kineticMountPending = false
+  // Declarations a plugin's element rewrite asked for while this component's tree was parsed. A request made while
+  // parsing something that turned out not to be a component is applied to the next one: the flag has only ever been
+  // cleared HERE, and moving that would move emitted output.
+  for (const { head, tail } of ctx.componentDeclRequests.values()) {
+    decls.unshift(...head)
+    decls.push(...tail)
   }
+  ctx.componentDeclRequests.clear()
   return { name, props, propsParamName, decls, returnExpr }
 }
 
@@ -8104,34 +7844,25 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
     warnIfHookInsideRenderCallback(tag, node.children as AnyNode[] | undefined, ctx)
   }
 
-  // `<Box>` where Box came from `kinetic()` — the binding was skipped, so the
-  // tag would otherwise emit as an unresolved `Box { … }`. Rewriting to the
-  // canonical container HERE, rather than in each emitter, means both targets
-  // pick it up through their existing Stack handling (VStack / Column) with no
-  // emitter change and no third place to keep in sync.
-  if (ctx.kineticFactoryNames.has(tag)) {
-    const preset = ctx.kineticFactoryNames.get(tag)
-    if (preset === undefined) {
-      // No `.preset()` in the chain — there is no animation vocabulary to carry
-      // across, so this degrades to the plain container as before.
-      return { kind: 'jsx-element', tag: 'Stack', attrs, children }
+  // A tag naming a LOCAL binding a plugin recorded when it scanned the file (`const Box = kinetic('div')…`): the binding was
+  // skipped, so the tag would otherwise emit as an unresolved `Box { … }`. Rewriting HERE, rather than in each emitter,
+  // means both targets pick the replacement up through their existing handling with no emitter change.
+  const { elementRewriters } = activeRegistries().scan
+  if (elementRewriters.length > 0) {
+    const element: JsxElementIR = { kind: 'jsx-element', tag, attrs, children }
+    const rewriteCtx: JsxRewriteContext = {
+      fileState: <T>(key: string, init: () => T): T => {
+        if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
+        return ctx.pluginState.get(key) as T
+      },
+      requestComponentDecls: (key, requested) => {
+        if (ctx.componentDeclRequests.has(key)) return
+        ctx.componentDeclRequests.set(key, { head: [...(requested.head ?? [])], tail: [...(requested.tail ?? [])] })
+      },
     }
-    // A preset NAMES an animation both targets already know, so the box lowers
-    // to the same `<Transition>` path the primitive uses — presets, durations
-    // and both emitters, all already verified. What it needs that a primitive
-    // does not is a TRIGGER: `<Transition show={true}>` compiles and never
-    // animates (`.animation(value: true)` watches a constant), so the enter has
-    // to be driven by a flag that FLIPS on mount.
-    ctx.kineticMountPending = true
-    return {
-      kind: 'jsx-element',
-      tag: 'Transition',
-      attrs: [
-        { kind: 'attr', name: 'show', value: { kind: 'identifier', name: KINETIC_MOUNT_FLAG } },
-        { kind: 'attr', name: 'name', value: { kind: 'literal', value: preset } },
-        ...attrs,
-      ],
-      children,
+    for (const { owner, rewrite } of elementRewriters) {
+      const replaced = runPluginHook(owner, 'rewriteElement', () => rewrite(element, rewriteCtx))
+      if (replaced !== undefined) return replaced
     }
   }
   return { kind: 'jsx-element', tag, attrs, children }

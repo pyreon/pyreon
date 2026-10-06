@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, componentOnlyCalls, persistence, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, rewriteElement, requestSources, destructureCalls, componentOnlyCalls, persistence, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -352,6 +352,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     if (!backend || typeof backend !== 'object' || typeof backend.swift !== 'function' || typeof backend.kotlin !== 'function') {
       throw new Error(`[Pyreon] Plugin "${name}" persistence needs swift and kotlin functions.`)
     }
+  }
+  if (rewriteElement !== undefined && typeof rewriteElement !== 'function') {
+    throw new Error(`[Pyreon] Plugin "${name}" rewriteElement must be a synchronous function.`)
   }
   if (callExprs !== undefined && typeof callExprs !== 'function') {
     throw new Error(`[Pyreon] Plugin "${name}" callExprs must be a synchronous function.`)

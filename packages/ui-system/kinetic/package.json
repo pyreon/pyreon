@@ -21,6 +21,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/native-plugin.d.ts"
     }
   },
   "files": [
@@ -45,13 +50,20 @@
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@pyreon/sized-map": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
@@ -66,5 +78,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/kinetic",
+        "@pyreon/kinetic-presets"
+      ]
+    }
   }
 }

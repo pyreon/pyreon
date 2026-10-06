@@ -10,7 +10,7 @@ import type {
   MemberReadLowering,
   ReceiverLowering,
 } from './expr-lowering'
-import type { ModuleScanner, RequestSource } from './module-scan'
+import type { JsxElementRewrite, ModuleScanner, RequestSource } from './module-scan'
 import type {
   ExprEmitter,
   CallExprRecognizer,
@@ -277,6 +277,11 @@ export interface CompilerPlugin<Target extends string = string> {
   readonly refineStructs?: StructRefinement | undefined
   /** A last pass over the finished item list (inline-synthesized items included), once per file. */
   readonly finishModule?: ModuleFinish | undefined
+  /**
+   * Rewrite a JSX element the parser just built, for a tag that names a LOCAL binding this plugin recorded when it scanned
+   * the file (see `JsxElementRewrite`). The rewrite may ask for declarations on the component being parsed.
+   */
+  readonly rewriteElement?: JsxElementRewrite | undefined
   /** Hooks of this plugin whose result may be destructured (`const { data, isPending } = useQuery(…)`). */
   readonly destructureCalls?: readonly string[] | undefined
   /**

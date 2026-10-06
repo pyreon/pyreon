@@ -53,6 +53,7 @@ export const PLUGIN_STUBS: readonly PluginStubs[] = [
  * in the gate that scans it; a library that moves its lowering into its package adds its directory here.
  */
 export const PLUGIN_EMITTER_DIRS: readonly string[] = [
+  join(REPO, 'packages/ui-system/kinetic/src/native-plugin'),
   join(REPO, 'packages/core/sized-map/src/native-plugin'),
   join(REPO, 'packages/fundamentals/storage/src/native-plugin'),
   join(REPO, 'packages/fundamentals/permissions/src/native-plugin'),

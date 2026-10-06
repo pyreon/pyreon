@@ -17,7 +17,7 @@
 // move a single byte of an emit that four other test files already prove.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

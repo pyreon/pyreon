@@ -199,6 +199,7 @@ export function createCompiler<Target extends string = never>(
       runtimeTypes: plugin.runtimeTypes,
       refineParse: plugin.refineParse,
       scanModule: plugin.scanModule,
+      rewriteElement: plugin.rewriteElement,
       requestSources: plugin.requestSources,
       destructureCalls: plugin.destructureCalls,
       componentOnlyCalls: plugin.componentOnlyCalls,
