@@ -156,3 +156,9 @@ A spec's `title`, `summary`, `description`, `enum`, parameter names, `pattern` a
   - Reference: `packages/tools/lathe/src/emit/{writer,schema,mock,docs}.ts`; tests `tests/injection.test.ts`, `tests/docs-emit.test.ts`, `tests/schema-emit-edges.test.ts`.
 
 ---
+
+### An import guard fed by a hardcoded name list silently disables itself for every name not on it
+
+(the PMTC alias-import guard, 2026-10). `canAliasIntercept` suppresses a claim when the tag was imported from another package, but it can only judge names whose import `parse.ts` RECORDED — and the recorder kept a fixed set (`Element`, `Row`, `Col`, …). An untracked name is deliberately "claimed" (prior behaviour), so a plugin's new tag would have been claimed even from `./mine`, with no error and no test failing. The recorder now asks the element-lowering registry which tags are claimed, and normalises any scoped sub-path import (not only `@pyreon/*`) to its package root. **Rule: a guard and the list that feeds it must share one source; a second list "kept in sync by comment" is the silent hole.** Locked by `tests/element-lowering.test.ts` (third-party claim from `./mine` is left alone; bisect: guard ignored → 7 specs and the `element-lowering-user` golden entries fail).
+
+---

@@ -4,5 +4,5 @@
   // source files we type-check. They reference Pyreon framework globals
   // (`signal`, `<For>`, `<Show>`, `<Text>`, `<Button>`) that don't exist
   // in this package's dep graph. Exclude them from tsc.
-  "exclude": ["src/fixtures"]
+  "exclude": ["src/fixtures", "src/golden-fixtures"]
 }
