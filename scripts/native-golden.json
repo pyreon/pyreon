@@ -3671,6 +3671,66 @@
       "bytes": 511,
       "warnings": 0
     },
+    "golden-fixture:permissions-01.tsx|swift": {
+      "sha": "a03f3f9ff0efb76b4cf31510094fdc1bfccc5d7d14256ffda2445aa8b8fd3f37",
+      "bytes": 668,
+      "warnings": 0
+    },
+    "golden-fixture:permissions-01.tsx|kotlin": {
+      "sha": "3e7b859c7b7e6a1a8bc5e18212310e20860756fdd932d00836a60266e2023969",
+      "bytes": 730,
+      "warnings": 0
+    },
+    "golden-fixture:permissions-02.tsx|swift": {
+      "sha": "07265fcc46b35e1a9a30f62f77d3e79922b1ac66cfc7907b145823d558460980",
+      "bytes": 1189,
+      "warnings": 3
+    },
+    "golden-fixture:permissions-02.tsx|kotlin": {
+      "sha": "167b354f5d385d88cc17bdf3f65171189135ca142f441f7c7ae0c70fb002002b",
+      "bytes": 1245,
+      "warnings": 3
+    },
+    "golden-fixture:permissions-03.tsx|swift": {
+      "sha": "2cf622e128f9ab1b6c5257c6179d302a180f381428e82e79b4652802d7f7852e",
+      "bytes": 814,
+      "warnings": 7
+    },
+    "golden-fixture:permissions-03.tsx|kotlin": {
+      "sha": "3505528ec24069f65c69ad7cd6c6ca8dee4f7e908478c5b88d096d8c4cb044bc",
+      "bytes": 748,
+      "warnings": 7
+    },
+    "golden-fixture:permissions-04.tsx|swift": {
+      "sha": "39b2321f7bf71fd8c58f236d5e23ecee2a5f367d54ff39e6a3b16ba6254beff7",
+      "bytes": 460,
+      "warnings": 2
+    },
+    "golden-fixture:permissions-04.tsx|kotlin": {
+      "sha": "b1b3a8e4408dab67cba684cc14051092829c0291078ad08e13a3445083b193f7",
+      "bytes": 549,
+      "warnings": 2
+    },
+    "golden-fixture:permissions-05.tsx|swift": {
+      "sha": "c021dde225f7f5598aa48715191491770b2688402f9844d25867fe9297d815b6",
+      "bytes": 80,
+      "warnings": 1
+    },
+    "golden-fixture:permissions-05.tsx|kotlin": {
+      "sha": "910d5db90d299b7ca601f1e7d155a3b1cd1113a23328e705175501696bd57306",
+      "bytes": 153,
+      "warnings": 1
+    },
+    "golden-fixture:permissions-06.tsx|swift": {
+      "sha": "cea04ca77a5cde86d7ccdcf68e5ed4a7f7d021e9f8df69a53adffc501c1c0b4f",
+      "bytes": 214,
+      "warnings": 1
+    },
+    "golden-fixture:permissions-06.tsx|kotlin": {
+      "sha": "7506d334d13c196ae68ba77812d6439a687d3aace41e7bb4328fa14f0e66d31f",
+      "bytes": 297,
+      "warnings": 1
+    },
     "golden-fixture:query-01.tsx|swift": {
       "sha": "170cb04fa60c05ca36cdfe1602968ba6e071f61123084a5140d1f261f57edc7d",
       "bytes": 5628,
