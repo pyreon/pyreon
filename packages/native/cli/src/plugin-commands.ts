@@ -1,7 +1,7 @@
 // `pyreon-native plugins` and `pyreon-native explain` — pure renderers over the
 // compiler's service registry, so the output is unit-testable without a spawn.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import {
   BUILT_IN_PLUGINS,
@@ -22,10 +22,18 @@ export interface CommandReport {
 
 function readSources(dirs: readonly string[], extension: '.swift' | '.kt'): string[] {
   const texts: string[] = []
-  const walk = (path: string): void => {
-    if (statSync(path).isDirectory()) {
-      for (const entry of readdirSync(path).sort()) walk(join(path, entry))
-    } else if (path.endsWith(extension)) texts.push(readFileSync(path, 'utf8'))
+  // Entries carry their own type, so nothing is stat()ed and then read: a
+  // check-then-use pair on a path is a race (js/file-system-race), and the
+  // directory listing already says which entries are directories.
+  const walk = (dir: string): void => {
+    const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    )
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (path.endsWith(extension)) texts.push(readFileSync(path, 'utf8'))
+    }
   }
   for (const dir of dirs) walk(dir)
   return texts

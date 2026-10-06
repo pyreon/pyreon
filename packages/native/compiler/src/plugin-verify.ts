@@ -19,12 +19,59 @@ const IDENT = '[A-Za-z_][A-Za-z0-9_]*'
 
 // One left-to-right pass, so a `/*` inside a `//` comment (or inside a string
 // such as a URL) cannot open a block comment that swallows the declarations
-// after it. Strings are matched only to be skipped over and kept.
+// after it. Strings are scanned only to be skipped over and kept.
+//
+// Hand-written rather than one regex on purpose: the block-comment alternative
+// (`/\*[\s\S]*?\*\/`) re-scans to the end of the input from EVERY unterminated
+// `/*`, which is quadratic on a file full of them. Here each region is scanned
+// at most once: a failed search for a closer is remembered (if no `*/` exists
+// after one `/*`, none exists after any later one), and an unterminated string
+// disables string matching until the end of its line.
 function stripComments(source: string): string {
-  return source.replace(
-    /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\\n])*"/g,
-    (token) => (token.startsWith('"') ? token : ' '),
-  )
+  let out = ''
+  let i = 0
+  let noBlockCloser = false
+  let noStringBefore = -1
+  while (i < source.length) {
+    const ch = source[i]!
+    const next = source[i + 1]
+    if (ch === '/' && next === '/') {
+      let end = source.indexOf('\n', i)
+      if (end === -1) end = source.length
+      out += ' '
+      i = end
+      continue
+    }
+    if (ch === '/' && next === '*' && !noBlockCloser) {
+      const close = source.indexOf('*/', i + 2)
+      if (close === -1) noBlockCloser = true
+      else {
+        out += ' '
+        i = close + 2
+        continue
+      }
+    }
+    if (ch === '"' && i >= noStringBefore) {
+      let j = i + 1
+      let closed = false
+      while (j < source.length && source[j] !== '\n') {
+        if (source[j] === '\\' && j + 1 < source.length && source[j + 1] !== '\n') j += 2
+        else if (source[j] === '"') {
+          closed = true
+          break
+        } else j++
+      }
+      if (closed) {
+        out += source.slice(i, j + 1)
+        i = j + 1
+        continue
+      }
+      noStringBefore = j
+    }
+    out += ch
+    i++
+  }
+  return out
 }
 
 /** `PyreonShare` from `PyreonShare()` / `PyreonCamera(presenter: …)`. */
