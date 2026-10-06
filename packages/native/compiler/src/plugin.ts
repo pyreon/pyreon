@@ -9,6 +9,7 @@ import type {
   MemberReadLowering,
   ReceiverLowering,
 } from './expr-lowering'
+import type { ModuleScanner, RequestSource } from './module-scan'
 import type { ParseRefinement, PropsTypeResolver } from './parse-extensions'
 import type { ScopeProvider } from './scope-provider'
 import type { StubAugmentation } from './stub-augmentation'
@@ -217,6 +218,19 @@ export interface CompilerPlugin<Target extends string = string> {
    * mutates it in place; everything else belongs in `transformIR`.
    */
   readonly refineParse?: ParseRefinement | undefined
+  /**
+   * A per-file pre-pass over the program's top-level nodes (see {@link ModuleScanner}): record
+   * plugin-owned facts, make the core skip metadata-only declarations, mark imports that lower.
+   */
+  readonly scanModule?: ModuleScanner | undefined
+  /**
+   * Resolvers that turn a call of a binding this plugin recorded (`getUser({ params })`) into a
+   * concrete request, read by the core's `useFetch` and by other plugins through
+   * `ParseContext.requests`. The first source whose `has` accepts the name resolves it.
+   */
+  readonly requestSources?: readonly RequestSource[] | undefined
+  /** Hooks of this plugin whose result may be destructured (`const { data, isPending } = useQuery(…)`). */
+  readonly destructureCalls?: readonly string[] | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
   readonly requires?: readonly string[] | undefined
   /** Marks a compiler-shipped plugin that a discovered plugin may replace by name. */

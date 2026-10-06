@@ -19,7 +19,7 @@
 // (would need the per-key rewrite logic the `params-destructure` IR uses).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Phase 4 — useClipboard() native emit', () => {
   it('Swift: @State PyreonClipboard, method calls + plain Bool field read', () => {

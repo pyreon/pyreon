@@ -14,7 +14,7 @@
 //   3. Restore; all specs pass
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `
 import { Stack, Text, Suspense } from '@pyreon/primitives'

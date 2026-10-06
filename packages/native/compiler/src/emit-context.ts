@@ -18,7 +18,7 @@
  */
 
 import type { PluginScope } from './plugin-scope'
-import type { ChildIR, ExprIR, ExtDecl, JsxElementIR, TypeIR } from './types'
+import type { ChildIR, ExprIR, ExtDecl, JsxElementIR, StatementIR, TypeIR } from './types'
 
 export type EmitTarget = 'swift' | 'kotlin'
 
@@ -96,6 +96,8 @@ export interface EmitContextBackendExtras {
   fileState<T>(key: string, init: () => T): T
   /** `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` with `handled` props the caller already consumed. */
   layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
+  /** `emitSwiftStatement` / `emitKotlinStatement` over a statement list, with `locals` typed for inference where the emitter keeps an inference context for handler locals. */
+  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
 }
 
 /** What a target emitter supplies; `createEmitContext` adds the pure helpers. */
@@ -236,6 +238,13 @@ export interface EmitContext {
   fileState<T>(key: string, init: () => T): T
   /** Like {@link EmitContext.layoutModifiers}, for an element whose `handled` props the caller consumed itself. */
   layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
+  /**
+   * A statement list (a callback body a recognizer carried in its payload) as target statements, one
+   * string each. `locals` names parameters whose types the body's inference should know (`(ev) => …`
+   * over a typed stream item); the Swift emitter seeds them (and the body's own `let`s), the Kotlin
+   * emitter infers handler locals itself and ignores them.
+   */
+  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
 }
 
 /**
@@ -330,6 +339,7 @@ export function createEmitContext(
     },
     fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
     layoutModifiersFor: (el, handled) => (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
+    statements: (stmts, at, locals) => (backend.statements ?? (() => missing('statements')))(stmts, at, locals),
   }
 }
 

@@ -19,11 +19,14 @@ import { chartsPlugin } from '../packages/fundamentals/charts/src/native-plugin/
 import { chartsStubs } from '../packages/fundamentals/charts/src/native-plugin/stubs'
 import { flowPlugin } from '../packages/fundamentals/flow/src/native-plugin/plugin'
 import { flowStubs } from '../packages/fundamentals/flow/src/native-plugin/stubs'
+import { httpPlugin } from '../packages/fundamentals/http/src/native-plugin/plugin'
+import { queryPlugin } from '../packages/fundamentals/query/src/native-plugin/plugin'
+import { queryStubs } from '../packages/fundamentals/query/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin])
+export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, queryPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, queryStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 

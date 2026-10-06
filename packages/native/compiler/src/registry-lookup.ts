@@ -13,7 +13,7 @@ import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ScopeProvider } from './scope-provider'
 import type { ServiceDescriptor } from './services'
-import { emitExtDecl, lowerMemberCall, type DeclLifecycle } from './call-lowering'
+import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle } from './call-lowering'
 import {
   rootReceiverName,
   type EmitPreparation,
@@ -26,7 +26,7 @@ import {
 import type { PluginScope } from './plugin-scope'
 import type { UnloweredModule } from './unlowered-modules'
 import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
-import type { DeclIR, ExprIR, ExtDecl } from './types'
+import type { DeclIR, ExprIR, ExtDecl, TypeIR } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
 export function findService(hook: string): ServiceDescriptor | undefined {
@@ -421,6 +421,34 @@ export function pluginLifecycleLines(d: ExtDecl, target: Target, ctx: EmitContex
   const lifecycle = extDeclLifecycle(d)
   if (lifecycle === undefined) return []
   return (target === 'swift' ? lifecycle.swift?.(d, ctx) : lifecycle.kotlin?.(d, ctx)) ?? []
+}
+
+/** The ext declarations of `decls` whose lifecycle is a TAIL one, in emit order (`tailOrder`, then declaration order). */
+export function tailLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
+  const tail = decls.filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.tailOrder !== undefined)
+  // Stable sort: equal orders keep declaration order.
+  return tail
+    .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.tailOrder! }))
+    .sort((a, b) => a.order - b.order || a.i - b.i)
+    .map((entry) => entry.d)
+}
+
+/** True when `d` is an `ext` declaration that emits its lifecycle in declaration order (before the compiler's own modifiers). */
+export function isHeadLifecycleDecl(d: DeclIR): d is ExtDecl {
+  return d.kind === 'ext' && extDeclLifecycle(d)?.tailOrder === undefined
+}
+
+/** The type of the zero-arg call read `<binding>.<property>()` on a plugin declaration, or `undefined`. */
+export function pluginCallReadType(d: ExtDecl, property: string): TypeIR | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.callRead?.(d, property)
+}
+
+/** The async state (pending / failed conditions) of an `ext` declaration that is an async source, else `undefined`. */
+export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): AsyncState | undefined {
+  if (d.kind !== 'ext') return undefined
+  const emitter = activeRegistries().calls.emitter(d.plugin, d.type)?.asyncState
+  if (emitter === undefined) return undefined
+  return target === 'swift' ? emitter.swift(d, ctx) : emitter.kotlin(d, ctx)
 }
 
 /** True when `d` is an `ext` declaration whose type needs a stable host view on Swift. */

@@ -4,7 +4,7 @@
 // non-Identifier object-key paths through every options walker.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 

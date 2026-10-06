@@ -25,7 +25,10 @@ import {
   lowerPluginIntrinsic,
   lowerPluginMemberCall,
   lowerPluginMemberRead,
+  isHeadLifecycleDecl,
   lowerPluginReceiver,
+  pluginAsyncState,
+  tailLifecycleDecls,
   pluginLifecycleLines,
   pluginNeedsStableHost,
   serviceFor,
@@ -661,8 +664,11 @@ let _fetchNamesSwift: Set<string> = new Set()
 // websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
 // hook carries the url) lowers to the runtime's `connect(to: URL)`.
 let _websocketUrlsSwift: Map<string, string> = new Map()
-/** `useStream` decl names — `s.events()` / `s.status()` read the property. */
-let _streamNamesSwift: Set<string> = new Set()
+/**
+ * The component's ASYNC SOURCES in declaration order — its `useFetch` containers plus every plugin
+ * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
+ */
+let _asyncDeclsSwift: DeclIR[] = []
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a dictionary at this call shape. */
 let _i18nNames: Set<string> = new Set()
@@ -2294,10 +2300,8 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'form',
   'hotkey',
   'on-mount',
-  'query',
   'rate-limited',
   'sortable',
-  'stream',
   'table-state',
   'tick',
 ])
@@ -2447,7 +2451,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _formSubmitParamsSwift = []
   _fetchNamesSwift = new Set()
   _websocketUrlsSwift = new Map()
-  _streamNamesSwift = new Set()
+  _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -2506,9 +2510,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     }
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
-    if (d.kind === 'fetch' || d.kind === 'query') _fetchNamesSwift.add(d.name)
+    if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
+    // A plugin declaration that is an async source (`useQuery`) joins the Suspense / ErrorBoundary set.
+    if (d.kind === 'fetch' || pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
     if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
-    if (d.kind === 'stream') _streamNamesSwift.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -2955,7 +2960,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's own declarations may release what they hold when the view goes away
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
-    if (d.kind !== 'ext') continue
+    if (!isHeadLifecycleDecl(d)) continue
     for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
   }
   // useHotkey → a hidden shortcut Button in `.background`.
@@ -3090,77 +3095,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        } catch { ${name}.reject(error) }`)
     lines.push(`      }`)
   }
-  // useQuery: a `.task` per decl, guarded on `isStale` so a FRESH cache hit
-  // skips the network (serving the hydrated value). The stale/miss path drives
-  // the same begin → resolve|reject machine as useFetch; a background refresh
-  // flips only isFetching, never isPending, so already-shown data never blanks.
-  for (const d of c.decls) {
-    if (d.kind !== 'query') continue
-    const name = swiftIdent(d.name)
-    // Runtime queries (a key/URL built from a prop/signal, or a direct-value
-    // fetcher) key the harness on the computed key string via `.task(id:)`, so
-    // a key change re-keys the cache (`setKey`) + re-runs the fetch — matching
-    // the web's reactive queryKey. Static literal queries keep `.task {}`.
-    const runtimeQuery =
-      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
-    if (runtimeQuery) {
-      const keyExpr =
-        d.queryKeyExpr !== undefined ? emitSwiftExpr(d.queryKeyExpr, 0) : swiftStr(d.queryKey)
-      lines.push(`      .task(id: ${keyExpr}) {`)
-      lines.push(`        ${name}.setKey(${keyExpr})`)
-    } else {
-      lines.push(`      .task {`)
-    }
-    lines.push(`        if ${name}.isStale {`)
-    lines.push(`          ${name}.begin()`)
-    if (d.valueExpr !== undefined) {
-      // A DIRECT-VALUE queryFn (`() => <expr>`): resolve the computed value.
-      // No network, no decode, no throwing call — so no `do`/`catch`.
-      lines.push(`          ${name}.resolve(${emitSwiftExpr(d.valueExpr, 0)})`)
-    } else {
-      const swiftUrl =
-        d.urlExpr !== undefined ? emitSwiftExpr(d.urlExpr, 0) : swiftStr(d.url)
-      lines.push(`          do {`)
-      if (d.method || d.headers || d.body) {
-        // A request with a VERB, headers, or a body routes through PyreonHttp —
-        // exactly like useFetch's method/headers path.
-        const method = (d.method ?? 'GET').toLowerCase()
-        const parts = [`method: .${method}`, `url: ${swiftUrl}`]
-        if (d.headers) {
-          const pairs = Object.entries(d.headers)
-            .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
-            .join(', ')
-          parts.push(`headers: [${pairs}]`)
-        }
-        if (d.body !== undefined) parts.push(`body: Data(${swiftStr(d.body)}.utf8)`)
-        lines.push(`            let __response = try await PyreonHttp.send(`)
-        lines.push(`              PyreonHttpRequest(${parts.join(', ')})`)
-        lines.push(`            )`)
-        lines.push(`            guard __response.isOK else {`)
-        lines.push(`              throw PyreonHttpError.badStatus(__response.status)`)
-        lines.push(`            }`)
-        lines.push(`            ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
-      } else {
-        lines.push(
-          `            let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`,
-        )
-        lines.push(
-          `            ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
-        )
-      }
-      lines.push(`          } catch { ${name}.reject(error) }`)
-    }
-    lines.push(`        }`)
-    lines.push(`      }`)
-  }
-  // useStream: a `.task(id:)` per decl, KEYED on the request URL plus the
-  // restart tick — a runtime `:param` or `restart()` re-keys it, which
-  // cancels the old stream and opens a fresh one (the web's reactive-source
-  // semantic). The view disappearing cancels the task, which closes the
-  // connection.
-  for (const d of c.decls) {
-    if (d.kind !== 'stream') continue
-    lines.push(...emitSwiftStreamHarness(d))
+  // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
+  // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
+  for (const d of tailLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
   }
   lines.push(`  }`)
   lines.push(`}`)
@@ -3198,75 +3136,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _pluginScope = outerPluginScope
   _pureStateSwift = new Map()
   return joined
-}
-
-/** The `.task(id:)` modifier that runs one `useStream` decl. */
-function emitSwiftStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>): string[] {
-  const name = swiftIdent(d.name)
-  const url = d.urlExpr !== undefined ? emitSwiftExpr(d.urlExpr, 0) : swiftStr(d.url)
-  const req = [`method: ${swiftStr(d.method)}`, `url: ${url}`]
-  if (d.headers) {
-    req.push(
-      `headers: [${Object.entries(d.headers)
-        .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
-        .join(', ')}]`,
-    )
-  }
-  // A runtime body is serialized per run; it is ALSO in the key, so a change
-  // re-opens the stream — the web's tracked-source semantic.
-  const bodyJson = d.requestBodyExpr !== undefined ? emitSwiftExpr(d.requestBodyExpr, 0) : undefined
-  if (d.requestBody !== undefined) req.push(`body: Data(${swiftStr(d.requestBody)}.utf8)`)
-  else if (bodyJson !== undefined) req.push(`body: Data(${bodyJson}.utf8)`)
-  const request = `PyreonStreamRequest(${req.join(', ')})`
-  const data = swiftType(d.dataType)
-  const enabled = d.enabled !== undefined ? emitSwiftExpr(d.enabled, 0) : undefined
-  // Only the parts that exist join the key, so a plain stream's emit is unchanged.
-  const key = [`\\(${url})`, `\\(${name}.restartTick)`]
-  if (enabled !== undefined) key.push(`\\(${enabled})`)
-  if (bodyJson !== undefined) key.push(`\\(${bodyJson})`)
-  let onEvent = ''
-  if (d.onEvent !== undefined) {
-    // The event parameter is typed for inference exactly as the stream's
-    // item, so `ev.data.field` reads resolve like `s.latest()?.data.field`.
-    const savedA = _exprInferCtx.locals
-    const savedB = _activeInferCtx.locals
-    _exprInferCtx.locals = new Map(savedA).set(d.onEvent.param, d.itemType)
-    _activeInferCtx.locals = new Map(savedB).set(d.onEvent.param, d.itemType)
-    // Seeds the body's own `let`s on top; the restore below drops both layers.
-    seedHandlerLocals(d.onEvent.body, _exprInferCtx)
-    seedHandlerLocals(d.onEvent.body, _activeInferCtx)
-    const body = d.onEvent.body.map((st) => emitSwiftStatement(st, 10)).join('; ')
-    _exprInferCtx.locals = savedA
-    _activeInferCtx.locals = savedB
-    onEvent = `, onEvent: { ${d.onEvent.param === '_' ? '_' : swiftIdent(d.onEvent.param)} in ${body} }`
-  }
-  const out = [`      .task(id: "${key.join('#')}") {`]
-  const pad = enabled !== undefined ? '          ' : '        '
-  if (enabled !== undefined) out.push(`        if ${enabled} {`)
-  if (d.format === 'sse') {
-    const opts: string[] = []
-    if (d.events) opts.push(`events: [${d.events.map((e) => swiftStr(e)).join(', ')}]`)
-    if (d.lastEventId !== undefined) opts.push(`lastEventId: ${swiftStr(d.lastEventId)}`)
-    opts.push(
-      d.reconnect === null
-        ? 'reconnect: nil'
-        : `reconnect: PyreonStreamReconnect(attempts: ${d.reconnect.attempts}, delay: ${d.reconnect.delay}, maxDelay: ${d.reconnect.maxDelay}, onEnd: ${d.reconnect.onEnd})`,
-    )
-    const decode = d.sseText ? 'PyreonStreamDecode.sseText()' : `PyreonStreamDecode.sseJSON(${data}.self)`
-    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
-    out.push(`${pad}await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')})${accept}${onEvent}, decode: ${decode})`)
-  } else {
-    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
-    out.push(`${pad}await ${name}.runNdjson(${request}${accept}${onEvent}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
-  }
-  if (enabled !== undefined) {
-    // The web's disabled branch: stop, read `idle`, keep what was received.
-    out.push(`        } else {`)
-    out.push(`          ${name}.idle()`)
-    out.push(`        }`)
-  }
-  out.push(`      }`)
-  return out
 }
 
 /**
@@ -3614,6 +3483,14 @@ function swiftEventModifiers(mods: readonly HotkeyModifier[]): string {
   return `[${out.join(', ')}]`
 }
 
+/** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
+function asyncStateSwift(d: DeclIR, indent: number): { pending: string; error: string } {
+  if (d.kind === 'fetch') {
+    return { pending: `${swiftIdent(d.name)}.isPending`, error: `${swiftIdent(d.name)}.error != nil` }
+  }
+  return pluginAsyncState(d, 'swift', swiftEmitContext(indent))!
+}
+
 function emitSwiftDecl(
   d: DeclIR,
   inferCtx: ReturnType<typeof buildInferenceCtx>,
@@ -3627,12 +3504,6 @@ function emitSwiftDecl(
   // and it carries a `body` like a computed does, so without this narrow it
   // reaches the `if (d.body !== undefined)` branch below and is treated as one.
   if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') return ''
-  // The query client has no native counterpart: `useQuery` lowers to a
-  // self-contained runtime, so there is nothing for a client to hold. Emitting
-  // nothing is the whole lowering. Left unrecognized it emitted a bare
-  // `createQueryClient` — an identifier reference to a symbol that exists on
-  // neither target — with no warning.
-  if (d.kind === 'query-client') return ''
   // Seeded with the SOURCE, so the value is available immediately — the web
   // hook has no first-delay gap and a field that rendered empty for the
   // delay on every mount would be a visible divergence. The debounce itself
@@ -3806,20 +3677,6 @@ function emitSwiftDecl(
   if (d.kind === 'fetch') {
     return `@State private var ${swiftIdent(d.name)} = PyreonFetch<${swiftType(d.type)}>()`
   }
-  // `const q = useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` → a
-  // @State PyreonQuery<T> seeded with the cache key + staleSeconds (staleTime
-  // ms → seconds). The isStale-guarded `.task` harness is appended on the body.
-  if (d.kind === 'query') {
-    const staleSeconds = d.staleMillis / 1000
-    // A runtime-key / templated-URL / direct-value query constructs KEYLESS:
-    // SwiftUI's @State default can't reference other properties (props/signals),
-    // so the real key is computed + applied in the `.task` harness via setKey.
-    const key =
-      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
-        ? '""'
-        : swiftStr(d.queryKey)
-    return `@State private var ${swiftIdent(d.name)} = PyreonQuery<${swiftType(d.type)}>(queryKey: ${key}, staleSeconds: ${staleSeconds})`
-  }
   // Phase 4.2: `const form = useForm({ initialValues })` → an @State
   // PyreonForm container seeded with the literal string defaults. Unlike
   // useFetch there is NO mount-time harness — a form is pure reactive state;
@@ -3892,11 +3749,6 @@ function emitSwiftDecl(
   // until the default-OkHttp-transport follow-up lands.
   if (d.kind === 'websocket') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
-  }
-  // `const s = useStream(…)` → an @State PyreonStream; the `.task(id:)`
-  // harness that runs it is appended on the stable-identity body host.
-  if (d.kind === 'stream') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonStream<${swiftType(d.itemType)}>(maxEvents: ${d.maxEvents})`
   }
   if (d.kind === 'database') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
@@ -6151,14 +6003,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
-          // useStream's result fields — signal READS on the web, @Observable
-          // properties natively. `abort()` / `restart()` stay calls.
-          if (
-            _streamNamesSwift.has(recv) &&
-            ['events', 'latest', 'status', 'error'].includes(e.callee.property)
-          ) {
-            return `${swiftIdent(recv)}.${e.callee.property}`
-          }
           if (
             _fieldArrayItemParamsSwift.includes(recv) &&
             e.callee.property === 'value'
@@ -8058,6 +7902,22 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       webView: swiftWebViewFacade,
       fileState: (key, init) => _moduleScope.state(key, init),
       layoutModifiersFor: (el, handled) => emitSwiftLayoutModifiers(el, handled),
+      statements: (stmts, at, locals) => {
+        // The parameter is typed for inference, and the body's own `let`s are seeded on top; the
+        // restore below drops both layers.
+        const savedA = _exprInferCtx.locals
+        const savedB = _activeInferCtx.locals
+        if (locals !== undefined) {
+          _exprInferCtx.locals = new Map([...savedA, ...locals])
+          _activeInferCtx.locals = new Map([...savedB, ...locals])
+          seedHandlerLocals([...stmts], _exprInferCtx)
+          seedHandlerLocals([...stmts], _activeInferCtx)
+        }
+        const out = stmts.map((st) => emitSwiftStatement(st, at))
+        _exprInferCtx.locals = savedA
+        _activeInferCtx.locals = savedB
+        return out
+      },
       inlineConsts: inlineValueConsts,
     },
     indent,
@@ -8341,15 +8201,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
-  // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
-  // the web to inject the client `useQuery` reads; the native `useQuery`
-  // lowering is self-contained, so the provider has nothing to inject and its
-  // children are the whole emit. Left undispatched it fell to the generic path
-  // and emitted `QueryClientProvider(client:) { … }` — a SwiftUI view that does
-  // not exist, referencing a client binding that also did not — with zero
-  // warnings. The web REQUIRES the provider, so this is the shape a shared
-  // source has to be able to carry.
-  if (tag === 'QueryClientProvider') return emitSwiftTransparentProvider(e, indent)
   if (tag === 'PermissionsProvider') return emitSwiftPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
   if (tag === 'RouterView') return emitSwiftRouterView(e, indent)
@@ -9220,10 +9071,9 @@ function emitSwiftSuspense(
   const fallbackBody = fallbackChildren
     .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
     .join('\n')
-  const fetches = [..._fetchNamesSwift]
   const isLoading =
-    fetches.length > 0
-      ? fetches.map((f) => `${swiftIdent(f)}.isPending`).join(' || ')
+    _asyncDeclsSwift.length > 0
+      ? _asyncDeclsSwift.map((d) => asyncStateSwift(d, indent).pending).join(' || ')
       : 'false'
   // Group wraps the if/else so it's a single View in any context.
   return (
@@ -9290,10 +9140,9 @@ function emitSwiftErrorBoundary(
   const fallbackChildren = fbPlan.children
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
-  const fetches = [..._fetchNamesSwift]
   const hasError =
-    fetches.length > 0
-      ? fetches.map((f) => `${swiftIdent(f)}.error != nil`).join(' || ')
+    _asyncDeclsSwift.length > 0
+      ? _asyncDeclsSwift.map((d) => asyncStateSwift(d, indent).error).join(' || ')
       : 'false'
   // Inline (see emitSwiftSuspense) — the @Observable .error read must be
   // in the component body to be tracked; a child-wrapper arg isn't.
@@ -11422,24 +11271,6 @@ function emitSwiftLink(
  * the recognizer warns when it does — a `false` under a wildcard grant is a
  * denial the native set cannot express.
  */
-/**
- * A provider whose only job on the web is to inject something the native
- * runtime already has. Emit the children and nothing else.
- *
- * `Group` rather than a bare child list because a provider legitimately wraps
- * several siblings, and SwiftUI needs one view where the emit needs one
- * expression.
- */
-function emitSwiftTransparentProvider(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  if (e.children.length === 0) return 'EmptyView()'
-  const pad = ' '.repeat(indent + 2)
-  const content = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  return `Group {\n${content}\n${' '.repeat(indent)}}`
-}
-
 function emitSwiftPermissionsProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

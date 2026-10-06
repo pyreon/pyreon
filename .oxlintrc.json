@@ -228,11 +228,15 @@
       "files": [
         "packages/native/compiler/src/golden-fixtures/**",
         "packages/fundamentals/charts/native-golden/**",
-        "packages/fundamentals/flow/native-golden/**"
+        "packages/fundamentals/flow/native-golden/**",
+        "packages/fundamentals/http/native-golden/**",
+        "packages/fundamentals/query/native-golden/**",
+        "packages/fundamentals/validate/native-golden/**"
       ],
       "rules": {
         "no-unused-vars": "off",
         "no-shadow": "off",
+        "no-sparse-arrays": "off",
         "import/no-duplicates": "off",
         "no-console": "off"
       }

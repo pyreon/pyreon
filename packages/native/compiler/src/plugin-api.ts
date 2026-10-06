@@ -48,6 +48,7 @@ export type {
   ParseContext,
 } from './call-lowering'
 export type { ElementLowering, RetagContext } from './element-lowering'
+export type { ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
 export type { ParseRefinement, ParseRefinementTarget, PropsTypeContext, PropsTypeResolver } from './parse-extensions'
 export type {
   CallExprIR,
@@ -71,6 +72,20 @@ export type { UnloweredSpec } from './unlowered-modules'
 export type { ServiceDescriptor } from './services'
 export type { PluginScope } from './plugin-scope'
 
+export {
+  dynamicKeyText,
+  hasDynamicKey,
+  isNullishLiteral,
+  literalScalar,
+  propName,
+  readEntryNodes,
+  readJsonLiteral,
+  readLiteralEntries,
+  readObjectProp,
+  staticPropKey,
+  topLevelDeclarators,
+  unwrapTypeLayers,
+} from './plugin-ast'
 export { forEachExpr } from './expr-walk'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export { kotlinIdent, swiftIdent } from './identifier-safety'

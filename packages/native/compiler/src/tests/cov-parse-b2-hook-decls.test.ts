@@ -5,7 +5,7 @@
 // arrow-return + query-key helpers.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 

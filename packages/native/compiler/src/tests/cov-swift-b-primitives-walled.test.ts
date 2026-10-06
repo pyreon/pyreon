@@ -8,7 +8,7 @@
 // element will not compile natively, and it must be reachable by a test.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function tx(jsxBody: string, extra = ''): { code: string; warnings: string[] } {
   return transform(

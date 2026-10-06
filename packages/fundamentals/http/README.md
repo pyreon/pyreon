@@ -271,6 +271,10 @@ await api.get('/users/1').json()
 expect(handle.calls).toHaveLength(1)
 ```
 
+## Native (iOS / Android)
+
+The compile-time half of the endpoint DSL ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`: a same-file `createHttp({ baseUrl })` + `client.endpoint('GET /users/:id')` is scanned as metadata that emits nothing, and a call of an endpoint resolves to a concrete request (URL templated and percent-encoded, query serialised, literal headers and json body baked, a runtime `:param` rendered as native string interpolation). `useFetch` (`@pyreon/hooks`) and `useQuery` / `useStream` (`@pyreon/query`) read it through the compiler's request-source seam. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## License
 
 MIT

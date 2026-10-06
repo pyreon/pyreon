@@ -11,7 +11,7 @@
 // 1`) and a destructured binding (`const { A } = mod`) are the two spellings
 // that reach those guards from ordinary source.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 const swift = (src: string): string => transform(src, { target: 'swift' }).code

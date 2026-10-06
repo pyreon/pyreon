@@ -167,12 +167,13 @@ A library's JSX elements reach native code through `element-lowering.ts`, not th
 | `component()` | `_activeComponentName`, `_activePropsParamName`, `_componentValueConstExprs`, `_componentNames.has` — read through live getters (`ComponentInfo`) | the flow hosts (renderer registration, props-rooted reads, `<path>` claim) |
 | `isFunctionName(name)` | `_functionNames.has` | flow minimap / controls callback detection |
 | `child(child, at?)` | `emitSwiftChild` / `emitKotlinChild` — one JSX child through the full dispatcher | flow panels / overlays / controls content |
-| `typeText(type)` | `swiftType` / `kotlinType` | flow node-data row type |
+| `typeText(type)` | `swiftType` / `kotlinType` (Kotlin against the component's own `KotlinCtx`, so an inline object type synthesizes a named data class there) | flow node-data row type; query result / stream item types |
 | `inferType(e)` | `inferType(e, _activeInferCtx)` / `_kotlinExprInferCtx` | flow node-data row unification |
 | `structs.forTypeFields` / `forLiteralFields` / `synthesize` | the file's struct registries (`_structTypedKeyToName`, `_structFieldsToName`, `_synthExprStructs`, `resolveSwiftObjectStructName`, …) — a plugin that builds a typed container from a literal must resolve to the SAME struct names the file's other literals do | flow node-data rows (both targets) |
 | `warnOnce(msg)` | `if (!_emitWarnings.includes(m)) _emitWarnings.push(m)` | flow SVG / edge-text plans |
 | `webView.dynamicAttr` / `dataArg` / `messageHandler` | the `<WebView>` helpers (`dynamicWebViewAttr`, `swiftWebViewDataArg`, `emitSwiftMessageHandler` and their Kotlin twins) | `<FlowWebView>` (both targets) |
 | `fileState(key, init)` | the FILE-scoped plugin memory (the module scope's state bag, readable from inside any component and from `prepareEmit`) | the flow file record (renderer components, static handles / resizers / toolbars) |
+| `statements(stmts, indent, locals?)` | `emitSwiftStatement` / `emitKotlinStatement` over a callback body a recognizer carried in its payload, with `locals` typed for inference where the emitter keeps an inference context for handler locals (Swift) | `useStream`'s `onEvent` (both targets) |
 | `layoutModifiersFor(el, handled)` | `emitSwiftLayoutModifiers(el, omit)` / `emitKotlinLayoutModifier(el, omit)` — the styling tail when the host consumed some props itself | `<FlowWebView>` (the page's `background` is not a view background) |
 
 Extend the facade only when a plugin needs it, and add its row here. A `DeclEmitter` receives this same context (built by `swiftEmitContext(2)` / `kotlinEmitContext(2)`; its `emit` / `staticAttr` are the element ones and a declaration has no element, so they are not useful there).
@@ -294,26 +295,44 @@ A service is DATA (a hook with no arguments). When the lowering needs CODE — r
 
 **Worked proof: `createChartHandle()`.** `native-plugin/plugin.ts` (the `@pyreon/charts` plugin) owns the recognizer, both declaration emitters, the `handle.dispatch({...})` lowering (`memberCalls`) and the `@pyreon/charts` unlowered-module metadata; `parse.ts`, the `chart-handle` `DeclIR` kind and both emitters' handle-name sets, series map, placeholder regex and `dispatch` branches are gone, and the emitted Swift/Kotlin is byte-identical (golden corpus). The `<PlotChart handle={chart}>` host lives in the plugin on both targets (see "Worked proof: the chart hosts").
 
-## Shared-fact libraries: `@pyreon/http`, `@pyreon/query`, `@pyreon/validate`/`validation` (Phase 3j — design)
+## Shared-fact libraries: `@pyreon/http`, `@pyreon/query`, `@pyreon/validate` / `validation` (Phase 3j)
 
 These three libraries do not lower independently: an `@pyreon/http` endpoint feeds `useFetch` / `useQuery` / `useStream`, a schema bound to an endpoint's `response` is evidence for the decode type's `Int`/`Double` fields, and `@pyreon/validation`'s adapters emit the same schema struct `@pyreon/validate`'s `s` DSL does. A plugin split has to put each FACT with its owner and give consumers a way to read it without importing the owner's parser.
 
-**Activation decides ownership.** A plugin is loaded only when the app imports one of its `modules` AND depends on its package. A hook is therefore owned by the package an app imports it FROM, not by the runtime it happens to drive: `useFetch` is imported from `@pyreon/hooks`, so it stays with the hooks lowering (its `fetch` declaration and `PyreonFetch` harness remain in the core until the hooks plugin moves them); `useQuery`/`useStream`/`QueryClient`/`<QueryClientProvider>` come from `@pyreon/query`; `createHttp`/`.endpoint()`/`openEventStream` come from `@pyreon/http`; `s`/`withField` from `@pyreon/validate`; `zodSchema`/`valibotSchema`/`arktypeSchema` from `@pyreon/validation`.
+**Activation decides ownership.** A plugin is loaded only when the app imports one of its `modules` AND depends on its package. A hook is therefore owned by the package an app imports it FROM, not by the runtime it happens to drive: `useFetch` is imported from `@pyreon/hooks`, so it stays with the hooks lowering (its `fetch` declaration and `PyreonFetch` harness remain in the core until the hooks plugin moves them); `useQuery` / `useStream` / `new QueryClient()` / `<QueryClientProvider>` come from `@pyreon/query`; `createHttp` / `.endpoint()` come from `@pyreon/http`; `s` / `withField` from `@pyreon/validate`; `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`.
 
 | Plugin (package) | Owns | Publishes |
 | --- | --- | --- |
-| `@pyreon/http` | the module scan (clients, endpoints, stream openers), endpoint → request resolution (URL templating, query string, literal headers / json body, runtime `:param` via `PyreonURL`), the "http metadata declares nothing" skip, its `unlowered` entries | a **request source** (below) |
-| `@pyreon/query` (`requires: ['@pyreon/http']`) | `useQuery` (`query`), `useStream` (`stream`), `new QueryClient()` (`query-client`), `<QueryClientProvider>`, their harnesses, typing, receivers, stubs | — |
-| `@pyreon/validate` | the schema module item, `withField` metadata, `Schema.safeParse` / inline `s.object(...).safeParse` | the schema registry |
-| `@pyreon/validation` (`requires: ['@pyreon/validate']`) | the three adapter recognizers, which produce the validate-owned schema item | — |
+| `@pyreon/http` | the module scan (clients, endpoints), endpoint → request resolution (URL templating, query string, literal headers / json body, runtime `:param` via `PyreonURL`, response-schema evidence), the "http metadata declares nothing" skip, its `unlowered` entry | a **request source** |
+| `@pyreon/query` | `useQuery` (`query`), `useStream` (`stream`), `new QueryClient()` (`query-client`), `<QueryClientProvider>`, the stream-opener scan, their harnesses, typing, receivers, stubs | — |
+| `@pyreon/validate` / `validation` | not moved yet (the schema module item is a seam this group does not need; see "What is NOT moved") | — |
 
-**Seams this adds (each library-agnostic, each with a toy-plugin test user):**
+There is NO `requires` between `@pyreon/query` and `@pyreon/http`: a request source is optional (an app with `useQuery` and no endpoint has none), and a hard `requires` would make every `@pyreon/query` app load `@pyreon/http`. The facts cross through `ParseContext.requests`, which is simply empty when no source is loaded.
 
-- `scanModule` — a per-file pre-pass over the program's top-level nodes. It keeps plugin-owned facts in `fileState`, may register a predicate that makes the core SKIP a top-level declaration (metadata that emits nothing), and may mark an import as consumed by lowering (so the "has NO native lowering" warning does not print above the code that does lower).
-- `requestSources` — `resolve(call, options)` turns a call of a plugin-known binding (`getUser({ params })`, `getUser.query({ params })`) into `{ url, urlExpr?, method, headers?, body?, response? }`, or declines. The core's `useFetch` and the query plugin's hooks both consume it; neither imports the owner. This is how a fact crosses plugins without a package edge.
-- `decls[type].typing`, `decls[type].asyncState`, `lifecycle.tail` + `lifecycle.order` — what the core's inference, `<Suspense>` / `<ErrorBoundary>` and modifier ordering used to read from hard-coded `fetch` / `query` / `stream` kinds.
-- `destructureCalls` — hooks whose result may be destructured (`const { data } = useQuery(...)`).
+### Seams this group added (each library-agnostic, each with a toy-plugin user in `tests/plugin-scan-seams.test.ts`)
 
-**Byte-identical contract.** Moved declarations keep their legacy kind (`legacyKind`) so struct names hash unchanged, and `lifecycle.order` reproduces the old fetch → query → stream modifier grouping. The golden corpus carries 192 fixtures harvested from the pre-move tests (`packages/fundamentals/{http,query,validate}/native-golden/`), recorded from the parent compiler BEFORE any code moves.
+| Seam | What it replaces in the core | Used by |
+| --- | --- | --- |
+| `CompilerPlugin.scanModule(scan)` — a per-file pre-pass: `scan.fileState`, `scan.staticString`, `scan.skipTopLevel(pred)`, `scan.lowered(module, name)`, `scan.report` | the three hard-coded `collectHttpClients` / `collectEndpointDefs` / `collectStreamOpeners` calls, `isHttpMetadataNode`, the `httpClientSchemaNames` / `streamOpenersAllLowered` branches of the unlowered-import warning | http (clients, endpoints, skipped metadata), query (stream openers) |
+| `CompilerPlugin.requestSources` — `{ has(name, ctx), resolve(name, arg, options, ctx) }` → `ResolvedRequest` | `ctx.endpointDefs` / `resolveEndpointUrl` read by `useFetch`, `useQuery` and `useStream` | http provides; core `useFetch` and query consume through `ParseContext.requests` |
+| `ParseContext.requests`, `.recordDecode`, `.staticString`, `.statements`, `.typeArgOf`, `.fileState` | the parser helpers the moved recognizers called directly | query recognizers |
+| recognizer verdicts: a declaration, `undefined` (DECLINE — fall through), or `null` (CLAIM without declaring: the recognizer reported why it cannot lower, and the binding must not fall to the generic value-const emit) | the old `return null` of `useQuery` / `useStream` bail-outs | query |
+| `CallSite.construct` — `new Name(…)` reaches `calls` recognizers | the `NewExpression` branch for `QueryClient` | query |
+| `CompilerPlugin.destructureCalls` | the hard-coded `useQuery` entry in `DESTRUCTURE_CONTAINER_HOOKS` (it only decides WHICH warning an unlowerable destructure gets; the lowering itself is the general destructure arm) | query |
+| `DeclEmitter.typing.callRead` | `InferenceCtx.streams` + the `useStream` call-read typing | query (`stream`) |
+| `DeclEmitter.asyncState` | `_fetchNames` driving `<Suspense>` / `<ErrorBoundary>` | query (`query`) |
+| `DeclLifecycle.tailOrder` | the fetch → query → stream modifier grouping | query (`query` 20, `stream` 30; core `fetch` stays first) |
+| `EmitContext.statements(stmts, indent, locals?)` | the stream `onEvent` body emit with seeded handler locals (Swift seeds; Kotlin infers handler locals itself and ignores `locals`) | query (`stream`) |
+| the Kotlin `typeText` runs against the component's own `KotlinCtx` | `kotlinType(d.type, ctx)` — an inline object type (`useQuery<{ data: { id: string } }>`) synthesizes a named data class there | query |
+| `plugin-api` AST helpers (`topLevelDeclarators`, `readObjectProp`, `propName`, `staticPropKey`, `hasDynamicKey`, `dynamicKeyText`, `literalScalar`, `readLiteralEntries`, `readEntryNodes`, `readJsonLiteral`, `isNullishLiteral`, `unwrapTypeLayers`) — the same functions the parser uses, moved to `plugin-ast.ts` | private copies in `parse.ts` | http, query |
 
-**Order of work.** http + query first (they share the decl/harness family); validate/validation second (it needs a module-item seam the decl family does not).
+**Byte-identical contract.** Moved declarations keep their legacy kind (`legacyKind`), so struct names hash unchanged, and the payload key order reproduces the old IR object's, which `moduleTag` hashes. The golden corpus carries 192 fixtures harvested from the pre-move tests (`packages/fundamentals/{http,query,validate}/native-golden/`), recorded from the parent compiler BEFORE any code moved; the gate was byte-identical (no `--update`) after the move.
+
+### What is NOT moved, and why
+
+- **`useFetch` / the `fetch` declaration** stays in the core: its owner is `@pyreon/hooks` (see "Activation decides ownership"), whose plugin is a separate phase. It now reads endpoints through `ParseContext.requests`, so it already has no `@pyreon/http` knowledge.
+- **`@pyreon/validate` / `@pyreon/validation`** (the schema lowering, `PyreonZodSchema_`, `withField`, `Schema.safeParse`, `refineStructFloatsFromResponseSchemas`) stays in the core. It needs a MODULE-ITEM seam this group did not: schema defs are first-class `ModuleIR` arrays (`zodSchemas`, `fieldMetas`) that `moduleTag`, `disambiguateValueTypeNames`, `useForm({ schema })` and the response-schema refinement all read. The design: an `ext` module item (`{ plugin, type, name, payload }`) emitted where the arrays emit today in plugin-declared type order, a `legacyKind`-style hash replacer, a `bindingNames` hook for the value/type rename, and a schema registry the form and the http response evidence read through `ParseContext`. Not started.
+
+### Verification notes
+
+`@pyreon/lathe`'s multiplatform emit asserts positive markers (`PyreonQuery<`, `PyreonZodSchema_`) by running the REAL compiler. It now loads the project's own `@pyreon/http` / `@pyreon/query` plugins (resolved, never fetched) before compiling — `verify/lower.ts:resolveNativeCompiler`.

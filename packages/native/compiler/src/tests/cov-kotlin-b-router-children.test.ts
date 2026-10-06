@@ -8,7 +8,7 @@
 // wrong one silently renders the wrong screen — there is no toolchain error to
 // catch it, so the emit string IS the contract.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 /** The `when { … }` dispatch block, one trimmed line per entry. */
@@ -75,7 +75,8 @@ describe('the nested route dispatcher on Kotlin', () => {
 
 describe('provider tags on Kotlin', () => {
   const PROV = `import { signal } from '@pyreon/reactivity'
-import { Stack, Text, Link, PermissionsProvider, QueryClientProvider, RouterProvider } from '@pyreon/primitives'
+import { Stack, Text, Link, PermissionsProvider, RouterProvider } from '@pyreon/primitives'
+import { QueryClientProvider } from '@pyreon/query'
 export function App() {
   const dyn = signal({ read: true })
   return (<Stack>
@@ -280,7 +281,8 @@ export function App() {
 
   it('a transparent provider WITH children still renders them', () => {
     const r = kotlin(`import { signal } from '@pyreon/reactivity'
-import { Stack, Text, QueryClientProvider } from '@pyreon/primitives'
+import { Stack, Text } from '@pyreon/primitives'
+import { QueryClientProvider } from '@pyreon/query'
 export function App() {
   const c = signal(1)
   return (<Stack><QueryClientProvider client={c()}><Text>inner</Text></QueryClientProvider></Stack>)

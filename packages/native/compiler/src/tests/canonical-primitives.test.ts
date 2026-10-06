@@ -18,7 +18,7 @@
 // primitives — migration happens in Phase E.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // Shared minimal-component wrapper so tests focus on the JSX-body emit.
 function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
