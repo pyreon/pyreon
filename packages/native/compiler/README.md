@@ -84,6 +84,44 @@ changes require an API version bump. Test extensions by compiling both target
 outputs with the real validators below. The CLI's `--plugin` accepts local ESM
 modules with a default plugin export; CLI target selection remains iOS/Android.
 
+### Services, modules, requires (additive; API version stays 1)
+
+Four optional fields were added without a version bump, because additive
+fields never break an older plugin:
+
+- `services` — plain service hooks the plugin lowers, keyed by hook name. Each
+  value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
+  initialiser and `kotlin` lines). `createCompiler` builds one registry from the
+  built-in `SERVICES` table plus every plugin's `services`; two owners for one
+  hook is a load-time error naming both, because silently picking one would
+  make the emit depend on plugin order. The registry is `compiler.services` and
+  `context.services`.
+- `requires` — plugin names that must be loaded. A missing one or a cycle is a
+  load-time error naming the plugins; passes run in `requires` order (input
+  order otherwise).
+- `modules` — import specifiers the plugin applies to. Metadata only: a
+  package-owned plugin is activated from the `pyreon.native.modules` manifest
+  field, because deciding whether to load a module by asking the module defeats
+  the laziness.
+- `builtIn` — marks a compiler-shipped plugin. `createCompiler({ discovered })`
+  lets a discovered plugin with the same name replace it silently; an explicit
+  `plugins` entry of the same name is still a duplicate error and wins over a
+  discovered one.
+
+`SUPPORTED_PLUGIN_API_VERSIONS` lists every version this compiler loads.
+
+### Testing and verifying a plugin
+
+`@pyreon/native-compiler/testing` exports `testNativePlugin(plugin, source,
+{ target, requireNoWarnings })`, which compiles a snippet with only that plugin
+installed. `verifyServiceTypes(plugin, { swiftSources, kotlinSources })` reads
+each service's leading Swift type and Kotlin `remember { Type(…) }` /
+`rememberPyreonX(…)` name and checks it is declared (`class|struct|actor|enum`,
+`class|object|fun`) in the sources the plugin ships. That closes the
+phantom-capability class: a type that exists only in a validation stub passes
+every compile gate and fails the device build. It proves a name exists, not that
+a signature matches — keep the real-toolchain compile for that.
+
 ## Compile-validation
 
 Snapshot tests prove "the emit equals what it equalled last time," not "the emit is valid Swift/Kotlin." [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the real language toolchains, at increasing cost/fidelity:

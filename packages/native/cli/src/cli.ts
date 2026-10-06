@@ -17,14 +17,22 @@ import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-
 import { startLspServer } from './lsp'
 import { scanFontDir } from './fonts'
 import { renderAndroidSrcDirsFile, stageIosWiring, wireApp } from './wire'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { createCompiler, type CompilerPlugin, type NativeCompiler, type TargetLanguage } from '@pyreon/native-compiler'
 import { pathToFileURL } from 'node:url'
+import { discoverPlugins } from './discover-plugins'
+import { explainReport, pluginsReport } from './plugin-commands'
 
 interface ParsedArgs {
   command: string
   plugins?: string[]
+  /** `--no-plugins`: skip package plugin discovery (explicit `--plugin` still loads). */
+  noPlugins?: boolean
+  /** `plugins` only: check services' types against the package's own sources. */
+  verify?: boolean
+  /** `explain` only: the file to explain. */
+  file?: string
   compiler?: Pick<NativeCompiler, 'transform'> | undefined
   target?: TargetLanguage
   /** `assets` keeps the raw target token — it ALSO accepts `web`. */
@@ -69,6 +77,14 @@ function parseArgs(argv: string[]): ParsedArgs {
       out.lsp = true
       continue
     }
+    if (a === '--no-plugins') {
+      out.noPlugins = true
+      continue
+    }
+    if (a === '--verify') {
+      out.verify = true
+      continue
+    }
     if (a === '--json') {
       out.json = true
       continue
@@ -84,6 +100,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       value = argv[i + 1] ?? ''
       i++
     } else {
+      if (out.command === 'explain' && out.file === undefined) out.file = a
       continue
     }
     if (key === 'plugin') (out.plugins ??= []).push(value)
@@ -120,6 +137,8 @@ Usage:
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
   pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
   pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
+  pyreon-native plugins [--app=<dir>] [--verify]
+  pyreon-native explain <file.tsx> [--app=<dir>] [--no-plugins]
 
 check is the fast authoring-loop command: it runs the PMTC compiler for
 both targets IN MEMORY (no build, no xcodegen/gradle, no file writes) and
@@ -151,6 +170,18 @@ upward — hoisting- and pnpm-symlink-safe, unlike the scaffold's fixed
 the resolved Gradle srcDirs list build.gradle.kts reads; --json prints
 the full wiring (srcDirs + iOS SwiftPM packages + co-located sources).
 
+plugins lists the compiler's built-in plugins, the service registry (each
+hook and the plugin that owns it) and every package-declared plugin
+(package.json "pyreon.native.plugin"). --verify checks that each service's
+Swift/Kotlin types are really declared in that package's own native sources.
+
+explain compiles one file for both targets and prints, per service hook it
+uses, the owning plugin and the declaration each target emits.
+
+Plugins declared by dependencies (pyreon.native.plugin) load automatically for
+build/check, and only when the source imports one of the package's modules.
+--no-plugins turns that off; explicit --plugin files always load.
+
 Targets:
   ios        emit Swift / SwiftUI
   android    emit Kotlin / Jetpack Compose
@@ -181,22 +212,66 @@ Compiler (PMTC). See packages/native/cli/README.md for status.`)
 export async function mainWithPlugins(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) return main(argv)
   const parsed = parseArgs(argv)
-  if (!parsed.plugins?.length) return main(argv)
-  if (!['build', 'check'].includes(parsed.command)) {
+  const appDir = resolve(parsed.app ?? process.cwd())
+  if (parsed.command === 'plugins') {
+    return printReport(await pluginsReport(appDir, parsed.verify === true))
+  }
+  if (parsed.command === 'explain') {
+    return printReport(await runExplain(parsed, appDir))
+  }
+  const discovering =
+    ['build', 'check'].includes(parsed.command) &&
+    !parsed.noPlugins &&
+    parsed.source !== undefined &&
+    !parsed.lsp
+  if (!parsed.plugins?.length && !discovering) return main(argv)
+  if (parsed.plugins?.length && !['build', 'check'].includes(parsed.command)) {
     console.error('error: --plugin is supported by build and check only')
     return 1
   }
   try {
     const plugins: CompilerPlugin[] = []
-    for (const path of parsed.plugins) {
+    for (const path of parsed.plugins ?? []) {
       if (!path || path.startsWith('--')) throw new Error('[Pyreon] --plugin requires a local module path')
       const module = await import(pathToFileURL(resolve(path)).href)
       plugins.push(module.default)
     }
-    return main(argv, createCompiler({ plugins }))
+    const discovered = discovering ? await discoverPlugins(appDir, resolve(parsed.source!)) : []
+    if (plugins.length === 0 && discovered.length === 0) return main(argv)
+    return main(
+      argv,
+      createCompiler({ plugins, discovered: discovered.map((d) => d.plugin) }),
+    )
   } catch (error) {
     console.error(`[pyreon-native] plugin setup failed: ${error instanceof Error ? error.message : String(error)}`)
     return 2
+  }
+}
+
+function printReport(report: { lines: string[]; exitCode: number }): number {
+  for (const line of report.lines) (report.exitCode === 0 ? console.log : console.error)(line)
+  return report.exitCode
+}
+
+async function runExplain(parsed: ParsedArgs, appDir: string) {
+  if (!parsed.file) {
+    console.error('error: explain requires a file (pyreon-native explain <file.tsx>)')
+    return { lines: [], exitCode: 1 }
+  }
+  const file = resolve(parsed.file)
+  try {
+    const discovered = parsed.noPlugins ? [] : await discoverPlugins(appDir, file)
+    const plugins: CompilerPlugin[] = []
+    for (const path of parsed.plugins ?? []) {
+      plugins.push((await import(pathToFileURL(resolve(path)).href)).default)
+    }
+    const compiler = createCompiler({ plugins, discovered: discovered.map((d) => d.plugin) })
+    return explainReport(readFileSync(file, 'utf8'), file, compiler)
+  } catch (error) {
+    return {
+      lines: [`[pyreon-native] ${error instanceof Error ? error.message : String(error)}`],
+      exitCode: 2,
+    }
   }
 }
 
@@ -222,6 +297,10 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   }
   if (parsed.command === 'wire') {
     return runWire(parsed)
+  }
+  if (parsed.command === 'plugins' || parsed.command === 'explain') {
+    console.error(`error: ${parsed.command} needs plugin loading — call mainWithPlugins()`)
+    return 1
   }
   if (parsed.command !== 'build') {
     printUsage()

@@ -15,6 +15,8 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { transform } from '../index'
+import { SERVICES } from '../services'
 
 const SWIFT = readFileSync(join(resolve(import.meta.dirname, '..'), 'emit-swift.ts'), 'utf8')
 
@@ -80,7 +82,10 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
   it('every decl kind that emits a lifecycle modifier is in the set', () => {
     const { emitting } = derivedLifecycleKinds()
     const declared = declaredSet()
-    const missing = [...emitting].filter((k) => !declared.has(k)).sort()
+    // `service` is the generic descriptor-backed declaration: ONLY the services
+    // whose descriptor carries a `lifecycle` need the host, so it is not a
+    // member of the kind set — it is covered by its own specs below.
+    const missing = [...emitting].filter((k) => k !== 'service' && !declared.has(k)).sort()
     expect(missing, 'these emit .task/.onAppear/.onDisappear but get no stable ZStack host').toEqual(
       [],
     )
@@ -98,4 +103,38 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
     expect(declared.has('fetch')).toBe(true)
     expect(declared.has('query')).toBe(true)
   })
+})
+
+describe('descriptor-backed services (services.ts `lifecycle`) get the stable host', () => {
+  it('the host test consults the descriptor, not a kind list', () => {
+    expect(SWIFT).toMatch(/needsStableLifecycleHost = c\.decls\.some\(\s*\(d\) => LIFECYCLE_HOST_DECL_KINDS\.has\(d\.kind\) \|\| serviceLifecycle\(d\) !== undefined/)
+  })
+
+  const host = (hook: string): string =>
+    transform(
+      `import { ${hook} } from '@pyreon/hooks'
+export function App() {
+  const x = ${hook}()
+  return <Text>hi</Text>
+}`,
+      { target: 'swift' },
+    ).code
+
+  it.each(SERVICES.filter((s) => s.lifecycle !== undefined).map((s) => s.hook))(
+    '%s wraps the body in a ZStack and starts the monitor',
+    (hook) => {
+      const out = host(hook)
+      expect(out).toContain('ZStack {')
+      expect(out).toContain('.onAppear { x.start() }')
+    },
+  )
+
+  it.each(SERVICES.filter((s) => s.lifecycle === undefined).map((s) => s.hook))(
+    '%s has no lifecycle modifier and no host',
+    (hook) => {
+      const out = host(hook)
+      expect(out).not.toContain('ZStack {')
+      expect(out).not.toContain('.onAppear')
+    },
+  )
 })
