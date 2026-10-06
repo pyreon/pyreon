@@ -1,7 +1,8 @@
+import { createRegistries, withRegistries } from './active-registries'
 import { kotlinBackend, swiftBackend } from './backends'
+import { BUILT_IN_PLUGINS } from './built-in-plugins'
 import { moduleTag, withSynthStructSuffix } from './expr-utils'
 import { parsePyreon } from './parse'
-import { chartsPlugin } from './plugins/charts'
 import {
   SUPPORTED_PLUGIN_API_VERSIONS,
   type CompilerBackend,
@@ -14,11 +15,14 @@ import {
   type NativeCompiler,
 } from './plugin'
 import { assertPluginExtensions, assertPluginShape } from './plugin-shape'
-import { createServiceRegistry, orderPlugins, selectDiscovered } from './service-registry'
+import { orderPlugins, selectDiscovered } from './service-registry'
 import type { TargetLanguage, TransformResult } from './types'
 
-/** Compiler-shipped plugins; a discovered plugin of the same name replaces one. */
-export const BUILT_IN_PLUGINS: readonly CompilerPlugin[] = Object.freeze([chartsPlugin])
+export { BUILT_IN_PLUGINS }
+
+// Built-in plugins' passes run on the live IR (they are the compiler's own,
+// trusted code); every other plugin gets an isolated clone.
+const BUILT_IN_SET: ReadonlySet<CompilerPlugin> = new Set(BUILT_IN_PLUGINS)
 
 const MODULE_ARRAYS = [
   'imports',
@@ -103,12 +107,12 @@ export function createCompiler<Target extends string = never>(
   if (!Array.isArray(discovered))
     throw new Error('[Pyreon] Native compiler discovered plugins must be an array.')
   for (const plugin of discovered) assertPluginShape(plugin)
-  const selection = selectDiscovered([chartsPlugin], explicit, discovered)
+  const selection = selectDiscovered(BUILT_IN_PLUGINS, explicit, discovered)
   const supplied = [...explicit, ...selection.kept]
-  const names = new Set<string>(selection.replaced.includes(chartsPlugin.name) ? [] : [chartsPlugin.name])
-  const plugins: CompilerPlugin[] = selection.replaced.includes(chartsPlugin.name)
-    ? []
-    : [chartsPlugin]
+  const plugins: CompilerPlugin[] = BUILT_IN_PLUGINS.filter(
+    (plugin) => !selection.replaced.includes(plugin.name),
+  )
+  const names = new Set<string>(plugins.map((plugin) => plugin.name))
   const backends = new Map<
     string,
     { owner: string; emit: CompilerBackend['emit']; custom: boolean }
@@ -177,94 +181,103 @@ export function createCompiler<Target extends string = never>(
       transformIR: plugin.transformIR,
       prepareIR: plugin.prepareIR,
       services: plugin.services,
+      elements: plugin.elements,
       modules: plugin.modules,
       requires: plugin.requires,
       builtIn: plugin.builtIn,
     })
   }
   // Load-time errors, before any source is compiled: a missing `requires`, a
-  // cycle, or two owners for one hook.
+  // cycle, or two owners for one hook or one `(module, tag)` pair.
   const ordered = orderPlugins(plugins)
-  const services = createServiceRegistry(ordered)
+  const registries = createRegistries(ordered)
+  const { services } = registries
   const targets = Object.freeze([...backends.keys()]) as readonly (TargetLanguage | Target)[]
 
   return Object.freeze({
     targets,
     services,
+    registries,
     transform(source: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
-      // Capture declared values once, including class/prototype getters.
-      const { target, filename, fonts } = options
-      const resolvedOptions = Object.freeze({
-        target,
-        ...(filename !== undefined ? { filename } : {}),
-        ...(fonts ? { fonts: Object.freeze({ ...fonts }) } : {}),
-      })
-      const backend = backends.get(resolvedOptions.target)
-      if (!backend) {
-        throw new Error(
-          `[Pyreon] Unknown native compiler target "${resolvedOptions.target}". Available targets: ${targets.join(', ')}. Register a backend plugin or choose an available target.`,
-        )
-      }
-      let module = parsePyreon(source, resolvedOptions.filename)
-      const warnings: string[] = []
-      const context = (owner: string): CompilerContext =>
-        Object.freeze({
-          source,
-          options: resolvedOptions,
-          services,
-          warn(message: string) {
-            if (typeof message !== 'string') throw new Error('[Pyreon] Warnings must be strings.')
-            warnings.push(`[Pyreon] ${owner}: ${message}`)
-          },
-        })
-      const runPasses = (phase: 'transformIR' | 'prepareIR') => {
-        for (const plugin of ordered) {
-          const pass: CompilerPass | undefined = plugin[phase]
-          if (!pass) continue
-          if (plugin === chartsPlugin) {
-            pass(module, context(`plugin "${plugin.name}"`))
-          } else {
-            module = invoke(`plugin "${plugin.name}"`, phase, () => {
-              const owned = structuredClone(module)
-              const result = pass(owned, context(`plugin "${plugin.name}"`))
-              assertSync(result)
-              const next = result === undefined ? owned : result
-              assertModule(next)
-              // A plugin may return cached/shared data. The emitter must not
-              // mutate it, nor retain it as the next compilation's input.
-              return structuredClone(next)
-            })
-          }
-        }
-      }
-      runPasses('transformIR')
-      // Runtime-provided external declarations don't alter module identity.
-      const suffix = resolvedOptions.filename === undefined ? '' : `_${moduleTag(module)}`
-      runPasses('prepareIR')
-      const emitted = withSynthStructSuffix(suffix, () =>
-        invoke(backend.owner, 'emit', () => {
-          const result = backend.emit(
-            backend.custom ? structuredClone(module) : module,
-            context(backend.owner),
-          )
-          assertSync(result)
-          if (
-            !result ||
-            typeof result.code !== 'string' ||
-            !Array.isArray(result.warnings) ||
-            result.warnings.some((warning) => typeof warning !== 'string')
-          ) {
-            throw new Error(
-              '[Pyreon] Return { code: string, warnings: string[] } from the backend.',
-            )
-          }
-          return result
-        }),
-      )
-      return {
-        code: emitted.code,
-        warnings: [...module.warnings, ...warnings, ...emitted.warnings],
-      }
+      // The parser and emitters read this instance's registries from the scoped
+      // slot; it is restored when the call ends, however it ends.
+      return withRegistries(registries, () => run(source, options))
     },
   })
+
+  function run(source: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
+    // Capture declared values once, including class/prototype getters.
+    const { target, filename, fonts } = options
+    const resolvedOptions = Object.freeze({
+      target,
+      ...(filename !== undefined ? { filename } : {}),
+      ...(fonts ? { fonts: Object.freeze({ ...fonts }) } : {}),
+    })
+    const backend = backends.get(resolvedOptions.target)
+    if (!backend) {
+      throw new Error(
+        `[Pyreon] Unknown native compiler target "${resolvedOptions.target}". Available targets: ${targets.join(', ')}. Register a backend plugin or choose an available target.`,
+      )
+    }
+    let module = parsePyreon(source, resolvedOptions.filename)
+    const warnings: string[] = []
+    const context = (owner: string): CompilerContext =>
+      Object.freeze({
+        source,
+        options: resolvedOptions,
+        services,
+        warn(message: string) {
+          if (typeof message !== 'string') throw new Error('[Pyreon] Warnings must be strings.')
+          warnings.push(`[Pyreon] ${owner}: ${message}`)
+        },
+      })
+    const runPasses = (phase: 'transformIR' | 'prepareIR') => {
+      for (const plugin of ordered) {
+        const pass: CompilerPass | undefined = plugin[phase]
+        if (!pass) continue
+        if (BUILT_IN_SET.has(plugin)) {
+          pass(module, context(`plugin "${plugin.name}"`))
+        } else {
+          module = invoke(`plugin "${plugin.name}"`, phase, () => {
+            const owned = structuredClone(module)
+            const result = pass(owned, context(`plugin "${plugin.name}"`))
+            assertSync(result)
+            const next = result === undefined ? owned : result
+            assertModule(next)
+            // A plugin may return cached/shared data. The emitter must not
+            // mutate it, nor retain it as the next compilation's input.
+            return structuredClone(next)
+          })
+        }
+      }
+    }
+    runPasses('transformIR')
+    // Runtime-provided external declarations don't alter module identity.
+    const suffix = resolvedOptions.filename === undefined ? '' : `_${moduleTag(module)}`
+    runPasses('prepareIR')
+    const emitted = withSynthStructSuffix(suffix, () =>
+      invoke(backend.owner, 'emit', () => {
+        const result = backend.emit(
+          backend.custom ? structuredClone(module) : module,
+          context(backend.owner),
+        )
+        assertSync(result)
+        if (
+          !result ||
+          typeof result.code !== 'string' ||
+          !Array.isArray(result.warnings) ||
+          result.warnings.some((warning) => typeof warning !== 'string')
+        ) {
+          throw new Error(
+            '[Pyreon] Return { code: string, warnings: string[] } from the backend.',
+          )
+        }
+        return result
+      }),
+    )
+    return {
+      code: emitted.code,
+      warnings: [...module.warnings, ...warnings, ...emitted.warnings],
+    }
+  }
 }

@@ -36,7 +36,7 @@
  * `useStream<T>`).
  */
 
-import type { DeclIR, TypeIR } from './types'
+import type { TypeIR } from './types'
 
 /**
  * A service container's `error` is an error OBJECT on both runtimes (`Error?`
@@ -409,54 +409,7 @@ export const SERVICES: readonly ServiceDescriptor[] = [
   },
 ]
 
-export const SERVICE_BY_HOOK: ReadonlyMap<string, ServiceDescriptor> = new Map(
-  SERVICES.map((s) => [s.hook, s]),
-)
-
-/** The descriptor for a `service` declaration; the parser only emits known hooks. */
-export function serviceFor(hook: string): ServiceDescriptor {
-  const s = SERVICE_BY_HOOK.get(hook)
-  if (s === undefined) {
-    throw new Error(
-      `[Pyreon] native service \`${hook}\` has no descriptor in services.ts — a \`service\` declaration must name a hook listed in SERVICES.`,
-    )
-  }
-  return s
-}
-
 /** Render a descriptor's Kotlin lines for a Kotlin identifier. */
 export function renderKotlinService(s: ServiceDescriptor, id: string): string {
   return s.kotlin.map((line) => line.replaceAll('{id}', () => id)).join('\n  ')
-}
-
-/** The lifecycle a `service` declaration needs started, if any. */
-export function serviceLifecycle(d: DeclIR): 'start' | 'start-stop' | undefined {
-  return d.kind === 'service' ? serviceFor(d.hook).lifecycle : undefined
-}
-
-/**
- * Binding name → descriptor for every `service` declaration of ONE component.
- * The emitters consult it at the read sites (accessor reads, `callRead`,
- * Kotlin `.value`). Built per component and reset with the rest of the
- * per-component state — never file-scoped, so a name bound to a service in one
- * component cannot rewrite a same-named value in the next.
- */
-export function bindServices(decls: readonly DeclIR[]): Map<string, ServiceDescriptor> {
-  const out = new Map<string, ServiceDescriptor>()
-  for (const d of decls) if (d.kind === 'service') out.set(d.name, serviceFor(d.hook))
-  return out
-}
-
-/**
- * `JSON.stringify` replacer for `moduleTag`: a `service` declaration hashes as
- * the pre-descriptor `{ kind, name }` it replaced (see `legacyKind`).
- */
-export function hashServiceDeclsAsLegacy(_key: string, value: unknown): unknown {
-  if (value !== null && typeof value === 'object') {
-    const v = value as { kind?: unknown; hook?: unknown; name?: unknown }
-    if (v.kind === 'service' && typeof v.hook === 'string') {
-      return { kind: serviceFor(v.hook).legacyKind, name: v.name }
-    }
-  }
-  return value
 }

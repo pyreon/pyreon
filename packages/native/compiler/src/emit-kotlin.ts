@@ -7,7 +7,8 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { kotlinStr } from './string-literals'
-import { bindServices, renderKotlinService, serviceFor, type ServiceDescriptor } from './services'
+import { bindServices, findElementLowering, serviceFor } from './registry-lookup'
+import { renderKotlinService, type ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -116,7 +117,6 @@ import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
 import { createEmitContext } from './emit-context'
-import { findElementLowering } from './element-lowering'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,

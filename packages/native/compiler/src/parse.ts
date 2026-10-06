@@ -8,8 +8,9 @@ import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
-import { SERVICES, SERVICE_BY_HOOK } from './services'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
+import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
+import { findService, isElementLoweringTag, serviceClaimsSource } from './registry-lookup'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -43,7 +44,6 @@ import type {
 import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
-import { isElementLoweringTag } from './element-lowering'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
 import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
@@ -410,7 +410,28 @@ const HTTP_NONLITERAL_BASEURL = '\0__pyreon_nonliteral_baseurl__'
  */
 let _objectLiteralDepth = 0
 
-export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
+/** Options for {@link parsePyreon}. */
+export interface ParseOptions {
+  /**
+   * The registries (service hooks, element lowerings) to parse against. When
+   * omitted the ACTIVE registries are used — those of the `createCompiler`
+   * transform in progress — else the built-in defaults.
+   */
+  readonly registries?: CompilerRegistries | undefined
+}
+
+export function parsePyreon(
+  source: string,
+  filename = 'input.tsx',
+  options: ParseOptions = {},
+): ParseResult {
+  const { registries } = options
+  return registries === undefined
+    ? parsePyreonWithPlain(source, filename)
+    : withRegistries(registries, () => parsePyreonWithPlain(source, filename))
+}
+
+function parsePyreonWithPlain(source: string, filename: string): ParseResult {
   // Plain-Mode shared source: run the SAME source-to-source pre-pass the web
   // compiler runs (`@pyreon/compiler/plain` — a light subpath: magic-string +
   // oxc-parser only), so PMTC parses the classic shapes it already
@@ -518,7 +539,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
-  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, NATIVE_LOWERED_HOOKS))
+  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), serviceClaimsSource))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
@@ -2787,9 +2808,7 @@ function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
  * if-chains below) is what makes the complement nameable. A drift test asserts
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
-export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
-  // Plain service containers — the hook list lives in services.ts (SERVICES).
-  ...SERVICES.map((s) => s.hook),
+const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useAuth', 'useColorMode', 'useColorScheme',
   'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
   'useHotkey', 'useLoaderData', 'useMap',
@@ -2814,6 +2833,27 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // component-unmount disposal emitted by both native frontends.
   'useFlow',
 ])
+
+// Derived once per registry (keyed on its service tables, so the entry dies with
+// the compiler instance that owns them).
+const LOWERED_HOOKS = new WeakMap<object, ReadonlySet<string>>()
+
+/**
+ * The hooks the parser lowers for `registries` (default: the active ones): the
+ * hand-written set above plus every registered service hook, so a plugin's
+ * service never trips the "no native lowering" warning.
+ */
+export function nativeLoweredHooks(
+  registries: CompilerRegistries = activeRegistries(),
+): ReadonlySet<string> {
+  const key = registries.serviceTables
+  let set = LOWERED_HOOKS.get(key)
+  if (set === undefined) {
+    set = new Set([...registries.serviceTables.hooks, ...NATIVE_LOWERED_STATIC_HOOKS])
+    LOWERED_HOOKS.set(key, set)
+  }
+  return set
+}
 
 /**
  * Control-flow components from `@pyreon/core` that do NOT lower to native.
@@ -3389,7 +3429,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       const imported = spec.imported?.name ?? spec.imported?.value
       if (typeof imported !== 'string') continue
       if (!/^use[A-Z]/.test(imported)) continue
-      if (NATIVE_LOWERED_HOOKS.has(imported)) continue
+      if (nativeLoweredHooks().has(imported)) continue
       if (seen.has(imported)) continue
       seen.add(imported)
       // Prefer the package's OWN advice when it has one. The generic tail
@@ -7651,7 +7691,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // alias).
   const DESTRUCTURE_CONTAINER_HOOKS = new Set([
     // Service descriptors that declare `destructure` (services.ts).
-    ...SERVICES.filter((x) => x.destructure === true).map((x) => x.hook),
+    ...activeRegistries().serviceTables.destructureHooks,
     'useFetch',
     'useQuery',
     'useForm',
@@ -8869,7 +8909,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `useCamera`) — no arguments, no reactive state; every call is a member
   // method that flows through unchanged. The whole lowering is the descriptor
   // in services.ts, rendered by both emitters from this one declaration.
-  const service = calleeName === undefined ? undefined : SERVICE_BY_HOOK.get(calleeName)
+  const service = calleeName === undefined ? undefined : findService(calleeName)
   if (service !== undefined) {
     return { kind: 'service', name, hook: service.hook }
   }
@@ -13431,7 +13471,7 @@ function warnIfHookInsideRenderCallback(
   // it should have been declared in the parent component.
   const HOOK_NAMES = new Set([
     // Every service descriptor (services.ts).
-    ...SERVICES.map((x) => x.hook),
+    ...activeRegistries().serviceTables.hooks,
     'signal',
     'computed',
     'useStorage',

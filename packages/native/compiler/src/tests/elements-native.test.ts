@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { isStyleBasePrimitive as isElementsPrimitive } from '../element-lowering'
+import { isStyleBasePrimitive as isElementsPrimitive } from '../registry-lookup'
 import { elementToStack } from '../plugins/elements'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
 

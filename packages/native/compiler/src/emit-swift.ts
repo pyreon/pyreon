@@ -11,7 +11,8 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
-import { bindServices, SERVICES, serviceFor, serviceLifecycle, type ServiceDescriptor } from './services'
+import { allServices, bindServices, findElementLowering, serviceFor, serviceLifecycle } from './registry-lookup'
+import type { ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -126,7 +127,6 @@ import { clampExpr, pureStateBindings } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { createEmitContext } from './emit-context'
-import { findElementLowering } from './element-lowering'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -3197,9 +3197,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (the crash reporter) have nothing to release. The set of services that
   // need this is DATA, so a new reactive container cannot ship frozen by
   // omission: `check-native-lifecycle-wiring` gates the registry against it.
-  // Emitted in SERVICES order (not declaration order), so a component with
+  // Emitted in service-registry order (not declaration order), so a component with
   // several keeps one stable modifier order.
-  for (const svc of SERVICES) {
+  for (const svc of allServices()) {
     if (svc.lifecycle === undefined) continue
     for (const d of c.decls) {
       if (d.kind !== 'service' || d.hook !== svc.hook) continue

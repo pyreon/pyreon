@@ -86,20 +86,29 @@ modules with a default plugin export; CLI target selection remains iOS/Android.
 
 ### Services, modules, requires (additive; API version stays 1)
 
-Four optional fields were added without a version bump, because additive
+Five optional fields were added without a version bump, because additive
 fields never break an older plugin:
 
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
   value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
-  initialiser and `kotlin` lines). `createCompiler` builds one registry from the
-  built-in `SERVICES` table plus every plugin's `services`; two owners for one
-  hook is a load-time error naming both, because silently picking one would
-  make the emit depend on plugin order. The registry is `compiler.services` and
-  `context.services`.
+  initialiser and `kotlin` lines). `createCompiler` builds one registry from every
+  plugin's `services` — the built-in table arrives as the built-in
+  `native-compiler` plugin, through the same path; two owners for one hook is a
+  load-time error naming both, because silently picking one would make the emit
+  depend on plugin order. The registry is `compiler.services` and
+  `context.services`, and it is the one the parser and both emitters read, so a
+  plugin's hook is lowered end to end (on both targets) when it is imported from
+  `@pyreon/*` or from one of the plugin's `modules`.
+- `elements` — JSX element lowerings (`{ module, tags, retag?, emit?: { swift?,
+  kotlin? }, styleBase? }`; `emit` functions receive the `EmitContext` facade).
+  A `(module, tag)` pair claimed by two owners is a load-time error naming both.
+  The built-in `@pyreon/elements` and `@pyreon/coolgrid` lowerings are `builtIn`
+  plugins registered the same way.
 - `requires` — plugin names that must be loaded. A missing one or a cycle is a
   load-time error naming the plugins; passes run in `requires` order (input
   order otherwise).
-- `modules` — import specifiers the plugin applies to. Metadata only: a
+- `modules` — import specifiers the plugin serves. A hook in `services` is also
+  claimed when imported from one of them (exact or `name/` prefix). A
   package-owned plugin is activated from the `pyreon.native.modules` manifest
   field, because deciding whether to load a module by asking the module defeats
   the laziness.
@@ -109,6 +118,12 @@ fields never break an older plugin:
   discovered one.
 
 `SUPPORTED_PLUGIN_API_VERSIONS` lists every version this compiler loads.
+
+Registries are instance-owned: each `createCompiler` builds its own
+(`compiler.registries`), so two compilers in one process never leak services or
+element lowerings into each other. While `transform` runs they are installed in a
+scoped slot the parser and emitters read, restored when the call ends even on a
+throw. `parsePyreon(source, filename, { registries })` takes them explicitly.
 
 ### Testing and verifying a plugin
 
