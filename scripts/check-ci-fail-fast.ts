@@ -96,6 +96,21 @@ export function findCiFailFastViolations(workflow: string, aggregateScript: stri
   if (aggregateBody === undefined || !aggregateBody.includes(aggregateNeeds)) {
     violations.push('Test aggregate must not occupy a runner while matrices execute')
   }
+  const jobCondition = (body: string | undefined) =>
+    /^ {4}if:\s*(.+)$/m
+      .exec(body ?? '')?.[1]
+      ?.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+      .trim()
+  if (jobCondition(aggregateBody) !== '!cancelled()') {
+    violations.push(
+      'Test aggregate must run after failed prerequisites and respect workflow cancellation',
+    )
+  }
+  if (
+    jobCondition(jobs.get('fast-gates')) !== "!cancelled() && needs.install.result == 'success'"
+  ) {
+    violations.push('Fast Gates must require Install success and respect workflow cancellation')
+  }
 
   const workflowFailFastMarkers = [
     'first failing category: $category',

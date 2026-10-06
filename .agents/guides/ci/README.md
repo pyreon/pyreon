@@ -16,6 +16,10 @@ Read before adding or changing a workflow, job, required check, or cache key.
   expensive runners idle until cheap deterministic checks prove the commit is
   worth testing.
 - Every gate step inside `Fast Gates` / `Build` runs with `if: ${{ !cancelled() }}`, so one push reports every red gate.
+- Job-level preflight and aggregate verdicts must also respect cancellation.
+  `Test` uses `!cancelled()` so failed prerequisites still produce a verdict,
+  while superseded PR runs release their concurrency slot. An `always()` job
+  can survive ordinary cancellation and leave the newest run pending.
 - Matrices and decide outputs are fail-closed. A detection error runs the full set, because a skipped required check reports success to branch protection.
 - Expensive matrices use `fail-fast: true`, and sequential batches stop on the
   first real failure. Preserve diagnostics/upload/cache steps with

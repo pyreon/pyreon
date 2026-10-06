@@ -30,9 +30,11 @@ ${name.includes('cell') || name === 'e2e-suite' ? '    strategy:\n      fail-fas
 }`,
   )
   .join('\n')}
+  fast-gates:
+${overrides['fast-gates'] ?? "    needs: install\n    if: !cancelled() && needs.install.result == 'success'\n"}
   test:
     needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
-    if: always()
+    if: !cancelled()
   contract-markers:
     first failing category: $category
     e2e suite failed::$suite
@@ -146,6 +148,34 @@ describe('findCiFailFastViolations', () => {
 
   it('accepts the staged fail-fast contract', () => {
     expect(findCiFailFastViolations(workflow(), aggregate)).toEqual([])
+  })
+
+  it('accepts cancellation-aware verdicts in the real workflow', () => {
+    const ci = readFileSync(
+      new URL('../../../../../.github/workflows/ci.yml', import.meta.url),
+      'utf8',
+    )
+    expect(findCiFailFastViolations(ci, aggregate)).toEqual([])
+  })
+
+  it('rejects a final verdict that survives cancellation or skips failed prerequisites', () => {
+    for (const condition of ['always()', 'success()', '!cancelled() && success()']) {
+      const bad = workflow().replace('if: !cancelled()\n', `if: ${condition}\n`)
+      expect(findCiFailFastViolations(bad, aggregate)).toContain(
+        'Test aggregate must run after failed prerequisites and respect workflow cancellation',
+      )
+    }
+  })
+
+  it('rejects preflight that survives cancellation after Install succeeds', () => {
+    const bad = workflow({
+      'fast-gates': `    needs: install
+    if: always() && needs.install.result == 'success'
+`,
+    })
+    expect(findCiFailFastViolations(bad, aggregate)).toContain(
+      'Fast Gates must require Install success and respect workflow cancellation',
+    )
   })
 
   it('rejects an expensive job that bypasses preflight', () => {
