@@ -101,11 +101,19 @@ export function isFrameworkType(name: string): boolean {
   )
 }
 
-// `services.ts` is an emit source too: the service descriptors carry the
-// `Pyreon*` constructor calls (`swift: 'PyreonClipboard()'`) that used to be
-// written in the emitters. Leaving it out silently shrinks this scan as hooks
-// move onto descriptors — the blind spot this ratchet exists to prevent.
-const emitSources = ['emit-swift.ts', 'emit-kotlin.ts', 'services.ts'].map((f) =>
+// The service descriptors are emit sources too: they carry the `Pyreon*`
+// constructor calls (`swift: 'PyreonClipboard()'`) that used to be written in
+// the emitters. `services.ts` holds the compiler's own; the hooks' descriptors
+// now live in `@pyreon/hooks` and reach the compiler as the generated
+// `built-in-services.generated.ts`. Leaving either out silently shrinks this
+// scan as hooks move onto descriptors — the blind spot this ratchet exists to
+// prevent.
+const emitSources = [
+  'emit-swift.ts',
+  'emit-kotlin.ts',
+  'services.ts',
+  'built-in-services.generated.ts',
+].map((f) =>
   readFileSync(join(COMPILER_SRC, f), 'utf8'),
 )
 const swiftStubs = readFileSync(join(COMPILER_SRC, 'swift-stubs.ts'), 'utf8')
