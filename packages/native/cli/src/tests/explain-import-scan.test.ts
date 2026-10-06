@@ -47,6 +47,24 @@ export function Example() { return <Container>x</Container> }`
   })
 })
 
+describe('explain — import statement shapes the reader must tolerate', () => {
+  const TAIL = `\nexport function E() { return <Text>x</Text> }`
+  // Inside a comment so the file stays valid source: the reader scans raw text.
+  it.each([
+    ['an inline type modifier and a rename', `import { type Bar, Baz as Qux, Plain } from "@pyreon/coolgrid"`],
+    ['a type-only import', `import type { Foo } from '@pyreon/coolgrid'`],
+    ['a specifier that is not quoted', `import { A } from notquoted`],
+    ['a missing closing quote', `import { A } from '@pyreon/coolgrid`],
+    ['a specifier broken across lines', `import { A } from '@pyreon/\ncoolgrid'`],
+    ['an empty specifier', `import { A } from ''`],
+    ['empty braces', `import {} from 'x'`],
+    ['a trailing comma and blanks', `import { A, , B, } from 'x'`],
+    ['the word import with nothing after it', `import`],
+  ])('%s', (_name, fragment) => {
+    expect(explain(`/* ${fragment} */${TAIL}`).exitCode).toBe(0)
+  })
+})
+
 describe('explain — import scanning stays linear on hostile input', () => {
   // The quadratic form needs tens of seconds at this size; the linear scanner
   // needs milliseconds. The bound is loose (a loaded runner is ~10x slower than
