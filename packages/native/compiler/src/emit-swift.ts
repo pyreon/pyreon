@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
+import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
 import { serviceFor } from './services'
 import {
@@ -9377,7 +9378,16 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // @pyreon/elements `<Element>` → the canonical `<Stack>` (direction/alignX/
   // alignY translated), then re-enter dispatch. This is what makes the whole
   // ui-system (the 67 ui-components = rocketstyle over Element) lower.
-  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) return emitSwiftJsx(elementToStack(e), indent)
+  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) {
+    // Name a dropped JSX slot (`beforeContent={<…/>}`) against the tag the author WROTE,
+    // then strip it so the lowered `<Stack>` does not warn a second time under another name.
+    for (const a of e.attrs) {
+      const w = unconsumedSlotWarning('Element', a)
+      if (w !== undefined) pushEmitWarning(w)
+    }
+    const stack = elementToStack(e)
+    return emitSwiftJsx({ ...stack, attrs: stack.attrs.filter((a: AttrIR) => unconsumedSlotWarning('Stack', a) === undefined) }, indent)
+  }
 
   // @pyreon/ui-core `<PyreonUI>` (+ its provider alias) is a TRANSPARENT wrapper
   // on native: the theme is compile-time-resolved (theme-native parses the
@@ -9513,6 +9523,14 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     _emitWarnings.push(
       `<${tag} {...}> spread is not lowered to native — its props are DROPPED (a runtime prop-bag can't apply to a static SwiftUI view). Pass props explicitly, e.g. <${tag} gap="md" padding={4}>.`,
     )
+  }
+
+  // A JSX-valued attribute no emitter reads would vanish silently — name it.
+  if (!isUserComponentTagSwift(tag)) {
+    for (const a of e.attrs) {
+      const w = unconsumedSlotWarning(tag, a)
+      if (w !== undefined) pushEmitWarning(w)
+    }
   }
 
   if (tag === 'For') return emitSwiftFor(e, indent)
@@ -10668,6 +10686,16 @@ function forRowBodySwift(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR
   return emitSwiftViewBlock(block, indent + 2).join('\n').trimStart()
 }
 
+/** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
+function pushEmitWarning(w: string): void {
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+/** A tag the user (or a styled/rocketstyle/attrs factory) defined — its view-typed props lower as slot parameters. */
+function isUserComponentTagSwift(tag: string): boolean {
+  return _componentNames.has(tag) || _styledComponents.has(tag) || _rocketstyleComponents.has(tag) || _attrsComponents.has(tag)
+}
+
 function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // <Show when={visible}>{children}</Show> → if visible { ...children... }
   const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
@@ -10681,6 +10709,16 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const cond = whenExpr ? swiftCondition(whenExpr, emitSwiftSignalRead) : 'true'
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  // `fallback` → the `else` branch. Reading it here (not just `when`) is the
+  // whole fix: the attr used to vanish with no diagnostic. The condition is the
+  // same expression, so the fallback toggles with the signal exactly as the
+  // children do.
+  const fb = classifyFallback('Show', e.attrs)
+  if (fb.kind === 'unsupported') pushEmitWarning(fb.warning)
+  if (fb.kind === 'view') {
+    const fbBody = fb.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+    return `if ${cond} {\n${body}\n${' '.repeat(indent)}} else {\n${fbBody}\n${' '.repeat(indent)}}`
+  }
   return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
 }
 
@@ -10749,14 +10787,16 @@ function emitSwiftSuspense(
     // No fallback → fall back to walled emit (children-only render).
     return emitSwiftWalledTagAsChildren(e, indent, 'Suspense')
   }
-  const fallbackExpr = fallbackAttr.value
-  if (fallbackExpr.kind !== 'jsx-element') {
-    // Non-JSX fallback (signal accessor, computed value) — v1 deferred.
-    _emitWarnings.push(
-      '<Suspense fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
-    )
+  const fbPlan = classifyFallback('Suspense', e.attrs)
+  if (fbPlan.kind !== 'view') {
+    if (fbPlan.kind === 'unsupported') {
+      _emitWarnings.push(
+        '<Suspense fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
+      )
+    }
     return emitSwiftWalledTagAsChildren(e, indent, 'Suspense')
   }
+  const fallbackChildren = fbPlan.children
   // Real semantics (Phase 2), emitted INLINE — NOT via a child wrapper
   // struct. The fallback shows while ANY useFetch container in the
   // component is pending. Critically the `isLoading` condition is read
@@ -10771,8 +10811,9 @@ function emitSwiftSuspense(
   const childrenBody = e.children
     .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
     .join('\n')
-  const fallbackBody =
-    inner + '    ' + emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 6)
+  const fallbackBody = fallbackChildren
+    .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
+    .join('\n')
   const fetches = [..._fetchNamesSwift]
   const isLoading =
     fetches.length > 0
@@ -10831,13 +10872,16 @@ function emitSwiftErrorBoundary(
   if (!fallbackAttr) {
     return emitSwiftWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
-  const fallbackExpr = fallbackAttr.value
-  if (fallbackExpr.kind !== 'jsx-element') {
-    _emitWarnings.push(
-      '<ErrorBoundary fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
-    )
+  const fbPlan = classifyFallback('ErrorBoundary', e.attrs)
+  if (fbPlan.kind !== 'view') {
+    if (fbPlan.kind === 'unsupported') {
+      _emitWarnings.push(
+        '<ErrorBoundary fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
+      )
+    }
     return emitSwiftWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
+  const fallbackChildren = fbPlan.children
   const inner = ' '.repeat(indent + 2)
   const p = ' '.repeat(indent)
   const fetches = [..._fetchNamesSwift]
@@ -10850,8 +10894,9 @@ function emitSwiftErrorBoundary(
   const childrenBody = e.children
     .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
     .join('\n')
-  const fallbackBody =
-    inner + '    ' + emitSwiftChild({ kind: 'expr', expr: fallbackExpr }, indent + 6)
+  const fallbackBody = fallbackChildren
+    .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
+    .join('\n')
   return (
     `Group {\n` +
     `${inner}  if ${hasError} {\n` +
