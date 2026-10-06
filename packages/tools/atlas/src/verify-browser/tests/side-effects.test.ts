@@ -35,7 +35,7 @@ async function chromiumAvailable(): Promise<boolean> {
 const HAS_CHROMIUM = await chromiumAvailable()
 if (!HAS_CHROMIUM) {
   console.warn(
-    '[atlas] side-effects.test.ts: real-Chromium specs SKIPPED — Chromium is not installed (bunx playwright-core install chromium)',
+    '[atlas] side-effects.test.ts: real-Chromium specs SKIPPED — Chromium is not installed (bunx playwright-core install chromium). CI runs them in the atlas-verify-browser e2e suite, which sets PYREON_REQUIRE_CHROMIUM=1.',
   )
 }
 
@@ -56,8 +56,16 @@ describe('verify-browser interaction guard (pure)', () => {
 })
 
 describe('verify-browser side effects (real Chromium)', () => {
-  it('has Chromium in CI', () => {
-    if (process.env.CI) expect(HAS_CHROMIUM, 'Chromium must be installed in CI').toBe(true)
+  // A skipped real-browser spec must never masquerade as coverage — but only a
+  // job that PROVISIONS Chromium can be held to it. The unit-test cells do not
+  // install a browser (and should not pay for one), so a blanket `process.env.CI`
+  // assertion fails there by construction. The `atlas-verify-browser` e2e suite
+  // does install Chromium and runs this file with PYREON_REQUIRE_CHROMIUM=1
+  // (see `test:e2e:atlas-verify`), which is where the guarantee is enforced.
+  it('has Chromium wherever the job says it provisions one', () => {
+    if (process.env.PYREON_REQUIRE_CHROMIUM) {
+      expect(HAS_CHROMIUM, 'Chromium must be installed in this job').toBe(true)
+    }
   })
 
   const work = HAS_CHROMIUM ? mkdtempSync(join(FIXTURE, '..', 'run-')) : ''
