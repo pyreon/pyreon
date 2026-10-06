@@ -25,9 +25,19 @@ describe('plugin boundary', () => {
     expect(files).toEqual(expect.arrayContaining(['coolgrid.ts', 'elements.ts']))
   })
 
-  it('reaches into plugin subdirectories — the Swift chart emitters are scanned too', () => {
+  it('reaches into plugin subdirectories — the Swift and Kotlin chart emitters are scanned too', () => {
     expect(files).toEqual(
-      expect.arrayContaining(['charts/swift-hosts.ts', 'charts/swift-plot.ts', 'charts/swift-support.ts', 'charts/swift-facade.ts']),
+      expect.arrayContaining([
+        'charts/swift-hosts.ts',
+        'charts/swift-plot.ts',
+        'charts/swift-support.ts',
+        'charts/swift-facade.ts',
+        'charts/kotlin-hosts.ts',
+        'charts/kotlin-plot.ts',
+        'charts/kotlin-support.ts',
+        'charts/kotlin-facade.ts',
+        'charts/facade.ts',
+      ]),
     )
   })
 
