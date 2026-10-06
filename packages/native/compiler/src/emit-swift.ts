@@ -75,7 +75,7 @@ import {
   classifySortableRef,
   exprHasOptionalLink,
   exprReferencesIdent,
-  structShapeKey,
+  structShapeKey as rawStructShapeKey,
   literalShapeKey,
   resolveForElementKey,
   forMissingByWarning,
@@ -433,6 +433,14 @@ let _structTypedKeyToName: Map<string, string> = new Map()
 /** The DECLARED structs for this emit, kept for `subsetStructName` — the exact
  *  field-set index above cannot see a literal that omits an optional field. */
 let _declaredStructs: readonly StructIR[] = []
+
+/**
+ * Shape key with declared-struct references EXPANDED (see `typeShapeKey`), so an
+ * inline `{ data: { id } }` and the lifted struct that stands for it key alike.
+ */
+function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
+  return rawStructShapeKey(fields, (n) => _declaredStructs.find((s) => s.name === n)?.fields)
+}
 /**
  * Synthesized structs for ANONYMOUS all-scalar-literal object EXPRESSIONS
  * (`{ id: 1, name: 'a' }`) that match no declared struct. Without this they
