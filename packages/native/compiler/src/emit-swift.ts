@@ -1971,7 +1971,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // A plugin declaration that reads the active router's query (`useUrlState`) needs the View's router injection,
     // and a CALLABLE one keeps its parens (`q()` through callAsFunction — unlike useParams, which returns a dictionary).
     if (pluginDeclUsesRouter(d)) _usesRouter = true
-    if (pluginDeclIsCallable(d)) _functionNames.add(d.name)
+    if (d.kind === 'ext' && pluginDeclIsCallable(d)) _functionNames.add(d.name)
     // Phase 4 follow-up: useColorScheme reads SwiftUI's
     // @Environment(\.colorScheme), so the View needs the injection.
     if (d.kind === 'color-scheme') _usesColorScheme = true
@@ -6655,8 +6655,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`
       return `Set<${swiftType(e.elementType!)}>()`
     }
-    case 'rx-call':
-      return emitSwiftRxCall(e, indent)
     case 'jsx-element':
       return emitSwiftJsx(e, indent)
     case 'jsx-fragment': {
@@ -11292,113 +11290,6 @@ function escapeSwiftStringSegment(s: string): string {
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')
-}
-
-/**
- * Lower a `kind: 'rx-call'` ExprIR to Swift. Dispatches on `method` to
- * produce idiomatic Swift code on `Array<T>`. Mirrors emitKotlinRxCall
- * in shape; the per-method lowerings are documented in
- * docs/src/content/docs/multiplatform-libraries.md (Strategy A table).
- *
- * Predicate / mapper / reducer args are inlined as Swift closures
- * (`{ t in body }`); count args inline as Swift Int literals.
- */
-function emitSwiftRxCall(
-  e: { method: string; source: ExprIR; args: ExprIR[] },
-  indent: number,
-): string {
-  const src = emitSwiftExpr(e.source, indent)
-  const arg = (i: number): string =>
-    e.args[i] === undefined ? '' : emitSwiftExpr(e.args[i] as ExprIR, indent)
-  switch (e.method) {
-    // Transforms returning a new collection — first six match the JS
-    // method names on Swift `Array<T>`.
-    case 'filter':
-      return `${src}.filter(${arg(0)})`
-    case 'map':
-      return `${src}.map(${arg(0)})`
-    case 'reverse':
-      return `${src}.reversed()`
-    case 'compact':
-      // JS rx.compact drops null/undefined; Swift Array<T?> uses
-      // compactMap which unwraps and drops nil.
-      return `${src}.compactMap { $0 }`
-    case 'flatten':
-      // Swift's joined() returns a FlattenSequence; Array(...) makes it
-      // a concrete Array<T> matching consumer expectations.
-      return `Array(${src}.joined())`
-    case 'unique':
-      // Order-preserving, because that is what rx does. The previous emit
-      // was `Array(Set(_:))`, whose comment claimed it matched rx's "set of
-      // unique values" semantic — measured, rx returns FIRST-occurrence
-      // order ([3,1,2,3,4] → [3,1,2,4]), and Kotlin's `distinct()` preserves
-      // it too. So Swift was the only one of the three that did not, and a
-      // `<For>` over unique(...) rendered in an arbitrary order on iOS and a
-      // stable one everywhere else.
-      //
-      // `reduce(into:)` is O(n²) against Set's O(n), which is the right
-      // trade for a UI list: the alternative is the wrong answer. It also
-      // needs only Equatable, where Set needed Hashable — strictly more
-      // permissive.
-      // `reduce(into: [])` would be the obvious spelling and does NOT
-      // typecheck — the empty seed leaves the accumulator ambiguous, so
-      // `contains` resolves to `contains(where:)` and swiftc asks for the
-      // missing label. This form needs no seed annotation.
-      //
-      // It reads `src` twice. That is safe here because a source is a pure
-      // computed-property read, and unique is O(n²) either way; the
-      // alternative was the wrong ORDER, which is not a trade.
-      return `${src}.enumerated().filter { ${src}.firstIndex(of: $0.element) == $0.offset }.map { $0.element }`
-    // Bounded transforms — take / skip + their while variants. Swift's
-    // `.prefix(_:)` and `.dropFirst(_:)` return ArraySlice; Array(...)
-    // promotes to a concrete Array<T>.
-    case 'take':
-      return `Array(${src}.prefix(${arg(0)}))`
-    case 'skip':
-      return `Array(${src}.dropFirst(${arg(0)}))`
-    case 'takeWhile':
-      return `Array(${src}.prefix(while: ${arg(0)}))`
-    case 'dropWhile':
-      return `Array(${src}.drop(while: ${arg(0)}))`
-    // Scalar accessors — first/last as properties (Optional<T>),
-    // find/some/every as predicate-returning methods.
-    case 'first':
-      return `${src}.first`
-    case 'last':
-      return `${src}.last`
-    case 'find':
-      return `${src}.first(where: ${arg(0)})`
-    case 'some':
-      return `${src}.contains(where: ${arg(0)})`
-    case 'every':
-      return `${src}.allSatisfy(${arg(0)})`
-    // Aggregations — count/sum/min/max + the reduce + average combos.
-    case 'count':
-      return `${src}.count`
-    case 'sum':
-      // Swift Array<Numeric> has reduce(_:_:) but no direct .sum() —
-      // reduce(0, +) is the idiomatic shape.
-      return `${src}.reduce(0, +)`
-    case 'min':
-      return `${src}.min()`
-    case 'max':
-      return `${src}.max()`
-    case 'reduce':
-      // rx.reduce(s, reducer, initial) ≈ Swift reduce(initial, reducer).
-      // Arg 0 = reducer fn, Arg 1 = initial. JS argument order is
-      // (reducer, initial); Swift's is (initial, reducer) — we flip.
-      return `${src}.reduce(${arg(1)}, ${arg(0)})`
-    case 'average': {
-      // Multi-statement Swift closure: bind reduce sum, branch on
-      // empty, divide. IIFE for expression-position usage.
-      return `({ let __xs = ${src}; return __xs.isEmpty ? 0 : Double(__xs.reduce(0, +)) / Double(__xs.count) }())`
-    }
-    default:
-      // Defensive — parse.ts's RX_V1_METHODS set is the authoritative
-      // gate, but if a method slips through we emit a noisy `?rx.X?`
-      // marker so missing dispatch is obvious in failed swiftc output.
-      return `/* unsupported rx.${e.method} */ ${src}`
-  }
 }
 
 /**

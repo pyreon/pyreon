@@ -541,8 +541,13 @@ export function pluginNeedsStableHost(d: DeclIR): boolean {
 }
 
 /** The type of an `ext-expr` node, by its owner's typing (`unknown` without one). */
-export function pluginExprType(e: ExtExprIR): TypeIR | undefined {
-  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.type?.(e)
+export function pluginExprType(e: ExtExprIR, infer: (e: ExprIR) => TypeIR): TypeIR | undefined {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.type?.(e, infer)
+}
+
+/** The reduction an `ext-expr` is (source, reducer, seed), by its owner's account, or `undefined`. */
+export function pluginExprReduce(e: ExtExprIR): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.reduce?.(e)
 }
 
 /** Whether a file-scope `const` holding this `ext-expr` is typed by the node's own type for later reads (default true). */

@@ -2,7 +2,6 @@
   "native-compiler": {
     "packages": {
       "@pyreon/feature": 1,
-      "@pyreon/rx": 2,
       "@pyreon/state-tree": 1,
       "@pyreon/store": 1,
       "@pyreon/ui-core": 2

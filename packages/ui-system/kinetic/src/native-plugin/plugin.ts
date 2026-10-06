@@ -20,7 +20,7 @@ import {
   topLevelDeclarators,
   type CompilerPlugin,
   type DeclIR,
-  type JsxElementIR,
+  type JsxElementRewrite,
   type ModuleScanner,
 } from '@pyreon/native-compiler/plugin-api'
 
@@ -219,7 +219,7 @@ export const kineticPlugin: CompilerPlugin = Object.freeze({
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
   modules: Object.freeze([KINETIC_PLUGIN_NAME, PRESETS_MODULE]),
   scanModule: scanKinetic,
-  rewriteElement(el: JsxElementIR, ctx) {
+  rewriteElement: ((el, ctx) => {
     const state = stateOf(ctx.fileState)
     if (!state.factories.has(el.tag)) return undefined
     const preset = state.factories.get(el.tag)
@@ -242,5 +242,5 @@ export const kineticPlugin: CompilerPlugin = Object.freeze({
       ],
       children: el.children,
     }
-  },
+  }) satisfies JsxElementRewrite,
 })

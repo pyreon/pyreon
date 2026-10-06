@@ -983,19 +983,6 @@ export type ExprIR =
       stmts?: StatementIR[]
       async?: boolean
     }
-  /**
-   * RX-2 — `@pyreon/rx` namespace call. Produced by parse.ts'
-   * `tryRxNamespaceLowering` when it encounters `rx.METHOD(signal, ...)`.
-   * Each emitter handles the dispatch per-target since Swift `[T]` and
-   * Kotlin `List<T>` have divergent method names for many operations
-   * (`rx.count` → Swift `.count` / Kotlin `.size`, `rx.take` → Swift
-   * `Array(s.prefix(n))` / Kotlin `s.take(n)`, etc.).
-   *
-   * `source` is the signal/collection source (typically a call
-   * expression `signalName()` representing a signal read), `args` are
-   * the remaining arguments after the source.
-   */
-  | { kind: 'rx-call'; method: string; source: ExprIR; args: ExprIR[] }
   | { kind: 'jsx-element'; tag: string; attrs: AttrIR[]; children: ChildIR[] }
   | { kind: 'jsx-fragment'; children: ChildIR[] }
   | { kind: 'array'; elements: ExprIR[]; elementType?: TypeIR }

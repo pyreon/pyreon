@@ -42,8 +42,8 @@ export function forEachExpr(e: ExprIR, visit: (n: ExprIR) => void): void {
     case 'arrow':
       forEachExpr(e.body, visit)
       return
-    case 'rx-call':
-      forEachExpr(e.source, visit)
+    // A plugin's own expression: its argument slots are ordinary expressions (a reducer's arrow, a source read).
+    case 'ext-expr':
       for (const a of e.args) forEachExpr(a, visit)
       return
     case 'jsx-element':

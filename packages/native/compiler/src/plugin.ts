@@ -1,5 +1,5 @@
 import type { CompilerRegistries } from './active-registries'
-import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
+import type { CallRecognizer, DeclCallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
 import type {
   EmitPreparation,
@@ -127,6 +127,11 @@ export interface CompilerPlugin<Target extends string = string> {
    * name is a load-time error. Pair it with `decls`.
    */
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  /**
+   * A declaration recognizer keyed by the SHAPE of the callee, not a name (see `DeclCallRecognizer`): `const active = rx.filter(todos, p)`
+   * where `rx` / `filter` are whatever this file imported. Pair it with `exprs` (a `computed` verdict) or `decls`.
+   */
+  readonly declCalls?: DeclCallRecognizer | undefined
   /**
    * How this plugin's declarations render on each target, keyed by the
    * declaration `type` a `calls` recognizer returns. The emitter receives the

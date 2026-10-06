@@ -21,6 +21,7 @@
  */
 
 import type { EmitContext } from './emit-context'
+import type { ExtExprSpec } from './module-items'
 import type { RequestOptions, ResolvedRequest } from './module-scan'
 import type { ExprIR, ExtDecl, ExtPayload, StatementIR, TypeIR } from './types'
 
@@ -133,12 +134,39 @@ export interface SignalDeclSpec {
 }
 
 /**
+ * A recognizer's verdict for a call that is a plain COMPUTED: the core declares it (a `computed` read like any other — no
+ * parentheses, typed from the expression) around the plugin's own expression, which its `exprs` emitter renders and types.
+ */
+export interface ComputedDeclSpec {
+  readonly computed: ExtExprSpec
+}
+
+/** Every verdict a declaration recognizer may give, besides declining (`undefined`) or claiming without declaring (`null`). */
+export type DeclVerdict = ExtDeclSpec | SignalDeclSpec | ComputedDeclSpec
+
+/**
  * Returns the declaration, `undefined` to DECLINE (the parser falls through to the rest of its chain, as if
  * the plugin were absent), or `null` to CLAIM the call without declaring anything: the recognizer reported why
  * the call cannot lower, and the binding must not fall through to a generic emit that would reference a symbol
  * neither target has.
  */
-export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | SignalDeclSpec | undefined | null
+export type CallRecognizer = (call: CallSite, ctx: ParseContext) => DeclVerdict | undefined | null
+
+/** The call a {@link DeclCallRecognizer} is asked about: the right-hand side of a `const x = <call>` declaration. */
+export interface DeclCallSite {
+  /** The callee as written (`rx.filter`, `keep`): the recognizer matches it against what its scan recorded. */
+  readonly callee: AstNode
+  readonly args: readonly AstNode[]
+}
+
+/**
+ * Recognize a declaration by the SHAPE of its callee rather than a hook name — for a call whose callee is whatever local name
+ * the file imported it as (`const active = rx.filter(todos, p)`, `const b = keep(todos, p)`), which no registry can key by
+ * name without claiming every `filter` in the app. Verdicts as {@link CallRecognizer}; `undefined` declines and the parser
+ * continues down its chain, `null` claims the declaration without declaring anything. Called for every call declaration once a
+ * plugin registers one, so the first check must be cheap.
+ */
+export type DeclCallRecognizer = (site: DeclCallSite, ctx: ParseContext) => DeclVerdict | undefined | null
 
 /** Renders one declaration type on each target. */
 /**
@@ -292,6 +320,8 @@ export interface CallRegistry {
   readonly calls: ReadonlyMap<string, RegisteredCall>
   /** Every claimed hook name. */
   readonly names: ReadonlySet<string>
+  /** Declaration recognizers keyed by callee shape, in plugin order. */
+  readonly declCalls: readonly { readonly owner: string; readonly recognize: DeclCallRecognizer }[]
   /** Plugin name → declaration type → emitter. */
   readonly emitters: ReadonlyMap<string, ReadonlyMap<string, DeclEmitter>>
   /** The emitter for `(plugin, type)`, or `undefined`. */
@@ -304,6 +334,7 @@ type CallPlugin = {
   readonly name: string
   readonly modules?: readonly string[] | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  readonly declCalls?: DeclCallRecognizer | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
   readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
 }
@@ -322,7 +353,9 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   const calls = new Map<string, RegisteredCall>()
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
   const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
+  const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
   for (const plugin of plugins) {
+    if (plugin.declCalls !== undefined) declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
     // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
     // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
     for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
@@ -351,6 +384,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   return Object.freeze<CallRegistry>({
     calls,
     names: new Set(calls.keys()),
+    declCalls: Object.freeze(declCalls),
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),
     memberCalls,

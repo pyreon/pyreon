@@ -39,6 +39,10 @@ export type {
 export type {
   AstNode,
   CallRecognizer,
+  ComputedDeclSpec,
+  DeclCallRecognizer,
+  DeclCallSite,
+  DeclVerdict,
   SignalDeclSpec,
   SignalSpec,
   CallSite,

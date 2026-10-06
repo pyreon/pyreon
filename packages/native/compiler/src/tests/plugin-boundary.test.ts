@@ -46,6 +46,7 @@ describe.each([
   ['@pyreon/url-state', 'fundamentals/url-state', ['plugin.ts']],
   ['@pyreon/storage', 'fundamentals/storage', ['plugin.ts', 'stubs.ts']],
   ['@pyreon/sized-map', 'core/sized-map', ['plugin.ts', 'stubs.ts']],
+  ['@pyreon/rx', 'fundamentals/rx', ['plugin.ts']],
   ['@pyreon/kinetic', 'ui-system/kinetic', ['plugin.ts']],
   ['@pyreon/elements', 'ui-system/elements', ['plugin.ts']],
   ['@pyreon/coolgrid', 'ui-system/coolgrid', ['plugin.ts']],

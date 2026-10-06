@@ -1530,7 +1530,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     // A plugin's own expression: typed by its owner (`ExprEmitter.typing.type`), `unknown` without one.
     case 'ext-expr':
-      return pluginExprType(expr) ?? { kind: 'unknown' }
+      return pluginExprType(expr, (e) => inferType(e, ctx)) ?? { kind: 'unknown' }
     case 'new-collection': {
       if (expr.collection === 'map') {
         return { kind: 'map', key: expr.keyType!, value: expr.valueType! }
@@ -2318,63 +2318,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // Bare spread outside a context — degrade. The array case
       // handles the common path.
       return { kind: 'unknown' }
-    case 'rx-call': {
-      // RX-2 — type-infer `rx.METHOD(...)` results so the emitted
-      // computed properties get useful Swift return-type annotations.
-      // Mirrors the per-method dispatch in emit-{swift,kotlin}.ts.
-      const sourceType = inferType(expr.source, ctx)
-      const elementType: TypeIR =
-        sourceType.kind === 'array' ? sourceType.element : { kind: 'unknown' }
-      switch (expr.method) {
-        // Transforms preserving the source's element type → Array<T>.
-        case 'filter':
-        case 'reverse':
-        case 'take':
-        case 'skip':
-        case 'takeWhile':
-        case 'dropWhile':
-          return { kind: 'array', element: elementType }
-        // map / compact / flatten — element type would need arrow body
-        // typeflow (map) or per-method semantics (compact strips null,
-        // flatten unwraps a level). Degrade to Array<unknown> — Swift
-        // will still typecheck via the per-call closure inference.
-        case 'map':
-        case 'compact':
-        case 'flatten':
-        case 'unique':
-          return { kind: 'array', element: { kind: 'unknown' } }
-        // Scalar accessors — Swift `.first`/`.last`/`.first(where:)` and Kotlin
-        // `.first`/`.last`/`.find` ALL return Optional<T> (nil on empty), and JS
-        // `rx.first(arr)` returns `T | undefined`. The computed MUST be annotated
-        // `T?` — returning the bare element type emitted `var x: T { arr.first }`,
-        // which does NOT typecheck (`T?` → `T`, "cannot convert"). Mirrors the
-        // `.find` ARRAY-method case above; the nullable union maps to `T?` / `T?`
-        // via swiftUnionType / kotlinUnionType.
-        case 'first':
-        case 'last':
-        case 'find':
-          return { kind: 'union', branches: [elementType, { kind: 'undefined' }] }
-        // Boolean predicates.
-        case 'some':
-        case 'every':
-          return { kind: 'boolean' }
-        // min / max return Optional (nil on an EMPTY array — same contextual-
-        // typing bug as first/last). count / sum / average / reduce always
-        // produce a value (reduce has a seed), so they stay a bare number.
-        case 'min':
-        case 'max':
-          return { kind: 'union', branches: [{ kind: 'number' }, { kind: 'undefined' }] }
-        // average = sum / count → always Double (the emit computes
-        // `Double(sum) / Double(count)`), so annotate the computed Double, not Int.
-        case 'average':
-          return { kind: 'number', float: true }
-        case 'count':
-        case 'sum':
-        case 'reduce':
-          return { kind: 'number' }
-      }
-      return { kind: 'unknown' }
-    }
     case 'arrow':
     case 'jsx-element':
     case 'jsx-fragment':

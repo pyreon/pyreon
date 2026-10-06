@@ -14,9 +14,9 @@ import {
   dynamicKeyText,
   unwrapTypeLayers,
 } from './plugin-ast'
-import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
+import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
-import { stampExtDecl, type AstNode, type ExtDeclSpec, type ParseContext, type SignalDeclSpec } from './call-lowering'
+import { stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
 import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { JsxRewriteContext, ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
@@ -159,16 +159,6 @@ interface ParseCtx {
    */
   componentDeclRequests: Map<string, { head: DeclIR[]; tail: DeclIR[] }>
   /**
-   * Local names imported from `@pyreon/rx`, mapped to their ORIGINAL export
-   * name (so `import { map as project }` resolves).
-   *
-   * The STANDALONE transforms are source-first — `map(src, fn)` is
-   * structurally `rx.map(src, fn)` — but `map` / `filter` / `first` are names
-   * a user is overwhelmingly likely to have of their own, so the recognizer
-   * gates on the IMPORT and never on the bare name.
-   */
-  rxImportedNames: Map<string, string>
-  /**
    * Per-component HOOK-FIELD aliases: a destructured local name →
    * `{ object, field }` where `object` is a synthetic single-binding
    * container name. Populated from `const { data, isPending } =
@@ -310,7 +300,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     storeAliases: new Map(),
     typedComponentAliases: new Map(),
     componentDeclRequests: new Map(),
-    rxImportedNames: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -384,7 +373,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
-  collectRxImportedNames(ast.program.body as AnyNode[], ctx)
   // Plugin pre-passes (`CompilerPlugin.scanModule`): a library records the facts its top-level
   // declarations carry (an `@pyreon/http` client and its endpoints) before any hook that reads
   // them is parsed, regardless of where the declaration sits relative to the component.
@@ -1306,50 +1294,7 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  * and `@pyreon/state-tree`'s `model()` lowers cleanly, so none of them is
  * listed.
  */
-const RX_V1_METHODS = new Set([
-  'filter',
-  'map',
-  'reverse',
-  'count',
-  'sum',
-  'min',
-  'max',
-  'first',
-  'last',
-  'take',
-  'skip',
-  'takeWhile',
-  'dropWhile',
-  'find',
-  'some',
-  'every',
-  'unique',
-  'compact',
-  'flatten',
-  'reduce',
-  'average',
-])
-
 export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
-  [
-    '@pyreon/rx',
-    {
-      // The NAMESPACE form lowers: `import { rx } from '@pyreon/rx'` and then
-      // `rx.filter` / `rx.map` / `rx.reverse` emit natively (RX-1). Only the
-      // standalone transforms do not. A package-wide warning here fired on `rx`
-      // itself and broke the existing rx-lowering lock — caught by that suite,
-      // which is exactly the over-warning failure a per-package list invites.
-      // The STANDALONE transforms lower too now. They are source-first
-      // (`map(src, fn)` is structurally `rx.map(src, fn)`), and rx's own
-      // manifest reaches for them 43 times against 5 for the namespace — so
-      // the documented, dominant idiom was the one emitting itself verbatim.
-      // `pipe` is deliberately NOT in the supported set; see
-      // tryRxPipeLowering for the measured reason.
-      advice:
-        'this export has no native lowering yet. The standalone COLLECTION transforms DO lower (filter / map / take / unique / …, source-first) — chain those through consts, or compose with `computed()`',
-      supported: new Set(['rx', ...RX_V1_METHODS]),
-    },
-  ],
   [
     '@pyreon/reactivity',
     {
@@ -2533,9 +2478,8 @@ function refineReduceSeedFloats(
   for (const c of components) {
     const ctx = componentCtx(c)
     const visit = (e: ExprIR): void => {
-      // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and the
-      // rx-namespace reduce (`rx.reduce(xs, cb, seed)` → rx-call). Each
-      // carries a source + args [reducer, seed].
+      // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and a plugin's
+      // reduction (`rx.reduce(xs, cb, seed)`). Each carries a source + a reducer + a seed.
       let source: ExprIR | undefined
       let reducer: ExprIR | undefined
       let seed: ExprIR | undefined
@@ -2548,10 +2492,14 @@ function refineReduceSeedFloats(
         source = e.callee.object
         reducer = e.args[0]
         seed = e.args[1]
-      } else if (e.kind === 'rx-call' && e.method === 'reduce' && e.args.length === 2) {
-        source = e.source
-        reducer = e.args[0]
-        seed = e.args[1]
+      } else if (e.kind === 'ext-expr') {
+        // A plugin's reduction (`rx.reduce(xs, cb, seed)`), by its owner's account of which parts are which.
+        const reduction = pluginExprReduce(e)
+        if (reduction !== undefined) {
+          source = reduction.source
+          reducer = reduction.reducer
+          seed = reduction.seed
+        }
       }
       if (
         source === undefined ||
@@ -3082,7 +3030,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // here rather than sharing the parent's.
     typedComponentAliases: new Map(),
     componentDeclRequests: new Map(),
-    rxImportedNames: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -4765,31 +4712,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
   }
 
-  // RX-1 — `@pyreon/rx` namespace lowering. Source like
-  //   const active = rx.filter(todos, t => !t.done)
-  //   const top5   = rx.take(active, 5)
-  //   const cnt    = rx.count(active)
-  // PMTC's recognition list previously knew only top-level callee names
-  // (`signal`, `useStorage`, …). `rx.METHOD(...)` is a MemberExpression
-  // callee, so the previous code path treated the whole declaration as
-  // an unknown CallExpression and silently dropped it from emit (see
-  // PR #1317's `tier2-rx-silent-drop.test.ts` regression-lock).
-  //
-  // This block recognises the `rx.*` namespace and rewrites each
-  // supported method into the equivalent expression on the underlying
-  // signal-carried collection — `rx.filter(s, p)` becomes a `computed`
-  // whose body is `s().filter(p)`. The native collection methods on
-  // Swift `[T]` and Kotlin `List<T>` carry identical names for the
-  // v1 set (`filter` / `map` / `reverse`); per-method per-target
-  // dispatch for the divergent set (`count`/`size`, `take`/`prefix`,
-  // `every`/`allSatisfy`, …) is the immediate follow-up — the existing
-  // computed-emit pipeline handles everything once the IR is built.
-  //
-  // Per-target compileability of the resulting emit is locked by the
-  // hand-crafted proof in `docs/src/content/docs/multiplatform-libraries.md`
-  // ("Compileability proof" — `swiftc -parse` + `kotlinc` both exit 0).
-  const rxLowered = tryRxNamespaceLowering(name, init, ctx)
-  if (rxLowered !== null) return rxLowered
+  // A declaration a plugin recognizes by the SHAPE of its callee (`CompilerPlugin.declCalls`) — `const active = rx.filter(todos, p)`,
+  // where the callee is whatever local name the file imported. Ahead of every by-name branch below, as the by-shape one always was.
+  const shaped = tryPluginDeclCall(name, init, ctx)
+  if (shaped !== undefined) return shaped
 
   const calleeName = init.callee?.name as string | undefined
   if (calleeName === 'signal') {
@@ -5375,20 +5301,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return { kind: 'websocket', name, url: urlArg.value }
   }
-  // EXCEPTION: an out-of-set `rx.<method>(...)` reached here because
-  // `tryRxNamespaceLowering` warned + returned null (the method needs a
-  // Strategy-B runtime port). `rx` is NOT a real native symbol, so binding it
-  // as a value-const would emit uncompilable `let r = rx.method(...)` — keep
-  // the deliberate warn-drop. (In-set rx methods become computeds earlier and
-  // never reach here; only the dropped out-of-set ones do.)
-  if (
-    init.type === 'CallExpression' &&
-    init.callee?.type === 'MemberExpression' &&
-    init.callee.object?.type === 'Identifier' &&
-    (init.callee.object.name as string | undefined) === 'rx'
-  ) {
-    return null
-  }
   // Fallback — `const foo = <call>` binding an arbitrary call result that
   // none of the factory/hook branches above claimed: a signal/computed READ
   // (`const foo = o()`), a method-chain result (`const xs = arr.filter(p)`),
@@ -5461,104 +5373,6 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
 
 
 /**
- * Collect the local names imported from `@pyreon/rx`, mapped to their
- * ORIGINAL export name. Only the standalone transforms belong here — the
- * `rx` namespace object has its own recognizer.
- */
-function collectRxImportedNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/rx') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type !== 'ImportSpecifier') continue
-      const imported = spec.imported?.name as string | undefined
-      const local = spec.local?.name as string | undefined
-      if (imported && local && imported !== 'rx') ctx.rxImportedNames.set(local, imported)
-    }
-  }
-}
-
-/**
- * `pipe(source, f1, f2, …)` does NOT lower, and this is a measured answer
- * rather than an untested guess.
- *
- * The natural emit is an immediately-applied closure per stage
- * (`{ xs in … }(nums)`), which discards the parameter's type. Compiled
- * against both real toolchains that fails on each — Swift with "value of
- * type 'Any' has no member 'count'", Kotlin with "cannot infer type for type
- * parameter 'T'". Inlining each stage by substituting its parameter would fix
- * it and is the follow-up; emitting the closure form meanwhile would ship
- * code that does not build.
- *
- * The collection transforms it composes DO lower, so the advice names a real
- * alternative rather than an escape hatch.
- */
-function tryRxPipeLowering(name: string, ctx: ParseCtx): DeclIR | null {
-  ctx.warnings.push(
-    `Declaration ${name}: pipe() has no native lowering — each stage would emit as an immediately-applied closure, which loses its parameter type and fails to compile on both targets. Chain the standalone transforms instead (const a = filter(src, p); const b = map(a, f)), which do lower, or keep the call behind a \`<Web>\` escape hatch.`,
-  )
-  return null
-}
-
-function tryRxNamespaceLowering(
-  name: string,
-  init: AnyNode,
-  ctx: ParseCtx,
-): DeclIR | null {
-  const callee = init.callee as AnyNode | undefined
-  let methodName: string | undefined
-  if (callee?.type === 'MemberExpression') {
-    const obj = callee.object as AnyNode | undefined
-    if (obj?.type !== 'Identifier' || (obj.name as string | undefined) !== 'rx') return null
-    const prop = callee.property as AnyNode | undefined
-    if (prop?.type !== 'Identifier') return null
-    methodName = prop.name as string | undefined
-  } else if (callee?.type === 'Identifier') {
-    // STANDALONE form, resolved through the IMPORT — never the bare name.
-    methodName = ctx.rxImportedNames.get(callee.name as string)
-    if (methodName === undefined) return null
-  } else {
-    return null
-  }
-  if (!methodName) return null
-  if (methodName === 'pipe') return tryRxPipeLowering(name, ctx)
-
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const sourceArg = args[0]
-  if (!sourceArg) {
-    ctx.warnings.push(
-      `Declaration ${name}: rx.${methodName} requires a signal source as its first argument.`,
-    )
-    return null
-  }
-  if (!RX_V1_METHODS.has(methodName)) {
-    ctx.warnings.push(
-      `Declaration ${name}: rx.${methodName} is not yet lowered to native (v1 covers ${[...RX_V1_METHODS].join(' / ')}; remaining methods need Strategy B runtime ports — see docs/src/content/docs/multiplatform-libraries.md).`,
-    )
-    return null
-  }
-
-  // Build the rx-call IR. The source signal becomes `signalName()` (a
-  // no-arg call expression that the per-target emit lowers to the
-  // unwrapped state binding). Args are method args (predicate, count,
-  // initial value, etc.) — passed through verbatim.
-  //
-  // The rx-call IR is target-agnostic: each emitter switches on
-  // `method` and produces idiomatic Swift / Kotlin. See
-  // `emitSwiftExpr` / `emitKotlinExpr` `case 'rx-call':` blocks.
-  const sourceExpr = parseExpr(sourceArg, ctx)
-  const sourceCall: ExprIR = { kind: 'call', callee: sourceExpr, args: [] }
-  const restArgs = args.slice(1).map((a) => parseExpr(a, ctx))
-  const rxCallExpr: ExprIR = {
-    kind: 'rx-call',
-    method: methodName,
-    source: sourceCall,
-    args: restArgs,
-  }
-  return { kind: 'computed', name, expr: rxCallExpr }
-}
-
-/**
  * A recognizer's verdict as a declaration: a plain SIGNAL (`{ signal }`, built here with the core's own rules so a
  * library's signal reads, writes, infers and synthesizes structs exactly like `signal()`), else the plugin's own `ext`
  * declaration.
@@ -5567,7 +5381,8 @@ function tryRxNamespaceLowering(
  * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
  * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
  */
-function declFromSpec(owner: string, name: string, spec: ExtDeclSpec | SignalDeclSpec, call: AnyNode, ctx: ParseCtx): DeclIR {
+function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR {
+  if ('computed' in spec) return { kind: 'computed', name, expr: stampExtExpr(activeRegistries().items, owner, spec.computed) }
   if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
   const { initial: initialArg, persistKey } = spec.signal
   const initial: ExprIR = initialArg ? parseExpr(initialArg as AnyNode, ctx) : { kind: 'literal', value: 0 }
@@ -5576,6 +5391,25 @@ function declFromSpec(owner: string, name: string, spec: ExtDeclSpec | SignalDec
   return persistKey === undefined
     ? { kind: 'signal', name, type, initial }
     : { kind: 'signal', name, type, initial, storageKey: persistKey }
+}
+
+/**
+ * A `const x = <call>` a plugin recognizes by callee shape: its declaration, `null` (claimed without declaring — the
+ * recognizer said why), or `undefined` (declined; the parser continues down its chain).
+ */
+function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR | null | undefined {
+  const { declCalls } = activeRegistries().calls
+  if (declCalls.length === 0) return undefined
+  const site: DeclCallSite = {
+    callee: init.callee as AstNode,
+    args: ((init.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
+  }
+  for (const { owner, recognize } of declCalls) {
+    const verdict = runPluginHook(owner, 'declCalls', () => recognize(site, parseContextFor(name, init, ctx)))
+    if (verdict === undefined) continue
+    return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
+  }
+  return undefined
 }
 
 /**

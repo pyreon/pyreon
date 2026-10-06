@@ -26,7 +26,7 @@
  */
 
 import { isJson, type AstNode } from './call-lowering'
-import type { EmitContext } from './emit-context'
+import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
 import type { ExprIR, ExtModuleItem, ExtPayload, StructIR, TypeIR } from './types'
 
 /** What a top-level recognizer (or `ModuleParseContext.addItem`) returns. The compiler stamps `plugin`. */
@@ -174,13 +174,16 @@ export type CallExprRecognizer = (site: CallExprSite, ctx: ModuleParseContext) =
 
 /** Renders and types one `ext-expr` type. */
 export interface ExprEmitter {
-  swift(e: ExtExprIR, ctx: EmitContext): string
-  kotlin(e: ExtExprIR, ctx: EmitContext): string
+  swift(e: ExtExprIR, ctx: SwiftEmitContext): string
+  kotlin(e: ExtExprIR, ctx: KotlinEmitContext): string
   /** How expressions over the node are typed (without it the node is `unknown`). */
   readonly typing?:
     | {
-        /** The node's own type. */
-        type?(e: ExtExprIR): TypeIR
+        /**
+         * The node's own type. `infer` types any expression in the active component — a source read, an argument — for a
+         * node whose type follows from its parts (`rx.filter(todos, p)` is an array of `todos`' element).
+         */
+        type?(e: ExtExprIR, infer: (e: ExprIR) => TypeIR): TypeIR
         /** The type of `<node>.<property>`; when present it decides every member read on the node. */
         member?(e: ExtExprIR, property: string): TypeIR
         /**
@@ -198,6 +201,12 @@ export interface ExprEmitter {
   legacyHash?(e: ExtExprIR): unknown
   /** Apply a value rename (old → new) to the payload, in place. */
   rename?(e: ExtExprIR, renames: ReadonlyMap<string, string>): void
+  /**
+   * The node is a reduction over a collection: its source, its reducer (an arrow whose second parameter is the element) and its
+   * seed — returned as the SAME nodes the expression holds, since the core widens an integer-valued seed to a Double in place when
+   * the reducer accumulates a fractional value. Without it a plugin reduction keeps the seed it was written with.
+   */
+  reduce?(e: ExtExprIR): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined
 }
 
 /** What a struct refinement may edit and read. */
@@ -362,7 +371,7 @@ export function emitExtExpr(
   registry: ItemRegistry,
   e: ExtExprIR,
   target: 'swift' | 'kotlin',
-  ctx: EmitContext,
+  ctx: SwiftEmitContext | KotlinEmitContext,
 ): string {
   const emitter = registry.exprEmitter(e.plugin, e.type)
   if (emitter === undefined) {
@@ -370,7 +379,7 @@ export function emitExtExpr(
       `[Pyreon] expression "${e.type}" of plugin "${e.plugin}" has no emitter in this compiler — the plugin that recognized it is not loaded here.`,
     )
   }
-  return target === 'swift' ? emitter.swift(e, ctx) : emitter.kotlin(e, ctx)
+  return target === 'swift' ? emitter.swift(e, ctx as SwiftEmitContext) : emitter.kotlin(e, ctx as KotlinEmitContext)
 }
 
 /**

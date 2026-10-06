@@ -26,7 +26,7 @@
 // regression test.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // NOTE: the fixture below uses an object-literal `type` alias, NOT an
 // `interface`. PMTC synthesizes a struct/data-class from a `type X = { … }`

@@ -34,6 +34,7 @@ import { tableStubs } from '../../../../fundamentals/table/src/native-plugin/stu
 import { dndPlugin } from '../../../../fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../../../../fundamentals/dnd/src/native-plugin/stubs'
 import { kineticPlugin } from '../../../../ui-system/kinetic/src/native-plugin/plugin'
+import { rxPlugin } from '../../../../fundamentals/rx/src/native-plugin/plugin'
 import { sizedMapPlugin } from '../../../../core/sized-map/src/native-plugin/plugin'
 import { sizedMapStubs } from '../../../../core/sized-map/src/native-plugin/stubs'
 import { storagePlugin } from '../../../../fundamentals/storage/src/native-plugin/plugin'
@@ -46,7 +47,7 @@ import { coolgridPlugin } from '../../../../ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../../../../fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../../../../fundamentals/sync/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, permissionsPlugin, permissionsStubs, urlStatePlugin, storagePlugin, storageStubs, sizedMapPlugin, sizedMapStubs, kineticPlugin, elementsPlugin, coolgridPlugin }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, permissionsPlugin, permissionsStubs, urlStatePlugin, storagePlugin, storageStubs, sizedMapPlugin, rxPlugin, sizedMapStubs, kineticPlugin, elementsPlugin, coolgridPlugin }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
