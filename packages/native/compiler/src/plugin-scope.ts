@@ -29,7 +29,40 @@ export interface PluginScope {
   finalize(text: string): string
 }
 
-const TOKEN = /__PYREON_DEFERRED\(([^)\n]+)\)__/g
+const TOKEN_OPEN = '__PYREON_DEFERRED('
+const TOKEN_CLOSE = ')__'
+
+/**
+ * Replace every `__PYREON_DEFERRED(<key>)__` with `replace(key)`. A key is
+ * one or more characters other than `)` and a newline.
+ *
+ * A scan rather than `/__PYREON_DEFERRED\(([^)\n]+)\)__/g`: the regex's key
+ * class rescans to the end of the line from every unmatched opener, which is
+ * quadratic on a long line of them (CodeQL js/polynomial-redos). The position of
+ * the next `)` or newline is remembered and only recomputed once the scan has
+ * moved past it, so each character is read a bounded number of times.
+ */
+export function replaceDeferredTokens(text: string, replace: (key: string) => string): string {
+  let out = ''
+  let copied = 0
+  let at = text.indexOf(TOKEN_OPEN)
+  let stop = -1
+  while (at !== -1) {
+    const keyStart = at + TOKEN_OPEN.length
+    if (stop < keyStart) {
+      stop = keyStart
+      while (stop < text.length && text[stop] !== ')' && text[stop] !== '\n') stop++
+    }
+    if (stop > keyStart && text.startsWith(TOKEN_CLOSE, stop)) {
+      out += text.slice(copied, at) + replace(text.slice(keyStart, stop))
+      copied = stop + TOKEN_CLOSE.length
+      at = text.indexOf(TOKEN_OPEN, copied)
+    } else {
+      at = text.indexOf(TOKEN_OPEN, keyStart)
+    }
+  }
+  return copied === 0 ? text : out + text.slice(copied)
+}
 
 interface Deferred {
   value?: string
@@ -82,7 +115,7 @@ export function createPluginScope(decls?: readonly DeclIR[]): PluginScope {
     },
     finalize(text) {
       if (pending.size === 0) return text
-      return text.replace(TOKEN, (_m, key: string) => {
+      return replaceDeferredTokens(text, (key) => {
         const entry = pending.get(key)
         const value = entry?.value ?? entry?.fallback
         if (value === undefined) {
