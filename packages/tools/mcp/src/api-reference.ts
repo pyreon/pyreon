@@ -1667,7 +1667,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
 
 const r = auditIslands(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)`,
-    notes: 'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`) that auto-registry and the per-file detector cannot reach. No type-check pass / module resolution; entirely TypeScript-compiler-API syntactic. Powers `pyreon doctor --check-islands` + the MCP `audit_islands` tool. See also: formatIslandAudit, auditTestEnvironment, auditSsg.',
+    notes: 'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --check-islands` + MCP `audit_islands`. See also: formatIslandAudit, auditTestEnvironment, auditSsg.',
   },
 
   'compiler/formatIslandAudit': {

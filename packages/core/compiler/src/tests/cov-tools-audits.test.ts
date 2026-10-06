@@ -66,8 +66,9 @@ describe('island-audit — walkSourceFiles skip arms', () => {
       `export const W = island(() => import('./w'), { name: '${n}' })\n`
     t.write('packages/a/src/.hidden/x.ts', decl('Hidden'))
     t.write('packages/a/src/node_modules/x.ts', decl('NodeModules'))
-    t.write('packages/a/src/lib/x.ts', decl('Lib'))
-    t.write('packages/a/src/dist/x.ts', decl('Dist'))
+    t.write('packages/a/package.json', '{"name":"a"}')
+    t.write('packages/a/lib/x.ts', decl('Lib'))
+    t.write('packages/a/dist/x.ts', decl('Dist'))
     t.write('packages/a/src/__tests__/x.ts', decl('Tests1'))
     t.write('packages/a/src/tests/x.ts', decl('Tests2'))
     t.write('packages/a/src/real.ts', decl('Real'))

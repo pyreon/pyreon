@@ -125,6 +125,12 @@ The "parent runs once" pattern catches the bug fixed in PR #191 — a parent com
 | `ThemeCapture` | Synthetic component that captures `$rocketstyle` / `$rocketstate` (resolving function accessors) for inspection in mock-vnode tests. |
 | `BaseComponent` | Synthetic component that exposes the resolved pseudo-state via data attributes — useful when asserting which dimension state the rocketstyle pipeline picked. |
 
+### Complexity measurements
+
+`measureComplexity(run, baseN, options)` samples two input sizes and returns their growth ratio; `expectSubQuadratic` throws when the measurement is unmeasurable or exceeds the bound. Both default to `performance.now`. Ratios reduce sensitivity to machine speed, but unequal scheduling, JIT and GC costs can still skew measurements.
+
+Tests of the helpers' sampling policy use `options.clock`, a monotonic millisecond clock advanced by counted work. This keeps calibration, resampling and verdict controls deterministic without replacing the real clock used to measure an operation. A flat, unmeasurable operation still stops growing before retained fixtures can exhaust the heap.
+
 ## Browser subpath (`@pyreon/test-utils/browser`)
 
 Real-Chromium helpers — import from `@pyreon/test-utils/browser` inside `*.browser.test.ts(x)` files that run under `@vitest/browser` with Playwright Chromium.

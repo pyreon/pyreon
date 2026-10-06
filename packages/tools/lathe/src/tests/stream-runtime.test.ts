@@ -9,7 +9,7 @@
  * `configureApi({ validate })`, and the generated mocks answer with a stream
  * the generated function can read.
  */
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
@@ -19,6 +19,10 @@ import { generate } from '../core/generate'
 const SPEC = readFileSync(join(__dirname, 'fixtures', 'streams.json'), 'utf8')
 const CLIENTS: ClientName[] = ['pyreon', 'fetch', 'axios', 'ky']
 const ROOT = join(__dirname, '.generated')
+// One immutable tree per adapter for this suite. Rewriting imported files
+// can invalidate Vite's module graph while endpoints retain a previous client.
+const generated = new Map<ClientName, Mod>()
+const created: string[] = []
 
 interface Seen {
   url: string
@@ -109,9 +113,14 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  server.closeAllConnections()
-  await new Promise<void>((r) => server.close(() => r()))
-  for (const c of CLIENTS) rmSync(join(ROOT, `streams-rt-${c}`), { recursive: true, force: true })
+  try {
+    server.closeAllConnections()
+    await new Promise<void>((r) => server.close(() => r()))
+  } finally {
+    for (const dir of created) rmSync(dir, { recursive: true, force: true })
+    created.length = 0
+    generated.clear()
+  }
 })
 
 beforeEach(() => {
@@ -138,22 +147,33 @@ interface Mod {
 }
 
 async function load(client: ClientName): Promise<Mod> {
-  const dir = join(ROOT, `streams-rt-${client}`)
-  rmSync(dir, { recursive: true, force: true })
+  let mod = generated.get(client)
+  if (!mod) mod = await generateClient(client)
+  mod.setDevTransport(null)
+  mod.configureApi({ baseUrl: base, validate: 'strict', headers: { authorization: 'Bearer t0k' } })
+  return mod
+}
+
+async function generateClient(client: ClientName): Promise<Mod> {
+  mkdirSync(ROOT, { recursive: true })
+  const dir = mkdtempSync(join(ROOT, `streams-rt-${client}-`))
+  // Register before generation/import so a failed setup still cleans its tree.
+  created.push(dir)
   const { files } = generate(SPEC, resolveConfig({ input: 'x', client, plugins: ['schemas', 'client', 'mocks'] }))
   for (const f of files) {
     const p = join(dir, f.path)
     mkdirSync(dirname(p), { recursive: true })
     writeFileSync(p, f.contents)
   }
+  // Finish the shared runtime before starting imports that depend on it.
+  const runtime = await import(join(dir, 'client.ts')) as Record<string, unknown>
   const mods = await Promise.all(
-    ['client.ts', 'mocks.ts', 'endpoints/rooms.ts', 'endpoints/chat.ts', 'endpoints/rows.ts'].map(
+    ['mocks.ts', 'endpoints/rooms.ts', 'endpoints/chat.ts', 'endpoints/rows.ts'].map(
       (p) => import(join(dir, p)) as Promise<Record<string, unknown>>,
     ),
   )
-  const mod = Object.assign({}, ...mods) as Mod
-  mod.setDevTransport(null)
-  mod.configureApi({ baseUrl: base, validate: 'strict', headers: { authorization: 'Bearer t0k' } })
+  const mod = Object.assign({}, runtime, ...mods) as Mod
+  generated.set(client, mod)
   return mod
 }
 

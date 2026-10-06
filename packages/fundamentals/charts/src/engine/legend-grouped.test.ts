@@ -2,8 +2,11 @@
 // line both labelled Revenue are ONE entry, and a tap toggles both. Before,
 // every series drew its own entry, so the idiomatic area-under-a-line chart
 // showed two identical Revenue swatches (seen in the docs gallery).
-import { describe, expect, it } from 'vitest'
+import { h } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
+import { PlotChart } from './Chart'
 import { legendEntriesGrouped, legendToggleGroup } from './legend-toggle'
+import { area, line, resolveMarks } from './marks'
 
 const LABELS = ['Revenue', 'Revenue', 'Target']
 const COLORS = ['#a', '#b', '#c']
@@ -46,11 +49,7 @@ describe('legendToggleGroup', () => {
 })
 
 describe('PlotChart draws the grouped legend', () => {
-  it('an area and a line sharing a label paint ONE legend label', async () => {
-    const { h } = await import('@pyreon/core')
-    const { mount } = await import('@pyreon/runtime-dom')
-    const { PlotChart } = await import('./Chart')
-    const { area, line } = await import('./marks')
+  it('an area and a line sharing a label paint ONE legend label', () => {
     const texts: string[] = []
     const ctx = new Proxy({} as Record<string | symbol, unknown>, {
       get: (t, k) =>
@@ -67,13 +66,14 @@ describe('PlotChart draws the grouped legend', () => {
       },
     })
     const prev = HTMLCanvasElement.prototype.getContext
+    const root = document.createElement('div')
+    let un: (() => void) | undefined
     HTMLCanvasElement.prototype.getContext = (() => ctx) as unknown as HTMLCanvasElement['getContext']
     try {
       type Row = { m: string; v: number }
       const rows: Row[] = [{ m: 'Jan', v: 1 }, { m: 'Feb', v: 3 }]
-      const root = document.createElement('div')
       document.body.appendChild(root)
-      const un = mount(
+      un = mount(
         h(PlotChart<Row>, {
           data: rows,
           x: (d: Row) => d.m,
@@ -86,17 +86,19 @@ describe('PlotChart draws the grouped legend', () => {
         root,
       )
       expect(texts.filter((t) => t === 'Revenue')).toHaveLength(1)
-      un()
-      root.remove()
     } finally {
-      HTMLCanvasElement.prototype.getContext = prev
+      try {
+        un?.()
+      } finally {
+        root.remove()
+        HTMLCanvasElement.prototype.getContext = prev
+      }
     }
   })
 })
 
 describe('mark colour follows the label', () => {
-  it('marks sharing a label share a palette colour; distinct labels keep index order', async () => {
-    const { area, line, resolveMarks } = await import('./marks')
+  it('marks sharing a label share a palette colour; distinct labels keep index order', () => {
     type Row = { v: number }
     const rows: Row[] = [{ v: 1 }]
     const s = resolveMarks(rows, [area((d: Row) => d.v, { label: 'Revenue' }), line((d: Row) => d.v, { label: 'Revenue' }), line((d: Row) => d.v, { label: 'Target' })])

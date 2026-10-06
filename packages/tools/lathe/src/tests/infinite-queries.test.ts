@@ -9,7 +9,7 @@ import { resolveConfig } from '../core/config'
 import { checkPagination } from '../emit/pagination'
 import { generate } from '../core/generate'
 import { cleanEmitted, emitToDisk } from './helpers/emit-to-disk'
-import { typecheckSpec } from './helpers/typecheck'
+import { typecheckSpec, TYPECHECK_BUDGET } from './helpers/typecheck'
 
 const ok = (schema: object) => ({ '200': { description: 'x', content: { 'application/json': { schema } } } })
 const Customer = { $ref: '#/components/schemas/Customer' }
@@ -72,7 +72,7 @@ describe('pagination declarations are checked', () => {
   })
 })
 
-describe('emitted infinite queries', () => {
+describe('emitted infinite queries', TYPECHECK_BUDGET, () => {
   it('typecheck — typed pages and page params, for a consumer', () => {
     const consumer = `
 import { useListCustomersInfinite, useListEventsInfinite, useListRowsInfinite, listPagesInfiniteOptions } from './queries'
