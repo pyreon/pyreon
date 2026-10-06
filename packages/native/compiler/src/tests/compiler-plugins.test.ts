@@ -1,5 +1,6 @@
 import {
   createCompiler,
+  SUPPORTED_PLUGIN_API_VERSIONS,
   swiftBackend,
   transform,
   type CompilerModule,
@@ -361,5 +362,32 @@ describe('instance-owned compiler plugins', () => {
       plugins: [plugin({ backends: [{ target: 'bad', emit: emit as never }] })],
     })
     expect(() => compiler.transform(APP, { target: 'bad' })).toThrow(/backend "bad" failed in emit/)
+  })
+})
+
+describe('additive protocol fields (apiVersion stays 1)', () => {
+  it('publishes the supported version set and still says what to update', () => {
+    expect(SUPPORTED_PLUGIN_API_VERSIONS).toEqual([1])
+    expect(() => createCompiler({ plugins: [{ ...plugin(), apiVersion: 2 as never }] })).toThrow(
+      /requires API 2; this compiler supports API 1\. Update the plugin and compiler together\./,
+    )
+  })
+  it('accepts services/modules/requires/builtIn without changing the emit', () => {
+    const extended = plugin({
+      services: { useThing: { swift: 'PyreonThing()', kotlin: ['val {id} = remember { PyreonThing() }'] } },
+      modules: ['@acme/thing'],
+      requires: ['@pyreon/charts'],
+      builtIn: false,
+    })
+    expect(createCompiler({ plugins: [extended] }).transform(APP, { target: 'kotlin' })).toEqual(
+      transform(APP, { target: 'kotlin' }),
+    )
+  })
+  it('hands the registry to every pass', () => {
+    let seen: ReadonlySet<string> | undefined
+    createCompiler({
+      plugins: [plugin({ transformIR: (_m, context) => void (seen = new Set(context.services.keys())) })],
+    }).transform(APP, { target: 'swift' })
+    expect(seen?.has('useShare')).toBe(true)
   })
 })

@@ -17,6 +17,7 @@ const ENGINE_NAMES = new Set(CHART_ENGINE_DECLARED_NAMES)
 export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
   name: '@pyreon/charts',
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  builtIn: true,
   prepareIR(module: CompilerModule) {
     if (!module.imports.some((source) => ENTRYPOINTS.has(source))) return
     const declared = [...module.structs.map((s) => s.name), ...module.enums.map((e) => e.name)]

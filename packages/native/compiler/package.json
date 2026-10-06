@@ -15,6 +15,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./testing": {
+      "bun": "./src/testing.ts",
+      "import": "./lib/testing.js",
+      "types": "./lib/types/testing.d.ts"
     }
   },
   "scripts": {
