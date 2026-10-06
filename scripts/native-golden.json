@@ -2161,6 +2161,26 @@
       "bytes": 862,
       "warnings": 0
     },
+    "golden-fixture:feature-06.tsx|swift": {
+      "sha": "17f987f0593fe1a33545e3cc849e2901aa15542fbabd4f9a1023f5ada1b84c87",
+      "bytes": 803,
+      "warnings": 0
+    },
+    "golden-fixture:feature-06.tsx|kotlin": {
+      "sha": "e0db46a9f6dfe857da483f8f954f6c67658a496159f0daf950426bd2d2bc237b",
+      "bytes": 799,
+      "warnings": 0
+    },
+    "golden-fixture:feature-07.tsx|swift": {
+      "sha": "8b7b1a31e91dc343f4343077698a183e9804dfe07911662b096d6ad8904d925f",
+      "bytes": 1747,
+      "warnings": 0
+    },
+    "golden-fixture:feature-07.tsx|kotlin": {
+      "sha": "50b694221b36db21119f2af58e12cd1531c628a797b2e06a56638453449f338f",
+      "bytes": 1775,
+      "warnings": 0
+    },
     "golden-fixture:flow-01.tsx|swift": {
       "sha": "7bf311c4b5bfb1182f2dbc00146915610635fdf539542d865055772956b9dfb9",
       "bytes": 941,
