@@ -148,3 +148,74 @@ describe('renameCompatJsxAttributes', () => {
     expect(renameCompatJsxAttributes(src, '/x.tsx')).toBe(src)
   })
 })
+
+describe('foldNodeEnvProduction — write targets in every pattern position stay unfolded', () => {
+  // A destructuring/assignment TARGET is a write, not a read: folding it would
+  // emit `"production" = …`, which does not parse.
+  const cases: Record<string, string> = {
+    'array pattern': `[process.env.NODE_ENV] = ['x']`,
+    'object pattern value': `({ a: process.env.NODE_ENV } = { a: 1 })`,
+    'object pattern rest': `({ ...process.env.NODE_ENV } = {})`,
+    'array pattern rest': `[...process.env.NODE_ENV] = []`,
+    'default-valued target': `[process.env.NODE_ENV = 'x'] = []`,
+    'ts non-null wrapped target': `(process.env.NODE_ENV!) = 'x'`,
+    'update expression': `process.env.NODE_ENV++`,
+    'delete operand': `delete process.env.NODE_ENV`,
+  }
+  for (const [name, code] of Object.entries(cases)) {
+    it(`${name} is left untouched`, () => {
+      expect(fold(code, '/x.ts')).toBe(code)
+    })
+  }
+
+  it('returns null for source that does not parse, instead of throwing', () => {
+    expect(foldNodeEnvProduction('const = process.env.NODE_ENV (', '/x.js')).toBeNull()
+  })
+})
+
+describe('foldNodeEnvProduction — which spellings are the real global read', () => {
+  it.each([
+    ['computed string keys', `x(process['env']['NODE_ENV'])`],
+    ['globalThis.process', `x(globalThis.process.env.NODE_ENV)`],
+    ['global.process', `x(global.process.env.NODE_ENV)`],
+    ['self.process', `x(self.process.env.NODE_ENV)`],
+    ['window.process', `x(window.process.env.NODE_ENV)`],
+  ])('%s folds to "production"', (_n, code) => {
+    const out = fold(code)
+    expect(out).toContain('"production"')
+    expect(out).not.toContain('NODE_ENV')
+  })
+
+  it.each([
+    ['dynamic computed key', `x(process.env[key])`],
+    ['numeric computed key', `x(process.env[0])`],
+    ['non-global owner of a .process', `x(thing.process.env.NODE_ENV)`],
+    ['non-identifier owner of a .process', `x(a().process.env.NODE_ENV)`],
+    ['a different env var', `x(process.env.OTHER)`],
+    ['a bare env object', `x(process.env)`],
+  ])('%s is not folded', (_n, code) => {
+    expect(foldNodeEnvProduction(code, '/x.js')).toBeNull()
+  })
+})
+
+describe('renameCompatJsxAttributes — only attribute NAMES', () => {
+  it('renames className/htmlFor attributes', () => {
+    expect(renameCompatJsxAttributes(`const a = <label className="a" htmlFor="b" />`, '/x.tsx')).toBe(
+      `const a = <label class="a" for="b" />`,
+    )
+  })
+
+  it('leaves a namespaced attribute, an unrelated attribute and a same-named binding alone', () => {
+    const code = `const className = 1; const a = <svg xlink:href="#a" id={className} />`
+    expect(renameCompatJsxAttributes(code, '/x.tsx')).toBe(code)
+  })
+
+  it('returns the source unchanged when it does not parse', () => {
+    const code = `const a = <div className="x" `
+    expect(renameCompatJsxAttributes(code, '/x.tsx')).toBe(code)
+  })
+
+  it('parses a plain .js file as JSX, since compat sources are often untyped', () => {
+    expect(renameCompatJsxAttributes(`const a = <p className="x" />`, '/x.js')).toBe(`const a = <p class="x" />`)
+  })
+})
