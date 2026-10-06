@@ -45,6 +45,7 @@ describe('conditionalKotlinImports — one arm per sub-package symbol', () => {
     ['LocalHapticFeedback', 'val h = LocalHapticFeedback.current', 'androidx.compose.ui.platform.LocalHapticFeedback'],
     ['LocalConfiguration', 'LocalConfiguration.current.screenWidthDp', 'androidx.compose.ui.platform.LocalConfiguration'],
     ['FontStyle', 'fontStyle = FontStyle.Italic', 'androidx.compose.ui.text.font.FontStyle'],
+    ['KeyboardType (Field kind="url", #3843)', 'keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)', 'androidx.compose.ui.text.input.KeyboardType'],
     ['TextAlign', 'textAlign = TextAlign.Center', 'androidx.compose.ui.text.style.TextAlign'],
   ]
   for (const [name, emitted, imp] of cases) {
