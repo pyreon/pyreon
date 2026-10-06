@@ -341,6 +341,45 @@ export function A() { return <Button onClick={() => useShare().text('hi')}>x</Bu
   })
 })
 
+describe('code-shaped plugins (calls + decls)', () => {
+  const TOY_BODY = `modules: ['@acme/toy'],
+  calls: { createToy: (_call, ctx) => ({ type: 'toy', payload: { label: ctx.stringLiteralArg(0) ?? 'none' } }) },
+  decls: { toy: {
+    swift: (d, ctx) => 'let ' + ctx.ident(d.name) + ' = Toy(' + ctx.stringLiteral(d.payload.label) + ')',
+    kotlin: (d, ctx) => 'val ' + ctx.ident(d.name) + ' = Toy(' + ctx.stringLiteral(d.payload.label) + ')',
+  } }`
+  const TOY_SOURCE = `import { createToy } from '@acme/toy'
+export function Example() { const t = createToy('hi'); return <Text>{t.label}</Text> }`
+
+  it('the plugins listing shows the built-in call recognizer with its owner and declaration types', async () => {
+    const { lines } = await pluginsReport(app, false)
+    expect(lines).toContain('call recognizers (1):')
+    expect(lines).toContain('  createChartHandle  @pyreon/charts  decls: chart-handle')
+  })
+
+  it('a discovered package plugin lowers its call and is listed and explained by owner', async () => {
+    addPackage('@acme/toy', declares(), pluginModule('@acme/toy', TOY_BODY))
+    setApp(['@acme/toy'], TOY_SOURCE)
+    const listing = await pluginsReport(app, false)
+    expect(listing.lines).toContain('  createToy  @acme/toy  decls: toy')
+    expect(listing.lines.join('\n')).toContain('calls: createToy')
+    const found = await discoverPlugins(app, join(app, 'src'))
+    const compiler = createCompiler({ discovered: found.map((d) => d.plugin) })
+    expect(compiler.transform(TOY_SOURCE, { target: 'swift' }).code).toContain('let t = Toy("hi")')
+    expect(compiler.transform(TOY_SOURCE, { target: 'kotlin' }).code).toContain('val t = Toy("hi")')
+    const text = explainReport(TOY_SOURCE, join(app, 'src', 'Example.tsx'), compiler, app).lines.join('\n')
+    expect(text).toContain('t = toy  [call recognizer, owner: @acme/toy]  payload: {"label":"hi"}')
+    expect(text).not.toContain('NO emitter')
+  })
+
+  it('explain attributes the built-in chart handle to @pyreon/charts', () => {
+    const src = `import { createChartHandle } from '@pyreon/charts'
+export function A() { const chart = createChartHandle(); return <Text>x</Text> }`
+    const { lines } = explainReport(src, join(app, 'A.tsx'), createCompiler(), app)
+    expect(lines.join('\n')).toContain('chart = chart-handle  [call recognizer, owner: @pyreon/charts]  payload: {}')
+  })
+})
+
 describe('the shipped bin', () => {
   it('runs `plugins` and `explain` and reports exit codes only', () => {
     addPackage('@acme/badge', declares(), pluginModule('badge'))

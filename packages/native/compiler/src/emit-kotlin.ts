@@ -7,7 +7,9 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { kotlinStr } from './string-literals'
-import { bindServices, findElementLowering, serviceFor } from './registry-lookup'
+import { bindServices, emitPluginDecl, findElementLowering, lowerPluginMemberCall, serviceFor } from './registry-lookup'
+import { isChartHandleDecl } from './plugins/charts'
+import { createPluginScope, type PluginScope } from './plugin-scope'
 import { renderKotlinService, type ServiceDescriptor } from './services'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
@@ -126,7 +128,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -879,8 +881,8 @@ export function emitKotlin(
     }
   }
   _moduleConstExprsKotlin = new Map()
-  // Per module: a handle name from a previous file must not make this file's `x.dispatch(...)` lower.
-  _chartHandleNamesKotlin.clear()
+  // Per module: a declaration from a previous file must not make this file's `x.dispatch(...)` lower.
+  _pluginScope = createPluginScope()
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
@@ -2044,6 +2046,9 @@ function kotlinModifierPredicate(mods: readonly HotkeyModifier[]): string {
 }
 
 function emitKotlinComponent(c: ComponentIR): string {
+  // A fresh plugin scope per component; the outer one is restored at the end (and a file start installs a new module scope).
+  const outerPluginScope = _pluginScope
+  _pluginScope = createPluginScope(c.decls)
   // Local binding names may repeat in unrelated components. Seed the kind,
   // bounds and reset value together, and release them with this component.
   _pureStateKotlin = pureStateBindings(c.decls)
@@ -2583,7 +2588,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   _authNames = new Set()
   _routerRoutes = new Map()
   _pureStateKotlin = new Map()
-  return lines.join('\n')
+  const finished = _pluginScope.finalize(lines.join('\n'))
+  _pluginScope = outerPluginScope
+  return finished
 }
 
 function emitKotlinDataClass(synth: {
@@ -3080,12 +3087,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // sibling val (can't live in the non-Composable `remember` lambda) and
   // injected, the same shape clipboard uses. Methods (`share.text("hi")`)
   // flow through unchanged.
-  // `const chart = createChartHandle()` → a remembered PyreonChartHandle (Compose state fields); its
-  // name is remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
-  if (d.kind === 'chart-handle') {
-    _chartHandleNamesKotlin.add(d.name)
-    return `val ${kotlinIdent(d.name)} = remember { PyreonChartHandle() }`
-  }
+  // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
+  if (d.kind === 'ext') return emitPluginDecl(d, 'kotlin', kotlinEmitContext(2))
   // Plain service containers — one generic branch rendered from the
   // descriptor in services.ts (see `renderKotlinService`).
   if (d.kind === 'service') {
@@ -5023,17 +5026,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
       return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
-      if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNamesKotlin.has(e.callee.object.name)) {
-        const f = chartActionFields(e.args[0])
-        if (f === null) {
-          _emitWarnings.push(`<${e.callee.object.name}.dispatch>: native needs an inline action object with a literal \`type\` ({ type: 'select', index: 2 }); the call is skipped.`)
-          return 'Unit'
-        }
-        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1L' : `(${emitKotlinExpr(x, indent)}).toLong()`)
-        const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `(${emitKotlinExpr(x, indent)}).toDouble()`)
-        const areas = f.areas === undefined ? 'listOf()' : withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitKotlinExpr(f.areas!, indent))
-        return `${kotlinIdent(e.callee.object.name)}.dispatch(ChartActionInput(type = ${emitKotlinExpr(f.type!, indent)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : emitKotlinExpr(f.brushType, indent)}, areas = ${areas}))`
-      }
+      // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
+      const pluginLowered = lowerPluginMemberCall(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent))
+      if (pluginLowered !== undefined) return pluginLowered
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
         if (paramTypes !== undefined) {
@@ -7572,9 +7567,13 @@ function kotlinEmitContext(indent: number) {
       emit: emitKotlinJsx,
       staticAttr: readStaticAttrKotlin,
       stringLiteral: kotlinStr,
+      identifier: kotlinIdent,
       warn: (message) => {
         _emitWarnings.push(message)
       },
+      expr: emitKotlinExpr,
+      exprAs: (type, e, at) => withExpectedTypeKotlin(type, () => emitKotlinExpr(e, at)),
+      scope: () => _pluginScope,
     },
     indent,
   )
@@ -11923,8 +11922,12 @@ function kotlinToolboxSaves(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolea
  * exact match silently returns undefined, which emits a chart that toggles
  * its legend and never calls the handler.
  */
-/** Names declared `createChartHandle()` in the module being emitted — their `dispatch` calls lower to `ChartActionInput`. */
-const _chartHandleNamesKotlin = new Set<string>()
+/**
+ * The current component's plugin scope (its ext declarations, plugin state,
+ * deferred substitutions) — a fresh one per component and per file, see
+ * `plugin-scope.ts`.
+ */
+let _pluginScope: PluginScope = createPluginScope()
 
 function chartEventHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined {
   const want = name.toLowerCase()
@@ -12620,7 +12623,9 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
 function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handleAttr = chartAttrExprKotlin(e, 'handle')
   if (handleAttr === undefined) return emitKotlinPlotHostCore(e, indent, undefined)
-  if (handleAttr.kind !== 'identifier' || !_chartHandleNamesKotlin.has(handleAttr.name)) {
+  // The host asks the component's DECLARATIONS whether the name is a chart handle — never a plugin's state.
+  const handleDecl = handleAttr.kind === 'identifier' ? _pluginScope.declByName(handleAttr.name) : undefined
+  if (handleAttr.kind !== 'identifier' || handleDecl === undefined || !isChartHandleDecl(handleDecl)) {
     _emitWarnings.push('<PlotChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the chart renders without the handle.')
     return emitKotlinPlotHostCore(e, indent, undefined)
   }

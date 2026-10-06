@@ -198,6 +198,12 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
     'useLoaderData',
     'already warns — a documented, disclosed gap rather than a silent one.',
   ],
+  [
+    'createChartHandle',
+    'claimed by the built-in @pyreon/charts plugin (a plugin call name, so it joins the allowlist) and ' +
+      'type-checked on both targets by chart-handle-native.test.ts, which needs the generated chart-engine ' +
+      'structs and the bound <PlotChart handle> this one-hook template cannot express.',
+  ],
 ])
 
 const app = (name: string, mod: string, decl: string) =>

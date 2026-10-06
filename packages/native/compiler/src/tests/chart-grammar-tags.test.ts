@@ -15,7 +15,7 @@
 // someone adds a mark to one side only.
 import { describe, expect, it } from 'vitest'
 import { GRAMMAR_INDICATOR_TAGS, GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS, PLOT_SPREAD_MARKS } from '../chart-hosts'
-import { UNLOWERED_PYREON_MODULES } from '../parse'
+import { defaultRegistries } from '../active-registries'
 
 /** Mirrors `GRAMMAR_TAG_KINDS` in the charts package's grammar-parity test. */
 const EXPECTED: Readonly<Record<string, string>> = {
@@ -70,7 +70,7 @@ describe("the import allowlist knows every grammar tag too", () => {
   // Asserted from the tag map rather than from a written-out list, so a mark
   // added or renamed later cannot pass by being forgotten in both places.
   it('every LOWERED mark name is a supported @pyreon/charts import', () => {
-    const entry = UNLOWERED_PYREON_MODULES.get('@pyreon/charts')
+    const entry = defaultRegistries().unlowered.get('@pyreon/charts')
     expect(entry, '@pyreon/charts is not in the module table at all').toBeDefined()
     // Derived from EVERY lowering table, not just the grammar's: a mark the
     // emitters lower and the allowlist has not heard of reports a native
@@ -88,7 +88,7 @@ describe("the import allowlist knows every grammar tag too", () => {
   })
 
   it('and every mark KIND a grammar tag maps to, which is the array form of the same thing', () => {
-    const entry = UNLOWERED_PYREON_MODULES.get('@pyreon/charts')
+    const entry = defaultRegistries().unlowered.get('@pyreon/charts')
     const missing = [...new Set(Object.values(GRAMMAR_MARK_TAGS))].filter((k) => entry!.supported?.has(k) !== true)
     expect(missing).toEqual([])
   })

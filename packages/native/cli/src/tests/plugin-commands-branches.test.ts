@@ -142,4 +142,23 @@ describe('pluginsReport — discovery edge cases', () => {
     const { lines } = await pluginsReport(app, false)
     expect(lines.join('\n')).toContain('(replaced by a discovered plugin)')
   })
+
+  it('lists the elements and unlowered modules a plugin contributes on its row', async () => {
+    addPackage(
+      '@acme/rich',
+      `export default {
+        name: 'rich',
+        apiVersion: 1,
+        services: { useRich: { swift: 'Rich()', kotlin: ['val {id} = Rich()'] } },
+        elements: [{ module: '@acme/ui', tags: ['Banner', 'Badge'], emit: { swift: () => 'B()', kotlin: () => 'B()' } }],
+        unlowered: { '@acme/web': { advice: 'web only' } },
+      }`,
+    )
+    const { lines, exitCode } = await pluginsReport(app, false)
+    expect(exitCode).toBe(0)
+    const row = lines.find((l) => l.includes('@acme/rich'))!
+    expect(row).toContain('elements: Banner, Badge')
+    expect(row).toContain('unlowered: @acme/web')
+    expect(row).toContain('services: useRich')
+  })
 })
