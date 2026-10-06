@@ -135,6 +135,13 @@ Reactive-props inlining substitutes a prop-derived `const`'s initializer at ever
 
 ---
 
+### Reading a never-mounted child's `props` raw ignores compiler-branded `_rp` thunks
+
+`<Bar stack={hidden}/>` with `const hidden = props.hide` compiles to `_rp(() => props.hide)`; only mounting runs `makeReactiveProps`. `<Chart>` reads mark `vnode.props` structurally, so `thunk === true` was false and the flag was silently ignored (#3822; `let hidden` worked).
+  - Fix at ONE read point: `makeReactiveProps(v.props)` inside the resolving computed (getters fire there, so signals re-resolve). Discriminate by the `REACTIVE_PROP` brand, never `typeof === 'function'` — channel accessors, `format` and `onX` are legitimate functions. Reference: `charts/src/engine/grammar.tsx:propsOf`, locked by `grammar-branded-props.test.tsx`.
+
+---
+
 ### Iterating or cloning `props.children` without unwrapping a compiler accessor
 
 Prop inlining can rewrite `<Comp>{children}</Comp>` (a `const` derived from a getter, e.g. after `splitProps`) as `children: () => x.children`. `mountChild` handles a function child, but a library that iterates children (`(Array.isArray(c) ? c : [c]).filter(…)` → `[]`) or calls `cloneVNode(props.children, …)` (→ `<undefined>` tags) breaks. Resolve at body entry with `resolveChildren` (`packages/ui-system/kinetic/src/utils.ts`) or `typeof c === 'function' ? c() : c`; this is safe when children are snapshotted at render. Enforced by `pyreon/no-iterate-children-without-resolve` (error; in `recommended`/`strict`/`app`/`lib`):
