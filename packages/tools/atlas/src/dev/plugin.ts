@@ -258,14 +258,14 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           // which Vite's dep graph can resolve to a second instance that never
           // saw a single node — the leak check hit the same split.
           `import { computeReactiveCoverage } from '@pyreon/reactivity/coverage'`,
-          `import { Workbench } from '@pyreon/atlas/ui'`,
+          `import { Workbench, runAxe } from '@pyreon/atlas/ui'`,
           `import { catalog } from ${JSON.stringify(CATALOG_ID)}`,
           '',
           // The browser-verify bridge: the runner drives scenarios and reads
           // reactive coverage THROUGH THE PAGE's own module graph — the same
           // instances the components run on. A dev server is a dev tool;
           // exposing its own instrumentation is the point, not a leak.
-          `globalThis.__ATLAS_VERIFY__ = { computeReactiveCoverage }`,
+          `globalThis.__ATLAS_VERIFY__ = { computeReactiveCoverage, runAxe: (surface, rules) => runAxe(surface, undefined, rules) }`,
           '',
           `const root = document.getElementById('atlas-root')`,
           `if (root) {`,

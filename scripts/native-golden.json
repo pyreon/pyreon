@@ -1,0 +1,875 @@
+{
+  "description": "Hash of (code + warnings) per corpus entry and target. Regenerate with `bun scripts/check-native-golden.ts --update`; a refactor PR must show no diff here.",
+  "entries": {
+    "fixture:01-stateless.tsx|swift": {
+      "sha": "eab546141945d203056f96878a158669e4af96d127c37cee6dd0b0eec600d688",
+      "bytes": 78,
+      "warnings": 0
+    },
+    "fixture:01-stateless.tsx|kotlin": {
+      "sha": "486e7e7b611fb5c563b9f7ea5a9020d62569fe273f3276608b9fade2b442d5bf",
+      "bytes": 151,
+      "warnings": 0
+    },
+    "fixture:02-signal.tsx|swift": {
+      "sha": "7eea49ce9ec6326c16539355820eca33d1f07371a2cd104d1d8995907e4c6cc4",
+      "bytes": 119,
+      "warnings": 0
+    },
+    "fixture:02-signal.tsx|kotlin": {
+      "sha": "668165e4643f0eb6ce2c0edd1fff71a531196b27310ab36beeca1746af140c7e",
+      "bytes": 193,
+      "warnings": 0
+    },
+    "fixture:03-computed.tsx|swift": {
+      "sha": "707a46dcbc9c8443f6796b8c68b2aaada5b181d68435e41d8e25397d5bd1815b",
+      "bytes": 162,
+      "warnings": 0
+    },
+    "fixture:03-computed.tsx|kotlin": {
+      "sha": "2e524d7168c89826e758803189ac6c302239303da5088b80da758ccd9c600a59",
+      "bytes": 255,
+      "warnings": 0
+    },
+    "fixture:04-event.tsx|swift": {
+      "sha": "385b439ab13fd6116be1f9cfca02b3a9faee8fc05b533b31bfb505f9867e87f0",
+      "bytes": 136,
+      "warnings": 0
+    },
+    "fixture:04-event.tsx|kotlin": {
+      "sha": "a65c57189da65e89143d250b3805d590c4ab627eb3d02f4e7b80a2561f092fd6",
+      "bytes": 240,
+      "warnings": 0
+    },
+    "fixture:05-multi-signal.tsx|swift": {
+      "sha": "362c4ceadf06e0edd7ff29b2e3edc809a9cffd76fa00d00e880217addb132dd8",
+      "bytes": 178,
+      "warnings": 0
+    },
+    "fixture:05-multi-signal.tsx|kotlin": {
+      "sha": "340ecd7dada15a5ff1f9e8833d8da48b1cbdec3b97f7226272ef910e31f37669",
+      "bytes": 281,
+      "warnings": 0
+    },
+    "fixture:06-for.tsx|swift": {
+      "sha": "93fc46cf4a93179f1fdd1222c5a5de62a4037b8d9d332e5846b7edcd973eb0f1",
+      "bytes": 252,
+      "warnings": 0
+    },
+    "fixture:06-for.tsx|kotlin": {
+      "sha": "987a5ec7eb5fe8a5936414b18fd8c3ca114654a63722675135537ec7c4cd542b",
+      "bytes": 370,
+      "warnings": 0
+    },
+    "fixture:07-show.tsx|swift": {
+      "sha": "14c91e9e2b6ea49696aa224e8573ca90674b784756ba77021562d584c54b14a6",
+      "bytes": 138,
+      "warnings": 0
+    },
+    "fixture:07-show.tsx|kotlin": {
+      "sha": "25d4938a56d96da55d0c0a79215ead07288e03b2b892d16b48de95eadb079229",
+      "bytes": 218,
+      "warnings": 0
+    },
+    "fixture:08-string-computed.tsx|swift": {
+      "sha": "83b865969a121e70e6c6bd33d2126dea7ff229765d9860791a8fcbc4fd6aa771",
+      "bytes": 181,
+      "warnings": 0
+    },
+    "fixture:08-string-computed.tsx|kotlin": {
+      "sha": "4154c1c11e5efc651d69e9924a5a8f3c4babb052ef5cab96e2663bcadcb8b208",
+      "bytes": 266,
+      "warnings": 0
+    },
+    "fixture:09-props.tsx|swift": {
+      "sha": "96cd868d14907dffed75c408fe4b31b6c1e7057ceeda7d35dc5d70843e46e3e6",
+      "bytes": 142,
+      "warnings": 0
+    },
+    "fixture:09-props.tsx|kotlin": {
+      "sha": "53a74573a70fc6f955786332b14111df8d62a46dbc1ddd2bb11fe6b9a68bcc16",
+      "bytes": 193,
+      "warnings": 0
+    },
+    "fixture:10-multi-component.tsx|swift": {
+      "sha": "0304333913c574cdd5d0b1416158d1ccf7056d697cfb34a3775cb1332abaee07",
+      "bytes": 175,
+      "warnings": 0
+    },
+    "fixture:10-multi-component.tsx|kotlin": {
+      "sha": "9236b1d9252d7f295d7af5a640fb7e41f284adc96695e1e2bc367f62e097d71b",
+      "bytes": 207,
+      "warnings": 0
+    },
+    "fixture:11-canonical-layout.tsx|swift": {
+      "sha": "acfb2613e356b98c72627fbca747c0ae212685b8dd60e8e4a1f487df49e0548b",
+      "bytes": 294,
+      "warnings": 0
+    },
+    "fixture:11-canonical-layout.tsx|kotlin": {
+      "sha": "744fcb342031575d58fe64e4dd0e8b55ecb51b755a8a5e570cda95f3c2675efd",
+      "bytes": 388,
+      "warnings": 0
+    },
+    "fixture:12-canonical-input.tsx|swift": {
+      "sha": "208e4df85b596fc8b4bcc8bd5c1881f11218243b260635a5a2c48c955929f784",
+      "bytes": 401,
+      "warnings": 0
+    },
+    "fixture:12-canonical-input.tsx|kotlin": {
+      "sha": "6be12db3a6ebaa617de9d0e2ef7e8609df51856d1a3ec3c3d632df78883a7212",
+      "bytes": 601,
+      "warnings": 0
+    },
+    "fixture:13-canonical-overlay.tsx|swift": {
+      "sha": "585a80785a68831e5f4c6f5f8160c69944f7e049d5e9ed0a1e2273b89d0a57dc",
+      "bytes": 279,
+      "warnings": 0
+    },
+    "fixture:13-canonical-overlay.tsx|kotlin": {
+      "sha": "a688836203cb7b2ffc116f5f55c70f9d3627129d4654fcb668261c6899c08e12",
+      "bytes": 431,
+      "warnings": 0
+    },
+    "fixture:14-canonical-content.tsx|swift": {
+      "sha": "964b237e98c5f17a323b8848de61dad46452803ad8c457fe4528ec1f1365a988",
+      "bytes": 571,
+      "warnings": 0
+    },
+    "fixture:14-canonical-content.tsx|kotlin": {
+      "sha": "414e7339501ffa9238fc53d3aaee2a49229dc0f1cbe079658853cd80964d2787",
+      "bytes": 674,
+      "warnings": 0
+    },
+    "fixture:15-canonical-link.tsx|swift": {
+      "sha": "70a8e2dbc9cc354bc97bf237fb1731ed422d39060b0aacc99e2ea978b0ddcabb",
+      "bytes": 193,
+      "warnings": 0
+    },
+    "fixture:15-canonical-link.tsx|kotlin": {
+      "sha": "cb8c3e42b058bb2baed331e15a322f8d74cef831626626d1a18a7f3c6a8af570",
+      "bytes": 419,
+      "warnings": 0
+    },
+    "fixture:every-primitive.tsx|swift": {
+      "sha": "229370db993483bfc3252b3054ffee65b9c6ea03d1e4106f480c95480382218e",
+      "bytes": 2500,
+      "warnings": 0
+    },
+    "fixture:every-primitive.tsx|kotlin": {
+      "sha": "6ac1cc3fdd14b95c3d806cef42bcfe7add8ab5c4d65f809a6721a5522797d3c8",
+      "bytes": 2685,
+      "warnings": 0
+    },
+    "fixture:lifecycle-errorboundary.tsx|swift": {
+      "sha": "826e4f55aebcf663b50554b2f67906f95e38a97f80c40933a5633e78f316c72c",
+      "bytes": 241,
+      "warnings": 0
+    },
+    "fixture:lifecycle-errorboundary.tsx|kotlin": {
+      "sha": "b620bfb4402dde74edde25af911a69c591317e21d008e479e06f1e35aa70b748",
+      "bytes": 273,
+      "warnings": 0
+    },
+    "fixture:lifecycle-keepalive.tsx|swift": {
+      "sha": "24031014016ab70e5ef661d72e1add2c0dc25002997aea2267d40eac93279714",
+      "bytes": 836,
+      "warnings": 0
+    },
+    "fixture:lifecycle-keepalive.tsx|kotlin": {
+      "sha": "63f0f00494ce946b1c236cf84d61048410b4475604ff07770cf1e62684b539da",
+      "bytes": 668,
+      "warnings": 0
+    },
+    "fixture:lifecycle-suspense.tsx|swift": {
+      "sha": "5f2222f822007f3efc95a163d93e3d1ed7929956f8c3e059b7e04ada25d9f12b",
+      "bytes": 238,
+      "warnings": 0
+    },
+    "fixture:lifecycle-suspense.tsx|kotlin": {
+      "sha": "36679edc1b29822f44d379ba6c592286081097f54ba1fed56176c9abed4507b2",
+      "bytes": 270,
+      "warnings": 0
+    },
+    "fixture:render-props-lathe-books.tsx|swift": {
+      "sha": "0582cad7b8c4964102d8b2d9ee5ad0929f6940c78c9fe788049202823c0caada",
+      "bytes": 6812,
+      "warnings": 0
+    },
+    "fixture:render-props-lathe-books.tsx|kotlin": {
+      "sha": "ed4ffbe7a3b5f9fc68173b95479a310a791e20c9b46ce2668319d5c42d749a31",
+      "bytes": 6516,
+      "warnings": 0
+    },
+    "fixture:render-props-lathe-consumer.tsx|swift": {
+      "sha": "b932f3ad8040a7dc47da2368a7cb15a3a9eb21dec279f3412fe2528e22b577eb",
+      "bytes": 391,
+      "warnings": 0
+    },
+    "fixture:render-props-lathe-consumer.tsx|kotlin": {
+      "sha": "8ac2afddb7d4fef876115747fd4a84b666d63ada2730d5f884c6b55166b043f2",
+      "bytes": 403,
+      "warnings": 0
+    },
+    "fixture:router-hooks.tsx|swift": {
+      "sha": "45e880c8e920a92e18fa6b88309472b45561f67009cf66ca978c62b0a5bac020",
+      "bytes": 455,
+      "warnings": 0
+    },
+    "fixture:router-hooks.tsx|kotlin": {
+      "sha": "43093a5524ab74d92fe918c0bf34deee3839c8b2aa3577e748afb4e354b0de37",
+      "bytes": 387,
+      "warnings": 0
+    },
+    "fixture:rx-full.tsx|swift": {
+      "sha": "f4607f8b2d3d842a13d4c77ad70d9fea98fbf202c859fe27fb0e07de6c0bc7b9",
+      "bytes": 1706,
+      "warnings": 0
+    },
+    "fixture:rx-full.tsx|kotlin": {
+      "sha": "a920627ec63f405232b3de4b06cc7ae652a3d1acfc109d00dbb6d317fccfc38e",
+      "bytes": 1948,
+      "warnings": 0
+    },
+    "fixture:rx-lowering.tsx|swift": {
+      "sha": "e9aad50a4359a706a27d7d70ee40565ffa6a3c20b3a30ed2f4e8bc1d5b315f2c",
+      "bytes": 443,
+      "warnings": 0
+    },
+    "fixture:rx-lowering.tsx|kotlin": {
+      "sha": "183c18cafa476be1f0eb3e2dc899f0fa97b0542617cae3cce90249ce87292a02",
+      "bytes": 548,
+      "warnings": 0
+    },
+    "fixture:showcase-analytics.tsx|swift": {
+      "sha": "0548637eb6a86537cc8a6a54623f4fd824158f3440aac115d1d9f61f1a23b902",
+      "bytes": 2614,
+      "warnings": 0
+    },
+    "fixture:showcase-analytics.tsx|kotlin": {
+      "sha": "9cb55b459610f3e9ccc5de86b1808253092129bd44c5e05152efd315592977da",
+      "bytes": 3114,
+      "warnings": 0
+    },
+    "fixture:showcase-finance.tsx|swift": {
+      "sha": "be41204716e3c8dc5553a782e150975239a89a67ffd904a10fbc9adec6dd533a",
+      "bytes": 4820,
+      "warnings": 1
+    },
+    "fixture:showcase-finance.tsx|kotlin": {
+      "sha": "cafcd497c9d9be00f1c50112877aa4b7ce3e996f4ba4b1145e8e531bb86bbdbb",
+      "bytes": 4624,
+      "warnings": 0
+    },
+    "fixture:showcase-tasks.tsx|swift": {
+      "sha": "f547500509a6cbbbd6ce161d8772d38d09dde3a62b449d7b863ca8dd75f28013",
+      "bytes": 11457,
+      "warnings": 1
+    },
+    "fixture:showcase-tasks.tsx|kotlin": {
+      "sha": "002d23887f600fb28208beb96749d78fc166978012b3c0354fe898ec0324681e",
+      "bytes": 10971,
+      "warnings": 0
+    },
+    "fixture:showcase-viz.tsx|swift": {
+      "sha": "6ace742ceff452e748dca32d6a135e8ab1067f810db21933bfcf73605edbf2e8",
+      "bytes": 1319,
+      "warnings": 0
+    },
+    "fixture:showcase-viz.tsx|kotlin": {
+      "sha": "11caf3f3ce43a62fd174df289eb1310fd87d139e3db60d9ec96dae43f43d69d5",
+      "bytes": 1448,
+      "warnings": 0
+    },
+    "fixture:synth-prop-types.tsx|swift": {
+      "sha": "510dfcd9957c8ca3c54cd3e31d738f9fd0350862d28612103b3172e24c97e6b2",
+      "bytes": 379,
+      "warnings": 0
+    },
+    "fixture:synth-prop-types.tsx|kotlin": {
+      "sha": "26f3dcf811c0a407873b4574c94cd4b1d043ad634037b12f393ba791db1a7367",
+      "bytes": 463,
+      "warnings": 0
+    },
+    "fixture:tier2-feature.tsx|swift": {
+      "sha": "df1582680e4ba22c50fbfeec73e936f2e73d13390a6953eb698b9ba8d6eefca5",
+      "bytes": 300,
+      "warnings": 0
+    },
+    "fixture:tier2-feature.tsx|kotlin": {
+      "sha": "90ef8ddaafb459cc0118be4bd2b18bfec777663fabf93eb9632c4e05437cac50",
+      "bytes": 291,
+      "warnings": 0
+    },
+    "fixture:tier2-form.tsx|swift": {
+      "sha": "a0ff9b1c679d194adb36dd7e4fd7e8e8f80ce78d68301fc5ec38fba1e4949467",
+      "bytes": 865,
+      "warnings": 0
+    },
+    "fixture:tier2-form.tsx|kotlin": {
+      "sha": "b76c4a05eda0edfe2e36018f663d475d8b7cd89258fcbc25d459e6e4f5930d79",
+      "bytes": 1032,
+      "warnings": 0
+    },
+    "fixture:tier2-i18n.tsx|swift": {
+      "sha": "8fa8ec402050380b2dfc606bb7ffe6073a145b61fdd52b9d3b5317b8a68e0f0a",
+      "bytes": 705,
+      "warnings": 0
+    },
+    "fixture:tier2-i18n.tsx|kotlin": {
+      "sha": "571fd26acf3e0d6c2f2ed7b00d0fa25aa138da1168d8cae2e1e54572a560f859",
+      "bytes": 821,
+      "warnings": 0
+    },
+    "fixture:tier2-machine.tsx|swift": {
+      "sha": "e91d1db0a96dc1c91643f1440d3b806cb483406d18fbc87f20de7f8d4dccc4bc",
+      "bytes": 409,
+      "warnings": 0
+    },
+    "fixture:tier2-machine.tsx|kotlin": {
+      "sha": "2570210975db33db4dff07347e991621a81cd2042a1c31e769c93a14d5a0074a",
+      "bytes": 468,
+      "warnings": 0
+    },
+    "fixture:tier2-permissions.tsx|swift": {
+      "sha": "51a7450dc27ac602cf9760305b5d8d0aa56a3906f82ec7e5a1e6c213006e7e09",
+      "bytes": 467,
+      "warnings": 0
+    },
+    "fixture:tier2-permissions.tsx|kotlin": {
+      "sha": "68038e69480608d3e50a163285b277467e8267286f1c1dfed5f9f48f2596b1f7",
+      "bytes": 567,
+      "warnings": 0
+    },
+    "fixture:tier2-rx.tsx|swift": {
+      "sha": "9b94e0dc8159d2bab6299019bb65bb26df89af84e1fa3997b2fd1708f616f820",
+      "bytes": 205,
+      "warnings": 5
+    },
+    "fixture:tier2-rx.tsx|kotlin": {
+      "sha": "f483a106a7e5346434f9e335b3053b7d33d3f53c7a1739e322c1f5e475233fdd",
+      "bytes": 288,
+      "warnings": 5
+    },
+    "fixture:tier2-state-tree.tsx|swift": {
+      "sha": "004d14e894d730a7f252bc73f3090d4cf979d7daf8517c68e61aae7892230d6e",
+      "bytes": 431,
+      "warnings": 0
+    },
+    "fixture:tier2-state-tree.tsx|kotlin": {
+      "sha": "2927ddf659d24af81dea0100dc9a9a900383cf66abb8c654a01c7506528f71e9",
+      "bytes": 373,
+      "warnings": 0
+    },
+    "fixture:tier2-store.tsx|swift": {
+      "sha": "a86c697d79f5d32bc822c941585bf089cea98d86cb8ed5937c08879917ed611b",
+      "bytes": 1787,
+      "warnings": 0
+    },
+    "fixture:tier2-store.tsx|kotlin": {
+      "sha": "6915ad5a3d730a7eb43c47756253574548c7ce685d2a39c7adfa0f1007b89640",
+      "bytes": 1754,
+      "warnings": 0
+    },
+    "fixture:tier2-validate.tsx|swift": {
+      "sha": "5ade6c58151ddf3a214deffbc4a360442c514cd238650194b5b16b429775f320",
+      "bytes": 425,
+      "warnings": 1
+    },
+    "fixture:tier2-validate.tsx|kotlin": {
+      "sha": "2300f52b91f41ac9460c7a9e9f188e58a1f97ed6b7ef715d1a9ac3f322045ebe",
+      "bytes": 436,
+      "warnings": 1
+    },
+    "fixture:tier2-validation.tsx|swift": {
+      "sha": "c20816a23f53461a655812654e75d3956f454bb18e9f6cca1a90988fea2f8441",
+      "bytes": 3188,
+      "warnings": 0
+    },
+    "fixture:tier2-validation.tsx|kotlin": {
+      "sha": "0b3120aa438a1630f032ea938e413653d4466195a33a31d8549b620e83c611c4",
+      "bytes": 2831,
+      "warnings": 0
+    },
+    "fixture:value-type-namespaces.tsx|swift": {
+      "sha": "692e09d6f5000958e18d6d14f0abc5f1b9f3b498fdf5d96b6800d284477f7b2f",
+      "bytes": 7132,
+      "warnings": 0
+    },
+    "fixture:value-type-namespaces.tsx|kotlin": {
+      "sha": "dfba035e49c73d30e36e9ec8b1111d4bc8868f470b2563c42b4d08e82f7bc5ea",
+      "bytes": 6788,
+      "warnings": 0
+    },
+    "fixture:webview-data-bridge.tsx|swift": {
+      "sha": "bfeaeca00828b3208d61921a8beed9db49d9c37f2462140da56b9f9145d2b27e",
+      "bytes": 389,
+      "warnings": 0
+    },
+    "fixture:webview-data-bridge.tsx|kotlin": {
+      "sha": "7f6dd0109dc2c6690b0999892a76e2c4944991f0f60a9035d6704439e00fe905",
+      "bytes": 481,
+      "warnings": 0
+    },
+    "fixture:webview-dynamic.tsx|swift": {
+      "sha": "04588bc6b6b4eba760f4e3f8882288cae371e860521fab3882ccd0b36134f504",
+      "bytes": 233,
+      "warnings": 0
+    },
+    "fixture:webview-dynamic.tsx|kotlin": {
+      "sha": "2a45586ed5a02454201b0dcc6611eac446de7131d7a0177cead519e5889a8bd7",
+      "bytes": 318,
+      "warnings": 0
+    },
+    "example:native-analytics/AnalyticsApp.tsx|swift": {
+      "sha": "0548637eb6a86537cc8a6a54623f4fd824158f3440aac115d1d9f61f1a23b902",
+      "bytes": 2614,
+      "warnings": 0
+    },
+    "example:native-analytics/AnalyticsApp.tsx|kotlin": {
+      "sha": "9cb55b459610f3e9ccc5de86b1808253092129bd44c5e05152efd315592977da",
+      "bytes": 3114,
+      "warnings": 0
+    },
+    "example:native-counter-ios/Counter.tsx|swift": {
+      "sha": "e4b8ab298013a6aac6b45caaff70d61cdb0b1bcef811308fa80a01cf27b0bf58",
+      "bytes": 18651,
+      "warnings": 0
+    },
+    "example:native-counter-ios/Counter.tsx|kotlin": {
+      "sha": "2e2537bc3b2fb6d02db3990427ff6f24fe96d7c6ec65ec43fbfb98cb17c3b841",
+      "bytes": 19286,
+      "warnings": 0
+    },
+    "example:native-finance/FinanceApp.tsx|swift": {
+      "sha": "e0f7a31cb970829cba7ca3e5f63bf9b0a1837a8179ea368d2ec51c2a53453cdc",
+      "bytes": 7280,
+      "warnings": 1
+    },
+    "example:native-finance/FinanceApp.tsx|kotlin": {
+      "sha": "7f33b573f5e5431d9ed6cfefa973a385d14cdabb3e959f066119a740b99d5dde",
+      "bytes": 7091,
+      "warnings": 0
+    },
+    "example:native-router-demo-ios/RouterApp.tsx|swift": {
+      "sha": "38862ebd601b359121dd2bdd2f2f8ff20c39227a022872690e272170d2124375",
+      "bytes": 19247,
+      "warnings": 0
+    },
+    "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
+      "sha": "c0f415b0efb6e857ecf96aded4a3a8353386819f8ecf93cf028f807079e8e569",
+      "bytes": 17696,
+      "warnings": 0
+    },
+    "example:native-tasks/TasksApp.tsx|swift": {
+      "sha": "14d88f315376b591b0283232e485bc5425302b09c791100e97e22b776c581e35",
+      "bytes": 156596,
+      "warnings": 1
+    },
+    "example:native-tasks/TasksApp.tsx|kotlin": {
+      "sha": "7ba1f4c3f81d736e150849ce3e9f6ccf892cbeb421cd2d64767f70f4a57075e3",
+      "bytes": 162397,
+      "warnings": 0
+    },
+    "example:native-todomvc-ios/TodoApp.tsx|swift": {
+      "sha": "df8a372ebb3a47e2303c206e324d6f2a55db33eed960d7ecb98513b1ee2887e1",
+      "bytes": 2447,
+      "warnings": 0
+    },
+    "example:native-todomvc-ios/TodoApp.tsx|kotlin": {
+      "sha": "786b4d0f8f4676225cba0da938733293b3b94baae5016c133767bede8eb7a68f",
+      "bytes": 2959,
+      "warnings": 0
+    },
+    "example:native-viz/VizApp.tsx|swift": {
+      "sha": "81ae689e203b73b0b6a6c0e212d7df1fda7392be5252622385af3ddb58553b54",
+      "bytes": 24623,
+      "warnings": 0
+    },
+    "example:native-viz/VizApp.tsx|kotlin": {
+      "sha": "a278efe3b2c8997dc8cb4d659cbc5fb49b3f4d9fd0d5fcca79fe1a1bed40f1e3",
+      "bytes": 24807,
+      "warnings": 0
+    },
+    "registry:@pyreon/charts|swift": {
+      "sha": "881c7bd46ab310b335578dfdc28313b6dc809aa1478fbb04572eb63893219c64",
+      "bytes": 3338,
+      "warnings": 0
+    },
+    "registry:@pyreon/charts|kotlin": {
+      "sha": "acaa9eb0aec5e7b72cdc29a433290f9485225a164a5491aec934a3db403822eb",
+      "bytes": 3609,
+      "warnings": 0
+    },
+    "registry:@pyreon/reactivity|swift": {
+      "sha": "ca016f7c53e50f561c1a6f5c809973bd2d1a79e7d57dfb6e20336d7e1c4eec38",
+      "bytes": 252,
+      "warnings": 0
+    },
+    "registry:@pyreon/reactivity|kotlin": {
+      "sha": "207d5fccdf7adcf91eb6c770862f9336a2e0d88427f9c5bc4304c8d35236e3a6",
+      "bytes": 365,
+      "warnings": 0
+    },
+    "registry:@pyreon/rx|swift": {
+      "sha": "a86d5b584e72f74140077decf48d6c0a72b49c2d37fa53cda878ad559d6e2699",
+      "bytes": 274,
+      "warnings": 0
+    },
+    "registry:@pyreon/rx|kotlin": {
+      "sha": "918b0da14cbf12c6fb6cb428422e3bd44cf42b8d196671614945ab882837c426",
+      "bytes": 386,
+      "warnings": 0
+    },
+    "registry:@pyreon/core|swift": {
+      "sha": "4f1d3ff61568e8099d5dc5ba03f10399f2dc42386d056d4d87a0ea21a0ea611d",
+      "bytes": 842,
+      "warnings": 0
+    },
+    "registry:@pyreon/core|kotlin": {
+      "sha": "119f61e1acdb3db22905d3a107c4bd413da28533b3e8885b545a02b24740c738",
+      "bytes": 891,
+      "warnings": 0
+    },
+    "registry:@pyreon/primitives|swift": {
+      "sha": "e1813f6850273d3e8d53c15478c9f4af5b41bafc78b31576ab00385881fed052",
+      "bytes": 141,
+      "warnings": 0
+    },
+    "registry:@pyreon/primitives|kotlin": {
+      "sha": "0a66ffab33a035e9f5ad182408258f6cd8453a75518b14aed14a2f69c493ce3a",
+      "bytes": 269,
+      "warnings": 0
+    },
+    "registry:@pyreon/styler|swift": {
+      "sha": "933c3378bed7de65f8cbb5b51aea21d275af6c85b7b2925a55e14910bb1e9b63",
+      "bytes": 93,
+      "warnings": 0
+    },
+    "registry:@pyreon/styler|kotlin": {
+      "sha": "1b8876e03d0bc86f646c7212b4626c210b7d322b63582f144000f4efbea3366e",
+      "bytes": 186,
+      "warnings": 0
+    },
+    "registry:@pyreon/rocketstyle|swift": {
+      "sha": "d0091cbf6a77bffd9f1f96fdb20d3834540b5fd9ff6049a7fa2703f1cc77ce65",
+      "bytes": 198,
+      "warnings": 0
+    },
+    "registry:@pyreon/rocketstyle|kotlin": {
+      "sha": "55e71c5ff403f9f8b8fc89a2106b5b596fb736589c7212bca9268d617d4a2cf8",
+      "bytes": 237,
+      "warnings": 0
+    },
+    "registry:@pyreon/elements|swift": {
+      "sha": "ed485caa36b4ad59f14ebb4853a17487120177e56c8ae06a26d1c89292b9d1d2",
+      "bytes": 109,
+      "warnings": 0
+    },
+    "registry:@pyreon/elements|kotlin": {
+      "sha": "2b59691e7770e57181226af966ce7e2c867209d47c327231a74e92288b4e0eaa",
+      "bytes": 221,
+      "warnings": 0
+    },
+    "registry:@pyreon/attrs|swift": {
+      "sha": "185a0e82ca54c9ce04f055a33f1b4380c9040785f707103c06dd77ac5fa6cc3a",
+      "bytes": 94,
+      "warnings": 0
+    },
+    "registry:@pyreon/attrs|kotlin": {
+      "sha": "3f4fcd51ef38bc8418495bd21755833d865e217aa9e90c7dc71b7fa35ed94b17",
+      "bytes": 201,
+      "warnings": 0
+    },
+    "registry:@pyreon/coolgrid|swift": {
+      "sha": "b4b246839d0b354fff83f3e0e323f8c63601b3bc5ec8beb410df63e72e1f2b46",
+      "bytes": 162,
+      "warnings": 0
+    },
+    "registry:@pyreon/coolgrid|kotlin": {
+      "sha": "22c51f96bbd40984084860370f205b82bdd99b888351d85715d8a0f3f0e10229",
+      "bytes": 251,
+      "warnings": 0
+    },
+    "registry:@pyreon/ui-core|swift": {
+      "sha": "e51f1e20755d59349fee8febfd3f650c2fa72ba90493f5184232ed60e6b8b242",
+      "bytes": 105,
+      "warnings": 0
+    },
+    "registry:@pyreon/ui-core|kotlin": {
+      "sha": "89dc455fb2e84b46862f2c04f9cd2e136e15e9a0e4955da22687045bf38d7256",
+      "bytes": 171,
+      "warnings": 0
+    },
+    "registry:@pyreon/router|swift": {
+      "sha": "59e015ce66e630b144276c7b10a51bedceae8039963b1822a68404e52bbb2e75",
+      "bytes": 124,
+      "warnings": 0
+    },
+    "registry:@pyreon/router|kotlin": {
+      "sha": "59fe8b010e1e9da6116e4bf2882223f4ac504e53984380efa0f20a2fa594cf30",
+      "bytes": 269,
+      "warnings": 0
+    },
+    "registry:@pyreon/validate|swift": {
+      "sha": "a7d55ed64cacdbf823fb9d44edf7f172cefd1f1e95d0d33b33be32a1598c5b45",
+      "bytes": 1446,
+      "warnings": 0
+    },
+    "registry:@pyreon/validate|kotlin": {
+      "sha": "5cdb6ad8533c5a60fd12aef4e93298ff3343843cf478cec7a0c5cd94a004cb96",
+      "bytes": 1576,
+      "warnings": 0
+    },
+    "registry:@pyreon/store|swift": {
+      "sha": "4f194eb85f55bc56af36715634812cbfc520ea887114cdb5853b049426be1cb4",
+      "bytes": 418,
+      "warnings": 0
+    },
+    "registry:@pyreon/store|kotlin": {
+      "sha": "169d7996ec710ea46237ce7d32821db599ae6faad4d1358f6650eeedf9d7fcde",
+      "bytes": 370,
+      "warnings": 0
+    },
+    "registry:@pyreon/state-tree|swift": {
+      "sha": "5fae120be33ee36d8001c6a4c4281dd8230e71110312bddfbbaba8b9bc9376d8",
+      "bytes": 340,
+      "warnings": 0
+    },
+    "registry:@pyreon/state-tree|kotlin": {
+      "sha": "341ade7776397da315f7cc2436bf4e312e5e0eff87f6ad2c513e596f883b990a",
+      "bytes": 297,
+      "warnings": 0
+    },
+    "registry:@pyreon/machine|swift": {
+      "sha": "5f9a35c3bc7f780d33b8ed4dcd1ff7cba246c82b4c4c1e452df01e7842bc84e3",
+      "bytes": 270,
+      "warnings": 0
+    },
+    "registry:@pyreon/machine|kotlin": {
+      "sha": "1442be69533c3355a67b9c8aa3556cb46f35a90004b9c05f65359e5b01347bda",
+      "bytes": 380,
+      "warnings": 0
+    },
+    "registry:@pyreon/i18n|swift": {
+      "sha": "1fc32a99ad98d7905fb16abe6e28f876f1f77d8972834af0f1797cfb0c1353c7",
+      "bytes": 225,
+      "warnings": 0
+    },
+    "registry:@pyreon/i18n|kotlin": {
+      "sha": "9a84a60f9f15eea62a47f0beebf671834999e76fe5f96060f54a65ea0ca5921e",
+      "bytes": 314,
+      "warnings": 0
+    },
+    "registry:@pyreon/query|swift": {
+      "sha": "6826bdfa85056e031e436503fcd8e8efb3c39764d15c3b1c9278893b68cb4d97",
+      "bytes": 582,
+      "warnings": 0
+    },
+    "registry:@pyreon/query|kotlin": {
+      "sha": "de0e2388764e55d5859a57a0a94d92440367f314a004515132014c3ad5223e0b",
+      "bytes": 615,
+      "warnings": 0
+    },
+    "registry:@pyreon/form|swift": {
+      "sha": "ded9dc8c7e06e8a20e1564bd820046276a01529ee301e314ddf239219d384abf",
+      "bytes": 254,
+      "warnings": 0
+    },
+    "registry:@pyreon/form|kotlin": {
+      "sha": "25a22aa44038fea02129535ce11259526289bcfaf5720911e1f287560bd02b71",
+      "bytes": 326,
+      "warnings": 0
+    },
+    "registry:@pyreon/storage|swift": {
+      "sha": "4e9c7854a40178c3e5b00a007fc840abb5f11a3670d40dce21424f7d337e3fac",
+      "bytes": 157,
+      "warnings": 0
+    },
+    "registry:@pyreon/storage|kotlin": {
+      "sha": "5118d25ad23411d56d3a70535bc5f91e9663079633d2650a5b762493ed740b7a",
+      "bytes": 217,
+      "warnings": 0
+    },
+    "registry:@pyreon/sync|swift": {
+      "sha": "51ecbacc3c2b2de87268044a3bcc8fc30ea5e1c6a2b76e27a7034f2b2d3b7216",
+      "bytes": 427,
+      "warnings": 0
+    },
+    "registry:@pyreon/sync|kotlin": {
+      "sha": "a2d2d749a039b7f97269bf4a13c5b6891bf0a945fa37ffa4779794e7762b9787",
+      "bytes": 349,
+      "warnings": 0
+    },
+    "registry:@pyreon/hooks|swift": {
+      "sha": "d641a2938a660423dcac43286e7d495ea4d3d60ed1c605ea63682922189385e5",
+      "bytes": 493,
+      "warnings": 0
+    },
+    "registry:@pyreon/hooks|kotlin": {
+      "sha": "8cf919632110e69d6a1fcbf98f14652c66009c8cec34019877e71aa61d509554",
+      "bytes": 528,
+      "warnings": 0
+    },
+    "registry:@pyreon/permissions|swift": {
+      "sha": "7f312be81cb4005b4bcf6566eb6863468e8cfa491a305451ebe1d423f78b9488",
+      "bytes": 179,
+      "warnings": 0
+    },
+    "registry:@pyreon/permissions|kotlin": {
+      "sha": "0a3f638dffd5cd9abe3299d7642bfa485ca72c6e570feaba726c82229b0025da",
+      "bytes": 241,
+      "warnings": 0
+    },
+    "registry:@pyreon/table|swift": {
+      "sha": "78d662ba5afef436481208ce4c474721ca5e3714af7da196dc83957766b727fa",
+      "bytes": 449,
+      "warnings": 0
+    },
+    "registry:@pyreon/table|kotlin": {
+      "sha": "df629f25219eb6748ecb5e8e48ef04d18de3e23927c231c45340915831fddb0d",
+      "bytes": 451,
+      "warnings": 0
+    },
+    "registry:@pyreon/toast|swift": {
+      "sha": "9f76e3b582d67cb74574aa94a6d72cc59bcec0f1f5f09e25007c74e466b91e8e",
+      "bytes": 134,
+      "warnings": 0
+    },
+    "registry:@pyreon/toast|kotlin": {
+      "sha": "be1693d9d34d056fea18f7406ef8161ac736c61a78349dbc90d23f7e6ce30bb7",
+      "bytes": 213,
+      "warnings": 0
+    },
+    "registry:@pyreon/a11y|swift": {
+      "sha": "2251d50067c39139c2012ed002b775b6b89ca123780c8a4a2242e5b8b0d201fe",
+      "bytes": 135,
+      "warnings": 0
+    },
+    "registry:@pyreon/a11y|kotlin": {
+      "sha": "c43027d449b3f178491026a1d3be77e867635e407681982c32c9150b296f3dff",
+      "bytes": 216,
+      "warnings": 0
+    },
+    "registry:@pyreon/sized-map|swift": {
+      "sha": "b30b553c7c4c5b1804a8f3b562550ecf39c0d6cc5993c8830f5097c7ad9a3037",
+      "bytes": 168,
+      "warnings": 0
+    },
+    "registry:@pyreon/sized-map|kotlin": {
+      "sha": "6b81dde1eb359af6bd7bed88b2c730e7c135477edf24918e3508ee571e193130",
+      "bytes": 230,
+      "warnings": 0
+    },
+    "registry:@pyreon/http|swift": {
+      "sha": "703a98b9912617ee1cc1bc471c7ff910aea7ebf4c3fba066dd1bacb5a3d84e83",
+      "bytes": 1148,
+      "warnings": 0
+    },
+    "registry:@pyreon/http|kotlin": {
+      "sha": "89883bdf54696f547090ffb622b6964d087d8cbfc9ab7ef8a8eb2521dd1923dc",
+      "bytes": 1299,
+      "warnings": 0
+    },
+    "registry:@pyreon/validation|swift": {
+      "sha": "85265cc31da87c474b7e72642516d430224ff6d6777e9ccb9b645e758f4f53a5",
+      "bytes": 2078,
+      "warnings": 0
+    },
+    "registry:@pyreon/validation|kotlin": {
+      "sha": "98cb96c603284809525907b43ad1fda35e4b2e57b60b757b6420e6eb008c8e60",
+      "bytes": 2151,
+      "warnings": 0
+    },
+    "registry:@pyreon/url-state|swift": {
+      "sha": "bf4c6b2b75fec870eae13c294c841e0400ffe87e22489e6a4736116fc0f44ecc",
+      "bytes": 271,
+      "warnings": 0
+    },
+    "registry:@pyreon/url-state|kotlin": {
+      "sha": "cbc9e167e1140f452d116ad0cf1ab53d4f7bc2864c2c5cfc59b1bc604494d51a",
+      "bytes": 219,
+      "warnings": 0
+    },
+    "registry:@pyreon/feature|swift": {
+      "sha": "79793fcea71aa13f0dc573e0f87cfd9b23bfb87583c29d6712c847d84c7fd705",
+      "bytes": 358,
+      "warnings": 0
+    },
+    "registry:@pyreon/feature|kotlin": {
+      "sha": "c4f11da37fe81981c0e3462e4ba5383dbc138c93ac167027f9547cfdfb0b648f",
+      "bytes": 416,
+      "warnings": 0
+    },
+    "registry:@pyreon/hotkeys|swift": {
+      "sha": "ac0b7eed8aeb04ef1fbd30d63e36ae69d47bbbd3fcee5c50f1917f8d8640b418",
+      "bytes": 354,
+      "warnings": 0
+    },
+    "registry:@pyreon/hotkeys|kotlin": {
+      "sha": "da59441c3733726b30d6a31fcd58c21f938298c761925bcfd89d28d3019bfb59",
+      "bytes": 676,
+      "warnings": 0
+    },
+    "registry:@pyreon/code|swift": {
+      "sha": "e31927bac5d2620cf9c9f8ccc3083e3d56f44e49eba28003f5601ab8795e2811",
+      "bytes": 435,
+      "warnings": 0
+    },
+    "registry:@pyreon/code|kotlin": {
+      "sha": "8a01ac9aa05abe0e253b2195428aee5b7c31a4b58a35c8696ed5cf303def4f71",
+      "bytes": 526,
+      "warnings": 0
+    },
+    "registry:@pyreon/flow|swift": {
+      "sha": "9d22f7b3c7f33fa312d82f6693bc33f38a5b628f69d35c8df5b99146153a2c54",
+      "bytes": 1383,
+      "warnings": 0
+    },
+    "registry:@pyreon/flow|kotlin": {
+      "sha": "caf83d48e391507bb25cde206f96eb6ca553fc90ea8e39a938050cd23053840b",
+      "bytes": 1566,
+      "warnings": 0
+    },
+    "registry:@pyreon/flow/webview|swift": {
+      "sha": "8e2a483af9200c71017d4013b1a83c159fcc9893c45d415612e37565b2ce4777",
+      "bytes": 427,
+      "warnings": 0
+    },
+    "registry:@pyreon/flow/webview|kotlin": {
+      "sha": "aa9bdd7a6735edcf590dae56b67596bf46af8fe2a7de2431c0e89c3b8eb98fe6",
+      "bytes": 518,
+      "warnings": 0
+    },
+    "registry:@pyreon/rich-text|swift": {
+      "sha": "2bce056880e3d45bca2b3428e44038a99da0068ff3b228e90bfd46946d932afb",
+      "bytes": 459,
+      "warnings": 0
+    },
+    "registry:@pyreon/rich-text|kotlin": {
+      "sha": "c19e9735c67c6b1a9b9572bb919466782822d3b4952ddb5cf58d060e6307eeae",
+      "bytes": 550,
+      "warnings": 0
+    },
+    "registry:@pyreon/dnd|swift": {
+      "sha": "d5503c1e9d5f7b9fd891d03cc78e54beae767b22a66bf49d734eb5b211ff14f3",
+      "bytes": 445,
+      "warnings": 0
+    },
+    "registry:@pyreon/dnd|kotlin": {
+      "sha": "51572f1dd279d89760c48a2b503454bc6c4fb8fc4296b39d7c898e913c7d5086",
+      "bytes": 414,
+      "warnings": 0
+    },
+    "registry:@pyreon/kinetic|swift": {
+      "sha": "e16d5c14184810768a8a4182af2a223079f710ac303750ced182fac51cd559ff",
+      "bytes": 398,
+      "warnings": 0
+    },
+    "registry:@pyreon/kinetic|kotlin": {
+      "sha": "4c9b84d8858d67d8a154072e243073d6ea944ffe2837a343df921b3b2d20fd2d",
+      "bytes": 497,
+      "warnings": 0
+    }
+  }
+}

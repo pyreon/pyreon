@@ -8,11 +8,13 @@ import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
+import { SERVICES, SERVICE_BY_HOOK } from './services'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
   typeIsOptional, buildInferenceCtx, buildModuleConstTypes, inferReturnType, inferType, moduleConstType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
+import { canonicalizeHookBindings } from './hook-binding'
 import type {
   AttrIR,
   ChildIR,
@@ -511,6 +513,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // kotlinc emit), so the finding is editor-clickable without new plumbing.
   const fatal = ast.errors.find((e) => e.severity !== 'Warning')
   if (fatal) throw new Error(formatParseError(fatal, filename, source))
+  // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
+  // framework hook is renamed to its canonical export, and a same-named user
+  // function or foreign import stops being claimed (see hook-binding.ts).
+  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, NATIVE_LOWERED_HOOKS))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
@@ -2847,19 +2853,21 @@ function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
-  'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorMode', 'useColorScheme',
+  // Plain service containers — the hook list lives in services.ts (SERVICES).
+  ...SERVICES.map((s) => s.hook),
+  'useAppState', 'useAuth', 'useClipboard', 'useColorMode', 'useColorScheme',
   'useCrashReporter',
-  'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
-  'useHaptics', 'useHotkey', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
-  'useNativeModule', 'useNavigate', 'useNotifications', 'useOnline',
+  'useDatabase', 'useFetch', 'useFieldArray', 'useForm', 'useGeolocation',
+  'useHotkey', 'useLoaderData', 'useMap',
+  'useNativeModule', 'useNavigate', 'useOnline',
   'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo', 'useSafeArea', 'useScreenOrientation',
-  'useDeviceMotion', 'useSpeech', 'useCamera', 'useAudioRecorder',
+  'useDeviceMotion', 'useSpeech', 'useAudioRecorder',
   'useUrlState',
   'useSecureStorage',
-  'useShare', 'useSizeClass', 'useStorage', 'useStream', 'useWebSocket',
+  'useSizeClass', 'useStorage', 'useStream', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
   'useDebouncedValue',
   'useDebouncedCallback', 'useThrottledCallback',
@@ -8928,12 +8936,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useSpeech') {
     return { kind: 'speech', name }
   }
-  // `useCamera()` -> PyreonCamera. Mirrors useImagePicker: the two differ
-  // only in which system flow they open, so `capture()` is async and
-  // collapses cancel + unavailable to null rather than throwing.
-  if (calleeName === 'useCamera') {
-    return { kind: 'camera', name }
-  }
   // `useAudioRecorder()` -> PyreonAudioRecorder. `start()` returns a Bool
   // rather than throwing (a denied mic permission is an ordinary branch) and
   // `stop()` returns a URL string or nil — the one representation all three
@@ -8974,16 +8976,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
   }
-  // M3.1 — `const h = useHaptics()` from `@pyreon/hooks` → the
-  // PyreonHaptics fire-and-forget wrapper. No arguments, no reactive
-  // state. Calls are member methods (`h.impact("light")` /
-  // `h.notification("success")` / `h.selection()`) that flow through
-  // unchanged — the runtime container provides the method surface, so
-  // (like useClipboard) there is NO `.value` rewrite and NO arg
-  // transformation (the string style arg passes straight through).
-  if (calleeName === 'useHaptics') {
-    return { kind: 'haptics', name }
-  }
   // FFI escape hatch — `const bt = useNativeModule<T>('Bluetooth')` from
   // `@pyreon/primitives`. The ONE service declaration whose emitted type
   // the framework does NOT own: it lowers to an instance of a class the
@@ -9020,15 +9012,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return { kind: 'native-module', name, moduleName }
   }
-  // M3.2 — `const share = useShare()` from `@pyreon/hooks` → the
-  // PyreonShare wrapper. No arguments. Calls are member methods with
-  // STRING args (`share.text("hi")` / `share.url("...")` /
-  // `share.textUrl(t, u)` / `share.canShare()`) that flow through
-  // unchanged — the runtime container presents the platform share sheet,
-  // so (like useHaptics/useClipboard) NO `.value` rewrite and NO arg
-  // transformation.
-  if (calleeName === 'useShare') {
-    return { kind: 'share', name }
+  // Plain service containers (`useShare`, `useLinking`, `useHaptics`,
+  // `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,
+  // `useCamera`) — no arguments, no reactive state; every call is a member
+  // method that flows through unchanged. The whole lowering is the descriptor
+  // in services.ts, rendered by both emitters from this one declaration.
+  const service = calleeName === undefined ? undefined : SERVICE_BY_HOOK.get(calleeName)
+  if (service !== undefined) {
+    return { kind: 'service', name, hook: service.hook }
   }
   // M3.2b — `const linking = useLinking()` from `@pyreon/hooks` → the
   // PyreonLinking wrapper. No arguments. `linking.openUrl("...")` flows
@@ -9040,43 +9031,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // and a `dispatch` that runs the crossing `applyChartAction` reducer.
   if (calleeName === 'createChartHandle') {
     return { kind: 'chart-handle', name }
-  }
-  if (calleeName === 'useLinking') {
-    return { kind: 'linking', name }
-  }
-  // M3.3 — `const notifs = useNotifications()` from `@pyreon/hooks` → the
-  // PyreonNotifications wrapper. No arguments. `notifs.notify("title","body")` /
-  // `notifs.requestPermission()` — the runtime container posts a local
-  // notification (iOS UNUserNotificationCenter, Android NotificationManager
-  // + channel). Like useShare, Android needs a Context.
-  if (calleeName === 'useNotifications') {
-    return { kind: 'notifications', name }
-  }
-  // M3.5 / M4.5 — `const bio = useBiometrics()` → a biometric gate (iOS
-  // LAContext, Android BiometricPrompt). Its `authenticate(reason?)` returns a
-  // Promise<boolean>, so consumers `await bio.authenticate(...)` inside an
-  // `async` handler — the FIRST async-result service, exercising the M4.5
-  // `await` lowering (Task {} / scope.launch {}). No arguments at construction.
-  if (calleeName === 'useBiometrics') {
-    return { kind: 'biometrics', name }
-  }
-  // M3.4 — `const picker = useImagePicker()` → the platform photo picker (iOS
-  // PHPickerViewController, Android PickVisualMedia). Its `pick()` returns a
-  // Promise<string | null>, so consumers `await picker.pick()` inside an
-  // `async` handler — the second async-result service after useBiometrics.
-  // Needs NO photo-library permission (both system pickers run out of process).
-  // No arguments at construction.
-  if (calleeName === 'useImagePicker') {
-    return { kind: 'image-picker', name }
-  }
-  // M3.8 — `const files = useFilePicker()` → the platform document picker (iOS
-  // UIDocumentPickerViewController, Android Storage Access Framework
-  // `OpenDocument`). Its `pick()` returns a Promise<string | null>, so
-  // consumers `await files.pick()` inside an `async` handler — the document
-  // sibling of useImagePicker (any file, not just photos). Needs NO storage
-  // permission (both system pickers run out of process). No construction args.
-  if (calleeName === 'useFilePicker') {
-    return { kind: 'file-picker', name }
   }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
