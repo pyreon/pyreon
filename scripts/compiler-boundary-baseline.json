@@ -12,7 +12,6 @@
       "@pyreon/document-primitives": 1,
       "@pyreon/elements": 2,
       "@pyreon/feature": 1,
-      "@pyreon/flow": 13,
       "@pyreon/head": 1,
       "@pyreon/http": 5,
       "@pyreon/kinetic": 1,
@@ -45,7 +44,7 @@
       "@pyreon/zero": 1,
       "@pyreon/zero-content": 1
     },
-    "hooks": 123
+    "hooks": 119
   },
   "compiler": {
     "packages": {
@@ -70,6 +69,6 @@
       "@pyreon/zero": 5,
       "@pyreon/zero-cli": 1
     },
-    "hooks": 36
+    "hooks": 30
   }
 }

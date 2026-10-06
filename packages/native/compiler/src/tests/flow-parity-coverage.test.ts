@@ -13,7 +13,7 @@
 
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { LOWERED_FLOW_METHODS } from '../flow-lowering'
+import { LOWERED_FLOW_METHODS } from '../../../../fundamentals/flow/src/native-plugin/lowering'
 
 const read = (rel: string) => readFileSync(new URL(`../../../../fundamentals/flow/native/tests/${rel}`, import.meta.url), 'utf8')
 const swift = read('PyreonFlowStateTests.swift')

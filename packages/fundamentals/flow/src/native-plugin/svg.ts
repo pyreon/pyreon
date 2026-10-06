@@ -17,8 +17,8 @@
  *
  * Shared by both emitters so iOS and Android lower the same shapes.
  */
-import { resolveFlowPathPaint, SVG_INITIAL_PAINT, type FlowPathPaint } from './flow-path-paint'
-import type { ExprIR } from './types'
+import { resolveFlowPathPaint, SVG_INITIAL_PAINT, type FlowPathPaint } from './path-paint'
+import type { ExprIR } from '@pyreon/native-compiler/plugin-api'
 
 type JsxElement = Extract<ExprIR, { kind: 'jsx-element' }>
 export type FlowSvgNumber = { kind: 'literal'; value: number } | { kind: 'expr'; expr: ExprIR }

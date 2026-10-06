@@ -187,6 +187,14 @@ export function createCompiler<Target extends string = never>(
       calls: plugin.calls,
       decls: plugin.decls,
       memberCalls: plugin.memberCalls,
+      receivers: plugin.receivers,
+      functions: plugin.functions,
+      memberReads: plugin.memberReads,
+      identifiers: plugin.identifiers,
+      intrinsics: plugin.intrinsics,
+      prepareEmit: plugin.prepareEmit,
+      intrinsicAdvice: plugin.intrinsicAdvice,
+      propsTypes: plugin.propsTypes,
       unlowered: plugin.unlowered,
       runtimeTypes: plugin.runtimeTypes,
       refineParse: plugin.refineParse,
@@ -289,3 +297,4 @@ export function createCompiler<Target extends string = never>(
     }
   }
 }
+

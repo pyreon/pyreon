@@ -9,8 +9,8 @@
  * the web's CSS variable resolves per colour mode. Marker `url(#…)` references
  * and `class` name web-only things and are reported, not dropped silently.
  */
-import { resolveFlowPathPaint, type FlowPathPaint } from './flow-path-paint'
-import type { ExprIR } from './types'
+import { resolveFlowPathPaint, type FlowPathPaint } from './path-paint'
+import type { ExprIR } from '@pyreon/native-compiler/plugin-api'
 
 type JsxElement = Extract<ExprIR, { kind: 'jsx-element' }>
 

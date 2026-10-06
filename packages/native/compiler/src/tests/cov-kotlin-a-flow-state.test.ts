@@ -10,7 +10,7 @@
 // carry has to be NAMED as dropped rather than silently discarded.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const FLOW = (body: string) => `
 import { createFlow } from '@pyreon/flow'

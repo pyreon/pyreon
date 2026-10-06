@@ -17,7 +17,7 @@
 // warning.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const FLOW = (body: string) => `import { createFlow } from '@pyreon/flow'
 import { Stack, Text, Button } from '@pyreon/primitives'

@@ -13,14 +13,9 @@
 
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { transform } from '../index'
-import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, SWIFT_FLOW_STATE_INIT_LABELS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, SWIFT_FLOW_STATE_INIT_LABELS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../../../../fundamentals/flow/src/native-plugin/lowering'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const P = '@pyreon/primitives'
 
@@ -57,7 +52,7 @@ it('SWIFT_FLOW_STATE_INIT_LABELS mirrors the real Swift init and its stub, in or
   // config combines the affected keys — the stub had `connectionRules` in a
   // different slot than the runtime, so it could not catch the drift either.
   const runtime = readFileSync(new URL('../../../../fundamentals/flow/native/swift/PyreonFlowState.swift', import.meta.url), 'utf8')
-  const stub = readFileSync(new URL('../swift-stubs.ts', import.meta.url), 'utf8')
+  const stub = readFileSync(new URL('../../../../fundamentals/flow/src/native-plugin/stubs.ts', import.meta.url), 'utf8')
   expect(swiftFlowInitLabels(runtime)).toEqual([...SWIFT_FLOW_STATE_INIT_LABELS])
   expect(swiftFlowInitLabels(stub)).toEqual([...SWIFT_FLOW_STATE_INIT_LABELS])
 })

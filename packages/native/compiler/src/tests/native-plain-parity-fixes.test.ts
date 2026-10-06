@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // Anonymous record names include a stable hash of their source location. The
 // Plain and classic fixtures intentionally have different prologues, so that

@@ -17,11 +17,13 @@ import type { ValidateOptions } from '../packages/native/compiler/src/stub-augme
 import type { EmitOptions, TransformResult } from '../packages/native/compiler/src/types'
 import { chartsPlugin } from '../packages/fundamentals/charts/src/native-plugin/plugin'
 import { chartsStubs } from '../packages/fundamentals/charts/src/native-plugin/stubs'
+import { flowPlugin } from '../packages/fundamentals/flow/src/native-plugin/plugin'
+import { flowStubs } from '../packages/fundamentals/flow/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin])
+export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 

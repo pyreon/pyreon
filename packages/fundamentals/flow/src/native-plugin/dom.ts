@@ -22,7 +22,7 @@
  *
  * Shared by both emitters so iOS and Android lower the same set.
  */
-import type { ExprIR } from './types'
+import type { ExprIR } from '@pyreon/native-compiler/plugin-api'
 
 type JsxElement = Extract<ExprIR, { kind: 'jsx-element' }>
 

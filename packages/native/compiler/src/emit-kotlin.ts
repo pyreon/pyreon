@@ -7,41 +7,25 @@
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { kotlinStr } from './string-literals'
-import { bindServices, emitPluginDecl, findElementLowering, findScopeProvider, lowerPluginMemberCall, serviceFor } from './registry-lookup'
+import {
+  bindServices,
+  emitPluginDecl,
+  emitPreparations,
+  findElementLowering,
+  findScopeProvider,
+  intrinsicElementAdvice,
+  lowerPluginAssignValue,
+  lowerPluginFunction,
+  lowerPluginIdentifier,
+  lowerPluginIntrinsic,
+  lowerPluginMemberCall,
+  lowerPluginMemberRead,
+  lowerPluginReceiver,
+  pluginLifecycleLines,
+  serviceFor,
+} from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
 import { renderKotlinService, type ServiceDescriptor } from './services'
-import {
-  HANDLED_FLOW_EDGE_FIELDS,
-  HANDLED_FLOW_NODE_FIELDS,
-  LOWERED_FLOW_CONFIG_PROPERTIES,
-  DOUBLE_FLOW_CONFIG_PROPERTIES,
-  LOWERED_FLOW_METHODS,
-  LOWERED_FLOW_PROPERTY_READS,
-  droppedFlowFieldsWarning,
-  flowSignalWriteWarning,
-  resolveStaticFlowRendererMap,
-  unloweredFlowMemberWarning,
-  HANDLED_FLOW_WEBVIEW_PROPS,
-  collectFlowRendererComponents,
-  flowRectLiteralFields,
-  NODE_RESIZER_FOREIGN_NODE_WARNING,
-  nodeResizerTargetsAnotherNode,
-  classifyFlowPathMember,
-  unloweredFlowLiteralWarning,
-  unsupportedFlowOptionsWarning,
-  flowLayoutOptionsDroppedWarning,
-  FLOW_LAYOUT_OPTION_KEYS,
-  droppedNodeToolbarWarning,
-  addEdgeDropWarnings,
-  FLOW_MARKER_LITERAL_SHAPE,
-  droppedFlowEdgePatchWarning,
-  unifyFlowDataRows,
-  flowDataConflictWarning,
-} from './flow-lowering'
-import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
-import { lowerFlowPlainElement } from './flow-dom'
-import { PALETTE_STROKE, VIEWPORT_PORTAL_WARNING, planBaseEdge, planEdgeText } from './flow-base-edge'
-import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
   isCanonicalPrimitive,
@@ -53,8 +37,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { FLOW_ARBITRARY_PATH_WARNING, intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
-import { resolveFlowPathPaint, type FlowPathPaintValue } from './flow-path-paint'
+import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
   chainHasOptional,
@@ -67,7 +50,6 @@ import {
   synthLiteralStructName,
   synthTypedStructName,
   namedInlineParamType,
-  isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
@@ -117,7 +99,7 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
-import { createEmitContext } from './emit-context'
+import { createKotlinEmitContext, type ComponentInfo, type KotlinEmitContext, type StructRegistry, type WebViewFacade } from './emit-context'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -324,88 +306,10 @@ let _componentSlotsMapKotlin: Map<string, SlotProp[]> = new Map()
 let _activeSlotsKotlin: Map<string, SlotProp> = new Map()
 let _moduleViewHelpersKotlin: Map<string, ViewHelper> = new Map()
 let _viewHelpersKotlin: Map<string, ViewHelper> = new Map()
-type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
-let _flowComponentHandlesKotlin: Map<string, StaticFlowHandle[]> = new Map()
-let _flowComponentsWithInvalidHandlesKotlin: Set<string> = new Set()
-type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
-let _flowComponentResizersKotlin: Map<string, StaticFlowNodeResizer> = new Map()
-let _flowComponentsWithInvalidResizersKotlin: Set<string> = new Set()
-let _flowComponentsWithForeignResizerKotlin: Set<string> = new Set()
-type StaticFlowNodeToolbar = {
-  position: string
-  align: string
-  offset: number
-  showOnSelect: boolean
-  selectedOverride?: boolean
-  nodeIdOverride?: string
-  contentComponent: string
-}
-let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar[]> = new Map()
-/**
- * The exact `<NodeToolbar>` elements the up-front extraction lowered. The
- * element emitter decides per TOOLBAR, not per component: a node component
- * with one static toolbar and one inside a conditional lowers the first and
- * must still name the second as dropped. Keyed by IR node (one transform's
- * lifetime), so a WeakSet — nothing to reset or evict.
- */
-const _extractedFlowToolbarsKotlin: WeakSet<ExprIR> = new WeakSet()
-/** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
-let _flowRendererComponentsKotlin: Set<string> = new Set()
-/** The `<Flow nodeTypes>` renderers only (a `<NodeToolbar>` lowers nowhere else). */
-let _flowNodeRendererComponentsKotlin: Set<string> = new Set()
-let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
 let _activeComponentName = ''
 
-function collectStaticFlowNodeToolbarsKotlin(expr: ExprIR): Extract<ExprIR, { kind: 'jsx-element' }>[] {
-  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return []
-  if (expr.kind === 'jsx-element' && expr.tag === 'NodeToolbar') return [expr]
-  return expr.children.flatMap((child) => child.kind === 'expr' ? collectStaticFlowNodeToolbarsKotlin(child.expr) : [])
-}
 
-function collectStaticFlowNodeResizerKotlin(expr: ExprIR, propsParamName?: string): { config?: StaticFlowNodeResizer; invalid: boolean; foreignNodeId?: boolean } {
-  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
-  if (expr.kind === 'jsx-element' && expr.tag === 'NodeResizer') {
-    const read = (name: string): string | number | boolean | undefined => {
-      const attr = expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
-      return attr?.kind === 'attr' && attr.value.kind === 'literal' ? attr.value.value ?? undefined : undefined
-    }
-    const invalid = ['minWidth', 'minHeight', 'handleSize'].some((name) => expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === name) && typeof read(name) !== 'number') ||
-      expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === 'showEdgeHandles') && typeof read('showEdgeHandles') !== 'boolean'
-    return { invalid, foreignNodeId: nodeResizerTargetsAnotherNode(expr, propsParamName), config: {
-      minWidth: typeof read('minWidth') === 'number' ? read('minWidth') as number : 50,
-      minHeight: typeof read('minHeight') === 'number' ? read('minHeight') as number : 30,
-      handleSize: typeof read('handleSize') === 'number' ? read('handleSize') as number : 8,
-      showEdgeHandles: read('showEdgeHandles') === true,
-    } }
-  }
-  for (const child of expr.children) if (child.kind === 'expr') {
-    const found = collectStaticFlowNodeResizerKotlin(child.expr, propsParamName)
-    if (found.config || found.invalid) return found
-  }
-  return { invalid: false }
-}
 
-function collectStaticFlowHandlesKotlin(expr: ExprIR): { handles: StaticFlowHandle[]; invalid: boolean } {
-  if (expr.kind === 'jsx-fragment' || expr.kind === 'jsx-element') {
-    const nested = expr.children
-      .filter((child) => child.kind === 'expr')
-      .map((child) => collectStaticFlowHandlesKotlin(child.expr))
-    if (expr.kind === 'jsx-fragment' || expr.tag !== 'Handle') return { handles: nested.flatMap((entry) => entry.handles), invalid: nested.some((entry) => entry.invalid) }
-  } else return { handles: [], invalid: false }
-  const attr = (name: string) => expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
-  const literal = (name: string): string | number | undefined => {
-    const entry = attr(name)
-    if (entry?.kind !== 'attr') return undefined
-    if (entry.value.kind === 'literal' && (typeof entry.value.value === 'string' || typeof entry.value.value === 'number')) return entry.value.value
-    if (entry.value.kind === 'member' && entry.value.object.kind === 'identifier' && entry.value.object.name === 'Position') return entry.value.property.toLowerCase()
-    return undefined
-  }
-  const type = literal('type'), position = literal('position'), id = literal('id'), offset = literal('offset')
-  if (typeof type !== 'string' || typeof position !== 'string') {
-    return { handles: [], invalid: true }
-  }
-  return { handles: [{ ...(typeof id === 'string' ? { id } : {}), type, position, ...(typeof offset === 'number' ? { offset } : {}) }], invalid: false }
-}
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 
@@ -710,11 +614,6 @@ let _syncedSignalNames: Set<string> = new Set()
 let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
-/** `createFlow(...)` bindings — property reads (nodes/edges/viewport/zoom)
- *  drop parens; methods (addNode/selectNode/selectedNodes/…) flow through. */
-let _flowStateNamesKt: Set<string> = new Set()
-/** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
-let _flowStateLabelNamesKt: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -881,11 +780,10 @@ export function emitKotlin(
   _moduleConstExprsKotlin = new Map()
   // Per module: a declaration from a previous file must not make this file's `x.dispatch(...)` lower.
   _pluginScope = createPluginScope()
+  _moduleScope = _pluginScope
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
-  _flowRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name))
-  _flowNodeRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name), 'nodeTypes')
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -906,71 +804,16 @@ export function emitKotlin(
   _componentSlotsMapKotlin = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
   _moduleViewHelpersKotlin = moduleViewHelpers(moduleDecls)
   _viewHelpersKotlin = new Map(_moduleViewHelpersKotlin)
-  _flowComponentHandlesKotlin = new Map()
-  _flowComponentsWithInvalidHandlesKotlin = new Set()
-  _flowComponentResizersKotlin = new Map()
-  _flowComponentsWithInvalidResizersKotlin = new Set()
-  _flowComponentsWithForeignResizerKotlin = new Set()
-  _flowComponentToolbarsKotlin = new Map()
-  _flowComponentsWithInvalidToolbarsKotlin = new Set()
-  const flowToolbarComponents: ComponentIR[] = []
-  const usedComponentNames = new Set(components.map((component) => component.name))
-  for (const component of components) {
-    const result = collectStaticFlowHandlesKotlin(component.returnExpr)
-    _flowComponentHandlesKotlin.set(component.name, result.handles)
-    if (result.invalid) _flowComponentsWithInvalidHandlesKotlin.add(component.name)
-    const resizer = collectStaticFlowNodeResizerKotlin(component.returnExpr, component.propsParamName)
-    if (resizer.config) _flowComponentResizersKotlin.set(component.name, resizer.config)
-    if (resizer.invalid) _flowComponentsWithInvalidResizersKotlin.add(component.name)
-    if (resizer.foreignNodeId) _flowComponentsWithForeignResizerKotlin.add(component.name)
-    const toolbars = collectStaticFlowNodeToolbarsKotlin(component.returnExpr)
-    for (const toolbar of toolbars) _extractedFlowToolbarsKotlin.add(toolbar)
-    if (toolbars.length > 0) {
-      const parsedToolbars: StaticFlowNodeToolbar[] = []
-      for (const [toolbarIndex, toolbar] of toolbars.entries()) {
-      let contentComponent = `${component.name}PyreonNodeToolbar${toolbarIndex || ''}`
-      while (usedComponentNames.has(contentComponent)) contentComponent += '_'
-      usedComponentNames.add(contentComponent)
-      const read = (name: string): unknown => {
-        const entry = toolbar.attrs.find((candidate) => candidate.kind === 'attr' && candidate.name === name)
-        return entry?.kind === 'attr' && entry.value.kind === 'literal' ? entry.value.value : undefined
-      }
-      const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
-      const selectedExpr = toolbar.attrs.find((entry) => entry.kind === 'attr' && entry.name === 'selected')
-      const selectedValue = selectedExpr?.kind === 'attr' ? selectedExpr.value : undefined
-      const selectedUsesNode = selectedValue?.kind === 'identifier' && selectedValue.name === 'selected' || selectedValue?.kind === 'member' && selectedValue.property === 'selected'
-      const nodeIdExpr = toolbar.attrs.find((entry) => entry.kind === 'attr' && entry.name === 'nodeId')
-      const nodeIdValue = nodeIdExpr?.kind === 'attr' ? nodeIdExpr.value : undefined
-      const nodeIdUsesNode = nodeIdValue?.kind === 'identifier' && (nodeIdValue.name === 'id' || nodeIdValue.name === 'nodeId') || nodeIdValue?.kind === 'member' && (nodeIdValue.property === 'id' || nodeIdValue.property === 'nodeId')
-      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect'), selected = read('selected'), nodeId = read('nodeId')
-      const invalid = (has('position') && typeof position !== 'string') ||
-        (has('align') && typeof align !== 'string') ||
-        (has('offset') && typeof offset !== 'number') ||
-        (has('showOnSelect') && typeof showOnSelect !== 'boolean') ||
-        (has('selected') && typeof selected !== 'boolean' && !selectedUsesNode) ||
-        (has('nodeId') && typeof nodeId !== 'string' && !nodeIdUsesNode)
-      parsedToolbars.push({
-        position: typeof position === 'string' ? position : 'top',
-        align: typeof align === 'string' ? align : 'center',
-        offset: typeof offset === 'number' ? offset : 8,
-        showOnSelect: typeof showOnSelect === 'boolean' ? showOnSelect : true,
-        ...(!selectedUsesNode ? { selectedOverride: typeof selected === 'boolean' ? selected : false } : {}),
-        ...(typeof nodeId === 'string' ? { nodeIdOverride: nodeId } : {}),
-        contentComponent,
-      })
-      if (invalid) _flowComponentsWithInvalidToolbarsKotlin.add(component.name)
-      flowToolbarComponents.push({
-        ...component,
-        name: contentComponent,
-        returnExpr: { kind: 'jsx-fragment', children: toolbar.children },
-      })
-      }
-      _flowComponentToolbarsKotlin.set(component.name, parsedToolbars)
-    }
+  // Per-file library preparations (`CompilerPlugin.prepareEmit`): a plugin records what it learns about the
+  // file's components and may add components of its own, emitted after the file's.
+  const preparedComponents: ComponentIR[] = []
+  for (const { prepare } of emitPreparations()) {
+    const result = prepare({ components, moduleConst: (name) => _moduleConstExprsKotlin.get(name) }, kotlinEmitContext(0))
+    if (result?.components !== undefined) preparedComponents.push(...result.components)
   }
-  for (const toolbarComponent of flowToolbarComponents) {
-    _componentNames.add(toolbarComponent.name)
-    _componentPropsMapKotlin.set(toolbarComponent.name, toolbarComponent.props)
+  for (const prepared of preparedComponents) {
+    _componentNames.add(prepared.name)
+    _componentPropsMapKotlin.set(prepared.name, prepared.props)
   }
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
@@ -1089,7 +932,7 @@ export function emitKotlin(
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
-  for (const c of [...components, ...flowToolbarComponents]) componentParts.push(emitKotlinComponent(c))
+  for (const c of [...components, ...preparedComponents]) componentParts.push(emitKotlinComponent(c))
   // consulted AFTER helper + component emission — the flag is set during it
   if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
   // Emit synthesized anonymous-object data classes (collected during
@@ -2055,20 +1898,20 @@ function emitKotlinComponent(c: ComponentIR): string {
   _componentConstMapKotlin = buildComponentConstMap(c.decls)
   _componentObjectConstsKotlin = buildObjectConstFields(c.decls)
   for (const n of collectJsxFnNames([], c.decls)) _jsxFnNames.add(n)
-  const mutatedFlowValues = new Set<string>()
+  const mutatedValueNames = new Set<string>()
   const visitMutation = (node: unknown): void => {
     if (node === null || typeof node !== 'object') return
     if (Array.isArray(node)) { for (const value of node) visitMutation(value); return }
     const value = node as { kind?: string; argument?: unknown; target?: unknown }
     const candidate = value.kind === 'update' ? value.argument : value.kind === 'assign' ? value.target : undefined
-    if (candidate && typeof candidate === 'object' && (candidate as { kind?: string }).kind === 'identifier') mutatedFlowValues.add((candidate as { name: string }).name)
+    if (candidate && typeof candidate === 'object' && (candidate as { kind?: string }).kind === 'identifier') mutatedValueNames.add((candidate as { name: string }).name)
     for (const child of Object.values(value as Record<string, unknown>)) visitMutation(child)
   }
   for (const decl of c.decls) {
     if (decl.kind === 'function') visitMutation(decl.body)
     else if (decl.kind === 'computed') visitMutation(decl)
   }
-  _componentValueConstExprsKotlin = new Map(c.decls.flatMap((decl) => decl.kind === 'value' && !mutatedFlowValues.has(decl.name) ? [[decl.name, decl.expr] as const] : []))
+  _componentValueConstExprsKotlin = new Map(c.decls.flatMap((decl) => decl.kind === 'value' && !mutatedValueNames.has(decl.name) ? [[decl.name, decl.expr] as const] : []))
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites — mirrors Swift emit. Note: the type field
@@ -2085,8 +1928,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
-  _flowStateNamesKt = new Set()
-  _flowStateLabelNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -2132,12 +1973,6 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'flow-state') {
-      _flowStateNamesKt.add(d.name)
-      if (d.nodes.some((node) => node.data.kind === 'object' && node.data.fields.some((field) => field.name === 'label'))) {
-        _flowStateLabelNamesKt.add(d.name)
-      }
-    }
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -2372,13 +2207,11 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`  }`)
   }
-  // Compose lifecycle twin of Swift's onDisappear cleanup for `useFlow`.
-  // `createFlow` stays caller-owned and receives no implicit disposal.
+  // A plugin's own declarations may release what they hold when the composable leaves composition
+  // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
-    if (d.kind === 'flow-state' && d.lifecycleOwned === true) {
-      const name = kotlinIdent(d.name)
-      lines.push(`  DisposableEffect(${name}) { onDispose { ${name}.dispose() } }`)
-    }
+    if (d.kind !== 'ext') continue
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
   }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
@@ -2573,8 +2406,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
-  _flowStateNamesKt = new Set()
-  _flowStateLabelNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -3199,172 +3030,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'size-class') {
     return `val ${kotlinIdent(d.name)} = if (LocalConfiguration.current.screenWidthDp >= 600) "regular" else "compact"`
   }
-  // `@pyreon/flow` — sequential `remember` (no cross-ref wall like Swift's
-  // `@State`), so the whole literal node/edge config passes straight into
-  // the constructor — no post-decl `bind`/`.onAppear` step needed (mirrors
-  // how table's Kotlin twin is simpler than its Swift one, for the same
-  // reason: Compose recomposition tracks reads sequentially).
-  if (d.kind === 'flow-state') {
-    // Same reasoning as the Swift twin: register the row struct via the
-    // SHARED `synthLiteralStructName` registry (not `inferType` on a
-    // synthetic array, which cannot name an anonymous literal it hasn't
-    // seen declared before — see emit-swift.ts's comment on this same
-    // decision). Registering FIRST guarantees this name is the SAME one
-    // each node's `data = {...}` literal resolves to below.
-    const dataRows = d.nodes.flatMap((node) => node.data.kind === 'object' ? [node.data.fields] : [])
-    const firstData = d.nodes[0]?.data
-    const rowFields = firstData?.kind === 'object' ? firstData.fields : []
-    const typedKey = literalShapeKey(rowFields)
-    const fieldSet = rowFields.map((field) => field.name).sort().join(',')
-    const declaredRowType =
-      (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
-      _structFieldsToName.get(fieldSet) ??
-      subsetStructName(rowFields.map((field) => field.name), _declaredStructs, typeIsOptional)
-    let inferredRowType: TypeIR | undefined
-    let rowType = d.dataType !== undefined ? kotlinType(d.dataType) : 'Any'
-    // An inline-object generic (`createFlow<{ label: string }>`) must name the
-    // SAME data class its `data = { label }` literals resolve to; a
-    // context-free `kotlinType` returned `Any`.
-    if (d.dataType?.kind === 'object') {
-      const named =
-        _structTypedKeyToName.get(structShapeKey(d.dataType.fields)) ??
-        _structFieldsToName.get(d.dataType.fields.map((f) => f.name).sort().join(',')) ??
-        synthTypedStructName(d.dataType.fields, _synthExprStructs, _synthExprStructKeys)
-      if (named !== null) {
-        rowType = named
-        inferredRowType = { kind: 'typeRef', name: named, args: [] }
-      }
-    }
-    // Unify by field NAMES and TYPES (see unifyFlowDataRows).
-    const { heterogeneous, fields, conflicts } = unifyFlowDataRows(dataRows, (value) => inferType(value, _kotlinExprInferCtx))
-    if (d.dataType === undefined && conflicts.length > 0) {
-      _emitWarnings.push(flowDataConflictWarning(d.name, conflicts, (t) => kotlinType(t)))
-    }
-    if (d.dataType === undefined && heterogeneous) {
-      const name = synthStructName(_synthExprStructs.length)
-      _synthExprStructs.push({ name, fields })
-      inferredRowType = { kind: 'typeRef', name, args: [] }
-      rowType = name
-    } else if (d.dataType === undefined) {
-      rowType = declaredRowType ?? synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx)) ?? 'Any'
-    }
-    const expectedRowType = inferredRowType ?? d.dataType
-    // `PyreonXYPosition`/`PyreonFlowNode.width`/`.height` are Double —
-    // Kotlin refuses a bare Int literal there (same reason charts' Pie/Gauge
-    // emitters run every numeric arg through `ktChartDouble`).
-    const nodeLits = d.nodes
-      .map((n) => {
-        const parts = [
-          `id = ${kotlinStr(n.id)}`,
-          ...(n.type !== undefined ? [`type = ${kotlinStr(n.type)}`] : []),
-          `position = PyreonXYPosition(${kotlinFlowCoord(n.positionX)}, ${kotlinFlowCoord(n.positionY)})`,
-          `data = ${withExpectedTypeKotlin(expectedRowType, () => emitKotlinExpr(n.data, 0))}`,
-          ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
-          ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
-          ...(n.draggable !== undefined ? [`draggable = ${n.draggable}`] : []),
-          ...(n.selectable !== undefined ? [`selectable = ${n.selectable}`] : []),
-          ...(n.connectable !== undefined ? [`connectable = ${n.connectable}`] : []),
-          ...(n.focusable !== undefined ? [`focusable = ${n.focusable}`] : []),
-          ...(n.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(n.ariaLabel)}`] : []),
-          ...(n.hidden !== undefined ? [`hidden = ${n.hidden}`] : []),
-          ...(n.deletable !== undefined ? [`deletable = ${n.deletable}`] : []),
-          ...(n.cssClass !== undefined ? [`className = ${kotlinStr(n.cssClass)}`] : []),
-          ...(n.style !== undefined ? [`style = ${kotlinStr(n.style)}`] : []),
-          ...(n.parentId !== undefined ? [`parentId = ${kotlinStr(n.parentId)}`] : []),
-          ...(n.extent !== undefined ? [`extent = PyreonFlowNodeExtent(${n.extent.map((value) => ktChartDouble(String(value))).join(', ')})`] : []),
-          ...(n.extentParent === true ? ['extentParent = true'] : []),
-          ...(n.expandParent !== undefined ? [`expandParent = ${n.expandParent}`] : []),
-          ...(n.group !== undefined ? [`group = ${n.group}`] : []),
-          ...(n.sourceHandles !== undefined ? [`sourceHandles = ${kotlinFlowParsedHandles(n.sourceHandles)}`] : []),
-          ...(n.targetHandles !== undefined ? [`targetHandles = ${kotlinFlowParsedHandles(n.targetHandles)}`] : []),
-          ...(n.zIndex !== undefined ? [`zIndex = ${ktChartDouble(String(n.zIndex))}`] : []),
-        ]
-        return `PyreonFlowNode(${parts.join(', ')})`
-      })
-      .join(', ')
-    const edgeLits = d.edges
-      .map((e) => {
-        const parts = [
-          `id = ${kotlinStr(e.id)}`,
-          `source = ${kotlinStr(e.source)}`,
-          `target = ${kotlinStr(e.target)}`,
-          ...(e.sourceHandle !== undefined ? [`sourceHandle = ${kotlinStr(e.sourceHandle)}`] : []),
-          ...(e.targetHandle !== undefined ? [`targetHandle = ${kotlinStr(e.targetHandle)}`] : []),
-          ...(e.type !== undefined ? [`type = ${kotlinStr(e.type)}`] : []),
-          ...(e.label !== undefined ? [`label = ${kotlinStr(e.label)}`] : []),
-          ...(e.animated !== undefined ? [`animated = ${e.animated ? 'true' : 'false'}`, 'animatedSpecified = true'] : []),
-          ...(e.focusable !== undefined ? [`focusable = ${e.focusable}`] : []),
-          ...(e.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(e.ariaLabel)}`] : []),
-          ...(e.hidden !== undefined ? [`hidden = ${e.hidden}`] : []),
-          ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
-          ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
-          ...(e.interactionWidth !== undefined ? [`interactionWidth = ${ktChartDouble(String(e.interactionWidth))}`] : []),
-          ...(e.zIndex !== undefined ? [`zIndex = ${ktChartDouble(String(e.zIndex))}`] : []),
-          ...(e.cssClass !== undefined ? [`className = ${JSON.stringify(e.cssClass)}`] : []),
-          ...(e.style !== undefined ? [`style = ${JSON.stringify(e.style)}`] : []),
-          ...(e.data !== undefined && kotlinFlowData(e.data) !== null ? [`data = ${kotlinFlowData(e.data)}`] : []),
-          ...(e.pathOptions?.curvature !== undefined ? [`curvature = ${ktChartDouble(String(e.pathOptions.curvature))}`] : []),
-          ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktChartDouble(String(e.pathOptions.borderRadius))}`] : []),
-          ...(e.pathOptions?.offset !== undefined ? [`pathOffset = ${ktChartDouble(String(e.pathOptions.offset))}`] : []),
-          ...(e.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(e.markerStart)}`] : []),
-          ...(e.markerEnd !== undefined ? [`markerEnd = ${e.markerEnd === null ? 'null' : kotlinFlowMarker(e.markerEnd)}`, 'markerEndSpecified = true'] : []),
-          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${kotlinFlowCoord(p.x)}, ${kotlinFlowCoord(p.y)})`).join(', ')})`] : []),
-        ]
-        return `PyreonFlowEdge(${parts.join(', ')})`
-      })
-      .join(', ')
-    // Mirror of the Swift twin: appended ONLY when configured, so an
-    // unconfigured `createFlow` emits byte-identically to before.
-    // Rendered as a Kotlin DOUBLE literal, always. Both params are `Double`,
-    // and Kotlin has no implicit Int->Double widening at a call site, so a
-    // perfectly ordinary `maxZoom: 2` would emit `maxZoom = 2` and fail with
-    // "the integer literal does not conform to the expected type Double".
-    // Swift takes the same source fine (its literal inference handles it),
-    // which is exactly how this stays hidden until a real Kotlin compile.
-    const ktDouble = (n: number): string => (Number.isInteger(n) ? `${n}.0` : `${n}`)
-    const zoomArgs = [
-      ...(d.minZoom !== undefined ? [`minZoom = ${ktDouble(d.minZoom)}`] : []),
-      ...(d.maxZoom !== undefined ? [`maxZoom = ${ktDouble(d.maxZoom)}`] : []),
-      ...(d.snapToGrid !== undefined ? [`snapToGrid = ${d.snapToGrid}`] : []),
-      ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
-      ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
-      ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd = ${d.defaultMarkerEnd === null ? 'null' : kotlinFlowMarker(d.defaultMarkerEnd)}`] : []),
-      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion', 'preventScrolling', 'elevateNodesOnSelect', 'elevateEdgesOnSelect', 'autoPanOnNodeDrag', 'autoPanOnConnect'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
-      ...(d.autoPanSpeed !== undefined ? [`autoPanSpeed = ${ktDouble(d.autoPanSpeed)}`] : []),
-      ...(d.panOnScrollSpeed !== undefined ? [`panOnScrollSpeed = ${ktDouble(d.panOnScrollSpeed)}`] : []),
-      ...(d.deleteKeys !== undefined ? [`deleteKeys = ${d.deleteKeys === null ? 'null' : `listOf(${d.deleteKeys.map((key) => kotlinStr(key)).join(', ')})`}`] : []),
-      ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key] === null ? 'null' : kotlinStr(d[key])}`]),
-      ...(d.selectionMode !== undefined ? [`selectionMode = ${kotlinStr(d.selectionMode)}`] : []),
-      ...(d.connectionMode !== undefined ? [`connectionMode = ${kotlinStr(d.connectionMode)}`] : []),
-      ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
-      ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
-      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${kotlinStr(d.defaultEdgeType)}`] : []),
-      ...(d.connectionLineType !== undefined ? [`connectionLineType = ${kotlinStr(d.connectionLineType)}`] : []),
-      ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(${[
-        ...(d.defaultEdgeOptions.type !== undefined ? [`type = ${kotlinStr(d.defaultEdgeOptions.type)}`] : []),
-        ...(d.defaultEdgeOptions.label !== undefined ? [`label = ${kotlinStr(d.defaultEdgeOptions.label)}`] : []),
-        ...(d.defaultEdgeOptions.animated !== undefined ? [`animated = ${d.defaultEdgeOptions.animated}`] : []),
-        ...(d.defaultEdgeOptions.focusable !== undefined ? [`focusable = ${d.defaultEdgeOptions.focusable}`] : []),
-        ...(d.defaultEdgeOptions.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(d.defaultEdgeOptions.ariaLabel)}`] : []),
-        ...(d.defaultEdgeOptions.hidden !== undefined ? [`hidden = ${d.defaultEdgeOptions.hidden}`] : []),
-        ...(d.defaultEdgeOptions.deletable !== undefined ? [`deletable = ${d.defaultEdgeOptions.deletable}`] : []),
-        ...(d.defaultEdgeOptions.reconnectable !== undefined ? [`reconnectable = ${d.defaultEdgeOptions.reconnectable}`] : []),
-        ...(d.defaultEdgeOptions.interactionWidth !== undefined ? [`interactionWidth = ${ktDouble(d.defaultEdgeOptions.interactionWidth)}`] : []),
-        ...(d.defaultEdgeOptions.pathOptions?.curvature !== undefined ? [`curvature = ${ktDouble(d.defaultEdgeOptions.pathOptions.curvature)}`] : []),
-        ...(d.defaultEdgeOptions.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktDouble(d.defaultEdgeOptions.pathOptions.borderRadius)}`] : []),
-        ...(d.defaultEdgeOptions.pathOptions?.offset !== undefined ? [`pathOffset = ${ktDouble(d.defaultEdgeOptions.pathOptions.offset)}`] : []),
-        ...(d.defaultEdgeOptions.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(d.defaultEdgeOptions.markerStart)}`] : []),
-        ...(d.defaultEdgeOptions.markerEnd !== undefined ? [`markerEnd = ${d.defaultEdgeOptions.markerEnd === null ? 'null' : kotlinFlowMarker(d.defaultEdgeOptions.markerEnd)}`, 'markerEndSpecified = true'] : []),
-      ].join(', ')})`] : []),
-      ...(d.fitView !== undefined ? [`fitViewOnLoad = ${d.fitView}`] : []),
-      ...(d.fitViewPadding !== undefined ? [`fitViewPadding = ${ktDouble(d.fitViewPadding)}`] : []),
-      ...(d.historyLimit !== undefined ? [`historyLimit = ${ktDouble(d.historyLimit)}`] : []),
-      ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${kotlinStr(key)} to listOf(${outputs.map((output) => kotlinStr(output)).join(', ')})`).join(', ')})`] : []),
-      ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
-      ...(rowFields.some((field) => field.name === 'label') ? ['searchText = { it.label }'] : []),
-    ].join(', ')
-    return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})${zoomArgs === '' ? '' : `, ${zoomArgs}`}) }`
-  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
@@ -3421,354 +3086,31 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr!, 0)} } }`
 }
 
-/**
- * `addNode({...})` — construct a `PyreonFlowNode(...)` from a call-site
- * object literal. Kotlin twin of `swiftFlowNodeLiteral` (emit-swift.ts) —
- * same reasoning: the generic object-literal path would synthesize its own
- * unrelated `__ObjN` data class (same field names, different NOMINAL type),
- * which Kotlin's type system rejects just as Swift's does. Returns `null`
- * (never warns) for any shape it doesn't recognize; the caller falls
- * through to generic emission — correct for a non-literal argument (an
- * identifier already holding a `PyreonFlowNode`).
- */
-function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'object') return null
-  warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` addNode(...)`, 'node', arg)
-  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
-  const idExpr = field('id')
-  const posExpr = field('position')
-  const dataExpr = field('data')
-  if (!idExpr || !posExpr || posExpr.kind !== 'object' || !dataExpr) return null
-  const posX = posExpr.fields.find((f) => f.name === 'x')?.value
-  const posY = posExpr.fields.find((f) => f.name === 'y')?.value
-  if (!posX || !posY) return null
-  const typeExpr = field('type')
-  const widthExpr = field('width')
-  const heightExpr = field('height')
-  const sourceHandlesExpr = field('sourceHandles')
-  const targetHandlesExpr = field('targetHandles')
-  const extentExpr = field('extent')
-  const extent = extentExpr ? kotlinFlowNodeExtentArgs(extentExpr) : null
-  if (extentExpr && !extent) _emitWarnings.push(`createFlow binding \`${flowName}\` addNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
-  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'style', 'parentId', 'expandParent', 'group'] as const
-  const parts = [
-    `id = ${emitKotlinExpr(idExpr, 0)}`,
-    ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
-    `position = PyreonXYPosition(${kotlinFlowCoord(posX)}, ${kotlinFlowCoord(posY)})`,
-    `data = ${emitKotlinExpr(dataExpr, 0)}`,
-    ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
-    ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
-    ...(field('zIndex') ? [`zIndex = ${ktChartDouble(emitKotlinExpr(field('zIndex')!, 0))}`] : []),
-    ...(extent ? extent : []),
-    ...optionalFields.flatMap((name) => {
-      const value = field(name)
-      return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
-    }),
-    ...(field('class') ? [`className = ${emitKotlinExpr(field('class')!, 0)}`] : []),
-    ...(sourceHandlesExpr ? [`sourceHandles = ${kotlinFlowHandlesLiteral(sourceHandlesExpr) ?? emitKotlinExpr(sourceHandlesExpr, 0)}`] : []),
-    ...(targetHandlesExpr ? [`targetHandles = ${kotlinFlowHandlesLiteral(targetHandlesExpr) ?? emitKotlinExpr(targetHandlesExpr, 0)}`] : []),
-  ]
-  return `PyreonFlowNode(${parts.join(', ')})`
-}
 
-function kotlinFlowNodeExtentArgs(expr: ExprIR): string[] | null {
-  if (expr.kind === 'literal' && expr.value === 'parent') return ['extentParent = true']
-  const args = kotlinFlowExtentLiteral(expr)
-  return args ? [`extent = PyreonFlowNodeExtent(${args})`] : null
-}
 
-function kotlinFlowParsedHandles(handles: StaticFlowHandle[]): string {
-  const positionName = (position: string) => position[0]!.toUpperCase() + position.slice(1)
-  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${kotlinStr(h.id)}, `}type = ${kotlinStr(h.type)}, position = PyreonFlowPosition.${positionName(h.position)}${'offset' in h && typeof h.offset === 'number' ? `, offset = ${ktChartDouble(String(h.offset))}` : ''})`).join(', ')})`
-}
 
-function kotlinFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
-  const args = [kotlinStr(marker.type)]
-  if (marker.color !== undefined) args.push(`color = ${kotlinStr(marker.color)}`)
-  if (marker.width !== undefined) args.push(`width = ${ktChartDouble(String(marker.width))}`)
-  if (marker.height !== undefined) args.push(`height = ${ktChartDouble(String(marker.height))}`)
-  if (marker.strokeWidth !== undefined) args.push(`strokeWidth = ${ktChartDouble(String(marker.strokeWidth))}`)
-  return `PyreonFlowMarker(${args.join(', ')})`
-}
 
-function kotlinFlowMarkerLiteral(expr: ExprIR): string | null {
-  if (expr.kind === 'literal' && expr.value === null) return 'null'
-  if (expr.kind === 'literal' && typeof expr.value === 'string') return kotlinFlowMarker({ type: expr.value.toLowerCase() })
-  if (expr.kind === 'member') return kotlinFlowMarker({ type: expr.property.toLowerCase() })
-  if (expr.kind !== 'object') return null
-  const field = (name: string) => expr.fields.find((f) => f.name === name)?.value
-  const type = field('type')
-  const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
-  if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
-  const args = [kotlinStr(typeName)]
-  const color = field('color'); if (color) args.push(`color = ${emitKotlinExpr(color, 0)}`)
-  for (const name of ['width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name} = ${ktChartDouble(emitKotlinExpr(value, 0))}`) }
-  return `PyreonFlowMarker(${args.join(', ')})`
-}
 
-function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'array') return null
-  const parsed: { id?: string; type: string; position: string }[] = []
-  for (const item of arg.elements) {
-    if (item.kind !== 'object') return null
-    const field = (name: string) => item.fields.find((f) => f.name === name)?.value
-    const type = field('type'), position = field('position'), id = field('id')
-    if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
-    const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
-    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
-    parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
-  }
-  return kotlinFlowParsedHandles(parsed)
-}
 
-function kotlinFlowDataValue(expr: ExprIR): string | null {
-  if (expr.kind === 'literal') {
-    if (expr.value === null) return 'PyreonFlowDataValue.NullValue'
-    if (typeof expr.value === 'string') return `PyreonFlowDataValue.StringValue(${JSON.stringify(expr.value)})`
-    if (typeof expr.value === 'number') return `PyreonFlowDataValue.NumberValue(${ktChartDouble(String(expr.value))})`
-    if (typeof expr.value === 'boolean') return `PyreonFlowDataValue.BoolValue(${expr.value})`
-    return null
-  }
-  if (expr.kind === 'array') {
-    const values = expr.elements.map(kotlinFlowDataValue)
-    return values.some((value) => value === null) ? null : `PyreonFlowDataValue.ArrayValue(listOf(${values.join(', ')}))`
-  }
-  if (expr.kind === 'object' && (expr.spreads?.length ?? 0) === 0) {
-    const data = kotlinFlowData(expr)
-    return data === null ? null : `PyreonFlowDataValue.ObjectValue(${data})`
-  }
-  return null
-}
 
-function kotlinFlowData(expr: ExprIR): string | null {
-  if (expr.kind !== 'object' || (expr.spreads?.length ?? 0) > 0) return null
-  const values = expr.fields.map((field) => {
-    const value = kotlinFlowDataValue(field.value)
-    return value === null ? null : `${JSON.stringify(field.name)} to ${value}`
-  })
-  return values.some((value) => value === null) ? null : `PyreonFlowData(mapOf(${values.join(', ')}))`
-}
 
-/** `addEdge({...})` — the `PyreonFlowEdge` twin of `kotlinFlowNodeLiteral`. */
-function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'object') return null
-  warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` addEdge(...)`, 'edge', arg)
-  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
-  const sourceExpr = field('source')
-  const targetExpr = field('target')
-  if (!sourceExpr || !targetExpr) return null
-  const idExpr = field('id')
-  const typeExpr = field('type')
-  const labelExpr = field('label')
-  const animatedExpr = field('animated')
-  const pathOptionsExpr = field('pathOptions')
-  const markerStartExpr = field('markerStart')
-  const markerEndExpr = field('markerEnd')
-  const waypointsExpr = field('waypoints')
-  const dataExpr = field('data')
-  _emitWarnings.push(...addEdgeDropWarnings(flowName, { pathOptions: pathOptionsExpr, markerStart: markerStartExpr, markerEnd: markerEndExpr }, (m) => kotlinFlowMarkerLiteral(m) !== null))
-  const portableData = dataExpr ? kotlinFlowData(dataExpr) : null
-  if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
-  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'style'] as const
-  const interactionWidthExpr = field('interactionWidth')
-  const parts = [
-    `id = ${idExpr ? emitKotlinExpr(idExpr, 0) : `pyreonFlowEdgeId(source = ${emitKotlinExpr(sourceExpr, 0)}, target = ${emitKotlinExpr(targetExpr, 0)}${field('sourceHandle') ? `, sourceHandle = ${emitKotlinExpr(field('sourceHandle')!, 0)}` : ''}${field('targetHandle') ? `, targetHandle = ${emitKotlinExpr(field('targetHandle')!, 0)}` : ''})`}`,
-    `source = ${emitKotlinExpr(sourceExpr, 0)}`,
-    `target = ${emitKotlinExpr(targetExpr, 0)}`,
-    ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
-    ...(labelExpr ? [`label = ${emitKotlinExpr(labelExpr, 0)}`] : []),
-    ...(animatedExpr ? [`animated = ${emitKotlinExpr(animatedExpr, 0)}`] : []),
-    ...(field('zIndex') ? [`zIndex = ${ktChartDouble(emitKotlinExpr(field('zIndex')!, 0))}`] : []),
-    ...(portableData ? [`data = ${portableData}`] : []),
-    ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
-      const nativeName = name === 'offset' ? 'pathOffset' : name
-      return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName} = ${ktChartDouble(emitKotlinExpr(value, 0))}`] : []
-    }) : []),
-    ...(markerStartExpr ? (() => { const marker = kotlinFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'null' ? [`markerStart = ${marker}`] : [] })() : []),
-    ...(markerEndExpr ? (() => { const marker = kotlinFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd = ${marker}`, 'markerEndSpecified = true'] : [] })() : []),
-    ...optionalFields.flatMap((name) => {
-      const value = field(name)
-      return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
-    }),
-    ...(field('class') ? [`className = ${emitKotlinExpr(field('class')!, 0)}`] : []),
-    ...(interactionWidthExpr ? [`interactionWidth = ${ktChartDouble(emitKotlinExpr(interactionWidthExpr, 0))}`] : []),
-    ...(waypointsExpr ? (() => {
-      const value = kotlinFlowPositionsLiteral(waypointsExpr)
-      return [`waypoints = ${value ?? emitKotlinExpr(waypointsExpr, 0)}`]
-    })() : []),
-  ]
-  return `PyreonFlowEdge(${parts.join(', ')})`
-}
 
-function kotlinFlowNodeListLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'array') return null
-  const nodes = arg.elements.map((item) => kotlinFlowNodeLiteral(item, flowName))
-  return nodes.some((node) => node === null) ? null : `listOf(${nodes.join(', ')})`
-}
 
-function kotlinFlowEdgeListLiteral(arg: ExprIR, flowName: string): string | null {
-  if (arg.kind !== 'array') return null
-  const edges = arg.elements.map((item) => kotlinFlowEdgeLiteral(item, flowName))
-  return edges.some((edge) => edge === null) ? null : `listOf(${edges.join(', ')})`
-}
 
-function kotlinFlowPositionsLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'array') return null
-  const values: string[] = []
-  for (const item of arg.elements) {
-    const value = kotlinFlowPositionLiteral(item)
-    if (value === null) return null
-    values.push(value)
-  }
-  return `listOf(${values.join(', ')})`
-}
 
-function kotlinFlowReconnectLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'object') return null
-  const allowed = new Set(['source', 'target', 'sourceHandle', 'targetHandle'])
-  if (arg.fields.some((field) => !allowed.has(field.name))) return null
-  return arg.fields.map((field) => `, ${field.name} = ${emitKotlinExpr(field.value, 0)}`).join('')
-}
 
-function kotlinFlowConnectionLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'object') return null
-  const field = (name: string): ExprIR | undefined => arg.fields.find((f) => f.name === name)?.value
-  const source = field('source'), target = field('target')
-  if (source === undefined || target === undefined) return null
-  const sourceHandle = field('sourceHandle'), targetHandle = field('targetHandle')
-  return `PyreonFlowConnection(source = ${emitKotlinExpr(source, 0)}, target = ${emitKotlinExpr(target, 0)}${sourceHandle ? `, sourceHandle = ${emitKotlinExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle = ${emitKotlinExpr(targetHandle, 0)}` : ''})`
-}
 
-const FLOW_VIEWPORT_KEYS: readonly string[] = ['x', 'y', 'zoom', 'duration']
-const FLOW_SET_CENTER_KEYS: readonly string[] = ['zoom', 'duration']
 
-/**
- * `setViewport` takes `{ x, y, zoom, duration }`; `setCenter(x, y, opts)` takes
- * only `{ zoom, duration }` (its position is the first two arguments, and the
- * native init has no `x`/`y` labels there), so the accepted keys are the
- * caller's.
- */
-function kotlinFlowViewportLiteral(arg: ExprIR, keys: readonly string[] = FLOW_VIEWPORT_KEYS): string | null {
-  if (arg.kind !== 'object') return null
-  const allowed = new Set(keys)
-  if (arg.fields.some((field) => !allowed.has(field.name))) return null
-  return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
-}
 
-function resolveKotlinStaticFlowValue(arg: ExprIR): ExprIR {
-  let value = arg
-  const seen = new Set<string>()
-  for (;;) {
-    while (value.kind === 'paren') value = value.inner
-    if (value.kind !== 'identifier' || seen.has(value.name)) return value
-    const next = _componentValueConstExprsKotlin.get(value.name) ?? _moduleConstExprsKotlin.get(value.name)
-    if (next === undefined) return value
-    seen.add(value.name)
-    value = next
-  }
-}
 
-function kotlinFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
-  if (arg === undefined) return undefined
-  if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
-  const duration = arg.fields.find((field) => field.name === 'duration')?.value
-  return duration === undefined ? undefined : ktChartDouble(emitKotlinExpr(duration, 0))
-}
 
-function kotlinFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string | null | undefined {
-  if (arg === undefined) return undefined
-  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
-  const supported = new Set(['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration'])
-  if (arg.fields.some((field) => !supported.has(field.name))) return null
-  const fields = arg.fields.map(({ name, value }) => {
-    const emitted = emitKotlinExpr(value, indent)
-    return `${name} = ${name === 'direction' || name === 'animate' ? emitted : ktChartDouble(emitted)}`
-  })
-  return `PyreonFlowLayoutOptions(${fields.join(', ')})`
-}
 
-const FLOW_PATH_HELPERS_KOTLIN = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
 
-function kotlinFlowPositionExpr(value: ExprIR): string | null {
-  if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `PyreonFlowPosition.${value.property}`
-  if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `PyreonFlowPosition.${value.value[0]!.toUpperCase()}${value.value.slice(1)}`
-  if (value.kind === 'call') return emitKotlinExpr(value, 0)
-  return null
-}
 
-function kotlinFlowGeometryLiteral(arg: ExprIR, fields: readonly string[], typeName: string, indent: number): string | null {
-  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0 || arg.fields.length !== fields.length) return null
-  const values = new Map(arg.fields.map((field) => [field.name, field.value]))
-  if (fields.some((field) => !values.has(field))) return null
-  return `${typeName}(${fields.map((field) => ktChartDouble(emitKotlinExpr(values.get(field)!, indent))).join(', ')})`
-}
 
-function kotlinFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
-  if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
-  const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
-  const commonFields = ['sourceX', 'sourceY', 'targetX', 'targetY']
-  const optionalFields = name === 'getStraightPath' ? []
-    : name === 'getWaypointPath' ? ['waypoints']
-    : name === 'getBezierPath' ? ['sourcePosition', 'targetPosition', 'curvature']
-    : name === 'getSmoothStepPath' ? ['sourcePosition', 'targetPosition', 'borderRadius', 'offset']
-    : ['sourcePosition', 'targetPosition', 'offset']
-  const allowed = new Set([...commonFields, ...optionalFields])
-  if (arg.fields.some((field) => !allowed.has(field.name))) return null
-  const required = (key: string): string | null => fields.has(key) ? ktChartDouble(emitKotlinExpr(fields.get(key)!, indent)) : null
-  const sx = required('sourceX'), sy = required('sourceY'), tx = required('targetX'), ty = required('targetY')
-  if (sx === null || sy === null || tx === null || ty === null) return null
-  const position = (key: string, fallback: string): string | null => {
-    const value = fields.get(key)
-    if (value === undefined) return fallback
-    return kotlinFlowPositionExpr(value)
-  }
-  if (name === 'getStraightPath') return `pyreonStraightPath(${sx}, ${sy}, ${tx}, ${ty})`
-  if (name === 'getWaypointPath') {
-    const waypoints = fields.get('waypoints')
-    if (waypoints?.kind !== 'array') return null
-    const points = waypoints.elements.map((point) => {
-      if (point.kind !== 'object') return null
-      const x = point.fields.find((field) => field.name === 'x')?.value
-      const y = point.fields.find((field) => field.name === 'y')?.value
-      return x && y ? `PyreonFlowPathPoint(${ktChartDouble(emitKotlinExpr(x, indent))}, ${ktChartDouble(emitKotlinExpr(y, indent))})` : null
-    })
-    if (points.some((point) => point === null)) return null
-    return `pyreonWaypointPath(${sx}, ${sy}, ${tx}, ${ty}, listOf(${points.join(', ')}))`
-  }
-  const sourcePosition = position('sourcePosition', 'PyreonFlowPosition.Bottom'), targetPosition = position('targetPosition', 'PyreonFlowPosition.Top')
-  if (sourcePosition === null || targetPosition === null) return null
-  const common = `${sx}, ${sy}, ${sourcePosition}, ${tx}, ${ty}, ${targetPosition}`
-  if (name === 'getBezierPath') return `pyreonBezierPath(${common}${fields.has('curvature') ? `, curvature = ${ktChartDouble(emitKotlinExpr(fields.get('curvature')!, indent))}` : ''})`
-  const extra = [
-    ...(name === 'getSmoothStepPath' && fields.has('borderRadius') ? [`borderRadius = ${ktChartDouble(emitKotlinExpr(fields.get('borderRadius')!, indent))}`] : []),
-    ...(fields.has('offset') ? [`offset = ${ktChartDouble(emitKotlinExpr(fields.get('offset')!, indent))}`] : []),
-  ]
-  return `${name === 'getStepPath' ? 'pyreonStepPath' : 'pyreonSmoothStepPath'}(${common}${extra.length ? `, ${extra.join(', ')}` : ''})`
-}
 
-function kotlinFlowExtentLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'array' || arg.elements.length !== 2) return null
-  const [minPoint, maxPoint] = arg.elements
-  if (minPoint?.kind !== 'array' || maxPoint?.kind !== 'array' || minPoint.elements.length !== 2 || maxPoint.elements.length !== 2) return null
-  return `minX = ${ktChartDouble(emitKotlinExpr(minPoint.elements[0]!, 0))}, minY = ${ktChartDouble(emitKotlinExpr(minPoint.elements[1]!, 0))}, maxX = ${ktChartDouble(emitKotlinExpr(maxPoint.elements[0]!, 0))}, maxY = ${ktChartDouble(emitKotlinExpr(maxPoint.elements[1]!, 0))}`
-}
 
-/** Names every literal field the native node/edge type does not carry. */
-function warnDroppedFlowFieldsKt(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
-  if (lit.kind !== 'object') return
-  const handled = kind === 'node' ? HANDLED_FLOW_NODE_FIELDS : HANDLED_FLOW_EDGE_FIELDS
-  const dropped = lit.fields.map((f) => f.name).filter((n) => !handled.has(n))
-  if (dropped.length > 0) _emitWarnings.push(droppedFlowFieldsWarning(site, kind, dropped))
-}
 
-/** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
-function kotlinFlowPositionLiteral(arg: ExprIR): string | null {
-  if (arg.kind !== 'object') return null
-  const x = arg.fields.find((f) => f.name === 'x')?.value
-  const y = arg.fields.find((f) => f.name === 'y')?.value
-  if (!x || !y) return null
-  return `PyreonXYPosition(${kotlinFlowCoord(x)}, ${kotlinFlowCoord(y)})`
-}
 
 /**
  * Emit `const fn = () => { ... }` as a Kotlin local function inside the
@@ -4368,18 +3710,9 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       }
     case 'assign': {
       const value = emitKotlinExpr(s.value, indent)
-      // A Double-typed Flow config property takes a Double: a whole-number
-      // literal or an Int expression would not compile.
-      const t = s.target
-      const flowDouble =
-        t.kind === 'member' && t.object.kind === 'member' && t.object.property === 'config' &&
-        t.object.object.kind === 'identifier' && _flowStateNamesKt.has(t.object.object.name) &&
-        DOUBLE_FLOW_CONFIG_PROPERTIES.has(t.property)
-      const coerced = !flowDouble
-        ? value
-        : s.value.kind === 'literal' && typeof s.value.value === 'number'
-          ? (Number.isInteger(s.value.value) ? `${s.value.value}.0` : `${s.value.value}`)
-          : `(${value}).toDouble()`
+      // A plugin that owns the assignment's receiver may re-spell the VALUE (a Double-typed
+      // config property takes a Double: a whole-number literal or an Int expression would not compile).
+      const coerced = lowerPluginAssignValue({ target: s.target, op: s.op, value: s.value, emitted: value }, 'kotlin', _pluginScope, () => kotlinEmitContext(indent)) ?? value
       return `${emitKotlinExpr(s.target, indent)} ${s.op} ${coerced}`
     }
     case 'return': {
@@ -4989,11 +4322,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         return `${e.value}L`
       }
       return String(e.value)
-    case 'identifier':
-      if (e.name === 'DEFAULT_NODE_WIDTH') return '150.0'
-      if (e.name === 'DEFAULT_NODE_HEIGHT') return '40.0'
-      if (e.name === 'DEFAULT_MARKER_END') return 'pyreonFlowDefaultMarkerEnd'
+    case 'identifier': {
+      const constant = lowerPluginIdentifier(e.name, 'kotlin', () => kotlinEmitContext(0))
+      if (constant !== undefined) return constant
       return kotlinIdent(e.name)
+    }
     case 'await':
       // M4.5: a Kotlin suspend call carries NO `await` keyword — the enclosing
       // `scope.launch { … }` coroutine provides the suspension context. Emit
@@ -5027,6 +4360,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `handle.dispatch(…)` and any other call on a binding a plugin's declaration created.
       const pluginLowered = lowerPluginMemberCall(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent))
       if (pluginLowered !== undefined) return pluginLowered
+      // A call, or a chain, rooted at a binding a plugin's declaration created (`flow.nodes.set(x)`).
+      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent))
+      if (rooted !== undefined) return rooted
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
         if (paramTypes !== undefined) {
@@ -5035,88 +4371,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypesKotlin.set(arg, pt)
           })
         }
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === '__pyreonFlowComputeLayout' && e.args.length >= 2 && e.args.length <= 4) {
-        const options = kotlinFlowLayoutOptions(e.args[3], indent)
-        if (options !== null) {
-          const args = [
-            emitKotlinExpr(e.args[0]!, indent),
-            emitKotlinExpr(e.args[1]!, indent),
-            ...(e.args[2] ? [`algorithm = ${emitKotlinExpr(e.args[2]!, indent)}`] : []),
-            ...(options ? [`options = ${options}`] : []),
-          ]
-          return `pyreonComputeFlowLayout(${args.join(', ')})`
-        }
-        _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && FLOW_PATH_HELPERS_KOTLIN.has(e.callee.name) && e.args.length === 1) {
-        const lowered = kotlinFlowPathHelper(e.callee.name, e.args[0], indent)
-        if (lowered !== null) return lowered
-        _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveMarker' && e.args.length === 1) {
-        const marker = kotlinFlowMarkerLiteral(e.args[0]!) ?? emitKotlinExpr(e.args[0]!, indent)
-        return `pyreonResolveFlowMarker(${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'markerId' && e.args.length === 1) {
-        const marker = kotlinFlowMarkerLiteral(e.args[0]!) ?? emitKotlinExpr(e.args[0]!, indent)
-        return `pyreonFlowMarkerId(${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveEdgeMarkers' && e.args.length === 2) {
-        const marker = kotlinFlowMarkerLiteral(e.args[1]!) ?? emitKotlinExpr(e.args[1]!, indent)
-        return `pyreonResolveFlowEdgeMarkers(${emitKotlinExpr(e.args[0]!, indent)}, ${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'collectEdgeMarkers' && e.args.length === 2) {
-        const marker = kotlinFlowMarkerLiteral(e.args[1]!) ?? emitKotlinExpr(e.args[1]!, indent)
-        return `pyreonCollectFlowEdgeMarkers(${emitKotlinExpr(e.args[0]!, indent)}, ${marker})`
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
-        const position = kotlinFlowPositionExpr(e.args[0]!)
-        if (position !== null) return `pyreonHandlePosition(${position}, ${e.args.slice(1).map((arg) => ktChartDouble(emitKotlinExpr(arg, indent))).join(', ')})`
-        _emitWarnings.push('getHandlePosition requires a literal Position value to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getEdgePath' && (e.args.length === 7 || e.args.length === 8)) {
-        const sourcePosition = kotlinFlowPositionExpr(e.args[3]!)
-        const targetPosition = kotlinFlowPositionExpr(e.args[6]!)
-        const options = e.args[7]
-        const allowed = new Set(['borderRadius', 'offset', 'curvature'])
-        if (sourcePosition !== null && targetPosition !== null && (options === undefined || (options.kind === 'object' && (options.spreads?.length ?? 0) === 0 && options.fields.every((field) => allowed.has(field.name))))) {
-          const extras = options?.kind === 'object' ? options.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`) : []
-          return `pyreonEdgePath(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}, ${sourcePosition}, ${ktChartDouble(emitKotlinExpr(e.args[4]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[5]!, indent))}, ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
-        }
-        _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getNodeIntersection' && e.args.length === 2) {
-        const box = kotlinFlowGeometryLiteral(e.args[0]!, ['x', 'y', 'width', 'height'], 'PyreonFlowNodeBox', indent)
-        const toward = kotlinFlowGeometryLiteral(e.args[1]!, ['x', 'y'], 'PyreonFlowPathPoint', indent)
-        if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, ${toward})`
-        _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getEffectiveDimensions' && (e.args.length === 1 || e.args.length === 2)) {
-        if (e.args[0]!.kind !== 'object' && (e.args[1] === undefined || e.args[1]!.kind !== 'object')) {
-          return `pyreonEffectiveDimensions(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, ${emitKotlinExpr(e.args[1], indent)}` : ''})`
-        }
-        _emitWarnings.push('getEffectiveDimensions requires native Flow node/measurement expressions rather than anonymous object literals.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getFloatingEndpoints' && e.args.length === 3) {
-        const dimensions = kotlinFlowGeometryLiteral(e.args[2]!, ['sourceW', 'sourceH', 'targetW', 'targetH'], 'PyreonFlowNodeBoxDimensions', indent)
-        if (e.args[0]!.kind !== 'object' && e.args[1]!.kind !== 'object' && dimensions !== null) {
-          return `pyreonGetFloatingEndpoints(${emitKotlinExpr(e.args[0]!, indent)}, ${emitKotlinExpr(e.args[1]!, indent)}, ${dimensions})`
-        }
-        _emitWarnings.push('getFloatingEndpoints requires native Flow node expressions and a literal { sourceW, sourceH, targetW, targetH } dimensions object.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'getSmartHandlePositions' && (e.args.length === 2 || e.args.length === 3)) {
-        const dimensions = e.args[2] === undefined ? undefined : kotlinFlowGeometryLiteral(e.args[2], ['sourceW', 'sourceH', 'targetW', 'targetH'], 'PyreonFlowNodeBoxDimensions', indent)
-        if (e.args[0]!.kind !== 'object' && e.args[1]!.kind !== 'object' && dimensions !== null) {
-          return `pyreonGetSmartHandlePositions(${emitKotlinExpr(e.args[0]!, indent)}, ${emitKotlinExpr(e.args[1]!, indent)}${dimensions ? `, ${dimensions}` : ''})`
-        }
-        _emitWarnings.push('getSmartHandlePositions requires native Flow node expressions and, when provided, a literal { sourceW, sourceH, targetW, targetH } dimensions object.')
-      }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveHandleAnchor' && (e.args.length === 4 || e.args.length === 5)) {
-        if (e.args[0]!.kind !== 'object' && e.args[3]!.kind !== 'object' && (e.args[4] === undefined || e.args[4]!.kind !== 'object')) {
-          return `pyreonResolveHandleAnchor(${e.args.map((arg) => emitKotlinExpr(arg, indent)).join(', ')})`
-        }
-        _emitWarnings.push('resolveHandleAnchor requires native Flow node, dimensions, and measurement expressions rather than anonymous object literals.')
+        // A plain `name(args)` call a plugin claims (a library helper function).
+        const helper = lowerPluginFunction(e.callee.name, e.args, 'kotlin', () => kotlinEmitContext(indent))
+        if (helper !== undefined) return helper
       }
       // Chart decimators consume `List<Double>`; TypeScript `number[]` can be
       // represented as `List<Int>` when its initializer is wholly integral.
@@ -5596,359 +4853,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-      }
-      // PyreonFlowState struct-literal ARGUMENTS — see swiftFlowNodeLiteral's
-      // docblock (emit-swift.ts) for why this rewrite exists: Kotlin's type
-      // system is nominal too, so a bare object literal would synthesize an
-      // unrelated data class instead of satisfying the declared parameter
-      // type. Must run BEFORE the property-read block below, mirroring
-      // emit-swift.ts's ordering.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _flowStateNamesKt.has(e.callee.object.name)
-      ) {
-        const flowName = e.callee.object.name
-        const member = e.callee.property
-        const flowPatchArg = e.args[1] === undefined ? undefined : resolveKotlinStaticFlowValue(e.args[1])
-        const flowPatchBody = flowPatchArg?.kind === 'arrow' && flowPatchArg.body.kind === 'paren' ? flowPatchArg.body.inner : flowPatchArg?.kind === 'arrow' ? flowPatchArg.body : undefined
-        const flowPatchCallback = member === 'updateNodeData' && flowPatchArg?.kind === 'arrow' && flowPatchArg.params.length === 1 && flowPatchBody?.kind === 'object' && (flowPatchBody.spreads?.length ?? 0) === 0
-        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (flowPatchArg?.kind !== 'object' || (flowPatchArg.spreads?.length ?? 0) > 0)) {
-          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
-        }
-        if (e.args.length === 0 && member === 'getNodes') return `${kotlinIdent(flowName)}.nodes`
-        if (e.args.length === 0 && member === 'getEdges') return `${kotlinIdent(flowName)}.edges`
-        if (e.args.length === 0 && member === 'getViewport') return `${kotlinIdent(flowName)}.viewport`
-        if (member === '_clearNodeMeasurement' && e.args.length === 1) return `${kotlinIdent(flowName)}.clearNodeMeasurement(${emitKotlinExpr(e.args[0]!, indent)})`
-        if (member === '_setNodeMeasurement' && (e.args.length === 3 || e.args.length === 4)) {
-          const baseArgs = `${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}`
-          if (e.args.length === 3) return `${kotlinIdent(flowName)}.updateNodeMeasurement(${baseArgs})`
-          const handles = e.args[3]!
-          if (handles.kind === 'array') {
-            const emitted = handles.elements.map((item) => {
-              if (item.kind !== 'object') return null
-              const fields = new Map(item.fields.map((field) => [field.name, field.value]))
-              const position = fields.get('position')
-              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || typeof position.value !== 'string') return null
-              const nativePosition = position.value[0]!.toUpperCase() + position.value.slice(1)
-              return `PyreonFlowMeasuredHandle(id = ${emitKotlinExpr(fields.get('id')!, indent)}, type = ${emitKotlinExpr(fields.get('type')!, indent)}, position = PyreonFlowPosition.${nativePosition}, x = ${ktChartDouble(emitKotlinExpr(fields.get('x')!, indent))}, y = ${ktChartDouble(emitKotlinExpr(fields.get('y')!, indent))})`
-            })
-            if (emitted.every((value) => value !== null)) return `${kotlinIdent(flowName)}.updateNodeMeasurement(${baseArgs}, listOf(${emitted.join(', ')}))`
-          }
-          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array to lower natively.`)
-        }
-        // Nothing silent inside the boundary — mirrors emit-swift.ts exactly.
-        if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
-          _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
-        }
-        if (member === 'paste' && e.args.length === 1) {
-          const lit = kotlinFlowPositionLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
-          if (lit !== null) return `${kotlinIdent(flowName)}.paste(${lit})`
-          if (resolveKotlinStaticFlowValue(e.args[0]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'addNode' && e.args.length === 1) {
-          const lit = kotlinFlowNodeLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
-          if (lit !== null) return `${kotlinIdent(flowName)}.addNode(${lit})`
-        }
-        if (member === 'addEdge' && e.args.length === 1) {
-          const lit = kotlinFlowEdgeLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
-          if (lit !== null) return `${kotlinIdent(flowName)}.addEdge(${lit})`
-        }
-        if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
-          const lit = kotlinFlowPositionLiteral(resolveKotlinStaticFlowValue(e.args[1]!))
-          if (lit !== null) {
-            return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
-          }
-          if (resolveKotlinStaticFlowValue(e.args[1]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(e.callee.object.name, '`updateNodePosition(...)` argument 2', 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
-          const patch = flowPatchArg
-          if (!patch.spreads || patch.spreads.length === 0) {
-            const assignments = patch.fields.map(({ name, value }) => `${kotlinIdent(name)} = ${emitKotlinExpr(value, indent)}`).join(', ')
-            return `${kotlinIdent(flowName)}.updateNodeData(${emitKotlinExpr(e.args[0]!, indent)}) { data -> data.copy(${assignments}) }`
-          }
-        }
-        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchCallback && flowPatchArg?.kind === 'arrow' && flowPatchBody?.kind === 'object') {
-          const callback = flowPatchArg
-          const assignments = flowPatchBody.fields.map(({ name, value }) => {
-            const resolved = substituteIdentifier(value, callback.params[0]!, { kind: 'identifier', name: 'node' }) ?? value
-            return `${kotlinIdent(name)} = ${emitKotlinExpr(resolved, indent)}`
-          }).join(', ')
-          return `${kotlinIdent(flowName)}.updateNodeDataFromNode(${emitKotlinExpr(e.args[0]!, indent)}) { node -> node.data.copy(${assignments}) }`
-        }
-        if (member === 'updateNode' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
-          const patch = flowPatchArg
-          if (!patch.spreads || patch.spreads.length === 0) {
-            warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
-            const fields = patch.fields.flatMap(({ name, value }) => {
-              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
-              // A literal lowers to the native constructor; a NON-literal value
-              // passes through as written (the addNode rule). Only a literal of
-              // the right kind but the wrong shape is dropped — and named.
-              if (name === 'position') {
-                const position = kotlinFlowPositionLiteral(value)
-                if (position) return [`position = ${position}`]
-                if (value.kind === 'object') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateNode(...) field `position`', 'a `{ x, y }` literal with both coordinates')); return [] }
-                return [`position = ${emitKotlinExpr(value, indent)}`]
-              }
-              if (name === 'data' && value.kind === 'object') return [`data = node.data.copy(${value.fields.map((field) => `${kotlinIdent(field.name)} = ${emitKotlinExpr(field.value, indent)}`).join(', ')})`]
-              if (name === 'sourceHandles' || name === 'targetHandles') {
-                const handles = kotlinFlowHandlesLiteral(value)
-                if (handles) return [`${name} = ${handles}`]
-                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `updateNode(...) field \`${name}\``, "an array of `{ type, position }` literals (a string `type`, a literal side, an optional string `id`)")); return [] }
-                return [`${name} = ${emitKotlinExpr(value, indent)}`]
-              }
-              if (name === 'extent') {
-                const extent = kotlinFlowNodeExtentArgs(value)
-                if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
-                return extent ? extent.map((part) => part === 'extentParent = true' ? 'extent = null, extentParent = true' : `${part}, extentParent = false`) : []
-              }
-              if (name === 'class') return [`className = ${emitKotlinExpr(value, indent)}`]
-              const rendered = ['width', 'height', 'zIndex'].includes(name) ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
-              return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
-            })
-            return `${kotlinIdent(flowName)}.updateNode(${emitKotlinExpr(e.args[0]!, indent)}) { node -> node.copy(${fields.join(', ')}) }`
-          }
-        }
-        if (member === 'updateEdge' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
-          const patch = flowPatchArg
-          if (!patch.spreads || patch.spreads.length === 0) {
-            warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
-            const fields = patch.fields.flatMap(({ name, value }) => {
-              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'pathOptions') {
-                if (value.kind !== 'object' || (value.spreads?.length ?? 0) > 0) { _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, 'pathOptions', 'an inline object literal')); return [] }
-                const unknown = value.fields.filter((field) => !['curvature', 'borderRadius', 'offset'].includes(field.name)).map((field) => field.name)
-                if (unknown.length > 0) _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, `pathOptions.${unknown.join('/')}`, 'one of `curvature`, `borderRadius`, `offset`'))
-                return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
-              }
-              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : (_emitWarnings.push(droppedFlowEdgePatchWarning(flowName, name, FLOW_MARKER_LITERAL_SHAPE)), []) }
-              if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
-              if (name === 'waypoints') {
-                const points = kotlinFlowPositionsLiteral(value)
-                if (points) return [`waypoints = ${points}`]
-                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateEdge(...) field `waypoints`', 'an array of `{ x, y }` literals, each with both coordinates')); return [] }
-                return [`waypoints = ${emitKotlinExpr(value, indent)}`]
-              }
-              if (name === 'data') { const data = kotlinFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`data = ${data}`] : [] }
-              if (name === 'class') return [`className = ${emitKotlinExpr(value, indent)}`]
-              const rendered = name === 'interactionWidth' || name === 'zIndex' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
-              return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
-            })
-            return `${kotlinIdent(flowName)}.updateEdge(${emitKotlinExpr(e.args[0]!, indent)}) { edge -> edge.copy(${fields.join(', ')}) }`
-          }
-        }
-        // React Flow's intersection helpers: a rect literal becomes the engine's
-        // PyreonFlowRect (Double components), `partially` is passed by name.
-        if ((member === 'getIntersectingNodes' && e.args.length >= 1) || (member === 'isNodeIntersecting' && e.args.length >= 2)) {
-          const target = (arg: ExprIR) => {
-            const rect = flowRectLiteralFields(arg)
-            if (!rect) return emitKotlinExpr(arg, indent)
-            return `PyreonFlowRect(${rect.map((v) => (v.kind === 'literal' && typeof v.value === 'number' ? ktChartDouble(String(v.value)) : `(${emitKotlinExpr(v, indent)}).toDouble()`)).join(', ')})`
-          }
-          const rest = member === 'isNodeIntersecting' ? [target(e.args[0]!), target(e.args[1]!)] : [target(e.args[0]!)]
-          const flag = e.args[member === 'isNodeIntersecting' ? 2 : 1]
-          return `${kotlinIdent(flowName)}.${member}(${rest.join(', ')}${flag ? `, partially = ${emitKotlinExpr(flag, indent)}` : ''})`
-        }
-        if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
-          const lit = kotlinFlowPositionLiteral(e.args[0]!)
-          if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`
-          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'zoomTo' && e.args.length >= 1) {
-          const duration = kotlinFlowDurationOption(e.args[1])
-          if (duration !== null) return `${kotlinIdent(flowName)}.zoomTo(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}${duration ? `, duration = ${duration}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'zoomTo', ['duration'], e.args[1]!))
-        }
-        if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
-          const duration = kotlinFlowDurationOption(e.args[0])
-          if (duration !== null) return `${kotlinIdent(flowName)}.${member}(${duration ? `duration = ${duration}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, member, ['duration'], e.args[0]!))
-        }
-        if (member === 'moveSelectedNodes' && e.args.length === 2) {
-          return `${kotlinIdent(flowName)}.moveSelectedNodes(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
-        }
-        if (member === 'focusNode' && e.args.length === 2) {
-          return `${kotlinIdent(flowName)}.focusNode(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
-        }
-        if ((member === 'getProximityConnection' || member === 'resolveCollisions') && e.args.length === 2) {
-          return `${kotlinIdent(flowName)}.${member}(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
-        }
-        if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
-          const point = kotlinFlowPositionLiteral(e.args[1]!)
-          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${kotlinIntArg(e.args[2]!, indent)}` : ''})`
-          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        // The waypoint index is a Kotlin `Int` API position (a TS integer is Long).
-        if (member === 'removeEdgeWaypoint' && e.args.length === 2) {
-          return `${kotlinIdent(flowName)}.removeEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)})`
-        }
-        if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
-          const point = kotlinFlowPositionLiteral(e.args[2]!)
-          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)}, ${point})`
-          if (e.args[2]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 3`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'reconnectEdge' && e.args.length === 2) {
-          const args = kotlinFlowReconnectLiteral(e.args[1]!)
-          if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'reconnectEdge', ['source', 'target', 'sourceHandle', 'targetHandle'], e.args[1]!))
-        }
-        if (member === 'isValidConnection' && e.args.length === 1) {
-          const connection = kotlinFlowConnectionLiteral(e.args[0]!)
-          if (connection !== null) return `${kotlinIdent(flowName)}.isValidConnection(${connection})`
-          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ source, target }` literal (with optional `sourceHandle` / `targetHandle`)', 'emitted'))
-        }
-        if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
-          const nodes = kotlinFlowNodeListLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
-          if (nodes !== null) return `${kotlinIdent(flowName)}.${member}(${nodes})`
-        }
-        if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
-          const edges = kotlinFlowEdgeListLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
-          if (edges !== null) return `${kotlinIdent(flowName)}.${member}(${edges})`
-        }
-        if (member === 'setViewport' && e.args.length >= 1) {
-          const args = kotlinFlowViewportLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
-          const duration = kotlinFlowDurationOption(e.args[1])
-          if (args !== null && duration !== null) return `${kotlinIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration = ${duration}` : ''})`
-          if (args === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['x', 'y', 'zoom', 'duration'], resolveKotlinStaticFlowValue(e.args[0]!)))
-          if (duration === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['duration'], e.args[1]!))
-        }
-        if (member === 'animateViewport' && e.args.length >= 1) {
-          const args = kotlinFlowViewportLiteral(e.args[0]!)
-          if (args !== null) return `${kotlinIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'animateViewport', ['x', 'y', 'zoom'], e.args[0]!))
-        }
-        if (member === 'fitView' && e.args.length >= 1 && e.args.length <= 3) {
-          const duration = kotlinFlowDurationOption(e.args[2])
-          if (duration !== null) return `${kotlinIdent(flowName)}.fitView(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, padding = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''}${duration ? `, duration = ${duration}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'fitView', ['duration'], e.args[2]!))
-        }
-        if (member === 'layout') {
-          if (e.args.length === 0) return `${kotlinIdent(flowName)}.layout()`
-          const algorithm = emitKotlinExpr(e.args[0]!, indent)
-          if (e.args.length === 1) return `${kotlinIdent(flowName)}.layout(${algorithm})`
-          const options = e.args[1]!
-          if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
-            const dropped: string[] = []
-            const fields = options.fields.flatMap(({ name, value }) => {
-              if (name === 'direction' || name === 'animate') return [`${name} = ${emitKotlinExpr(value, indent)}`]
-              if (name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animationDuration') return [`${name} = ${ktChartDouble(emitKotlinExpr(value, indent))}`]
-              dropped.push(name)
-              return []
-            })
-            if (dropped.length > 0) _emitWarnings.push(flowLayoutOptionsDroppedWarning(flowName, dropped))
-            return `${kotlinIdent(flowName)}.layout(${algorithm}, PyreonFlowLayoutOptions(${fields.join(', ')}))`
-          }
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'layout', FLOW_LAYOUT_OPTION_KEYS, options))
-        }
-        if (member === 'setCenter' && e.args.length >= 2) {
-          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!, FLOW_SET_CENTER_KEYS) : ''
-          if (options !== null) return `${kotlinIdent(flowName)}.setCenter(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}${options ? `, ${options}` : ''})`
-          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setCenter', FLOW_SET_CENTER_KEYS, e.args[2]!))
-        }
-        if (member === 'setNodeExtent' && e.args.length === 1) {
-          const value = e.args[0]!
-          if ((value.kind === 'literal' && value.value === null) || (value.kind as string) === 'null' || (value.kind === 'identifier' && value.name === 'undefined')) return `${kotlinIdent(flowName)}.clearNodeExtent()`
-          const extent = kotlinFlowExtentLiteral(value)
-          if (extent !== null) return `${kotlinIdent(flowName)}.setNodeExtent(${extent})`
-        }
-        if (member === 'clampToExtent' && e.args.length >= 1) {
-          const position = kotlinFlowPositionLiteral(e.args[0]!)
-          if (position !== null) return `${kotlinIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${ktChartDouble(emitKotlinExpr(arg, indent))}`).join('')})`
-          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-        if (member === 'getSnapLines' && e.args.length >= 2) {
-          const position = kotlinFlowPositionLiteral(e.args[1]!)
-          if (position !== null) return `${kotlinIdent(flowName)}.getSnapLines(${emitKotlinExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}` : ''})`
-          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
-        }
-      }
-      // Flow lookup computeds are JavaScript Maps. Kotlin Map.get already
-      // matches; Map.has is containsKey.
-      if (
-        e.callee.kind === 'member' &&
-        (e.callee.property === 'get' || e.callee.property === 'has') &&
-        e.callee.object.kind === 'call' &&
-        e.callee.object.args.length === 0 &&
-        e.callee.object.callee.kind === 'member' &&
-        e.callee.object.callee.object.kind === 'identifier' &&
-        _flowStateNamesKt.has(e.callee.object.callee.object.name) &&
-        ['nodeMap', 'edgeMap', 'measurements'].includes(e.callee.object.callee.property) &&
-        e.args.length === 1
-      ) {
-        const flowName = kotlinIdent(e.callee.object.callee.object.name)
-        const webName = e.callee.object.callee.property
-        const nativeName = webName === 'nodeMap' ? 'nodeLookup' : webName === 'edgeMap' ? 'edgeLookup' : webName
-        const method = e.callee.property === 'has' ? 'containsKey' : 'get'
-        return `${flowName}.${nativeName}.${method}(${emitKotlinExpr(e.args[0]!, indent)})`
-      }
-      // A signal WRITE on a flow-state property — read-only natively; name it.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.object.kind === 'identifier' &&
-        _flowStateNamesKt.has(e.callee.object.object.name) &&
-        LOWERED_FLOW_PROPERTY_READS.has(e.callee.object.property) &&
-        (e.callee.property === 'set' || e.callee.property === 'update')
-      ) {
-        const flowName = e.callee.object.object.name
-        const property = e.callee.object.property
-        if ((property === 'nodes' || property === 'edges') && e.args.length === 1) {
-          const method = property === 'nodes' ? 'setNodes' : 'setEdges'
-          if (e.callee.property === 'set') {
-            const value = resolveKotlinStaticFlowValue(e.args[0]!)
-            const literal = property === 'nodes' ? kotlinFlowNodeListLiteral(value, flowName) : kotlinFlowEdgeListLiteral(value, flowName)
-            return `${kotlinIdent(flowName)}.${method}(${literal ?? emitKotlinExpr(e.args[0]!, indent)})`
-          }
-          return `${kotlinIdent(flowName)}.${method}(${emitKotlinExpr(e.args[0]!, indent)})`
-        }
-        if ((property === 'viewport' || property === 'containerSize') && e.args.length === 1) {
-          const method = property === 'viewport' ? 'setViewport' : e.callee.property === 'set' ? 'replaceContainerSize' : 'updateContainerSize'
-          const typeName = property === 'viewport' ? 'PyreonFlowViewport' : 'PyreonFlowContainerSize'
-          const names = property === 'viewport' ? ['x', 'y', 'zoom'] : ['width', 'height']
-          const arg = resolveKotlinStaticFlowValue(e.args[0]!)
-          if (e.callee.property === 'set' && arg.kind === 'object' && (arg.spreads?.length ?? 0) === 0) {
-            const values = new Map(arg.fields.map((field) => [field.name, field.value]))
-            if (names.every((name) => values.has(name))) {
-              return `${kotlinIdent(flowName)}.${method}(${typeName}(${names.map((name) => `${name} = ${ktChartDouble(emitKotlinExpr(values.get(name)!, indent))}`).join(', ')}))`
-            }
-          }
-          const body = arg.kind === 'arrow' ? (arg.body.kind === 'paren' ? arg.body.inner : arg.body) : undefined
-          if (e.callee.property === 'update' && arg.kind === 'arrow' && arg.params.length === 1 && body?.kind === 'object' && (body.spreads ?? []).every((spread) => spread.kind === 'identifier' && spread.name === arg.params[0])) {
-            const values = new Map(body.fields.map((field) => [field.name, field.value]))
-            const param = kotlinIdent(arg.params[0]!)
-            if (names.every((name) => values.has(name) || (body.spreads?.length ?? 0) > 0)) return `${kotlinIdent(flowName)}.${method} { ${param} -> ${typeName}(${names.map((name) => `${name} = ${values.has(name) ? ktChartDouble(emitKotlinExpr(values.get(name)!, indent)) : `${param}.${name}`}`).join(', ')}) }`
-          }
-        }
-        if (property === 'measurements' && e.args.length === 1) {
-          const arg = resolveKotlinStaticFlowValue(e.args[0]!)
-          if (e.callee.property === 'set' && arg.kind === 'new-collection' && arg.collection === 'map' && (arg.entries?.length ?? 0) === 0) {
-            return `${kotlinIdent(flowName)}.replaceMeasurements(emptyMap())`
-          }
-          if (e.callee.property === 'set') {
-            return `${kotlinIdent(flowName)}.replaceMeasurements(${emitKotlinExpr(arg, indent)})`
-          }
-          if (e.callee.property === 'update' && arg.kind === 'arrow') {
-            return `${kotlinIdent(flowName)}.updateMeasurements(${emitKotlinExpr(arg, indent)})`
-          }
-        }
-        _emitWarnings.push(flowSignalWriteWarning(flowName, property, e.callee.property))
-      }
-      // PyreonFlowState property reads drop parens — web `flow.nodes()` /
-      // `flow.edges()` / `flow.viewport()` / `flow.zoom()` are Signal/Computed
-      // accessor CALLS; the Kotlin port exposes them as `val` properties
-      // (mirrors the table rewrite immediately above). `selectedNodes()`/
-      // `selectedEdges()` stay METHODS (named that way on purpose, matching
-      // the web call syntax with no rewrite needed) — deliberately absent.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _flowStateNamesKt.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
-      ) {
-        const nativeName = e.callee.property === 'nodeMap' ? 'nodeLookup' : e.callee.property === 'edgeMap' ? 'edgeLookup' : e.callee.property
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(nativeName)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
@@ -6760,24 +5664,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${emitKotlinExpr(e.object, indent)}[${kotlinListIndex(e.object, e.index, indent)}]`
     }
     case 'member': {
-      if (
-        e.object.kind === 'member' && e.object.property === 'config' &&
-        e.object.object.kind === 'identifier' && _flowStateNamesKt.has(e.object.object.name)
-      ) {
-        const nativeProperty = LOWERED_FLOW_CONFIG_PROPERTIES.get(e.property)
-        if (nativeProperty !== undefined) return `${kotlinIdent(e.object.object.name)}.${nativeProperty}`
-        _emitWarnings.push(`createFlow binding \`${e.object.object.name}\`: \`config.${e.property}\` is not represented by the native Flow configuration.`)
-      }
-      if (
-        e.object.kind === 'member' && e.object.property === 'data' &&
-        e.object.object.kind === 'member' && e.object.object.property === 'edge' &&
-        e.object.object.object.kind === 'identifier' && e.object.object.object.name === _activePropsParamName
-      ) {
-        return `${emitKotlinExpr(e.object, indent)}?.get(${JSON.stringify(e.property)})`
-      }
-      if (e.object.kind === 'identifier' && e.object.name === 'MarkerType' && (e.property === 'Arrow' || e.property === 'ArrowClosed')) {
-        return JSON.stringify(e.property.toLowerCase())
-      }
+      // Reads rooted at a plugin declaration's binding (`flow.config.zoom`), then reads a plugin recognises by shape.
+      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(0))
+      if (rooted !== undefined) return rooted
+      const shaped = lowerPluginMemberRead(e, 'kotlin', () => kotlinEmitContext(0))
+      if (shaped !== undefined) return shaped
       // `Math.PI` member READ — java.lang.Math.PI is valid on the JVM, but
       // emit the fully-qualified stdlib constant so no import is needed and
       // the kotlinc stub gate sees a real symbol.
@@ -7558,9 +6449,8 @@ function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: 
 }
 
 /** The facade element lowerings emit through — closes over this emitter's state. */
-function kotlinEmitContext(indent: number) {
-  return createEmitContext(
-    'kotlin',
+function kotlinEmitContext(indent: number): KotlinEmitContext {
+  return createKotlinEmitContext(
     {
       emit: emitKotlinJsx,
       staticAttr: readStaticAttrKotlin,
@@ -7577,9 +6467,67 @@ function kotlinEmitContext(indent: number) {
       action: emitKotlinAction,
       constExpr: (name) => _moduleConstExprsKotlin.get(name),
       colorScope: () => _colorScope ?? undefined,
+      component: () => kotlinComponentInfo,
+      isFunctionName: (name) => _functionNames.has(name),
+      child: emitKotlinChild,
+      typeText: kotlinType,
+      inferType: (e) => inferType(e, _kotlinExprInferCtx),
+      structs: kotlinStructRegistry,
+      warnOnce: (message) => {
+        if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
+      },
+      webView: kotlinWebViewFacade,
+      fileState: (key, init) => _moduleScope.state(key, init),
+      layoutModifiersFor: (el, handled) => emitKotlinLayoutModifier(el, handled),
+      intArg: kotlinIntArg,
     },
     indent,
   )
+}
+
+/** The component being emitted, as a plugin reads it (live getters — the emitter's state moves under it). */
+const kotlinComponentInfo: ComponentInfo = {
+  get name() {
+    return _activeComponentName
+  },
+  get propsParamName() {
+    return _activePropsParamName
+  },
+  get valueConsts() {
+    return _componentValueConstExprsKotlin
+  },
+  isDeclared: (tag) => _componentNames.has(tag),
+}
+
+/** The file's struct registry, as a plugin reads it. */
+const kotlinStructRegistry: StructRegistry = {
+  forTypeFields(fields) {
+    const declared =
+      _structTypedKeyToName.get(structShapeKey([...fields])) ??
+      _structFieldsToName.get(fields.map((f) => f.name).sort().join(','))
+    return declared ?? synthTypedStructName([...fields], _synthExprStructs, _synthExprStructKeys)
+  },
+  forLiteralFields(fields) {
+    const typedKey = literalShapeKey([...fields])
+    return (
+      (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
+      _structFieldsToName.get(fields.map((f) => f.name).sort().join(',')) ??
+      subsetStructName(fields.map((f) => f.name), _declaredStructs, typeIsOptional) ??
+      synthLiteralStructName([...fields], _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx))
+    )
+  },
+  synthesize(fields) {
+    const name = synthStructName(_synthExprStructs.length)
+    _synthExprStructs.push({ name, fields: [...fields] })
+    return name
+  },
+}
+
+/** The WebView plumbing a plugin that hosts a page in `<WebView>` reuses. */
+const kotlinWebViewFacade: WebViewFacade = {
+  dynamicAttr: dynamicWebViewAttrKotlin,
+  dataArg: kotlinWebViewDataArg,
+  messageHandler: emitKotlinMessageHandler,
 }
 
 /**
@@ -7620,7 +6568,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
   // Library elements claimed by a registered element lowering — see the Swift
   // dispatcher; the registry and import guard are shared.
-  const lowering = findElementLowering(tag, (t, mod) => canAliasIntercept(t, mod))
+  const lowering = findElementLowering(tag, (t, mod, imported) => canAliasIntercept(t, mod, imported), _aliasImports.get(tag)?.imported)
   if (lowering !== undefined) {
     const retagged = lowering.retag?.(e, { warn: pushEmitWarning })
     if (retagged !== undefined) return emitKotlinJsx(retagged, indent)
@@ -7737,11 +6685,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
-  if (canAliasIntercept(tag, '@pyreon/flow', 'FlowWebView') && _aliasImports.get(tag)?.imported === 'FlowWebView') {
-    return emitKotlinFlowWebView(e)
-  }
-  if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
-  if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinStandaloneFlowControls(e, indent)
   // Library element hosts (e.g. the `@pyreon/charts` family) lower in the plugin that owns
   // them — claimed by the registry lookup at the top of this function.
   // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
@@ -7815,41 +6758,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
-  if (tag === 'Handle') {
-    for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Handle ${name}> is browser CSS and is not applied natively; handle geometry and interaction still lower.`)
-    return 'Box {}'
-  }
-  if (tag === 'NodeResizer') return 'Box {}'
-  if (tag === 'NodeToolbar') {
-    for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<NodeToolbar ${name}> is browser CSS and is not applied natively; toolbar placement and content still lower.`)
-    // A toolbar lowers ONLY through the up-front extraction, which needs a
-    // registered NODE renderer AND a static child position; otherwise it
-    // is dropped, and why decides the fix.
-    const registered = _flowNodeRendererComponentsKotlin.has(_activeComponentName)
-    if (!registered || !_extractedFlowToolbarsKotlin.has(e)) _emitWarnings.push(droppedNodeToolbarWarning(registered, _activeComponentName))
-    return 'Box {}'
-  }
-  if (tag === 'path') return emitKotlinFlowCustomPath(e, indent)
-  if (tag === 'BaseEdge' && !_componentNames.has(tag)) return emitKotlinFlowBaseEdge(e, indent)
-  if (tag === 'EdgeText' && !_componentNames.has(tag)) {
-    const plan = planEdgeText(e)
-    for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
-    if (!plan.text || !plan.x || !plan.y) return 'Box {}'
-    return `PyreonFlowEdgeText(x = (${emitKotlinExpr(plan.x, indent)}).toDouble(), y = (${emitKotlinExpr(plan.y, indent)}).toDouble(), label = ${emitKotlinExpr(plan.text, indent)})`
-  }
-  if (tag === 'ViewportPortal' && !_componentNames.has(tag)) {
-    if (!_emitWarnings.includes(VIEWPORT_PORTAL_WARNING)) _emitWarnings.push(VIEWPORT_PORTAL_WARNING)
-    return 'Box {}'
-  }
-  if ((tag === 'div' || tag === 'p' || tag === 'span') && _flowRendererComponentsKotlin.has(_activeComponentName)) {
-    const lowered = lowerFlowPlainElement(e)
-    if (lowered) return emitKotlinJsx(lowered, indent)
-  }
-  if (tag === 'svg' && _flowRendererComponentsKotlin.has(_activeComponentName)) return emitKotlinFlowSvg(e, indent)
-  if (tag === 'EdgeLabelRenderer') {
-    const content = e.children.map((child) => `  ${emitKotlinChild(child, indent + 2)}`).join('\n')
-    return `PyreonFlowEdgeLabelRenderer {\n${content}\n${' '.repeat(indent)}}`
-  }
+  // Lowercase DOM tags a plugin gives meaning inside its own renderers (a flow's `<path>` / `<svg>`).
+  const intrinsic = lowerPluginIntrinsic(e, 'kotlin', () => kotlinEmitContext(indent))
+  if (intrinsic !== undefined) return intrinsic
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -7872,276 +6783,13 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   return emitKotlinGeneric(e, indent)
 }
 
-function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
-  if (attr === undefined || attr.kind !== 'attr' || attr.value === undefined) {
-    _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
-    return 'Box {}'
-  }
-  for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Flow ${name}> is browser CSS and is not applied to the native canvas; use native layout primitives around <Flow> for container sizing and decoration.`)
-  const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
-  const nodeTypes = resolveStaticFlowRendererMap(nodeTypesAttr?.kind === 'attr' ? nodeTypesAttr.value : undefined, (name) => _moduleConstExprsKotlin.get(name))
-  if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
-    _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
-  }
-  for (const entry of nodeTypes ?? []) {
-    if (_flowComponentsWithInvalidHandlesKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
-    if (_flowComponentsWithInvalidResizersKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
-    if (_flowComponentsWithForeignResizerKotlin.has(entry.component)) _emitWarnings.push(NODE_RESIZER_FOREIGN_NODE_WARNING(entry.component))
-    if (_flowComponentsWithInvalidToolbarsKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
-  }
-  const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
-  const edgeTypes = resolveStaticFlowRendererMap(edgeTypesAttr?.kind === 'attr' ? edgeTypesAttr.value : undefined, (name) => _moduleConstExprsKotlin.get(name))
-  if (edgeTypesAttr !== undefined && edgeTypes === undefined) {
-    _emitWarnings.push('<Flow edgeTypes={…}> must be a literal { type: Component } map to lower natively; the native default edge renderer is used.')
-  }
-  const connectionLineAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'connectionLine')
-  const connectionLine = connectionLineAttr?.kind === 'attr' && connectionLineAttr.value?.kind === 'identifier'
-    ? connectionLineAttr.value.name
-    : undefined
-  if (connectionLineAttr !== undefined && connectionLine === undefined) {
-    _emitWarnings.push('<Flow connectionLine={…}> must reference a component identifier to lower natively; the built-in connection line is used.')
-  }
-  const flowChildren = e.children.flatMap(function flatten(child): ChildIR[] {
-    return child.kind === 'expr' && child.expr.kind === 'jsx-fragment'
-      ? child.expr.children.flatMap(flatten)
-      : [child]
-  })
-  const background = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const controls = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const miniMap = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'MiniMap')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const panels = flowChildren
-    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Panel')
-    .map((child) => child.kind === 'expr' ? child.expr : undefined)
-    .filter((panel): panel is Extract<ExprIR, { kind: 'jsx-element' }> => panel?.kind === 'jsx-element')
-  const otherChildren = flowChildren.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
-  const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
-  const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
-  const controlsContentArg = controls?.kind === 'jsx-element' && controls.children.length > 0
-    ? `, controlsContent = {\n${controls.children.map((child) => `    ${emitKotlinChild(child, 4)}`).join('\n')}\n  }`
-    : ''
-  const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
-  const miniMapNodeColorAttr = miniMap?.kind === 'jsx-element' ? miniMap.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor') : undefined
-  const miniMapNodeColorValue = miniMapNodeColorAttr?.kind === 'attr' ? miniMapNodeColorAttr.value : undefined
-  const miniMapNodeColorIsCallback = miniMapNodeColorValue?.kind === 'arrow' || (miniMapNodeColorValue?.kind === 'identifier' && (_functionNames.has(miniMapNodeColorValue.name) || _moduleConstExprsKotlin.get(miniMapNodeColorValue.name)?.kind === 'arrow'))
-  const miniMapNodeColorArg = miniMapNodeColorValue !== undefined && miniMapNodeColorIsCallback
-    ? `, miniMapNodeColor = ${emitKotlinExpr(miniMapNodeColorValue, 0)}`
-    : ''
-  const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
-  const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel = ${emitKotlinExpr(ariaLabelAttr.value, 0)}` : ''
-  const colorModeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'colorMode')
-  const colorModeArg = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `, colorMode = ${emitKotlinExpr(colorModeAttr.value, 0)}` : ''
-  const handleCases = nodeTypes?.flatMap(({ type, component }) => {
-    const handles = _flowComponentHandlesKotlin.get(component) ?? []
-    return handles.length > 0 ? [`${JSON.stringify(type)} -> ${kotlinFlowParsedHandles(handles)}`] : []
-  }) ?? []
-  const nodeHandlesArg = handleCases.length > 0
-    ? `, nodeHandles = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${handleCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
-    : ''
-  const resizerCases = nodeTypes?.flatMap(({ type, component }) => {
-    const config = _flowComponentResizersKotlin.get(component)
-    return config ? [`${JSON.stringify(type)} -> PyreonFlowNodeResizerConfig(minWidth = ${ktChartDouble(String(config.minWidth))}, minHeight = ${ktChartDouble(String(config.minHeight))}, handleSize = ${ktChartDouble(String(config.handleSize))}, showEdgeHandles = ${config.showEdgeHandles})`] : []
-  }) ?? []
-  const nodeResizerArg = resizerCases.length > 0
-    ? `, nodeResizer = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${resizerCases.join('\n      ')}\n      else -> null\n    }\n  }`
-    : ''
-  const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
-    const configs = _flowComponentToolbarsKotlin.get(component)
-    return configs?.length ? [`${JSON.stringify(type)} -> listOf(${configs.map((config) => `PyreonFlowNodeToolbarConfig(position = ${JSON.stringify(config.position)}, align = ${JSON.stringify(config.align)}, offset = ${ktChartDouble(String(config.offset))}, showOnSelect = ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride = ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride = ${JSON.stringify(config.nodeIdOverride)}`})`).join(', ')})`] : []
-  }) ?? []
-  const nodeToolbarConfigArg = toolbarCases.length > 0
-    ? `, nodeToolbarConfigs = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${toolbarCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
-    : ''
-  const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
-    const configs = _flowComponentToolbarsKotlin.get(component)
-    return configs?.length ? [`${JSON.stringify(type)} -> when (pyreonToolbarIndex) {\n${configs.map((config, index) => `        ${index} -> ${kotlinIdent(config.contentComponent)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n        else -> Unit\n      }`] : []
-  }) ?? []
-  const nodeToolbarArg = toolbarContentCases.length > 0
-    ? `, nodeToolbar = { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging ->\n    when (pyreonNode.type) {\n      ${toolbarContentCases.join('\n      ')}\n      else -> Unit\n    }\n  }`
-    : ''
-  const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdgeTypes = setOf(${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')})`
-    : ''
-  const customEdgeArg = edgeTypes && edgeTypes.length > 0
-    ? `, customEdge = { pyreonEdge ->\n    when (pyreonEdge.edge.type) {\n      ${edgeTypes.map(({ type, component }) => `${JSON.stringify(type)} -> ${kotlinIdent(component)}(edge = pyreonEdge.edge, sourceX = { pyreonEdge.sourceX }, sourceY = { pyreonEdge.sourceY }, targetX = { pyreonEdge.targetX }, targetY = { pyreonEdge.targetY }, sourcePosition = { pyreonEdge.sourcePosition }, targetPosition = { pyreonEdge.targetPosition }, selected = { pyreonEdge.selected }, labelX = { pyreonEdge.labelX }, labelY = { pyreonEdge.labelY })`).join('\n      ')}\n      else -> Unit\n    }\n  }`
-    : ''
-  const customConnectionLineArg = connectionLine
-    ? `, customConnectionLineEnabled = true, customConnectionLine = { pyreonLine -> ${kotlinIdent(connectionLine)}(sourceX = { pyreonLine.sourceX }, sourceY = { pyreonLine.sourceY }, targetX = { pyreonLine.targetX }, targetY = { pyreonLine.targetY }, sourcePosition = { pyreonLine.sourcePosition }, path = { pyreonLine.path }) }`
-    : ''
-  // A node without a custom `type` renders the web's DefaultNode box — palette
-  // background, text and border, the selected colour while selected — not a
-  // bare label.
-  const nodeLabel = attr.value.kind === 'identifier' && _flowStateLabelNamesKt.has(attr.value.name)
-    ? 'pyreonNode.data.label.toString()'
-    : 'pyreonNode.id'
-  const nodeSelected = nodeTypes && nodeTypes.length > 0 ? 'pyreonSelected' : `${emitKotlinExpr(attr.value, 0)}.isNodeSelected(pyreonNode.id)`
-  const nodeText = `PyreonFlowDefaultNode(label = ${nodeLabel}, selected = ${nodeSelected})`
-  const renderer = nodeTypes && nodeTypes.length > 0
-    ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${kotlinStr(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
-    : nodeText
-  const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${controlsContentArg}${miniMapArg}${miniMapNodeColorArg}${ariaLabelArg}${colorModeArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} ->\n  ${renderer}\n}`
-  if (panels.length === 0 && otherChildren.length === 0) return host
-  const overlays = panels.map((panel) => {
-    const position = readStaticAttrKotlin(panel, 'position')
-    const hasPosition = panel.attrs.some((a) => a.kind === 'attr' && a.name === 'position')
-    const alignment = position === 'top-right' ? 'TopEnd' : position === 'bottom-left' ? 'BottomStart' : position === 'bottom-right' ? 'BottomEnd' : 'TopStart'
-    if (hasPosition && typeof position !== 'string') _emitWarnings.push('<Panel position={…}> must be a string literal to lower natively; top-left is used.')
-    for (const name of ['style', 'class']) if (panel.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Panel ${name}> uses browser CSS and is not applied natively; its position and content still lower.`)
-    const content = panel.children.map((child) => `      ${emitKotlinChild(child, 6)}`).join('\n')
-    return `    Box(modifier = Modifier.align(Alignment.${alignment}).padding(10.dp)) {\n${content}\n    }`
-  })
-  overlays.push(...otherChildren.map((child) => `    ${emitKotlinChild(child, 4)}`))
-  const overlaysCode = overlays.join('\n')
-  // The overlays sit BESIDE the flow view, outside its own scoped colour
-  // mode; re-apply it around the stack so a <Panel> under colorMode="dark"
-  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
-  const stack = `Box {\n  ${host}\n${overlaysCode}\n}`
-  return colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `PyreonFlowColorMode(${emitKotlinExpr(colorModeAttr.value, 0)}) {\n${stack}\n}` : stack
-}
 
-function emitKotlinStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const instance = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
-  if (instance?.kind !== 'attr' || instance.value === undefined) {
-    _emitWarnings.push('<Controls> outside <Flow> requires `instance={flow}` for native lowering; it was dropped.')
-    return 'Box {}'
-  }
-  const content = e.children.length > 0
-    ? `, extraContent = {\n${e.children.map((child) => `    ${emitKotlinChild(child, indent + 4)}`).join('\n')}\n${' '.repeat(indent + 2)}}`
-    : ''
-  return `PyreonStandaloneFlowControls(state = ${emitKotlinExpr(instance.value, 0)}, style = ${emitKotlinFlowControls(e)}${content})`
-}
 
-function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
-  let value = attr?.kind === 'attr' ? attr.value : undefined
-  if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
-  // A structured helper result (`get*Path({...}).path`, or a local bound to
-  // one) or the connection line's `path()` keeps its segments; any other `d`
-  // is SVG path data, parsed at runtime into the same segments.
-  const pathMember = value?.kind === 'member' && value.property === 'path'
-    ? classifyFlowPathMember(value.object, _activePropsParamName, _componentValueConstExprsKotlin)
-    : undefined
-  const resultCode = value?.kind === 'member' && pathMember === 'object'
-    ? emitKotlinExpr(value.object, indent)
-    : value?.kind === 'member' && pathMember === 'accessor'
-      ? `${kotlinIdent(value.property)}()`
-    : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
-      ? emitKotlinExpr(value, indent)
-      : value !== undefined
-        ? `pyreonFlowPathResultFromSvg(${emitKotlinExpr(value, indent)})`
-        : undefined
-  if (resultCode === undefined) {
-    _emitWarnings.push(FLOW_ARBITRARY_PATH_WARNING)
-    return 'Box {}'
-  }
-  const paint = resolveFlowPathPaint(e)
-  _emitWarnings.push(...paint.warnings)
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
-  const width = paint.width.kind === 'literal' ? ktChartDouble(String(paint.width.value)) : `(${emitKotlinExpr(paint.width.expr, indent)}).toDouble()`
-  return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${color(paint.stroke)}, width = ${width}, fill = ${color(paint.fill)})`
-}
 
-function emitKotlinFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const plan = planFlowSvg(e)
-  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
-  const num = (n: FlowSvgNumber) => n.kind === 'literal' ? ktChartDouble(String(n.value)) : `(${emitKotlinExpr(n.expr, indent)}).toDouble()`
-  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
-  const pad = ' '.repeat(indent + 2)
-  const shapes = plan.shapes.map((s) =>
-    `${pad}PyreonFlowSvgShape(result = pyreonFlowPathResultFromSvg(${emitKotlinExpr(s.d, indent + 2)}), stroke = ${color(s.paint.stroke)}, strokeWidth = ${s.paint.width.kind === 'literal' ? ktChartDouble(String(s.paint.width.value)) : `(${emitKotlinExpr(s.paint.width.expr, indent)}).toDouble()`}, fill = ${color(s.paint.fill)})`,
-  )
-  const args = [
-    ...(plan.width ? [`width = ${num(plan.width)}`] : []),
-    ...(plan.height ? [`height = ${num(plan.height)}`] : []),
-    ...(plan.viewBox ? [`viewBox = listOf(${plan.viewBox.map((v) => ktChartDouble(String(v))).join(', ')})`] : []),
-    ...(plan.stretch ? ['stretch = true'] : []),
-  ]
-  const body = shapes.length > 0 ? `listOf(\n${shapes.join(',\n')}\n${' '.repeat(indent)})` : 'emptyList()'
-  return `PyreonFlowSvg(${[...args, `shapes = ${body}`].join(', ')})`
-}
 
-function emitKotlinFlowBaseEdge(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const plan = planBaseEdge(e)
-  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
-  if (!plan.path) return 'Box {}'
-  const stroke = plan.paint.stroke
-  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'null' : JSON.stringify(stroke.value)) : emitKotlinExpr(stroke.expr, indent)
-  const width = plan.paint.width.kind === 'literal' ? ktChartDouble(String(plan.paint.width.value)) : `(${emitKotlinExpr(plan.paint.width.expr, indent)}).toDouble()`
-  const path = `PyreonFlowBaseEdgePath(result = pyreonFlowPathResultFromSvg(${emitKotlinExpr(plan.path, indent)}), color = ${color}, width = ${width})`
-  if (!plan.label) return path
-  const pad = ' '.repeat(indent + 2)
-  return `Box {\n${pad}${path}\n${pad}PyreonFlowEdgeText(x = (${emitKotlinExpr(plan.label.x, indent)}).toDouble(), y = (${emitKotlinExpr(plan.label.y, indent)}).toDouble(), label = ${emitKotlinExpr(plan.label.text, indent)})\n${' '.repeat(indent)}}`
-}
 
-function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<MiniMap ${name}> is browser CSS and is not applied natively; its dimensions, colors, and interactions still lower.`)
-  const expr = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    return attr?.kind === 'attr' && attr.value !== undefined ? emitKotlinExpr(attr.value, 0) : fallback
-  }
-  const str = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    const value = attr?.kind === 'attr' ? attr.value : undefined
-    const callback = value?.kind === 'arrow' || (value?.kind === 'identifier' && (_functionNames.has(value.name) || _moduleConstExprsKotlin.get(value.name)?.kind === 'arrow'))
-    return callback ? kotlinStr(fallback) : expr(name, kotlinStr(fallback))
-  }
-  const num = (name: string, fallback: number): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    if (attr?.kind !== 'attr' || attr.value === undefined) return `${fallback}.0`
-    if (attr.value.kind !== 'literal') return `(${emitKotlinExpr(attr.value, 0)}).toDouble()`
-    const value = attr.value.value
-    return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
-  }
-  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  // A static node colour lowers verbatim; an absent one (or a per-node
-  // callback, which travels separately as `miniMapNodeColor`) stays `null` so
-  // the palette's `minimapNode` — light or dark — decides at render time.
-  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
-  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
-  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprsKotlin.get(nodeColorValue.name)?.kind === 'arrow'))
-  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'null' : emitKotlinExpr(nodeColorValue, 0)
-  return `PyreonFlowMiniMapStyle(nodeColor = ${nodeColor}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
-}
 
-function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const expr = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    return attr?.kind === 'attr' && attr.value !== undefined ? emitKotlinExpr(attr.value, 0) : fallback
-  }
-  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  const position = readStaticAttrKotlin(e, 'position')
-  const positionAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'position')
-  const pos = position === 'top-left' ? 'PyreonFlowControlsPosition.TopLeft' : position === 'top-right' ? 'PyreonFlowControlsPosition.TopRight' : position === 'bottom-right' ? 'PyreonFlowControlsPosition.BottomRight' : typeof position === 'string' || positionAttr === undefined ? 'PyreonFlowControlsPosition.BottomLeft' : `pyreonFlowControlsPosition(${emitKotlinExpr(positionAttr.kind === 'attr' && positionAttr.value !== undefined ? positionAttr.value : { kind: 'literal', value: 'bottom-left' }, 0)})`
-  return `PyreonFlowControlsStyle(showZoomIn = ${bool('showZoomIn', true)}, showZoomOut = ${bool('showZoomOut', true)}, showFitView = ${bool('showFitView', true)}, showLock = ${bool('showLock', false)}, position = ${pos})`
-}
 
-function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const variant = readStaticAttrKotlin(e, 'variant')
-  const variantAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'variant')
-  const resolvedVariant = variant === 'lines' ? 'PyreonFlowBackgroundVariant.Lines' : variant === 'cross' ? 'PyreonFlowBackgroundVariant.Cross' : variant === 'dots' || variantAttr === undefined ? 'PyreonFlowBackgroundVariant.Dots' : `pyreonFlowBackgroundVariant(${emitKotlinExpr(variantAttr.kind === 'attr' && variantAttr.value !== undefined ? variantAttr.value : { kind: 'literal', value: 'dots' }, 0)})`
-  const expr = (name: string, fallback: string): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    return attr?.kind === 'attr' && attr.value !== undefined ? emitKotlinExpr(attr.value, 0) : fallback
-  }
-  const num = (name: string, fallback: number): string => {
-    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
-    if (attr?.kind !== 'attr' || attr.value === undefined) return `${fallback}.0`
-    if (attr.value.kind !== 'literal') return `(${emitKotlinExpr(attr.value, 0)}).toDouble()`
-    const value = attr.value.value
-    return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
-  }
-  // No colour → `null`: the renderer's palette supplies the light `#dddddd` or
-  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
-  // would silently pin to light under `colorMode="dark"`.
-  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', 'null')})`
-}
 
 /**
  * Emit `<TextField value={signal} onInput={...}>` as a Compose
@@ -9802,6 +8450,18 @@ const KOTLIN_CONTENT_SCALE: Record<string, string> = {
 }
 
 /**
+ * The `modifier = …` arg for a WebView-family host: the generic layout tail
+ * (`padding`/`margin`, `data-testid` → `Modifier.testTag`, a11y props) every
+ * primitive gets. `PyreonWebView` accepts `modifier` on the real runtime AND
+ * the stub; a host that omitted it was unselectable by `onNodeWithTag` — the
+ * same class the `<Toggle>` emitter had. Empty when nothing applies.
+ */
+function kotlinWebViewModifierArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, omit?: ReadonlySet<string>): string {
+  const chain = emitKotlinLayoutModifier(e, omit)
+  return chain === '' ? '' : `, modifier = ${chain}`
+}
+
+/**
  * `<WebView html="…" />` / `<WebView src="…" />` → `PyreonWebView(html = …)`
  * / `PyreonWebView(src = …)` (the Android WebView host in
  * @pyreon/native-runtime-kotlin). Mirror of `emitSwiftWebView`.
@@ -9833,84 +8493,8 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)})`
 }
 
-function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  let html = DEFAULT_FLOW_WEBVIEW_HOST_HTML
-  for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
-    const present = e.attrs.some((a) => a.kind === 'attr' && a.name === prop)
-    if (present && readStaticAttrKotlin(e, prop) === undefined) {
-      _emitWarnings.push(`<FlowWebView ${prop}={…}>: native host styling must be statically resolvable; using the documented default.`)
-    }
-  }
-  const nodeWidth = readStaticAttrKotlin(e, 'nodeWidth')
-  const nodeHeight = readStaticAttrKotlin(e, 'nodeHeight')
-  if (typeof nodeWidth === 'number' || typeof nodeHeight === 'number') {
-    html = html.replace(
-      'var NODE_W = 150, NODE_H = 44;',
-      `var NODE_W = ${typeof nodeWidth === 'number' && Number.isFinite(nodeWidth) ? nodeWidth : 150}, NODE_H = ${typeof nodeHeight === 'number' && Number.isFinite(nodeHeight) ? nodeHeight : 44};`,
-    )
-  }
-  const safeColor = (value: string): string => value.replace(/[^#a-zA-Z0-9(),.%\s-]/g, '')
-  const colors = [
-    ['nodeFill', '#ffffff'], ['nodeStroke', '#c9ced6'],
-    ['labelColor', '#1f2933'], ['edgeColor', '#98a2b3'],
-  ] as const
-  for (const [prop, fallback] of colors) {
-    const value = readStaticAttrKotlin(e, prop)
-    if (typeof value === 'string') html = html.replaceAll(fallback, safeColor(value))
-  }
-  const background = readStaticAttrKotlin(e, 'background')
-  if (typeof background === 'string') {
-    html = html.replace('background:transparent}', `background:${background.replace(/[<>"']/g, '')}}`)
-  }
-  return html
-}
 
-function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const graph = dynamicWebViewAttrKotlin(e, 'graph')
-  if (graph === undefined) _emitWarnings.push('<FlowWebView>: `graph` is required on native; emitting an empty host.')
-  const explicitHtml = dynamicWebViewAttrKotlin(e, 'html')
-  const generatedHtml = flowWebViewHostHtmlKotlin(e)
-  if (explicitHtml !== undefined) {
-    for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
-      if (e.attrs.some((a) => a.kind === 'attr' && a.name === prop)) {
-        _emitWarnings.push(`<FlowWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its presentation.`)
-      }
-    }
-  }
-  const html = explicitHtml === undefined ? JSON.stringify(generatedHtml) : emitKotlinExpr(explicitHtml, 0)
-  const graphJson = graph === undefined ? '"{\\"nodes\\":[],\\"edges\\":[]}"' : kotlinWebViewDataArg(graph)
-  const commands = dynamicWebViewAttrKotlin(e, 'commands')
-  const data = commands === undefined
-    ? graphJson
-    : `pyreonFlowWebViewData(graph = ${graphJson}, commands = ${kotlinWebViewDataArg(commands)})`
-  const callbacks = ['select', 'message', 'event', 'error'] as const
-  const callbackArgs = callbacks.flatMap((name) => {
-    const attr = e.attrs.find((a) => a.kind === 'event' && a.name === name)
-    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
-  })
-  const onMessage = callbackArgs.length === 0
-    ? undefined
-    : `onMessage = { pyreonMsg -> pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html = ${html}, data = ${data}${onMessage ? `, ${onMessage}` : ''}${kotlinWebViewModifierArg(e, HANDLED_FLOW_WEBVIEW_PROPS)})`
-}
 
-/**
- * Emit a `<WebView onMessage={…}>` handler as a Kotlin `(String) -> Unit`
- * lambda. The single param is the page-posted string. An arrow with a
- * param keeps it (`{ m -> … }`); a zero-param arrow ignores it
- * (`{ _ -> … }`); a bare function reference is called with the message.
- */
-/**
- * The `modifier = …` arg for a WebView-family host: the generic layout tail
- * (`padding`/`margin`, `data-testid` → `Modifier.testTag`, a11y props) every
- * primitive gets. `PyreonWebView` accepts `modifier` on the real runtime AND
- * the stub; a host that omitted it was unselectable by `onNodeWithTag` — the
- * same class the `<Toggle>` emitter had. Empty when nothing applies.
- */
-function kotlinWebViewModifierArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, omit?: ReadonlySet<string>): string {
-  const chain = emitKotlinLayoutModifier(e, omit)
-  return chain === '' ? '' : `, modifier = ${chain}`
-}
 
 function emitKotlinMessageHandler(handler: ExprIR): string {
   if (handler.kind === 'arrow') {
@@ -11454,7 +10038,7 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     warnCanonicalPrimitiveFellThrough(e.tag)
   }
   if (isIntrinsicElementTag(e.tag) && !_componentNames.has(e.tag)) {
-    const note = intrinsicElementWarning(e.tag)
+    const note = intrinsicElementWarning(e.tag, intrinsicElementAdvice())
     if (!_emitWarnings.includes(note)) _emitWarnings.push(note)
   }
   const pad = ' '.repeat(indent + 2)
@@ -11754,26 +10338,7 @@ function emitKotlinRxCall(
 }
 
 
-/** Kotlin refuses Int literals for Double params — `height={200}` must emit `200.0`. */
-/**
- * A flow coordinate as a Kotlin Double. `PyreonXYPosition` takes Doubles, and
- * an integer EXPRESSION (`col * 200` in a loop) does not widen implicitly, so
- * `ktChartDouble`'s literal-only rewrite left it an Int argument mismatch. A
- * non-literal is wrapped: `.toDouble()` is identity on a Double, so the wrap
- * needs no type inference to be safe.
- */
-function kotlinFlowCoord(x: ExprIR): string {
-  const text = emitKotlinExpr(x, 0)
-  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+L?)\)$/, '$1'))
-  return `(${text}).toDouble()`
-}
 
-function ktChartDouble(text: string): string {
-  // An integer literal emits with the Long suffix (see KOTLIN_INT); a
-  // Double position takes the digits with `.0` instead.
-  const m = /^(-?\d+)L?$/.exec(text)
-  return m ? `${m[1]}.0` : text
-}
 
 /**
  * The current component's plugin scope (its ext declarations, plugin state,
@@ -11781,6 +10346,8 @@ function ktChartDouble(text: string): string {
  * `plugin-scope.ts`.
  */
 let _pluginScope: PluginScope = createPluginScope()
+/** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
+let _moduleScope: PluginScope = _pluginScope
 
 /** The compile-time colour scope the enclosing provider opened (mirror of the Swift emitter). */
 let _colorScope: object | null = null
