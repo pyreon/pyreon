@@ -2941,6 +2941,16 @@
       "bytes": 1775,
       "warnings": 0
     },
+    "golden-fixture:hooks-fetch-05.tsx|swift": {
+      "sha": "02c4afb6f8088d30d5c17616b45b060497ffc95464337462796e0937f3acf7eb",
+      "bytes": 3542,
+      "warnings": 0
+    },
+    "golden-fixture:hooks-fetch-05.tsx|kotlin": {
+      "sha": "ee49e62a89dd7a871fa08ea16ed9b0369608b2fa6489f39403d2c3ea0abe39bb",
+      "bytes": 3668,
+      "warnings": 0
+    },
     "golden-fixture:http-01.tsx|swift": {
       "sha": "f547500509a6cbbbd6ce161d8772d38d09dde3a62b449d7b863ca8dd75f28013",
       "bytes": 11457,
