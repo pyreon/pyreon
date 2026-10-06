@@ -1229,6 +1229,14 @@ export async function runCli(argv: readonly string[]): Promise<number> {
             `and if it persists report it (scenario ids must not depend on the checkout location).\n`,
         )
       }
+      if (summary.navigatedAway.length > 0) {
+        out(
+          `  ${summary.navigatedAway.length} scenario(s) navigated away from the workbench ` +
+            `(reactive coverage NOT measured; the run continued): ` +
+            summary.navigatedAway.map((n) => `${n.id} → ${n.url}`).join(', ') +
+            '\n',
+        )
+      }
       if (summary.catalogPath) out(`  → ${summary.catalogPath}\n`)
       return summary.snapshotsFailed > 0 || summary.unmatched.length > 0 ? 1 : 0
     } catch (error) {

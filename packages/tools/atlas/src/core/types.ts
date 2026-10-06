@@ -189,6 +189,10 @@ export type FindingCode =
   | 'snapshot-failed'
   | 'baseline-created'
   | 'baseline-updated'
+  /** The click-walk's default actions / window / dialog / history effects were suppressed. */
+  | 'interaction-side-effects-suppressed'
+  /** The scenario navigated away from the workbench; the run reloaded it and continued. */
+  | 'navigated-away'
   // ── reasons a check did not run ──────────────────────────────────────────
   /** Measurable only in a real browser. */
   | 'browser-only'

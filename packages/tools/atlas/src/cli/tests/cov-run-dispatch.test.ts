@@ -187,7 +187,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 3,
       snapshotsCreated: 2,
       snapshotsFailed: 0,
-      notDriven: [], unmatched: [],
+      notDriven: [], unmatched: [], navigatedAway: [],
       catalogPath: '/tmp/atlas-catalog.json',
     }))
     const runCli = await load()
@@ -204,7 +204,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 1,
       snapshotsCreated: 0,
       snapshotsFailed: 1,
-      notDriven: [], unmatched: [],
+      notDriven: [], unmatched: [], navigatedAway: [],
     }))
     const runCli = await load()
     expect(await runCli(['verify-browser', dir])).toBe(1)
@@ -218,7 +218,7 @@ describe('atlas verify-browser', () => {
       coverageMeasured: 1,
       snapshotsCreated: 0,
       snapshotsFailed: 0,
-      notDriven: ['Workbench--default'], unmatched: [],
+      notDriven: ['Workbench--default'], unmatched: [], navigatedAway: [],
     }))
     const runCli = await load()
     expect(await runCli(['verify-browser', dir])).toBe(0)
@@ -245,7 +245,7 @@ describe('atlas verify-browser', () => {
     vi.doMock('../../verify-browser/runner', () => ({
       runBrowserVerify: async (options: unknown) => {
         seen = options
-        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [] }
+        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [], navigatedAway: [] }
       },
     }))
     const runCli = await load()
@@ -260,7 +260,7 @@ describe('atlas verify-browser', () => {
     vi.doMock('../../verify-browser/runner', () => ({
       runBrowserVerify: async (options: Record<string, unknown>) => {
         seen = options
-        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [] }
+        return { scenarios: 0, coverageMeasured: 0, snapshotsCreated: 0, snapshotsFailed: 0, notDriven: [], unmatched: [], navigatedAway: [] }
       },
     }))
     const runCli = await load()
