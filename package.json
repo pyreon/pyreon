@@ -205,7 +205,11 @@
       "js-yaml": "^4.3.2"
     },
     "devalue": "^5.9.2",
-    "image-size": "^2.0.4"
+    "image-size": "^2.0.4",
+    "prosemirror-view": "^1.42.6",
+    "proxy-addr": "^2.0.8",
+    "seroval": "^1.6.8",
+    "source-map-js": "^1.2.2"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.104.0",

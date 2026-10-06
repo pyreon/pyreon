@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -47,9 +48,22 @@ async function expectStopped(pids: number[]) {
   expect(pids.filter(alive), 'owned fixture processes survived the deadline').toEqual([])
 }
 
+// Private process groups survive a killed Vitest worker. These deliberately
+// hostile fixtures must stop if that owner disappears, without reacting to
+// their direct parent exiting (the inherited-pipe regression exercises that).
+function ownedFixture(source: string, ownerPid: number | 'ownerPid' = process.pid): string {
+  return `
+    setInterval(() => {
+      try { process.kill(${ownerPid}, 0); }
+      catch (error) { if (error.code === 'ESRCH') process.exit(0); }
+    }, 100).unref();
+    ${source}
+  `
+}
+
 function run(source: string, timeoutMs = 2_000) {
   return bounded(
-    captureCoverageProcess(process.execPath, ['-e', source], {
+    captureCoverageProcess(process.execPath, ['-e', ownedFixture(source)], {
       cwd: dir,
       env: process.env,
       timeoutMs,
@@ -105,6 +119,46 @@ describe('coverage process deadlines', () => {
     })
   })
 
+  it('stops a hostile detached fixture when its original owner dies', async () => {
+    const source = ownedFixture(
+      `
+      process.on('SIGTERM', () => {});
+      setInterval(() => {}, 1000);
+    `,
+      'ownerPid',
+    )
+    // Inject the real short-lived owner's PID inside that owner. The fixture
+    // remains in a separate POSIX process group.
+    const owner = spawn(
+      process.execPath,
+      [
+        '-e',
+        `
+      const child = require('node:child_process').spawn(process.execPath,
+        ['-e', 'const ownerPid = ' + process.pid + ';' + ${JSON.stringify(source)}],
+        { detached: process.platform !== 'win32', stdio: 'ignore' });
+      require('node:fs').writeFileSync(${JSON.stringify(pidFile())}, JSON.stringify([process.pid, child.pid]));
+      setInterval(() => {}, 1000);
+    `,
+      ],
+      { cwd: dir, stdio: 'ignore' },
+    )
+    try {
+      for (let i = 0; i < 100 && !existsSync(pidFile()); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      const pids = recordedPids()
+      expect(pids).toHaveLength(2)
+      expect(pids.every(alive)).toBe(true)
+      const exited = new Promise<void>((resolve) => owner.once('exit', () => resolve()))
+      owner.kill('SIGKILL')
+      await exited
+      await expectStopped(pids)
+    } finally {
+      owner.kill('SIGKILL')
+    }
+  }, 12_000)
+
   it('forcibly terminates a child that ignores TERM', async () => {
     const result = await run(`
       require('node:fs').writeFileSync(${JSON.stringify(pidFile())}, JSON.stringify([process.pid]));
@@ -126,7 +180,7 @@ describe('coverage process deadlines', () => {
     `
       const result = await run(`
       const fs = require('node:fs');
-      const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {
+      const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(ownedFixture(descendant))}], {
         stdio: ['ignore', 'inherit', 'inherit']
       });
       fs.writeFileSync(${JSON.stringify(pidFile())}, JSON.stringify([process.pid, child.pid]));
@@ -146,7 +200,7 @@ describe('coverage process deadlines', () => {
     async () => {
       const descendant = "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"
       const result = await run(`
-        const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {
+        const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(ownedFixture(descendant))}], {
           stdio: 'ignore'
         });
         require('node:fs').writeFileSync(${JSON.stringify(pidFile())}, JSON.stringify([process.pid, child.pid]));
