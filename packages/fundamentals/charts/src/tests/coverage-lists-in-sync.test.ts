@@ -72,7 +72,7 @@ describe('node coverageExclude ⇄ browser coverage include', () => {
   })
 
   it('the plugin exception points at a suite that really exercises the plugin', () => {
-    const spec = readFileSync(join(PKG_ROOT, '../../native/compiler/src/tests/charts-plugin.ts'), 'utf-8')
+    const spec = readFileSync(join(PKG_ROOT, '../../native/compiler/src/tests/first-party-plugins.ts'), 'utf-8')
     expect(spec).toContain('fundamentals/charts/src/native-plugin/plugin')
   })
 
