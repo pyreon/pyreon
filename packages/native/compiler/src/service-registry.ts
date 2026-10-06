@@ -49,7 +49,10 @@ export function createServiceRegistry(
             `A hook has exactly one lowering — remove one of the two plugins from this app, or rename the hook in the plugin that should keep it.`,
         )
       }
-      registry.set(hook, { descriptor: { hook, ...spec }, owner: plugin.name })
+      registry.set(hook, {
+        descriptor: { ...spec, hook, legacyKind: spec.legacyKind ?? 'service' },
+        owner: plugin.name,
+      })
     }
   }
   return registry

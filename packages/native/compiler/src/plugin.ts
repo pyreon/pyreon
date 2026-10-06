@@ -19,7 +19,14 @@ export const SUPPORTED_PLUGIN_API_VERSIONS: readonly number[] = Object.freeze([
  * `hook` (the hook is the key of {@link CompilerPlugin.services}). Derived from
  * the descriptor type so it follows when the descriptor vocabulary grows.
  */
-export type ServiceSpec = Omit<ServiceDescriptor, 'hook'>
+export type ServiceSpec = Omit<ServiceDescriptor, 'hook' | 'legacyKind'> & {
+  /**
+   * Only the compiler's own built-in hooks need this (it keeps their emitted
+   * names byte-identical to before they were descriptors). A plugin has no
+   * prior output to preserve, so it is optional and defaults to `'service'`.
+   */
+  readonly legacyKind?: string | undefined
+}
 
 /** Target-neutral module shared by compiler passes and output backends. */
 export type CompilerModule = ParseResult
