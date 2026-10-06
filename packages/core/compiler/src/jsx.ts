@@ -3157,6 +3157,26 @@ export function transformJSX_JS(
   // ── Prop-derived variable tracking (collected during the single walk) ─────
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
+  // Lexical scoping of the registry above (issue #3815). The map is keyed by
+  // NAME, but a prop-derived const is only in scope inside the block that
+  // declares it — without scoping, `function A(props){ const label = props.label }`
+  // leaked into every later `label` in the module (a sibling's own local, an
+  // import, a module const) and inlined `props.label` where no `props` exists.
+  // The single walk is lexically ordered, so scoping is a push/undo log: each
+  // registration records the entry it displaced, and leaving the declaring
+  // block (walkNode frame) restores the registry to its state on entry.
+  const propDerivedLog: {
+    name: string
+    prev: { start: number; end: number } | undefined
+    /** Entry registers a member of this name-set (undo = delete), not an alias. */
+    set?: 'props' | 'signal' | 'selector'
+  }[] = []
+  /** `propsNames` is lexically scoped by the same frames (see above). */
+  function registerPropsName(name: string): void {
+    if (propsNames.has(name)) return
+    propsNames.add(name)
+    propDerivedLog.push({ name, prev: undefined, set: 'props' })
+  }
   // Round 9 fix: names of const/let bindings whose initializer is a JSX
   // element (`const x = <El/>`). A bare `{x}` child of such a binding must be
   // MOUNTED, not text-coerced — pre-fix it emitted `createTextNode(x)` which
@@ -3422,7 +3442,10 @@ export function transformJSX_JS(
     return false
   }
 
-  /** Check if an expression references any prop-derived variable. */
+  /** Check if an expression references any prop-derived variable.
+   *  Membership-only by design (NO shadow filtering — a function-valued const
+   *  whose body rebinds the name still registers; the precise lexical
+   *  substitution happens at the use site). Native mirrors this exactly. */
   function referencesPropDerived(node: N): boolean {
     if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
       const p = findParent(node)
@@ -3446,7 +3469,7 @@ export function transformJSX_JS(
         const callee = decl.init.callee
         if (callee?.type === 'Identifier' && callee.name === 'splitProps') {
           for (const el of decl.id.elements ?? []) {
-            if (el?.type === 'Identifier') propsNames.add(el.name)
+            if (el?.type === 'Identifier') registerPropsName(el.name)
           }
         }
       }
@@ -3480,10 +3503,19 @@ export function transformJSX_JS(
       if (decl.id?.type === 'Identifier' && decl.init) {
         if (isStatefulCall(decl.init)) {
           // Track signal() declarations for auto-call in JSX
-          if (isSignalCall(decl.init)) signalVars.add(decl.id.name)
+          if (isSignalCall(decl.init) && !signalVars.has(decl.id.name)) {
+            // Lexically scoped (see `propDerivedLog`): a FUNCTION-local signal
+            // must not auto-call a same-named import / module const / free
+            // reference in a sibling function (`s is not a function`).
+            signalVars.add(decl.id.name)
+            propDerivedLog.push({ name: decl.id.name, prev: undefined, set: 'signal' })
+          }
           // Track createSelector() declarations for .subscribe auto-promotion
           // in className/attr bindings (see tryDirectSelectorTernary).
-          if (isSelectorCall(decl.init)) selectorVars.add(decl.id.name)
+          if (isSelectorCall(decl.init) && !selectorVars.has(decl.id.name)) {
+            selectorVars.add(decl.id.name)
+            propDerivedLog.push({ name: decl.id.name, prev: undefined, set: 'selector' })
+          }
           continue
         }
         // Under SSR, a JSX-bearing initializer is never inlinable — see
@@ -3495,6 +3527,7 @@ export function transformJSX_JS(
         if (ssr && containsJsx(decl.init)) continue
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
+          propDerivedLog.push({ name: decl.id.name, prev: propDerivedVars.get(decl.id.name) })
           propDerivedVars.set(decl.id.name, {
             start: decl.init.start as number,
             end: decl.init.end as number,
@@ -3543,18 +3576,21 @@ export function transformJSX_JS(
           forEachChildFast(n, checkJSX)
         }
         forEachChildFast(node, checkJSX)
-        if (hasJSX) propsNames.add(firstParam.name)
+        if (hasJSX) registerPropsName(firstParam.name)
       }
     }
   }
 
   // ── String-based transitive resolution ─────────────────────────────────────
-  const resolvedCache = new Map<string, string>()
+  const resolvedCache = new Map<number, string>()
   const resolving = new Set<string>()
   const warnedCycles = new Set<string>()
 
   function resolveVarToString(varName: string, sourceNode?: N): string {
-    if (resolvedCache.has(varName)) return resolvedCache.get(varName)!
+    // Cache by the entry's init span, NOT the name: two lexically distinct
+    // prop-derived consts can share a name (sibling components / blocks).
+    const cacheKey = propDerivedVars.get(varName)!.start
+    if (resolvedCache.has(cacheKey)) return resolvedCache.get(cacheKey)!
     if (resolving.has(varName)) {
       const cycleKey = [...resolving, varName].sort().join(',')
       if (!warnedCycles.has(cycleKey)) {
@@ -3576,7 +3612,7 @@ export function transformJSX_JS(
     const rawText = code.slice(span.start, span.end)
     const resolved = resolveIdentifiersInText(rawText, span.start, sourceNode)
     resolving.delete(varName)
-    resolvedCache.set(varName, resolved)
+    resolvedCache.set(cacheKey, resolved)
     return resolved
   }
 
@@ -3713,7 +3749,14 @@ export function transformJSX_JS(
       }
       // Names this node binds for its subtree shadow the top-level prop-derived
       // const within that subtree (and the binding occurrence itself).
-      const introduced = scopeBoundPropDerived(node).filter((n) => !shadowed.has(n))
+      // ONLY scopes lying inside the span being rewritten count: a scope that
+      // ENCLOSES the span is already modelled by the lexical registry (the
+      // single walk un-registers/hides aliases at scope boundaries —
+      // `enterPropDerivedScope`), and counting it here too made an unrelated
+      // module-level `const label` declared AFTER a component shadow that
+      // component's own alias (#3815).
+      const inSpan = nodeStart >= baseOffset && nodeEnd <= endOffset
+      const introduced = inSpan ? scopeBoundPropDerived(node).filter((n) => !shadowed.has(n)) : []
       for (const n of introduced) shadowed.add(n)
       forEachChildFast(node, (child) => findIdents(child, node))
       for (const n of introduced) shadowed.delete(n)
@@ -3961,6 +4004,70 @@ export function transformJSX_JS(
   // declarations have a temporal dead zone — they're always before their use.
   let _callbackDepth = 0
 
+  /**
+   * Lexical scope entry for the prop-derived registry. Any binding this node
+   * introduces for its subtree (params, block-level declarations, catch param,
+   * for-head declarations) HIDES a same-named alias for the duration — the
+   * single rule that makes a shadowing local, a sibling component's local and
+   * a module/imported name all resolve to themselves. Un-done by the caller
+   * via `propDerivedLog` on exit. Returns whether the node is a scope boundary.
+   */
+  function scopeBindingNames(node: N): string[] | null {
+    const names: string[] = []
+    const declNames = (d: N): void => {
+      for (const decl of d.declarations ?? []) collectPatternNames(decl.id, names)
+    }
+    const stmtNames = (stmts: N[] | undefined): void => {
+      for (const st of stmts ?? []) {
+        if (st.type === 'VariableDeclaration') declNames(st)
+        else if (
+          (st.type === 'FunctionDeclaration' || st.type === 'ClassDeclaration') &&
+          st.id?.type === 'Identifier'
+        ) names.push(st.id.name)
+      }
+    }
+    switch (node.type) {
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        for (const p of node.params ?? []) collectPatternNames(p, names)
+        break
+      case 'CatchClause':
+        collectPatternNames(node.param, names)
+        break
+      case 'BlockStatement':
+      case 'StaticBlock':
+        stmtNames(node.body)
+        break
+      case 'SwitchStatement':
+        for (const c of node.cases ?? []) stmtNames(c.consequent)
+        break
+      case 'ForStatement':
+        if (node.init?.type === 'VariableDeclaration') declNames(node.init)
+        break
+      case 'ForInStatement':
+      case 'ForOfStatement':
+        if (node.left?.type === 'VariableDeclaration') declNames(node.left)
+        break
+      default:
+        return null
+    }
+    return names
+  }
+
+  function enterPropDerivedScope(node: N): boolean {
+    const names = scopeBindingNames(node)
+    if (names === null) return false
+    for (const name of names) {
+      const prev = propDerivedVars.get(name)
+      if (prev) {
+        propDerivedLog.push({ name, prev })
+        propDerivedVars.delete(name)
+      }
+    }
+    return true
+  }
+
   function walkNode(node: N): void {
     // ── Component function detection (was pass 1) ──
     const isFunction =
@@ -3969,6 +4076,10 @@ export function transformJSX_JS(
       node.type === 'FunctionExpression'
     let scopeShadows: string[] | null = null
     let scopeJsxFnShadows: string[] | null = null
+    // Block-scope frame for the prop-derived registry (see `propDerivedLog`).
+    // A `const` is scoped to its enclosing block / for-head / switch body.
+    const propDerivedMark = propDerivedLog.length
+    const opensPropDerivedScope = enterPropDerivedScope(node)
     if (isFunction) {
       // Track callback nesting for prop-derived var exclusion
       const parent = findParent(node)
@@ -4053,6 +4164,17 @@ export function transformJSX_JS(
     // Generic descent
     forEachChildFast(node, walkNode)
 
+    // Leave the block: un-register every prop-derived const it declared.
+    if (opensPropDerivedScope) {
+      while (propDerivedLog.length > propDerivedMark) {
+        const e = propDerivedLog.pop()!
+        if (e.set === 'props') propsNames.delete(e.name)
+        else if (e.set === 'signal') signalVars.delete(e.name)
+        else if (e.set === 'selector') selectorVars.delete(e.name)
+        else if (e.prev) propDerivedVars.set(e.name, e.prev)
+        else propDerivedVars.delete(e.name)
+      }
+    }
     // Restore callback depth after leaving function
     if (isFunction) {
       const parent = findParent(node)

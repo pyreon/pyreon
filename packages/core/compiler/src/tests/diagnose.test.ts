@@ -18,6 +18,11 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     }
     expect(diagnoseError('useLoaderData() is undefined while the first loader is pending')).toBeNull()
   })
+  it('teaches the cross-scope prop-alias leak (#3815) ahead of the generic `X is not defined` entry', () => {
+    const result = diagnoseError('ReferenceError: props is not defined')
+    expect(result?.cause).toContain('#3815')
+    expect(result?.fix).toContain('@pyreon/compiler')
+  })
   it('diagnoses a known error pattern (cause + fix)', () => {
     const result = diagnoseError('count is not a function')
     expect(result).not.toBeNull()
