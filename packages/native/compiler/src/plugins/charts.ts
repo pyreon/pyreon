@@ -4,6 +4,8 @@ import type { DeclEmitter, MemberCallLowering, MemberCallSite } from '../call-lo
 import type { EmitContext } from '../emit-context'
 import {
   ACCESSOR_CHART_HOSTS,
+  GRAMMAR_CONFIG_TAGS,
+  isChartHostTag,
   CHART_HOSTS,
   FRAME_CHART_HOSTS,
   chartActionFields,
@@ -11,6 +13,8 @@ import {
 } from '../chart-hosts'
 import type { ElementLowering } from '../element-lowering'
 import { emitSwiftChartElement } from './charts/swift'
+import { forEachExpr } from '../expr-walk'
+import type { ParseRefinement } from '../parse-extensions'
 import type { DeclIR, ExprIR, ExtDecl } from '../types'
 import {
   NATIVE_COMPILER_PLUGIN_API_VERSION,
@@ -25,6 +29,40 @@ const ENTRYPOINTS = new Set([
   '@pyreon/charts/svg',
 ])
 const ENGINE_NAMES = new Set(CHART_ENGINE_DECLARED_NAMES)
+/** The generated engine's STRUCTS — declared by the runtime, so a helper typed against one (`(c: TooltipContent) => string`) resolves on the target. */
+const ENGINE_STRUCT_NAMES: readonly string[] = CHART_ENGINE_STRUCTS.map((s) => s.name)
+
+/** The chart props whose value is called as `(Double) -> String`. */
+const CHART_FORMATTER_PROPS: ReadonlySet<string> = new Set(['format', 'xFormat', 'yFormat', 'y2Format'])
+
+/**
+ * A chart formatter (`<Axis format={kg}>`, `<PlotChart format xFormat
+ * y2Format>`) is called with a Double on both targets, so the named function it
+ * points at must take one: `function kg(v: number)` otherwise lowers its
+ * parameter to Int and the chart slot `(Double) -> String` rejects it — on BOTH
+ * targets, with no warning. The slot is the evidence. Runs during parse (a
+ * `refineParse`, not a `transformIR`) because the helper's return type is
+ * inferred over the widened parameter.
+ */
+const widenChartFormatterParams: ParseRefinement = ({ components, helperFns }) => {
+  const widen = (name: string, locals: DeclIR[]): void => {
+    const fn =
+      locals.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === name) ??
+      helperFns.find((h) => h.name === name)
+    if (fn === undefined || fn.params.length !== 1) return
+    const p = fn.params[0]!
+    if (p.type.kind === 'number' && p.type.float !== true) p.type = { kind: 'number', float: true }
+  }
+  for (const c of components) {
+    forEachExpr(c.returnExpr, (n) => {
+      if (n.kind !== 'jsx-element') return
+      if (!isChartHostTag(n.tag) && !GRAMMAR_CONFIG_TAGS.includes(n.tag) && n.tag !== 'Chart') return
+      for (const a of n.attrs) {
+        if (a.kind === 'attr' && CHART_FORMATTER_PROPS.has(a.name) && a.value.kind === 'identifier') widen(a.value.name, c.decls)
+      }
+    })
+  }
+}
 
 export { CHARTS_PLUGIN_NAME, CHART_HANDLE_TYPE, chartHandleSeriesKey }
 
@@ -107,6 +145,8 @@ export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
   builtIn: true,
   calls: chartCalls,
+  runtimeTypes: Object.freeze(ENGINE_STRUCT_NAMES),
+  refineParse: widenChartFormatterParams,
   elements: Object.freeze([chartHostLowering]),
   decls: Object.freeze({ [CHART_HANDLE_TYPE]: chartHandleDecl }),
   memberCalls: Object.freeze({ dispatch: chartHandleDispatch }),

@@ -21,6 +21,11 @@ import { BUILT_IN_PLUGINS } from './built-in-plugins'
 import { createCallRegistry, type CallRegistry } from './call-lowering'
 import { createElementRegistry, type ElementRegistry } from './element-lowering'
 import type { CompilerPlugin } from './plugin'
+import {
+  createParseRefinements,
+  createRuntimeTypeRegistry,
+  type RegisteredParseRefinement,
+} from './parse-extensions'
 import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
 import {
   createServiceRegistry,
@@ -41,6 +46,10 @@ export interface CompilerRegistries {
   readonly calls: CallRegistry
   /** Module → plugin-supplied unlowered-module metadata (advice + the exports that do lower). */
   readonly unlowered: ReadonlyMap<string, RegisteredUnlowered>
+  /** Runtime-declared type name → owning plugin (resolved as known types by the parser). */
+  readonly runtimeTypes: ReadonlyMap<string, string>
+  /** Plugin parse refinements, in plugin order. */
+  readonly parseRefinements: readonly RegisteredParseRefinement[]
 }
 
 /**
@@ -67,6 +76,8 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     elements: createElementRegistry(ordered),
     calls,
     unlowered: createUnloweredRegistry(ordered),
+    runtimeTypes: createRuntimeTypeRegistry(ordered),
+    parseRefinements: createParseRefinements(ordered),
   })
 }
 

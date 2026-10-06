@@ -54,7 +54,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, calls, decls, memberCalls, unlowered, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, calls, decls, memberCalls, unlowered, runtimeTypes, refineParse, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -160,7 +160,11 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       }
     }
   }
+  if (refineParse !== undefined && typeof refineParse !== 'function') {
+    throw new Error(`[Pyreon] Plugin "${name}" refineParse must be a synchronous function.`)
+  }
   for (const [field, value] of [
+    ['runtimeTypes', runtimeTypes],
     ['modules', modules],
     ['requires', requires],
   ] as const) {
