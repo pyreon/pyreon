@@ -148,18 +148,13 @@ describe('compiled explicit whitespace hydrates in place', () => {
     it(name, async () => {
       const mismatches: string[] = []
       const off = onHydrationMismatch((c) => mismatches.push(`${c.type}:${c.expected}|${c.actual}`))
-      const html = await renderToString((mk as () => never)())
-      const host = document.createElement('div')
-      host.innerHTML = html
-      document.body.appendChild(host)
-      const before = snapshot(host)
-      const App = compileApp(client)
-      const dispose = hydrateRoot(host, h(App as never, null))
+      const { html, host, before, dispose, kept } = await roundTrip((mk as () => never)(), client)
       off()
       const strip = (s: string) => s.replace(/<!--[\s\S]*?-->/g, '')
       expect(strip(host.innerHTML)).toBe(strip(html))
       expect(mismatches).toEqual([])
-      expect(retained(before, host)).toBe(before.length)
+      expect(kept).toBe(before.length)
+      expect(tplAdopted()).toBeGreaterThan(0)
       dispose()
     })
   }
