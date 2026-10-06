@@ -7,10 +7,12 @@
 // pins every hook × target explicitly, plus an identifier that needs escaping).
 
 import { describe, expect, it } from 'vitest'
-import { parsePyreon, NATIVE_LOWERED_HOOKS } from '../parse'
+import { parsePyreon, nativeLoweredHooks } from '../parse'
 import { moduleTag } from '../expr-utils'
 import { transform } from '../index'
-import { SERVICES, SERVICE_BY_HOOK, renderKotlinService, serviceFor } from '../services'
+import { activeRegistries } from '../active-registries'
+import { serviceFor } from '../registry-lookup'
+import { SERVICES, renderKotlinService } from '../services'
 import type { ParseResult } from '../types'
 
 interface Expected {
@@ -192,7 +194,7 @@ describe('service descriptors — the generic declaration', () => {
   })
 
   it('serviceFor throws a guided error for a hook with no descriptor', () => {
-    expect(() => serviceFor('useNope')).toThrow(/\[Pyreon\].*services\.ts/)
+    expect(() => serviceFor('useNope')).toThrow(/\[Pyreon\].*service registry/)
   })
 })
 
@@ -218,12 +220,13 @@ describe('service descriptors — invariants', () => {
   it('hooks are unique and indexed', () => {
     const hooks = SERVICES.map((s) => s.hook)
     expect(new Set(hooks).size).toBe(hooks.length)
-    for (const h of hooks) expect(SERVICE_BY_HOOK.get(h)?.hook).toBe(h)
-    expect(SERVICE_BY_HOOK.size).toBe(SERVICES.length)
+    const { byHook } = activeRegistries().serviceTables
+    for (const h of hooks) expect(byHook.get(h)?.hook).toBe(h)
+    expect(byHook.size).toBe(SERVICES.length)
   })
 
   it('every service hook is in NATIVE_LOWERED_HOOKS (no spurious unlowered warning)', () => {
-    for (const s of SERVICES) expect(NATIVE_LOWERED_HOOKS.has(s.hook), s.hook).toBe(true)
+    for (const s of SERVICES) expect(nativeLoweredHooks().has(s.hook), s.hook).toBe(true)
   })
 })
 
@@ -519,9 +522,9 @@ export function App() {
     expect(decls).toContainEqual({ kind: 'service', name: 'net', hook: 'useOnline' })
   })
 
-  it('NATIVE_LOWERED_HOOKS is derived from SERVICES for these hooks', () => {
+  it('the lowered-hook set is derived from the service registry for these hooks', () => {
     for (const h of ['useOnline', 'useClipboard', 'usePush', 'useGeolocation', 'useSafeArea']) {
-      expect(NATIVE_LOWERED_HOOKS.has(h), h).toBe(true)
+      expect(nativeLoweredHooks().has(h), h).toBe(true)
     }
   })
 })

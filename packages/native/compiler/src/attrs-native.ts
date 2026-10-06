@@ -19,7 +19,7 @@
 // ============================================================================
 
 import { isCanonicalPrimitive } from './canonical-primitives'
-import { isStyleBasePrimitive } from './element-lowering'
+import { isStyleBasePrimitive } from './registry-lookup'
 import { resolveThemeToken, type ThemeTable } from './theme-native'
 import type { AttrsComponentIR, ExprIR } from './types'
 

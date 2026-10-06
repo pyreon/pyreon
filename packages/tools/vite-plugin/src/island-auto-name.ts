@@ -32,6 +32,7 @@
  * there is nothing stable to derive from.
  */
 import { deriveIslandName, fnv1a6, islandRelPath } from '@pyreon/compiler'
+import { islandCallOffsets } from './ast-rewrite'
 
 export { deriveIslandName, fnv1a6, islandRelPath }
 
@@ -56,11 +57,20 @@ export function injectIslandNames(code: string, absPath: string, root: string): 
   if (!code.includes('island')) return null
   const relPath = islandRelPath(root, absPath)
   let changed = false
+  const callOffsets = islandCallOffsets(code, absPath)
 
   let out = code.replace(
     ISLAND_WITH_OPTS_RE,
-    (full, binding: string | undefined, varName: string | undefined, head: string, opts: string, close: string) => {
-      if (!binding || !varName) return full
+    (
+      full,
+      binding: string | undefined,
+      varName: string | undefined,
+      head: string,
+      opts: string,
+      close: string,
+      offset: number,
+    ) => {
+      if (!binding || !varName || !callOffsets.has(offset + binding.length)) return full
       if (HAS_NAME_RE.test(opts)) return full
       changed = true
       const name = deriveIslandName(varName, relPath)
@@ -70,9 +80,11 @@ export function injectIslandNames(code: string, absPath: string, root: string): 
     },
   )
 
+  const rewrittenOffsets = out === code ? callOffsets : islandCallOffsets(out, absPath)
   out = out.replace(
     ISLAND_NO_OPTS_RE,
-    (full, binding: string, varName: string, head: string, close: string) => {
+    (full, binding: string, varName: string, head: string, close: string, offset: number) => {
+      if (!rewrittenOffsets.has(offset + binding.length)) return full
       changed = true
       const name = deriveIslandName(varName, relPath)
       return `${binding}${head}, { name: ${JSON.stringify(name)} }${close}`

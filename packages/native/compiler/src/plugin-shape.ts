@@ -3,13 +3,58 @@ import { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } fro
 const isStringArray = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim() !== '')
 
+function assertElementLowering(plugin: string, value: unknown): void {
+  const lowering = value as Record<string, unknown> | null
+  if (
+    !lowering ||
+    typeof lowering !== 'object' ||
+    typeof lowering.module !== 'string' ||
+    !lowering.module.trim() ||
+    !isStringArray(lowering.tags) ||
+    lowering.tags.length === 0
+  ) {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering needs a nonempty module string and a nonempty tags array of strings.`,
+    )
+  }
+  const { retag, emit, styleBase } = lowering
+  if (retag !== undefined && typeof retag !== 'function') {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} retag must be a function.`,
+    )
+  }
+  if (emit !== undefined) {
+    const targets = emit as Record<string, unknown> | null
+    if (
+      !targets ||
+      typeof targets !== 'object' ||
+      (targets.swift !== undefined && typeof targets.swift !== 'function') ||
+      (targets.kotlin !== undefined && typeof targets.kotlin !== 'function')
+    ) {
+      throw new Error(
+        `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} emit must be an object with swift and/or kotlin functions.`,
+      )
+    }
+  }
+  if (retag === undefined && emit === undefined) {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} needs a retag or an emit — a lowering with neither claims tags and does nothing.`,
+    )
+  }
+  if (styleBase !== undefined && typeof styleBase !== 'boolean') {
+    throw new Error(
+      `[Pyreon] Plugin "${plugin}" element lowering for ${lowering.module} styleBase must be a boolean.`,
+    )
+  }
+}
+
 /**
  * The fields added after the first protocol cut. Shared by `createCompiler`
  * (which keeps its own older checks verbatim) and the CLI loader, so a plugin
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, modules, requires, builtIn } = plugin as Record<string, unknown>
+  const { services, elements, modules, requires, builtIn } = plugin as Record<string, unknown>
   if (services !== undefined) {
     if (!services || typeof services !== 'object' || Array.isArray(services)) {
       throw new Error(`[Pyreon] Plugin "${name}" services must be an object keyed by hook name.`)
@@ -29,6 +74,12 @@ export function assertPluginExtensions(name: string, plugin: object): void {
         )
       }
     }
+  }
+  if (elements !== undefined) {
+    if (!Array.isArray(elements)) {
+      throw new Error(`[Pyreon] Plugin "${name}" elements must be an array of element lowerings.`)
+    }
+    for (const entry of elements as unknown[]) assertElementLowering(name, entry)
   }
   for (const [field, value] of [
     ['modules', modules],

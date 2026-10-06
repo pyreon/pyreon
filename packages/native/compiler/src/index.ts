@@ -13,11 +13,27 @@ export {
   selectDiscovered,
   serviceSpecsOf,
 } from './service-registry'
-export type { RegisteredService, ServiceRegistry, DiscoveredSelection } from './service-registry'
+export type {
+  RegisteredService,
+  ServiceRegistry,
+  ServiceTables,
+  DiscoveredSelection,
+} from './service-registry'
+export type { CompilerRegistries } from './active-registries'
+export { createElementRegistry } from './element-lowering'
+export type {
+  ElementClaimGuard,
+  ElementLowering,
+  ElementRegistry,
+  RegisteredElementLowering,
+  RetagContext,
+} from './element-lowering'
+export type { EmitContext, EmitTarget, StaticAttrValue } from './emit-context'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'
 export { SERVICES, renderKotlinService } from './services'
 export { parsePyreon } from './parse'
+export type { ParseOptions } from './parse'
 export type { ServiceDescriptor } from './services'
 export type * from './plugin'
 export type * from './types'
