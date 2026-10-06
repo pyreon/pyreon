@@ -656,6 +656,9 @@ struct Ctx<'a> {
     prop_derived_vars: FxHashMap<String, Span>,
     /// Undo log for lexical scoping of `prop_derived_vars` (issue #3815).
     prop_derived_log: Vec<ScopeLog>,
+    /// Prop-derived consts whose initializer is a function expression — see the
+    /// JS twin `propDerivedFnInits`. Scoped through `prop_derived_log`.
+    prop_derived_fn_inits: FxHashSet<String>,
     resolved_cache: FxHashMap<u32, String>,
     resolving: FxHashSet<String>,
     warned_cycles: FxHashSet<String>,
@@ -857,6 +860,7 @@ impl<'a> Ctx<'a> {
             props_names: FxHashSet::default(),
             prop_derived_vars: FxHashMap::default(),
             prop_derived_log: Vec::new(),
+            prop_derived_fn_inits: FxHashSet::default(),
             resolved_cache: FxHashMap::default(),
             resolving: FxHashSet::default(),
             warned_cycles: FxHashSet::default(),
@@ -2313,6 +2317,29 @@ fn accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
     }
 }
 
+fn jsx_element_accesses_props(el: &JSXElement, ctx: &Ctx) -> bool {
+    el.opening_element.attributes.iter().any(|attr| match attr {
+        JSXAttributeItem::Attribute(a) => match &a.value {
+            Some(JSXAttributeValue::ExpressionContainer(c)) => {
+                jsx_expr_as_expression(&c.expression).map_or(false, |e| accesses_props(e, ctx))
+            }
+            _ => false,
+        },
+        JSXAttributeItem::SpreadAttribute(s) => accesses_props(&s.argument, ctx),
+    }) || el.children.iter().any(|c| jsx_child_accesses_props(c, ctx))
+}
+
+fn jsx_child_accesses_props(child: &JSXChild, ctx: &Ctx) -> bool {
+    match child {
+        JSXChild::ExpressionContainer(c) => {
+            jsx_expr_as_expression(&c.expression).map_or(false, |e| accesses_props(e, ctx))
+        }
+        JSXChild::Element(el) => jsx_element_accesses_props(el, ctx),
+        JSXChild::Fragment(frag) => frag.children.iter().any(|c| jsx_child_accesses_props(c, ctx)),
+        _ => false,
+    }
+}
+
 fn expr_children_any_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
     match expr {
         Expression::BinaryExpression(b) => accesses_props(&b.left, ctx) || accesses_props(&b.right, ctx),
@@ -2325,6 +2352,46 @@ fn expr_children_any_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
         Expression::UnaryExpression(u) => accesses_props(&u.argument, ctx),
         Expression::ParenthesizedExpression(p) => accesses_props(&p.expression, ctx),
         Expression::TemplateLiteral(t) => t.expressions.iter().any(|e| accesses_props(e, ctx)),
+        // Mirror the shapes `collect_prop_derived_idents` resolves: this gate
+        // only decides WHETHER the inliner runs, so it must be a superset of
+        // the collector or a prop-derived read in that position is silently
+        // left as the stale setup-time binding (JS `accessesProps` is generic
+        // over every child kind).
+        Expression::TaggedTemplateExpression(t) => {
+            accesses_props(&t.tag, ctx) || t.quasi.expressions.iter().any(|e| accesses_props(e, ctx))
+        }
+        Expression::NewExpression(n) => {
+            accesses_props(&n.callee, ctx)
+                || n.arguments.iter().any(|a| match a {
+                    Argument::SpreadElement(s) => accesses_props(&s.argument, ctx),
+                    _ => a.as_expression().map_or(false, |e| accesses_props(e, ctx)),
+                })
+        }
+        Expression::AwaitExpression(a) => accesses_props(&a.argument, ctx),
+        Expression::YieldExpression(y) => y.argument.as_ref().map_or(false, |a| accesses_props(a, ctx)),
+        Expression::AssignmentExpression(a) => accesses_props(&a.right, ctx),
+        Expression::UpdateExpression(u) => match &u.argument {
+            SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
+                ctx.prop_derived_vars.contains_key(id.name.as_str())
+            }
+            SimpleAssignmentTarget::StaticMemberExpression(m) => accesses_props(&m.object, ctx),
+            SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+                accesses_props(&m.object, ctx) || accesses_props(&m.expression, ctx)
+            }
+            SimpleAssignmentTarget::TSAsExpression(e) => accesses_props(&e.expression, ctx),
+            SimpleAssignmentTarget::TSSatisfiesExpression(e) => accesses_props(&e.expression, ctx),
+            SimpleAssignmentTarget::TSNonNullExpression(e) => accesses_props(&e.expression, ctx),
+            SimpleAssignmentTarget::TSTypeAssertion(e) => accesses_props(&e.expression, ctx),
+            _ => false,
+        },
+        // JSX produced inside an expression (`cond && <b>{h.c()}</b>`): the
+        // collector walks its attrs + children, so the gate must too.
+        Expression::JSXElement(el) => jsx_element_accesses_props(el, ctx),
+        Expression::JSXFragment(frag) => frag.children.iter().any(|c| jsx_child_accesses_props(c, ctx)),
+        Expression::TSAsExpression(e) => accesses_props(&e.expression, ctx),
+        Expression::TSSatisfiesExpression(e) => accesses_props(&e.expression, ctx),
+        Expression::TSNonNullExpression(e) => accesses_props(&e.expression, ctx),
+        Expression::TSTypeAssertion(e) => accesses_props(&e.expression, ctx),
         Expression::SequenceExpression(s) => s.expressions.iter().any(|e| accesses_props(e, ctx)),
         Expression::CallExpression(call) => {
             accesses_props(&call.callee, ctx)
@@ -2893,7 +2960,14 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
 /// Finds `IdentifierReference` nodes whose name matches a key in
 /// `ctx.prop_derived_vars`, skipping property-name positions and nested
 /// function scopes. Replaces each matching span with the resolved initializer.
-fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
+///
+/// Returns the resolved text AND the length shifts it applied, as
+/// `(source_end_of_replaced_ident, new_len - old_len)`. Anything that later
+/// needs to address the resolved text by SOURCE position (the signal auto-call
+/// pass) maps through these — re-slicing the original source instead silently
+/// discarded the inlining and, when the text had grown, appended whatever
+/// source followed the expression.
+fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> (String, Vec<(u32, i64)>) {
     let span = expr.span();
     let source_slice = &ctx.source[span.start as usize..span.end as usize];
 
@@ -2902,7 +2976,7 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
     collect_prop_derived_idents(expr, &ctx.prop_derived_vars, &mut idents);
 
     if idents.is_empty() {
-        return source_slice.to_string();
+        return (source_slice.to_string(), Vec::new());
     }
 
     // Sort by position, deduplicate overlapping
@@ -2916,10 +2990,12 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
 
     // Build replacement string using absolute source offsets
     let mut result = String::new();
+    let mut shifts: Vec<(u32, i64)> = Vec::with_capacity(deduped.len());
     let mut last = span.start;
     for (start, end, var_name, is_shorthand) in &deduped {
         result.push_str(&ctx.source[last as usize..*start as usize]);
         let resolved = resolve_var_to_string(var_name, ctx);
+        let before = result.len();
         // A shorthand-property ident expands to `name: (value)`; a normal
         // reference substitutes `(value)` in place.
         if *is_shorthand {
@@ -2927,10 +3003,11 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
         } else {
             result.push_str(&format!("({})", resolved));
         }
+        shifts.push((*end, (result.len() - before) as i64 - (*end - *start) as i64));
         last = *end;
     }
     result.push_str(&ctx.source[last as usize..span.end as usize]);
-    result
+    (result, shifts)
 }
 
 /// Names a binding pattern introduces (recursive). Mirrors the JS backend's
@@ -3457,12 +3534,12 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     // prop-derived ref inside reads the LIVE prop, matching JS. `accesses_props`
     // keeps `Arrow|Function => false`, so a function appearing as a CHILD stays
     // skipped — JS's `forEachChildFast` child-skip asymmetry, faithfully.
-    let mut result = if !ctx.prop_derived_vars.is_empty()
+    let (mut result, shifts) = if !ctx.prop_derived_vars.is_empty()
         && (accesses_props(expr, ctx) || fn_body_accesses_props(expr, ctx))
     {
         resolve_expr_with_props(expr, ctx)
     } else {
-        ctx.source[span.start as usize..span.end as usize].to_string()
+        (ctx.source[span.start as usize..span.end as usize].to_string(), Vec::new())
     };
 
     // Auto-call signal variables: insert () after bare signal identifiers.
@@ -3476,7 +3553,7 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     // collector below walks the exact reachability itself (shadow-aware,
     // JSX-aware) and returns the text unchanged when nothing needs calling.
     if !ctx.signal_vars.is_empty() && ctx.signal_vars.len() > ctx.shadowed_signals.len() {
-        result = auto_call_signals(&result, expr, ctx);
+        result = auto_call_signals(&result, expr, ctx, &shifts);
     }
 
     result
@@ -3541,9 +3618,19 @@ fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
 }
 
 /// Auto-insert () after signal variable references in expression source text.
-fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
+///
+/// `text` is the expression's text AFTER prop-derived resolution, so it is not
+/// a slice of the source any more: signal identifiers are located by SOURCE
+/// position (the AST) and addressed in `text` through `shifts`, the length
+/// deltas the resolution applied. Re-slicing `ctx.source` here instead dropped
+/// every prop-derived inlining in the expression and, because the resolved
+/// text is longer, ran past the expression and copied the source that followed
+/// it (a slot mixing a bare signal with a prop-derived const emitted
+/// `s() ? h : 1}</div> } …` — and indexed past the end of the file on the
+/// last expression, which panics).
+fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx, shifts: &[(u32, i64)]) -> String {
     let base = expr.span().start;
-    let end_offset = base + text.len() as u32;
+    let end_offset = expr.span().end;
     let mut idents: Vec<(u32, u32)> = Vec::new();
     let mut shadows: Vec<String> = Vec::new();
     collect_signal_idents(expr, ctx, &mut idents, base, end_offset, &mut shadows);
@@ -3554,13 +3641,15 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
 
     idents.sort_by_key(|&(start, _)| start);
     let mut result = String::new();
-    let mut last = base;
+    let mut last = 0usize;
     for &(_, end) in &idents {
-        result.push_str(&ctx.source[last as usize..end as usize]);
+        let shift: i64 = shifts.iter().filter(|(pos, _)| *pos <= end).map(|(_, d)| *d).sum();
+        let at = ((end - base) as i64 + shift) as usize;
+        result.push_str(&text[last..at]);
         result.push_str("()");
-        last = end;
+        last = at;
     }
-    result.push_str(&ctx.source[last as usize..end_offset as usize]);
+    result.push_str(&text[last..]);
     result
 }
 
@@ -4255,6 +4344,9 @@ enum ScopeLog {
     /// A newly-registered signal / selector variable; undo removes it.
     Signal(String),
     Selector(String),
+    /// A change to `prop_derived_fn_inits` membership; carries the PREVIOUS
+    /// membership so undo restores it (a nested shadow must not leak outward).
+    FnInit(String, bool),
 }
 
 fn register_props_name(ctx: &mut Ctx, name: &str) {
@@ -4317,6 +4409,13 @@ fn pop_prop_derived_scope(ctx: &mut Ctx, mark: usize) {
             }
             ScopeLog::Selector(name) => {
                 ctx.selector_vars.remove(name.as_str());
+            }
+            ScopeLog::FnInit(name, was) => {
+                if was {
+                    ctx.prop_derived_fn_inits.insert(name);
+                } else {
+                    ctx.prop_derived_fn_inits.remove(name.as_str());
+                }
             }
             ScopeLog::Alias(name, Some(span)) => {
                 ctx.prop_derived_vars.insert(name, span);
@@ -8271,6 +8370,14 @@ fn try_direct_signal_ref(
             // does NOT auto-call it (f is not a signal), so the nullary-call
             // accessor stays a function reference — exactly `_bindText((<resolved>))`.
             if ctx.prop_derived_vars.contains_key(id.name.as_str()) {
+                // A prop-derived VALUE (`const f = foo(props.n)`) inlines to an
+                // expression the fast path evaluates ONCE at bind time — stale
+                // on the next prop change. Only a function-expression
+                // initializer inlines to something live when called; bail to
+                // the general path otherwise. Mirrors the JS twin.
+                if !ctx.prop_derived_fn_inits.contains(id.name.as_str()) {
+                    return None;
+                }
                 return Some((slice_expr(&call.callee, ctx), false, None));
             }
             // Use raw slice — NOT slice_expr — to avoid auto-calling the callee.
@@ -8295,21 +8402,33 @@ fn try_direct_signal_ref(
                 if is_active_signal(id.name.as_str(), ctx) {
                     return None;
                 }
+                // A prop-derived root: the fast path evaluates `ref` and
+                // `receiver` once at bind time, freezing the setup-time value.
+                // Mirrors the JS twin.
+                if ctx.prop_derived_vars.contains_key(id.name.as_str())
+                    && !ctx.prop_derived_fn_inits.contains(id.name.as_str())
+                {
+                    return None;
+                }
                 // Depth-1 chain (`row.label()`): the receiver is a plain
                 // identifier already in scope, so hand the runtime `row` rather
                 // than a per-row thunk the fast path throws away. Deeper chains
                 // (`row.data.name()`) keep the thunk — re-evaluating their
                 // receiver would double-fire a getter. Mirrors the JS twin.
+                //
+                // Both go through `slice_expr`, never a raw span slice: a
+                // PROP-DERIVED receiver (`const h = foo(props.n)`) must resolve
+                // to its live-prop initializer exactly like every other use
+                // site, or the binding captures the setup-time value and goes
+                // stale. Mirrors JS `sliceExpr(callee)` / `sliceExpr(callee.object)`.
                 let receiver = match &call.callee {
                     Expression::StaticMemberExpression(m) => match &m.object {
-                        Expression::Identifier(obj) => {
-                            Some(slice_span(obj.span(), ctx))
-                        }
+                        Expression::Identifier(_) => Some(slice_expr(&m.object, ctx)),
                         _ => None,
                     },
                     _ => None,
                 };
-                return Some((slice_span(call.callee.span(), ctx), true, receiver));
+                return Some((slice_expr(&call.callee, ctx), true, receiver));
             }
             return None;
         }
@@ -9402,6 +9521,24 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                         .prop_derived_vars
                         .insert(id.name.to_string(), init.span());
                     ctx.prop_derived_log.push(ScopeLog::Alias(id.name.to_string(), prev));
+                    // Scoped by the same undo log as the alias itself (JS twin:
+                    // `set: 'fn'`): a function initializer in one function must not
+                    // let a same-named VALUE initializer in a sibling skip the
+                    // staleness bail.
+                    let is_fn_init = matches!(
+                        init,
+                        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                    );
+                    let was_fn_init = ctx.prop_derived_fn_inits.contains(id.name.as_str());
+                    if is_fn_init != was_fn_init {
+                        ctx.prop_derived_log
+                            .push(ScopeLog::FnInit(id.name.to_string(), was_fn_init));
+                        if is_fn_init {
+                            ctx.prop_derived_fn_inits.insert(id.name.to_string());
+                        } else {
+                            ctx.prop_derived_fn_inits.remove(id.name.as_str());
+                        }
+                    }
                 }
             }
         }

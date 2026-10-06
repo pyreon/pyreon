@@ -82,7 +82,45 @@ interface Ctx {
   idc: { n: number }
   /** In-file JSX-returning helper names (PZ-02 — `{helper(expr)}` mounts). */
   helpers: string[]
+  /**
+   * A PROP-DERIVED non-stateful const (`const ph = mk(props.x)`) is in scope.
+   * Its use sites are drawn from a SECOND PRNG (`rnd2`) so the existing
+   * grammar's draw sequence for every seed that does not take the branch is
+   * unchanged.
+   */
+  pd: boolean
+  rnd2: () => number
 }
+
+/**
+ * The POSITION grammar of a prop-derived const `ph` — every place a read of it
+ * must be inlined to its live-prop initializer (the reactivity mechanism),
+ * because a bare reference captures the setup-time value. The fast-path
+ * binders (`_bindText` / `_bindDirect` member-receiver forms), the
+ * expression-kind gate (`new`, tagged template, TS wrappers, nested JSX) and
+ * the plain-slice path are separate code in the native backend; this list is
+ * what polices that they agree with the JS oracle.
+ */
+const PD_EXPRS = [
+  'ph.m()', // member-call receiver (the `_bindText(ph.m, node, undefined, ph)` fast path)
+  'ph.a.b()', // depth-2 member call (thunk form)
+  'ph.m', // member read
+  'ph?.m()', // optional-chaining receiver
+  'ph.m(ph)', // receiver and argument
+  'ph()', // callee
+  'mk2(ph)', // call argument
+  'ph + 1', // binary operand
+  '[ph.m()]', // array element
+  '({ k: ph.m() })', // object value
+  'tag`x${ph}`', // tagged-template substitution
+  'new ph.C()', // `new` callee
+  'new C(ph)', // `new` argument
+  '(ph as never).m()', // TS wrapper
+  'ph!.m()', // non-null wrapper
+  '`a${ph.m()}`', // template literal
+  'cnd && <b>{ph.m()}</b>', // JSX nested in an expression, child position
+  '<b title={ph.m()} />', // JSX nested in an expression, attr position
+]
 
 const pick = <T,>(rnd: () => number, arr: T[]): T => arr[Math.floor(rnd() * arr.length)]!
 const TAGS = ['div', 'span', 'ul', 'li', 'section', 'p', 'h1', 'button', 'main', 'a', 'b', 'i']
@@ -109,6 +147,12 @@ function genAttrs(c: Ctx): string {
   const parts: string[] = []
   const n = Math.floor(c.rnd() * 4)
   for (let i = 0; i < n; i++) {
+    if (c.pd && c.rnd2() < 0.1) {
+      const e = PD_EXPRS[Math.floor(c.rnd2() * PD_EXPRS.length)]!
+      const name = pick(c.rnd2, ['class', 'title', 'id', 'data-x'])
+      parts.push(`${name}={${c.rnd2() < 0.3 ? `() => ${e}` : e}}`)
+      continue
+    }
     const r = c.rnd()
     if (r < 0.22) parts.push(`class="${'c' + Math.floor(c.rnd() * 10)}"`)
     else if (r < 0.32) parts.push(`class={${genExpr(c)}}`)
@@ -134,6 +178,10 @@ function genAttrs(c: Ctx): string {
 }
 
 function genChild(c: Ctx): string {
+  if (c.pd && c.rnd2() < 0.12) {
+    const e = PD_EXPRS[Math.floor(c.rnd2() * PD_EXPRS.length)]!
+    return c.rnd2() < 0.3 ? `{() => ${e}}` : `{${e}}`
+  }
   const r = c.rnd()
   if (c.depth > 4 || r < 0.3) {
     const rr = c.rnd()
@@ -238,12 +286,17 @@ function genComponent(seed: number): string {
       helperLines.push(`function cellB(v) { return <i>{v}</i> }`)
     }
   }
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers }
+  const rnd2 = mulberry32((seed ^ 0x9e3779b9) >>> 0)
+  const pd = props && rnd2() < 0.5
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
   for (const s of signals) body.push(`  const ${s} = signal(${Math.floor(rnd() * 10)})`)
   if (props && rnd() < 0.5) body.push(`  const derived = props.x + "-d"`)
+  // A prop-derived NON-stateful const (`mk` is neither a hook/factory name nor
+  // in the explicit stateful list), so it is inlined at its use sites.
+  if (pd) body.push(`  const ph = mk(props.x)`)
   if (rnd() < 0.3) body.push(`  const el = <b>static</b>`)
   // PZ-02 scope-awareness: occasionally SHADOW a helper with a non-JSX fn —
   // calls inside App must then stay on the reactive-text path (both backends).
@@ -339,16 +392,27 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
           ssrTemplate,
           templatizeComponentChildren: tcc === true,
         }).code
-        const rs = nativeTransform!(
-          src,
-          'fuzz.tsx',
-          ssr,
-          null,
-          false,
-          undefined,
-          ssrTemplate,
-          tcc === true,
-        ).code
+        let rs: string
+        try {
+          rs = nativeTransform!(
+            src,
+            'fuzz.tsx',
+            ssr,
+            null,
+            false,
+            undefined,
+            ssrTemplate,
+            tcc === true,
+          ).code
+        } catch (err) {
+          // A native PANIC must name its seed — a bare thrown error from the
+          // loop aborts the sweep with no way to reproduce it.
+          failures.push(`seed=${seed} mode=${label} (native threw)`)
+          if (!firstDivergence) {
+            firstDivergence = `\n── native threw (seed=${seed} mode=${label}) ──\n${src}\n${String(err)}`
+          }
+          continue
+        }
         if (js !== rs) {
           failures.push(`seed=${seed} mode=${label}`)
           if (!firstDivergence) {
