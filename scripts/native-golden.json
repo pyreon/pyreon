@@ -5171,6 +5171,16 @@
       "bytes": 278,
       "warnings": 0
     },
+    "golden-fixture:storage-05.tsx|swift": {
+      "sha": "eaf6f7ae3afa04c273afddd58d9ef64f595eeb19644892ea0a7dcdde483b8bb0",
+      "bytes": 590,
+      "warnings": 0
+    },
+    "golden-fixture:storage-05.tsx|kotlin": {
+      "sha": "b0d6b2e241d3c62e0e174a86d4d3e5c19dbc0ed1b0f64b67263e8ae1442746c3",
+      "bytes": 692,
+      "warnings": 0
+    },
     "golden-fixture:sync-01.tsx|swift": {
       "sha": "96db60511480af9ec86902f0e6207a64ae7f158d3fd3d9db1d6bd21773233bbb",
       "bytes": 199,
