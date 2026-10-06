@@ -86,7 +86,9 @@ function isProcess(n: unknown): boolean {
   if (node.type === 'Identifier') return node.name === 'process'
   if (!isMember(node) || memberKey(node) !== 'process') return false
   const o = node.object as Node
-  return o.type === 'Identifier' && ['globalThis', 'global', 'self', 'window'].includes(o.name as string)
+  return (
+    o.type === 'Identifier' && ['globalThis', 'global', 'self', 'window'].includes(o.name as string)
+  )
 }
 
 /** A real `process.env.NODE_ENV` read (any member/optional/bracket spelling). */
@@ -107,7 +109,12 @@ function foldedText(original: string): string {
   return `("production")${breaks}`
 }
 
-const TS_WRAPPERS = new Set(['TSAsExpression', 'TSNonNullExpression', 'TSSatisfiesExpression', 'TSTypeAssertion'])
+const TS_WRAPPERS = new Set([
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSTypeAssertion',
+])
 
 /**
  * Fold every real `process.env.NODE_ENV` read in `code` to `"production"`.
@@ -190,11 +197,27 @@ export function renameCompatJsxAttributes(code: string, id: string): string {
     if (n.type === 'JSXAttribute') {
       const name = n.name as Node
       if (name.type === 'JSXIdentifier') {
-        if (name.name === 'className') edits.push({ start: name.start, end: name.end, text: 'class' })
-        else if (name.name === 'htmlFor') edits.push({ start: name.start, end: name.end, text: 'for' })
+        if (name.name === 'className')
+          edits.push({ start: name.start, end: name.end, text: 'class' })
+        else if (name.name === 'htmlFor')
+          edits.push({ start: name.start, end: name.end, text: 'for' })
       }
     }
     return true
   })
   return edits.length === 0 ? code : splice(code, edits)
+}
+
+/** Real bare island() call positions; examples in literals/comments are inert. */
+export function islandCallOffsets(code: string, id: string): ReadonlySet<number> {
+  const offsets = new Set<number>()
+  if (!code.includes('island')) return offsets
+  const program = parse(code, id, langOf(id))
+  if (!program) return offsets
+  walk(program, (node) => {
+    if (node.type !== 'CallExpression') return
+    const callee = node.callee as Node
+    if (callee.type === 'Identifier' && callee.name === 'island') offsets.add(callee.start)
+  })
+  return offsets
 }

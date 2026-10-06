@@ -36,7 +36,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
-import { foldNodeEnvProduction, renameCompatJsxAttributes } from './ast-rewrite'
+import { foldNodeEnvProduction, islandCallOffsets, renameCompatJsxAttributes } from './ast-rewrite'
 import {
   detectPlain,
   type CollapsibleSite,
@@ -3008,9 +3008,11 @@ function scanIslandDeclarations(
   // the inner class also tightens the match against the outer `\}`.
   const ISLAND_CALL_RE =
     /island\s*\(\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*\{([^}]{0,500})\}\s*\)/g
+  const callOffsets = islandCallOffsets(code, filePath)
   const decls: IslandDecl[] = []
   let match: RegExpExecArray | null
   while ((match = ISLAND_CALL_RE.exec(code)) !== null) {
+    if (!callOffsets.has(match.index)) continue
     const importPath = match[1]!
     const optsBlock = match[2]!
     const nameMatch = /(?:^|[\s,{])name\s*:\s*['"]([^'"]+)['"]/.exec(optsBlock)

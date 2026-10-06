@@ -50,6 +50,20 @@ describe('deriveIslandName', () => {
 })
 
 describe('injectIslandNames', () => {
+  it('leaves call examples untouched while naming real declarations', () => {
+    const examples = [
+      `const text = \`const Fake = island(() => import('./Fake'))\``,
+      `const quoted = "const Other = island(() => import('./Other'), { hydrate: 'idle' })"`,
+      `// const Comment = island(() => import('./Comment'))`,
+      `/* const Block = island(() => import('./Block')) */`,
+    ].join('\n')
+    expect(injectIslandNames(examples, FILE, ROOT)).toBeNull()
+    const actual = `const Live = island(() => import('./Live'))`
+    const out = injectIslandNames(`${examples}\n${actual}`, FILE, ROOT)!
+    expect(out.startsWith(examples)).toBe(true)
+    expect(out).toContain(`name: ${JSON.stringify(deriveIslandName('Live', 'src/islands.ts'))}`)
+  })
+
   it('injects a derived name into a nameless const-bound call (with options)', () => {
     const code = `export const Counter = island(() => import('./Counter'), { hydrate: 'visible' })`
     const out = injectIslandNames(code, FILE, ROOT)

@@ -956,7 +956,7 @@ impl<'a> Ctx<'a> {
             let preamble: String = self
                 .hoists
                 .iter()
-                .map(|h| format!("const {} = /*@__PURE__*/ {}\n", h.name, h.text))
+                .map(|h| format!("const {} = /*@__PURE__*/ {};\n", h.name, h.text))
                 .collect();
             result = preamble + &result;
         }
@@ -2895,15 +2895,11 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
 /// function scopes. Replaces each matching span with the resolved initializer.
 fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
     let span = expr.span();
-    let source_slice = &ctx.source[span.start as usize..span.end as usize];
 
     // Collect identifier references to prop-derived vars in this expression subtree
     let mut idents: Vec<(u32, u32, String, bool)> = Vec::new(); // (start, end, var_name)
     collect_prop_derived_idents(expr, &ctx.prop_derived_vars, &mut idents);
 
-    if idents.is_empty() {
-        return source_slice.to_string();
-    }
 
     // Sort by position, deduplicate overlapping
     idents.sort_by_key(|i| i.0);
@@ -2914,20 +2910,34 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
         }
     }
 
-    // Build replacement string using absolute source offsets
+    // Apply prop expansion and signal auto-calls against the same source span.
+    let mut edits: Vec<(u32, u32, String)> = Vec::new();
+    for (start, end, var_name, is_shorthand) in deduped {
+        let resolved = resolve_var_to_string(&var_name, ctx);
+        let text = if is_shorthand {
+            format!("{}: ({})", var_name, resolved)
+        } else {
+            format!("({})", resolved)
+        };
+        edits.push((start, end, text));
+    }
+    if !ctx.signal_vars.is_empty() && ctx.signal_vars.len() > ctx.shadowed_signals.len() {
+        let mut signals = Vec::new();
+        collect_signal_idents(expr, ctx, &mut signals, span.start, span.end, &mut Vec::new());
+        for (start, end) in signals {
+            edits.push((start, end, format!("{}()", &ctx.source[start as usize..end as usize])));
+        }
+    }
+    if edits.is_empty() {
+        return ctx.source[span.start as usize..span.end as usize].to_string();
+    }
+    edits.sort_by_key(|edit| edit.0);
     let mut result = String::new();
     let mut last = span.start;
-    for (start, end, var_name, is_shorthand) in &deduped {
-        result.push_str(&ctx.source[last as usize..*start as usize]);
-        let resolved = resolve_var_to_string(var_name, ctx);
-        // A shorthand-property ident expands to `name: (value)`; a normal
-        // reference substitutes `(value)` in place.
-        if *is_shorthand {
-            result.push_str(&format!("{}: ({})", var_name, resolved));
-        } else {
-            result.push_str(&format!("({})", resolved));
-        }
-        last = *end;
+    for (start, end, text) in edits {
+        result.push_str(&ctx.source[last as usize..start as usize]);
+        result.push_str(&text);
+        last = end;
     }
     result.push_str(&ctx.source[last as usize..span.end as usize]);
     result
@@ -3460,7 +3470,7 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     let mut result = if !ctx.prop_derived_vars.is_empty()
         && (accesses_props(expr, ctx) || fn_body_accesses_props(expr, ctx))
     {
-        resolve_expr_with_props(expr, ctx)
+        return resolve_expr_with_props(expr, ctx);
     } else {
         ctx.source[span.start as usize..span.end as usize].to_string()
     };

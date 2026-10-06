@@ -4,7 +4,7 @@ Plain Mode (the `'use plain'` dialect) has its own file: [plain-mode.md](./plain
 
 ## Compiler
 
-Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallback used per call when native throws. Any emit change lands in both in the same PR. `native-equivalence.test.ts` is the byte-identical oracle; `fuzz-equivalence.test.ts` runs 300 generated seeds × client/SSR.
+Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallback used per call when native throws. Any emit change lands in both in the same PR. `native-equivalence.test.ts` checks the curated JavaScript output with a parser and compares native bytes when the binary is installed; `fuzz-equivalence.test.ts` independently checks generated JavaScript in all compilation modes. JavaScript syntax, option and lens contracts run without the optional binary. Backend agreement alone cannot prove valid output.
 
 ### Template emission
 
@@ -152,3 +152,5 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 
 - `data-pyreon-hole`: a trailing mount hole for absorbed component children.
 - `data-pyreon-html`: accept any server children (no string comparison); `_setHtml` (`applyDangerousHtml`) skips its first write to a marked element (the `h()` path marks in `hydrateElement`). A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.
+
+Expression rewrites that share AST offsets must compose against the original source: collect prop substitutions and signal auto-calls before emitting either. A later pass must not slice original source using the length of an already-expanded expression. Static hoist declarations include their own semicolon so a following JSX statement cannot continue the initializer.
