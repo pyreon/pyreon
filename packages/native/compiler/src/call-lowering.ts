@@ -194,6 +194,18 @@ export interface DeclSwiftInit {
 }
 
 export interface DeclEmitter {
+  /**
+   * The binding is CALLABLE (`q()` through Swift's `callAsFunction` / Kotlin's `operator invoke`): a zero-argument call
+   * of it keeps its parentheses and a bare reference as an event handler is called, where an unknown identifier's
+   * zero-argument call reads as a property (`count()` → `count`).
+   */
+  readonly callable?: boolean | undefined
+  /**
+   * The declaration reads the active router (a search parameter, a path): on SwiftUI the View needs the router in
+   * its environment (`@Environment(\.pyreonRouter)`). Compose reads `LocalPyreonRouter.current` directly and needs
+   * nothing.
+   */
+  readonly usesRouter?: boolean | undefined
   /** Lifecycle contributions of this declaration type. */
   readonly lifecycle?: DeclLifecycle | undefined
   /** Lines this declaration seeds in the component's generated SwiftUI `init()` (see {@link DeclSwiftInit}). */

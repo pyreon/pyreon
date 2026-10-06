@@ -1456,7 +1456,6 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter',
-  'useUrlState',
   'useSecureStorage',
   'useSizeClass', 'useStorage', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
@@ -2599,78 +2598,6 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (flat !== null) return flat
   }
   return { kind: 'unknown' }
-}
-
-/**
- * Resolve `useUrlState(key, DEFAULT)`'s second argument into the native
- * initializer text plus the value type the emit builds a codec for.
- *
- * The int-vs-double split is `inferTypeFromInitial`'s rule, deliberately —
- * every other PMTC lowering reads an integer literal as Int and a fractional
- * one as Double, and a url-state binding that alone produced `1.0` where its
- * sibling `useStorage('page', 1)` produced `1` would be the anomaly. It also
- * keeps interpolation honest: `` `Page ${page()}` `` renders "Page 1" on web
- * and on both targets.
- *
- * A missing default stays the empty string — unchanged from before this
- * function existed. (The web would carry `undefined` through its `default:`
- * serializer arm; native has no null-valued binding to represent that, and
- * narrowing the gap is not what this change is for.)
- *
- * Returns null for anything not a scalar literal — arrays, objects,
- * identifiers, template strings. The caller warns and leaves the call to the
- * web.
- */
-/**
- * Why {@link resolveUrlStateDefault} rejected a default — the reason has to
- * match the SHAPE. Every rejection used to say "an array or object default",
- * which sent the author of `useUrlState('k', 1e999)` (a literal that parses to
- * `Infinity`) looking for a collection they never wrote.
- */
-function urlStateDefaultRejection(defNode: AnyNode | undefined): string {
-  const inner =
-    defNode?.type === 'UnaryExpression' && (defNode.operator === '-' || defNode.operator === '+')
-      ? (defNode.argument as AnyNode | undefined)
-      : defNode
-  if (inner?.type === 'ArrayExpression' || inner?.type === 'ObjectExpression') {
-    return 'an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site.'
-  }
-  const nonFinite =
-    (inner?.type === 'Literal' && typeof inner.value === 'number' && !Number.isFinite(inner.value)) ||
-    (inner?.type === 'Identifier' && (inner.name === 'Infinity' || inner.name === 'NaN'))
-  if (nonFinite) {
-    return 'this default is a NON-FINITE number (`Infinity` / `NaN` — a literal like `1e999` overflows to `Infinity`), which has no Int or Double literal on either native target and does not round-trip through the URL.'
-  }
-  return 'this default is not a literal, so its type cannot be decided at compile time.'
-}
-
-function resolveUrlStateDefault(
-  defNode: AnyNode | undefined,
-): { defaultValue: string; valueType: 'string' | 'int' | 'double' | 'boolean' } | null {
-  if (defNode === undefined) return { defaultValue: '""', valueType: 'string' }
-  // `useUrlState('offset', -1)` parses as a unary wrapping the literal, the
-  // same shape `inferTypeFromInitial` unwraps for `signal(-5)`.
-  let node = defNode
-  let sign = ''
-  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
-    const inner = node.argument as AnyNode | undefined
-    if (inner?.type !== 'Literal' || typeof inner.value !== 'number') return null
-    // A leading `+` is identity in both target languages but reads as an
-    // operator; drop it and keep only a real negation.
-    if (node.operator === '-') sign = '-'
-    node = inner
-  }
-  if (node.type !== 'Literal') return null
-  const v = node.value
-  if (typeof v === 'string') return { defaultValue: JSON.stringify(v), valueType: 'string' }
-  if (typeof v === 'boolean') return { defaultValue: String(v), valueType: 'boolean' }
-  if (typeof v === 'number') {
-    if (!Number.isFinite(v)) return null
-    return Number.isInteger(v)
-      ? { defaultValue: `${sign}${v}`, valueType: 'int' }
-      : { defaultValue: `${sign}${v}`, valueType: 'double' }
-  }
-  return null
 }
 
 /**
@@ -5312,39 +5239,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
-  }
-  if (calleeName === 'useUrlState') {
-    // `const q = useUrlState('q', '')`. Both arguments must be literals so the
-    // key can be baked into the emit — same conservative rule as useFetch's
-    // URL and useStorage's key. A dynamic key would need a runtime lookup the
-    // value type does not carry.
-    const args = (init.arguments as AnyNode[] | undefined) ?? []
-    const keyNode = args[0]
-    const defNode = args[1]
-    const key = staticStringArg(keyNode, ctx)
-    if (key === null) {
-      // Dropping the declaration silently is what this used to do, and it left
-      // every later reference pointing at a binding that no longer existed —
-      // so both targets failed to compile with nothing naming the cause.
-      ctx.warnings.push(
-        `const ${name} = useUrlState(…) needs a statically-known key: an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit (there is no runtime key lookup in the lowered value), so a computed or imported key cannot be resolved at build time. Move the key into a module-scope const in this file, or keep the call behind a \`<Web>\` escape hatch.`,
-      )
-      return null
-    }
-    const resolved = resolveUrlStateDefault(defNode)
-    if (resolved === null) {
-      ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — ${urlStateDefaultRejection(defNode)} Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
-      )
-      return null
-    }
-    return {
-      kind: 'url-state',
-      name,
-      key,
-      defaultValue: resolved.defaultValue,
-      valueType: resolved.valueType,
-    }
   }
   if (calleeName === 'useParams') {
     // The WHOLE-OBJECT form. It lowers to a `[String: String]` / `Map`, so the

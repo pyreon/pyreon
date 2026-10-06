@@ -29,6 +29,7 @@ import {
   lowerPluginReceiver,
   lowerPluginRefModifiers,
   pluginAsyncState,
+  pluginDeclIsCallable,
   pluginLifecycleLines,
   tailLifecycleDecls,
   serviceFor,
@@ -571,8 +572,6 @@ let _mapNames: Set<string> = new Set()
 let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
-/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
-let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (persists across the whole emit) — seeded
  * into each component's `_functionNames` so a `dbl(21)` call resolves as a
  * free-function call regardless of which component emits it. */
@@ -1132,21 +1131,6 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
   return lines.join('\n')
 }
 
-/**
- * Value type → emitted helper. A total `Record` rather than a lookup with a
- * fallback: adding a `valueType` without an emitter is then a compile error,
- * not a silent default to the string helper.
- */
-const KOTLIN_URL_STATE_TYPES: Record<
-  Extract<DeclIR, { kind: 'url-state' }>['valueType'],
-  string
-> = {
-  string: 'PyreonUrlState',
-  int: 'PyreonUrlStateInt',
-  double: 'PyreonUrlStateDouble',
-  boolean: 'PyreonUrlStateBool',
-}
-
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
   // Each entry is a valid Kotlin name: a kebab-case / keyword union member
@@ -1445,12 +1429,9 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'router-hook' && d.hook === 'navigate') {
       _functionNames.add(d.name)
     }
-    // `q` is CALLABLE (`operator fun invoke`), so a reference must keep its
-    // parens — the Swift mirror adds it for the same reason.
-    if (d.kind === 'url-state') {
-      _functionNames.add(d.name)
-      _urlStateNames.add(d.name)
-    }
+    // A CALLABLE plugin declaration (`q` through `operator fun invoke`) keeps its parens at every reference — the Swift
+    // mirror adds it for the same reason.
+    if (pluginDeclIsCallable(d)) _functionNames.add(d.name)
     // Phase 4: track useFetch decls so member reads append `.value`. A plugin declaration that is an
     // async source (`useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
     if (d.kind === 'fetch') _fetchNames.add(d.name)
@@ -1771,7 +1752,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
-  _urlStateNames = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -2187,19 +2167,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
   // explicit router arg needed (unlike Swift). `useParams()` follows
   // the same shape.
-  if (d.kind === 'url-state') {
-    // `defaultValue` arrives as target syntax (quoted for a string, bare for a
-    // number or bool), so it is interpolated, not re-stringified.
-    //
-    // The router comes from `LocalPyreonRouter.current`, NOT a `useRouter()`
-    // call: router-kotlin ships useNavigate / useParams / useLoaderData and no
-    // useRouter at all. The emit called one anyway and the STUB declared it, so
-    // every stub-level check passed while a real `gradle assembleDebug` failed
-    // with `Unresolved reference 'useRouter'` -- a superset stub masking a real
-    // emit bug, which is the exact failure mode a stub is supposed to prevent.
-    const helper = KOTLIN_URL_STATE_TYPES[d.valueType]
-    return `val ${kotlinIdent(d.name)} = ${helper}(LocalPyreonRouter.current, ${kotlinStr(d.key)}, ${d.defaultValue})`
-  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     return `val ${kotlinIdent(d.name)} = ${fn}()`

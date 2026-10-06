@@ -513,6 +513,16 @@ export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): A
   return target === 'swift' ? emitter.swift(d, ctx) : emitter.kotlin(d, ctx)
 }
 
+/** True when `d` is an `ext` declaration whose binding is callable (a zero-argument call of it keeps its parentheses). */
+export function pluginDeclIsCallable(d: DeclIR): boolean {
+  return d.kind === 'ext' && activeRegistries().calls.emitter(d.plugin, d.type)?.callable === true
+}
+
+/** True when `d` is an `ext` declaration that reads the active router (the SwiftUI View needs it in its environment). */
+export function pluginDeclUsesRouter(d: DeclIR): boolean {
+  return d.kind === 'ext' && activeRegistries().calls.emitter(d.plugin, d.type)?.usesRouter === true
+}
+
 /** True when `d` is an `ext` declaration whose type needs a stable host view on Swift. */
 export function pluginNeedsStableHost(d: DeclIR): boolean {
   return d.kind === 'ext' && extDeclLifecycle(d)?.stableHost === true

@@ -37,6 +37,8 @@ import {
   pluginAsyncState,
   tailLifecycleDecls,
   pluginLifecycleLines,
+  pluginDeclIsCallable,
+  pluginDeclUsesRouter,
   pluginNeedsStableHost,
   serviceFor,
   serviceLifecycle,
@@ -656,8 +658,6 @@ let _asyncDeclsSwift: DeclIR[] = []
  * `call(callee=identifier, args=[])` in the IR.
  */
 let _functionNames: Set<string> = new Set()
-/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
-let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (module-level, persists across the whole
  * emit) — seeded into each component's `_functionNames` so a `dbl(21)` call
  * resolves as a free-function call regardless of which component emits it. */
@@ -1057,21 +1057,6 @@ export function _pushSwiftEmitWarning(msg: string): void {
   _emitWarnings.push(msg)
 }
 
-
-/**
- * Value type → emitted helper. A total `Record` rather than a lookup with a
- * fallback: adding a `valueType` without an emitter is then a compile error,
- * not a silent default to the string helper.
- */
-const SWIFT_URL_STATE_TYPES: Record<
-  Extract<DeclIR, { kind: 'url-state' }>['valueType'],
-  string
-> = {
-  string: 'PyreonUrlState',
-  int: 'PyreonUrlStateInt',
-  double: 'PyreonUrlStateDouble',
-  boolean: 'PyreonUrlStateBool',
-}
 
 export function emitSwift(
   components: ComponentIR[],
@@ -1982,15 +1967,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 3: `const { id } = useParams()` reads via useParams(router:),
     // so the View needs the @Environment(\.pyreonRouter) injection.
     if (d.kind === 'params-destructure') _usesRouter = true
-    // useUrlState reads/writes the active router's query.
-    if (d.kind === 'url-state') {
-      _usesRouter = true
-      _urlStateNames.add(d.name)
-      // `q` is CALLABLE (callAsFunction), so the reference must keep its
-      // parens — unlike useParams, which returns a dictionary and is
-      // deliberately kept out of this set to avoid surprise parens.
-      _functionNames.add(d.name)
-    }
+    // A plugin declaration that reads the active router's query (`useUrlState`) needs the View's router injection,
+    // and a CALLABLE one keeps its parens (`q()` through callAsFunction — unlike useParams, which returns a dictionary).
+    if (pluginDeclUsesRouter(d)) _usesRouter = true
+    if (pluginDeclIsCallable(d)) _functionNames.add(d.name)
     // Phase 4 follow-up: useColorScheme reads SwiftUI's
     // @Environment(\.colorScheme), so the View needs the injection.
     if (d.kind === 'color-scheme') _usesColorScheme = true
@@ -2523,7 +2503,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
-  _urlStateNames = new Set()
   _usesRouter = false
   _routerRoutes = new Map()
   if (_hostStateDecls.length > 0) {
@@ -3018,12 +2997,6 @@ function emitSwiftDecl(
   // env-dependent derivations. `useParams()` follows the same shape;
   // return types are per the runtime's signature ((String) -> Void
   // for navigate, [String: String] for params).
-  if (d.kind === 'url-state') {
-    // `defaultValue` arrives as target syntax (quoted for a string, bare for a
-    // number or bool), so it is interpolated, not re-stringified.
-    const helper = SWIFT_URL_STATE_TYPES[d.valueType]
-    return `private var ${swiftIdent(d.name)}: ${helper} { ${helper}(router: pyreonRouter, key: ${swiftStr(d.key)}, defaultValue: ${d.defaultValue}) }`
-  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     const returnType =

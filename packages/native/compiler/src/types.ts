@@ -215,35 +215,6 @@ export type DeclIR =
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
   /**
-   * `const q = useUrlState('q', '')` from `@pyreon/url-state` — a signal-shaped
-   * binding over ONE router search parameter. Lowers to a small value type
-   * wrapping the active router's `query` / `setQueryParam`, so the web call
-   * shape (`q()` to read, `q.set(v)` to write) survives on both targets.
-   *
-   * `valueType` is inferred from the DEFAULT literal, using the same
-   * integer-vs-fractional rule every other PMTC lowering uses
-   * (`inferTypeFromInitial`): `useUrlState('page', 1)` is an Int binding,
-   * `useUrlState('zoom', 1.5)` a Double, `useUrlState('open', false)` a Bool.
-   * A URL carries strings, so each non-string type emits a codec that mirrors
-   * the web's `inferSerializer` — see `SWIFT_URL_NUMBER` for the ToNumber
-   * fidelity that costs.
-   *
-   * `defaultValue` is the value rendered verbatim into the native
-   * initializer, so it is already target-syntax (`"all"` stays quoted for the
-   * string case; `1` / `1.5` / `false` are bare).
-   *
-   * Still undeclared: array and object defaults (the web infers a comma /
-   * `\0REPEAT\0` join and a `JSON.parse`, neither of which has a native type
-   * to decode INTO at this call site), and any non-literal default.
-   */
-  | {
-      kind: 'url-state'
-      name: string
-      key: string
-      defaultValue: string
-      valueType: 'string' | 'int' | 'double' | 'boolean'
-    }
-  /**
    * Phase 4 — data fetch via `useFetch<T>('/url')` from `@pyreon/query`
    * (the native subset). Emits a `PyreonFetch<T>` reactive container plus
    * a mount-time async harness that drives its `begin/resolve/reject`
