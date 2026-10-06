@@ -86,9 +86,7 @@ function isProcess(n: unknown): boolean {
   if (node.type === 'Identifier') return node.name === 'process'
   if (!isMember(node) || memberKey(node) !== 'process') return false
   const o = node.object as Node
-  return (
-    o.type === 'Identifier' && ['globalThis', 'global', 'self', 'window'].includes(o.name as string)
-  )
+  return o.type === 'Identifier' && ['globalThis', 'global', 'self', 'window'].includes(o.name as string)
 }
 
 /** A real `process.env.NODE_ENV` read (any member/optional/bracket spelling). */
@@ -109,12 +107,7 @@ function foldedText(original: string): string {
   return `("production")${breaks}`
 }
 
-const TS_WRAPPERS = new Set([
-  'TSAsExpression',
-  'TSNonNullExpression',
-  'TSSatisfiesExpression',
-  'TSTypeAssertion',
-])
+const TS_WRAPPERS = new Set(['TSAsExpression', 'TSNonNullExpression', 'TSSatisfiesExpression', 'TSTypeAssertion'])
 
 /**
  * Fold every real `process.env.NODE_ENV` read in `code` to `"production"`.
@@ -197,10 +190,8 @@ export function renameCompatJsxAttributes(code: string, id: string): string {
     if (n.type === 'JSXAttribute') {
       const name = n.name as Node
       if (name.type === 'JSXIdentifier') {
-        if (name.name === 'className')
-          edits.push({ start: name.start, end: name.end, text: 'class' })
-        else if (name.name === 'htmlFor')
-          edits.push({ start: name.start, end: name.end, text: 'for' })
+        if (name.name === 'className') edits.push({ start: name.start, end: name.end, text: 'class' })
+        else if (name.name === 'htmlFor') edits.push({ start: name.start, end: name.end, text: 'for' })
       }
     }
     return true

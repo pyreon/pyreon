@@ -1162,18 +1162,16 @@ export function transformJSX(
   // unexpected AST shape), fall back gracefully instead of crashing the dev server.
   if (nativeTransformJsx) {
     try {
-      return mergePlain(
-        nativeTransformJsx(
-          code,
-          filename,
-          options.ssr === true,
-          options.knownSignals ?? null,
-          options.reactivityLens === true,
-          options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
-          options.ssrTemplate === true,
-          options.templatizeComponentChildren === true,
-        ),
-      )
+      return mergePlain(nativeTransformJsx(
+        code,
+        filename,
+        options.ssr === true,
+        options.knownSignals ?? null,
+        options.reactivityLens === true,
+        options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
+        options.ssrTemplate === true,
+        options.templatizeComponentChildren === true,
+      ))
     } catch {
       // Native transform failed — fall through to JS implementation
     }
@@ -1960,9 +1958,7 @@ export function transformJSX_JS(
     if (v === undefined) {
       // A non-call occurrence, or a `function`/`class` declaration (which
       // is followed by `(`/`{` like a call and must still count).
-      v = !new RegExp(`(?<![\\w$.])${name}\\b(?!\\s*\\()|\\b(?:function|class)\\s+${name}\\b`).test(
-        code,
-      )
+      v = !new RegExp(`(?<![\\w$.])${name}\\b(?!\\s*\\()|\\b(?:function|class)\\s+${name}\\b`).test(code)
       ssrGlobalIntactMemo.set(name, v)
     }
     return v
@@ -2087,18 +2083,10 @@ export function transformJSX_JS(
       needsSsrAttrGenImport = true
     } else if (SSR_URL_ATTRS.has(name)) {
       // Lowercase URL attr — lean url-guard helper (byte-identical to renderProp).
-      ssrEmitHole(
-        buf,
-        `_ssrAttrUrl(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`,
-        true,
-      )
+      ssrEmitHole(buf, `_ssrAttrUrl(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`, true)
       needsSsrAttrUrlImport = true
     } else {
-      ssrEmitHole(
-        buf,
-        `_ssrAttr(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`,
-        true,
-      )
+      ssrEmitHole(buf, `_ssrAttr(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`, true)
       needsSsrAttrImport = true
     }
   }
@@ -2454,19 +2442,9 @@ export function transformJSX_JS(
     if (!anyReactive || parts.length < 2) return null
     for (const sp of spans) {
       if (sp.reactive)
-        lens(
-          sp.start,
-          sp.end,
-          'reactive',
-          'live — this text re-renders whenever its signals change',
-        )
+        lens(sp.start, sp.end, 'reactive', 'live — this text re-renders whenever its signals change')
       else
-        lens(
-          sp.start,
-          sp.end,
-          'static-text',
-          'baked once into the DOM — never re-renders (no signal read here)',
-        )
+        lens(sp.start, sp.end, 'static-text', 'baked once into the DOM — never re-renders (no signal read here)')
     }
     needsFuseImport = true
     return `_fuse(${parts.map((p) => ('lit' in p ? ssrStaticLit(p.lit) : p.expr)).join(', ')})`
@@ -2849,9 +2827,7 @@ export function transformJSX_JS(
     const parent = findParent(node)
     const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
 
-    const preserved = buf.holeSrc.filter(
-      (h): h is NonNullable<(typeof buf.holeSrc)[number]> => h !== null,
-    )
+    const preserved = buf.holeSrc.filter((h): h is NonNullable<(typeof buf.holeSrc)[number]> => h !== null)
     if (preserved.length === 0) {
       const call = ssrCallText(buf, 'recursed')
       replacements.push({ start, end, text: braceTemplateChild(call, node, !!needsBraces) })
@@ -5471,9 +5447,7 @@ export function transformJSX_JS(
       if (propRead !== null) {
         needsBindPropImport = true
         const d = nextDisp()
-        bindLines.push(
-          `const ${d} = _bindProp(${propRead.obj}, ${JSON.stringify(propRead.key)}, ${tVar}, ${parentRef})`,
-        )
+        bindLines.push(`const ${d} = _bindProp(${propRead.obj}, ${JSON.stringify(propRead.key)}, ${tVar}, ${parentRef})`)
         return needsPlaceholder ? '<!>' : ' '
       }
       // Selector-ternary auto-promotion (companion to the className
@@ -5907,9 +5881,7 @@ export function transformJSX_JS(
         // stays reactive through the inlined element (r15 specs).
         const slotArg =
           isChildrenExpression(childExpr, expr) && shouldWrap(childExpr) ? `() => (${expr})` : expr
-        bindLines.push(
-          `const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`,
-        )
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
         return '<!>'
       }
       // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
@@ -5926,9 +5898,7 @@ export function transformJSX_JS(
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
-        bindLines.push(
-          `const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder}${soleArg})`,
-        )
+        bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder}${soleArg})`)
         return '<!>'
       }
       // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
@@ -5950,9 +5920,7 @@ export function transformJSX_JS(
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
         const slotArg = isReactive ? `() => (${expr})` : expr
-        bindLines.push(
-          `const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`,
-        )
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
         return '<!>'
       }
       const cx = childExpr
