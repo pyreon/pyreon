@@ -43,6 +43,16 @@ export interface EmitContextBackend {
   exprAs(type: TypeIR | undefined, e: ExprIR, indent: number): string
   /** The emitter's current per-component scope (declarations, state, deferred substitutions). */
   scope(): PluginScope
+  /** `readStringAttrExpr` / `readStringAttrExprKotlin` — a string attribute as target text (a literal, or an interpolation of the expression). */
+  stringAttr(el: JsxElementIR, name: string, indent: number): string | undefined
+  /** `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` — the modifier chain for the element's styling props. */
+  layoutModifiers(el: JsxElementIR): string
+  /** `emitSwiftAction` / `emitKotlinAction` — an event handler as a closure body. */
+  action(handler: ExprIR, indent: number): string
+  /** `_moduleConstExprs.get` / `_moduleConstExprsKotlin.get` — a module-level `const`'s initializer. */
+  constExpr(name: string): ExprIR | undefined
+  /** `_chartThemeScope` — the compile-time colour-mode scope enclosing the element (opaque; the plugin that stored it types it). */
+  colorScope(): object | undefined
 }
 
 /**
@@ -64,18 +74,8 @@ export interface HostStateSlot {
 
 /** What the Swift emitter supplies beyond {@link EmitContextBackend}. */
 export interface SwiftEmitContextBackend extends EmitContextBackend {
-  /** `readStringAttrExpr` — a string attribute as Swift text (a literal, or an interpolation of the expression). */
-  stringAttr(el: JsxElementIR, name: string, indent: number): string | undefined
-  /** `emitSwiftLayoutModifiers` — the modifier chain for the element's styling props. */
-  layoutModifiers(el: JsxElementIR): string
-  /** `emitSwiftAction` — an event handler as a Swift closure body. */
-  action(handler: ExprIR, indent: number): string
   /** `resolveFunctionHandler` — the name of the module function an expression refers to, if it is one. */
   handlerName(handler: ExprIR): string | undefined
-  /** `_moduleConstExprs.get` — a module-level `const`'s initializer. */
-  constExpr(name: string): ExprIR | undefined
-  /** `_chartThemeScope` — the compile-time colour-mode scope enclosing the element (opaque; the plugin that stored it types it). */
-  colorScope(): object | undefined
   /** `_usesColorScheme = true`. */
   markColorSchemeUsed(): void
   /** `_hostStateDecls` + `_swiftHostStateSeq`. */
@@ -102,6 +102,23 @@ export interface EmitContext {
   expr(e: ExprIR, at?: number): string
   /** An expression emitted with `type` as the expected type (steers an object / array literal's struct); `undefined` clears an inherited expectation. */
   exprAs(type: TypeIR | undefined, e: ExprIR, at?: number): string
+  /** A string attribute as target text — a literal, or an interpolation of the expression — or `undefined` when absent. */
+  stringAttr(el: JsxElementIR, name: string, at?: number): string | undefined
+  /** The modifier chain (`.padding(…).background(…)`) for the element's own styling props. */
+  layoutModifiers(el: JsxElementIR): string
+  /** An event handler as a closure body, at `at` (default: this context's indentation). */
+  action(handler: ExprIR, at?: number): string
+  /** The initializer of the module-level `const` named `name`, or `undefined`. */
+  constExpr(name: string): ExprIR | undefined
+  /**
+   * The compile-time colour-mode scope enclosing the element, as the value its
+   * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
+   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>` /
+   * `<ChartThemeProvider>` handling (saved and restored in `finally`, so
+   * providers nest and a sibling inherits nothing). The facade does not know
+   * the value's type; the plugin that reads it names it (`colorScope<T>()`).
+   */
+  colorScope<T extends object>(): T | undefined
   /** The ext declarations of `(plugin, type)` in the component being emitted. */
   decls(plugin: string, type: string): readonly ExtDecl[]
   /**
@@ -124,29 +141,14 @@ export interface EmitContext {
 
 /**
  * The context a Swift element lowering receives: the shared facade plus the
- * members only the Swift emitter has state for today. A member moves up to
- * {@link EmitContext} when the Kotlin emitter supplies it too.
+ * members only the Swift emitter has state for. A member moves up to
+ * {@link EmitContext} when the Kotlin emitter supplies it too (the string /
+ * layout / action / const / colour-scope members did when the Kotlin chart
+ * hosts moved); what is left here has no Compose analogue.
  */
 export interface SwiftEmitContext extends EmitContext {
-  /** A string attribute as Swift text — a literal, or an interpolation of the expression — or `undefined` when absent. */
-  stringAttr(el: JsxElementIR, name: string, at?: number): string | undefined
-  /** The modifier chain (`.padding(…).background(…)`) for the element's own styling props. */
-  layoutModifiers(el: JsxElementIR): string
-  /** An event handler as a Swift closure body, at `at` (default: this context's indentation). */
-  action(handler: ExprIR, at?: number): string
   /** The name of the module-level function `handler` refers to, or `undefined` when it is anything else. */
   handlerName(handler: ExprIR): string | undefined
-  /** The initializer of the module-level `const` named `name`, or `undefined`. */
-  constExpr(name: string): ExprIR | undefined
-  /**
-   * The compile-time colour-mode scope enclosing the element, as the value its
-   * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
-   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>` /
-   * `<ChartThemeProvider>` handling (saved and restored in `finally`, so
-   * providers nest and a sibling inherits nothing). The facade does not know
-   * the value's type; the plugin that reads it names it (`colorScope<T>()`).
-   */
-  colorScope<T extends object>(): T | undefined
   /** Tell the emitter the component reads SwiftUI's colour scheme, so it injects `@Environment(\.colorScheme) pyreonColorScheme`. */
   markColorSchemeUsed(): void
   /** The component's `@State` declaration list (see {@link HostStateSlot}). */
@@ -169,6 +171,11 @@ export function createEmitContext(
     warn: (message) => backend.warn(message),
     expr: (e, at = indent) => backend.expr(e, at),
     exprAs: (type, e, at = indent) => backend.exprAs(type, e, at),
+    stringAttr: (el, name, at = indent) => backend.stringAttr(el, name, at),
+    layoutModifiers: (el) => backend.layoutModifiers(el),
+    action: (handler, at = indent) => backend.action(handler, at),
+    constExpr: (name) => backend.constExpr(name),
+    colorScope: <T extends object>() => backend.colorScope() as T | undefined,
     decls: (plugin, type) => backend.scope().decls(plugin, type),
     state: (key, init) => backend.scope().state(key, init),
     deferred: (key, fallback) => backend.scope().deferred(key, fallback),
@@ -179,12 +186,7 @@ export function createEmitContext(
 export function createSwiftEmitContext(backend: SwiftEmitContextBackend, indent: number): SwiftEmitContext {
   return {
     ...createEmitContext('swift', backend, indent),
-    stringAttr: (el, name, at = indent) => backend.stringAttr(el, name, at),
-    layoutModifiers: (el) => backend.layoutModifiers(el),
-    action: (handler, at = indent) => backend.action(handler, at),
     handlerName: (handler) => backend.handlerName(handler),
-    constExpr: (name) => backend.constExpr(name),
-    colorScope: <T extends object>() => backend.colorScope() as T | undefined,
     markColorSchemeUsed: () => backend.markColorSchemeUsed(),
     hostState: backend.hostState,
   }

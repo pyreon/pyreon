@@ -12,6 +12,7 @@ import {
   chartHostTags,
 } from '../chart-hosts'
 import type { ElementLowering } from '../element-lowering'
+import { emitKotlinChartElement } from './charts/kotlin'
 import { emitSwiftChartElement } from './charts/swift'
 import { forEachExpr } from '../expr-walk'
 import type { ParseRefinement } from '../parse-extensions'
@@ -122,13 +123,14 @@ const chartHandleDecl = Object.freeze<DeclEmitter>({
 /**
  * Every chart host (and the grammar's mark / config tags, so a stray one warns
  * instead of emitting a phantom component), claimed when imported from
- * `@pyreon/charts`. Swift lowers here; Kotlin has no `emit.kotlin`, so the
- * dispatcher falls through to the core's chart branch for it.
+ * `@pyreon/charts`. Both targets lower here — the emitters sit beside this file
+ * (`charts/swift*.ts`, `charts/kotlin*.ts`) and read the compiler only through
+ * the `EmitContext` facade.
  */
 const chartHostLowering: ElementLowering = Object.freeze({
   module: CHARTS_PLUGIN_NAME,
   tags: Object.freeze(chartHostTags()),
-  emit: Object.freeze({ swift: emitSwiftChartElement }),
+  emit: Object.freeze({ swift: emitSwiftChartElement, kotlin: emitKotlinChartElement }),
 })
 
 /**
@@ -136,9 +138,9 @@ const chartHostLowering: ElementLowering = Object.freeze({
  * inference, but are not emitted; `createChartHandle()` lowers to a
  * PyreonChartHandle — observable fields the bound `<PlotChart handle>` reads and
  * writes, and a `dispatch` that runs the crossing reducer. The `dispatch` call
- * lowers HERE (`memberCalls`); the `<PlotChart handle>` host binding is still
- * lowered by the core, which asks the component's declarations whether the name
- * is a handle and resolves the handle's deferred series count.
+ * lowers HERE (`memberCalls`), and so does the `<PlotChart handle>` host binding
+ * (it asks the component's declarations whether the name is a handle and, on
+ * Swift, resolves the handle's deferred series count).
  */
 export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
   name: CHARTS_PLUGIN_NAME,
