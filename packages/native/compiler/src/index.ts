@@ -35,10 +35,13 @@ export type {
   CallSite,
   DeclEmitter,
   ExtDeclSpec,
+  MemberCallLowering,
+  MemberCallSite,
   ParseContext,
   RegisteredCall,
 } from './call-lowering'
 export type { EmitContext, EmitTarget, StaticAttrValue } from './emit-context'
+export type { UnloweredModule, UnloweredSpec } from './unlowered-modules'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'
 export { SERVICES, renderKotlinService } from './services'

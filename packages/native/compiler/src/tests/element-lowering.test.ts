@@ -1,3 +1,4 @@
+import { createPluginScope } from '../plugin-scope'
 import { describe, expect, it } from 'vitest'
 import { BUILT_IN_PLUGINS, createCompiler, transform, type CompilerPlugin } from '../index'
 import { createElementRegistry, type ElementLowering } from '../element-lowering'
@@ -148,6 +149,9 @@ describe('EmitContext', () => {
     warn: (m) => {
       calls.push(`warn:${m}`)
     },
+    expr: () => '',
+    exprAs: () => '',
+    scope: () => createPluginScope(),
   }
 
   it('defaults indentation to the element and delegates to the backend', () => {

@@ -1,3 +1,4 @@
+import { createPluginScope } from '../plugin-scope'
 import { describe, expect, it } from 'vitest'
 import { withRegistries } from '../active-registries'
 import { createEmitContext } from '../emit-context'
@@ -152,7 +153,7 @@ describe('code-shaped plugin: load-time errors', () => {
     expect(registry.names.size).toBe(0)
     const ctx = createEmitContext(
       'swift',
-      { emit: () => '', staticAttr: () => undefined, stringLiteral: String, identifier: String, warn: () => {} },
+      { emit: () => '', staticAttr: () => undefined, stringLiteral: String, identifier: String, warn: () => {}, expr: () => '', exprAs: () => '', scope: () => createPluginScope() },
       0,
     )
     expect(() => emitExtDecl(registry, decl, 'swift', ctx)).toThrow(

@@ -21,6 +21,7 @@ import { BUILT_IN_PLUGINS } from './built-in-plugins'
 import { createCallRegistry, type CallRegistry } from './call-lowering'
 import { createElementRegistry, type ElementRegistry } from './element-lowering'
 import type { CompilerPlugin } from './plugin'
+import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
 import {
   createServiceRegistry,
   createServiceTables,
@@ -38,6 +39,8 @@ export interface CompilerRegistries {
   readonly elements: ElementRegistry
   /** Hook name → call recognizer, and `(plugin, type)` → declaration emitter. */
   readonly calls: CallRegistry
+  /** Module → plugin-supplied unlowered-module metadata (advice + the exports that do lower). */
+  readonly unlowered: ReadonlyMap<string, RegisteredUnlowered>
 }
 
 /**
@@ -63,6 +66,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     serviceTables: createServiceTables(services),
     elements: createElementRegistry(ordered),
     calls,
+    unlowered: createUnloweredRegistry(ordered),
   })
 }
 

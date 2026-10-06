@@ -12,9 +12,11 @@
 import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ServiceDescriptor } from './services'
-import { emitExtDecl } from './call-lowering'
+import { emitExtDecl, lowerMemberCall } from './call-lowering'
+import type { PluginScope } from './plugin-scope'
+import type { UnloweredModule } from './unlowered-modules'
 import type { EmitContext } from './emit-context'
-import type { DeclIR, ExtDecl } from './types'
+import type { DeclIR, ExprIR, ExtDecl } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
 export function findService(hook: string): ServiceDescriptor | undefined {
@@ -58,6 +60,31 @@ export function isStyleBasePrimitive(name: string): boolean {
 /** Render a plugin-owned (`ext`) declaration through its owner's emitter, against the active registries. */
 export function emitPluginDecl(d: ExtDecl, target: 'swift' | 'kotlin', ctx: EmitContext): string {
   return emitExtDecl(activeRegistries().calls, d, target, ctx)
+}
+
+/**
+ * Lower `call` through the plugin that owns its receiver (`chart.dispatch(…)`),
+ * against the active registries; `undefined` when no plugin claims it. The
+ * lookup is keyed by method name first, so an ordinary call costs one `Map.get`.
+ */
+export function lowerPluginMemberCall(
+  call: Extract<ExprIR, { kind: 'call' }>,
+  target: 'swift' | 'kotlin',
+  scope: PluginScope,
+  ctx: () => EmitContext,
+): string | undefined {
+  return lowerMemberCall(activeRegistries().calls, call, target, scope.declByName, ctx)
+}
+
+/**
+ * The unlowered-module entry for `module`: the active plugins' metadata first,
+ * then the compiler's own hand-maintained map (`core`) for modules no plugin owns.
+ */
+export function findUnloweredModule(
+  module: string,
+  core: ReadonlyMap<string, UnloweredModule>,
+): UnloweredModule | undefined {
+  return activeRegistries().unlowered.get(module) ?? core.get(module)
 }
 
 /** The descriptor for a `service` declaration; the parser only emits known hooks. */

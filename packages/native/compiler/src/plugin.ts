@@ -1,13 +1,14 @@
 import type { CompilerRegistries } from './active-registries'
-import type { CallRecognizer, DeclEmitter } from './call-lowering'
+import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
+import type { UnloweredSpec } from './unlowered-modules'
 import type { EmitOptions, ParseResult, TargetLanguage, TransformResult } from './types'
 
 /**
  * Bump ONLY when the plugin protocol or shared IR changes incompatibly.
- * Additive optional fields (`services`, `elements`, `calls`, `decls`, `modules`, `requires`, `builtIn`) never
+ * Additive optional fields (`services`, `elements`, `calls`, `decls`, `memberCalls`, `unlowered`, `modules`, `requires`, `builtIn`) never
  * bump it — an older plugin simply does not use them.
  */
 export const NATIVE_COMPILER_PLUGIN_API_VERSION = 1 as const
@@ -95,6 +96,22 @@ export interface CompilerPlugin<Target extends string = string> {
    * `EmitContext` facade and returns declaration text.
    */
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
+  /**
+   * Call EXPRESSIONS this plugin lowers, keyed by method name (`dispatch`):
+   * `<receiver>.<method>(…)` where `<receiver>` is a binding one of THIS plugin's
+   * `decls` created. The plugin never sees a call on any other receiver, so two
+   * plugins may both claim `dispatch` — the receiver decides. Each target returns
+   * the expression text, or `undefined` to decline. Requires `decls`.
+   */
+  readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
+  /**
+   * Unlowered-module metadata for the package(s) this plugin owns, keyed by
+   * module: the advice the "has NO native lowering" warning names, and the
+   * exports that DO lower and must stay silent. A module supplied by two
+   * plugins is a load-time error; a plugin's entry wins over the compiler's own
+   * hand-maintained one.
+   */
+  readonly unlowered?: Readonly<Record<string, UnloweredSpec>> | undefined
   /**
    * Import specifiers this plugin serves (`@acme/camera`, matched exactly or as
    * a `name/` prefix). A hook in `services` is claimed when it is imported from

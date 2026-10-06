@@ -92,12 +92,24 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
     const types = [...(compiler.registries.calls.emitters.get(owner)?.keys() ?? [])]
     lines.push(`  ${hook}  ${owner}  decls: ${types.length > 0 ? types.join(', ') : '-'}`)
   }
+  const memberCalls = [...compiler.registries.calls.memberCalls].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`member-call lowerings (${memberCalls.length}):`)
+  for (const [method, owners] of memberCalls) {
+    lines.push(`  .${method}()  ${[...owners.keys()].join(', ')}`)
+  }
+  const unlowered = [...compiler.registries.unlowered].sort(([a], [b]) => a.localeCompare(b))
+  lines.push(`unlowered-module metadata (${unlowered.length}):`)
+  for (const [module, { owner }] of unlowered) {
+    lines.push(`  ${module}  ${owner}`)
+  }
   lines.push(`discovered plugins (${discovered.length}):`)
   for (const found of discovered) {
     const services = Object.keys(found.plugin.services ?? {})
     const callNames = Object.keys(found.plugin.calls ?? {})
+    const memberNames = Object.keys(found.plugin.memberCalls ?? {})
+    const unloweredNames = Object.keys(found.plugin.unlowered ?? {})
     lines.push(
-      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}`,
+      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}${memberNames.length > 0 ? `  memberCalls: ${memberNames.join(', ')}` : ''}${unloweredNames.length > 0 ? `  unlowered: ${unloweredNames.join(', ')}` : ''}`,
     )
   }
   const undeclared = listPluginPackages(appDir).length - discovered.length
@@ -241,6 +253,14 @@ export function explainReport(
     lines.push(
       `  ${name} = ${type}  [call recognizer, owner: ${plugin}]  payload: ${payload}${emitter === undefined ? '  (NO emitter registered — not emitted)' : ''}`,
     )
+  }
+  // A call EXPRESSION the declaration's owner lowers (`chart.dispatch(…)`), reported once per receiver + method that appears.
+  for (const { name, plugin } of pluginDecls) {
+    for (const [method, owners] of compiler.registries.calls.memberCalls) {
+      if (!owners.has(plugin)) continue
+      if (!new RegExp(`\\b${name}\\s*\\.\\s*${method}\\s*\\(`).test(source)) continue
+      lines.push(`  ${name}.${method}(…)  [member call, owner: ${plugin}]`)
+    }
   }
   const imports = importedTags(source)
   for (const { lowering, owner } of compiler.registries.elements.entries) {

@@ -21,7 +21,7 @@
  */
 
 import type { EmitContext } from './emit-context'
-import type { ExtDecl, ExtPayload } from './types'
+import type { ExprIR, ExtDecl, ExtPayload } from './types'
 
 /** The call a recognizer is asked about. */
 export interface CallSite {
@@ -76,6 +76,29 @@ export interface DeclEmitter {
   readonly legacyKind?: string | undefined
 }
 
+/**
+ * A call EXPRESSION a plugin claims: `<receiver>.<method>(…)` where `<receiver>`
+ * is a binding declared by one of THIS plugin's `ext` declarations
+ * (`chart.dispatch({ … })` for `const chart = createChartHandle()`).
+ */
+export interface MemberCallSite {
+  /** The declaration the receiver names — always one of the claiming plugin's own. */
+  readonly receiver: ExtDecl
+  /** The method name (the key it was registered under). */
+  readonly method: string
+  readonly args: readonly ExprIR[]
+}
+
+/**
+ * How a plugin lowers its receiver's member calls. Each target returns the
+ * expression text, or `undefined` to DECLINE (the call then continues down the
+ * generic path exactly as if the plugin were absent).
+ */
+export interface MemberCallLowering {
+  swift(call: MemberCallSite, ctx: EmitContext): string | undefined
+  kotlin(call: MemberCallSite, ctx: EmitContext): string | undefined
+}
+
 export interface RegisteredCall {
   readonly recognizer: CallRecognizer
   /** The plugin that claimed the hook name. */
@@ -94,6 +117,8 @@ export interface CallRegistry {
   readonly emitters: ReadonlyMap<string, ReadonlyMap<string, DeclEmitter>>
   /** The emitter for `(plugin, type)`, or `undefined`. */
   emitter(plugin: string, type: string): DeclEmitter | undefined
+  /** Method name → owning plugin → member-call lowering. Looked up by method name first, so a call with no claimant costs one `Map.get`. */
+  readonly memberCalls: ReadonlyMap<string, ReadonlyMap<string, MemberCallLowering>>
 }
 
 type CallPlugin = {
@@ -101,6 +126,7 @@ type CallPlugin = {
   readonly modules?: readonly string[] | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
+  readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
 }
 
 /**
@@ -116,7 +142,15 @@ type CallPlugin = {
 export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry {
   const calls = new Map<string, RegisteredCall>()
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
+  const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
   for (const plugin of plugins) {
+    // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
+    // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
+    for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
+      const owners = memberCalls.get(method) ?? new Map<string, MemberCallLowering>()
+      owners.set(plugin.name, lowering)
+      memberCalls.set(method, owners)
+    }
     for (const [hook, recognizer] of Object.entries(plugin.calls ?? {})) {
       const existing = calls.get(hook)
       if (existing !== undefined) {
@@ -140,6 +174,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
     names: new Set(calls.keys()),
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),
+    memberCalls,
   })
 }
 
@@ -208,4 +243,28 @@ export function emitExtDecl(
   if (target === 'swift') return emitter.swift(decl, ctx)
   const out = emitter.kotlin(decl, ctx)
   return typeof out === 'string' ? out : out.join('\n  ')
+}
+
+/**
+ * Lower `call` through the plugin that owns its receiver, or return `undefined`
+ * (the common case: not a member call, no plugin claims the method name, the
+ * receiver is not a plugin declaration, or the plugin declined).
+ */
+export function lowerMemberCall(
+  registry: CallRegistry,
+  call: Extract<ExprIR, { kind: 'call' }>,
+  target: 'swift' | 'kotlin',
+  receiverOf: (name: string) => ExtDecl | undefined,
+  ctx: () => EmitContext,
+): string | undefined {
+  const callee = call.callee
+  if (callee.kind !== 'member' || callee.object.kind !== 'identifier') return undefined
+  const owners = registry.memberCalls.get(callee.property)
+  if (owners === undefined) return undefined
+  const receiver = receiverOf(callee.object.name)
+  if (receiver === undefined) return undefined
+  const lowering = owners.get(receiver.plugin)
+  if (lowering === undefined) return undefined
+  const site: MemberCallSite = { receiver, method: callee.property, args: call.args }
+  return lowering[target](site, ctx())
 }
