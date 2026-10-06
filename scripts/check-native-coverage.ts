@@ -1560,7 +1560,7 @@ async function main(): Promise<number> {
 
   // Dynamic import so the pure logic (imported by vitest) never eagerly loads
   // the compiler's parse/emit graph.
-  const { transform } = await import('../packages/native/compiler/src/index')
+  const { transform, FIRST_PARTY_VALIDATE_OPTIONS: validateOptions } = await import('./native-first-party-plugins')
   // Compiling is OPT-IN: swiftc is ~250ms and kotlinc ~2.5s per snippet, which
   // is fine in the native CI job and far too slow for validate-fast. The CI
   // job that already owns the toolchains sets PYREON_COVERAGE_COMPILE=1.
@@ -1585,9 +1585,9 @@ async function main(): Promise<number> {
       ? await import('../packages/native/compiler/src/validate')
       : {
           isSwiftcAvailable: () => false,
-          validateSwiftWithStubs: () => ({ ok: true }),
+          validateSwiftWithStubs: (_source: string, _options?: unknown) => ({ ok: true }),
           isKotlincAvailable: () => false,
-          validateKotlin: () => ({ ok: true }),
+          validateKotlin: (_source: string, _options?: unknown) => ({ ok: true }),
         }
   const canCompile = wantSwift && isSwiftcAvailable()
   const canCompileKotlin = wantKotlin && isKotlincAvailable()
@@ -1712,7 +1712,7 @@ async function main(): Promise<number> {
     // Swift detail, which is the one with the real SDK behind it.
     if (canCompileKotlin && entry.snippet && res.status === 'crosses') {
       const kotlin = transform(entry.snippet, { target: 'kotlin' })
-      const kv = validateKotlin(kotlin.code) as { ok: boolean; error?: string }
+      const kv = validateKotlin(kotlin.code, validateOptions) as { ok: boolean; error?: string }
       const knownK = KNOWN_UNCOMPILABLE_KOTLIN.get(entry.name)
       if (!kv.ok && knownK === undefined) {
         res.status = 'regression'
@@ -1729,7 +1729,7 @@ async function main(): Promise<number> {
     }
     if (canCompile && entry.snippet && res.status === 'crosses') {
       const swift = transform(entry.snippet, { target: 'swift' })
-      const v = validateSwiftWithStubs(swift.code) as { ok: boolean; error?: string }
+      const v = validateSwiftWithStubs(swift.code, validateOptions) as { ok: boolean; error?: string }
       const known = KNOWN_UNCOMPILABLE.get(entry.name)
       if (!v.ok && known === undefined) {
         // NOT in the ratchet: a package that used to compile has stopped, or a

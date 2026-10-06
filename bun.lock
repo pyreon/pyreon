@@ -1563,6 +1563,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -1575,8 +1576,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/code": {
       "name": "@pyreon/code",
@@ -2297,7 +2302,6 @@
       "name": "@pyreon/native-compiler",
       "version": "0.52.0",
       "dependencies": {
-        "@pyreon/charts": "workspace:^",
         "@pyreon/compiler": "workspace:*",
         "oxc-parser": "^0.152.0",
       },

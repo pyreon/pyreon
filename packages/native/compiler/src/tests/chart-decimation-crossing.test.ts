@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // `decimate-values.ts` joined the generated chart engine, so `lttbIndices` and
 // `minMaxBuckets` are real symbols on both targets. Two things follow, and both

@@ -3,8 +3,8 @@
 // about OTHER mechanics (a host's layout, a tap, a tooltip) build their
 // expectations from this instead of pinning the light literal, which would
 // re-pin the very divergence chart-native-parity.test.ts closes.
-import { CHART_THEME_FIELDS, chartThemeFields } from '../chart-hosts'
-import type { ChartThemeText } from '../chart-hosts'
+import { CHART_THEME_FIELDS, chartThemeFields } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import type { ChartThemeText } from '../../../../fundamentals/charts/src/native-plugin/hosts'
 
 export const SWIFT_SCHEME = (light: string, dark: string): string => `(pyreonColorScheme == .dark ? ${dark} : ${light})`
 export const KOTLIN_SCHEME = (light: string, dark: string): string => `(if (isSystemInDarkTheme()) ${dark} else ${light})`

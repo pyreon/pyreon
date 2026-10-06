@@ -35,6 +35,11 @@
       "bun": "./src/svg.ts",
       "import": "./lib/svg.js",
       "types": "./lib/types/svg.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -55,10 +60,12 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
@@ -74,5 +81,18 @@
   },
   "dependencies": {
     "@pyreon/primitives": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/charts"
+      ]
+    }
   }
 }

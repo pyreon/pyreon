@@ -42,6 +42,8 @@ export type {
 } from './call-lowering'
 export type { EmitContext, EmitTarget, StaticAttrValue } from './emit-context'
 export type { UnloweredModule, UnloweredSpec } from './unlowered-modules'
+export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
+export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'
 export { SERVICES, renderKotlinService } from './services'

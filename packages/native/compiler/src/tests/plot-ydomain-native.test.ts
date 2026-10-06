@@ -10,9 +10,9 @@
 // read off the generated struct rather than restated, so a regeneration cannot
 // silently invalidate it.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { PLOT_UNLOWERED_PROPS } from '../chart-hosts'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { PLOT_UNLOWERED_PROPS } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // The fixture shape the other plot suites use — a declared row interface, a
 // STRING category accessor and numeric marks. A first pass wrote

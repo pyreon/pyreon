@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { withKotlinContext, host } from '../plugins/charts/kotlin-facade'
-import { withSwiftContext, host as swiftHost } from '../plugins/charts/swift-facade'
+import { transform } from './charts-plugin'
+import { withKotlinContext, host } from '../../../../fundamentals/charts/src/native-plugin/kotlin-facade'
+import { withSwiftContext, host as swiftHost } from '../../../../fundamentals/charts/src/native-plugin/swift-facade'
 import type { EmitContext, SwiftEmitContext } from '../emit-context'
 
 // The Kotlin chart hosts are the built-in `@pyreon/charts` plugin's `emit.kotlin`. These specs pin the

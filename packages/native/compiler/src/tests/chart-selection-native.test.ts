@@ -7,9 +7,9 @@
 // rather than implying unbuilt work.
 
 import { describe, expect, it } from 'vitest'
-import { PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../chart-hosts'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const chart = (attrs: string): string => `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'

@@ -226,7 +226,8 @@
     },
     {
       "files": [
-        "packages/native/compiler/src/golden-fixtures/**"
+        "packages/native/compiler/src/golden-fixtures/**",
+        "packages/fundamentals/charts/native-golden/**"
       ],
       "rules": {
         "no-unused-vars": "off",

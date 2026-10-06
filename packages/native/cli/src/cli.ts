@@ -22,6 +22,7 @@ import { dirname, join, resolve } from 'node:path'
 import { createCompiler, type CompilerPlugin, type NativeCompiler, type TargetLanguage } from '@pyreon/native-compiler'
 import { pathToFileURL } from 'node:url'
 import { discoverPlugins } from './discover-plugins'
+import { nearestPackageDir } from './native-sources'
 import { explainReport, pluginsReport } from './plugin-commands'
 
 interface ParsedArgs {
@@ -181,7 +182,8 @@ recognized (a code-shaped declaration), its owner and type, and, per element
 a registered lowering claims, the plugin that owns that lowering.
 
 Plugins declared by dependencies (pyreon.native.plugin) load automatically for
-build/check, and only when the source imports one of the package's modules.
+build/check, and only when the source imports one of the package's modules. The
+dependencies are those of the app: --app, else the package containing --source.
 --no-plugins turns that off; explicit --plugin files always load.
 
 Targets:
@@ -205,6 +207,22 @@ This is an experimental CLI for the Pyreon Multi-Target
 Compiler (PMTC). See packages/native/cli/README.md for status.`)
 }
 
+/**
+ * The app whose declared dependencies plugin discovery walks: `--app`, else the package that contains
+ * the source being compiled (`--source`, or the file `explain` reads), else the working directory.
+ * The package containing the source is the right default because a monorepo builds an example from
+ * the repo root against `examples/<app>/src` — the root declares none of the libraries that app uses.
+ */
+export function resolveAppDir(parsed: Pick<ParsedArgs, 'app' | 'source' | 'file'>): string {
+  if (parsed.app !== undefined) return resolve(parsed.app)
+  const anchor = parsed.source ?? parsed.file
+  if (anchor !== undefined) {
+    const owning = nearestPackageDir(anchor)
+    if (owning !== null) return owning
+  }
+  return resolve(process.cwd())
+}
+
 /** Loads explicit local ESM plugins once before build/check/watch/LSP.
  * @example
  * const exitCode = await mainWithPlugins([
@@ -214,7 +232,7 @@ Compiler (PMTC). See packages/native/cli/README.md for status.`)
 export async function mainWithPlugins(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) return main(argv)
   const parsed = parseArgs(argv)
-  const appDir = resolve(parsed.app ?? process.cwd())
+  const appDir = resolveAppDir(parsed)
   if (parsed.command === 'plugins') {
     return printReport(await pluginsReport(appDir, parsed.verify === true))
   }
@@ -409,14 +427,18 @@ interface BunImportMeta {
 const meta = import.meta as ImportMeta & BunImportMeta
 if (meta.main === true) {
   const argv = process.argv.slice(2)
-  const code = main(argv)
-  // Long-running feedback modes stay alive via their own listeners (the
-  // LSP's stdin reader; `--watch`'s mtime poll). Calling process.exit
-  // here would tear those down — the LSP would die before serving a
-  // single request, and `--watch` would run one check then quit.
-  if (!argv.includes('--lsp') && !argv.includes('--watch')) {
-    process.exit(code)
-  }
+  // `mainWithPlugins`, not `main`: package plugins (a library's own lowering, e.g. `@pyreon/charts`)
+  // are discovered here, and the repo's example builds run THIS entry (`bun …/cli.ts build`), so a
+  // bare `main` would silently compile every plugin-owned library as if it had no native lowering.
+  void mainWithPlugins(argv).then((code) => {
+    // Long-running feedback modes stay alive via their own listeners (the
+    // LSP's stdin reader; `--watch`'s mtime poll). Calling process.exit
+    // here would tear those down — the LSP would die before serving a
+    // single request, and `--watch` would run one check then quit.
+    if (!argv.includes('--lsp') && !argv.includes('--watch')) {
+      process.exit(code)
+    }
+  })
 }
 
 

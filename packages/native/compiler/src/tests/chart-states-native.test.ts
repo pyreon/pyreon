@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /** `selectedMode="series"` on the plot host: the whole-series pin crosses natively. */
 describe.each(['swift', 'kotlin'] as const)('states on %s', (target) => {

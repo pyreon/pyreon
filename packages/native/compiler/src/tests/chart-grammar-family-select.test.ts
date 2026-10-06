@@ -3,7 +3,7 @@
 // `onSelect` is shaped per family (a heatmap reports its cell), which native
 // cannot build and warns about. The web grammar routes it the same way.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const grammar = `import { signal } from '@pyreon/reactivity'
 import { Chart, Cell } from '@pyreon/charts'

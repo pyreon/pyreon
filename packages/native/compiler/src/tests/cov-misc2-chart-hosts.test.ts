@@ -1,4 +1,4 @@
-// Branch matrix for `chart-hosts.ts` — the per-host data adapters and the
+// Branch matrix for `@pyreon/charts` native-plugin `hosts.ts` — the per-host data adapters and the
 // `<Chart>` grammar desugar, both reached through the real `transform()`.
 //
 // The adapters' whole job is to REFUSE a shape that cannot cross rather than
@@ -7,7 +7,7 @@
 // emit nothing.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })

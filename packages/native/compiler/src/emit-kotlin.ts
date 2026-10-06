@@ -8,7 +8,7 @@ import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
 import { kotlinStr } from './string-literals'
-import { bindServices, emitPluginDecl, findElementLowering, lowerPluginMemberCall, serviceFor } from './registry-lookup'
+import { bindServices, emitPluginDecl, findElementLowering, findScopeProvider, lowerPluginMemberCall, serviceFor } from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
 import { renderKotlinService, type ServiceDescriptor } from './services'
 import {
@@ -128,8 +128,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { chartThemeScope, colorModeScope, literalColorMode } from './chart-hosts'
-import type { RawChartTheme } from './chart-hosts'
+import { literalColorMode } from './color-mode'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   binderName,
@@ -7578,7 +7577,7 @@ function kotlinEmitContext(indent: number) {
       layoutModifiers: (el) => emitKotlinLayoutModifier(el),
       action: emitKotlinAction,
       constExpr: (name) => _moduleConstExprsKotlin.get(name),
-      colorScope: () => _chartThemeScope ?? undefined,
+      colorScope: () => _colorScope ?? undefined,
     },
     indent,
   )
@@ -7638,13 +7637,13 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
   if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
     // A literal `mode` pins the colour mode for the charts below — see the Swift twin.
-    const prevScope = _chartThemeScope
-    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined, false) ?? null
+    const prevScope = _colorScope
+    _colorScope = enterColorScope(e, prevScope)
     try {
       const p = ' '.repeat(indent + 2)
       return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     } finally {
-      _chartThemeScope = prevScope
+      _colorScope = prevScope
     }
   }
 
@@ -7744,17 +7743,14 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinStandaloneFlowControls(e, indent)
-  // `@pyreon/charts` family hosts (PyreonChartCanvas over the generated engine)
-  // lower in the built-in `@pyreon/charts` plugin (plugins/charts/kotlin*.ts) —
-  // claimed by the registry lookup at the top of this function.
-  // `<ChartThemeProvider>` — transparent on native; see the Swift twin for why.
-  // `<ChartThemeProvider>` — a compile-time theme scope; see the Swift twin.
+  // Library element hosts (e.g. the `@pyreon/charts` family) lower in the plugin that owns
+  // them — claimed by the registry lookup at the top of this function.
   // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
-  // mode; natively a compile-time scope the chart hosts below read. Children
-  // render as they are.
+  // mode; natively a compile-time scope the plugins' own elements read
+  // (`EmitContext.colorScope`). Children render as they are.
   if (tag === 'ColorModeProvider' && canAliasIntercept(tag, '@pyreon/core')) {
-    const prevScope = _chartThemeScope
-    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined) ?? null
+    const prevScope = _colorScope
+    _colorScope = enterColorScope(e, prevScope)
     try {
       const inner = ' '.repeat(indent + 2)
       const box = `Box {\n${e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
@@ -7767,17 +7763,19 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       const cfg = `Configuration(LocalConfiguration.current).apply { uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.${night} }`
       return `CompositionLocalProvider(LocalConfiguration provides ${cfg}) {\n${inner}${box}\n${' '.repeat(indent)}}`
     } finally {
-      _chartThemeScope = prevScope
+      _colorScope = prevScope
     }
   }
-  if (tag === 'ChartThemeProvider') {
-    const prev = _chartThemeScope
-    _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)
+  // A scope-only provider element (a library's own, e.g. a chart theme provider): transparent wrapper, children under the scope.
+  const scopeProvider = findScopeProvider(tag, canAliasIntercept)
+  if (scopeProvider?.transparent === true) {
+    const prev = _colorScope
+    _colorScope = scopeProvider.enter(e, { warn: pushEmitWarning, outer: prev ?? undefined }) ?? null
     try {
       const inner = ' '.repeat(indent + 2)
       return `Box {\n${e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     } finally {
-      _chartThemeScope = prev
+      _colorScope = prev
     }
   }
   // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
@@ -8773,6 +8771,16 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 }
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
+/**
+ * The colour scope a provider element (`<PyreonUI mode>`, `<ColorModeProvider mode>`) opens for its children:
+ * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
+ */
+function enterColorScope(e: Extract<ExprIR, { kind: 'jsx-element' }>, outer: object | null): object | null {
+  const provider = findScopeProvider(e.tag, canAliasIntercept)
+  if (provider === undefined) return outer
+  return provider.enter(e, { warn: pushEmitWarning, outer: outer ?? undefined }) ?? null
+}
+
 function pushEmitWarning(w: string): void {
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
 }
@@ -11778,8 +11786,8 @@ function ktChartDouble(text: string): string {
  */
 let _pluginScope: PluginScope = createPluginScope()
 
-/** The enclosing `<ChartThemeProvider>`'s resolved theme, while its children are emitted (mirror of the Swift emitter). */
-let _chartThemeScope: RawChartTheme | null = null
+/** The compile-time colour scope the enclosing provider opened (mirror of the Swift emitter). */
+let _colorScope: object | null = null
 
 /** Mirror of `swiftSpreadResolver` against the Kotlin inference ctx. */
 function kotlinSpreadResolver(indent: number): SpreadResolver {

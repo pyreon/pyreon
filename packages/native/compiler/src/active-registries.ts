@@ -26,6 +26,7 @@ import {
   createRuntimeTypeRegistry,
   type RegisteredParseRefinement,
 } from './parse-extensions'
+import { createScopeRegistry, type ScopeRegistry } from './scope-provider'
 import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
 import {
   createServiceRegistry,
@@ -42,6 +43,8 @@ export interface CompilerRegistries {
   readonly serviceTables: ServiceTables
   /** `(module, tag)` → element lowering + owner. */
   readonly elements: ElementRegistry
+  /** `(module, tag)` → colour-scope provider + owner. */
+  readonly scopes: ScopeRegistry
   /** Hook name → call recognizer, and `(plugin, type)` → declaration emitter. */
   readonly calls: CallRegistry
   /** Module → plugin-supplied unlowered-module metadata (advice + the exports that do lower). */
@@ -74,6 +77,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     services,
     serviceTables: createServiceTables(services),
     elements: createElementRegistry(ordered),
+    scopes: createScopeRegistry(ordered),
     calls,
     unlowered: createUnloweredRegistry(ordered),
     runtimeTypes: createRuntimeTypeRegistry(ordered),

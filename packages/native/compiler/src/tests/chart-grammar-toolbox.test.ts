@@ -2,7 +2,7 @@
 // chart without one does not bundle it on the web). On native the desugar
 // turns it into the `toolbox` config the host already lowers.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const head = `import { signal } from '@pyreon/reactivity'
 interface Row { m: string; v: number }

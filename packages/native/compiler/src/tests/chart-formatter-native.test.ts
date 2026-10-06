@@ -5,8 +5,7 @@
 // so the `(Double) -> String` slot rejected it on iOS and Android alike, with
 // no warning at compile time.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 
 const src = (jsx: string, extra = ''): string => `import { Axis, Chart, Line, date, percent } from '@pyreon/charts'
 interface Row { d: string; v: number }

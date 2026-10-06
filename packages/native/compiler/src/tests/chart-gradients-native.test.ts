@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /** A mark's literal `gradient` option lowers to the engine's `SeriesGradient` on native. */
 describe.each(['swift', 'kotlin'] as const)('grammar gradient on %s', (target) => {

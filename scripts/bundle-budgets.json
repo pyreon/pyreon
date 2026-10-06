@@ -1,8 +1,8 @@
 {
-  "_doc": "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) — a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.",
+  "_doc": "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree \u2014 this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) \u2014 a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.",
   "_units": "bytes (gzipped)",
   "_thinHeadroom": {
-    "_doc": "Budgets whose headroom is below the ~1.5% macOS/ubuntu gzip variance, and so cannot be satisfied reliably on both. Grandfathered so existing thin entries do not redden unrelated PRs; a NEW thin budget fails the gate. This list only shrinks — each entry names what retires it."
+    "_doc": "Budgets whose headroom is below the ~1.5% macOS/ubuntu gzip variance, and so cannot be satisfied reliably on both. Grandfathered so existing thin entries do not redden unrelated PRs; a NEW thin budget fails the gate. This list only shrinks \u2014 each entry names what retires it."
   },
   "@pyreon/a11y": 1728,
   "@pyreon/atlas": 16329,

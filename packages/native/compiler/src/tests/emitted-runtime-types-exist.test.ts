@@ -24,15 +24,17 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { KOTLIN_CHART_VIEW_STUBS, SWIFT_CHART_VIEW_STUBS } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 
 const SRC = resolve(import.meta.dirname, '..')
 const REPO = resolve(SRC, '../../../..')
+// The charts plugin owns its emitters and its type-gate stubs: they live with the library, not the compiler.
+const CHARTS_PLUGIN = join(REPO, 'packages/fundamentals/charts/src/native-plugin')
 
 /** Pyreon-owned runtime types. Anything else in a stub is an SDK mirror. */
 const OWNED = /^(Pyreon[A-Za-z0-9]*|Media3AudioEngine|AVFoundationAudioEngine|Android[A-Z][A-Za-z0-9]*|UIKit[A-Z][A-Za-z0-9]*|CoreBluetoothScanner|CoreMotionSource|AVFoundationRecordingEngine|AVSpeechSynth)$/
 
-const declaredIn = (file: string): Set<string> => {
-  const text = readFileSync(join(SRC, file), 'utf8')
+const declaredIn = (text: string): Set<string> => {
   const names = new Set<string>()
   for (const m of text.matchAll(
     /\b(?:public\s+)?(?:final\s+)?(?:class|struct|object|enum class|enum|interface|protocol|fun)\s+([A-Za-z_][A-Za-z0-9_]*)/g,
@@ -117,10 +119,10 @@ describe('every Pyreon type the emit names exists in the real runtime', () => {
   // Every source file that can WRITE a Pyreon-owned type name into generated
   // code — not just the two main emitters. The scan read `emit-swift.ts` /
   // `emit-kotlin.ts` alone, so a name emitted only from a host lowering
-  // (`chart-hosts.ts`), a style/token emitter (`emit-style.ts`,
+  // (the charts plugin's `hosts.ts`), a style/token emitter (`emit-style.ts`,
   // `emit-tokens.ts`, `emit-rocketstyle.ts`), the primitive tables
   // (`canonical-primitives.ts`), the chart struct table
-  // (`chart-engine-structs.ts`) or the flow lowering (`flow-lowering.ts`) was
+  // (the charts plugin's `engine-structs.ts`) or the flow lowering (`flow-lowering.ts`) was
   // never checked against the runtime at all.
   //
   // Nothing is currently missed through the added files — every name they
@@ -130,32 +132,38 @@ describe('every Pyreon type the emit names exists in the real runtime', () => {
   // Both language rows read the SAME list because most of these files are
   // target-agnostic; the by-language pairing that matters is the `ext`-keyed
   // runtime CORPUS, which is unchanged (see the corpusFor rationale above).
-  const EMITTERS = [
+  const EMITTERS: string[] = [
     'emit-swift.ts',
     'emit-kotlin.ts',
     'canonical-primitives.ts',
-    'chart-hosts.ts',
-    'chart-engine-structs.ts',
     'flow-lowering.ts',
     'emit-style.ts',
     'emit-tokens.ts',
     'emit-rocketstyle.ts',
-  ] as const
+  ].map((f) => join(SRC, f))
+  // The charts plugin's host lowering (`hosts.ts`), the engine struct table and the per-target emitters.
+  for (const f of ['hosts.ts', 'engine-structs.ts', 'swift-hosts.ts', 'swift-plot.ts', 'swift-support.ts', 'kotlin-hosts.ts', 'kotlin-plot.ts', 'kotlin-support.ts']) {
+    EMITTERS.push(join(CHARTS_PLUGIN, f))
+  }
 
   it('every scanned emitter file exists (an unreadable path would silently narrow the scan)', () => {
-    for (const f of EMITTERS) expect(existsSync(join(SRC, f)), f).toBe(true)
+    for (const f of EMITTERS) expect(existsSync(f), f).toBe(true)
   })
 
-  it.each([
-    ['swift-stubs.ts', '.swift'],
-    ['kotlin-stubs.ts', '.kt'],
-  ] as const)(
+  const STUB_SOURCES: ReadonlyArray<readonly [string, () => string, '.swift' | '.kt']> = [
+    ['swift-stubs.ts', () => readFileSync(join(SRC, 'swift-stubs.ts'), 'utf8'), '.swift'],
+    ['kotlin-stubs.ts', () => readFileSync(join(SRC, 'kotlin-stubs.ts'), 'utf8'), '.kt'],
+    ["the charts plugin's Swift stubs", () => SWIFT_CHART_VIEW_STUBS, '.swift'],
+    ["the charts plugin's Kotlin stubs", () => KOTLIN_CHART_VIEW_STUBS, '.kt'],
+  ]
+
+  it.each(STUB_SOURCES)(
     '%s declares nothing Pyreon-owned that any emitter writes and the runtime lacks',
-    (stubFile, ext) => {
+    (_label, stubText, ext) => {
     const corpus = corpusFor(ext)
-    const emit = EMITTERS.map((f) => readFileSync(join(SRC, f), 'utf8')).join('\n')
+    const emit = EMITTERS.map((f) => readFileSync(f, 'utf8')).join('\n')
     const missing: string[] = []
-    for (const name of declaredIn(stubFile)) {
+    for (const name of declaredIn(stubText())) {
       // Only the ones an emitter actually writes into generated code. A stub
       // may legitimately declare a helper no emit names.
       if (!emit.includes(name)) continue

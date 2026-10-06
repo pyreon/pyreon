@@ -20,8 +20,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { compileKotlinViaDaemon } from './kotlin-daemon'
-import { KOTLIN_CHART_VIEW_STUBS, KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
-import { SWIFT_CHART_VIEW_STUBS, SWIFT_UI_STUBS } from './swift-stubs'
+import { KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
+import { SWIFT_UI_STUBS } from './swift-stubs'
+import { kotlinAugmentation, swiftAugmentation, type ValidateOptions } from './stub-augmentation'
 import {
   readToolProbe,
   withVerdictCache,
@@ -496,23 +497,6 @@ export function _swiftInputPrelude(stripped: string, observation: string): strin
   return foundation + SWIFT_NETWORKING_SHIM + observation
 }
 
-// ---------------------------------------------------------------------------
-// `@pyreon/charts` hosts: an emitted `<SankeyChart>` names the GENERATED
-// engine (`layoutSankey` / `renderSankey` / the family structs) and the
-// runtime's `PyreonChartCanvas`. The engine is generated from the charts
-// sources, so a hand-written stub of it would be the drift-prone copy the
-// stub-fidelity rule forbids; instead, when a chart host is present, the stub
-// bundle pulls in the REAL committed engine plus the canvas-owned draw-list
-// types extracted VERBATIM (exactly how native-chart-engine-generated.test.ts
-// compiles them), and stubs only the two views the engine never declares
-// (GeometryReader, PyreonChartCanvas). Those two view stubs live in
-// swift-stubs.ts / kotlin-stubs.ts — where the stub-coverage ratchet looks —
-// so `PyreonChartCanvas` counts as covered. Outside the monorepo the runtime files
-// are absent: the view stubs still apply and the engine symbols are reported
-// missing — a loud outcome, never a silent pass.
-// ---------------------------------------------------------------------------
-
-const CHART_HOST_MARK = /\bPyreonChartCanvas\(/
 const NATIVE_PACKAGES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 function readIfPresent(p: string): string | undefined {
@@ -523,49 +507,7 @@ function readIfPresent(p: string): string | undefined {
   }
 }
 
-/** The Swift stub text a chart-host emit needs beyond the SwiftUI bundle; `''` when no host is present. */
-export function swiftChartAugmentation(source: string): string {
-  if (!CHART_HOST_MARK.test(source)) return ''
-  const canvas = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'))
-  const engine = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'))
-  if (canvas === undefined || engine === undefined) return SWIFT_CHART_VIEW_STUBS
-  const start = canvas.indexOf('public struct PyreonChartPt')
-  const end = canvas.indexOf('/// Parse the engine')
-  const types = start >= 0 && end > start ? canvas.slice(start, end) : ''
-  // The extracted canvas section owns the real locale helpers. Keep their tiny
-  // fallback declarations only when the runtime source is absent; concatenating
-  // both made every unrelated chart-host swiftc test fail with redeclarations.
-  const viewStubs = SWIFT_CHART_VIEW_STUBS
-    .replace('public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }\n', '')
-    .replace('public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }\n', '')
-  return viewStubs + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
-}
-
-/**
- * The `data class Pyreon…(…)` declarations of the Kotlin chart canvas, verbatim.
- * Comments are stripped first: the match ends at the first `)`, so a doc
- * comment with a parenthesis in it would cut a class short mid-parameter-list.
- */
-export function kotlinCanvasDataClasses(canvas: string): string[] {
-  const code = canvas.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-  return [...code.matchAll(/data class Pyreon\w+\([^)]*\)/g)].map((m) => m[0])
-}
-
-/** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */
-export function kotlinChartAugmentation(source: string): string {
-  if (!CHART_HOST_MARK.test(source)) return ''
-  const canvas = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartCanvas.kt'))
-  const engine = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt'))
-  if (canvas === undefined || engine === undefined) return KOTLIN_CHART_VIEW_STUBS
-  const decls = kotlinCanvasDataClasses(canvas)
-  const body = engine
-    .split('\n')
-    .filter((l) => !l.startsWith('package '))
-    .join('\n')
-  return '\n' + decls.join('\n') + '\n' + KOTLIN_CHART_VIEW_STUBS + '\n' + body
-}
-
-export function validateSwiftWithStubs(source: string): ValidationResult {
+export function validateSwiftWithStubs(source: string, options?: ValidateOptions): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -619,7 +561,7 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   // build — the local module type wins for bare references. Our single-module
   // concat would instead see it as an "invalid redeclaration". Drop the stub's
   // copy of any type the emit declares so the concat behaves like real shadowing.
-  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, stripped) + swiftChartAugmentation(stripped)
+  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, stripped) + swiftAugmentation(options, stripped)
 
   // Everything above transformed the source; `stub` and `inputText` ARE the
   // bytes swiftc will see. Keying on them means every transform — import
@@ -680,7 +622,7 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
  * written as separate files, not concatenated), so a file-private helper two
  * modules both declare is correctly NOT a collision.
  */
-export function validateSwiftFilesWithStubs(sources: readonly string[]): ValidationResult {
+export function validateSwiftFilesWithStubs(sources: readonly string[], options?: ValidateOptions): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -699,7 +641,7 @@ export function validateSwiftFilesWithStubs(sources: readonly string[]): Validat
     return { ok: true, skipped: true, skipReason: 'Observation module unavailable on this toolchain' }
   }
   const all = stripped.join('\n')
-  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, all) + swiftChartAugmentation(all)
+  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, all) + swiftAugmentation(options, all)
   const inputs = stripped.map((s) => {
     const observation = /@Observable\b/.test(s) && !/^import Observation\s*$/m.test(s) ? 'import Observation\n' : ''
     return _swiftInputPrelude(s, observation) + s
@@ -816,22 +758,22 @@ export function _resetKotlincCache(): void {
  * production deploy compiles against actual Compose, not against
  * these stubs.
  */
-export function validateKotlin(source: string): ValidationResult {
+export function validateKotlin(source: string, options?: ValidateOptions): ValidationResult {
   // kotlinc prints its version on STDERR, so the captured version is '' even
   // when the tool is present; the presence check has to be explicit.
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isKotlincAvailable()) {
-    return validateKotlinUncached(source)
+    return validateKotlinUncached(source, options)
   }
   return withVerdictCache(
     'kotlin' satisfies ValidateKind,
     kotlincVersion(),
-    KOTLIN_COMPOSE_STUBS + kotlinChartAugmentation(source),
+    KOTLIN_COMPOSE_STUBS + kotlinAugmentation(options, source),
     source,
-    () => validateKotlinUncached(source),
+    () => validateKotlinUncached(source, options),
   )
 }
 
-function validateKotlinUncached(source: string): ValidationResult {
+function validateKotlinUncached(source: string, options: ValidateOptions | undefined): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -850,7 +792,7 @@ function validateKotlinUncached(source: string): ValidationResult {
   // kotlin-daemon.ts). Null means the daemon cannot run here (or died on
   // this request), and the per-check `kotlinc` below answers instead — the
   // verdict is the same either way; only the cost differs.
-  const augmentation = kotlinChartAugmentation(source)
+  const augmentation = kotlinAugmentation(options, source)
   const warm = compileKotlinViaDaemon(source, KOTLIN_COMPOSE_STUBS, augmentation, kotlincVersion(), COMPILE_TIMEOUT_MS)
   if (warm) {
     return warm.code === 0 ? { ok: true } : { ok: false, error: warm.output.trim() || 'kotlinc failed with no output' }
@@ -863,7 +805,7 @@ function validateKotlinUncached(source: string): ValidationResult {
   const stubsPath = join(tempDir, 'PyreonStubs.kt')
   const inputPath = join(tempDir, 'Input.kt')
   const outDir = join(tempDir, 'out')
-  writeFileSync(stubsPath, KOTLIN_COMPOSE_STUBS + kotlinChartAugmentation(source), 'utf8')
+  writeFileSync(stubsPath, KOTLIN_COMPOSE_STUBS + kotlinAugmentation(options, source), 'utf8')
   writeFileSync(inputPath, source, 'utf8')
 
   try {
@@ -896,7 +838,7 @@ function validateKotlinUncached(source: string): ValidationResult {
  * `Redeclaration` no per-file compile can see. Written as separate files, so
  * a `private` top-level helper stays file-scoped exactly as in a real build.
  */
-export function validateKotlinFiles(sources: readonly string[]): ValidationResult {
+export function validateKotlinFiles(sources: readonly string[], options?: ValidateOptions): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -909,7 +851,7 @@ export function validateKotlinFiles(sources: readonly string[]): ValidationResul
     }
     return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
   }
-  const stubs = KOTLIN_COMPOSE_STUBS + kotlinChartAugmentation(sources.join('\n'))
+  const stubs = KOTLIN_COMPOSE_STUBS + kotlinAugmentation(options, sources.join('\n'))
   return withVerdictCache(
     'kotlin-module' satisfies ValidateKind,
     kotlincVersion(),

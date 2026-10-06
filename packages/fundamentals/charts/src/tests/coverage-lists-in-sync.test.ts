@@ -41,6 +41,14 @@ function stringArrayAfter(file: string, key: string): string[] {
   return [...src.slice(open, close).matchAll(/'([^']+)'/g)].map((m) => m[1]!)
 }
 
+/**
+ * Excluded from node coverage but NOT browser code: the native-compiler plugin is tooling that runs
+ * in Node and is verified by behaviour in `@pyreon/native-compiler`'s suite (the golden corpus and
+ * the chart emit specs). It is not coverage-measured anywhere — see `vitest.config.ts` — so the
+ * exception is named here instead of being silently tolerated.
+ */
+const VERIFIED_BY_NATIVE_COMPILER = ['src/native-plugin.ts', 'src/native-plugin/**']
+
 const nodeExcluded = stringArrayAfter('vitest.config.ts', 'coverageExclude:')
 const browserIncluded = stringArrayAfter('vitest.browser.config.ts', 'include:')
 
@@ -53,7 +61,7 @@ describe('node coverageExclude ⇄ browser coverage include', () => {
   })
 
   it('measures every node-excluded file in the browser run', () => {
-    const nowhere = nodeExcluded.filter((f) => !browserIncluded.includes(f))
+    const nowhere = nodeExcluded.filter((f) => !browserIncluded.includes(f) && !VERIFIED_BY_NATIVE_COMPILER.includes(f))
     expect(
       nowhere,
       `excluded from node coverage AND absent from the browser coverage include, ` +
@@ -61,6 +69,11 @@ describe('node coverageExclude ⇄ browser coverage include', () => {
         `vitest.browser.config.ts's coverage.include, or stop excluding them in ` +
         `vitest.config.ts — the node run may well cover them.`,
     ).toEqual([])
+  })
+
+  it('the plugin exception points at a suite that really exercises the plugin', () => {
+    const spec = readFileSync(join(PKG_ROOT, '../../native/compiler/src/tests/charts-plugin.ts'), 'utf-8')
+    expect(spec).toContain('fundamentals/charts/src/native-plugin/plugin')
   })
 
   it('every listed path points at a file that exists', () => {

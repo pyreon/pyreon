@@ -182,6 +182,8 @@ export function createCompiler<Target extends string = never>(
       prepareIR: plugin.prepareIR,
       services: plugin.services,
       elements: plugin.elements,
+      scopes: plugin.scopes,
+      stubs: plugin.stubs,
       calls: plugin.calls,
       decls: plugin.decls,
       memberCalls: plugin.memberCalls,

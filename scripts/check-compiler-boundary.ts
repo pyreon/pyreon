@@ -57,7 +57,6 @@ export const COMPILERS: readonly CompilerSpec[] = [
     // primitives is the cross-target authoring API PMTC exists to lower; core/compiler are the substrate.
     contract: ['primitives', 'core', 'compiler', 'reactivity', 'native-compiler'],
     generated: [
-      'chart-engine-structs.ts',
       'generated-flow-webview-host.ts',
       // @pyreon/hooks' own plugin, copied by scripts/gen-native-builtin-plugins.ts (freshness-gated).
       'built-in-services.generated.ts',

@@ -17,7 +17,7 @@
 //    struct it denies is worse than no line, so each suppression is paired
 //    here with the neighbouring shape that must still warn.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const P = '@pyreon/primitives'
 

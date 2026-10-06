@@ -24,14 +24,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { buildChartEngine, buildChartEngineStructs } from '../../scripts/gen-chart-engine'
-import {
-  isKotlincAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftTypecheck,
-  kotlinCanvasDataClasses,
-} from '../validate'
+import { buildChartEngine, buildChartEngineStructs } from '../../../../fundamentals/charts/scripts/gen-native-engine'
+import { validateKotlin } from './charts-plugin'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
+import { kotlinCanvasDataClasses } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
 const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
@@ -52,14 +48,14 @@ const withoutPackage = (code: string): string =>
 describe('native chart engine — generated, drift-locked, compile-proven', () => {
   it('committed files are byte-identical to a fresh generation', () => {
     const { swift, kotlin } = buildChartEngine(REPO)
-    const hint = 'regenerate: bun packages/native/compiler/scripts/gen-chart-engine.ts'
+    const hint = 'regenerate: bun packages/fundamentals/charts/scripts/gen-native-engine.ts'
     expect(read(SWIFT_OUT), hint).toBe(swift)
     expect(read(KOTLIN_OUT), hint).toBe(kotlin)
   })
 
   it('the compiler-side struct registry is byte-identical to a fresh generation and names the runtime types', () => {
     const fresh = buildChartEngineStructs(REPO)
-    expect(read('packages/native/compiler/src/chart-engine-structs.ts'), 'regenerate: bun packages/native/compiler/scripts/gen-chart-engine.ts').toBe(fresh)
+    expect(read('packages/fundamentals/charts/src/native-plugin/engine-structs.ts'), 'regenerate: bun packages/fundamentals/charts/scripts/gen-native-engine.ts').toBe(fresh)
     expect(fresh).toContain('"name": "SankeyNode"')
     expect(fresh).toContain('"name": "PyreonDrawCmd"')
     expect(fresh).not.toMatch(/"name": "(?:Pt|Rect|DrawCmd)"/)

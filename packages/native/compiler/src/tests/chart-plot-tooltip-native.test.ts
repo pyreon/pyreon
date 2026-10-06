@@ -6,11 +6,11 @@
 // on nothing clears it. A named `tooltipFormatter` lowers; an inline one is
 // reported. `crosshair` (a hover concept) is named as web-only.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 import { kotlinTheme, swiftTheme } from './chart-theme-text'
 const SW = swiftTheme()
 const KT = kotlinTheme()
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const HEAD = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'

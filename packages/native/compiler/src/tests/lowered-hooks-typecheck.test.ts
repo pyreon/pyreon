@@ -35,9 +35,9 @@
 // iOS. Device evidence covers the path the example takes, not the API surface.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 import { nativeLoweredHooks } from '../parse'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const NATIVE_LOWERED_HOOKS = nativeLoweredHooks()
 
@@ -197,12 +197,6 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
   [
     'useLoaderData',
     'already warns — a documented, disclosed gap rather than a silent one.',
-  ],
-  [
-    'createChartHandle',
-    'claimed by the built-in @pyreon/charts plugin (a plugin call name, so it joins the allowlist) and ' +
-      'type-checked on both targets by chart-handle-native.test.ts, which needs the generated chart-engine ' +
-      'structs and the bound <PlotChart handle> this one-hook template cannot express.',
   ],
 ])
 

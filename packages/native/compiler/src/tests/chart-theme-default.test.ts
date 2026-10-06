@@ -1,10 +1,10 @@
-// The compiler inlines the web hosts' default ChartTheme (chart-hosts.ts
+// The compiler inlines the web hosts' default ChartTheme (`@pyreon/charts` native-plugin hosts.ts
 // CHART_THEME_DEFAULT) because the generated engine's `defaultTheme` is
 // module-private. Two copies of one literal drift, so this locks them together
-// against the engine SOURCE — imported by path, the way gen-chart-engine.ts reads
+// against the engine SOURCE — imported by path, the way gen-native-engine.ts reads
 // it, rather than through a package dependency the compiler does not otherwise need.
 import { join } from 'node:path'
-import { CHART_THEMES, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, NAMED_PALETTES, chartDouble } from '../chart-hosts'
+import { CHART_THEMES, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, NAMED_PALETTES, chartDouble } from '../../../../fundamentals/charts/src/native-plugin/hosts'
 
 const ENGINE = join(import.meta.dirname, '../../../../fundamentals/charts/src/engine')
 

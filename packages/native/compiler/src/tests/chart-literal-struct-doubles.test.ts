@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './charts-plugin'
+import { isKotlincAvailable } from '../validate'
 
 // A literal row handed to a chart host is rebuilt as the engine struct, and
 // the engine types some of those fields as Double. Kotlin does not widen an

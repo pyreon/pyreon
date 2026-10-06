@@ -138,7 +138,7 @@ describe('createCompiler wiring', () => {
     const compiler = createCompiler({
       plugins: [
         plugin('second', { requires: ['first'], transformIR: () => void order.push('second') }),
-        plugin('first', { requires: ['@pyreon/charts'], transformIR: () => void order.push('first') }),
+        plugin('first', { requires: ['@pyreon/coolgrid'], transformIR: () => void order.push('first') }),
       ],
     })
     compiler.transform('export function A() { return <Text>a</Text> }', { target: 'swift' })
@@ -146,10 +146,10 @@ describe('createCompiler wiring', () => {
   })
 
   it('replaces a built-in by name only through `discovered`', () => {
-    const replacement = plugin('@pyreon/charts', { services: { useThing: spec } })
+    const replacement = plugin('@pyreon/coolgrid', { services: { useThing: spec } })
     expect(() => createCompiler({ plugins: [replacement] })).toThrow(/Duplicate native compiler plugin/)
     const compiler = createCompiler({ discovered: [replacement] })
-    expect(compiler.services.get('useThing')?.owner).toBe('@pyreon/charts')
+    expect(compiler.services.get('useThing')?.owner).toBe('@pyreon/coolgrid')
   })
 
   it.each([

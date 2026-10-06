@@ -2,15 +2,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { PLOT_UNLOWERED_PROPS } from '../chart-hosts'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftUIAvailable,
-  swiftChartAugmentation,
-  validateKotlin,
-  validateSwiftTypecheck,
-} from '../validate'
+import { PLOT_UNLOWERED_PROPS } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin } from './charts-plugin'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
+import { swiftChartAugmentation } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
 const read = (p: string) => readFileSync(join(REPO, p), 'utf8')

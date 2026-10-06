@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { isKotlincAvailable, isSwiftcAvailable, kotlinCanvasDataClasses } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { kotlinCanvasDataClasses } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 
 const runtime = join(__dirname, '../../..')
 const read = (path: string): string => readFileSync(join(runtime, path), 'utf8')

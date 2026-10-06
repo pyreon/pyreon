@@ -16,7 +16,7 @@
 // Emit-shape assertions only — no toolchain calls.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const sw = (src: string) => {
   const r = transform(src, { target: 'swift' })

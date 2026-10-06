@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
-import { _resetKotlincCache, kotlinChartAugmentation, validateKotlin } from '../validate'
+import { _resetKotlincCache, validateKotlin } from '../validate'
 import { _resetValidateCache, withVerdictCache } from '../validate-cache'
 
 // An absent tool must SKIP. The skip check used to live only inside the cached
@@ -36,7 +36,7 @@ afterEach(() => {
 describe('an absent kotlinc skips even when a verdict is stored for the source', () => {
   it('skips instead of returning the planted verdict', () => {
     // Plant exactly the entry a machine with kotlinc would have written.
-    withVerdictCache('kotlin', '', KOTLIN_COMPOSE_STUBS + kotlinChartAugmentation(SOURCE), SOURCE, () => ({
+    withVerdictCache('kotlin', '', KOTLIN_COMPOSE_STUBS, SOURCE, () => ({
       ok: true,
     }))
     _resetValidateCache()

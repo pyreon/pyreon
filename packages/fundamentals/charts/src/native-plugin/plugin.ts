@@ -1,7 +1,6 @@
-import { CHARTS_PLUGIN_NAME, CHART_HANDLE_TYPE, chartHandleSeriesKey } from './charts/names'
-import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from '../chart-engine-structs'
-import type { DeclEmitter, MemberCallLowering, MemberCallSite } from '../call-lowering'
-import type { EmitContext } from '../emit-context'
+import { CHARTS_PLUGIN_NAME, CHART_HANDLE_TYPE, chartHandleSeriesKey } from './names'
+import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from './engine-structs'
+import { NATIVE_COMPILER_PLUGIN_API_VERSION, forEachExpr, type CompilerModule, type CompilerPlugin, type DeclEmitter, type DeclIR, type ElementLowering, type EmitContext, type ExprIR, type ExtDecl, type MemberCallLowering, type MemberCallSite, type ParseRefinement, type ScopeProvider } from '@pyreon/native-compiler/plugin-api'
 import {
   ACCESSOR_CHART_HOSTS,
   GRAMMAR_CONFIG_TAGS,
@@ -10,18 +9,13 @@ import {
   FRAME_CHART_HOSTS,
   chartActionFields,
   chartHostTags,
-} from '../chart-hosts'
-import type { ElementLowering } from '../element-lowering'
-import { emitKotlinChartElement } from './charts/kotlin'
-import { emitSwiftChartElement } from './charts/swift'
-import { forEachExpr } from '../expr-walk'
-import type { ParseRefinement } from '../parse-extensions'
-import type { DeclIR, ExprIR, ExtDecl } from '../types'
-import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
-  type CompilerModule,
-  type CompilerPlugin,
-} from '../plugin'
+  chartThemeScope,
+  colorModeScope,
+} from './hosts'
+import type { RawChartTheme } from './hosts'
+import { chartsStubs } from './stubs'
+import { emitKotlinChartElement } from './kotlin'
+import { emitSwiftChartElement } from './swift'
 
 const ENTRYPOINTS = new Set([
   '@pyreon/charts',
@@ -142,14 +136,42 @@ const chartHostLowering: ElementLowering = Object.freeze({
  * (it asks the component's declarations whether the name is a handle and, on
  * Swift, resolves the handle's deferred series count).
  */
+/**
+ * The compile-time colour scope the chart hosts read. `<PyreonUI mode>` and
+ * `<ColorModeProvider mode>` pin the framework-wide mode (a literal `"light"` /
+ * `"dark"`; anything else keeps the platform scheme), and `<ChartThemeProvider>`
+ * layers a theme over it. The core opens and closes the scope around the
+ * element's children; what it IS belongs here, as the resolved chart theme.
+ */
+const chartScopes: readonly ScopeProvider[] = Object.freeze([
+  {
+    module: '@pyreon/ui-core',
+    tags: ['PyreonUI', 'PyreonUIProvider'],
+    // A reactive `<PyreonUI mode>` keeps the platform scheme silently, as it always has.
+    enter: (el, { warn, outer }) => colorModeScope(el, warn, outer as RawChartTheme | undefined, false),
+  },
+  {
+    module: '@pyreon/core',
+    tags: ['ColorModeProvider'],
+    enter: (el, { warn, outer }) => colorModeScope(el, warn, outer as RawChartTheme | undefined),
+  },
+  {
+    module: CHARTS_PLUGIN_NAME,
+    tags: ['ChartThemeProvider'],
+    transparent: true,
+    enter: (el, { warn, outer }) => chartThemeScope(el, warn, outer as RawChartTheme | undefined),
+  },
+])
+
 export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
   name: CHARTS_PLUGIN_NAME,
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
-  builtIn: true,
   calls: chartCalls,
   runtimeTypes: Object.freeze(ENGINE_STRUCT_NAMES),
   refineParse: widenChartFormatterParams,
   elements: Object.freeze([chartHostLowering]),
+  scopes: chartScopes,
+  stubs: chartsStubs,
   decls: Object.freeze({ [CHART_HANDLE_TYPE]: chartHandleDecl }),
   memberCalls: Object.freeze({ dispatch: chartHandleDispatch }),
   unlowered: Object.freeze({
@@ -169,12 +191,12 @@ export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
         ...Object.keys(ACCESSOR_CHART_HOSTS),
         ...Object.keys(FRAME_CHART_HOSTS),
         'MapChart',
-        // A host's `visualMap={visualMap({ … })}` runs the engine's own builder at compile time (chart-hosts.ts `chartVisualMap`).
+        // A host's `visualMap={visualMap({ … })}` runs the engine's own builder at compile time (hosts.ts `chartVisualMap`).
         'visualMap',
         // Theme surface: the provider is a TRANSPARENT wrapper on native (its
         // children render; per-chart `theme` props do the theming there), and
         // `chartThemes` / `palettes` are compiler-known constants a `theme`
-        // literal resolves at compile time (chart-hosts.ts CHART_THEMES /
+        // literal resolves at compile time (hosts.ts CHART_THEMES /
         // NAMED_PALETTES).
         'ChartThemeProvider',
         // The imperative handle lowers to a PyreonChartHandle (its `dispatch` runs the crossing reducer).
@@ -212,7 +234,7 @@ export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
         'Bollinger',
         'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
-        // array literal — the structural marks-array pass (chart-hosts.ts /
+        // array literal — the structural marks-array pass (hosts.ts /
         // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
         // `bubble` handling) recognizes and lowers these; without this
         // entry the generic web-only-import check ALSO flagged every one

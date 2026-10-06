@@ -42,7 +42,13 @@ If the web host and a code generator both have to make a decision, implement it 
 
 ### A user type named like a generated type shadows it silently.
 
-PMTC merges the generated chart engine's struct/enum declarations into every file importing `@pyreon/charts` or its engine/SVG entry points and constructs them by bare name (`Slice(value:label:)`). A user `interface Slice` shadows the engine's, giving `invalid redeclaration` or type mismatches with no warning. The merge point detects the collision: `packages/native/compiler/scripts/gen-chart-engine.ts` generates `CHART_ENGINE_DECLARED_NAMES` from the same parse as the structs, and `plugins/charts.ts:prepareIR` diffs it against user declarations. Only types are listed. Engine functions can overload, and engine constants are `private`, so warning on those would flag working code. Lock: `native/compiler/src/tests/chart-engine-shadow.test.ts` (real-toolchain failure plus the renamed twin passing; a totality spec fails if a struct is missing from the list).
+PMTC merges the generated chart engine's struct/enum declarations into every file importing `@pyreon/charts` or its engine/SVG entry points and constructs them by bare name (`Slice(value:label:)`). A user `interface Slice` shadows the engine's, giving `invalid redeclaration` or type mismatches with no warning. The merge point detects the collision: `packages/fundamentals/charts/scripts/gen-native-engine.ts` generates `CHART_ENGINE_DECLARED_NAMES` from the same parse as the structs, and the charts plugin's `prepareIR` (`packages/fundamentals/charts/src/native-plugin/plugin.ts`) diffs it against user declarations. Only types are listed. Engine functions can overload, and engine constants are `private`, so warning on those would flag working code. Lock: `native/compiler/src/tests/chart-engine-shadow.test.ts` (real-toolchain failure plus the renamed twin passing; a totality spec fails if a struct is missing from the list).
+
+---
+
+### A library plugin that leaves the compiler needs its tests, its stubs and its scope values to leave too, or the compiler still depends on it.
+
+The charts plugin looked finished once its emitters moved, yet the core still imported its theme tables for `<PyreonUI mode>` / `<ColorModeProvider>` scope handling, the compile gates appended its engine stubs, and ~60 tests read its tables. Close each seam generically: a plugin `scopes` provider (the core owns the plumbing, the plugin the value), a plugin `stubs` augmentation passed as `ValidateOptions.augment`, and a plugin-API subpath (`@pyreon/native-compiler/plugin-api`) the plugin is boundary-tested to use. Tests keep running in the compiler's package (it owns the toolchain lanes) and load the plugin by RELATIVE path — a `devDependency` back to the library is a package cycle. Golden fixtures may move without moving their hashes because the key and compile filename name no directory.
 
 ---
 

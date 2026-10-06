@@ -176,7 +176,7 @@ export interface PointMarker {
  *
  * It crosses to native as a struct, which is why every field is a plain
  * string / Double / string list and none is optional: a partial is merged on
- * the web (`resolveChartTheme`) and at COMPILE time on native (`chart-hosts`).
+ * the web (`resolveChartTheme`) and at COMPILE time on native (`native-plugin/hosts.ts`).
  */
 export interface ChartTheme {
   /** Series colours in draw order; marks without a `color` cycle through it. */

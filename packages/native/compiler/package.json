@@ -21,6 +21,11 @@
       "import": "./lib/audit.js",
       "types": "./lib/types/audit.d.ts"
     },
+    "./plugin-api": {
+      "bun": "./src/plugin-api.ts",
+      "import": "./lib/plugin-api.js",
+      "types": "./lib/types/plugin-api.d.ts"
+    },
     "./testing": {
       "bun": "./src/testing.ts",
       "import": "./lib/testing.js",
@@ -37,7 +42,6 @@
     "build": "vl_rolldown_build"
   },
   "dependencies": {
-    "@pyreon/charts": "workspace:^",
     "@pyreon/compiler": "workspace:*",
     "oxc-parser": "^0.152.0"
   },

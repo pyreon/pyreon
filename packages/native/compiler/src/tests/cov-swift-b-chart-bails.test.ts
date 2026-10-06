@@ -8,7 +8,7 @@
 // well-formed shape that must reach the real canvas instead.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 /** A component rendering one chart host, with row data in scope. */
 function chart(el: string): { code: string; warnings: string[] } {

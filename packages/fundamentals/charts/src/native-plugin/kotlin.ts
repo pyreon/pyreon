@@ -8,8 +8,7 @@
  * which this entry installs for the duration of one element.
  */
 
-import type { EmitContext } from '../../emit-context'
-import type { JsxElementIR } from '../../types'
+import type { EmitContext, JsxElementIR } from '@pyreon/native-compiler/plugin-api'
 import { withKotlinContext } from './kotlin-facade'
 import { emitKotlinChartHost } from './kotlin-hosts'
 
