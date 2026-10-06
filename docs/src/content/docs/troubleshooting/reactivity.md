@@ -13,6 +13,12 @@ description: "Common reactivity mistakes in Pyreon and how to fix them."
 
 ---
 
+### [FIXED, 2026-10] A fixed-dependency fast path (`_bind`) handed an expression whose dependency set is not provably stable — the conditional-read class (#3782).
+
+The template emitter combined every general reactive attr (`disabled={() => pending() && !failed()}`) into one `_bind(() => …)`, which tracks ONLY on its first run (re-runs call `fn()` untracked). Any read the first run did not reach — behind `&&`/`||`/`??`/`?:`/`?.`, inside a user function that reads conditionally, or through a props getter whose own body does — never subscribes, so the DOM goes stale after the short-circuit flips (shipped since `_bind` existed; `renderEffect` re-verifies deps each run, `_bind` never does). **Fix at the choke point, not per shape**: `hasFixedDeps`/`has_fixed_deps` (jsx.ts + lib.rs, byte-identical verdicts, locked by a native-equivalence block) admits `_bind` only when every tracked read is UNCONDITIONAL and from a known signal/computed call (or a pure builtin); an arm with no tracked read (`a() ? "x" : "y"`) is still stable; unknown calls, props member reads, prop-derived consts, tagged templates, block/function accessors are never provable and emit a per-expression `renderEffect`. A false "no" costs a verify-mode re-run; a false "yes" ships a stale UI, so the check is conservative. **Rule: any helper that skips re-tracking is only valid for expressions whose dependency set the CALLER can prove constant — "compiler-emitted" is not that proof.** Bisect-verified per backend in `runtime-dom/src/tests/bind-conditional-deps.test.tsx` (compiled through the real transform; 12 specs fail with the classifier bypassed in either backend).
+
+---
+
 ### Resetting module-level frame state to a constant instead of restoring it
 
 Tracking collectors, owners and the lifecycle frame nest, so frame exit must restore the value captured at entry, never reset to `null`.

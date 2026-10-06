@@ -21,7 +21,7 @@
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
 import { Fragment, h, _fuse, _rp, _rpd, cx } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
 import { _applyProps, _setAttr, _setClass, _setStyle, mountChild, _bindProp} from '../index'
@@ -29,6 +29,7 @@ import { _applyProps, _setAttr, _setClass, _setStyle, mountChild, _bindProp} fro
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

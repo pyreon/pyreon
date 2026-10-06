@@ -24,7 +24,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { describe, expect, it } from 'vitest'
@@ -55,6 +55,7 @@ import { cmp, flip, genSpec, makeSignals, mulberry32, toSource, type SigInst, ty
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

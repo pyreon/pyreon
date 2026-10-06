@@ -1337,6 +1337,7 @@ export function transformJSX_JS(
   let needsBindPropImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
+  let needsRenderEffectImportGlobal = false
   let needsBindPolyImportGlobal = false
   let needsSetChildImportGlobal = false
   let needsSetChildAtImportGlobal = false
@@ -3846,6 +3847,114 @@ export function transformJSX_JS(
     return isDynamic(node)
   }
 
+  /**
+   * Is the DEPENDENCY SET of this expression provably the same on every run?
+   * (#3782) The combined template `_bind` is the FIXED-dependency path: it
+   * tracks only on its FIRST run, so any read that run did not reach — behind
+   * a short-circuit (`a() && b()`, `?:`, `??`, `?.`), inside a user function
+   * that reads conditionally, or through a props getter whose own body does —
+   * never subscribes, and the DOM goes stale. Only expressions that pass this
+   * check may use `_bind`; the rest take `renderEffect` (verify-mode dep
+   * re-collection). Conservative by construction: a false "no" costs a
+   * verify-mode re-run, a false "yes" ships a stale UI.
+   *
+   * Stable = every tracked read is UNCONDITIONAL (`cond` = we are inside a
+   * branch that may be skipped) and its source is a known signal/computed
+   * call (one dep that never changes). Unknown calls (`fn()`, `obj.m()`),
+   * props reads / prop-derived consts (getter bodies are opaque) and tagged
+   * templates are never provable. A ternary/logical arm containing NO tracked
+   * read (`a() ? 'x' : 'y'`) is still stable. Mirrors `has_fixed_deps` in
+   * native/src/lib.rs — keep byte-identical in verdict.
+   */
+  function hasFixedDeps(node: N, cond: boolean): boolean {
+    switch (node.type) {
+      case 'ArrowFunctionExpression':
+      case 'FunctionExpression':
+        // Not evaluated here — a callee/IIFE is rejected at the CallExpression.
+        return true
+      case 'TaggedTemplateExpression':
+      case 'AwaitExpression':
+      case 'YieldExpression':
+      case 'NewExpression':
+        return false
+      case 'CallExpression': {
+        const callee = node.callee
+        const args: N[] = node.arguments ?? []
+        if (callee?.type === 'Identifier' && isActiveSignal(callee.name) && args.length === 0) {
+          return !cond
+        }
+        if (isPureStaticCall(node)) return true
+        if (isPureCoercionCall(node)) return args.every((a) => hasFixedDeps(a, cond))
+        return false
+      }
+      case 'Identifier': {
+        if (!isDynamic(node)) return true
+        // A bare known signal is auto-called (one stable dep); a prop-derived
+        // const is an opaque getter chain.
+        if (isActiveSignal(node.name) && !propDerivedVars.has(node.name)) return !cond
+        return false
+      }
+      case 'MemberExpression': {
+        if (!node.computed && node.object?.type === 'Identifier' && propsNames.has(node.object.name)) {
+          return false
+        }
+        if (!hasFixedDeps(node.object, cond)) return false
+        // `x?.[k()]` evaluates the key only when `x` is non-nullish.
+        return node.computed ? hasFixedDeps(node.property, cond || node.optional === true) : true
+      }
+      case 'ConditionalExpression':
+        return (
+          hasFixedDeps(node.test, cond) &&
+          hasFixedDeps(node.consequent, true) &&
+          hasFixedDeps(node.alternate, true)
+        )
+      case 'LogicalExpression':
+        return hasFixedDeps(node.left, cond) && hasFixedDeps(node.right, true)
+      case 'Property':
+        // `{ k: v }` — a computed key is evaluated; a plain key is a name.
+        return (!node.computed || hasFixedDeps(node.key, cond)) && hasFixedDeps(node.value, cond)
+      case 'Literal':
+      case 'ThisExpression':
+      case 'TemplateElement':
+        return true
+      case 'ParenthesizedExpression':
+      case 'ChainExpression':
+      case 'TSAsExpression':
+      case 'TSSatisfiesExpression':
+      case 'TSNonNullExpression':
+      case 'TSTypeAssertion':
+        return hasFixedDeps(node.expression, cond)
+      case 'UnaryExpression':
+        return hasFixedDeps(node.argument, cond)
+      case 'SpreadElement':
+        return hasFixedDeps(node.argument, cond)
+      case 'BinaryExpression':
+        return hasFixedDeps(node.left, cond) && hasFixedDeps(node.right, cond)
+      case 'SequenceExpression':
+        return (node.expressions ?? []).every((e: N) => hasFixedDeps(e, cond))
+      case 'TemplateLiteral':
+        return (node.expressions ?? []).every((e: N) => hasFixedDeps(e, cond))
+      case 'ArrayExpression':
+        return (node.elements ?? []).every((e: N | null) => e === null || hasFixedDeps(e, cond))
+      case 'ObjectExpression':
+        return (node.properties ?? []).every((e: N) => hasFixedDeps(e, cond))
+      default:
+        // Assignments, updates, classes, JSX, anything unlisted: not provable.
+        return false
+    }
+  }
+
+  /** Entry point: classify the attr value the way `unwrapAccessor` slices it. */
+  function attrHasFixedDeps(exprNode: N): boolean {
+    if (exprNode.type === 'ArrowFunctionExpression' && exprNode.body?.type !== 'BlockStatement') {
+      return hasFixedDeps(exprNode.body, false)
+    }
+    if (exprNode.type === 'ArrowFunctionExpression' || exprNode.type === 'FunctionExpression') {
+      return false // block body is emitted as an IIFE — an opaque call
+    }
+    return hasFixedDeps(exprNode, false)
+  }
+
   // ── Single unified walk (Phase 2) ─────────────────────────────────────────
   // Merges the old 3-pass architecture (scanForPropDerivedVars + transitive
   // resolution + JSX walk) into one top-down traversal. Works because `const`
@@ -4007,9 +4116,14 @@ export function transformJSX_JS(
     if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
     if (needsSetValueImportGlobal) runtimeDomImports.push('_setValue')
     if (needsSetHtmlImportGlobal) runtimeDomImports.push('_setHtml')
-    const reactivityImports = needsBindImportGlobal
-      ? `\nimport { _bind } from "@pyreon/reactivity";`
-      : ''
+    const reactivitySpecs = [
+      ...(needsBindImportGlobal ? ['_bind'] : []),
+      ...(needsRenderEffectImportGlobal ? ['renderEffect'] : []),
+    ]
+    const reactivityImports =
+      reactivitySpecs.length > 0
+        ? `\nimport { ${reactivitySpecs.join(', ')} } from "@pyreon/reactivity";`
+        : ''
     preamble =
       `import { ${runtimeDomImports.join(', ')} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
       preamble
@@ -4275,6 +4389,9 @@ export function transformJSX_JS(
     let dispIdx = 0
     let placeholderIdx = 0
     const reactiveBindExprs: string[] = []
+    // Attr expressions whose dependency set is NOT provably stable (#3782):
+    // emitted as individual `renderEffect`s (verify-mode dep re-collection).
+    const reactiveEffectExprs: string[] = []
     let needsBindTextImport = false
     let needsBindPropImport = false
     let needsBindDirectImport = false
@@ -4922,7 +5039,9 @@ export function transformJSX_JS(
         )
         return
       }
-      reactiveBindExprs.push(attrSetter(htmlAttrName, varName, expr, tag))
+      const line = attrSetter(htmlAttrName, varName, expr, tag)
+      if (attrHasFixedDeps(exprNode)) reactiveBindExprs.push(line)
+      else reactiveEffectExprs.push(line)
     }
 
     function emitAttrExpression(
@@ -5781,6 +5900,10 @@ export function transformJSX_JS(
       const combinedName = nextDisp()
       const combinedBody = reactiveBindExprs.join('; ')
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
+    }
+    for (const body of reactiveEffectExprs) {
+      needsRenderEffectImportGlobal = true
+      bindLines.push(`const ${nextDisp()} = renderEffect(() => { ${body} })`)
     }
 
     if (holesOut) holesOut.push(...holeNodes)

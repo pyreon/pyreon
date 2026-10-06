@@ -21,7 +21,7 @@
 import { transformJSX } from '@pyreon/compiler'
 import { query } from '@pyreon/test-utils'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { _ssrAttrGen, renderToString } from '@pyreon/runtime-server'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
 import {
@@ -39,6 +39,7 @@ import {
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,

@@ -33,7 +33,7 @@
  * REPLACE fails the identity spec (`expected false to be true`).
  */
 import { _fuse, _lc, For, Fragment, h } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { vi } from 'vitest'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformJSX } from '@pyreon/compiler'
@@ -363,6 +363,7 @@ describe('hydration — unclaimed server DOM is swept at the element and root bo
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
+  renderEffect,
   _bindText,
   _bindProp,
   _bindDirect,
