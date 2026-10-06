@@ -87,7 +87,10 @@
     "check-native-runtime-parity": "bun scripts/check-native-runtime-parity.ts",
     "check-native-lifecycle-wiring": "bun scripts/check-native-lifecycle-wiring.ts",
     "check-native-cosource": "bun scripts/check-native-cosource.ts",
+    "check-native-tarballs": "bun scripts/check-native-tarballs.ts",
     "check-gates-wired": "bun scripts/check-gates-wired.ts",
+    "check-native-golden": "bun scripts/check-native-golden.ts",
+    "check-compiler-boundary": "bun scripts/check-compiler-boundary.ts",
     "check-readme-imports": "bun scripts/check-readme-imports.ts",
     "check-component-docs": "bun scripts/check-component-docs.ts",
     "atlas-guide": "bun scripts/check-atlas-guide.ts",
@@ -202,7 +205,11 @@
       "js-yaml": "^4.3.2"
     },
     "devalue": "^5.9.2",
-    "image-size": "^2.0.4"
+    "image-size": "^2.0.4",
+    "prosemirror-view": "^1.42.6",
+    "proxy-addr": "^2.0.8",
+    "seroval": "^1.6.8",
+    "source-map-js": "^1.2.2"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.104.0",

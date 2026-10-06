@@ -301,7 +301,13 @@ function decide(markers: string[], leaked: string[], warnings: string[], source:
   if (leaked.length > 0) return 'broken'
   // Expectations are read off the SOURCE, so a file that never asked for a
   // query is not penalised for lacking a query marker.
-  const wantsSchema = /\b[sz]\.object\(/.test(source)
+  // A schema is WANTED only where the module declares one — a top-level
+  // `const X = [zodSchema(]s.object(…)`. An operation's `{ response: z.object(…) }`
+  // is an argument to `endpoint()`, which lowers through the query/fetch decode
+  // rather than a schema struct; matching it here reported a module that
+  // lowered and compiled on both targets as `web-only` for lacking a marker
+  // nothing ever asked for.
+  const wantsSchema = /^(?:export\s+)?const\s+[\w$]+\s*=\s*(?:\w+\(\s*)?[sz]\.object\(/m.test(source)
   const wantsQuery = source.includes('useQuery')
   const wantsStream = source.includes('useStream')
   if (wantsSchema && !markers.some((m) => m.startsWith('PyreonZodSchema_'))) return 'web-only'
@@ -370,4 +376,50 @@ export async function resolveNativeCompiler(): Promise<{
   } catch {
     return { transform: undefined, compile: {} }
   }
+}
+
+/**
+ * Reconcile the STATIC reach (decided from the IR, before anything compiled)
+ * with what the native toolchain actually did.
+ *
+ * `reachOf` answers "should this lower?" from the spec alone. `verifyNative`
+ * answers "did it?". Reporting only the first — `web+native` — beside a module
+ * `swiftc` and `kotlinc` both rejected is the dead-gate shape: the headline
+ * says the operation reaches native while the same report says it cannot build.
+ * An operation whose module failed is `web-only`, and the reason is the first
+ * REAL cause — a compiler error, else the warning that decided the verdict —
+ * never a generic line borrowed from an unrelated warning.
+ *
+ * `moduleOps` maps each native module path to the operation ids it carries.
+ * A SKIPPED verification (no toolchain) leaves the static answer alone: not
+ * having checked is not evidence of failure, and `--strict-native` already
+ * refuses to treat it as a pass.
+ */
+export function reconcileReach<R extends { reach: string; reason?: string }>(
+  reach: ReadonlyMap<string, R>,
+  moduleOps: ReadonlyMap<string, readonly string[]>,
+  report: VerifyReport,
+): Map<string, R | { reach: 'web-only'; reason: string }> {
+  const out = new Map<string, R | { reach: 'web-only'; reason: string }>(reach)
+  if (!report.ran) return out
+  for (const [path, ids] of moduleOps) {
+    const failing = report.files.filter(
+      (f) => f.path === path && (f.verdict === 'broken' || f.verdict === 'web-only'),
+    )
+    if (failing.length === 0) continue
+    const f = failing[0]!
+    const compileError =
+      f.compiled && 'errors' in f.compiled && f.compiled.errors.length > 0 ? f.compiled.errors[0] : undefined
+    const cause =
+      compileError ??
+      f.declarations.find((d) => d.verdict === f.verdict)?.reasons[0] ??
+      f.warnings[0] ??
+      (f.leaked.length > 0 ? `un-lowered symbol survived: ${f.leaked.join(', ')}` : 'the native compiler did not lower it')
+    const reason = `${f.target} ${compileError !== undefined ? 'compile error' : 'lowering'}: ${cause}`
+    for (const id of ids) {
+      if (reach.get(id)?.reach !== 'web+native') continue
+      out.set(id, { reach: 'web-only', reason })
+    }
+  }
+  return out
 }
