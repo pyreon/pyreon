@@ -54,7 +54,10 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, modules, requires, builtIn } = plugin as Record<string, unknown>
+  const { services, elements, calls, decls, memberCalls, unlowered, modules, requires, builtIn } = plugin as Record<
+    string,
+    unknown
+  >
   if (services !== undefined) {
     if (!services || typeof services !== 'object' || Array.isArray(services)) {
       throw new Error(`[Pyreon] Plugin "${name}" services must be an object keyed by hook name.`)
@@ -80,6 +83,82 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       throw new Error(`[Pyreon] Plugin "${name}" elements must be an array of element lowerings.`)
     }
     for (const entry of elements as unknown[]) assertElementLowering(name, entry)
+  }
+  if (calls !== undefined) {
+    if (!calls || typeof calls !== 'object' || Array.isArray(calls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" calls must be an object keyed by hook name.`)
+    }
+    for (const [hook, recognizer] of Object.entries(calls)) {
+      if (typeof recognizer !== 'function') {
+        throw new Error(`[Pyreon] Plugin "${name}" call "${hook}" must be a recognizer function.`)
+      }
+    }
+  }
+  if (decls !== undefined) {
+    if (!decls || typeof decls !== 'object' || Array.isArray(decls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" decls must be an object keyed by declaration type.`)
+    }
+    for (const [type, emitter] of Object.entries(decls)) {
+      const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyKind?: unknown } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.swift !== 'function' ||
+        typeof entry.kotlin !== 'function' ||
+        (entry.legacyKind !== undefined && typeof entry.legacyKind !== 'string')
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" decl "${type}" needs swift and kotlin emitter functions.`,
+        )
+      }
+    }
+  }
+  if (calls !== undefined && Object.keys(calls as object).length > 0 && decls === undefined) {
+    throw new Error(
+      `[Pyreon] Plugin "${name}" declares calls but no decls — a recognizer returns a declaration type that needs an emitter.`,
+    )
+  }
+  if (memberCalls !== undefined) {
+    if (!memberCalls || typeof memberCalls !== 'object' || Array.isArray(memberCalls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" memberCalls must be an object keyed by method name.`)
+    }
+    for (const [method, lowering] of Object.entries(memberCalls)) {
+      const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.swift !== 'function' ||
+        typeof entry.kotlin !== 'function'
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" memberCall "${method}" needs swift and kotlin functions.`,
+        )
+      }
+    }
+    if (Object.keys(memberCalls as object).length > 0 && decls === undefined) {
+      throw new Error(
+        `[Pyreon] Plugin "${name}" declares memberCalls but no decls — a member call is only claimed on a binding one of the plugin's own declarations created.`,
+      )
+    }
+  }
+  if (unlowered !== undefined) {
+    if (!unlowered || typeof unlowered !== 'object' || Array.isArray(unlowered)) {
+      throw new Error(`[Pyreon] Plugin "${name}" unlowered must be an object keyed by module.`)
+    }
+    for (const [module, spec] of Object.entries(unlowered)) {
+      const entry = spec as { advice?: unknown; supported?: unknown } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.advice !== 'string' ||
+        !entry.advice.trim() ||
+        (entry.supported !== undefined && !isStringArray(entry.supported))
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" unlowered "${module}" needs a nonempty advice string and, optionally, a supported array of strings.`,
+        )
+      }
+    }
   }
   for (const [field, value] of [
     ['modules', modules],

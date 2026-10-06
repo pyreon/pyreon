@@ -86,14 +86,16 @@ modules with a default plugin export; CLI target selection remains iOS/Android.
 
 ### Services, modules, requires (additive; API version stays 1)
 
-Five optional fields were added without a version bump, because additive
+Nine optional fields were added without a version bump, because additive
 fields never break an older plugin:
 
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
   value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
   initialiser and `kotlin` lines). `createCompiler` builds one registry from every
   plugin's `services` — the built-in table arrives as the built-in
-  `native-compiler` plugin, through the same path; two owners for one hook is a
+  `@pyreon/hooks` plugin (a generated copy of the library's own
+  `@pyreon/hooks/native-plugin`; an installed, newer one replaces it by name),
+  through the same path; two owners for one hook is a
   load-time error naming both, because silently picking one would make the emit
   depend on plugin order. The registry is `compiler.services` and
   `context.services`, and it is the one the parser and both emitters read, so a
@@ -104,6 +106,31 @@ fields never break an older plugin:
   A `(module, tag)` pair claimed by two owners is a load-time error naming both.
   The built-in `@pyreon/elements` and `@pyreon/coolgrid` lowerings are `builtIn`
   plugins registered the same way.
+- `calls` + `decls` — code-shaped lowering: `calls` maps a hook/function name to a
+  recognizer `(call, ctx: ParseContext) => { type, payload? } | undefined`
+  (`undefined` declines and the parser falls through as if the plugin were absent);
+  `decls` maps that `type` to a `DeclEmitter` `{ swift(decl, ctx), kotlin(decl, ctx) }`
+  rendering the plugin's open `ext` declaration through the `EmitContext` facade.
+  `payload` must be JSON (the IR is cloned between passes). A name is claimed under
+  the same rule as a service hook, and two owners for one name — or a name that is
+  also a service — is a load-time error naming both. The built-in `createChartHandle()`
+  lowering is a `@pyreon/charts` plugin declaration registered this way.
+- `memberCalls` — call EXPRESSIONS: keyed by method name, `{ swift(call, ctx),
+  kotlin(call, ctx) } => string | undefined` lowers `<receiver>.<method>(…)` when
+  `<receiver>` is a binding one of the plugin's own `decls` created (so two plugins
+  may both claim `dispatch`: the receiver decides). `undefined` declines. Requires
+  `decls`. The built-in `chart.dispatch({...})` lowering is a `@pyreon/charts`
+  `memberCalls` entry. Inside a lowering, `ctx.expr(e)` / `ctx.exprAs(type, e)` emit
+  a sub-expression, `ctx.decls(plugin, type)` reads the component's declarations,
+  `ctx.state(key, init)` is per-component memory, and `ctx.deferred(key, fallback?)`
+  / `ctx.resolveDeferred(key, value)` substitute a value that is only known after the
+  component body has emitted (an unresolved token without a fallback is an error
+  naming the key).
+- `unlowered` — per-module metadata for the "has NO native lowering" warning:
+  `{ [module]: { advice, supported?: string[] } }`. Merged into
+  `compiler.registries.unlowered`; a module supplied by two plugins is a load-time
+  error, and a plugin's entry wins over the compiler's own hand-maintained one. The
+  `@pyreon/charts` entry is supplied by the built-in charts plugin.
 - `requires` — plugin names that must be loaded. A missing one or a cycle is a
   load-time error naming the plugins; passes run in `requires` order (input
   order otherwise).

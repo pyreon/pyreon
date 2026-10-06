@@ -196,7 +196,7 @@ describe('plugins and explain reports', () => {
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
     expect(lines).toContain('  @pyreon/charts')
-    expect(lines).toContain('  useShare  native-compiler')
+    expect(lines).toContain('  useShare  @pyreon/hooks')
     expect(lines).toContain('  useBadge  badge')
     expect(lines).toContain('  badge  @acme/badge@1.2.3  services: useBadge')
   })
@@ -225,9 +225,76 @@ describe('plugins and explain reports', () => {
     const { lines, exitCode } = explainReport(source, join(app, 'A.tsx'), createCompiler(), app)
     expect(exitCode).toBe(0)
     const text = lines.join('\n')
-    expect(text).toContain('share = useShare()  [owner: native-compiler]')
+    expect(text).toContain('share = useShare()  [owner: @pyreon/hooks]')
     expect(text).toContain('swift:  @State private var share = PyreonShare()  (emitted)')
     expect(text).toContain('val share = remember { PyreonShare(shareCtx) }  (emitted)')
+  })
+})
+
+describe("a package-owned '@pyreon/hooks' plugin replaces the built-in of the same name", () => {
+  const SHARE_SOURCE =
+    "import { useShare } from '@pyreon/hooks'\nexport function Example() { const share = useShare(); return <Button onClick={() => share.text('hi')}>x</Button> }"
+  // ONE hook, a different Swift container: if replacement is real the emitted text changes, and the
+  // built-in's other hooks (useOnline, …) are gone because the discovered plugin owns the name wholesale.
+  const REPLACEMENT = pluginModule(
+    '@pyreon/hooks',
+    "services: { useShare: { legacyKind: 'share', swift: 'NewerShare()', kotlin: ['val {id} = remember { NewerShare() }'] } }",
+  )
+  const build = (...extra: string[]) =>
+    mainWithPlugins(['build', '--target=ios', `--source=${join(app, 'src')}`, `--out=${join(root, 'out')}`, `--app=${app}`, ...extra])
+  const emitted = () => readFileSync(join(root, 'out', 'Example.swift'), 'utf8')
+
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    addPackage('@pyreon/hooks', declares({ modules: ['@pyreon/hooks'] }), REPLACEMENT)
+    setApp(['@pyreon/hooks'], SHARE_SOURCE)
+  })
+
+  it('loads without a duplicate-owner error and the emitted text comes from the discovered plugin', async () => {
+    expect(await build()).toBe(0)
+    expect(emitted()).toContain('@State private var share = NewerShare()')
+    expect(emitted()).not.toContain('PyreonShare()')
+  })
+
+  it('--no-plugins keeps the built-in copy (so the difference above is the replacement, not the source)', async () => {
+    expect(await build('--no-plugins')).toBe(0)
+    expect(emitted()).toContain('@State private var share = PyreonShare()')
+  })
+
+  it('the registry attributes the hook to the single owner, and the built-in is not also loaded', async () => {
+    const found = await discoverPlugins(app, join(app, 'src'))
+    const compiler = createCompiler({ discovered: found.map((f) => f.plugin) })
+    expect(compiler.services.get('useShare')?.owner).toBe('@pyreon/hooks')
+    expect(compiler.services.get('useShare')?.descriptor.swift).toBe('NewerShare()')
+    expect(compiler.services.has('useOnline')).toBe(false)
+    const report = await pluginsReport(app, false)
+    expect(report.exitCode).toBe(0)
+    expect(report.lines.join('\n')).not.toContain('claimed by both')
+  })
+})
+
+describe('a built-in plugin package that fails to load degrades to the built-in copy', () => {
+  it.each([
+    ['a missing file', undefined, /does not exist/],
+    ['a module that throws', 'throw new Error("boom")', /failed to load: boom/],
+  ])('%s warns and keeps the built-in, instead of breaking the build', async (_label, body, message) => {
+    addPackage('@pyreon/hooks', declares({ modules: ['@pyreon/hooks'] }), body)
+    setApp(['@pyreon/hooks'], "import { useShare } from '@pyreon/hooks'\nexport function A() { return null }")
+    const warnings: string[] = []
+    const found = await discoverPlugins(app, join(app, 'src'), (m) => warnings.push(m))
+    expect(found).toEqual([])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(message)
+    expect(warnings[0]).toContain('built-in copy of "@pyreon/hooks"')
+    // The built-in still lowers the hook, so the build does not need the plugin file at all.
+    expect(createCompiler({ discovered: found.map((f) => f.plugin) }).services.has('useShare')).toBe(true)
+  })
+
+  it('a THIRD-PARTY plugin with no built-in copy still fails hard (there is nothing to fall back to)', async () => {
+    addPackage('@acme/kit', declares(), undefined)
+    setApp(['@acme/kit'], "import '@acme/kit'")
+    await expect(discoverPlugins(app, join(app, 'src'), () => {})).rejects.toThrow(/does not exist/)
   })
 })
 
@@ -271,6 +338,45 @@ export function A() { return <Button onClick={() => useShare().text('hi')}>x</Bu
     const { lines } = await pluginsReport(app, false)
     expect(lines).toContain('  @pyreon/coolgrid  Container, Row, Col  @pyreon/coolgrid')
     expect(lines).toContain('  @pyreon/elements  Element  @pyreon/elements')
+  })
+})
+
+describe('code-shaped plugins (calls + decls)', () => {
+  const TOY_BODY = `modules: ['@acme/toy'],
+  calls: { createToy: (_call, ctx) => ({ type: 'toy', payload: { label: ctx.stringLiteralArg(0) ?? 'none' } }) },
+  decls: { toy: {
+    swift: (d, ctx) => 'let ' + ctx.ident(d.name) + ' = Toy(' + ctx.stringLiteral(d.payload.label) + ')',
+    kotlin: (d, ctx) => 'val ' + ctx.ident(d.name) + ' = Toy(' + ctx.stringLiteral(d.payload.label) + ')',
+  } }`
+  const TOY_SOURCE = `import { createToy } from '@acme/toy'
+export function Example() { const t = createToy('hi'); return <Text>{t.label}</Text> }`
+
+  it('the plugins listing shows the built-in call recognizer with its owner and declaration types', async () => {
+    const { lines } = await pluginsReport(app, false)
+    expect(lines).toContain('call recognizers (1):')
+    expect(lines).toContain('  createChartHandle  @pyreon/charts  decls: chart-handle')
+  })
+
+  it('a discovered package plugin lowers its call and is listed and explained by owner', async () => {
+    addPackage('@acme/toy', declares(), pluginModule('@acme/toy', TOY_BODY))
+    setApp(['@acme/toy'], TOY_SOURCE)
+    const listing = await pluginsReport(app, false)
+    expect(listing.lines).toContain('  createToy  @acme/toy  decls: toy')
+    expect(listing.lines.join('\n')).toContain('calls: createToy')
+    const found = await discoverPlugins(app, join(app, 'src'))
+    const compiler = createCompiler({ discovered: found.map((d) => d.plugin) })
+    expect(compiler.transform(TOY_SOURCE, { target: 'swift' }).code).toContain('let t = Toy("hi")')
+    expect(compiler.transform(TOY_SOURCE, { target: 'kotlin' }).code).toContain('val t = Toy("hi")')
+    const text = explainReport(TOY_SOURCE, join(app, 'src', 'Example.tsx'), compiler, app).lines.join('\n')
+    expect(text).toContain('t = toy  [call recognizer, owner: @acme/toy]  payload: {"label":"hi"}')
+    expect(text).not.toContain('NO emitter')
+  })
+
+  it('explain attributes the built-in chart handle to @pyreon/charts', () => {
+    const src = `import { createChartHandle } from '@pyreon/charts'
+export function A() { const chart = createChartHandle(); return <Text>x</Text> }`
+    const { lines } = explainReport(src, join(app, 'A.tsx'), createCompiler(), app)
+    expect(lines.join('\n')).toContain('chart = chart-handle  [call recognizer, owner: @pyreon/charts]  payload: {}')
   })
 })
 

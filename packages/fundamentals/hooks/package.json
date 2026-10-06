@@ -21,6 +21,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/native-plugin.d.ts"
     }
   },
   "files": [
@@ -50,6 +55,7 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
@@ -68,6 +74,10 @@
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/hooks"
+      ],
       "kotlinServices": {
         "PyreonAppStateAndroid": [
           "PyreonAppState.kt",

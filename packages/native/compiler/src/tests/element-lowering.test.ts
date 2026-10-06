@@ -1,3 +1,4 @@
+import { createPluginScope } from '../plugin-scope'
 import { describe, expect, it } from 'vitest'
 import { BUILT_IN_PLUGINS, createCompiler, transform, type CompilerPlugin } from '../index'
 import { createElementRegistry, type ElementLowering } from '../element-lowering'
@@ -144,9 +145,13 @@ describe('EmitContext', () => {
     },
     staticAttr: (_e, name) => (name === 'a' ? 'v' : undefined),
     stringLiteral: (v) => JSON.stringify(v),
+    identifier: (n) => `_${n}`,
     warn: (m) => {
       calls.push(`warn:${m}`)
     },
+    expr: () => '',
+    exprAs: () => '',
+    scope: () => createPluginScope(),
   }
 
   it('defaults indentation to the element and delegates to the backend', () => {
@@ -159,6 +164,7 @@ describe('EmitContext', () => {
     expect(ctx.staticAttr(el, 'a')).toBe('v')
     expect(ctx.staticAttr(el, 'b')).toBeUndefined()
     expect(ctx.stringLiteral('q')).toBe('"q"')
+    expect(ctx.ident('x')).toBe('_x')
     ctx.warn('w')
     expect(calls).toEqual(['emit:X@4', 'emit:X@6', 'warn:w'])
   })

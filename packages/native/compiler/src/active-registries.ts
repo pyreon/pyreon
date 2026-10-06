@@ -18,8 +18,10 @@
  */
 
 import { BUILT_IN_PLUGINS } from './built-in-plugins'
+import { createCallRegistry, type CallRegistry } from './call-lowering'
 import { createElementRegistry, type ElementRegistry } from './element-lowering'
 import type { CompilerPlugin } from './plugin'
+import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
 import {
   createServiceRegistry,
   createServiceTables,
@@ -35,6 +37,10 @@ export interface CompilerRegistries {
   readonly serviceTables: ServiceTables
   /** `(module, tag)` → element lowering + owner. */
   readonly elements: ElementRegistry
+  /** Hook name → call recognizer, and `(plugin, type)` → declaration emitter. */
+  readonly calls: CallRegistry
+  /** Module → plugin-supplied unlowered-module metadata (advice + the exports that do lower). */
+  readonly unlowered: ReadonlyMap<string, RegisteredUnlowered>
 }
 
 /**
@@ -43,10 +49,24 @@ export interface CompilerRegistries {
  */
 export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRegistries {
   const services = createServiceRegistry(ordered)
+  const calls = createCallRegistry(ordered)
+  // A name with a service descriptor AND a recognizer would be lowered by
+  // whichever branch the parser reaches first — decide it here, loudly.
+  for (const [name, call] of calls.calls) {
+    const service = services.get(name)
+    if (service !== undefined) {
+      throw new Error(
+        `[Pyreon] hook "${name}" is claimed by both "${service.owner}" (services) and "${call.owner}" (calls). ` +
+          `A hook has exactly one lowering — remove one of the two plugins from this app.`,
+      )
+    }
+  }
   return Object.freeze({
     services,
     serviceTables: createServiceTables(services),
     elements: createElementRegistry(ordered),
+    calls,
+    unlowered: createUnloweredRegistry(ordered),
   })
 }
 

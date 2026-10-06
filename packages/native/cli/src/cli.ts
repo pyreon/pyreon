@@ -171,12 +171,13 @@ the resolved Gradle srcDirs list build.gradle.kts reads; --json prints
 the full wiring (srcDirs + iOS SwiftPM packages + co-located sources).
 
 plugins lists the compiler's built-in plugins, the service registry (each
-hook and the plugin that owns it), the element lowerings and every package-declared plugin
+hook and the plugin that owns it), the call recognizers, the element lowerings and every package-declared plugin
 (package.json "pyreon.native.plugin"). --verify checks that each service's
 Swift/Kotlin types are really declared in that package's own native sources.
 
 explain compiles one file for both targets and prints, per service hook it
-uses, the owning plugin and the declaration each target emits, and, per element
+uses, the owning plugin and the declaration each target emits, per call a plugin
+recognized (a code-shaped declaration), its owner and type, and, per element
 a registered lowering claims, the plugin that owns that lowering.
 
 Plugins declared by dependencies (pyreon.native.plugin) load automatically for
