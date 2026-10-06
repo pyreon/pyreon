@@ -1043,7 +1043,8 @@ async function runWithConcurrency(
       if (!pkg) break
 
       const started = performance.now()
-      console.log(`  Starting coverage: ${pkg.name}`)
+      const wallStarted = Date.now()
+      console.log(`  Starting coverage: ${pkg.name} at ${new Date(wallStarted).toISOString()}`)
 
       // Every progress/result line names its package, even with four workers.
       //
@@ -1056,7 +1057,7 @@ async function runWithConcurrency(
       // as a real finding about entirely the wrong package.
       const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
       console.log(
-        `  Finished coverage: ${pkg.name} (${((performance.now() - started) / 1000).toFixed(1)}s)`,
+        `  Finished coverage: ${pkg.name} (${((performance.now() - started) / 1000).toFixed(1)}s active; ${((Date.now() - wallStarted) / 1000).toFixed(1)}s wall) at ${new Date().toISOString()}`,
       )
       if ('statements' in outcome) {
         // Compare the three metrics the gate used to ignore. Done HERE rather
