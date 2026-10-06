@@ -15,6 +15,8 @@ Lines : 100% ( 1/1 )`
 const execution = (output: string, code = 1) => ({ output, code, signal: null, timedOut: false })
 
 function fixture(expected: number, extraSource = '', after = '') {
+  // `.cache/` is gitignored, so a fresh checkout (CI) does not have it.
+  mkdirSync(join(repoRoot, '.cache'), { recursive: true })
   const root = mkdtempSync(join(repoRoot, '.cache', 'vitest-report-fixture-'))
   roots.push(root)
   symlinkSync(join(repoRoot, 'node_modules'), join(root, 'node_modules'), 'junction')
