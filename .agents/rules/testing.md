@@ -70,6 +70,7 @@ Specs can assert broken behaviour (a `??` that swallowed an explicit `null`; an 
 Reference: `packages/fundamentals/sync/src/tests/ws-relay.test.ts`.
 
 - A stream-resume fixture must wait for the consumer to receive its first complete event before dropping the socket. A fixed disconnect timer races receipt and may never exercise `Last-Event-ID` resume under load. Register the stream's cleanup with the test context's `onTestFinished` so even a test timeout closes it.
+- Generated runtime fixtures must remain immutable after import. Use a unique directory per client graph, finish importing its shared configuration module before dependent modules, and reset runtime settings between cases instead of deleting and rewriting imported files. Retain the graph only for the suite and remove its owned directories and references at teardown. File-change invalidation can otherwise separate configured state from endpoints that retain an earlier module instance; a passing isolated rerun does not prove the cause of a sporadic failure.
 - An observer that schedules an animation frame is not flushed by `setTimeout(0)`. Wait for the observable verdict with `vi.waitFor`, and detach the observer/DOM in test cleanup rather than guessing an event-loop delay.
 
 - **The wall-clock backstop must exceed the composed internal budgets.** A test that awaits three sequential `waitFor`s needs a vitest timeout above three budgets, or vitest kills it with an opaque "test timed out" that hides the descriptive error.
