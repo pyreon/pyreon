@@ -635,19 +635,12 @@ let _moduleItems: ExtModuleItem[] = []
  * off it — an unused parameter is an unexercised contract.
  */
 let _formSubmitParamsSwift: string[] = []
-/**
- * Fetch-arc: every `useFetch` decl name in scope. A zero-arg CALL on a
- * fetch FIELD (`quotes.data()` — the web signal-read shape) rewrites to
- * a plain property read (`quotes.data`); `refetch()` keeps its parens
- * (real method).
- */
-let _fetchNamesSwift: Set<string> = new Set()
 // websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
 // hook carries the url) lowers to the runtime's `connect(to: URL)`.
 let _websocketUrlsSwift: Map<string, string> = new Map()
 /**
- * The component's ASYNC SOURCES in declaration order — its `useFetch` containers plus every plugin
- * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
+* The component's ASYNC SOURCES in declaration order — every plugin
+ * declaration that declares an `asyncState` (`useFetch`, `useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
  */
 let _asyncDeclsSwift: DeclIR[] = []
 /**
@@ -1688,7 +1681,6 @@ let _activePropsParamName: string | undefined
  */
 const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'debounced-value',
-  'fetch',
   'form',
   'hotkey',
   'on-mount',
@@ -1832,7 +1824,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _serviceKindByNameSwift = new Map()
   _formNamesSwift = new Set()
   _formSubmitParamsSwift = []
-  _fetchNamesSwift = new Set()
   _websocketUrlsSwift = new Map()
   _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
@@ -1885,9 +1876,8 @@ function emitSwiftComponent(c: ComponentIR): string {
       _serviceKindByNameSwift.set(d.name as string, d.kind)
     }
     if (d.kind === 'form') _formNamesSwift.add(d.name)
-    if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
-    // A plugin declaration that is an async source (`useQuery`) joins the Suspense / ErrorBoundary set.
-    if (d.kind === 'fetch' || pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
+    // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
+    if (pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
     if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
@@ -2171,7 +2161,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentSwift = isLayout
-  // When the component has a useFetch decl, the appended `.task { }` MUST
+  // When the component has an async-source decl (`useFetch`), the appended `.task { }` MUST
   // attach to a STABLE-identity view. A bare `Group { if isPending … }`
   // (what `<Suspense>` / `<ErrorBoundary>` emit) is transparent —
   // SwiftUI redistributes `.task` onto the if/else BRANCH, so every time
@@ -2213,10 +2203,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`    ${emitSwiftReturnExpr(c.returnExpr, 4)}`)
   }
   _emittingLayoutComponentSwift = false
-  // Phase 4: append a mount-time `.task { }` per useFetch decl. SwiftUI
-  // runs `.task` when the view appears (the natural async-on-mount hook);
-  // it drives the PyreonFetch state machine via begin → resolve|reject,
-  // awaiting URLSession + decoding into the typed result.
   // Form-binding arc: attach env/instance-capturing onSubmit callbacks
   // post-init (see the form-decl emit's comment for why init can't).
   // Rate limiters: attach the state-capturing action post-init, exactly as
@@ -2373,51 +2359,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       lines.push(`      .onAppear { ${name}.start() }`)
       if (svc.lifecycle === 'start-stop') lines.push(`      .onDisappear { ${name}.stop() }`)
     }
-  }
-  for (const d of c.decls) {
-    if (d.kind !== 'fetch') continue
-    const name = swiftIdent(d.name)
-    lines.push(`      .task {`)
-    lines.push(`        ${name}.begin()`)
-    lines.push(`        do {`)
-    if (d.method || d.headers || d.body) {
-      // A request with a VERB, headers, or a body goes through PyreonHttp —
-      // the runtime that has shipped on both targets with full verb support
-      // and, until now, nothing that lowered to it. The bare-GET path below
-      // is left alone deliberately: it is device-proven, and re-routing it
-      // would put a proven path behind a brand-new Android executor. Folding
-      // the two together once this one is device-proven is the follow-up.
-      const method = (d.method ?? 'GET').toLowerCase()
-      const parts = [`method: .${method}`, `url: ${swiftStr(d.url)}`]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
-          .join(', ')
-        parts.push(`headers: [${pairs}]`)
-      }
-      if (d.body !== undefined) parts.push(`body: Data(${swiftStr(d.body)}.utf8)`)
-      lines.push(`          let __response = try await PyreonHttp.send(`)
-      lines.push(`            PyreonHttpRequest(${parts.join(', ')})`)
-      lines.push(`          )`)
-      // A non-2xx must REJECT rather than decode. Handing an error page to
-      // JSONDecoder surfaces as a decode failure, which reads as "the server
-      // sent bad JSON" and hides the actual status.
-      lines.push(`          guard __response.isOK else {`)
-      lines.push(
-        `            throw PyreonHttpError.badStatus(__response.status)`,
-      )
-      lines.push(`          }`)
-      lines.push(`          ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
-    } else {
-      lines.push(
-        `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(d.url)})!)`,
-      )
-      lines.push(
-        `          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
-      )
-    }
-    lines.push(`        } catch { ${name}.reject(error) }`)
-    lines.push(`      }`)
   }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
@@ -2767,11 +2708,8 @@ function swiftEventModifiers(mods: readonly HotkeyModifier[]): string {
   return `[${out.join(', ')}]`
 }
 
-/** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
+/** The pending / failed conditions of one async source (a plugin declaration that declares `asyncState`). */
 function asyncStateSwift(d: DeclIR, indent: number): { pending: string; error: string } {
-  if (d.kind === 'fetch') {
-    return { pending: `${swiftIdent(d.name)}.isPending`, error: `${swiftIdent(d.name)}.error != nil` }
-  }
   return pluginAsyncState(d, 'swift', swiftEmitContext(indent))!
 }
 
@@ -2929,13 +2867,6 @@ function emitSwiftDecl(
     const returnType =
       d.hook === 'navigate' ? '(String) -> Void' : '[String: String]'
     return `private var ${swiftIdent(d.name)}: ${returnType} { ${fn}(router: pyreonRouter) }`
-  }
-  // Phase 4: `const x = useFetch<T>('/url')` → an @State PyreonFetch<T>
-  // container. The mount-time async harness (`.task { ... }`) that drives
-  // it is appended to the View body by emitSwiftComponent — it reads
-  // `data`/`isPending`/`error` as @Observable properties directly.
-  if (d.kind === 'fetch') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonFetch<${swiftType(d.type)}>()`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → an @State
   // PyreonForm container seeded with the literal string defaults. Unlike
@@ -4946,22 +4877,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `(${arg} ? 1 : 0)`
         }
         return `(Double(${arg}) ?? 0)`
-      }
-      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
-      // `quotes.isPending()` (the web signal-read shape) → plain
-      // @Observable property read. `refetch` is excluded (real method,
-      // parens preserved by the generic call emit below).
-      if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _fetchNamesSwift.has(e.callee.object.name) &&
-        (e.callee.property === 'data' ||
-          e.callee.property === 'isPending' ||
-          e.callee.property === 'isFetching' ||
-          e.callee.property === 'error')
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // Store METHOD call — `useX().store.M(args…)` rewrites to
       // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg

@@ -506,6 +506,11 @@ export function pluginCallReadType(d: ExtDecl, property: string): TypeIR | undef
   return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.callRead?.(d, property)
 }
 
+/** The type of the property read `<binding>.<property>` on a plugin declaration's container, by its owner's typing. */
+export function pluginMemberReadType(d: ExtDecl, property: string): TypeIR | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.member?.(d, property)
+}
+
 /** The async state (pending / failed conditions) of an `ext` declaration that is an async source, else `undefined`. */
 export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): AsyncState | undefined {
   if (d.kind !== 'ext') return undefined

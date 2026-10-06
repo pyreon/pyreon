@@ -18,7 +18,7 @@ import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule
 import type { UnloweredModule } from './unlowered-modules'
 import { stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
 import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
-import type { JsxRewriteContext, ModuleScan, ResolvedRequest } from './module-scan'
+import type { JsxRewriteContext, ModuleScan } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -1155,7 +1155,7 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
  */
 const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useAuth', 'useColorMode', 'useColorScheme',
-  'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
+  'useDatabase', 'useFieldArray', 'useForm',
   'useHotkey', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate',
   'useParams',
@@ -4220,7 +4220,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // Service descriptors that declare `destructure` (services.ts).
     ...activeRegistries().serviceTables.destructureHooks,
     ...activeRegistries().scan.destructureCalls,
-    'useFetch',
     'useForm',
     'useColorScheme',
     'useColorMode',
@@ -4678,150 +4677,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       `const ${name} = useParams() lowers to a native dictionary/map, so a property read like \`${name}.id\` emits \`${name}.id\` and does NOT compile on either target. Destructure instead — \`const { id } = useParams()\` — which lowers per key (\`useParams(router:)["id"] ?? ""\`) and works on both.`,
     )
     return { kind: 'router-hook', name, hook: 'params' }
-  }
-  // Phase 4 — `useFetch<T>('/url')`. The decoded result type comes from
-  // the generic arg; the request path MUST be a string literal so it can
-  // be baked into the emitted harness. Non-literal URLs (template strings,
-  // identifiers) bail to undeclared — same conservative rule as useStorage.
-  if (calleeName === 'useFetch') {
-    const type = parseGenericTypeArg(init, ctx)
-    const urlArg = init.arguments?.[0]
-    // A request source's endpoint DSL — `useFetch<T>(getUser({ params: { id: '1' } }))`
-    // (`@pyreon/http`, through `CompilerPlugin.requestSources`). A same-file,
-    // compile-time-templated call resolves to a concrete URL literal + HTTP method, then feeds the
-    // fetch path below exactly as if the author had written `useFetch<T>('/api/users/1',
-    // { method: 'GET' })`. Reactive params / a non-literal client baseUrl bail (the source pushes
-    // the warning) and the call stays web.
-    let resolvedUrl: string | undefined
-    let resolvedEndpoint: ResolvedRequest | undefined
-    const requests = parseContextFor(name, init, ctx).requests
-    if (
-      urlArg?.type === 'CallExpression' &&
-      urlArg.callee?.type === 'Identifier' &&
-      requests.has(urlArg.callee.name as string)
-    ) {
-      const resolved = requests.resolve(urlArg.callee.name as string, urlArg.arguments?.[0] as AstNode | undefined, {
-        allowRuntimeParams: false,
-        streaming: false,
-      })
-      if (!resolved) return null // warning already pushed; stays web
-      ctx.responseDecodes.push({ type, response: resolved.response })
-      resolvedUrl = resolved.url
-      resolvedEndpoint = resolved
-    }
-    // A module-scope `const` counts: naming an endpoint once and reusing it is
-    // ordinary, and the value is as known at build time as an inline string.
-    const constUrl = resolvedUrl === undefined ? staticStringArg(urlArg, ctx) : null
-    if (resolvedUrl === undefined && constUrl === null) {
-      ctx.warnings.push(
-        `Declaration ${name}: useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
-      )
-      return null
-    }
-    const url = resolvedUrl ?? (constUrl as string)
-    // No generic -> TypeIR `unknown` -> Swift emits `decode(Any.self, ...)`,
-    // which does NOT compile: `Any` cannot conform to Decodable. Kotlin is
-    // unaffected, so this is a Swift-only silent break, and the device-proven
-    // examples all use the typed form -- which is why nothing caught it.
-    if (type.kind === 'unknown') {
-      ctx.warnings.push(
-        `Declaration ${name}: useFetch without a response type lowers to decode(Any.self, ...) on Swift, which does NOT compile - Any cannot conform to Decodable. Give it the shape you expect: useFetch<Response>('${url}') with a type/interface declared alongside the component. Kotlin compiles either way, so this breaks iOS only.`,
-      )
-    }
-    // The request init — `useFetch<T>(url, { method, headers, body })`.
-    //
-    // Read LOUDLY. Every field here used to be discarded in silence: nothing
-    // looked past `arguments[0]`, so an author writing `method: 'POST'` got a
-    // GET on both targets with no diagnostic anywhere. The rule below is the
-    // same one the url argument already follows — literals are baked, anything
-    // non-literal WARNS rather than being quietly ignored, because a request
-    // that silently uses the wrong verb is a data-corrupting no-op, not a
-    // missing feature.
-    const initArg = init.arguments?.[1]
-    const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
-    // An endpoint's verb / headers / json body are the DEFAULTS; an explicit
-    // second arg still wins (the init loop below overwrites each field).
-    if (resolvedEndpoint?.method) req.method = resolvedEndpoint.method
-    if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
-    if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
-    if (initArg) {
-      if (initArg.type !== 'ObjectExpression') {
-        ctx.warnings.push(
-          `Declaration ${name}: useFetch init must be an object literal to lower to native; got ${initArg.type}. The request will be a plain GET on iOS and Android.`,
-        )
-      } else {
-        for (const prop of initArg.properties ?? []) {
-          if (prop.type !== 'Property') continue
-          if (hasDynamicKey(prop)) {
-            warnDynamicKey(prop, `Declaration ${name}: useFetch init`, ctx)
-            continue
-          }
-          const key = staticPropKey(prop)
-          if (!key) continue
-          const value = prop.value
-          const isStringLit =
-            (value?.type === 'Literal' || value?.type === 'StringLiteral') &&
-            typeof value.value === 'string'
-
-          if (key === 'method') {
-            if (!isStringLit) {
-              ctx.warnings.push(
-                `Declaration ${name}: useFetch method must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be a plain GET on iOS and Android.`,
-              )
-              continue
-            }
-            req.method = String(value.value).toUpperCase()
-          } else if (key === 'body') {
-            if (!isStringLit) {
-              // A JSON.stringify(obj) body is the obvious next shape and is
-              // NOT supported — say so rather than sending an empty body.
-              ctx.warnings.push(
-                `Declaration ${name}: useFetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body on iOS and Android.`,
-              )
-              continue
-            }
-            req.body = String(value.value)
-          } else if (key === 'headers') {
-            if (value?.type !== 'ObjectExpression') {
-              ctx.warnings.push(
-                `Declaration ${name}: useFetch headers must be an object literal of string literals to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO headers on iOS and Android.`,
-              )
-              continue
-            }
-            const headers: Record<string, string> = {}
-            for (const h of value.properties ?? []) {
-              if (h.type !== 'Property') continue
-              if (hasDynamicKey(h)) {
-                warnDynamicKey(h, `Declaration ${name}: useFetch headers`, ctx)
-                continue
-              }
-              const hk = staticPropKey(h)
-              const hv = h.value
-              if (
-                hk &&
-                (hv?.type === 'Literal' || hv?.type === 'StringLiteral') &&
-                typeof hv.value === 'string'
-              ) {
-                headers[hk] = hv.value
-              } else if (hk) {
-                ctx.warnings.push(
-                  `Declaration ${name}: useFetch header "${hk}" must be a string literal to lower to native; it will be OMITTED on iOS and Android.`,
-                )
-              }
-            }
-            if (Object.keys(headers).length > 0) req.headers = headers
-          } else {
-            // `signal`, `credentials`, `mode`, … are web-fetch options with no
-            // native analogue. Naming them beats dropping them silently.
-            ctx.warnings.push(
-              `Declaration ${name}: useFetch init option "${key}" has no native equivalent and is ignored on iOS and Android.`,
-            )
-          }
-        }
-      }
-    }
-
-    return { kind: 'fetch', name, type, url, ...req }
   }
   // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
   // arg is optional; when present we capture the string-keyed literal
@@ -7582,7 +7437,6 @@ function warnIfHookInsideRenderCallback(
     ...activeRegistries().calls.names,
     'signal',
     'computed',
-    'useFetch',
     'useForm',
     'useNativeModule',
     'useColorScheme',

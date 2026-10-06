@@ -211,6 +211,12 @@ export interface DeclLifecycle {
 export interface DeclTyping {
   /** The type of the zero-argument CALL read `<binding>.<property>()` (the web's signal-read shape), or `undefined`. */
   callRead?(decl: ExtDecl, property: string): TypeIR | undefined
+  /**
+   * The type of the PROPERTY read `<binding>.<property>` (the native shape), or `undefined`. A member that may be absent is
+   * returned as a nullable union — which is what makes both emitters wrap its interpolation and lower a truthiness test on it
+   * to a nil test.
+   */
+  member?(decl: ExtDecl, property: string): TypeIR | undefined
 }
 
 /** The conditions `<Suspense>` / `<ErrorBoundary>` OR over, as target text. */

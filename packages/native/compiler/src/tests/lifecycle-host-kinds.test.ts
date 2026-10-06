@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { dndPlugin, queryPlugin, SERVICES, tablePlugin, transform } from './first-party-plugins'
+import { dndPlugin, hooksPlugin, queryPlugin, SERVICES, tablePlugin, transform } from './first-party-plugins'
 
 const SWIFT = readFileSync(join(resolve(import.meta.dirname, '..'), 'emit-swift.ts'), 'utf8')
 
@@ -75,7 +75,7 @@ function declaredSet(): Set<string> {
 describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () => {
   it('the scan finds decl blocks at all (an empty scan would pass vacuously)', () => {
     const { scanned } = derivedLifecycleKinds()
-    expect(scanned).toBeGreaterThan(10)
+    expect(scanned).toBeGreaterThan(8)
   })
 
   it('every decl kind that emits a lifecycle modifier is in the set', () => {
@@ -103,9 +103,8 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
     expect(tablePlugin.decls?.['table-state']?.lifecycle?.stableHost).toBe(true)
   })
 
-  it('`fetch` is present, and `query` / `stream` (now plugin-owned) get the host from their decl lifecycle', () => {
-    const declared = declaredSet()
-    expect(declared.has('fetch')).toBe(true)
+  it('`fetch`, `query` and `stream` (all plugin-owned) get the host from their decl lifecycle', () => {
+    expect(hooksPlugin.decls?.fetch?.lifecycle?.stableHost).toBe(true)
     // The original device-found pair: a `.task` on a transparent conditional restarts forever.
     expect(queryPlugin.decls?.query?.lifecycle?.stableHost).toBe(true)
     expect(queryPlugin.decls?.stream?.lifecycle?.stableHost).toBe(true)

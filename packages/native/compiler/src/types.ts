@@ -215,42 +215,6 @@ export type DeclIR =
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
   /**
-   * Phase 4 — data fetch via `useFetch<T>('/url')` from `@pyreon/query`
-   * (the native subset). Emits a `PyreonFetch<T>` reactive container plus
-   * a mount-time async harness that drives its `begin/resolve/reject`
-   * state machine:
-   *   Swift   →  @State private var x = PyreonFetch<T>()
-   *              + `.task { begin(); resolve(await URLSession…decode) }`
-   *                modifier on the View body
-   *   Kotlin  →  val x = remember { PyreonFetch<T>() }
-   *              + `LaunchedEffect(Unit) { begin(); resolve(…) }`
-   *
-   * `type` is the decoded result type `T` (from the generic arg);
-   * `url` is the literal request path. Non-literal URLs fall through to
-   * undeclared (the parser bails), same conservative rule as `useStorage`.
-   */
-  | {
-      kind: 'fetch'
-      name: string
-      type: TypeIR
-      url: string
-      /**
-       * HTTP verb from `useFetch<T>(url, { method })`. Absent = GET.
-       *
-       * Before this existed the whole init object was READ BY NOBODY: the
-       * parser only ever looked at `arguments[0]`, so `{ method: 'POST',
-       * body: … }` was dropped without a word and both targets emitted a
-       * plain GET. The app compiled, ran, and silently performed the wrong
-       * verb — which is worse than not supporting verbs at all, because
-       * nothing anywhere said so.
-       */
-      method?: string
-      /** Literal `{ 'Content-Type': 'application/json' }` header pairs. */
-      headers?: Record<string, string>
-      /** Literal request body. Only a string literal survives (see parse). */
-      body?: string
-    }
-  /**
    * Phase 4.2 — form state via `useForm({ initialValues })` from
    * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
    * container:

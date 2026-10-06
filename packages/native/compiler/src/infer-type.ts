@@ -21,7 +21,7 @@
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findService, pluginCallReadType, pluginExprMemberType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
+import { findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 import { ERROR_OBJECT } from './services'
 
 export interface InferenceCtx {
@@ -69,14 +69,6 @@ export interface InferenceCtx {
    * other ctx literals don't need to construct it.
    */
   helperReturns?: Map<string, TypeIR> | undefined
-  /**
-   * Fetch decl name → decoded result type T (from `useFetch<T>(url)`).
-   * `x.data` / `x.data()` infer T; `x.isPending` infers boolean —
-   * without this, a computed over fetch state (`computed(() =>
-   * quotes.data() ?? [])`) degraded to `Any` / unknown and the Swift
-   * ForEach over it failed to typecheck.
-   */
-  fetches: Map<string, TypeIR>
   /**
    * Plugin declaration name → the declaration, so a zero-arg call read on its container
    * (`s.events()`) is typed by the owner's `DeclEmitter.typing`. Optional so the many ctx literals
@@ -212,7 +204,6 @@ export function emptyInferenceCtx(): InferenceCtx {
     valueConsts: new Map(),
     locals: new Map(),
     objectLocals: new Map(),
-    fetches: new Map(),
     services: new Map(),
     stores: new Map(),
     structs: new Map(),
@@ -510,10 +501,6 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
     // the field should arrive with the failure it reports.
     new Map<string, TypeIR>([['selectedMarkerId', { kind: 'string' }]]),
   ],
-  [
-    'fetch',
-    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
-  ],
 ])
 
 /**
@@ -675,9 +662,6 @@ export function buildInferenceCtx(
     structs: new Map(
       structDefs.map((s) => [s.name, new Map(s.fields.map((f) => [f.name, f.type]))]),
     ),
-    fetches: new Map(
-      decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
-    ),
     extDecls: new Map(decls.flatMap((d) => (d.kind === 'ext' ? [[d.name, d] as const] : []))),
     // Service-container binding -> decl kind, so a member read on one can be
     // typed against SERVICE_OPTIONAL_FIELDS above.
@@ -703,7 +687,6 @@ export function buildInferenceCtx(
             valueConsts: new Map(),
             locals: new Map(),
             objectLocals: new Map(),
-            fetches: new Map(),
             services: new Map(),
             stores: new Map(),
             structs: new Map(
@@ -1740,52 +1723,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const m = inferMathCall(expr, ctx)
         if (m !== null) return m
       }
-      // Fetch-field read: `quotes.data()` (CALL form — web reads the
-      // signal). data → T | undefined; isPending → boolean; error → unknown.
-      //
-      // `data` is OPTIONAL and every layer says so — the web hook is
-      // `signal<T | undefined>(undefined)`, Swift is `var data: T?`, Kotlin is
-      // `MutableState<T?>`. Inferring a bare `T` made the receiver look
-      // provably non-null, so the Swift member emit STRIPPED the `?.` the
-      // author wrote and produced `created.data.id` for `created.data()?.id`:
-      // uncompilable ("value of optional type 'Item?' must be unwrapped").
-      //
-      // Nothing caught it because every device-proven example fetches an
-      // ARRAY and reads it as `quotes.data() ?? []` — a `??` fallback, never
-      // an optional MEMBER access. So the single-object shape, which is the
-      // natural one for a POST response, had never been compiled.
-      if (
-        expr.args.length === 0 &&
-        expr.callee.kind === 'member' &&
-        expr.callee.object.kind === 'identifier' &&
-        ctx.fetches.has(expr.callee.object.name)
-      ) {
-        if (expr.callee.property === 'data') {
-          const t = ctx.fetches.get(expr.callee.object.name)!
-          // Already a union carrying null/undefined — leave it alone rather
-          // than nesting a second optional layer.
-          if (
-            t.kind === 'union' &&
-            t.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
-          ) {
-            return t
-          }
-          return { kind: 'union', branches: [t, { kind: 'undefined' }] }
-        }
-        if (expr.callee.property === 'isPending') return { kind: 'boolean' }
-        // `error` in CALL form. `SERVICE_OPTIONAL_FIELDS` already types the
-        // MEMBER read as optional, but the call form — which is what shared
-        // source actually writes, because web reads a signal — fell through to
-        // `unknown`. So `{fetch.error() ? 'x' : 'y'}` never reached the
-        // optional-condition rewrite and emitted a bare `Throwable?` as a
-        // Kotlin condition: "condition type mismatch: inferred type is
-        // 'Throwable?' but 'Boolean' was expected". Same class as the
-        // session-rehydrate `if (token)` shape SERVICE_METHOD_RETURNS exists
-        // for; the fetch container's call form was simply never listed.
-        if (expr.callee.property === 'error') {
-          return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
-        }
-      }
       // A zero-arg call read on a plugin declaration's container (`s.events()` on a `useStream`):
       // typed by the declaration's owner (`DeclEmitter.typing`).
       if (
@@ -2026,11 +1963,13 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const szT = inferType(expr.object, ctx)
         if (szT.kind === 'map' || szT.kind === 'set') return { kind: 'number' }
       }
-      // Fetch-field read, property form (`quotes.data` — the native
-      // shape). Mirrors the call-form branch above.
-      if (expr.object.kind === 'identifier' && ctx.fetches.has(expr.object.name)) {
-        if (expr.property === 'data') return ctx.fetches.get(expr.object.name)!
-        if (expr.property === 'isPending') return { kind: 'boolean' }
+      // A property read on a plugin declaration's container (`q.data`, the native shape): typed by the declaration's owner
+      // (`DeclEmitter.typing.member`). Checked before the optional-field table below, which is how a declaration's own
+      // optional members (`f.error`) used to be reached.
+      if (expr.object.kind === 'identifier') {
+        const ext = ctx.extDecls?.get(expr.object.name)
+        const typed = ext === undefined ? undefined : pluginMemberReadType(ext, expr.property)
+        if (typed !== undefined) return typed
       }
       // Optional field on a service container (`geo.latitude`, `ws.lastMessage`,
       // `f.error`). Returned as a nullable union so `typeIsOptional` fires and

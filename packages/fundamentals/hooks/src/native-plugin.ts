@@ -24,7 +24,8 @@
  * `native/kotlin` (or the shared runtimes); `scripts/check-native-plugin-types.ts`
  * fails otherwise.
  */
-import type { CompilerPlugin } from '@pyreon/native-compiler'
+import type { CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
+import { fetchDecl, fetchReceiver, FETCH_TYPE, recognizeFetch } from './native-plugin/fetch'
 
 const num = { kind: 'number' as const }
 const str = { kind: 'string' as const }
@@ -35,6 +36,12 @@ const nativePlugin = {
   name: '@pyreon/hooks',
   apiVersion: 1,
   modules: ['@pyreon/hooks'],
+  // Code-shaped lowerings, beside the data-only service table below: `useFetch<T>(url, init?)` and its container.
+  calls: { useFetch: recognizeFetch },
+  // `const { data, isPending } = useFetch(url)` aliases onto the container.
+  destructureCalls: ['useFetch'],
+  decls: { [FETCH_TYPE]: fetchDecl },
+  receivers: { [FETCH_TYPE]: fetchReceiver },
   services: {
     // M3.2 — share sheet. iOS presents a UIActivityViewController from the key
     // window itself; Android needs a Context (hoisted from LocalContext because

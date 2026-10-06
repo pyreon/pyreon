@@ -511,15 +511,6 @@ function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
 /**
- * Phase 4: every `useFetch` decl name in scope. Member reads of a fetch
- * decl's reactive fields (`x.data` / `x.error` / `x.isPending`) emit with
- * a trailing `.value` because the Kotlin PyreonFetch exposes them as
- * Compose `MutableState` (the Swift side exposes plain @Observable
- * properties, so it needs no rewrite — the platforms diverge here exactly
- * like PyreonRouter's `params`).
- */
-let _fetchNames: Set<string> = new Set()
-/**
  * Phase 4.2: every `useForm` decl name in scope. Member reads of a form
  * decl's reactive fields (`form.values` / `errors` / `touched` /
  * `isSubmitting`) emit with a trailing `.value` (Compose `MutableState`).
@@ -1327,7 +1318,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = bindServices(c.decls)
@@ -1385,10 +1375,8 @@ function emitKotlinComponent(c: ComponentIR): string {
     // A CALLABLE plugin declaration (`q` through `operator fun invoke`) keeps its parens at every reference — the Swift
     // mirror adds it for the same reason.
     if (d.kind === 'ext' && pluginDeclIsCallable(d)) _functionNames.add(d.name)
-    // Phase 4: track useFetch decls so member reads append `.value`. A plugin declaration that is an
-    // async source (`useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
-    if (d.kind === 'fetch') _fetchNames.add(d.name)
-    if (d.kind === 'fetch' || pluginAsyncState(d, 'kotlin', kotlinEmitContext(0)) !== undefined) _asyncDeclsKotlin.push(d)
+    // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
+    if (pluginAsyncState(d, 'kotlin', kotlinEmitContext(0)) !== undefined) _asyncDeclsKotlin.push(d)
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
     // Phase 5: native data/services hook decl names (for the .value rewrite).
@@ -1586,46 +1574,6 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (!isHeadLifecycleDecl(d)) continue
     for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
-  for (const d of c.decls) {
-    if (d.kind !== 'fetch') continue
-    const name = kotlinIdent(d.name)
-    lines.push(`  LaunchedEffect(Unit) {`)
-    lines.push(`    ${name}.begin()`)
-    lines.push(`    try {`)
-    if (d.method || d.headers || d.body) {
-      // Mirrors the Swift branch one-for-one: a request carrying a VERB,
-      // headers, or a body goes through PyreonHttp — the runtime that shipped
-      // on both targets with full verb support and nothing lowering to it.
-      // `readText()` below cannot express any of the three.
-      const parts = [
-        `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
-        `url = ${kotlinStr(d.url)}`,
-      ]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
-          .join(', ')
-        parts.push(`headers = mapOf(${pairs})`)
-      }
-      if (d.body !== undefined) parts.push(`body = ${kotlinStr(d.body)}`)
-      lines.push(`      val __response = withContext(Dispatchers.IO) {`)
-      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
-      lines.push(`      }`)
-      // A non-2xx REJECTS rather than decoding — handing an error page to the
-      // JSON decoder reads as "the server sent bad JSON" and hides the status.
-      lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
-      lines.push(
-        `      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
-      )
-    } else {
-      lines.push(
-        `      val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(d.url)}).readText() }`,
-      )
-      lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
-    }
-    lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
-    lines.push(`  }`)
-  }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
@@ -1705,7 +1653,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
-  _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = new Map()
@@ -1793,11 +1740,8 @@ function resolveKotlinStructFields(elem: TypeIR): { name: string; type: TypeIR }
   return []
 }
 
-/** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
+/** The pending / failed conditions of one async source (a plugin declaration that declares `asyncState`). */
 function asyncStateKotlin(d: DeclIR, indent: number): { pending: string; error: string } {
-  if (d.kind === 'fetch') {
-    return { pending: `${kotlinIdent(d.name)}.isPending.value`, error: `${kotlinIdent(d.name)}.error.value != null` }
-  }
   return pluginAsyncState(d, 'kotlin', kotlinEmitContext(indent))!
 }
 
@@ -1896,11 +1840,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     }
     inner.push('  }')
     return `val ${kotlinIdent(d.name)} = remember { ${inner.join('\n  ')} }`
-  }
-  // Phase 4: `const x = useFetch<T>('/url')` → a remembered PyreonFetch<T>.
-  // The LaunchedEffect harness that runs it is emitted by emitKotlinComponent.
-  if (d.kind === 'fetch') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonFetch<${kotlinType(d.type, ctx)}>() }`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
   // PyreonForm seeded with the literal defaults. No harness (pure state).
@@ -3853,22 +3792,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         return `((${arg}).toDoubleOrNull() ?: 0.0)`
       }
-      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
-      // `quotes.isPending()` (the web signal-read shape) → MutableState
-      // `.value` read. `refetch` is excluded (real method, parens
-      // preserved by the generic call emit below).
-      if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _fetchNames.has(e.callee.object.name) &&
-        (e.callee.property === 'data' ||
-          e.callee.property === 'isPending' ||
-          e.callee.property === 'isFetching' ||
-          e.callee.property === 'error')
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${e.callee.property}.value`
-      }
       // Phase-5 native-container reactive FIELD read via the web signal-read
       // idiom `ws.lastMessage()` → `ws.lastMessage.value` (drop the call parens
       // — the field is a Compose MutableState property, so `.value()` would
@@ -4699,18 +4622,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.name === _activePropsParamName
       ) {
         return kotlinIdent(e.property)
-      }
-      // Phase 4: a useFetch decl's reactive fields are Compose MutableState
-      // — `x.data` / `x.error` / `x.isPending` read through `.value`.
-      if (
-        e.object.kind === 'identifier' &&
-        _fetchNames.has(e.object.name) &&
-        (e.property === 'data' ||
-          e.property === 'error' ||
-          e.property === 'isPending' ||
-          e.property === 'isFetching')
-      ) {
-        return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
       // Phase 4.2: a useForm decl's MutableState fields read through `.value`.
       // `isValid` is a derived Boolean getter (not MutableState) → plain read.

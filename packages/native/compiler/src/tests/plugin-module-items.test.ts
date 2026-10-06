@@ -5,6 +5,7 @@ import { moduleTag } from '../expr-utils'
 import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
+import { hooksPlugin } from './first-party-plugins'
 import type { ParseResult } from '../types'
 
 // The module-level seams the `@pyreon/validate` / `@pyreon/validation` plugins needed: `topLevel` +
@@ -390,7 +391,8 @@ export function App() {
   const t = useFetch<Thing>(getThing({}))
   return <Stack><Text>{String(t.data()?.pages)}</Text></Stack>
 }`
-    const result = createCompiler({ plugins: [plugin, endpoints] }).transform(source, { target })
+    // `useFetch` is the hooks plugin's: it is the consumer of the request source.
+    const result = createCompiler({ plugins: [hooksPlugin, plugin, endpoints] }).transform(source, { target })
     expect(result.code).toContain(target === 'swift' ? 'var pages: Double' : 'pages: Double')
     expect(seen).toContain('unit:Meters')
     expect(result.warnings).toContain('units saw 1 item(s)')
