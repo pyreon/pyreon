@@ -44,7 +44,7 @@ export function a11yPlugin(): AtlasPlugin {
         return {
           a11y: skipped(
             'nothing-to-check',
-            'no name-like prop required or supplied to check statically — run `atlas verify-browser` for real axe-core coverage',
+            'no name-like prop required or supplied to check statically — `atlas verify-browser` runs axe-core on the rendered preview for real accessibility coverage',
           ),
         }
       }

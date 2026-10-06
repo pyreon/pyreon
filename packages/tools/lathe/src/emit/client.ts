@@ -1291,14 +1291,21 @@ export function emitNativeModules(
       collectRefs(op.body?.type, directRefs);
       if (hasNativeStreamComponent(op)) collectRefs(op.stream?.event, directRefs);
     }
+    // The `zodSchema(...)` wrapper is used ONLY by a named object-model binding
+    // (`export const Pet = zodSchema(z.object({ … }))`). An operation that
+    // inlines its response as `z.object(…)` and names no model never calls it,
+    // and an unused import is not harmless: PMTC warns on the unlowered
+    // `@pyreon/validation` import by name, which read as this module failing
+    // for a reason that had nothing to do with it.
+    const emitsModelBinding = [...reachableModels(doc, directRefs)].some(
+      (m) => doc.models.find((x) => x.name === m)?.type.kind === "object",
+    );
     const namesSchema =
       ops.some((op) => !hasNativeStreamComponent(op) && typedResponse(op) !== undefined) ||
-      [...reachableModels(doc, directRefs)].some(
-        (m) => doc.models.find((x) => x.name === m)?.type.kind === "object",
-      );
+      emitsModelBinding;
     if (namesSchema) {
       f.import(dialect.module, dialect.binding);
-      if (dialect.nativeWrap)
+      if (dialect.nativeWrap && emitsModelBinding)
         f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn);
     }
     if (ops.some(hasNativeDataComponent)) f.import("@pyreon/query", "useQuery");

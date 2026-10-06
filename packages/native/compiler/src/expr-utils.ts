@@ -624,6 +624,9 @@ function synthArrayElementType(
   return null
 }
 
+/** Resolves a declared struct's fields by name, so a `typeRef` can be keyed as its SHAPE. */
+export type StructResolver = (name: string) => readonly { name: string; type: TypeIR }[] | undefined
+
 /**
  * Deterministic per-field shape token for `synthLiteralStructName`'s dedup key.
  * A `typeRef` (a nested synthesized struct) carries the nested struct NAME —
@@ -631,7 +634,7 @@ function synthArrayElementType(
  * the same field name never collide on the lossy key (the collision the
  * scalar-only key had). Recursive over arrays.
  */
-export function typeShapeKey(t: TypeIR): string {
+export function typeShapeKey(t: TypeIR, resolve?: StructResolver, seen?: ReadonlySet<string>): string {
   switch (t.kind) {
     case 'number':
       return t.float === true ? 'number.f' : 'number'
@@ -639,22 +642,34 @@ export function typeShapeKey(t: TypeIR): string {
       return 'string'
     case 'boolean':
       return 'boolean'
-    case 'typeRef':
+    case 'typeRef': {
+      // A reference to a struct the file declares IS that struct's shape. The
+      // inline-object lift (and every user `type Foo = { … }`) turns an
+      // anonymous `{ id: string }` into `ref:Foo`, so without expanding it the
+      // SAME shape keyed two ways (`obj{…}` at an annotation site, `ref:Foo`
+      // inside the declared parent) and the lookup missed — each site then
+      // synthesized its own struct for one shape, and the targets disagreed on
+      // which name a value carried. Expansion is guarded against cycles.
+      const fields = t.args.length === 0 ? resolve?.(t.name) : undefined
+      if (fields !== undefined && !(seen?.has(t.name) ?? false)) {
+        return `obj{${structShapeKey(fields, resolve, new Set([...(seen ?? []), t.name]))}}`
+      }
       return `ref:${t.name}`
+    }
     case 'array':
-      return `arr:${typeShapeKey(t.element)}`
+      return `arr:${typeShapeKey(t.element, resolve, seen)}`
     // Extended for `structShapeKey`, which keys DECLARED structs. A struct
     // whose fields differ only inside a map/set/object/union must still key
     // apart, or the two collapse exactly as Int-vs-Double did.
     case 'set':
-      return `set:${typeShapeKey(t.element)}`
+      return `set:${typeShapeKey(t.element, resolve, seen)}`
     case 'map':
-      return `map:${typeShapeKey(t.key)}:${typeShapeKey(t.value)}`
+      return `map:${typeShapeKey(t.key, resolve, seen)}:${typeShapeKey(t.value, resolve, seen)}`
     case 'object':
-      return `obj{${structShapeKey(t.fields)}}`
+      return `obj{${structShapeKey(t.fields, resolve, seen)}}`
     case 'union':
       // Sorted so branch ORDER never changes the key.
-      return `union<${t.branches.map(typeShapeKey).sort().join('|')}>`
+      return `union<${t.branches.map((b) => typeShapeKey(b, resolve, seen)).sort().join('|')}>`
     default:
       return t.kind
   }
@@ -1257,9 +1272,13 @@ export function classifyDynamicStylingAttr(
  * `swiftType`/`kotlinType`) so the two emitters can never disagree about which
  * declared struct a shape resolves to.
  */
-export function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
+export function structShapeKey(
+  fields: readonly { name: string; type: TypeIR }[],
+  resolve?: StructResolver,
+  seen?: ReadonlySet<string>,
+): string {
   return fields
-    .map((f) => `${f.name}:${typeShapeKey(f.type)}`)
+    .map((f) => `${f.name}:${typeShapeKey(f.type, resolve, seen)}`)
     .sort()
     .join(',')
 }

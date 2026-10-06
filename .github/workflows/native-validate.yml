@@ -410,6 +410,15 @@ jobs:
         run: bun scripts/check-native-cosource.ts
         env:
           PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+      - name: Published npm tarballs are consumable (swift package describe on the real tarball)
+        # #3787: the Swift runtimes shipped a Package.swift with a .testTarget but
+        # no Tests/, so SwiftPM aborted with "overlapping sources" for every
+        # consumer. This packs the REAL tarballs, unpacks them and runs
+        # `swift package describe` — what a consumer's SwiftPM does. Manifest-level,
+        # so Linux swift is enough (no SwiftUI SDK needed).
+        run: bun scripts/check-native-tarballs.ts
+        env:
+          PYREON_REQUIRE_NATIVE_VALIDATE: '1'
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 

@@ -12,8 +12,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { VerifyVerdict } from '../../core'
 import {
+  axeReportToCheck,
   comparePngs,
   countSnapshots,
+  mergeA11y,
   mergeBrowserVerdict,
   snapshotScenario,
   writeAtomic,
@@ -215,3 +217,86 @@ describe('writeAtomic', () => {
     expect(readdirSync(dir)).toEqual(['atlas-catalog.json'])
   })
 })
+
+describe('axe-core in verify-browser (#3803)', () => {
+  const report = (over: Partial<Parameters<typeof axeReportToCheck>[0]> = {}) => ({
+    status: 'done' as const,
+    violations: [] as { id: string; impact: string; help: string; target: string; html: string; nodes: number }[],
+    incomplete: 0,
+    ...over,
+  })
+  const v = (id: string, impact: string) => ({ id, impact, help: `${id} help`, target: 'button', html: '<button></button>', nodes: 2 })
+
+  it('violations FAIL with structured axe-violation findings', () => {
+    const c = axeReportToCheck(report({ violations: [v('button-name', 'critical')] }))
+    expect(c.status).toBe('fail')
+    expect(c.findings?.[0]?.code).toBe('axe-violation')
+    expect(c.findings?.[0]?.message).toContain('button-name')
+  })
+
+  it('a clean run PASSES; incomplete items are reported, not dropped', () => {
+    expect(axeReportToCheck(report()).status).toBe('pass')
+    const c = axeReportToCheck(report({ incomplete: 3 }))
+    expect(c.status).toBe('pass')
+    expect(c.findings?.[0]?.code).toBe('axe-incomplete')
+  })
+
+  it('a run that did NOT happen is a SKIP with the reason — never a pass', () => {
+    const c = axeReportToCheck({ status: 'failed', violations: [], incomplete: 0, error: 'boom' })
+    expect(c.status).toBe('skip')
+    expect(c.findings?.[0]?.code).toBe('not-run')
+    expect(c.findings?.[0]?.message).toContain('boom')
+  })
+
+  it('minImpact drops lower-impact violations but keeps unranked ones', () => {
+    const r = report({ violations: [v('a', 'minor'), v('b', 'moderate')] })
+    expect(axeReportToCheck(r, 'serious').status).toBe('pass')
+    expect(axeReportToCheck(r, 'moderate').findings).toHaveLength(1)
+    expect(axeReportToCheck(report({ violations: [v('x', 'unknown')] }), 'critical').status).toBe('fail')
+  })
+
+  it('merge: a static skip is replaced by axe pass/fail; static FAIL survives an axe pass', () => {
+    const staticSkip = { status: 'skip', findings: [{ code: 'nothing-to-check', message: 'run verify-browser' }] } as const
+    expect(mergeA11y(staticSkip, { status: 'pass' })).toEqual({ status: 'pass' })
+    expect(mergeA11y(undefined, { status: 'pass' }).status).toBe('pass')
+    const merged = mergeA11y(FAIL_A11Y, { status: 'pass' })
+    expect(merged.status).toBe('fail')
+    expect(merged.findings?.map((f) => f.code)).toEqual(['missing-accessible-name'])
+  })
+
+  it('merge: axe not run keeps an honest skip — it never becomes a pass', () => {
+    const notRun = axeReportToCheck({ status: 'failed', violations: [], incomplete: 0, error: 'no preview' })
+    const m = mergeA11y({ status: 'skip' }, notRun)
+    expect(m.status).toBe('skip')
+    expect(m.findings?.[0]?.message).toContain('no preview')
+  })
+
+  it('merge is idempotent: a re-run replaces prior axe findings instead of stacking them', () => {
+    const fail = axeReportToCheck(report({ violations: [v('button-name', 'critical')] }))
+    const once = mergeA11y({ status: 'skip' }, fail)
+    const twice = mergeA11y(once, fail)
+    expect(twice).toEqual(once)
+    // and when the violation is fixed the verdict recovers
+    expect(mergeA11y(once, { status: 'pass' }).status).toBe('pass')
+  })
+
+  it('mergeBrowserVerdict: axe FAIL flips ok; absent axe carries the prior a11y unchanged', () => {
+    const scan: VerifyVerdict = {
+      ok: true, checked: 1, a11y: { status: 'skip' }, interaction: SKIP, reactivityCoverage: SKIP,
+      leak: SKIP, snapshot: SKIP, ssrParity: SKIP,
+    }
+    const failed = mergeBrowserVerdict(scan, {
+      reactivityCoverage: PASS, snapshot: PASS,
+      a11y: axeReportToCheck(report({ violations: [v('image-alt', 'critical')] })),
+    })
+    expect(failed.a11y.status).toBe('fail')
+    expect(failed.ok).toBe(false)
+    const carried = mergeBrowserVerdict(scan, { reactivityCoverage: PASS, snapshot: PASS })
+    expect(carried.a11y).toBe(scan.a11y)
+  })
+})
+
+const FAIL_A11Y = {
+  status: 'fail',
+  findings: [{ code: 'missing-accessible-name' as const, message: 'label is empty' }],
+} as const
