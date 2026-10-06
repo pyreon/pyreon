@@ -1007,15 +1007,17 @@ export function classifyCoverageExecution(
       shortfalls: [],
     }
   } else {
-    // How the child ENDED is the first diagnostic for an unparseable run —
-    // a SIGKILL/137 here is the runner OOM-killing the coverage remap,
-    // which reads as "printed the json report, then nothing" and cost a
-    // root-causing round when it wasn't named (main run 30922462710).
+    // How the child ENDED is the first diagnostic for an unparseable run.
+    // A signal or a deadline already returned above (`timedOut || error ||
+    // signal`), so by here the child exited on its own: the signal is always
+    // none, and a SIGKILL/137 — the runner OOM-killing the coverage remap,
+    // which reads as "printed the json report, then nothing" (main run
+    // 30922462710) — was named by that earlier branch.
     return {
       package: pkgName,
       kind: outcome.kind,
       timedOut,
-      error: `child ended with exit=${code ?? 'null'} signal=${signal ?? 'none'}`,
+      error: `child ended with exit=${code ?? 'null'} signal=none`,
       outputTail: tailOf(stdout),
     }
   }
