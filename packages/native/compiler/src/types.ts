@@ -1232,30 +1232,6 @@ export interface ModelDefnIR {
   methods?: (Extract<DeclIR, { kind: 'function' }> & { selfParam: string })[]
 }
 
-/**
- * Gap 4 follow-up — @pyreon/feature schema-driven CRUD config.
- * `const Todo = defineFeature({ name: 'todo', schema: { ... } })`
- * with literal field-type map emits a per-feature schema struct +
- * a module-scope const exposing `name` + `initialValues`. The CRUD
- * runtime methods (`useList`, `useById`, etc.) are NOT ported —
- * tier2 silent-drop diagnostic still fires for component-body uses
- * pointing users to the Layer-4 workaround. Schema struct + name
- * + initialValues are the v1 deliverable: gives downstream code
- * something REAL to reference for forms / data shapes.
- *
- * v1 scope: literal schema shape `{ field: "string" | "number" |
- * "boolean" }`. Zod / Valibot / ArkType schemas fall through to
- * the existing tier2 silent-drop diagnostic.
- */
-export interface FeatureDefnIR {
-  /** Top-level binding name (e.g. `Todo`). */
-  bindingName: string
-  /** Feature name from `defineFeature({ name: 'X', ... })`. */
-  featureName: string
-  /** Schema fields parsed from the literal `schema: { ... }` map. */
-  fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
-}
-
 export interface ParseResult {
   /** Decoded static import specifiers, collected from the parser's AST. */
   imports: string[]
@@ -1275,13 +1251,6 @@ export interface ParseResult {
    * the consuming component body.
    */
   models: ModelDefnIR[]
-  /**
-   * Gap 4 follow-up: @pyreon/feature definitions from
-   * `const X = defineFeature({ name, schema })`. Each one emits a
-   * per-feature schema struct + module-scope const exposing the
-   * schema's initialValues + name.
-   */
-  features: FeatureDefnIR[]
   /**
    * File-scope items plugins own (see {@link ExtModuleItem}): declarations a plugin's `topLevel` recognizer
    * claimed, then the ones its expression recognizers synthesized. Emitted in plugin-declared slots beside the

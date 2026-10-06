@@ -322,6 +322,8 @@ export interface CallRegistry {
   readonly names: ReadonlySet<string>
   /** Declaration recognizers keyed by callee shape, in plugin order. */
   readonly declCalls: readonly { readonly owner: string; readonly recognize: DeclCallRecognizer }[]
+  /** Callee name → the plugin that declared it `tier2Calls` (a call it ships no lowering for; see `CompilerPlugin.tier2Calls`). */
+  readonly tier2Calls: ReadonlyMap<string, string>
   /** Plugin name → declaration type → emitter. */
   readonly emitters: ReadonlyMap<string, ReadonlyMap<string, DeclEmitter>>
   /** The emitter for `(plugin, type)`, or `undefined`. */
@@ -335,6 +337,7 @@ type CallPlugin = {
   readonly modules?: readonly string[] | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly declCalls?: DeclCallRecognizer | undefined
+  readonly tier2Calls?: readonly string[] | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
   readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
 }
@@ -354,8 +357,10 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
   const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
   const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
+  const tier2Calls = new Map<string, string>()
   for (const plugin of plugins) {
     if (plugin.declCalls !== undefined) declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
+    for (const callee of plugin.tier2Calls ?? []) if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
     // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
     // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
     for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
@@ -385,6 +390,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
     calls,
     names: new Set(calls.keys()),
     declCalls: Object.freeze(declCalls),
+    tier2Calls,
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),
     memberCalls,

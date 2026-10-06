@@ -133,6 +133,14 @@ export interface CompilerPlugin<Target extends string = string> {
    */
   readonly declCalls?: DeclCallRecognizer | undefined
   /**
+   * Calls of this package that ship NO native lowering, by callee name (`defineFeature` for a package whose literal form lowers
+   * at file scope but whose component-body form does not). A declaration `const x = <callee>(…)` that no recognizer claimed gets
+   * the standing Tier-2 diagnostic naming this plugin — the setup call would otherwise emit as an unresolved reference — and
+   * nothing is emitted. Unlike `calls` it does not CLAIM the name: it is matched by the callee as written, whatever it was
+   * imported from, so another module's same-named function is never mistaken for this package's by the hook-binding pass.
+   */
+  readonly tier2Calls?: readonly string[] | undefined
+  /**
    * How this plugin's declarations render on each target, keyed by the
    * declaration `type` a `calls` recognizer returns. The emitter receives the
    * `EmitContext` facade and returns declaration text.

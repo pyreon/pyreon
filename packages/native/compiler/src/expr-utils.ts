@@ -348,7 +348,7 @@ export function moduleTag(parsed: ParseResult): string {
       parsed.stores,
       parsed.models,
       lane('fieldMetas'),
-      parsed.features,
+      lane('features'),
       lane('zodSchemas'),
       parsed.helperFns,
       parsed.styledComponents,

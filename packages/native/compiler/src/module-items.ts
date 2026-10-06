@@ -110,16 +110,17 @@ export interface FieldValidators {
 /** Renders one item type, and says how it takes part in the core's cross-cutting passes. */
 export interface ModuleItemEmitter {
   /**
-   * Where among the core's own module items this one emits: after the models (`'models'`) or after the
-   * features (`'features'`, the default — beside every other data declaration).
+   * Where among the core's own module items this one emits, in order: after the models (`'models'`), then the
+   * plugin DECLARATIONS a file introduces by name before its schemas (`'declarations'` — a feature's schema struct
+   * and its binding), then every other data declaration (`'data'`, the default). Items of one slot emit in file order.
    */
-  readonly after?: 'models' | 'features' | undefined
+  readonly after?: 'models' | 'declarations' | 'data' | undefined
   /**
    * Only an item that used to be a closed core array needs this: the name of the array it hashed in
    * (`moduleTag`, the hash that names synthesized structs, hashes each lane's payloads where the array stood).
    * A new plugin has no prior output to preserve and omits it.
    */
-  readonly legacyList?: 'fieldMetas' | 'zodSchemas' | undefined
+  readonly legacyList?: 'fieldMetas' | 'zodSchemas' | 'features' | undefined
   readonly bindings?: ItemBindings | undefined
   readonly fieldValidators?: FieldValidators | undefined
   /** The item's declarations, one string each (nested declarations first). */

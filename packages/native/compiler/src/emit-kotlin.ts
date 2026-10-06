@@ -173,7 +173,6 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  FeatureDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
@@ -695,7 +694,6 @@ export function emitKotlin(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
-  features: FeatureDefnIR[] = [],
   moduleItems: ExtModuleItem[] = [],
   // fonts: Android resolves at runtime via pyreonFont(res/font), so
   // the map is accepted for signature symmetry but unused here.
@@ -879,9 +877,8 @@ export function emitKotlin(
   for (const m of models) parts.push(emitKotlinModel(m))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
   for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
-  // Gap 4 follow-up — feature v1: emit per-feature schema data class
-  // + module-scope object.
-  for (const f of features) parts.push(emitKotlinFeature(f))
+  // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
+  for (const item of itemsInSlot(moduleItems, 'declarations')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Plugin module items (`CompilerPlugin.items`): schemas and the like.
   // `PyreonSchemaError` and `PyreonParseResult` — what every schema throws
   // and returns — live in the runtime (`PyreonSchema.kt`), NOT in this file.
@@ -894,7 +891,7 @@ export function emitKotlin(
   // local in every file: a provider in the app root and a reader on another
   // page never met, so the reader silently denied everything.
   _moduleItems = moduleItems
-  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
+  for (const item of itemsInSlot(moduleItems, 'data')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -1084,51 +1081,6 @@ function emitKotlinModel(m: ModelDefnIR): string {
     _activeModelSelfParamKotlin = prevModelSelf
   }
   lines.push(`}`)
-  return lines.join('\n')
-}
-
-/**
- * Gap 4 follow-up — feature v1 emit (Kotlin). Mirror of
- * emitSwiftFeature. Produces:
- *
- *   data class PyreonFeatureSchema_Todo(
- *       var id: String = "",
- *       var title: String = "",
- *       var done: Boolean = false,
- *   )
- *
- *   object PyreonFeature_Todo {
- *       const val name = "todo"
- *       val initialValues = PyreonFeatureSchema_Todo()
- *   }
- */
-function emitKotlinFeature(f: FeatureDefnIR): string {
-  const lines: string[] = []
-  lines.push(`data class PyreonFeatureSchema_${f.bindingName}(`)
-  for (const field of f.fields) {
-    const t =
-      field.type === 'string'
-        ? 'String'
-        : field.type === 'number'
-          ? KOTLIN_INT
-          : 'Boolean'
-    const initial =
-      field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${kotlinMember(field.name)}: ${t} = ${initial},`)
-  }
-  lines.push(`)`)
-  lines.push(``)
-  lines.push(`object PyreonFeature_${f.bindingName} {`)
-  lines.push(`    const val name = ${kotlinStr(f.featureName)}`)
-  lines.push(
-    `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
-  )
-  lines.push(`}`)
-  // See the Swift mirror. A VALUE binding, not a `typealias` — for symmetry with
-  // the sibling lowerings, not for collision safety: both forms collide with a
-  // same-named user type, which parse.ts warns about by name.
-  lines.push(``)
-  lines.push(`val ${f.bindingName} = PyreonFeature_${f.bindingName}`)
   return lines.join('\n')
 }
 

@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, declCalls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, rewriteElement, requestSources, destructureCalls, componentOnlyCalls, persistence, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, declCalls, tier2Calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, rewriteElement, requestSources, destructureCalls, componentOnlyCalls, persistence, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -332,8 +332,8 @@ export function assertPluginExtensions(name: string, plugin: object): void {
         throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} needs ${what}.`)
       }
       // A lane the hash does not have would silently drop the item from `moduleTag`.
-      if (entry.legacyList !== undefined && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas') {
-        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "fieldMetas" or "zodSchemas".`)
+      if (entry.legacyList !== undefined && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas' && entry.legacyList !== 'features') {
+        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "fieldMetas", "zodSchemas" or "features".`)
       }
     }
   }
@@ -352,6 +352,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     if (!backend || typeof backend !== 'object' || typeof backend.swift !== 'function' || typeof backend.kotlin !== 'function') {
       throw new Error(`[Pyreon] Plugin "${name}" persistence needs swift and kotlin functions.`)
     }
+  }
+  if (tier2Calls !== undefined && (!Array.isArray(tier2Calls) || tier2Calls.some((c) => typeof c !== 'string' || c === ''))) {
+    throw new Error(`[Pyreon] Plugin "${name}" tier2Calls must be an array of callee names.`)
   }
   if (declCalls !== undefined && typeof declCalls !== 'function') {
     throw new Error(`[Pyreon] Plugin "${name}" declCalls must be a synchronous function.`)

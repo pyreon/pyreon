@@ -577,9 +577,9 @@ export function itemLegacyList(item: ExtModuleItem): string | undefined {
 }
 
 /** The items that emit in `slot` (see `ModuleItemEmitter.after`), in file order. */
-export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'features'): ExtModuleItem[] {
+export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'declarations' | 'data'): ExtModuleItem[] {
   const registry = activeRegistries().items
-  return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'features') === slot)
+  return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'data') === slot)
 }
 
 /** Render a file-scope item on `target` through its owner's emitter: one string per declaration. */

@@ -98,7 +98,6 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
   if (typeNames.size === 0) return
   const valueNames = [
     ...result.moduleDecls.map((d) => d.name),
-    ...result.features.map((f) => f.bindingName),
     ...result.moduleItems.flatMap((item) => itemBindings(item)?.names(item) ?? []),
   ]
   const clashes = [...new Set(valueNames.filter((n) => typeNames.has(n)))]
@@ -144,9 +143,8 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
   // nested `Book_Author` follows `Book`).
   for (const item of result.moduleItems) itemBindings(item)?.rename(item, renames, taken)
   for (const d of result.moduleDecls) d.name = renames.get(d.name) ?? d.name
-  for (const f of result.features) f.bindingName = renames.get(f.bindingName) ?? f.bindingName
   const exprEmitters = activeRegistries().items
-  for (const root of [...valueRoots, result.moduleDecls, result.features]) {
+  for (const root of [...valueRoots, result.moduleDecls]) {
     for (const n of walk(root)) {
       if (n.kind === 'ext-expr') {
         const e = n as unknown as ExtExprIR

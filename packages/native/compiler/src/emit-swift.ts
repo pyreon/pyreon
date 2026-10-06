@@ -186,7 +186,6 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  FeatureDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
@@ -1066,7 +1065,6 @@ export function emitSwift(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
-  features: FeatureDefnIR[] = [],
   moduleItems: ExtModuleItem[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
@@ -1261,9 +1259,8 @@ export function emitSwift(
   for (const m of models) parts.push(emitSwiftModel(m))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
   for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
-  // Gap 4 follow-up — feature v1: emit per-feature schema struct +
-  // module-scope const exposing initialValues + name.
-  for (const f of features) parts.push(emitSwiftFeature(f))
+  // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
+  for (const item of itemsInSlot(moduleItems, 'declarations')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Plugin module items (`CompilerPlugin.items`): schemas and the like. What every schema throws and
   // returns (`PyreonSchemaError`, `PyreonParseResult`) lives in the runtime (`PyreonSchema.swift`), NOT in the
   // emitted file — emitted per file they collided: two schema-bearing files in one Xcode target each
@@ -1277,7 +1274,7 @@ export function emitSwift(
   // reader in another must name the SAME key, which no per-file declaration
   // can guarantee.
   _moduleItems = moduleItems
-  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  for (const item of itemsInSlot(moduleItems, 'data')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -1556,59 +1553,6 @@ function emitSwiftModelBody(m: ModelDefnIR): string {
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
-  return lines.join('\n')
-}
-
-/**
- * Gap 4 follow-up — feature v1 emit. Produces a Codable struct
- * representing the schema shape PLUS a module-scope enum holding
- * the `name` + `initialValues` accessors. Downstream code can
- * reference `PyreonFeatureSchema_<binding>` as the data type and
- * `<binding>.initialValues` for default state.
- *
- *   struct PyreonFeatureSchema_Todo: Codable {
- *       var id: String = ""
- *       var title: String = ""
- *       var done: Bool = false
- *   }
- *
- *   enum PyreonFeature_Todo {
- *       static let name = "todo"
- *       static let initialValues = PyreonFeatureSchema_Todo()
- *   }
- */
-function emitSwiftFeature(f: FeatureDefnIR): string {
-  const lines: string[] = []
-  lines.push(`struct PyreonFeatureSchema_${f.bindingName}: Codable {`)
-  for (const field of f.fields) {
-    const t =
-      field.type === 'string' ? 'String' : field.type === 'number' ? 'Int' : 'Bool'
-    const initial = field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${swiftIdent(field.name)}: ${t} = ${initial}`)
-  }
-  lines.push(...swiftCodingKeysLines(f.fields.map((x) => x.name), '    '))
-  lines.push(`}`)
-  lines.push(``)
-  lines.push(`enum PyreonFeature_${f.bindingName} {`)
-  lines.push(`    static let name = ${swiftStr(f.featureName)}`)
-  lines.push(
-    `    static let initialValues = PyreonFeatureSchema_${f.bindingName}()`,
-  )
-  lines.push(`}`)
-  // The binding the SOURCE actually names. Without it the declaration is
-  // unreachable: shared source writes `Todo.name`, the emit declares
-  // `PyreonFeature_Todo`, and swiftc/kotlinc fail with "cannot find 'Todo' in
-  // scope" on a file the author never wrote. The two sibling lowerings in this
-  // file (`PyreonFieldMeta`, `PyreonZodSchema`) both emit this alias; the
-  // feature one did not.
-  //
-  // A VALUE binding (`.self`, a metatype) rather than a `typealias`, matching
-  // the two siblings. It is NOT collision-proof and must not be sold as such:
-  // Swift and Kotlin share one namespace for types and values, so a same-named
-  // user type collides with EITHER form (measured both ways). parse.ts warns by
-  // name for that shape instead.
-  lines.push(``)
-  lines.push(`let ${f.bindingName} = PyreonFeature_${f.bindingName}.self`)
   return lines.join('\n')
 }
 
