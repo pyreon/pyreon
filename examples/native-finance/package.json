@@ -19,7 +19,9 @@
     "@pyreon/store": "workspace:*"
   },
   "dependencies": {
+    "@pyreon/charts": "workspace:*",
     "@pyreon/hooks": "workspace:*",
-    "@pyreon/charts": "workspace:*"
+    "@pyreon/http": "workspace:*",
+    "@pyreon/query": "workspace:*"
   }
 }
