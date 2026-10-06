@@ -214,7 +214,10 @@ describe('verifier verdict arms', () => {
     expect(verifyNative(f('x'), () => ({ code: '', warnings: [] })).files[0]?.verdict).toBe('broken')
   })
   it('a schema that did not lower is web-only; a leak is broken', () => {
-    expect(verifyNative(f('s.object('), () => ({ code: 'PyreonQuery<', warnings: [] })).files[0]?.verdict).toBe('web-only')
+    expect(verifyNative(f('export const Pet = s.object({})'), () => ({ code: 'PyreonQuery<', warnings: [] })).files[0]?.verdict).toBe('web-only')
+    // An inline `s.object(…)` is an ARGUMENT (an endpoint's response), not a
+    // schema declaration — it asks for no schema marker.
+    expect(verifyNative(f("api.endpoint('GET /x', { response: s.object({}) })"), () => ({ code: 'PyreonQuery<', warnings: [] })).files[0]?.verdict).toBe('lowers')
     expect(verifyNative(f('x'), () => ({ code: 's.array(', warnings: [] })).files[0]?.verdict).toBe('broken')
   })
   it('a failed compile with no parseable error still fails, and a clean one passes', () => {

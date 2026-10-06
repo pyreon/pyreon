@@ -157,6 +157,9 @@ const GATES: Gate[] = [
   { name: 'check-native-primitive-coverage', cmd: 'bun scripts/check-native-primitive-coverage.ts' },
   { name: 'check-native-cosource', cmd: 'bun scripts/check-native-cosource.ts' },
   { name: 'check-native-srcdirs-drift', cmd: 'bun scripts/check-native-srcdirs-drift.ts' },
+  // The published tarballs of the source-shipping native runtimes must be consumable
+  // (#3787: a Package.swift testTarget with no shipped Tests/ broke every consumer).
+  { name: 'check-native-tarballs', cmd: 'bun scripts/check-native-tarballs.ts' },
   // Refactor locks for the native compiler: emitted Swift/Kotlin must stay byte-identical across
   // the boundary refactor (golden), and library knowledge inside either compiler may only shrink.
   { name: 'check-native-golden', cmd: 'bun scripts/check-native-golden.ts' },
