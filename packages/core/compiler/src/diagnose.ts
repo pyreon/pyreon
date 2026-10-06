@@ -47,6 +47,20 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Before #3815 the compiler's name-keyed registries (prop-derived aliases,
+    // `props` names, signal variables) outlived the function that declared
+    // them, so an alias in one component was inlined as `props.x` into a
+    // sibling that has no `props` binding — a ReferenceError at mount — and a
+    // function-local signal made a same-named import auto-call
+    // (`x is not a function`). Placed before the generic `X is not defined`
+    // entry so the specific teaching wins.
+    pattern: /\bprops is not defined\b/,
+    diagnose: () => ({
+      cause: 'On @pyreon/compiler versions before the lexical-scope fix (#3815), a prop-derived const (`const label = props.label`) in one component was substituted by NAME into every later `label` in the module — including a sibling component\'s own local, an import, or a module const — emitting `props.label` where no `props` exists. (The same leak made a function-local `signal()` auto-call a same-named import: `x is not a function`.)',
+      fix: 'Upgrade @pyreon/compiler (and @pyreon/vite-plugin) to a version with the fix; aliases now resolve by lexical binding. As a workaround on an older compiler, give the sibling\'s local a different name than the other function\'s prop-derived const, or declare the alias with `let`.',
+    }),
+  },
+  {
     pattern: /useLoaderData(?:\(\))?.*(?:undefined|empty).*first.*loader.*(?:resolved|finished|completed)|first.*loader.*(?:resolved|finished|completed).*useLoaderData(?:\(\))?.*(?:undefined|empty)/i,
     diagnose: () => ({
       cause: 'On older @pyreon/router versions, a leaf route without a pendingComponent ignored its first loader-data arrival. Its component kept the initial undefined LoaderDataContext snapshot even after the loader completed.',

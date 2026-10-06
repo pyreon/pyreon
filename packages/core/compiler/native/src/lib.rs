@@ -654,7 +654,9 @@ struct Ctx<'a> {
 
     props_names: FxHashSet<String>,
     prop_derived_vars: FxHashMap<String, Span>,
-    resolved_cache: FxHashMap<String, String>,
+    /// Undo log for lexical scoping of `prop_derived_vars` (issue #3815).
+    prop_derived_log: Vec<ScopeLog>,
+    resolved_cache: FxHashMap<u32, String>,
     resolving: FxHashSet<String>,
     warned_cycles: FxHashSet<String>,
 
@@ -854,6 +856,7 @@ impl<'a> Ctx<'a> {
             needs_mount_child_import: false,
             props_names: FxHashSet::default(),
             prop_derived_vars: FxHashMap::default(),
+            prop_derived_log: Vec::new(),
             resolved_cache: FxHashMap::default(),
             resolving: FxHashSet::default(),
             warned_cycles: FxHashSet::default(),
@@ -2803,7 +2806,10 @@ fn find_init_expression_by_span<'a>(
 /// Uses AST-based identifier resolution to correctly skip identifiers inside
 /// string literals, comments, template literal quasis, and property-name positions.
 fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
-    if let Some(cached) = ctx.resolved_cache.get(var_name) {
+    // Cache by the entry's init span start, NOT the name: two lexically distinct
+    // prop-derived consts can share a name (sibling components / blocks).
+    let cache_key = ctx.prop_derived_vars.get(var_name).map(|sp| sp.start).unwrap_or(u32::MAX);
+    if let Some(cached) = ctx.resolved_cache.get(&cache_key) {
         return cached.clone();
     }
     if ctx.resolving.contains(var_name) {
@@ -2878,7 +2884,7 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     };
 
     ctx.resolving.remove(var_name);
-    ctx.resolved_cache.insert(var_name.to_string(), resolved.clone());
+    ctx.resolved_cache.insert(cache_key, resolved.clone());
     resolved
 }
 
@@ -4211,7 +4217,138 @@ fn walk_program(program: &Program, ctx: &mut Ctx) {
     }
 }
 
+/// Walk a statement list as ONE lexical block scope for the prop-derived
+/// registry (issue #3815): every prop-derived `const` registered while walking
+/// it is un-registered on exit, restoring any same-named entry it displaced.
+/// Mirrors the JS backend's `walkNode` frame (`propDerivedLog`).
+fn walk_block_stmts(stmts: &[Statement], ctx: &mut Ctx) {
+    let mark = ctx.prop_derived_log.len();
+    // Every name the block declares (let/const/class/function) shadows a
+    // same-named alias for the WHOLE block (TDZ included) — the alias is
+    // re-registered at its own declaration if it is itself prop-derived.
+    let mut names = Vec::new();
+    block_decl_names(stmts, &mut names);
+    pd_hide(ctx, &names);
+    for stmt in stmts {
+        walk_statement(stmt, ctx);
+    }
+    pop_prop_derived_scope(ctx, mark);
+}
+
+/// Hide each named alias for the current lexical scope (un-done by
+/// `pop_prop_derived_scope`). Mirrors JS `enterPropDerivedScope`.
+fn pd_hide(ctx: &mut Ctx, names: &[String]) {
+    for name in names {
+        if let Some(prev) = ctx.prop_derived_vars.remove(name.as_str()) {
+            ctx.prop_derived_log.push(ScopeLog::Alias(name.clone(), Some(prev)));
+        }
+    }
+}
+
+/// Undo-log entry for the lexical scoping of the prop-derived registry AND
+/// `props_names` (both name-keyed; both must stop at the declaring scope).
+enum ScopeLog {
+    /// An alias registration/hide; undo restores the displaced entry.
+    Alias(String, Option<Span>),
+    /// A newly-registered props name; undo removes it.
+    Props(String),
+    /// A newly-registered signal / selector variable; undo removes it.
+    Signal(String),
+    Selector(String),
+}
+
+fn register_props_name(ctx: &mut Ctx, name: &str) {
+    if ctx.props_names.insert(name.to_string()) {
+        ctx.prop_derived_log.push(ScopeLog::Props(name.to_string()));
+    }
+}
+
+fn block_decl_names(stmts: &[Statement], out: &mut Vec<String>) {
+    for st in stmts {
+        match st {
+            Statement::VariableDeclaration(d) => {
+                for decl in &d.declarations {
+                    collect_pattern_names(&decl.id, out);
+                }
+            }
+            Statement::FunctionDeclaration(f) => {
+                if let Some(id) = &f.id {
+                    out.push(id.name.to_string());
+                }
+            }
+            Statement::ClassDeclaration(c) => {
+                if let Some(id) = &c.id {
+                    out.push(id.name.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn fn_param_names(params: &oxc_ast::ast::FormalParameters, out: &mut Vec<String>) {
+    for param in &params.items {
+        collect_pattern_names(&param.pattern, out);
+    }
+    if let Some(rest) = &params.rest {
+        collect_pattern_names(&rest.rest.argument, out);
+    }
+}
+
+/// A function body: parameters shadow for the whole body, then the body is
+/// its own block scope.
+fn walk_fn_body(params: &oxc_ast::ast::FormalParameters, stmts: &[Statement], ctx: &mut Ctx) {
+    let mark = ctx.prop_derived_log.len();
+    let mut names = Vec::new();
+    fn_param_names(params, &mut names);
+    pd_hide(ctx, &names);
+    walk_block_stmts(stmts, ctx);
+    pop_prop_derived_scope(ctx, mark);
+}
+
+fn pop_prop_derived_scope(ctx: &mut Ctx, mark: usize) {
+    while ctx.prop_derived_log.len() > mark {
+        match ctx.prop_derived_log.pop().unwrap() {
+            ScopeLog::Props(name) => {
+                ctx.props_names.remove(name.as_str());
+            }
+            ScopeLog::Signal(name) => {
+                ctx.signal_vars.remove(name.as_str());
+            }
+            ScopeLog::Selector(name) => {
+                ctx.selector_vars.remove(name.as_str());
+            }
+            ScopeLog::Alias(name, Some(span)) => {
+                ctx.prop_derived_vars.insert(name, span);
+            }
+            ScopeLog::Alias(name, None) => {
+                ctx.prop_derived_vars.remove(&name);
+            }
+        }
+    }
+}
+
+/// Statement walker. Block-scoping frame: a bare `VariableDeclaration`
+/// registers into its ENCLOSING scope; every other statement (block, for-head,
+/// switch body, …) is itself a scope boundary for the registry.
 fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
+    let scoped = match stmt {
+        Statement::VariableDeclaration(_) => false,
+        // `export const x = …` registers into the enclosing (module) scope;
+        // `export function F(props) {…}` is itself a scope (its props name).
+        Statement::ExportDeclaration(exp) => {
+            !matches!(&exp.declaration, Declaration::VariableDeclaration(_))
+        }
+        _ => true,
+    };
+    let mark = ctx.prop_derived_log.len();
+    walk_statement_inner(stmt, ctx);
+    if scoped {
+        pop_prop_derived_scope(ctx, mark);
+    }
+}
+
+fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
     match stmt {
         Statement::ExpressionStatement(expr_stmt) => {
             walk_expression(&expr_stmt.expression, ctx);
@@ -4238,9 +4375,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
-                for stmt in &body.statements {
-                    walk_statement(stmt, ctx);
-                }
+                walk_fn_body(&func.params, &body.statements, ctx);
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -4258,9 +4393,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             }
         }
         Statement::BlockStatement(block) => {
-            for stmt in &block.body {
-                walk_statement(stmt, ctx);
-            }
+            walk_block_stmts(&block.body, ctx);
         }
         Statement::ClassDeclaration(class) => {
             // Walk class body methods for JSX
@@ -4279,9 +4412,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                             s
                         } else { vec![] };
                         if let Some(body) = &method.value.body {
-                            for stmt in &body.statements {
-                                walk_statement(stmt, ctx);
-                            }
+                            walk_fn_body(&method.value.params, &body.statements, ctx);
                         }
                         for name in &shadows { ctx.shadowed_signals.remove(name); }
                         for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -4292,15 +4423,20 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                         }
                     }
                     ClassElement::StaticBlock(block) => {
-                        for stmt in &block.body {
-                            walk_statement(stmt, ctx);
-                        }
+                        walk_block_stmts(&block.body, ctx);
                     }
                     _ => {}
                 }
             }
         }
         Statement::ForStatement(for_stmt) => {
+            if let Some(ForStatementInit::VariableDeclaration(d)) = &for_stmt.init {
+                let mut names = Vec::new();
+                for decl in &d.declarations {
+                    collect_pattern_names(&decl.id, &mut names);
+                }
+                pd_hide(ctx, &names);
+            }
             if let Some(init) = &for_stmt.init {
                 match init {
                     ForStatementInit::VariableDeclaration(decl) => {
@@ -4332,6 +4468,11 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
         }
         Statement::SwitchStatement(s) => {
             walk_expression(&s.discriminant, ctx);
+            let mut names = Vec::new();
+            for case in &s.cases {
+                block_decl_names(&case.consequent, &mut names);
+            }
+            pd_hide(ctx, &names);
             for case in &s.cases {
                 if let Some(test) = &case.test {
                     walk_expression(test, ctx);
@@ -4342,18 +4483,19 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             }
         }
         Statement::TryStatement(t) => {
-            for stmt in &t.block.body {
-                walk_statement(stmt, ctx);
-            }
+            walk_block_stmts(&t.block.body, ctx);
             if let Some(handler) = &t.handler {
-                for stmt in &handler.body.body {
-                    walk_statement(stmt, ctx);
+                let mark = ctx.prop_derived_log.len();
+                if let Some(param) = &handler.param {
+                    let mut names = Vec::new();
+                    collect_pattern_names(&param.pattern, &mut names);
+                    pd_hide(ctx, &names);
                 }
+                walk_block_stmts(&handler.body.body, ctx);
+                pop_prop_derived_scope(ctx, mark);
             }
             if let Some(finalizer) = &t.finalizer {
-                for stmt in &finalizer.body {
-                    walk_statement(stmt, ctx);
-                }
+                walk_block_stmts(&finalizer.body, ctx);
             }
         }
         Statement::ExportDefaultDeclaration(exp) => {
@@ -4372,9 +4514,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                         s
                     } else { vec![] };
                     if let Some(body) = &func.body {
-                        for stmt in &body.statements {
-                            walk_statement(stmt, ctx);
-                        }
+                        walk_fn_body(&func.params, &body.statements, ctx);
                     }
                     for name in &shadows { ctx.shadowed_signals.remove(name); }
                     for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -4411,9 +4551,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                             s
                         } else { vec![] };
                         if let Some(body) = &func.body {
-                            for stmt in &body.statements {
-                                walk_statement(stmt, ctx);
-                            }
+                            walk_fn_body(&func.params, &body.statements, ctx);
                         }
                         for name in &shadows { ctx.shadowed_signals.remove(name); }
                         for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -4423,10 +4561,24 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             }
         }
         Statement::ForInStatement(f) => {
+            if let ForStatementLeft::VariableDeclaration(d) = &f.left {
+                let mut names = Vec::new();
+                for decl in &d.declarations {
+                    collect_pattern_names(&decl.id, &mut names);
+                }
+                pd_hide(ctx, &names);
+            }
             walk_expression(&f.right, ctx);
             walk_statement(&f.body, ctx);
         }
         Statement::ForOfStatement(f) => {
+            if let ForStatementLeft::VariableDeclaration(d) = &f.left {
+                let mut names = Vec::new();
+                for decl in &d.declarations {
+                    collect_pattern_names(&decl.id, &mut names);
+                }
+                pd_hide(ctx, &names);
+            }
             walk_expression(&f.right, ctx);
             walk_statement(&f.body, ctx);
         }
@@ -4448,7 +4600,16 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
     }
 }
 
+/// Expression walker. A function expression is a scope boundary for the
+/// `props_names` / alias registries (its component-props registration must not
+/// outlive it — see `ScopeLog`).
 fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
+    let mark = ctx.prop_derived_log.len();
+    walk_expression_inner(expr, ctx);
+    pop_prop_derived_scope(ctx, mark);
+}
+
+fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
     match expr {
         Expression::JSXElement(el) => {
             handle_jsx_element(el, ctx);
@@ -4537,9 +4698,7 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
-                for stmt in &body.statements {
-                    walk_statement(stmt, ctx);
-                }
+                walk_fn_body(&func.params, &body.statements, ctx);
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -4708,12 +4867,19 @@ fn walk_arrow_body(arrow: &ArrowFunctionExpression, ctx: &mut Ctx) {
     // carried a synthetic ExpressionStatement that `walk_statement` forwarded to
     // `walk_expression`, so forward it here or the body goes unwalked entirely.
     if let Some(e) = arrow.get_expression() {
+        let mark = ctx.prop_derived_log.len();
+        let mut names = Vec::new();
+        fn_param_names(&arrow.params, &mut names);
+        pd_hide(ctx, &names);
         walk_expression(e, ctx);
+        pop_prop_derived_scope(ctx, mark);
         return;
     }
-    for stmt in arrow.get_function_body().map_or(&[][..], |b| &b.statements) {
-        walk_statement(stmt, ctx);
-    }
+    walk_fn_body(
+        &arrow.params,
+        arrow.get_function_body().map_or(&[][..], |b| &b.statements),
+        ctx,
+    );
 }
 
 fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
@@ -9043,7 +9209,7 @@ fn maybe_register_component_props_fn(func: &oxc_ast::ast::Function, ctx: &mut Ct
     if let BindingPattern::BindingIdentifier(id) = &first.pattern {
         if let Some(body) = &func.body {
             if body_contains_jsx(body) {
-                ctx.props_names.insert(id.name.to_string());
+                register_props_name(ctx, id.name.as_str());
             }
         }
     }
@@ -9056,7 +9222,7 @@ fn maybe_register_component_props_arrow(arrow: &ArrowFunctionExpression, ctx: &m
     let first = &arrow.params.items[0];
     if let BindingPattern::BindingIdentifier(id) = &first.pattern {
         if arrow_contains_jsx(arrow) {
-            ctx.props_names.insert(id.name.to_string());
+            register_props_name(ctx, id.name.as_str());
         }
     }
 }
@@ -9147,7 +9313,7 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                     if callee.name.as_str() == "splitProps" {
                         for el in arr.elements.iter().flatten() {
                             if let BindingPattern::BindingIdentifier(id) = el {
-                                ctx.props_names.insert(id.name.to_string());
+                                register_props_name(ctx, id.name.as_str());
                             }
                         }
                     }
@@ -9206,13 +9372,13 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
             if let Some(init) = &declarator.init {
                 if is_stateful_call_expr(init) {
                     // Track signal() and computed() declarations for auto-call
-                    if is_signal_call_expr(init) {
-                        ctx.signal_vars.insert(id.name.to_string());
+                    if is_signal_call_expr(init) && ctx.signal_vars.insert(id.name.to_string()) {
+                        ctx.prop_derived_log.push(ScopeLog::Signal(id.name.to_string()));
                     }
                     // Track createSelector() for .subscribe auto-promotion
                     // in className/attr bindings (see try_direct_selector_ternary).
-                    if is_selector_call_expr(init) {
-                        ctx.selector_vars.insert(id.name.to_string());
+                    if is_selector_call_expr(init) && ctx.selector_vars.insert(id.name.to_string()) {
+                        ctx.prop_derived_log.push(ScopeLog::Selector(id.name.to_string()));
                     }
                     continue;
                 }
@@ -9232,8 +9398,10 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                 if reads_from_props(init, &ctx.props_names)
                     || references_prop_derived(init, &ctx.prop_derived_vars)
                 {
-                    ctx.prop_derived_vars
+                    let prev = ctx
+                        .prop_derived_vars
                         .insert(id.name.to_string(), init.span());
+                    ctx.prop_derived_log.push(ScopeLog::Alias(id.name.to_string(), prev));
                 }
             }
         }
