@@ -101,6 +101,10 @@ To add a service, add ONE entry to `SERVICES` (plus the Swift/Kotlin runtime con
 
 Still hand-written, with the reason: `useDatabase` (its `insert` object-literal lowering and Swift argument labels are call LOGIC, not data), `useWebSocket` (constructor URL taken from the call, synthesized auto-connect), and the struct-typed generics (`useAuth<T>`, `useFetch<T>`, `useStream<T>`).
 
+## Package-owned plugins
+
+A library owns its native lowering as a plugin file in its OWN package; the compiler core knows no library. The package ships `native/plugin.ts` (built to ESM) whose default export is a `CompilerPlugin` with `services` (plain service descriptors, see above), and declares it in `package.json`: `"pyreon": { "native": { "plugin": "native/plugin.mjs", "modules": ["@acme/camera"] } }`. `pyreon-native build|check` discovers it from the app's declared dependencies and loads it only when the source imports one of `modules` (default: the package name). Rules: one owner per hook (a second claim is a load-time error naming both plugins — the app removes one); a plugin whose name equals a `builtIn` plugin replaces it silently (identity by name), an explicit `--plugin` of the same name wins over a discovered one; `requires` orders passes and a missing requirement or a cycle is a load-time error. Prove a plugin with `@pyreon/native-compiler/testing` (`testNativePlugin`) and `pyreon-native plugins --verify` (every service type is declared in the package's own sources). The registry exists on `compiler.services`/`context.services` but the parser and emitters still read the module-level `SERVICES` table until they are threaded through it, so a plugin-owned hook is not yet lowered end to end.
+
 ## Compiler extension boundary
 
 `createCompiler({ plugins })` owns a fixed, versioned registration set. Extend

@@ -42,8 +42,32 @@ pyreon-native check --lsp --plugin=./plugins/native.mjs
 Use the same plugin list for build and check/editor commands. The CLI supports
 Swift/Kotlin outputs; additional backend targets are available through
 `createCompiler()` in `@pyreon/native-compiler`. To use an installed plugin,
-import and default-export it from a local adapter module. Plugin loading is
-explicit; the CLI does not discover modules automatically.
+import and default-export it from a local adapter module. Explicit `--plugin`
+files always load; packages can also ship their own plugin (next section).
+
+### Package-owned plugins
+
+A dependency that declares `"pyreon": { "native": { "plugin": "native/plugin.mjs" } }`
+in its `package.json` ships its own native lowering. `build` and `check` find
+it by walking the app's declared dependencies with the same resolver `wire`
+uses, and load it LAZILY: only when a file under `--source` imports one of the
+package's `modules` (`"pyreon": { "native": { "modules": [...] } }`, default the
+package name, matched exactly or as a `name/subpath`). The import scan is a
+conservative regex — it can over-activate, never under-activate, and activation
+never changes lowering. The module's default export is validated; errors name
+the package and file. `--no-plugins` disables discovery (explicit `--plugin`
+still loads). Discovery is skipped for `check --lsp` (no `--source`).
+
+```sh
+pyreon-native plugins [--app=<dir>] [--verify]   # built-ins, hook owners, discovered plugins
+pyreon-native explain <file.tsx> [--app=<dir>]   # per service hook: owner + emitted Swift/Kotlin
+```
+
+`plugins` loads every declared plugin; `--verify` checks each plugin's service
+types are declared in that package's own `native/swift` and `native/kotlin`
+(exit 2 on a finding). `explain` lists, per service the parser lowered, the
+owner and the declaration each target emits and whether it appears in the emit.
+Two plugins claiming one hook is a load-time error naming both.
 
 Programmatic `build`, `check`, `checkSource`, and `watchCheck` accept a
 `compiler` created by `createCompiler({ plugins })`. The synchronous `main()`

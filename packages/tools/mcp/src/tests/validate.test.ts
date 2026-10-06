@@ -1,4 +1,5 @@
-import { detectNativePatterns, detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler'
+import { detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler/analyze'
+import { detectNativePatterns } from '@pyreon/compiler/audits'
 
 // The MCP `validate` tool handler lives in index.ts and simply merges
 // the results of both detectors. The handler cannot be exercised in-

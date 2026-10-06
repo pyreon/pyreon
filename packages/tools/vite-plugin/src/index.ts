@@ -37,14 +37,13 @@ import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
 import { foldNodeEnvProduction, renameCompatJsxAttributes } from './ast-rewrite'
-import { detectPlain,
+import {
+  detectPlain,
   type CollapsibleSite,
-  generateContext,
   scanCollapsibleSites,
   transformDeferInline,
   transformJSX,
 } from '@pyreon/compiler'
-import { buildCompiledVerdicts } from './compiled-verdicts'
 import {
   DEV_ERROR_PRINTER_ID,
   DEV_ERROR_PRINTER_IMPORT,
@@ -52,7 +51,6 @@ import {
   DEV_ERROR_PRINTER_SOURCE,
 } from './dev-error-printer'
 import { injectIslandNames } from './island-auto-name'
-import { optimizeValidators } from './optimize-validators'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import { createFilter } from 'vite'
 import type { FilterPattern, Plugin, ViteDevServer } from 'vite'
@@ -1201,6 +1199,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // validation schemas overwhelmingly live), mirroring the compiled-verdict
       // `.ts` early-return: esbuild compiles the rewritten source after us.
       if (optimizeValidatorsEnabled && isBuild && getExt(id) === '.ts' && code.includes('@pyreon/validate')) {
+        // Lazy: `optimize-validators` imports `@pyreon/compiler/validate`
+        // (the TypeScript compiler API). Loaded only when the option is on, so
+        // the plugin's static graph never pulls `typescript`.
+        const { optimizeValidators } = await import('./optimize-validators')
         const rewritten = optimizeValidators(code, id)
         if (rewritten !== null) return { code: rewritten, map: null }
       }
@@ -1214,6 +1216,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       if (compileValidatorsEnabled && isBuild) {
         const e0 = getExt(id)
         if ((e0 === '.ts' || e0 === '.tsx') && code.includes('@pyreon/validate')) {
+          // Lazy for the same reason as `optimizeValidators` above.
+          const { buildCompiledVerdicts } = await import('./compiled-verdicts')
           const v = buildCompiledVerdicts(code, id)
           if (v) {
             // `.ts` isn't JSX-compiled by this plugin — inject + hand back to
@@ -1552,7 +1556,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         setTimeout(() => {
           void (async () => {
             try {
-              const { auditIslands, formatIslandAudit } = await import('@pyreon/compiler')
+              const { auditIslands, formatIslandAudit } = await import('@pyreon/compiler/audits')
               const result = auditIslands(projectRoot)
               if (result.findings.length > 0) {
                 // oxlint-disable-next-line no-console
@@ -1569,14 +1573,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
 
       // Generate .pyreon/context.json for AI tools on dev server start
-      generateProjectContext(projectRoot)
+      void generateProjectContext(projectRoot)
 
       // Debounced regeneration on file changes
       let contextTimer: ReturnType<typeof setTimeout> | null = null
       server.watcher.on('change', (file) => {
         if (/\.(tsx|jsx|ts|js)$/.test(file) && !file.includes('node_modules')) {
           if (contextTimer) clearTimeout(contextTimer)
-          contextTimer = setTimeout(() => generateProjectContext(projectRoot), 500)
+          contextTimer = setTimeout(() => void generateProjectContext(projectRoot), 500)
         }
       })
 
@@ -1676,8 +1680,11 @@ export async function _handleSsrRequest(
  * Generate .pyreon/context.json — project map for AI coding assistants.
  * Delegates to @pyreon/compiler's unified project scanner.
  */
-function generateProjectContext(root: string): void {
+async function generateProjectContext(root: string): Promise<void> {
   try {
+    // Lazy: the project scanner parses with the TypeScript compiler API, which
+    // the plugin's static graph must not load.
+    const { generateContext } = await import('@pyreon/compiler/audits')
     const context = generateContext(root)
     const outDir = pathJoin(root, '.pyreon')
     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })

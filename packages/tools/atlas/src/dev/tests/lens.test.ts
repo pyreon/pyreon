@@ -7,7 +7,7 @@
  * if the compiler's verdict changed underneath it.
  */
 import { describe, expect, it } from 'vitest'
-import { analyzeReactivity } from '@pyreon/compiler'
+import { analyzeReactivity } from '@pyreon/compiler/analyze'
 import { isSuspect, summarize, toLensLines } from '../lens'
 
 describe('which verdicts deserve attention', () => {

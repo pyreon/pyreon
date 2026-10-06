@@ -19,6 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Lean main entry — `@pyreon/compiler` is TypeScript-free (transformJSX, plain pre-pass, defer-inline, fs-route convention, island naming). The `typescript`-backed surface is behind subpaths: `/analyze` (detectors, migrators, Reactivity Lens), `/audits` (pyreon doctor audits + generateContext), `/validate` (@pyreon/validate analyzer/emitter); `/diagnose` + `/plain` + `/fs-route-convention` are TS-free too
 - Dual-backend transformJSX — Rust native (napi-rs) with automatic per-call JS fallback, byte-identical output
 - Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s per-expression reactive-vs-static verdict (live/static/hoisted), served as editor inlay hints via `@pyreon/lint --lsp`
 - Scope-aware signal auto-call: bare &#123;count&#125; → &#123;() =&gt; count()&#125;, shadowing-correct, knownSignals seeds cross-module
@@ -198,7 +199,7 @@ Reactivity-Lens entry point (experimental). The compiler ALREADY decides per-exp
 **Example**
 
 ```tsx
-import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler/analyze"
 
 const result = analyzeReactivity(
   "const A = (props) => <div>{props.name}</div>",
@@ -229,7 +230,7 @@ Renders an `analyzeReactivity` result as an annotated-source CLI / debug view �
 **Example**
 
 ```tsx
-import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler/analyze"
 
 const r = analyzeReactivity(src, "App.tsx")
 process.stdout.write(formatReactivityLens(src, r))
@@ -250,7 +251,7 @@ Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINI
 **Example**
 
 ```tsx
-import { analyzeValidate } from "@pyreon/compiler"
+import { analyzeValidate } from "@pyreon/compiler/validate"
 
 const [info] = analyzeValidate("const L = s.object({ e: s.string().email() })")
 info.emittable // true
@@ -271,7 +272,7 @@ Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `a
 **Example**
 
 ```tsx
-import { analyzeValidate, emitValidator } from "@pyreon/compiler"
+import { analyzeValidate, emitValidator } from "@pyreon/compiler/validate"
 
 const [info] = analyzeValidate("const S = s.string().email()")
 const src = emitValidator(info.node)
@@ -294,7 +295,7 @@ AST-based detector for "coming from React" mistakes — `useState` / `useEffect`
 **Example**
 
 ```tsx
-import { detectReactPatterns } from "@pyreon/compiler"
+import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
 console.log(diags[0]?.code) // "react-use-state"
@@ -315,7 +316,7 @@ One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect
 **Example**
 
 ```tsx
-import { migrateReactCode } from "@pyreon/compiler"
+import { migrateReactCode } from "@pyreon/compiler/analyze"
 
 const { code, changes } = migrateReactCode(reactSource, "C.tsx")
 ```
@@ -335,7 +336,7 @@ Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). Auto-fixes
 **Example**
 
 ```tsx
-import { migratePyreonCode } from "@pyreon/compiler"
+import { migratePyreonCode } from "@pyreon/compiler/analyze"
 
 const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")
 ```
@@ -355,7 +356,7 @@ Fast regex pre-filter — returns whether `code` is worth a full `detectReactPat
 **Example**
 
 ```tsx
-import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler"
+import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler/analyze"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))
 ```
@@ -375,7 +376,7 @@ Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely c
 **Example**
 
 ```tsx
-import { diagnoseError } from "@pyreon/compiler"
+import { diagnoseError } from "@pyreon/compiler/analyze"
 
 const d = diagnoseError("props.when is not a function")
 if (d) console.log(d.cause, d.fix)
@@ -383,7 +384,7 @@ if (d) console.log(d.cause, d.fix)
 
 **Common mistakes**
 
-- Importing it from the main `@pyreon/compiler` barrel for CLIENT-SIDE use — the barrel transitively `import ts from "typescript"` (via the AST detectors/migrators), dragging the heavy Node-only TS compiler API into the browser bundle. For browser use (the dev throw-time error printer) import from the browser-safe `@pyreon/compiler/diagnose` subpath — `diagnoseError` + its `ERROR_PATTERNS` are pure regex/strings with ZERO `typescript` dependency.
+- Importing it from `@pyreon/compiler/analyze` (or the old main barrel, where it no longer lives) for CLIENT-SIDE use — `/analyze` transitively `import ts from "typescript"` (via the AST detectors/migrators), dragging the heavy Node-only TS compiler API into the browser bundle. For browser use (the dev throw-time error printer) import from the browser-safe `@pyreon/compiler/diagnose` subpath — `diagnoseError` + its `ERROR_PATTERNS` are pure regex/strings with ZERO `typescript` dependency.
 - Feeding it a structured Error object — it matches the error STRING (`error.message`), not an `Error` instance. Pass `err.message`.
 - Treating a `null` return as a failure — `null` just means "no known pattern matched"; callers fall back to showing the raw message. Only a non-null `ErrorDiagnosis` carries a cause/fix.
 
@@ -402,7 +403,7 @@ AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes �
 **Example**
 
 ```tsx
-import { detectPyreonPatterns } from "@pyreon/compiler"
+import { detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectPyreonPatterns(
   "const A = (props) => { const { x } = props; return <i>{x}</i> }",
@@ -431,7 +432,7 @@ Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST
 **Example**
 
 ```tsx
-import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler"
+import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))
 ```
@@ -451,7 +452,7 @@ Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (con
 **Example**
 
 ```tsx
-import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 const r = auditTestEnvironment(process.cwd())
 console.log(formatTestAudit(r, { minRisk: "high" }))
@@ -472,7 +473,7 @@ Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` 
 **Example**
 
 ```tsx
-import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))
 ```
@@ -492,7 +493,7 @@ Project-wide syntactic island audit — five cross-file detectors (`duplicate-na
 **Example**
 
 ```tsx
-import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 const r = auditIslands(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)
@@ -513,7 +514,7 @@ Text renderer for an `auditIslands` result — each finding with file path + lin
 **Example**
 
 ```tsx
-import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 console.log(formatIslandAudit(auditIslands(".")))
 ```
@@ -533,7 +534,7 @@ Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (
 **Example**
 
 ```tsx
-import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 const r = auditSsg(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)
@@ -554,7 +555,7 @@ Text renderer for an `auditSsg` result — file path + line/column + actionable 
 **Example**
 
 ```tsx
-import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 console.log(formatSsgAudit(auditSsg(".")))
 ```
@@ -592,7 +593,7 @@ Project scanner — walks the source tree and produces a structured `ProjectCont
 **Example**
 
 ```tsx
-import { generateContext } from "@pyreon/compiler"
+import { generateContext } from "@pyreon/compiler/audits"
 
 const ctx = generateContext(process.cwd())
 console.log(ctx.routes.length, ctx.islands.length)

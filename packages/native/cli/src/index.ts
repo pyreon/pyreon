@@ -29,3 +29,16 @@ export { main, mainWithPlugins } from './cli'
 
 export { check, checkSource, watchCheck } from './check'
 export type { CheckOptions, CheckSourceOptions, CheckResult, CheckFinding } from './check'
+
+// Package-owned compiler plugin discovery + the `plugins` / `explain` renderers.
+export {
+  collectImportSpecifiers,
+  collectSourceImports,
+  discoverPlugins,
+  isActivated,
+  listPluginPackages,
+  loadPluginPackage,
+} from './discover-plugins'
+export type { DiscoveredPlugin, PluginPackage } from './discover-plugins'
+export { explainReport, pluginsReport, verifyDiscovered } from './plugin-commands'
+export type { CommandReport } from './plugin-commands'

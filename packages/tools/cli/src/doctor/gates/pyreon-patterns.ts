@@ -15,7 +15,7 @@ import * as path from 'node:path'
 import {
   detectPyreonPatterns,
   hasPyreonPatterns,
-} from '@pyreon/compiler'
+} from '@pyreon/compiler/analyze'
 import { loadConfig } from '@pyreon/lint'
 
 import type { Finding, GateResult } from '../types'

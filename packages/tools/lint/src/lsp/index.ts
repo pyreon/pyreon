@@ -33,7 +33,7 @@ import type {
   analyzeReactivity as AnalyzeFn,
   firesToCreationSiteFindings as FiresToHintsFn,
   ReactivityFinding,
-} from '@pyreon/compiler'
+} from '@pyreon/compiler/analyze'
 import { existsSync } from 'node:fs'
 import nodePath from 'node:path'
 import { AstCache } from '../cache'
@@ -122,7 +122,7 @@ const HINT_LABEL: Record<string, string> = {
  */
 let _analyze: typeof AnalyzeFn | undefined
 async function loadAnalyze(): Promise<typeof AnalyzeFn> {
-  if (!_analyze) _analyze = (await import('@pyreon/compiler')).analyzeReactivity
+  if (!_analyze) _analyze = (await import('@pyreon/compiler/analyze')).analyzeReactivity
   return _analyze
 }
 
@@ -157,7 +157,7 @@ let _lpihLoaders:
 
 async function loadLpih(): Promise<NonNullable<typeof _lpihLoaders>> {
   if (!_lpihLoaders) {
-    const m = await import('@pyreon/compiler')
+    const m = await import('@pyreon/compiler/analyze')
     _lpihLoaders = { firesToHints: m.firesToCreationSiteFindings }
   }
   return _lpihLoaders

@@ -224,7 +224,7 @@ Serve the `api-surface.json` a `lathe generate` writes beside the generated clie
 
 ## Programmatic API
 
-The package is primarily a binary (`pyreon-mcp`); the main entry exports no runtime symbols (it boots the server on import via `main()`). `createServer()` is exported for embedding — build a `McpServer` and connect it to any transport (the test suite uses this with `InMemoryTransport` instead of stdio). For the static analysis directly, `@pyreon/mcp` re-uses `@pyreon/compiler`'s `detectReactPatterns` / `detectPyreonPatterns` / `detectNativePatterns` / `migrateReactCode` / `migratePyreonCode` / `diagnoseError` / `auditIslands` + `formatIslandAudit` / `auditTestEnvironment` + `formatTestAudit` / `auditSsg` — import from `@pyreon/compiler` directly if you want the raw detector output instead of the MCP text formatting.
+The package is primarily a binary (`pyreon-mcp`); the main entry exports no runtime symbols (it boots the server on import via `main()`). `createServer()` is exported for embedding — build a `McpServer` and connect it to any transport (the test suite uses this with `InMemoryTransport` instead of stdio). For the static analysis directly, `@pyreon/mcp` re-uses `@pyreon/compiler`'s `detectReactPatterns` / `detectPyreonPatterns` / `detectNativePatterns` / `migrateReactCode` / `migratePyreonCode` / `diagnoseError` / `auditIslands` + `formatIslandAudit` / `auditTestEnvironment` + `formatTestAudit` / `auditSsg` — import from `@pyreon/compiler/analyze` / `@pyreon/compiler/audits` directly if you want the raw detector output instead of the MCP text formatting.
 
 ## Gotchas
 

@@ -23,7 +23,7 @@
  * the tool has no write capability.
  */
 
-import { detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler'
+import { detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler/analyze'
 import { type AntiPatternEntry } from './anti-patterns'
 
 /**

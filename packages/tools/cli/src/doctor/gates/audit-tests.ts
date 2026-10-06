@@ -10,8 +10,8 @@
  * maps tier → severity (high=error, medium=warning, low=info).
  */
 
-import { auditTestEnvironment } from '@pyreon/compiler'
-import type { AuditRisk } from '@pyreon/compiler'
+import { auditTestEnvironment } from '@pyreon/compiler/audits'
+import type { AuditRisk } from '@pyreon/compiler/audits'
 
 import type { Finding, GateResult, Severity } from '../types'
 import { emptyScanResult } from '../utils/empty-scan'

@@ -38,18 +38,20 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
+  detectPyreonPatterns,
+  detectReactPatterns,
+  diagnoseError,
+  migratePyreonCode,
+  migrateReactCode,
+} from '@pyreon/compiler/analyze'
+import {
   type AuditRisk,
   auditIslands,
   auditTestEnvironment,
   detectNativePatterns,
-  detectPyreonPatterns,
-  detectReactPatterns,
-  diagnoseError,
   formatIslandAudit,
   formatTestAudit,
-  migratePyreonCode,
-  migrateReactCode,
-} from '@pyreon/compiler'
+} from '@pyreon/compiler/audits'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { isAbsolute, relative, resolve } from 'node:path'

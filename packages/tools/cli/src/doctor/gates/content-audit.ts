@@ -10,7 +10,7 @@
  *   - orphaned file → warning (might be intentional WIP)
  */
 
-import { auditContent, type ContentFindingCode } from '@pyreon/compiler'
+import { auditContent, type ContentFindingCode } from '@pyreon/compiler/audits'
 
 import type { Finding, GateResult, Severity } from '../types'
 
