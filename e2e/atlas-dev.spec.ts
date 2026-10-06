@@ -10,6 +10,10 @@
  * the real CLI command — not an in-process helper — so what is tested is what a
  * user runs.
  */
+import { type ChildProcess, spawn } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 
 test.describe('atlas dev', () => {
@@ -548,5 +552,159 @@ test.describe('URL state', () => {
     await box.fill('ab')
     await box.fill('abc')
     expect(await page.evaluate(() => history.length)).toBe(before)
+  })
+})
+
+// #3846 — a workspace-only `@pyreon/toast` on a COLD Vite dependency cache.
+//
+// The workbench boots with no optimizer entries, so dependencies are discovered
+// as the browser imports them. Only the `@pyreon/*` packages the ROOT manifest
+// declares were excluded from the optimizer; one that only a COMPONENT package
+// depends on (here the toast store) was served raw first and then rewritten to its
+// optimized `.cache/atlas-vite/deps/` copy — two instances of one package, which
+// the singleton sentinel rejects, so the first preview failed. A WARM cache
+// already holds the optimized copy and passes, which is why this must start from
+// an EMPTY cache and click through a real interaction.
+//
+// The toast package is COPIED (not symlinked) into the component package: Vite never
+// pre-bundles a linked workspace package, so only a real install layout can
+// reproduce the optimizer split. Created and removed by the test.
+test.describe('atlas dev — cold dependency cache (#3846)', () => {
+  const ROOT = resolve(process.cwd())
+  const BIN = resolve(ROOT, 'packages/tools/atlas/bin/atlas.js')
+  // OUTSIDE the repo, like a real consumer: inside it Vite resolves through the
+  // monorepo's own links and never exercises the optimizer.
+  const FX = join(realpathSync(mkdtempSync(join(tmpdir(), 'atlas-cold-'))), 'ws')
+  const PORT = 5462
+  let server: ChildProcess | undefined
+
+  test.afterAll(() => {
+    server?.kill('SIGKILL')
+    rmSync(join(FX, '..'), { recursive: true, force: true })
+  })
+
+  test('a component package\'s own @pyreon/toast keeps ONE instance and increments 0 → 1', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000)
+    const storeDir = resolve(ROOT, 'packages/fundamentals/toast')
+    expect(existsSync(join(storeDir, 'lib/index.js')), 'toast must be built (bun scripts/bootstrap.ts)').toBe(true)
+
+    rmSync(FX, { recursive: true, force: true })
+    const counter = join(FX, 'packages/counter')
+    mkdirSync(join(counter, 'src'), { recursive: true })
+    mkdirSync(join(counter, 'node_modules/@pyreon'), { recursive: true })
+    // The root declares the plugin's peers and NOT the store (the issue's shape).
+    writeFileSync(
+      join(FX, 'package.json'),
+      JSON.stringify({
+        name: 'cold-start-fixture',
+        private: true,
+        type: 'module',
+        workspaces: ['packages/*'],
+        devDependencies: {
+          '@pyreon/core': '*',
+          '@pyreon/reactivity': '*',
+          '@pyreon/runtime-dom': '*',
+          '@pyreon/vite-plugin': '*',
+        },
+      }),
+    )
+    writeFileSync(
+      join(FX, 'atlas.config.ts'),
+      `export default { title: 'Cold', projects: [{ name: 'Counter', dir: 'packages/counter/src' }] }\n`,
+    )
+    writeFileSync(
+      join(counter, 'package.json'),
+      JSON.stringify({
+        name: '@example/counter',
+        version: '0.0.0',
+        type: 'module',
+        exports: './src/Counter.tsx',
+        dependencies: {
+          '@pyreon/core': '*',
+          '@pyreon/reactivity': '*',
+          '@pyreon/runtime-dom': '*',
+          '@pyreon/toast': '*',
+        },
+      }),
+    )
+    writeFileSync(
+      join(counter, 'src/Counter.tsx'),
+      `import { _toasts, toast } from '@pyreon/toast'
+export function Counter() {
+  return <button onClick={() => toast('hello')}>{() => _toasts().length}</button>
+}
+`,
+    )
+    // Linked workspace packages for the framework; a REAL COPY of the store.
+    for (const [name, rel] of [
+      ['core', 'packages/core/core'],
+      ['reactivity', 'packages/core/reactivity'],
+      ['runtime-dom', 'packages/core/runtime-dom'],
+    ] as const) {
+      symlinkSync(resolve(ROOT, rel), join(counter, 'node_modules/@pyreon', name), 'dir')
+    }
+    const copy = join(counter, 'node_modules/@pyreon/toast')
+    mkdirSync(copy, { recursive: true })
+    // Published shape: `src/` is not shipped, so the `bun` source conditions are gone.
+    const manifest = JSON.parse(readFileSync(join(storeDir, 'package.json'), 'utf8')) as {
+      exports: Record<string, Record<string, string>>
+    }
+    for (const entry of Object.values(manifest.exports)) delete entry.bun
+    writeFileSync(join(copy, 'package.json'), JSON.stringify(manifest))
+    cpSync(join(storeDir, 'lib'), join(copy, 'lib'), { recursive: true })
+
+    // COLD: nothing under the workbench's own dependency cache.
+    rmSync(join(FX, 'node_modules/.cache'), { recursive: true, force: true })
+
+    const logs: string[] = []
+    server = spawn('node', [BIN, 'dev', FX, `--port=${PORT}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+    server.stdout?.on('data', (d) => logs.push(String(d)))
+    server.stderr?.on('data', (d) => logs.push(String(d)))
+    await expect
+      .poll(async () => (await fetch(`http://localhost:${PORT}/`).catch(() => null))?.ok ?? false, {
+        timeout: 120_000,
+      })
+      .toBe(true)
+
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)))
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text().slice(0, 300))
+    })
+    await page.goto(`http://localhost:${PORT}/`)
+    await page.waitForSelector('[data-testid="atlas-shell"]')
+    try {
+      await page.getByRole('button', { name: 'Counter' }).first().click({ timeout: 20_000 })
+    } catch (error) {
+      // A Vite error overlay swallows pointer events; name what it says.
+      const overlay = await page.evaluate(
+        () => document.querySelector('vite-error-overlay')?.shadowRoot?.textContent ?? '',
+      )
+      throw new Error(`workbench did not become usable: ${overlay.slice(0, 600)}\n${logs.join('').slice(-1500)}\n${String(error)}`)
+    }
+
+    const button = page.getByTestId('canvas-preview').locator('button').first()
+    try {
+      await expect(button).toHaveText('0', { timeout: 30_000 })
+    } catch (error) {
+      const preview = await page.getByTestId('canvas-preview').innerText().catch(() => '(no preview)')
+      throw new Error(`the counter never rendered — preview says: ${preview.slice(0, 400)}\npage errors: ${errors.join(' | ')}\n${logs.join('').slice(-1200)}\n${String(error)}`)
+    }
+    await button.click()
+    await expect(button).toHaveText("1")
+    // The MECHANISM, not just the outcome: no `@pyreon/*` package may be in the
+    // dependency optimizer's output at all — that cache copy is the second
+    // instance, and whether it collides depends on discovery timing.
+    const metadataPath = join(FX, 'node_modules/.cache/atlas-vite/deps/_metadata.json')
+    const optimized = existsSync(metadataPath)
+      ? Object.keys((JSON.parse(readFileSync(metadataPath, 'utf8')) as { optimized?: object }).optimized ?? {})
+      : []
+    expect(
+      optimized.filter((name) => name.startsWith('@pyreon/')),
+      `a @pyreon/* package went through the dependency optimizer (optimized: ${optimized.join(', ')})`,
+    ).toEqual([])
+    expect(errors.filter((e) => /Multiple instances|failed to load/i.test(e)), logs.join('')).toEqual([])
   })
 })
