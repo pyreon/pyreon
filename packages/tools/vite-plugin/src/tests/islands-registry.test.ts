@@ -81,6 +81,30 @@ const ISLANDS_REGISTRY_IMPORT = 'virtual:pyreon/islands-registry'
 const ISLANDS_REGISTRY_ID = '\0pyreon/islands-registry'
 
 describe('vite-plugin — islands virtual module', () => {
+  it('ignores island examples in literals and comments in prescan and transform', async () => {
+    const code = [
+      `const message = \`island(() => import('./One'), { name: 'One' })\``,
+      `const quoted = "island(() => import('./Two'), { name: 'Two' })"`,
+      `// island(() => import('./Comment'), { name: 'Comment' })`,
+      `/* island(() => import('./Block'), { name: 'Block' }) */`,
+      `const pattern = /island(() => import('Regex'), { name: 'Regex' })/`,
+      `const Real = island(() => import('./Real'), { name: 'Real' })`,
+      `const interpolation = \`live: \${island(() => import('./Embedded'), { name: 'Embedded' })}\``,
+    ].join('\n')
+    const file = writeFile('src/islands.ts', code)
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const before = runLoad(plugin, ISLANDS_REGISTRY_ID)
+    expect(before).toContain('"Real":')
+    expect(before).toContain('"Embedded":')
+    for (const name of ['One', 'Two', 'Comment', 'Block', 'Regex']) {
+      expect(before).not.toContain(`"${name}":`)
+    }
+    const transform = plugin.transform as unknown as (code: string, id: string) => Promise<unknown>
+    await transform.call({ warn() {} }, code, file)
+    expect(runLoad(plugin, ISLANDS_REGISTRY_ID)).toBe(before)
+  })
+
   it('resolveId redirects virtual:pyreon/islands-registry to the \\0-prefixed id', async () => {
     const plugin = bootstrap()
     expect(await runResolveId(plugin, ISLANDS_REGISTRY_IMPORT)).toBe(ISLANDS_REGISTRY_ID)
@@ -397,10 +421,7 @@ export const A = island(() => import('./X'), { name: 'A', hydrate: 'load' })`,
           ws: { send() {} },
           middlewares: { use() {} },
         }
-        ;(plugin.configureServer as unknown as (s: unknown) => void).call(
-          {},
-          stubServer,
-        )
+        ;(plugin.configureServer as unknown as (s: unknown) => void).call({}, stubServer)
 
         // Trigger an island-declaration change — this is what PR-S12's
         // invalidation path is supposed to fire on.

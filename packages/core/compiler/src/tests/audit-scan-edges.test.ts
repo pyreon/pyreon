@@ -82,7 +82,7 @@ describe('the islands audit scans the right files and no others', () => {
     // anchor on.
     const r = auditIslands(root)
     expect(r.root).toBeNull()
-    expect(formatIslandAudit(r)).toContain('No monorepo root')
+    expect(formatIslandAudit(r)).toContain('No project root')
   })
 
   it('reads a hydrate strategy given as a template literal', () => {

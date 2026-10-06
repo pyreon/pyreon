@@ -8,17 +8,12 @@ import { callTool, newClient } from './helpers'
 // underlying `auditIslands()` function directly; this one proves the
 // MCP wiring.
 
-// `audit_islands` walks the real repo (packages/ + examples/) — under CI's
-// parallel test load that can exceed vitest's 5s default. The budget's
-// escalation history matters (the ws-relay lesson): 30s covered the ~2s
-// local worst case with load headroom, and then Coverage (Full) — where the
-// SERVER process itself runs V8-instrumented, a 2-5x multiplier ON TOP of
-// runner contention — timed it out on main (run 30990-era; the #2685
-// diagnostic named this exact spec). The instrumented arm gets 120s; the
-// uninstrumented arm keeps 30s so a genuine hang still fails fast where
-// iteration happens. Coverage runs are detected by V8's coverage hook env.
-const UNDER_COVERAGE = process.env.NODE_V8_COVERAGE !== undefined || process.env.CI === 'true'
-const AUDIT_TIMEOUT_MS = UNDER_COVERAGE ? 120_000 : 30_000
+// This walks the growing real repo, including a cold TypeScript parse.
+// A full local pre-push measured 32s under contention (2026-10-05), exceeding
+// the former 30s local limit. Coverage and ordinary tests share the same
+// 120s bound (~4x that observation); neither NODE_V8_COVERAGE nor CI reliably
+// describes local load, and V8 coverage here uses PYREON_COVERAGE_RUN.
+const AUDIT_TIMEOUT_MS = 120_000
 
 describe('MCP server — audit_islands tool', () => {
   it(

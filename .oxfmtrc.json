@@ -19,6 +19,7 @@
     "e2e",
     "tests/browser",
     "**/templates",
-    "**/*.html"
+    "**/*.html",
+    "packages/native/compiler/src/built-in-services.generated.ts"
   ]
 }

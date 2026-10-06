@@ -46,6 +46,14 @@ import { CHECK_KEYS, finding } from '../core'
 import { skipped } from '../plugins/registry'
 import { pixelDiff } from './pixel-diff'
 import { decodePng, encodePng } from './png'
+import {
+  DEFAULT_SETTLE_MS,
+  DEFAULT_SETTLE_TIMEOUT_MS,
+  QUIET_SETTLE_MS,
+  SETTLE_SOURCE,
+  type SettleOutcome,
+  unsettledMessage,
+} from './settle'
 
 export interface BrowserVerifyOptions {
   cwd?: string
@@ -58,6 +66,18 @@ export interface BrowserVerifyOptions {
   /** Overwrite every stored baseline with the current render (re-baseline). */
   updateSnapshots?: boolean
   port?: number
+  /**
+   * How long the preview must be UNCHANGED (DOM, geometry, canvas pixels)
+   * before it is captured, in ms (default 300). Static previews with no
+   * canvas / video / loading image use at most 100ms of it.
+   */
+  settleMs?: number
+  /**
+   * Hard cap on that wait, in ms (default 5000). A preview still changing at
+   * the cap — an endless animation — is NOT snapshotted: its snapshot check
+   * FAILS with `capture-unsettled`.
+   */
+  settleTimeoutMs?: number
   /**
    * axe-core accessibility checks, run per scenario against the live preview.
    * `false` switches them off (the a11y verdict then stays the scan's static
@@ -109,6 +129,11 @@ export interface BrowserVerifySummary {
    * coverage verdict is a skip naming the destination; the run carried on.
    */
   navigatedAway: { id: string; url: string }[]
+  /**
+   * Scenarios whose preview never held still within the settle cap (an endless
+   * animation). They were NOT screenshotted; each counts as a failed snapshot.
+   */
+  unsettled: string[]
   catalogPath?: string
 }
 
@@ -364,11 +389,14 @@ export async function runBrowserVerify(
   const notDriven: string[] = []
   const unmatched: string[] = []
   const snapshotOutcomes: SnapshotOutcome[] = []
+  const unsettled: string[] = []
   let coverageMeasured = 0
   const navigatedAway: { id: string; url: string }[] = []
   let axeChecked = 0
   let axeFailed = 0
   const axeOpts = options.axe === false ? null : (options.axe ?? {})
+  const settleMs = options.settleMs ?? DEFAULT_SETTLE_MS
+  const settleTimeoutMs = options.settleTimeoutMs ?? DEFAULT_SETTLE_TIMEOUT_MS
 
   const browser = await chromium.launch()
   try {
@@ -539,6 +567,18 @@ export async function runBrowserVerify(
           }
         }
 
+        // Capture readiness (#3837): the click-walk may have started a JS-driven
+        // animation (a canvas rAF loop) that a one-frame wait records mid-flight.
+        // Wait for the preview to hold still BEFORE axe and the screenshot judge it.
+        let settle: SettleOutcome | { status: 'error'; reason: string }
+        try {
+          settle = (await page.evaluate(
+            `(${SETTLE_SOURCE})(${settleMs}, ${settleTimeoutMs}, ${QUIET_SETTLE_MS})`,
+          )) as SettleOutcome
+        } catch (err) {
+          settle = { status: 'error', reason: err instanceof Error ? err.message : String(err) }
+        }
+
         // axe-core against the same live preview. Run in the page, through the
         // workbench's own vendored axe (`@pyreon/atlas/ui` runAxe), so the DOM
         // judged is the DOM the coverage pass just exercised.
@@ -566,12 +606,15 @@ export async function runBrowserVerify(
         // Snapshot the preview surface. Counting is derived from the verdict,
         // so every failing path — a thrown screenshot included — reaches the
         // tally the CLI exits on.
-        const { snapshot, created } = await snapshotScenario(page, scenario.id, {
-          snapshotDir,
-          maxRatio,
-          updateSnapshots: options.updateSnapshots === true,
-        })
+        const { snapshot, created } = await (settle.status === 'settled'
+          ? snapshotScenario(page, scenario.id, {
+              snapshotDir,
+              maxRatio,
+              updateSnapshots: options.updateSnapshots === true,
+            })
+          : Promise.resolve(unsettledOutcome(settle, settleMs, settleTimeoutMs)))
         snapshotOutcomes.push({ snapshot, created })
+        if (settle.status === 'unsettled') unsettled.push(scenario.id)
 
         results.push({ id: scenario.id, reactivityCoverage, snapshot, ...(a11y ? { a11y } : {}) })
       }
@@ -621,7 +664,42 @@ export async function runBrowserVerify(
     notDriven,
     unmatched,
     navigatedAway,
+    unsettled,
     ...(wrote ? { catalogPath: wrote } : {}),
+  }
+}
+
+/**
+ * The snapshot outcome for a preview that never held still (or whose settle
+ * wait could not run). It is a FAIL — never a pass, never a recorded baseline —
+ * because the only frame available is an arbitrary one.
+ */
+export function unsettledOutcome(
+  settle: Exclude<SettleOutcome, { status: 'settled' }> | { status: 'error'; reason: string },
+  settleMs: number,
+  timeoutMs: number,
+): SnapshotOutcome {
+  if (settle.status === 'error') {
+    return {
+      created: false,
+      snapshot: {
+        status: 'fail',
+        findings: [finding('snapshot-failed', `could not wait for the preview to settle before capturing: ${settle.reason}`)],
+      },
+    }
+  }
+  return {
+    created: false,
+    snapshot: {
+      status: 'fail',
+      findings: [
+        finding(
+          'capture-unsettled',
+          unsettledMessage(settle, settleMs, timeoutMs),
+          `Make the scenario finish (a finite animation, or stop the loop once the final state is drawn); for a deliberately endless one, stop it under the workbench or raise --settle-timeout.`,
+        ),
+      ],
+    },
   }
 }
 

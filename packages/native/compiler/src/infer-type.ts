@@ -21,7 +21,8 @@
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { ERROR_OBJECT, SERVICE_BY_HOOK } from './services'
+import { findService } from './registry-lookup'
+import { ERROR_OBJECT } from './services'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -573,7 +574,7 @@ const SERVICE_METHOD_RETURNS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> =
  */
 function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
-    return SERVICE_BY_HOOK.get(d.hook)?.optionalFields === undefined ? undefined : d.hook
+    return findService(d.hook)?.optionalFields === undefined ? undefined : d.hook
   }
   return SERVICE_OPTIONAL_FIELDS.has(d.kind) || SERVICE_METHOD_RETURNS.has(d.kind)
     ? d.kind
@@ -582,7 +583,7 @@ function serviceTypingKey(d: DeclIR): string | undefined {
 
 /** The declared-optional type of `<key>.<prop>`, from whichever table owns `key`. */
 function serviceOptionalField(key: string, prop: string): TypeIR | undefined {
-  const svc = SERVICE_BY_HOOK.get(key)
+  const svc = findService(key)
   if (svc !== undefined) return svc.optionalFields?.[prop]
   return SERVICE_OPTIONAL_FIELDS.get(key)?.get(prop)
 }

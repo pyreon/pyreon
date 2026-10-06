@@ -373,6 +373,25 @@ export default defineConfig({
     }),
   },
   {
+    // On `@pyreon/runtime-dom` versions before the explicit-whitespace fix, the
+    // hydration cursor skipped EVERY whitespace-only text node as "server
+    // formatting", so a client child that was itself `{' '}` found the cursor
+    // already past the server's space, warned `expected TextNode, got 1`, and
+    // inserted a SECOND space (`<span>One</span>  <span>Two</span>`). Only the
+    // `text` + `got 1` (an element where the text should be) shape is matched;
+    // a genuine divergence of that shape reads the same, so the entry teaches
+    // both causes. Fixed forward — this teaches the residual and the old shape.
+    pattern: /Hydration mismatch \(text\): expected TextNode, got 1 at /,
+    diagnose: () => ({
+      cause:
+        'Hydration expected a text node and found an ELEMENT. Two causes. (1) On `@pyreon/runtime-dom` versions before the explicit-whitespace fix, an explicitly rendered whitespace-only child (`<First />{\' \'}<span/>`) was skipped by the hydration cursor as "server formatting" and a duplicate space was inserted — upgrade. (2) The client renders text where the server rendered an element (a real server/client divergence).',
+      fix: 'Upgrade `@pyreon/runtime-dom` if the text in question is only whitespace (`{\' \'}`) — the walker now decides whitespace by the client VNODE, not by the DOM alone. Otherwise make the first client render match the server render (branch on `typeof window`/`Date.now()`/locale only inside `onMount`).',
+      fixCode: `// Works on current versions: the explicit space is adopted, not duplicated
+<div><First />{' '}<span>Two</span></div>`,
+      related: 'https://pyreon.dev/docs/troubleshooting/ssr',
+    }),
+  },
+  {
     // The residual footgun left by compiled-template hydration ADOPTION.
     // Hydration now binds a component's root `_tpl` against the SERVER nodes
     // instead of cloning, which is what makes typed input, focus and scroll
@@ -1697,9 +1716,9 @@ const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
     // OWN `workspaces` globs and refuses to read an empty scan as a clean
     // pass. Users hitting this message have a layout the resolver could
     // not see (no `workspaces` field, roots outside the declared globs)
-    // or ran a Pyreon-monorepo-only gate in a consumer repo.
+    // or invoked an audit outside a project directory.
     pattern:
-      /matched no (source|test) files under \d+ package root|doctor --ci measured nothing|No monorepo root found/i,
+      /matched no (source|test) files under \d+ package root|doctor --ci measured nothing|No (?:project|monorepo) root found/i,
     diagnose: () => ({
       cause:
         "A `pyreon doctor` file-scanning gate resolved the workspace's package roots (from `package.json` `workspaces` / `pnpm-workspace.yaml`, or the nearest package dir) and found NO files to audit. The doctor deliberately reports this as a skipped gate + warning instead of a clean pass — pre-0.50 the same situation silently scored 100/100 Grade A while inspecting nothing (a false green).",
@@ -1713,6 +1732,18 @@ const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
 //   pyreon doctor --roots src`,
       related:
         'The per-gate scan counts are printed in the report header (`Scanned: react-patterns 1050 · …`) and in `--json` under `gates[].meta.scanned` + `workspace` — verify the scope there. `--ci` exits non-zero when NOTHING was measured, by design.',
+    }),
+  },
+  {
+    pattern: /Duplicate island names/i,
+    diagnose: () => ({
+      cause:
+        'Multiple islands in the audited project share a hydration registry name. The registry selects the first loader for that name, so another island can stay non-interactive without throwing.',
+      fix: 'Give every island in the application a unique name. Run auditIslands from that application root: the nearest package.json scopes the scan, while an explicit monorepo audit compares all included apps.',
+      fixCode: `const One = island(() => import('./One'), { name: 'One', hydrate: 'load' })
+const Two = island(() => import('./Two'), { name: 'Two', hydrate: 'load' })`,
+      related:
+        'Independent apps can reuse names when audited separately. Check the root and filesScanned fields before treating a workspace-wide report as an application report.',
     }),
   },
   {

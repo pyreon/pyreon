@@ -14,7 +14,7 @@ import { generate } from '../core/generate'
 import { definePlugin } from '../core/plugin'
 import { CUSTOMIZE_SPEC } from './helpers/customize-spec'
 import { cleanEmitted, emitToDisk } from './helpers/emit-to-disk'
-import { typecheckSpec } from './helpers/typecheck'
+import { typecheckSpec, TYPECHECK_BUDGET } from './helpers/typecheck'
 
 const gen = (section: Omit<LatheSection, 'input'> = {}) =>
   generate(
@@ -273,7 +273,7 @@ describe('a DEFAULT hook name colliding with an endpoint', () => {
   })
 })
 
-describe('the customized client TYPECHECKS as a consumer uses it', () => {
+describe('the customized client TYPECHECKS as a consumer uses it', TYPECHECK_BUDGET, () => {
   it('renamed hooks, a dropped hook, renamed models and files, per-op validation', () => {
     const { errors } = typecheckSpec(
       'customized',

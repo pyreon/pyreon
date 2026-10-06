@@ -5,7 +5,7 @@
  * compile, and an `@ts-expect-error` that must still be an error. An unused
  * `@ts-expect-error` is itself an error (TS2578), so a loosened type fails.
  */
-import { typecheckSpec } from './helpers/typecheck'
+import { cleanTypecheck, typecheckSpec, TYPECHECK_BUDGET } from './helpers/typecheck'
 
 const SPEC = JSON.stringify({
   openapi: '3.0.3',
@@ -129,4 +129,37 @@ describe('call-site typing', () => {
       expect(result.doc.notes.map((n) => n.code)).toContain('body-on-get')
     })
   }
+})
+
+describe('consumer diagnostic controls', TYPECHECK_BUDGET, () => {
+  it('rejects a wrong response type and an unused consumer local', () => {
+    try {
+      const { errors } = typecheckSpec(
+        'shared-diagnostic-control',
+        SPEC,
+        { plugins: ['schemas', 'client', 'queries'] },
+        {
+          noUnused: true,
+          extra: {
+            'consumer.ts': `
+          import { findPets } from './endpoints'
+          export async function consume(): Promise<void> {
+            const response = await findPets()
+            const state: number = response.state
+            const unused = state
+            void state
+          }
+        `,
+          },
+        },
+      )
+      expect(errors).toHaveLength(2)
+      expect(errors.some((error) => error.includes('TS2322'))).toBe(true)
+      expect(errors.some((error) => error.includes('TS6133') && error.includes('unused'))).toBe(
+        true,
+      )
+    } finally {
+      cleanTypecheck('shared-diagnostic-control')
+    }
+  })
 })

@@ -68,6 +68,36 @@ export interface PropIR {
   type: TypeIR
 }
 
+/** A JSON value — what an {@link ExtPayload} may hold (it must survive `structuredClone` and a JSON round trip). */
+export type ExtValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ExtValue[]
+  | { readonly [key: string]: ExtValue }
+
+/** A plugin declaration's data: a JSON-serializable record. */
+export type ExtPayload = { readonly [key: string]: ExtValue }
+
+/**
+ * The open declaration kind. A plugin's `CallRecognizer` produces one (the
+ * compiler stamps `plugin` and `name`), and the same plugin's `DeclEmitter`
+ * for `type` renders it on each target. `payload` is the plugin's own data and
+ * must be JSON — the pass pipeline clones the IR with `structuredClone`.
+ */
+export interface ExtDecl {
+  readonly kind: 'ext'
+  /** The owning plugin's `name`. */
+  readonly plugin: string
+  /** The plugin-local declaration type (a key of that plugin's `decls`). */
+  readonly type: string
+  /** The binding the author wrote (`const <name> = …`). */
+  readonly name: string
+  readonly payload: ExtPayload
+}
+
+
 export type DeclIR =
   /**
    * Reactive signal declaration. The classic shape is `signal<T>(initial)`
@@ -506,8 +536,12 @@ export type DeclIR =
    * argument transformation).
    */
   | { kind: 'service'; name: string; hook: string }
-  /** `const chart = createChartHandle()` — a PyreonChartHandle (Swift @Observable class / Kotlin state holder). */
-  | { kind: 'chart-handle'; name: string }
+  /**
+   * A declaration a PLUGIN recognized and emits (`CompilerPlugin.calls` /
+   * `.decls`). The core never switches on `type`: it dispatches by
+   * `(plugin, type)` to the owner's `DeclEmitter`. See {@link ExtDecl}.
+   */
+  | ExtDecl
   /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode

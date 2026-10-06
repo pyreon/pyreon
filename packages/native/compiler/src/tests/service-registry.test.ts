@@ -1,4 +1,4 @@
-import { createCompiler, type CompilerPlugin } from '../index'
+import { BUILT_IN_PLUGINS, createCompiler, type CompilerPlugin } from '../index'
 import {
   BUILT_IN_SERVICE_OWNER,
   createServiceRegistry,
@@ -17,13 +17,13 @@ const plugin = (name: string, extra: Partial<CompilerPlugin> = {}): CompilerPlug
 
 describe('createServiceRegistry', () => {
   it('holds every built-in service under the compiler owner', () => {
-    const registry = createServiceRegistry([])
+    const registry = createServiceRegistry(BUILT_IN_PLUGINS)
     expect([...registry.keys()]).toEqual(SERVICES.map((s) => s.hook))
     expect(registry.get('useShare')?.owner).toBe(BUILT_IN_SERVICE_OWNER)
   })
 
   it('adds a plugin service with its owner and the hook key filled in', () => {
-    const registry = createServiceRegistry([plugin('@acme/thing', { services: { useThing: spec } })])
+    const registry = createServiceRegistry([...BUILT_IN_PLUGINS, plugin('@acme/thing', { services: { useThing: spec } })])
     expect(registry.get('useThing')).toEqual({
       descriptor: { hook: 'useThing', legacyKind: 'service', ...spec },
       owner: '@acme/thing',
@@ -48,13 +48,13 @@ describe('createServiceRegistry', () => {
   })
 
   it('refuses a plugin claiming a built-in hook', () => {
-    expect(() => createServiceRegistry([plugin('A', { services: { useShare: spec } })])).toThrow(
-      /hook "useShare" is claimed by both "native-compiler" and "A"/,
+    expect(() => createServiceRegistry([...BUILT_IN_PLUGINS, plugin('A', { services: { useShare: spec } })])).toThrow(
+      /hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/,
     )
   })
 
   it('round-trips descriptors through serviceSpecsOf', () => {
-    const registry = createServiceRegistry([plugin('P', { services: serviceSpecsOf(SERVICES) })], [])
+    const registry = createServiceRegistry([plugin('P', { services: serviceSpecsOf(SERVICES) })])
     expect([...registry.values()].map((r) => r.descriptor)).toEqual([...SERVICES])
   })
 })
