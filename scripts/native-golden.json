@@ -5041,6 +5041,36 @@
       "bytes": 288,
       "warnings": 5
     },
+    "golden-fixture:rx-46.tsx|swift": {
+      "sha": "f154ced26e05f4409d86e98d61e7b312939dc77cf369b5e493b0ce5a2dec8fe6",
+      "bytes": 678,
+      "warnings": 1
+    },
+    "golden-fixture:rx-46.tsx|kotlin": {
+      "sha": "3cfc34c0923bec417358c3c5a3502d6d9cc3cc003d014fe01fca95141a3d286f",
+      "bytes": 852,
+      "warnings": 1
+    },
+    "golden-fixture:rx-47.tsx|swift": {
+      "sha": "cffebfbc4f262fb0f1d7b0b98ea1189470a001cfc7e431653d8a0da20c7ee69c",
+      "bytes": 454,
+      "warnings": 5
+    },
+    "golden-fixture:rx-47.tsx|kotlin": {
+      "sha": "c95513aa0feadce96b8ca7e72aaa6b179746a014a16da492858538e9252afdb0",
+      "bytes": 583,
+      "warnings": 5
+    },
+    "golden-fixture:rx-48.tsx|swift": {
+      "sha": "909f217146fc20792f98043c1cbd8af6985ca1abf267dab695c1559baa3c6777",
+      "bytes": 2136,
+      "warnings": 0
+    },
+    "golden-fixture:rx-48.tsx|kotlin": {
+      "sha": "17adad62833b8e15f5c5a1f2a8a9fee3d0511c5e55af30e493ce12e6176732b5",
+      "bytes": 2445,
+      "warnings": 0
+    },
     "golden-fixture:sized-map-01.tsx|swift": {
       "sha": "f8ef6df9342c04957a94a4c9f1cb687365580d976df4f207b90130eead3eeda1",
       "bytes": 199,
