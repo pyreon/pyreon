@@ -293,3 +293,27 @@ A service is DATA (a hook with no arguments). When the lowering needs CODE — r
 `CallSite` is `{ callee, argCount }`. Not yet exposed (needed by the other by-name recognizers): the argument as a typed node view, `resolveConst(name)` (module-scope string constants), generics (`useFetch<T>`), and destructured results. `EmitContext.ident(name)` was added for declaration emitters.
 
 **Worked proof: `createChartHandle()`.** `native-plugin/plugin.ts` (the `@pyreon/charts` plugin) owns the recognizer, both declaration emitters, the `handle.dispatch({...})` lowering (`memberCalls`) and the `@pyreon/charts` unlowered-module metadata; `parse.ts`, the `chart-handle` `DeclIR` kind and both emitters' handle-name sets, series map, placeholder regex and `dispatch` branches are gone, and the emitted Swift/Kotlin is byte-identical (golden corpus). The `<PlotChart handle={chart}>` host lives in the plugin on both targets (see "Worked proof: the chart hosts").
+
+## Shared-fact libraries: `@pyreon/http`, `@pyreon/query`, `@pyreon/validate`/`validation` (Phase 3j — design)
+
+These three libraries do not lower independently: an `@pyreon/http` endpoint feeds `useFetch` / `useQuery` / `useStream`, a schema bound to an endpoint's `response` is evidence for the decode type's `Int`/`Double` fields, and `@pyreon/validation`'s adapters emit the same schema struct `@pyreon/validate`'s `s` DSL does. A plugin split has to put each FACT with its owner and give consumers a way to read it without importing the owner's parser.
+
+**Activation decides ownership.** A plugin is loaded only when the app imports one of its `modules` AND depends on its package. A hook is therefore owned by the package an app imports it FROM, not by the runtime it happens to drive: `useFetch` is imported from `@pyreon/hooks`, so it stays with the hooks lowering (its `fetch` declaration and `PyreonFetch` harness remain in the core until the hooks plugin moves them); `useQuery`/`useStream`/`QueryClient`/`<QueryClientProvider>` come from `@pyreon/query`; `createHttp`/`.endpoint()`/`openEventStream` come from `@pyreon/http`; `s`/`withField` from `@pyreon/validate`; `zodSchema`/`valibotSchema`/`arktypeSchema` from `@pyreon/validation`.
+
+| Plugin (package) | Owns | Publishes |
+| --- | --- | --- |
+| `@pyreon/http` | the module scan (clients, endpoints, stream openers), endpoint → request resolution (URL templating, query string, literal headers / json body, runtime `:param` via `PyreonURL`), the "http metadata declares nothing" skip, its `unlowered` entries | a **request source** (below) |
+| `@pyreon/query` (`requires: ['@pyreon/http']`) | `useQuery` (`query`), `useStream` (`stream`), `new QueryClient()` (`query-client`), `<QueryClientProvider>`, their harnesses, typing, receivers, stubs | — |
+| `@pyreon/validate` | the schema module item, `withField` metadata, `Schema.safeParse` / inline `s.object(...).safeParse` | the schema registry |
+| `@pyreon/validation` (`requires: ['@pyreon/validate']`) | the three adapter recognizers, which produce the validate-owned schema item | — |
+
+**Seams this adds (each library-agnostic, each with a toy-plugin test user):**
+
+- `scanModule` — a per-file pre-pass over the program's top-level nodes. It keeps plugin-owned facts in `fileState`, may register a predicate that makes the core SKIP a top-level declaration (metadata that emits nothing), and may mark an import as consumed by lowering (so the "has NO native lowering" warning does not print above the code that does lower).
+- `requestSources` — `resolve(call, options)` turns a call of a plugin-known binding (`getUser({ params })`, `getUser.query({ params })`) into `{ url, urlExpr?, method, headers?, body?, response? }`, or declines. The core's `useFetch` and the query plugin's hooks both consume it; neither imports the owner. This is how a fact crosses plugins without a package edge.
+- `decls[type].typing`, `decls[type].asyncState`, `lifecycle.tail` + `lifecycle.order` — what the core's inference, `<Suspense>` / `<ErrorBoundary>` and modifier ordering used to read from hard-coded `fetch` / `query` / `stream` kinds.
+- `destructureCalls` — hooks whose result may be destructured (`const { data } = useQuery(...)`).
+
+**Byte-identical contract.** Moved declarations keep their legacy kind (`legacyKind`) so struct names hash unchanged, and `lifecycle.order` reproduces the old fetch → query → stream modifier grouping. The golden corpus carries 192 fixtures harvested from the pre-move tests (`packages/fundamentals/{http,query,validate}/native-golden/`), recorded from the parent compiler BEFORE any code moves.
+
+**Order of work.** http + query first (they share the decl/harness family); validate/validation second (it needs a module-item seam the decl family does not).
