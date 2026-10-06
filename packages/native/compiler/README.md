@@ -135,6 +135,10 @@ Snapshot tests prove "the emit equals what it equalled last time," not "the emit
 
 Also exported: `isSwiftcAvailable()`, `isSwiftUIAvailable()`, `isKotlincAvailable()` — toolchain-presence checks the CLI's `check --typecheck` and the test suite use to skip gracefully rather than fail when a toolchain isn't installed.
 
+## Project audit — `@pyreon/native-compiler/audit`
+
+A separate, lightweight entry (it needs only `oxc-parser` and the web-only package map, not the Swift/Kotlin emitters) holding the multiplatform **project audit**: `auditNative(cwd)` scans `.tsx` files that import `@pyreon/primitives` for `web-only-package-import` and `native-unsupported-decl` hazards, and `detectNativePatterns(code, filename?)` is the per-snippet form. It backs `pyreon doctor --check-native` and the MCP `validate` tool, both of which load it lazily and skip with an install hint when this package is not installed. It reads the SAME `WEB_ONLY_PACKAGES` set as the parser's import warning (`src/web-only-packages.ts`, generated from the manifests by `scripts/check-multiplatform-tier.ts`), so the set exists exactly once. A file oxc cannot parse is skipped, as the compiler would refuse it.
+
 ## Scope
 
 The subset of TypeScript/JSX this compiler lowers — components, `signal`/`computed`/`effect`, `<For>`/`<Show>`, hooks, `@pyreon/store`/`form`/`query`/`table`/`flow`/…, HTTP + fetch, WebView bridging, and what it explicitly refuses — is documented in full at [PMTC Supported TypeScript](https://pyreon.dev/docs/pmtc-supported-typescript), not duplicated here. [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) covers the architecture and the primitive vocabulary end to end.

@@ -13,6 +13,7 @@ import {
   deriveWebOnlyPackages,
   listPublishedPackages,
   renderTierTable,
+  strayWebOnlyCopies,
 } from '../../../../../scripts/check-multiplatform-tier'
 
 const REPO = resolve(__dirname, '../../../../..')
@@ -126,13 +127,13 @@ describe('the real-repo contract the gate holds', () => {
     // assertion, and the gate regenerates it. Partially-lowering packages are
     // excluded by declaring `nativeFrontend`, not by being absent.
     const parseSource = (await import('node:fs')).readFileSync(
-      resolve(REPO, 'packages/native/compiler/src/parse.ts'),
+      resolve(REPO, 'packages/native/compiler/src/web-only-packages.ts'),
       'utf8',
     )
     const setMatch = parseSource.match(
       /const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map\(\[([\s\S]*?)\n\]\)/,
     )
-    expect(setMatch, 'WEB_ONLY_PACKAGES not found in parse.ts').toBeTruthy()
+    expect(setMatch, 'WEB_ONLY_PACKAGES not found in web-only-packages.ts').toBeTruthy()
     // Anchor on the ENTRY-OPENING bracket, not a bare quoted name: each entry
     // now carries the manifest rationale as its value, and a rationale is free
     // to mention another package by name. Matching `'@pyreon/x'` anywhere
@@ -208,5 +209,23 @@ describe('deriveWebOnlyPackages', () => {
     ])
     expect(got).toEqual([...got].sort())
     expect(new Set(got).size).toBe(got.length)
+  })
+})
+
+// The set must exist ONCE. The audit used to carry a second generated copy in
+// the web compiler; the staleness check only reads files it is told about, so
+// a second block would sit green while quietly diverging. `strayWebOnlyCopies`
+// is what makes "once" an enforced property rather than a convention.
+describe('strayWebOnlyCopies', () => {
+  const CONSUMER = 'packages/native/compiler/src/web-only-packages.ts'
+
+  it('finds no copy beyond the single sanctioned module in the real repo', () => {
+    expect(strayWebOnlyCopies(REPO, [CONSUMER])).toEqual([])
+  })
+
+  it('DOES see the sanctioned module itself — a scan that finds nothing proves nothing', () => {
+    // The positive control: with nothing allowed the one real block must
+    // surface, otherwise an empty result above could be a dead scan.
+    expect(strayWebOnlyCopies(REPO, [])).toEqual([CONSUMER])
   })
 })

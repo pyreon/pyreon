@@ -1,8 +1,7 @@
 /**
  * Branch-coverage specs for the project-wide audits — `island-audit.ts`,
- * `ssg-audit.ts`, `native-audit.ts` and `test-audit.ts` — driven through
- * their public entry points (`auditIslands`, `auditSsg`, `auditNative`,
- * `detectNativePatterns`, `auditTestEnvironment`, `formatTestAudit`).
+ * and `ssg-audit.ts` and `test-audit.ts` — driven through
+ * their public entry points (`auditIslands`, `auditSsg`, `auditTestEnvironment`, `formatTestAudit`).
  *
  * Each spec pairs the shape that TAKES an arm with the neighbouring shape
  * that must not: a walker skip beside the sibling it still collects, an
@@ -19,7 +18,6 @@ import {
   type IslandAuditResult,
   type IslandFindingCode,
 } from '../island-audit'
-import { auditNative, detectNativePatterns } from '../native-audit'
 import { auditSsg, type SsgFindingCode } from '../ssg-audit'
 import {
   auditTestEnvironment,
@@ -404,82 +402,6 @@ describe('ssg-audit — revalidate export', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // native-audit
 // ═══════════════════════════════════════════════════════════════════════════
-
-describe('native-audit — walker + declaration shapes', () => {
-  it('stops descending past depth 14', () => {
-    const t = makeTree('native', 'package.json')
-    const deep = Array.from({ length: 15 }, (_, i) => `d${i}`).join('/')
-    t.write(
-      `${deep}/a.tsx`,
-      `import { Stack } from '@pyreon/primitives'\nimport { rules } from '@pyreon/lint'\n`,
-    )
-    expect(auditNative(t.root).summary.multiplatformFiles).toBe(0)
-  })
-
-  it('skips dotfiles / node_modules / lib / dist / test dirs, keeps the sibling', () => {
-    const t = makeTree('native', 'package.json')
-    const src = `import { Stack } from '@pyreon/primitives'\n`
-    for (const d of ['.hidden', 'node_modules', 'lib', 'dist', '__tests__', 'tests']) {
-      t.write(`${d}/a.tsx`, src)
-    }
-    t.write('src/a.tsx', src)
-    expect(auditNative(t.root).summary.multiplatformFiles).toBe(1)
-  })
-
-  it('names an anonymous default-exported class `<anonymous>`', () => {
-    const t = makeTree('native', 'package.json')
-    t.write(
-      'src/a.tsx',
-      `import { Stack } from '@pyreon/primitives'\nexport default class {}\n`,
-    )
-    const f = auditNative(t.root).findings.find((x) => x.code === 'native-unsupported-decl')
-    expect(f?.message).toContain('<anonymous>')
-  })
-})
-
-describe('native-audit — detectNativePatterns', () => {
-  it('reports a SUBPATH web-only import with the generic reason fallback', () => {
-    const diags = detectNativePatterns(
-      `import { Stack } from '@pyreon/primitives'\n` +
-        `import { rules } from '@pyreon/lint/rules'\n`,
-    )
-    const d = diags.find((x) => x.code === 'native-web-only-import')
-    expect(d?.message).toContain('@pyreon/lint/rules')
-    // The reason map is keyed by package ROOT, so a subpath spec misses and
-    // falls back to the generic reason.
-    expect(d?.message).toContain('no native frontend')
-  })
-
-  it('reports the curated reason for a bare package-root web-only import', () => {
-    const diags = detectNativePatterns(
-      `import { Stack } from '@pyreon/primitives'\nimport { rules } from '@pyreon/lint'\n`,
-    )
-    const d = diags.find((x) => x.code === 'native-web-only-import')
-    expect(d?.message).toContain('@pyreon/lint')
-    expect(d?.message).not.toContain('no native frontend')
-  })
-
-  it('derives the package root of a NON-scoped specifier without flagging it', () => {
-    const diags = detectNativePatterns(
-      `import { Stack } from '@pyreon/primitives'\nimport x from 'lodash/get'\n`,
-    )
-    expect(diags.filter((d) => d.code === 'native-web-only-import')).toEqual([])
-  })
-
-  it('stays silent for a pure-web snippet that never imports @pyreon/primitives', () => {
-    expect(detectNativePatterns(`import { rules } from '@pyreon/lint'\nenum E { A }\n`)).toEqual([])
-  })
-
-  it('orders two diagnostics on the SAME line by column', () => {
-    const diags = detectNativePatterns(
-      `import { Stack } from '@pyreon/primitives'\nclass A {} class B {}\n`,
-    )
-    const decls = diags.filter((d) => d.code === 'native-unsupported-decl')
-    expect(decls).toHaveLength(2)
-    expect(decls[0]!.line).toBe(decls[1]!.line)
-    expect(decls[0]!.column).toBeLessThan(decls[1]!.column)
-  })
-})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // test-audit

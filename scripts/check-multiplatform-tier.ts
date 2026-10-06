@@ -25,6 +25,7 @@
  *   bun scripts/check-multiplatform-tier.ts                # verify (CI mode)
  *   bun scripts/check-multiplatform-tier.ts --write-table  # regen the docs table
  */
+import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -187,11 +188,38 @@ export function renderWebOnlySet(entries: Array<[string, string]>): string {
     '// The value is the manifest\'s `rationale` — the per-package reason the',
     '// warning quotes, so one blanket line does not have to serve packages as',
     '// different as a linter, a `<head>` manager and an animation engine.',
-    'const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([',
+    'export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([',
     ...lines,
     '])',
     WEB_ONLY_END,
   ].join('\n')
+}
+
+/**
+ * Source files (outside tests) that carry a generated web-only block other
+ * than the sanctioned consumer(s). A copy is invisible to the staleness check
+ * above, which only reads files it is told about -- so without this a second
+ * block would sit green while quietly diverging from the first.
+ */
+export function strayWebOnlyCopies(repoRoot: string, allowed: readonly string[]): string[] {
+  const r = spawnSync(
+    'git',
+    [
+      'grep', '--untracked', '-l', '-F', WEB_ONLY_START, '--',
+      ':(glob)packages/**/src/**/*.ts', ':(glob)packages/**/src/**/*.tsx',
+      ':(exclude,glob)**/tests/**', ':(exclude,glob)**/__tests__/**',
+    ],
+    { cwd: repoRoot, encoding: 'utf8' },
+  )
+  // git grep exits 1 for "no matches" (the healthy answer here); anything
+  // above that is a real failure and must not read as "no strays".
+  if (r.status !== 0 && r.status !== 1) {
+    throw new Error(`[check-multiplatform-tier] git grep failed (${r.status}): ${r.stderr}`)
+  }
+  return r.stdout
+    .split('\n')
+    .filter((f) => f !== '' && !allowed.includes(f))
+    .sort()
 }
 
 const TABLE_START = '{/* gen:multiplatform-tiers:start */}'
@@ -344,17 +372,21 @@ async function main(): Promise<number> {
   //    packages (validate / validation / url-state / feature / hotkeys / http /
   //    head) were absent from the hand-written list, so importing them into
   //    shared source produced NO diagnostic and a cryptic native build failure.
-  // TWO consumers, not one. The native compiler warns while COMPILING; the
-  // project audit (`pyreon doctor --check-native`) reports without a build.
-  // Only the first was derived, so the audit kept its own hand-written list
-  // and rotted in both directions exactly as parse.ts had: 5 packages it
-  // called web-only actually declare a `nativeFrontend` and partially cross,
-  // and 17 that ARE web-only it never flagged at all. Deriving one and
-  // hand-maintaining the other is how the same bug ships twice.
-  const WEB_ONLY_CONSUMERS = [
-    'packages/native/compiler/src/parse.ts',
-    'packages/core/compiler/src/native-audit.ts',
-  ] as const
+  // ONE consumer, ONE copy. The set lives in `web-only-packages.ts` in the
+  // native compiler and is imported by both the parser's blanket warning and
+  // the project audit (`@pyreon/native-compiler/audit`). The audit once kept
+  // its own generated copy inside the WEB compiler (`@pyreon/compiler`), which
+  // is two derived sets to drift -- and a web compiler has no business knowing
+  // the native story. Deriving one and hand-maintaining the other is how the
+  // same bug ships twice; a SECOND derived copy is how it ships a third time,
+  // so a marker block anywhere else FAILS here (see `strayWebOnlyCopies`).
+  const WEB_ONLY_CONSUMERS = ['packages/native/compiler/src/web-only-packages.ts'] as const
+  for (const stray of strayWebOnlyCopies(REPO, WEB_ONLY_CONSUMERS)) {
+    failures.push(
+      `${stray} carries its own ${WEB_ONLY_START} block -- the web-only set must exist ONCE ` +
+        `(${WEB_ONLY_CONSUMERS[0]}); import it instead of copying it.`,
+    )
+  }
   const derivedNames = deriveWebOnlyPackages(rows)
   const renderedSet = renderWebOnlySet(deriveWebOnlyRationales(rows))
   // A manifest-bearing package must never be hand-listed — that would let the

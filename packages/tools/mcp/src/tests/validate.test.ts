@@ -1,5 +1,6 @@
 import { detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler/analyze'
-import { detectNativePatterns } from '@pyreon/compiler/audits'
+import { detectNativePatterns } from '@pyreon/native-compiler/audit'
+import { detectNative, NATIVE_CHECKS_SKIPPED_NOTE } from '../native-detect'
 
 // The MCP `validate` tool handler lives in index.ts and simply merges
 // the results of both detectors. The handler cannot be exercised in-
@@ -118,5 +119,43 @@ describe('MCP validate — native (multiplatform) detector', () => {
       export function App() { return (<Stack><Text>ok</Text></Stack>) }
     `
     expect(detectNativePatterns(code)).toEqual([])
+  })
+})
+
+// `@pyreon/native-compiler` is an OPTIONAL peer of the MCP server. Its absence
+// must be VISIBLE for a snippet the native checks would have examined -- an
+// unqualified "No issues found" would certify a multiplatform component that
+// nothing audited -- and invisible for a pure-web snippet, which has no native
+// story to skip.
+describe('MCP validate — native-compiler not installed', () => {
+  const notInstalled = async () => undefined
+  const MULTIPLATFORM = `import { Stack } from '@pyreon/primitives'\nexport const A = () => <Stack />\n`
+
+  it('reports the checks as SKIPPED for a multiplatform snippet', async () => {
+    const r = await detectNative(MULTIPLATFORM, 'a.tsx', notInstalled)
+    expect(r).toEqual({ diags: [], skipped: true })
+    expect(NATIVE_CHECKS_SKIPPED_NOTE).toContain('@pyreon/native-compiler')
+    expect(NATIVE_CHECKS_SKIPPED_NOTE).toContain('install')
+  })
+
+  it('stays silent for a pure-web snippet — nothing native was skipped', async () => {
+    const r = await detectNative(`import { signal } from '@pyreon/reactivity'\n`, 'a.tsx', notInstalled)
+    expect(r).toEqual({ diags: [], skipped: false })
+  })
+
+  it('runs the detector when the peer IS present', async () => {
+    const r = await detectNative(
+      `import { Stack } from '@pyreon/primitives'\nclass C {}\n`,
+      'a.tsx',
+      async () => ({ detectNativePatterns }),
+    )
+    expect(r.skipped).toBe(false)
+    expect(r.diags.map((d) => d.code)).toContain('native-unsupported-decl')
+  })
+
+  it('the default loader resolves the real peer in this workspace', async () => {
+    const r = await detectNative(`import { Stack } from '@pyreon/primitives'\nenum E { A }\n`, 'a.tsx')
+    expect(r.skipped).toBe(false)
+    expect(r.diags.length).toBeGreaterThan(0)
   })
 })
