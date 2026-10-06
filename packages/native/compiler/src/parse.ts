@@ -2789,16 +2789,14 @@ function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // Plain service containers — the hook list lives in services.ts (SERVICES).
   ...SERVICES.map((s) => s.hook),
-  'useAppState', 'useAuth', 'useClipboard', 'useColorMode', 'useColorScheme',
-  'useCrashReporter',
-  'useDatabase', 'useFetch', 'useFieldArray', 'useForm', 'useGeolocation',
+  'useAuth', 'useColorMode', 'useColorScheme',
+  'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
   'useHotkey', 'useLoaderData', 'useMap',
-  'useNativeModule', 'useNavigate', 'useOnline',
-  'useParams', 'usePayments', 'usePermissions', 'usePush', 'useQuery',
+  'useNativeModule', 'useNavigate',
+  'useParams', 'usePermissions', 'useQuery',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
-  'useToggle', 'useCounter', 'useBluetooth', 'useWakeLock', 'useDeviceInfo', 'useSafeArea', 'useScreenOrientation',
-  'useDeviceMotion', 'useSpeech', 'useAudioRecorder',
+  'useToggle', 'useCounter',
   'useUrlState',
   'useSecureStorage',
   'useSizeClass', 'useStorage', 'useStream', 'useWebSocket',
@@ -7649,25 +7647,20 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // stays warn-drop (its read returns an opaque `T` with no field shape to
   // alias).
   const DESTRUCTURE_CONTAINER_HOOKS = new Set([
+    // Service descriptors that declare `destructure` (services.ts).
+    ...SERVICES.filter((x) => x.destructure === true).map((x) => x.hook),
     'useFetch',
     'useQuery',
     'useForm',
-    'useClipboard',
     'useStorage',
     'usePermissions',
-    'useOnline',
-    'useAppState',
-    'useCrashReporter',
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
     'useNetworkStatus',
-    'useGeolocation',
     'useWebSocket',
     'useSecureStorage',
     'useDatabase',
-    'usePush',
-    'usePayments',
     'useMap',
     'useAuth',
   ])
@@ -8689,22 +8682,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return decl
   }
-  // Phase 4 — `useOnline()` from @pyreon/hooks → the PyreonNetworkStatus
-  // reactive connectivity container. No arguments.
-  if (calleeName === 'useOnline') {
-    return { kind: 'network-status', name }
-  }
-  // Phase 5 (M3.7) — `useAppState()` from @pyreon/hooks → the PyreonAppState
-  // reactive lifecycle container. No arguments.
-  if (calleeName === 'useAppState') {
-    return { kind: 'app-state', name }
-  }
-  // `useCrashReporter()` from @pyreon/hooks → the PyreonCrashReporter reactive
-  // container. No arguments. Reactive reads `crash.lastCrash`/`crash.hadCrash`;
-  // imperative `recordError`/`breadcrumb`/`clear`; `start()` auto-called.
-  if (calleeName === 'useCrashReporter') {
-    return { kind: 'crash-reporter', name }
-  }
   // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
   // @pyreon/permissions. The array of literal grant keys seeds the native
   // PyreonPermissions container. Always succeeds (no bail): a bare
@@ -8729,12 +8706,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // see the provider, so the warning would fire on exactly the right code.
     return { kind: 'permissions', name, grants, seeded }
   }
-  // Phase 4 — `const clipboard = useClipboard()` from `@pyreon/hooks` →
-  // the PyreonClipboard reactive wrapper. No arguments. V1 supports
-  // the single-binding form only (the destructure shape
-  // `const { copy, copied } = useClipboard()` is a documented
-  // follow-up — needs the per-key rewrite that `params-destructure`
-  // uses).
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
   // containers with NO platform dependency: a signal plus a few mutators.
   // They needed no runtime, only a lowering, and without one the call
@@ -8795,12 +8766,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (bounds.min !== undefined || bounds.max !== undefined) decl.bounds = bounds
     return decl
   }
-  // `useBluetooth()` from @pyreon/hooks → PyreonBluetooth. Discovery only
-  // (scan / stopScan / devices / scanning / error / available); GATT stays
-  // platform-specific by design.
-  if (calleeName === 'useBluetooth') {
-    return { kind: 'bluetooth', name }
-  }
   // `useDebouncedValue(() => expr, ms)` — see the DeclIR comment for the
   // measured contract this reproduces.
   if (calleeName === 'useDebouncedValue') {
@@ -8829,53 +8794,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       type: inferTypeFromInitial(source),
       delayMs: delayNode.value as number,
     }
-  }
-  // `useWakeLock()` from @pyreon/hooks -> PyreonWakeLock. The WEB arm is the
-  // one carrying normalization here: a WakeLockSentinel is released on
-  // tab-hide and never reacquired, so the web hook re-acquires on
-  // visibilitychange to reach the behaviour the native flag already has.
-  // Nothing to transform at this layer -- reads are `active`/`supported`,
-  // and `request()`/`release()` pass through as member calls.
-  if (calleeName === 'useWakeLock') {
-    return { kind: 'wake-lock', name }
-  }
-  // `useDeviceInfo()` from @pyreon/hooks -> PyreonDeviceInfo. `platform` is a
-  // COMPILE-TIME constant per target; `model` / `osVersion` are real here and
-  // deliberately empty on the web (no reliable browser API — a guess would be
-  // a plausible lie in analytics, which is where these fields get used).
-  if (calleeName === 'useDeviceInfo') {
-    return { kind: 'device-info', name }
-  }
-  // `useSafeArea()` -> PyreonSafeArea. ONE accessor rather than four: the
-  // values move together on rotation, and separate accessors invite a torn
-  // pair. Reads are `s().top` on the web; the emit drops the call.
-  if (calleeName === 'useSafeArea') {
-    return { kind: 'safe-area', name }
-  }
-  // `useScreenOrientation()` -> PyreonScreenOrientation. READ-ONLY: locking
-  // does not cross (Chromium-only + fullscreen on the web; an app-level
-  // declaration on iOS), so it is deliberately not in the surface.
-  if (calleeName === 'useScreenOrientation') {
-    return { kind: 'screen-orientation', name }
-  }
-  // `useDeviceMotion()` -> PyreonDeviceMotion. Explicit start/stop, because
-  // an always-on sensor drains battery for a screen nobody is looking at and
-  // iOS Safari gates the web equivalent behind a gesture-triggered prompt.
-  if (calleeName === 'useDeviceMotion') {
-    return { kind: 'device-motion', name }
-  }
-  // `useSpeech()` -> PyreonSpeech. Rate/pitch/voice are out of scope: the
-  // platforms disagree on ranges and voice identity, so one name would mean
-  // three different things.
-  if (calleeName === 'useSpeech') {
-    return { kind: 'speech', name }
-  }
-  // `useAudioRecorder()` -> PyreonAudioRecorder. `start()` returns a Bool
-  // rather than throwing (a denied mic permission is an ordinary branch) and
-  // `stop()` returns a URL string or nil — the one representation all three
-  // targets produce.
-  if (calleeName === 'useAudioRecorder') {
-    return { kind: 'audio-recorder', name }
   }
   // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
   // the DeclIR comment for why these need a runtime.
@@ -8906,9 +8824,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     const fn = tryFunctionDecl(name, cb, ctx)
     return { kind: 'rate-limited', name, mode, delayMs: delayNode.value as number, fn }
-  }
-  if (calleeName === 'useClipboard') {
-    return { kind: 'clipboard', name }
   }
   // FFI escape hatch — `const bt = useNativeModule<T>('Bluetooth')` from
   // `@pyreon/primitives`. The ONE service declaration whose emitted type
@@ -8987,12 +8902,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useSizeClass') {
     return { kind: 'size-class', name }
   }
-  // Phase 5 — native data/services hooks. Each instantiates a runtime
-  // service container (mirrors useOnline/usePermissions). No args (except
-  // useWebSocket's url + useAuth's generic).
-  if (calleeName === 'useGeolocation') {
-    return { kind: 'geolocation', name }
-  }
   if (calleeName === 'useSecureStorage') {
     // Lowered for real (the v1 warn-drop is gone): the deferral's stated
     // blocker — "Kotlin has no auto-constructible backend" — was resolved by
@@ -9033,12 +8942,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
     }
     return { kind: 'fieldArray', name, initial }
-  }
-  if (calleeName === 'usePush') {
-    return { kind: 'push', name }
-  }
-  if (calleeName === 'usePayments') {
-    return { kind: 'payments', name }
   }
   if (calleeName === 'useMap') {
     return { kind: 'map', name }
@@ -13524,33 +13427,21 @@ function warnIfHookInsideRenderCallback(
   // Same set the body parser extracts at the top level — if it's here,
   // it should have been declared in the parent component.
   const HOOK_NAMES = new Set([
+    // Every service descriptor (services.ts).
+    ...SERVICES.map((x) => x.hook),
     'signal',
     'computed',
     'useStorage',
     'useFetch',
     'useForm',
-    'useClipboard',
-    'useHaptics',
     'useNativeModule',
-    'useShare',
-    'useLinking',
-    'useNotifications',
-    'useCrashReporter',
-    'useBiometrics',
-    'useImagePicker',
-    'useFilePicker',
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
     'usePermissions',
-    'useOnline',
-    'useAppState',
-    'useGeolocation',
     'useWebSocket',
     'useSecureStorage',
     'useDatabase',
-    'usePush',
-    'usePayments',
     'useMap',
     'useAuth',
   ])

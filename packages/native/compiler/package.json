@@ -20,6 +20,11 @@
       "bun": "./src/audit.ts",
       "import": "./lib/audit.js",
       "types": "./lib/types/audit.d.ts"
+    },
+    "./testing": {
+      "bun": "./src/testing.ts",
+      "import": "./lib/testing.js",
+      "types": "./lib/types/testing.d.ts"
     }
   },
   "scripts": {

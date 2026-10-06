@@ -46,7 +46,7 @@
       "@pyreon/zero": 1,
       "@pyreon/zero-content": 1
     },
-    "hooks": 182
+    "hooks": 146
   },
   "compiler": {
     "packages": {
