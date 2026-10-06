@@ -15,8 +15,7 @@
 // fetcher form) warn rather than mis-lower in silence.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 
