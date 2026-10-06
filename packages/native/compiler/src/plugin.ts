@@ -12,6 +12,7 @@ import type {
 import type { ModuleScanner, RequestSource } from './module-scan'
 import type {
   ExprEmitter,
+  CallExprRecognizer,
   MethodCallRecognizer,
   ModuleFinish,
   ModuleItemEmitter,
@@ -252,7 +253,14 @@ export interface CompilerPlugin<Target extends string = string> {
    * a call it reported as unsupported. Pair it with `exprs`.
    */
   readonly methodCalls?: Readonly<Record<string, MethodCallRecognizer>> | undefined
-  /** How each `ext-expr` type a `methodCalls` recognizer produces renders on each target and is typed. */
+  /**
+   * Recognizes a CALL by its callee, for a binding the plugin recorded when it scanned the file (`scanModule`) —
+   * `toast("x")` and `toast.success("x")` where `toast` is whatever local name the file imported it as. Returns an
+   * `ext-expr` spec, `undefined` to decline, or `null` to claim a call it reported as unsupported. Called for every
+   * call expression, so the first check must be cheap. Pair it with `exprs`.
+   */
+  readonly callExprs?: CallExprRecognizer | undefined
+  /** How each `ext-expr` type a `methodCalls` / `callExprs` recognizer produces renders on each target and is typed. */
   readonly exprs?: Readonly<Record<string, ExprEmitter>> | undefined
   /**
    * Edit the file's structs from the module items and from the decode sites other plugins recorded

@@ -965,19 +965,11 @@ export type ExprIR =
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   /**
-   * The open expression: a plugin's own expression (`<receiver>.<method>(…)` its `methodCalls` recognizer
-   * claimed), rendered and typed by the same plugin's `exprs[type]`. The compiler stamps `plugin`; `payload`
+   * The open expression: a plugin's own expression (`<receiver>.<method>(…)` its `methodCalls` recognizer, or a
+   * call its `callExprs` recognizer, claimed), rendered and typed by the same plugin's `exprs[type]`. The compiler stamps `plugin`; `payload`
    * is JSON and `args` are the sub-expressions the plugin asked the parser for.
    */
   | { kind: 'ext-expr'; plugin: string; type: string; payload: ExtPayload; args: ExprIR[] }
-  /**
-   * An imperative `@pyreon/toast` call — `toast("msg")` or a preset
-   * `toast.success("msg")` / `.error` / `.warning` / `.info` / `.loading`.
-   * Lowers to `PyreonToast.shared.add(message, type:)` (Swift) /
-   * `PyreonToast.add(message, type)` (Kotlin). `toastType` is the resolved
-   * variant; `message` is the first-argument expression.
-   */
-  | { kind: 'toast-call'; message: ExprIR; toastType: string; durationMillis?: number }
   /**
    * `JSON.stringify(x)` → a native serialization of an Encodable/@Serializable
    * value. Swift `String(data: try! JSONEncoder().encode(x), …)`, Kotlin
@@ -985,13 +977,6 @@ export type ExprIR =
    * which needs a native error model (a tracked follow-up), so it still warns.
    */
   | { kind: 'json-stringify'; arg: ExprIR }
-  /**
-   * An imperative `@pyreon/a11y` `announce("msg", { politeness })` call.
-   * Lowers to `PyreonA11y.announce(message, assertive:)` — a VoiceOver
-   * announcement (Swift) / registered-announcer call (Kotlin). `assertive` is
-   * true when the options carried `politeness: 'assertive'`.
-   */
-  | { kind: 'announce-call'; message: ExprIR; assertive: boolean }
   /**
    * `await expr` — an awaited async-result call inside an `async` handler
    * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin

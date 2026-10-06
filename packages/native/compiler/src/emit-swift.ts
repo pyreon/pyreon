@@ -4701,17 +4701,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
       return `await ${emitSwiftExpr(e.expr, indent)}`
-    case 'toast-call': {
-      // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
-      // `toast("x")` / `toast.success("x")` → PyreonToast.shared.add("x", type: "…").
-      // A literal duration (ms) sets the auto-dismiss (converted to seconds).
-      const durArg =
-        e.durationMillis !== undefined ? `, duration: ${e.durationMillis / 1000}` : ''
-      return `PyreonToast.shared.add(${emitSwiftExpr(e.message, indent)}, type: ${swiftStr(e.toastType)}${durArg})`
-    }
-    case 'announce-call':
-      // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
-      return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
     case 'ext-expr':
       return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
     case 'json-stringify':
@@ -7349,23 +7338,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     } finally {
       _colorScope = prevScope
     }
-  }
-
-  // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
-  // queue. Reading `PyreonToast.shared.toasts` (an @Observable) subscribes this
-  // view, so it re-renders as toasts appear/expire. v1: a vertical stack of the
-  // active messages the app places where it wants (typically the root);
-  // positioning, per-type styling, and enter/leave animation are a follow-up.
-  if (tag === 'Toaster' && canAliasIntercept(tag, '@pyreon/toast')) {
-    const p = ' '.repeat(indent + 2)
-    const pi = ' '.repeat(indent + 4)
-    return (
-      `VStack(spacing: 8) {\n` +
-      `${p}ForEach(PyreonToast.shared.toasts, id: \\.id) { __toast in\n` +
-      `${pi}Text(__toast.message)\n` +
-      `${p}}\n` +
-      `${' '.repeat(indent)}}`
-    )
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected

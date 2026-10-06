@@ -802,9 +802,6 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
       return exprReferencesIdent(expr.expr, name)
     case 'json-stringify':
       return exprReferencesIdent(expr.arg, name)
-    case 'toast-call':
-    case 'announce-call':
-      return exprReferencesIdent(expr.message, name)
     case 'ext-expr':
       return expr.args.some((a) => exprReferencesIdent(a, name))
     case 'spread':
@@ -1023,12 +1020,6 @@ export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | 
       if (arg === null) return null
       return { ...expr, arg }
     }
-    case 'toast-call':
-    case 'announce-call': {
-      const message = substituteMatching(expr.message, subst)
-      if (message === null) return null
-      return { ...expr, message }
-    }
     case 'await': {
       // M4.5: `await X` — substitute inside the awaited expr (single-wrapper,
       // like `paren`, but the child slot is `.expr`).
@@ -1195,9 +1186,6 @@ function walkLowerParams(
       return { ...expr, expr: rec(expr.expr) }
     case 'json-stringify':
       return { ...expr, arg: rec(expr.arg) }
-    case 'toast-call':
-    case 'announce-call':
-      return { ...expr, message: rec(expr.message) }
     case 'ext-expr':
       return { ...expr, args: expr.args.map(rec) }
     case 'spread':
@@ -1496,7 +1484,7 @@ export function exprContainsJsx(e: ExprIR): boolean {
       return e.exprs.some(exprContainsJsx)
     default:
       // literal / identifier / update / json-stringify / schema-validate /
-      // toast-call / announce-call / rx-call / new-collection / new-sized-map —
+      // rx-call / new-collection / new-sized-map —
       // none can carry JSX in the shapes PMTC parses.
       return false
   }

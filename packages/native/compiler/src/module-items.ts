@@ -14,6 +14,9 @@
  *   - {@link MethodCallRecognizer} (`CompilerPlugin.methodCalls`, keyed by METHOD name) + {@link ExprEmitter}
  *     (`CompilerPlugin.exprs`, keyed by expression `type`): `<receiver>.<method>(…)` becomes the open
  *     `ext-expr` IR node, which the plugin renders and types.
+ *   - {@link CallExprRecognizer} (`CompilerPlugin.callExprs`): any CALL whose callee is a binding the plugin recorded
+ *     when it scanned the file (`toast("x")`, `toast.success("x")`, `announce("x")`) — the same `ext-expr` IR node,
+ *     for a call no registry can key by name because the callee is whatever local name the file imported it as.
  *   - {@link StructRefinement} (`CompilerPlugin.refineStructs`): edit the file's structs from the items and from
  *     the decode sites other plugins recorded (a response schema deciding `Int` vs `Double`).
  *   - {@link ModuleFinish} (`CompilerPlugin.finishModule`): a last pass over the finished item list.
@@ -53,6 +56,11 @@ export interface ModuleParseContext {
    * return `null` — the verdict a {@link MethodCallRecognizer} gives for a call it claims but cannot lower.
    */
   unsupported(node: AstNode, what: string, hint: string): null
+  /**
+   * Report that `prop`'s computed key is only known at runtime, so the entry cannot be read at compile time
+   * (the compiler's own wording). `where` is the prefix, e.g. `toast() options`.
+   */
+  warnDynamicKey(prop: AstNode, where: string): void
   /**
    * Add an item found OUTSIDE a declaration (a schema synthesized from an inline `s.object({ … }).safeParse(x)`).
    * Appended after every declaration-level item, in the order added.
@@ -141,6 +149,23 @@ export interface ExtExprSpec {
  */
 export type MethodCallRecognizer = (site: MethodCallSite, ctx: ModuleParseContext) => ExtExprSpec | null | undefined
 
+/** The call a {@link CallExprRecognizer} is asked about. */
+export interface CallExprSite {
+  /** The whole call node. */
+  readonly node: AstNode
+  /** The callee as written (`toast`, `toast.success`): the recognizer matches it against what its scan recorded. */
+  readonly callee: AstNode
+  readonly args: readonly AstNode[]
+}
+
+/**
+ * Recognize a call by its callee: an expression, `undefined` to DECLINE, or `null` to CLAIM the call without
+ * lowering it (reported through {@link ModuleParseContext.unsupported}). Called for every call expression once a
+ * plugin registers one, so the first check must be cheap — read the names the plugin's `scanModule` recorded in
+ * `fileState` and return `undefined` when the file holds none.
+ */
+export type CallExprRecognizer = (site: CallExprSite, ctx: ModuleParseContext) => ExtExprSpec | null | undefined
+
 /** Renders and types one `ext-expr` type. */
 export interface ExprEmitter {
   swift(e: ExtExprIR, ctx: EmitContext): string
@@ -195,6 +220,7 @@ type ItemPlugin = {
   readonly topLevel?: TopLevelRecognizer | undefined
   readonly items?: Readonly<Record<string, ModuleItemEmitter>> | undefined
   readonly methodCalls?: Readonly<Record<string, MethodCallRecognizer>> | undefined
+  readonly callExprs?: CallExprRecognizer | undefined
   readonly exprs?: Readonly<Record<string, ExprEmitter>> | undefined
   readonly refineStructs?: StructRefinement | undefined
   readonly finishModule?: ModuleFinish | undefined
@@ -211,6 +237,8 @@ export interface ItemRegistry {
   readonly methodCalls: ReadonlyMap<string, readonly { readonly owner: string; readonly recognize: MethodCallRecognizer }[]>
   /** Recognizers registered under `'*'` — they see every method call, after the ones keyed by its own name. */
   readonly anyMethodCalls: readonly { readonly owner: string; readonly recognize: MethodCallRecognizer }[]
+  /** Call-expression recognizers in plugin order. */
+  readonly callExprs: readonly { readonly owner: string; readonly recognize: CallExprRecognizer }[]
   readonly exprEmitters: ReadonlyMap<string, ReadonlyMap<string, ExprEmitter>>
   exprEmitter(plugin: string, type: string): ExprEmitter | undefined
   readonly structRefinements: readonly { readonly owner: string; readonly refine: StructRefinement }[]
@@ -230,6 +258,7 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
   const emitters = new Map<string, ReadonlyMap<string, ModuleItemEmitter>>()
   const methodCalls = new Map<string, { owner: string; recognize: MethodCallRecognizer }[]>()
   const anyMethodCalls: { owner: string; recognize: MethodCallRecognizer }[] = []
+  const callExprs: { owner: string; recognize: CallExprRecognizer }[] = []
   const exprEmitters = new Map<string, ReadonlyMap<string, ExprEmitter>>()
   const structRefinements: { owner: string; refine: StructRefinement }[] = []
   const finishers: { owner: string; finish: ModuleFinish }[] = []
@@ -245,6 +274,7 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
       list.push({ owner: plugin.name, recognize })
       methodCalls.set(method, list)
     }
+    if (plugin.callExprs !== undefined) callExprs.push({ owner: plugin.name, recognize: plugin.callExprs })
     if (plugin.exprs !== undefined) exprEmitters.set(plugin.name, new Map(Object.entries(plugin.exprs)))
     if (plugin.refineStructs !== undefined) structRefinements.push({ owner: plugin.name, refine: plugin.refineStructs })
     if (plugin.finishModule !== undefined) finishers.push({ owner: plugin.name, finish: plugin.finishModule })
@@ -255,6 +285,7 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),
     methodCalls,
     anyMethodCalls: Object.freeze(anyMethodCalls),
+    callExprs: Object.freeze(callExprs),
     exprEmitters,
     exprEmitter: (plugin, type) => exprEmitters.get(plugin)?.get(type),
     structRefinements: Object.freeze(structRefinements),

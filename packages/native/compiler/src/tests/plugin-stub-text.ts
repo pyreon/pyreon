@@ -13,6 +13,8 @@ import {
   STREAM_KOTLIN_STUBS,
   STREAM_SWIFT_STUBS,
 } from '../../../../fundamentals/query/src/native-plugin/stubs'
+import { TOAST_KOTLIN_STUBS, TOAST_SWIFT_STUBS } from '../../../../fundamentals/toast/src/native-plugin/stubs'
+import { A11Y_KOTLIN_STUBS, A11Y_SWIFT_STUBS } from '../../../../fundamentals/a11y/src/native-plugin/stubs'
 
 export const REPO = resolve(import.meta.dirname, '..', '..', '..', '..', '..')
 
@@ -24,6 +26,8 @@ export interface PluginStubs {
 }
 
 export const PLUGIN_STUBS: readonly PluginStubs[] = [
+  { label: 'a11y', swift: A11Y_SWIFT_STUBS, kotlin: A11Y_KOTLIN_STUBS },
+  { label: 'toast', swift: TOAST_SWIFT_STUBS, kotlin: TOAST_KOTLIN_STUBS },
   { label: 'charts', swift: SWIFT_CHART_VIEW_STUBS, kotlin: KOTLIN_CHART_VIEW_STUBS },
   { label: 'flow', swift: FLOW_SWIFT_STUBS, kotlin: FLOW_KOTLIN_STUBS },
   { label: 'i18n', swift: I18N_SWIFT_STUBS, kotlin: I18N_KOTLIN_STUBS },
@@ -37,6 +41,8 @@ export const PLUGIN_STUBS: readonly PluginStubs[] = [
  * in the gate that scans it; a library that moves its lowering into its package adds its directory here.
  */
 export const PLUGIN_EMITTER_DIRS: readonly string[] = [
+  join(REPO, 'packages/fundamentals/a11y/src/native-plugin'),
+  join(REPO, 'packages/fundamentals/toast/src/native-plugin'),
   join(REPO, 'packages/fundamentals/flow/src/native-plugin'),
   join(REPO, 'packages/fundamentals/i18n/src/native-plugin'),
   join(REPO, 'packages/fundamentals/machine/src/native-plugin'),

@@ -204,6 +204,7 @@ export function createCompiler<Target extends string = never>(
       topLevel: plugin.topLevel,
       items: plugin.items,
       methodCalls: plugin.methodCalls,
+      callExprs: plugin.callExprs,
       exprs: plugin.exprs,
       refineStructs: plugin.refineStructs,
       finishModule: plugin.finishModule,

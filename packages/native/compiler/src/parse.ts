@@ -18,7 +18,7 @@ import {
 import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
 import { stampExtDecl, type AstNode, type ParseContext } from './call-lowering'
-import { stampExtExpr, stampModuleItem, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
+import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -147,14 +147,6 @@ interface ParseCtx {
    */
   storeAliases: Map<string, string>
   /**
-   * Local names bound to the imperative `toast` import from `@pyreon/toast`
-   * (`import { toast }` → `toast`; `import { toast as notify }` → `notify`).
-   * `parseExpr` rewrites a call on one of these — `toast("x")` or a preset
-   * `toast.success("x")` — to a `toast-call` ExprIR so the emit lowers it to
-   * `PyreonToast`. Empty unless the file imports `toast`.
-   */
-  toastNames: Set<string>
-  /**
    * Module bindings created by the `kinetic()` factory (`const Box =
    * kinetic('div').preset('fade')`). The factory is a WEB CSS-class engine with
    * no native analogue, so the binding must not reach the emit: a verbatim
@@ -209,12 +201,6 @@ interface ParseCtx {
    * pass runs before JSX is walked.
    */
   hasPermissionsProvider: boolean
-  /**
-   * Local names bound to the `announce` import from `@pyreon/a11y` (handles
-   * `import { announce as say }`). `parseExpr` lowers a call on one of these to
-   * an `announce-call` ExprIR (→ PyreonA11y). Empty unless `announce` is imported.
-   */
-  announceNames: Set<string>
   /**
    * Per-component HOOK-FIELD aliases: a destructured local name →
    * `{ object, field }` where `object` is a synthetic single-binding
@@ -355,7 +341,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
-    toastNames: new Set(),
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
     typedComponentAliases: new Map(),
@@ -364,7 +349,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     rxImportedNames: new Map(),
     sizedMapNames: new Set(),
     hasPermissionsProvider: false,
-    announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -443,10 +427,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // language. Program-level because a call can appear anywhere (a handler, a
   // nested closure), not only in a declaration.
   warnUnlowerdCrdtMembers(ast.program as AnyNode, ctx.warnings, source)
-  // Pre-pass: record the local name(s) bound to the imperative `toast` import
-  // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
-  // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
-  collectToastNames(ast.program.body as AnyNode[], ctx)
+
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -460,9 +441,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // because the warn pass runs before the JSX walk — the same ordering that
   // forced the schema pre-scans above.
   ctx.hasPermissionsProvider = /<\s*PermissionsProvider[\s/>]/.test(source)
-  // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
-  // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
-  collectAnnounceNames(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
@@ -1213,11 +1191,6 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
   }
 }
 
-/**
- * Record the local name(s) bound to `toast` imported from `@pyreon/toast`.
- * `import { toast }` → `toast`; `import { toast as notify }` → `notify`. These
- * are the callees `parseExpr` lowers to a `toast-call` ExprIR.
- */
 /** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
  *
  * Gated on the IMPORT rather than the bare name: `SizedMap` is a plausible
@@ -1481,19 +1454,6 @@ function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
   return false
 }
 
-function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/toast') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'toast') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.toastNames.add(local)
-      }
-    }
-  }
-}
-
 /**
  * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
  * package and called as `useX()` falls through to the generic
@@ -1735,19 +1695,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     },
   ],
   [
-    '@pyreon/a11y',
-    {
-      // `announce` now LOWERS to PyreonA11y (a VoiceOver / announceForAccessibility
-      // call). The remaining exports (VisuallyHidden / LiveRegion / SkipLink /
-      // createA11yId) are DOM-based and still warn — hence a per-export
-      // `supported` set, not a package-level entry (the `rx` lesson: warn per
-      // export, since a module can be only PARTLY unlowered).
-      supported: new Set(['announce']),
-      advice:
-        'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives (or `announce(...)`, which lowers), which lower on all three targets',
-    },
-  ],
-  [
     '@pyreon/reactivity',
     {
       // MEASURED: signal / computed / effect / onCleanup lower; these three do
@@ -1819,23 +1766,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
  * Same shape and same reasoning as the hook and control-flow warnings: keyed on
  * the IMPORT, so a user's own `map` or `s` from their own module is untouched.
  */
-/**
- * Record the local name(s) bound to `announce` imported from `@pyreon/a11y`.
- * `import { announce }` → `announce`; `import { announce as say }` → `say`.
- */
-function collectAnnounceNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/a11y') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'announce') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.announceNames.add(local)
-      }
-    }
-  }
-}
-
 function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
   const seen = new Set<string>()
   for (const node of body) {
@@ -3611,7 +3541,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     enumTypeNames: ctx.enumTypeNames,
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
-    toastNames: new Set(),
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
     // here rather than sharing the parent's.
@@ -3623,7 +3552,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     rxImportedNames: new Map(),
     sizedMapNames: new Set(),
     hasPermissionsProvider: false,
-    announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -4792,6 +4720,7 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     },
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
+    warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     unsupported: (node, what, hint) => {
       unsupportedExpr(ctx, node as AnyNode, what, hint)
       return null
@@ -4846,6 +4775,26 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
   }
   for (const { owner, recognize } of recognizers) {
     const verdict = runPluginHook(owner, `methodCalls.${method}`, () => recognize(site, moduleParseContextFor(ctx, owner)))
+    if (verdict === undefined) continue
+    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
+  }
+  return undefined
+}
+
+/**
+ * A call a plugin's `callExprs` recognizer claims by its callee (the names its `scanModule` recorded): the open
+ * `ext-expr` node, the empty literal every unsupported expression becomes (`null` verdict), or `undefined`.
+ */
+function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
+  const registry = activeRegistries().items
+  if (registry.callExprs.length === 0) return undefined
+  const site: CallExprSite = {
+    node: node as AstNode,
+    callee: node.callee as AstNode,
+    args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
+  }
+  for (const { owner, recognize } of registry.callExprs) {
+    const verdict = runPluginHook(owner, 'callExprs', () => recognize(site, moduleParseContextFor(ctx, owner)))
     if (verdict === undefined) continue
     return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
   }
@@ -8170,114 +8119,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // A method call a plugin recognizes by shape (`CompilerPlugin.methodCalls`).
       const pluginCall = tryPluginMethodCall(node, ctx)
       if (pluginCall !== undefined) return pluginCall
-      // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
-      // `toast("x")` (info) or a preset `toast.success("x")` / `.error` /
-      // `.warning` / `.info` / `.loading`. The message is the first argument; a
-      // literal `duration` (ms) in the 2nd-arg options object sets the
-      // auto-dismiss (0 = persistent); other options (onDismiss/description/
-      // icon/action) are dropped in v1 (the preset method carries the type).
-      if (ctx.toastNames.size > 0) {
-        const c = node.callee
-        const PRESETS = new Set(['success', 'error', 'warning', 'info', 'loading'])
-        let toastType: string | undefined
-        if (c?.type === 'Identifier' && ctx.toastNames.has(c.name)) {
-          toastType = 'info'
-        } else if (
-          c?.type === 'MemberExpression' &&
-          c.object?.type === 'Identifier' &&
-          ctx.toastNames.has(c.object.name) &&
-          c.property?.type === 'Identifier' &&
-          PRESETS.has(c.property.name)
-        ) {
-          // `loading` has no distinct native variant in v1 → treat as info.
-          toastType = c.property.name === 'loading' ? 'info' : c.property.name
-        } else if (
-          c?.type === 'MemberExpression' &&
-          c.object?.type === 'Identifier' &&
-          ctx.toastNames.has(c.object.name)
-        ) {
-          // Any OTHER member call on the toast binding used to pass through
-          // VERBATIM (`toast.bogus("q")` → a Swift/Kotlin call on a name that
-          // does not exist), with no warning. Name it: a real-but-unlowered
-          // method gets the follow-up hint, anything else is not a toast API.
-          const method =
-            c.computed !== true && c.property?.type === 'Identifier'
-              ? (c.property.name as string)
-              : undefined
-          const REAL_UNLOWERED = new Set(['update', 'dismiss', 'remove', 'promise'])
-          return unsupportedExpr(
-            ctx,
-            node,
-            method !== undefined ? `\`${c.object.name}.${method}(…)\`` : `a computed \`${c.object.name}[…]\` call`,
-            method !== undefined && REAL_UNLOWERED.has(method)
-              ? `\`toast.${method}\` has no native lowering yet (only \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets lower) — the call is DROPPED on iOS/Android.`
-              : `@pyreon/toast has no such method; the native lowering covers \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets. The call is DROPPED on iOS/Android.`,
-          )
-        }
-        if (toastType !== undefined) {
-          const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
-          const message: ExprIR = argNodes[0]
-            ? parseExpr(argNodes[0], ctx)
-            : { kind: 'literal', value: '' }
-          // A literal `duration` (ms) in the options object → auto-dismiss.
-          let durationMillis: number | undefined
-          const opts = argNodes[1]
-          if (opts?.type === 'ObjectExpression') {
-            for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-              if (hasDynamicKey(prop)) {
-                warnDynamicKey(prop, 'toast() options', ctx)
-                continue
-              }
-              const key = staticPropKey(prop)
-              const val = prop.value as AnyNode | undefined
-              if (
-                key === 'duration' &&
-                (val?.type === 'Literal' || val?.type === 'NumericLiteral') &&
-                typeof val.value === 'number'
-              ) {
-                durationMillis = val.value
-              }
-            }
-          }
-          return durationMillis !== undefined
-            ? { kind: 'toast-call', message, toastType, durationMillis }
-            : { kind: 'toast-call', message, toastType }
-        }
-      }
-      // Imperative `@pyreon/a11y` `announce("msg", { politeness })` →
-      // `announce-call` ExprIR (→ PyreonA11y). The message is the first arg; an
-      // options object's `politeness: 'assertive'` sets `assertive` (default
-      // polite). A `clear` option is dropped in v1.
-      if (
-        ctx.announceNames.size > 0 &&
-        node.callee?.type === 'Identifier' &&
-        ctx.announceNames.has(node.callee.name)
-      ) {
-        const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
-        const message: ExprIR = argNodes[0]
-          ? parseExpr(argNodes[0], ctx)
-          : { kind: 'literal', value: '' }
-        let assertive = false
-        const opts = argNodes[1]
-        if (opts?.type === 'ObjectExpression') {
-          for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-            if (hasDynamicKey(prop)) {
-              warnDynamicKey(prop, 'announce() options', ctx)
-              continue
-            }
-            const key = staticPropKey(prop)
-            const val = prop.value
-            if (
-              key === 'politeness' &&
-              (val?.type === 'Literal' || val?.type === 'StringLiteral') &&
-              val.value === 'assertive'
-            ) {
-              assertive = true
-            }
-          }
-        }
-        return { kind: 'announce-call', message, assertive }
-      }
+      // A call a plugin recognizes by a callee it recorded when it scanned the file (`CompilerPlugin.callExprs`).
+      const calleeCall = tryPluginCallExpr(node, ctx)
+      if (calleeCall !== undefined) return calleeCall
       // A claimed library function keeps the callee spelling its plugin asked for (`FunctionLowering.irName`).
       const parsedCallee = parseExpr(node.callee, ctx)
       const irName = parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined

@@ -25,8 +25,12 @@ import { validatePlugin } from '../../../../fundamentals/validate/src/native-plu
 import { validationPlugin } from '../../../../fundamentals/validation/src/native-plugin/plugin'
 import { i18nPlugin } from '../../../../fundamentals/i18n/src/native-plugin/plugin'
 import { i18nStubs } from '../../../../fundamentals/i18n/src/native-plugin/stubs'
+import { toastPlugin } from '../../../../fundamentals/toast/src/native-plugin/plugin'
+import { toastStubs } from '../../../../fundamentals/toast/src/native-plugin/stubs'
+import { a11yPlugin } from '../../../../fundamentals/a11y/src/native-plugin/plugin'
+import { a11yStubs } from '../../../../fundamentals/a11y/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })

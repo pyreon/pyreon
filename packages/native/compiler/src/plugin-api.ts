@@ -55,6 +55,8 @@ export type {
   ExtItemSpec,
   FieldValidators,
   ItemBindings,
+  CallExprRecognizer,
+  CallExprSite,
   MethodCallRecognizer,
   MethodCallSite,
   ModuleFinish,
