@@ -209,3 +209,10 @@ are available through the library API. Hooks are synchronous and operate on
 isolated typed IR. Match API version 1 and validate emitted code with the real
 Swift/Kotlin toolchains. See the
 [complete plugin contract](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/README.md#compiler-plugins-experimental-api-v1).
+
+A package can also ship its own plugin: declare `pyreon.native.plugin` (and
+optionally `pyreon.native.modules`) in its `package.json` and
+`pyreon-native build`/`check` load it automatically, only when your source
+imports that package. `--no-plugins` turns discovery off; `pyreon-native plugins`
+lists what was found and which plugin owns each service hook, and
+`pyreon-native explain <file>` shows the Swift/Kotlin a hook lowers to.

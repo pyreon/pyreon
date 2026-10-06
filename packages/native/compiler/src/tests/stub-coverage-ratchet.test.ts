@@ -101,7 +101,11 @@ export function isFrameworkType(name: string): boolean {
   )
 }
 
-const emitSources = ['emit-swift.ts', 'emit-kotlin.ts'].map((f) =>
+// `services.ts` is an emit source too: the service descriptors carry the
+// `Pyreon*` constructor calls (`swift: 'PyreonClipboard()'`) that used to be
+// written in the emitters. Leaving it out silently shrinks this scan as hooks
+// move onto descriptors — the blind spot this ratchet exists to prevent.
+const emitSources = ['emit-swift.ts', 'emit-kotlin.ts', 'services.ts'].map((f) =>
   readFileSync(join(COMPILER_SRC, f), 'utf8'),
 )
 const swiftStubs = readFileSync(join(COMPILER_SRC, 'swift-stubs.ts'), 'utf8')
