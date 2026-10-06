@@ -42,6 +42,7 @@ describe.each([
   ['@pyreon/flow', 'fundamentals/flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
   ['@pyreon/validation', 'fundamentals/validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
   ['@pyreon/validate', 'fundamentals/validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
+  ['@pyreon/permissions', 'fundamentals/permissions', ['plugin.ts', 'stubs.ts']],
   ['@pyreon/elements', 'ui-system/elements', ['plugin.ts']],
   ['@pyreon/coolgrid', 'ui-system/coolgrid', ['plugin.ts']],
 ] as const)('package-owned plugin boundary (%s)', (_pkg, dirName, expected) => {

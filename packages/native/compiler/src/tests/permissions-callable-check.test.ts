@@ -13,13 +13,8 @@
 // identical source ran on two targets and died in a browser.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const SRC = `import { usePermissions } from '@pyreon/permissions'
 import { Stack, Text } from '@pyreon/primitives'

@@ -360,30 +360,6 @@ export type DeclIR =
    */
   | { kind: 'params-destructure'; params: { key: string; local: string }[] }
   /**
-   * Phase 4 — permission set via `usePermissions(['posts.edit', 'posts.*'])`
-   * from `@pyreon/permissions` (the native subset). Emits the PyreonPermissions
-   * reactive container the runtime ports ship:
-   *   Swift  → @State private var can = PyreonPermissions(["posts.edit", "posts.*"])
-   *   Kotlin → val can = remember { PyreonPermissions(setOf("posts.edit", "posts.*")) }
-   *
-   * `grants` carries the literal initial grant keys captured from the array
-   * argument (string literals only; a non-array / non-literal arg yields an
-   * empty set — `usePermissions` never bails). Reads are METHOD CALLS
-   * (`can.can("x")` / `cannot` / `all` / `any` / `grant` / `revoke` / `set`),
-   * so unlike useFetch / useForm there is NO `.value` field-read rewrite —
-   * the methods read the underlying reactive set internally and return a
-   * plain Bool / Void on both targets.
-   */
-  | {
-      kind: 'permissions'
-      name: string
-      grants: string[]
-      /** The call passed an ARRAY LITERAL (`usePermissions([...])`, including
-       *  `[]`) — a self-contained instance. False for a bare call, which reads
-       *  the provider. Mirrors the web's presence-not-length mode selection. */
-      seeded: boolean
-    }
-  /**
    * `useToggle(initial)` / `useCounter(initial, { min, max })` from
    * `@pyreon/hooks` — pure state containers with no platform dependency at
    * all (a signal plus a few mutators). They needed no runtime; what they

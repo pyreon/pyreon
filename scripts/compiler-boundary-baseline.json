@@ -4,7 +4,6 @@
       "@pyreon/feature": 1,
       "@pyreon/kinetic": 1,
       "@pyreon/kinetic-presets": 1,
-      "@pyreon/permissions": 2,
       "@pyreon/rx": 2,
       "@pyreon/sized-map": 1,
       "@pyreon/state-tree": 1,
@@ -12,7 +11,7 @@
       "@pyreon/store": 1,
       "@pyreon/ui-core": 2
     },
-    "hooks": 109
+    "hooks": 105
   },
   "compiler": {
     "packages": {

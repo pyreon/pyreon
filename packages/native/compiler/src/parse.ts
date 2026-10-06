@@ -194,13 +194,6 @@ interface ParseCtx {
    */
   rxImportedNames: Map<string, string>
   /**
-   * A `<PermissionsProvider permissions={{ … }}>` appears in this file, so a
-   * bare `usePermissions()` reads real grants from the environment rather
-   * than lowering to an empty set. Decided in a pre-scan because the warn
-   * pass runs before JSX is walked.
-   */
-  hasPermissionsProvider: boolean
-  /**
    * Per-component HOOK-FIELD aliases: a destructured local name →
    * `{ object, field }` where `object` is a synthetic single-binding
    * container name. Populated from `const { data, isPending } =
@@ -347,7 +340,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     kineticPresetImports: new Map(),
     rxImportedNames: new Map(),
     sizedMapNames: new Set(),
-    hasPermissionsProvider: false,
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -428,11 +420,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // declarations carry (an `@pyreon/http` client and its endpoints) before any hook that reads
   // them is parsed, regardless of where the declaration sits relative to the component.
   runModuleScanners(ast.program as AnyNode, source, ctx)
-  // A `<PermissionsProvider>` anywhere in the file means a bare
-  // `usePermissions()` has somewhere to read from. Checked against the source
-  // because the warn pass runs before the JSX walk — the same ordering that
-  // forced the schema pre-scans above.
-  ctx.hasPermissionsProvider = /<\s*PermissionsProvider[\s/>]/.test(source)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
@@ -1465,7 +1452,7 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
   'useHotkey', 'useLoaderData', 'useMap',
   'useNativeModule', 'useNavigate',
-  'useParams', 'usePermissions',
+  'useParams',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter',
@@ -1633,18 +1620,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     },
   ],
   [
-    '@pyreon/permissions',
-    {
-      // The previous advice — "`usePermissions()` DOES lower — use the hook
-      // instead" — was addressed to someone ALREADY using the hook, and
-      // following it changed nothing: `<PermissionsProvider>` is where the
-      // grants come from, so a hook without it lowers to an EMPTY set and
-      // every check denies. Name the seeding shape instead.
-      advice:
-        'a literal `<PermissionsProvider permissions={{ … }}>` DOES lower — it injects the grants a bare `usePermissions()` reads. What does not lower is a NON-literal permissions map (a variable, a fetch result), and `createPermissions()` used outside the provider',
-    },
-  ],
-  [
     '@pyreon/reactivity',
     {
       // MEASURED: signal / computed / effect / onCleanup lower; these three do
@@ -1737,17 +1712,6 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // diagnostic into noise, and `rx` is a live example of a module that is
       // only PARTLY unlowered.
       if (entry.supported?.has(imported)) continue
-      // `<PermissionsProvider permissions={{ … }}>` LOWERS now — it injects
-      // the grants into the SwiftUI environment / Compose CompositionLocal a
-      // bare `usePermissions()` reads. Keeping the blanket line would print
-      // "has NO native lowering" directly above the injection it performs.
-      if (
-        src === '@pyreon/permissions' &&
-        imported === 'PermissionsProvider' &&
-        ctx.hasPermissionsProvider
-      ) {
-        continue
-      }
       // An import a plugin's scan marked as consumed by lowering (`createHttp({ schema })`'s schema
       // name, a stream opener used only as a `useStream` source): nothing of it reaches the emit.
       if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`)) continue
@@ -3484,7 +3448,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     kineticPresetImports: new Map(),
     rxImportedNames: new Map(),
     sizedMapNames: new Set(),
-    hasPermissionsProvider: false,
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -4831,7 +4794,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'useFetch',
     'useForm',
     'useStorage',
-    'usePermissions',
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
@@ -5612,30 +5574,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return decl
   }
-  // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
-  // @pyreon/permissions. The array of literal grant keys seeds the native
-  // PyreonPermissions container. Always succeeds (no bail): a bare
-  // `usePermissions()` or a non-literal arg yields an empty grant set and the
-  // emit produces a default-constructed container.
-  if (calleeName === 'usePermissions') {
-    const grantsArg = init.arguments?.[0] as AnyNode | undefined
-    const grants = tryExtractStringArray(grantsArg)
-    // An array literal — even an EMPTY one — is the self-contained form, the
-    // same mode selection the web runtime makes (by presence, not length).
-    // `usePermissions([])` means "this screen grants nothing": deny-all, never
-    // a fallback to the provider.
-    const seeded = grantsArg?.type === 'ArrayExpression'
-    // A bare `usePermissions()` is the CORRECT web call: it reads the grants
-    // of the nearest `<PermissionsProvider>`, which lowers to the app-wide
-    // environment key / CompositionLocal in @pyreon/permissions' runtime. This
-    // used to WARN when the provider was not in the SAME file — accurate while
-    // the key was emitted per file (a Kotlin `private val` was a different
-    // local in every file, so a provider elsewhere never reached the reader).
-    // With one key for the whole app, the canonical shape — provider in the
-    // root layout, reader on a page — is correct, and a per-file check cannot
-    // see the provider, so the warning would fire on exactly the right code.
-    return { kind: 'permissions', name, grants, seeded }
-  }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
   // containers with NO platform dependency: a signal plus a few mutators.
   // They needed no runtime, only a lowering, and without one the call
@@ -6105,27 +6043,6 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     parseContextFor(name, init, ctx),
   )
   return spec === undefined || spec === null ? null : stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
-}
-
-/**
- * Phase 4 — pull literal string elements out of an array argument
- * (`['a', 'b']`). Used to seed `usePermissions`' initial grant set. Returns
- * the string-literal entries; a missing / non-array / non-literal argument
- * yields an empty array so the caller never bails.
- */
-function tryExtractStringArray(arg: AnyNode | undefined): string[] {
-  if (!arg || arg.type !== 'ArrayExpression') return []
-  const out: string[] = []
-  for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
-    if (
-      el &&
-      (el.type === 'Literal' || el.type === 'StringLiteral') &&
-      typeof el.value === 'string'
-    ) {
-      out.push(el.value)
-    }
-  }
-  return out
 }
 
 /**
@@ -8460,8 +8377,9 @@ function warnIfHookInsideRenderCallback(
   // Same set the body parser extracts at the top level — if it's here,
   // it should have been declared in the parent component.
   const HOOK_NAMES = new Set([
-    // Every service descriptor (services.ts).
+    // Every service descriptor (services.ts) and every call a plugin recognizes.
     ...activeRegistries().serviceTables.hooks,
+    ...activeRegistries().calls.names,
     'signal',
     'computed',
     'useStorage',
@@ -8471,7 +8389,6 @@ function warnIfHookInsideRenderCallback(
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
-    'usePermissions',
     'useWebSocket',
     'useSecureStorage',
     'useDatabase',

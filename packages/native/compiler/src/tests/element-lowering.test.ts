@@ -127,6 +127,27 @@ export function App() { return (<Banner id="top"><Text>Hi</Text></Banner>) }`
     expect(compiler.transform(other, { target: 'swift' }).code).not.toContain('AcmeBanner')
   })
 
+  it('a lowering that declines a shape falls back to the generic component call through ctx.generic, not back into itself', () => {
+    const decliner: ElementLowering = {
+      module: '@acme/ui',
+      tags: ['Maybe'],
+      emit: {
+        swift: (el, ctx) => (ctx.staticAttr(el, 'ok') === true ? 'Group { }' : (ctx.warn('Maybe: declined'), ctx.generic(el))),
+        kotlin: (el, ctx) => (ctx.staticAttr(el, 'ok') === true ? 'Box { }' : (ctx.warn('Maybe: declined'), ctx.generic(el))),
+      },
+    }
+    const compiler = createCompiler({ plugins: [acme([decliner])] })
+    const decline = `import { Maybe } from '@acme/ui'
+export function App() { return (<Maybe><Text>Hi</Text></Maybe>) }`
+    const accept = decline.replace('<Maybe>', '<Maybe ok>')
+    for (const target of ['swift', 'kotlin'] as const) {
+      const declined = compiler.transform(decline, { target })
+      expect(declined.code, target).toContain('Maybe {')
+      expect(declined.warnings, target).toContain('Maybe: declined')
+      expect(compiler.transform(accept, { target }).code, target).toContain(target === 'swift' ? 'Group { }' : 'Box { }')
+    }
+  })
+
   it('stops claiming when the plugin is not part of the compiler', () => {
     expect(swift(SRC).code).not.toContain('AcmeBanner')
   })

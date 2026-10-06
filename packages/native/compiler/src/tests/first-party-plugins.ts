@@ -33,12 +33,14 @@ import { tablePlugin } from '../../../../fundamentals/table/src/native-plugin/pl
 import { tableStubs } from '../../../../fundamentals/table/src/native-plugin/stubs'
 import { dndPlugin } from '../../../../fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../../../../fundamentals/dnd/src/native-plugin/stubs'
+import { permissionsPlugin } from '../../../../fundamentals/permissions/src/native-plugin/plugin'
+import { permissionsStubs } from '../../../../fundamentals/permissions/src/native-plugin/stubs'
 import { elementsPlugin } from '../../../../ui-system/elements/src/native-plugin/plugin'
 import { coolgridPlugin } from '../../../../ui-system/coolgrid/src/native-plugin/plugin'
 import { syncPlugin } from '../../../../fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../../../../fundamentals/sync/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, elementsPlugin, coolgridPlugin }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, permissionsPlugin, permissionsStubs, elementsPlugin, coolgridPlugin }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })

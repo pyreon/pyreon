@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -43,12 +48,19 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@casl/ability": "^7.0.1",
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
@@ -61,9 +73,17 @@
       "swift": "native/swift",
       "kotlin": "native/kotlin",
       "kotlinServices": {
-        "PyreonPermissions": ["PyreonPermissions.kt"]
+        "PyreonPermissions": [
+          "PyreonPermissions.kt"
+        ]
       },
-      "kotlinSdkOnly": ["PyreonPermissionsLocal.kt"]
+      "kotlinSdkOnly": [
+        "PyreonPermissionsLocal.kt"
+      ],
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/permissions"
+      ]
     }
   }
 }

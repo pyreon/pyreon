@@ -60,6 +60,22 @@ export function App() { return (<PyreonUI>Hi</PyreonUI>) }`
   })
 })
 
+describe('alias-import guard — @pyreon/permissions PermissionsProvider', () => {
+  const PROVIDER = (from: string) => `import { PermissionsProvider } from '${from}'
+export function App() { return (<PermissionsProvider permissions={{ 'a': true }}>Hi</PermissionsProvider>) }`
+
+  it('PermissionsProvider from @pyreon/permissions injects the grants on both targets', () => {
+    expect(swift(PROVIDER('@pyreon/permissions'))).toContain('.environment(\\.pyreonPermissions, PyreonPermissions(["a"]))')
+    expect(kotlin(PROVIDER('@pyreon/permissions'))).toContain('LocalPyreonPermissions provides PyreonPermissions(setOf("a"))')
+  })
+
+  it('PermissionsProvider from a USER module is NOT hijacked (kept as a component); the old emitter claimed it by name alone', () => {
+    expect(swift(PROVIDER('./my-providers'))).not.toContain('pyreonPermissions')
+    expect(swift(PROVIDER('./my-providers'))).toContain('PermissionsProvider(')
+    expect(kotlin(PROVIDER('./my-providers'))).not.toContain('LocalPyreonPermissions')
+  })
+})
+
 describe('alias-import guard — untracked name keeps prior behaviour', () => {
   it('an un-imported Element tag still lowers (back-compat: undefined source → intercept)', () => {
     // No import for Element at all → _aliasImports has no entry → the guard

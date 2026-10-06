@@ -97,7 +97,6 @@ import {
   widenFloatSignals,
 } from './infer-type'
 import { clampExpr, pureStateBindings } from './pure-state'
-import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
 import { KOTLIN_INT } from './spelling'
@@ -2129,29 +2128,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       .map((p) => `val ${kotlinIdent(p.local)} = useParams()[${kotlinStr(p.key)}] ?: ""`)
       .join('\n  ')
   }
-  // Phase 4: `const can = usePermissions([...])` → a remembered
-  // PyreonPermissions seeded with the literal grant keys. Reads are method
-  // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
   // Mirror of the Swift pure-state emit: a plain mutableStateOf field, with
   // the mutators rewritten at their use sites.
   if (d.kind === 'pure-state') {
     // A counter is a TS integer — Long on Kotlin (see KOTLIN_INT).
     const init = typeof d.initial === 'number' && Number.isInteger(d.initial) ? `${d.initial}L` : String(d.initial)
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${init}) }`
-  }
-  if (d.kind === 'permissions') {
-    // Mirror of Swift: a BARE `usePermissions()` reads the provider's
-    // CompositionLocal rather than constructing an empty set that denies.
-    if (!d.seeded) {
-      return `val ${kotlinIdent(d.name)} = LocalPyreonPermissions.current`
-    }
-    // `usePermissions([])` — an explicit empty grant list is a deny-all
-    // container, not a provider read (matches the web runtime).
-    if (d.grants.length === 0) {
-      return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions() }`
-    }
-    const seed = `setOf(${d.grants.map((g) => kotlinStr(g)).join(', ')})`
-    return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
   // instance of the APP's own class. A Context is hoisted and injected
@@ -5546,6 +5528,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       component: () => kotlinComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitKotlinChild,
+      generic: emitKotlinGeneric,
       // Against the component's own `KotlinCtx`: an inline object type (a query's `{ data: { id: string } }`) synthesizes a named data class there.
       typeText: (type) => kotlinType(type, _activeKotlinCtx),
       rowType: resolveKotlinRowTypeName,
@@ -5832,7 +5815,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
-  if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitKotlinRouterProvider(e, indent)
   if (tag === 'RouterView') return emitKotlinRouterView(e, indent)
   // 8 other canonical primitives fall through to generic emit until
@@ -8612,46 +8594,6 @@ function emitKotlinLink(
  * Falls back to the bare-content emit when routes aren't resolvable
  * (back-compat with C4 scaffold + foreign-router-attr shapes).
  */
-/**
- * `<PermissionsProvider permissions={{ … }}>` → a CompositionLocal the bare
- * `usePermissions()` reads. Mirror of emitSwiftPermissionsProvider; see its
- * comment for why the injection is what makes the web-correct call work.
- */
-function emitKotlinPermissionsProvider(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const seed = permissionsProviderSeed(e)
-  if (seed === null) {
-    // The suppression of the blanket unlowered-module line is keyed on the
-    // TAG being present, so a provider that cannot be baked would otherwise
-    // go silent — worse than before the tag lowered at all. The emit is the
-    // authority on whether it lowered, so it reports.
-    _emitWarnings.push(
-      '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
-    )
-    return emitKotlinGeneric(e, indent)
-  }
-  if (seed.deniedUnderWildcard.length > 0) {
-    // The native container is grant-only, so an explicit `false` has nowhere to
-    // live. That is exact when the map has no wildcards — an unlisted key is
-    // denied either way — but under a wildcard the `false` is the ONLY thing
-    // denying it, so dropping it makes native GRANT what the web DENIES.
-    // `permissionsProviderSeed` computed this and its docstring said the caller
-    // reports it; no caller did, so an authorization primitive was failing OPEN
-    // in silence. A wrong-direction authz divergence must be loud.
-    _emitWarnings.push(
-      `<PermissionsProvider>: ${seed.deniedUnderWildcard
-        .map((d) => kotlinStr(d))
-        .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
-    )
-  }
-  const pad = ' '.repeat(indent + 2)
-  const set = `PyreonPermissions(setOf(${seed.granted.map((g) => kotlinStr(g)).join(', ')}))`
-  const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `CompositionLocalProvider(LocalPyreonPermissions provides ${set}) {\n${content}\n${' '.repeat(indent)}}`
-}
-
 function emitKotlinRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

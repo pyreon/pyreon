@@ -116,7 +116,6 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { clampExpr, pureStateBindings } from './pure-state'
-import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { createSwiftEmitContext, type ComponentInfo, type HostStateSlot, type StructRegistry, type SwiftEmitContext, type WebViewFacade } from './emit-context'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
@@ -3159,30 +3158,12 @@ function emitSwiftDecl(
       )
       .join('\n  ')
   }
-  // Phase 4: `const can = usePermissions([...])` → an @State PyreonPermissions
-  // seeded with the literal grant keys. Reads are method calls
-  // (`can.can("x")`), so no field-read rewrite — plain method emit on Swift.
   // `useToggle` / `useCounter` — a plain @State field. The mutators are
   // rewritten at their use sites (see the call case), so there is no runtime
   // and no wrapper type.
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
-  }
-  if (d.kind === 'permissions') {
-    // A BARE `usePermissions()` is the web-correct call — the grants come
-    // from `<PermissionsProvider>`. Read them from the environment rather
-    // than constructing an empty set in which every check denies.
-    if (!d.seeded) {
-      return `@Environment(\\.pyreonPermissions) private var ${swiftIdent(d.name)}`
-    }
-    // `usePermissions([])` — an explicit empty grant list is a deny-all
-    // container, not a provider read (matches the web runtime).
-    if (d.grants.length === 0) {
-      return `@State private var ${swiftIdent(d.name)} = PyreonPermissions()`
-    }
-    const seed = `[${d.grants.map((g) => swiftStr(g)).join(', ')}]`
-    return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → an @State
   // instance of the APP's own class. Identical shape to the built-in
@@ -7064,6 +7045,7 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       component: () => swiftComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitSwiftChild,
+      generic: emitSwiftGeneric,
       typeText: swiftType,
       rowType: (element) => swiftType(element, _activeSynth),
       rowFields: (element) => resolveSwiftStructFields(element, _activeSynth),
@@ -7357,7 +7339,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
-  if (tag === 'PermissionsProvider') return emitSwiftPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
   if (tag === 'RouterView') return emitSwiftRouterView(e, indent)
   // 9 other canonical primitives (Layer, Scroll, Spacer, Heading,
@@ -10391,59 +10372,6 @@ function emitSwiftLink(
  * when routes can't be resolved — back-compat with C4 scaffold OR
  * apps that pass a router from outside the component scope.
  */
-/**
- * `<PermissionsProvider permissions={{ … }}>` → the grants injected into the
- * SwiftUI environment, where a bare `usePermissions()` reads them.
- *
- * Web `usePermissions()` takes no arguments — the grants come from this
- * provider. Without the injection the correct web call had nowhere to read
- * from and lowered to an empty set in which every check denied, silently.
- *
- * Only `true` entries are granted: the native set is grant-only, so a `false`
- * value has nowhere to live. That is exact when the map has no wildcards, and
- * the recognizer warns when it does — a `false` under a wildcard grant is a
- * denial the native set cannot express.
- */
-function emitSwiftPermissionsProvider(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const seed = permissionsProviderSeed(e)
-  if (seed === null) {
-    // The suppression of the blanket unlowered-module line is keyed on the
-    // TAG being present, so a provider that cannot be baked would otherwise
-    // go silent — worse than before the tag lowered at all. The emit is the
-    // authority on whether it lowered, so it reports.
-    _emitWarnings.push(
-      '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
-    )
-    return emitSwiftGeneric(e, indent)
-  }
-  if (seed.deniedUnderWildcard.length > 0) {
-    // The native container is grant-only, so an explicit `false` has nowhere to
-    // live. That is exact when the map has no wildcards — an unlisted key is
-    // denied either way — but under a wildcard the `false` is the ONLY thing
-    // denying it, so dropping it makes native GRANT what the web DENIES.
-    // `permissionsProviderSeed` computed this and its docstring said the caller
-    // reports it; no caller did, so an authorization primitive was failing OPEN
-    // in silence. A wrong-direction authz divergence must be loud.
-    _emitWarnings.push(
-      `<PermissionsProvider>: ${seed.deniedUnderWildcard
-        .map((d) => swiftStr(d))
-        .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
-    )
-  }
-  const pad = ' '.repeat(indent + 2)
-  const set = `PyreonPermissions([${seed.granted.map((g) => swiftStr(g)).join(', ')}])`
-  if (e.children.length === 0) {
-    return `EmptyView().environment(\\.pyreonPermissions, ${set})`
-  }
-  const content = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  // The modifier attaches to the GROUP, so every child sees the value —
-  // attaching it to the last child would scope it to that child alone.
-  return `Group {\n${content}\n${' '.repeat(indent)}}.environment(\\.pyreonPermissions, ${set})`
-}
-
 function emitSwiftRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,

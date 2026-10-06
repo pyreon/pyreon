@@ -16,6 +16,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
 import { SWIFT_UI_STUBS } from '../swift-stubs'
+import { PERMISSIONS_KOTLIN_STUBS, PERMISSIONS_SWIFT_STUBS } from '../../../../fundamentals/permissions/src/native-plugin/stubs'
 
 const PACKAGES = resolve(import.meta.dirname, '../../../..')
 
@@ -46,8 +47,9 @@ const EXPECTED = {
 
 describe('runtime-owned declarations are mirrored exactly in the stubs', () => {
   for (const [lang, stubs] of [
-    ['swift', SWIFT_UI_STUBS],
-    ['kotlin', KOTLIN_COMPOSE_STUBS],
+    // A package-owned plugin carries the mirror of ITS runtime, so the parity check reads the core bundle plus those.
+    ['swift', `${SWIFT_UI_STUBS}\n${PERMISSIONS_SWIFT_STUBS}`],
+    ['kotlin', `${KOTLIN_COMPOSE_STUBS}\n${PERMISSIONS_KOTLIN_STUBS}`],
   ] as const) {
     const found = mirrors(stubs)
     it(`${lang}: the mirror set is complete`, () => {

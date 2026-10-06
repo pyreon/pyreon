@@ -1537,18 +1537,6 @@ fun PyreonRouteLoader(path: String, load: () -> Any?, content: @Composable () ->
   content()
 }
 
-// PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
-// PyreonPermissions.kt surface the emit touches: callable shape
-// (operator invoke), not / cannot / all / any. Added with the
-// permissions contract fixture — before it, NO usePermissions shape
-// was kotlinc-validated at all.
-// MIRRORS the real signature exactly:
-// \`PyreonPermissions(granted: Set<String> = emptySet())\`, with \`granted\`
-// exposed as Compose MutableState (read \`.value\`). The stub previously took a
-// REQUIRED \`initial\` and a plain Set - stricter than reality on the ctor, and
-// a different TYPE on the property. It therefore rejected the emit's correct
-// \`PyreonPermissions()\`. A stub stricter than reality fails correct code,
-// the inverse of the usual superset-masks problem.
 data class PyreonBluetoothDevice(val id: String, val name: String)
 interface BluetoothScanner {
   val isAvailable: Boolean
@@ -1778,29 +1766,6 @@ class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -
   operator fun invoke(arg: A) {}
   fun cancel() {}
 }
-class PyreonPermissions(granted: Set<String> = emptySet()) {
-  companion object { fun unprovided(): PyreonPermissions = PyreonPermissions() }
-  val isUnprovidedFallback: Boolean = false
-  val granted: MutableState<Set<String>> = mutableStateOf(granted)
-  fun can(key: String): Boolean {
-    if (granted.value.contains(key)) return true
-    return granted.value.any { it.endsWith(".*") && key.startsWith(it.dropLast(1)) }
-  }
-  fun cannot(key: String): Boolean = !can(key)
-  fun not(key: String): Boolean = !can(key)
-  fun all(vararg keys: String): Boolean = keys.all { can(it) }
-  fun any(vararg keys: String): Boolean = keys.any { can(it) }
-  operator fun invoke(key: String): Boolean = can(key)
-  // The mutators the real runtime ships. Their absence rejected a correct
-  // \`perms.grant("x")\` - a stub NARROWER than the runtime fails working code,
-  // the inverse of the usual superset-stub masking failure.
-  fun set(keys: Set<String>) {}
-  fun grant(key: String) {}
-  fun revoke(key: String) {}
-}
-// BEGIN runtime mirror: fundamentals/permissions/native/kotlin/com/pyreon/runtime/PyreonPermissionsLocal.kt
-val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions.unprovided() }
-// END runtime mirror
 
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-kotlin's
 // PyreonNetworkStatus.kt surface the emit touches: the no-arg constructor
