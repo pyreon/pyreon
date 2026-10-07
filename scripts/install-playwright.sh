@@ -11,6 +11,10 @@ fi
 NODE_BIN=$(command -v node)
 PLAYWRIGHT_CLI=$("$NODE_BIN" -p 'require("node:path").join(require.resolve("playwright/package.json"), "..", "cli.js")')
 
+# APT reads both legacy .list files and deb822 .sources files. Leaving even
+# one Azure entry active keeps apt-get update waiting on that stalled mirror.
+sudo "$NODE_BIN" "$(dirname "${BASH_SOURCE[0]}")/set-ci-apt-mirror.ts"
+
 # Unrelated Microsoft repositories have repeatedly stalled apt-get update.
 sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
 sudo tee /etc/apt/apt.conf.d/99pyreon-ci >/dev/null <<'APT'
