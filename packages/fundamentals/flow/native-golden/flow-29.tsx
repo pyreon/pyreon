@@ -9,6 +9,6 @@ export function C() {
     edges: [{ id: 'e1', source: '1', target: '1' }],
     selectionOnDrag: true, selectionMode: 'full',
   })
-  
+
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }

@@ -11,4 +11,3 @@
         })
         return <Button onPress={() => { flow.pushHistory(); flow.undo(); flow.redo() }}>History</Button>
       }
-    

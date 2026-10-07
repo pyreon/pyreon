@@ -21,7 +21,7 @@ export function Revenue() {
         <Rule y={14} label="goal" color="#b42318" />
         <Axis y format={compact} />
         <Legend /><Tooltip crosshair /><Axis x time hidden /><Zoom brush={onBrush} inside={false} />
-        
+
       </Chart>
     </Stack>
   )

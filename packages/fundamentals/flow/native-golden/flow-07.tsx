@@ -7,9 +7,9 @@ export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
     edges: [{ id: 'e1', source: '1', target: '1' }],
-    
+
   })
-  
+
         const stopConnect = flow.onConnect(connection => { console.log(connection.target) })
         const stopViewport = flow.onViewportChange(viewport => { console.log(viewport.zoom) })
         flow.onNodeClick(node => { console.log(node.id) })
@@ -26,6 +26,6 @@ export function C() {
         flow.onConnectStart(start => { console.log(start.nodeId) })
         flow.onConnectEnd(connection => { console.log(connection?.target) })
         flow.onPaneClick(event => { console.log(event.position.x) })
-      
+
   return (<Stack><Button onPress={() => { stopConnect(); stopViewport() }}>Stop</Button></Stack>)
 }

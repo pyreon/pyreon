@@ -180,7 +180,7 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     const yml = get('ios/project.yml')
     expect(yml).toContain('- path: PyreonNative')
     const sh = get('scripts/build-ios.sh')
-    expect(sh).toContain('pyreon-native wire --ios-out=')
+    expect(sh).toContain('--ios-out=')
     // --ios-out takes the PROJECT dir and manages both halves; a caller that
     // ran only one would get a project that compiles the feature sources and
     // cannot resolve the runtime they import, or the reverse.

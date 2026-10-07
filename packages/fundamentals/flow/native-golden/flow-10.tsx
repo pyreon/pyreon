@@ -9,6 +9,6 @@ export function C() {
     edges: [{ id: 'e1', source: '1', target: '1' }],
     disableKeyboardA11y: true, reducedMotion: true, connectionLineType: 'step', panOnDrag: false, zoomOnPinch: false, zoomOnDoubleClick: true,
   })
-  
+
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
