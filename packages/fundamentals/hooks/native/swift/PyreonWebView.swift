@@ -36,6 +36,15 @@
 // plain string — the page JSON-stringifies structured data itself. Same
 // unified `window.pyreonPostMessage(...)` API on web + Android.
 //
+// ## DOM storage (`domStorage:`)
+//
+// `WKWebView` has `localStorage` on by default (persistent default data
+// store), matching Android's `PyreonWebView` which now enables
+// `domStorageEnabled` by default. `domStorage: false` is the opt-out: iOS
+// cannot switch the Web Storage API off, so the closest equivalent is a
+// NON-persistent data store — storage still exists but nothing survives the
+// view. Read once at creation (changing it later has no effect).
+//
 // ## Policy posture (App Store / Play Store)
 //
 // The intended use is a HYBRID: a substantial native shell (the canonical
@@ -64,6 +73,7 @@ public struct PyreonWebView: View {
     private let src: String?
     private let data: String?
     private let onMessage: ((String) -> Void)?
+    private let domStorage: Bool
 
     /// `html` — inline HTML to render (e.g. an ECharts page). `src` — a
     /// LOCAL bundled asset name (preferred, policy-safe) or a remote URL.
@@ -71,13 +81,17 @@ public struct PyreonWebView: View {
     /// string pushed into the page as `window.__pyreonData` (live-updates
     /// without reloading; see the file header). `onMessage` — an optional
     /// callback invoked with the string the page sends via
-    /// `window.pyreonPostMessage(...)` (the reverse bridge).
+    /// `window.pyreonPostMessage(...)` (the reverse bridge). `domStorage` —
+    /// `true` (default) keeps WebKit's persistent `localStorage`; `false` uses
+    /// a non-persistent data store (see the file header).
     public init(
         html: String? = nil,
         src: String? = nil,
         data: String? = nil,
-        onMessage: ((String) -> Void)? = nil
+        onMessage: ((String) -> Void)? = nil,
+        domStorage: Bool = true
     ) {
+        self.domStorage = domStorage
         self.html = html
         self.src = src
         self.data = data
@@ -91,7 +105,7 @@ public struct PyreonWebView: View {
         // replaced-element default of 150px in the same spot, so that is the
         // IDEAL height here: used only when the parent proposes none, which
         // leaves an explicit `.frame(height:)` from the caller in charge.
-        _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage)
+        _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage, domStorage: domStorage)
             .frame(idealHeight: pyreonWebViewDefaultHeight)
     }
 }
@@ -244,7 +258,7 @@ private func _syncPyreonWebView(
 /// navigation delegate (data push) AND the reverse-bridge script-message
 /// handler, and a document-start user script defines
 /// `window.pyreonPostMessage`. Shared by the UIKit + AppKit representables.
-private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator) -> WKWebView {
+private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator, domStorage: Bool) -> WKWebView {
     let contentController = WKUserContentController()
     contentController.add(coordinator, name: _pyreonMessageHandlerName)
     contentController.addUserScript(
@@ -256,6 +270,7 @@ private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator) -> WKWeb
     )
     let config = WKWebViewConfiguration()
     config.userContentController = contentController
+    if !domStorage { config.websiteDataStore = .nonPersistent() }
     let webView = WKWebView(frame: .zero, configuration: config)
     webView.navigationDelegate = coordinator
     coordinator.webView = webView
@@ -268,9 +283,10 @@ private struct _PyreonWebViewBridge: UIViewRepresentable {
     let src: String?
     let data: String?
     let onMessage: ((String) -> Void)?
+    let domStorage: Bool
     func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
     func makeUIView(context: Context) -> WKWebView {
-        _makePyreonWebView(coordinator: context.coordinator)
+        _makePyreonWebView(coordinator: context.coordinator, domStorage: domStorage)
     }
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.onMessage = onMessage
@@ -286,9 +302,10 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
     let src: String?
     let data: String?
     let onMessage: ((String) -> Void)?
+    let domStorage: Bool
     func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
     func makeNSView(context: Context) -> WKWebView {
-        _makePyreonWebView(coordinator: context.coordinator)
+        _makePyreonWebView(coordinator: context.coordinator, domStorage: domStorage)
     }
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onMessage = onMessage
@@ -325,7 +342,8 @@ public struct PyreonWebView: View {
         html: String? = nil,
         src: String? = nil,
         data: String? = nil,
-        onMessage: ((String) -> Void)? = nil
+        onMessage: ((String) -> Void)? = nil,
+        domStorage: Bool = true
     ) {}
     public var body: some View { EmptyView() }
 }

@@ -16,4 +16,3 @@
       void straight; void bezier; void smooth; void step; void waypoint; void anchor; void intersection; void defaults
       return <Text>{dispatched.path}</Text>
     }
-  

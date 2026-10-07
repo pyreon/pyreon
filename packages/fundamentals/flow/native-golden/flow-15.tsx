@@ -7,8 +7,8 @@ export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
     edges: [{ id: 'e1', source: '1', target: '1' }],
-    
+
   })
-  
+
   return (<Stack><Button onPress={() => flow.resolveCollisions('1', 10)}>Resolve</Button><Text>{flow.getOverlappingNodes('1').length}</Text><Text>{flow.getProximityConnection('1', 50)?.target}</Text></Stack>)
 }

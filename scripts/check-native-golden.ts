@@ -73,6 +73,20 @@ export interface CorpusSource {
   filename: string
 }
 
+/** A duplicate key would overwrite one fixture's result in the golden map. */
+function assertUniqueCorpusKeys(corpus: readonly CorpusSource[]): void {
+  const seen = new Map<string, string>()
+  for (const entry of corpus) {
+    const previous = seen.get(entry.key)
+    if (previous !== undefined) {
+      throw new Error(
+        `[check-native-golden] Duplicate corpus key "${entry.key}" (${previous}, ${entry.filename}). Keep one fixture per key across all owners before comparing hashes.`,
+      )
+    }
+    seen.set(entry.key, entry.filename)
+  }
+}
+
 /** Pure: the hash of one compile result. Code AND warnings, so a lost or new warning is a diff. */
 export function digestResult(result: { code: string; warnings: readonly string[] }): GoldenEntry {
   const sha = createHash('sha256')
@@ -161,6 +175,7 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
       out.push({ key: `registry:${entry.name}`, source: entry.snippet, filename: `registry/${entry.name}.tsx` })
     }
   }
+  assertUniqueCorpusKeys(out)
   return out
 }
 
@@ -171,6 +186,7 @@ export interface CompiledCorpus {
 }
 
 export function compileCorpus(corpus: readonly CorpusSource[]): CompiledCorpus {
+  assertUniqueCorpusKeys(corpus)
   const digests: Record<string, GoldenEntry> = {}
   const outputs: Record<string, string> = {}
   const nondeterministic: string[] = []

@@ -538,7 +538,7 @@ A container that animates its own SIZE as rows enter and leave the keyed list in
 (props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode
 ```
 
-Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure.
+Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure. `domStorage` (default true, native-only literal) keeps `localStorage` available in the hosted page (Android disables it by default; `false` opts out).
 
 **Example**
 

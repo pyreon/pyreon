@@ -513,6 +513,27 @@ export async function runBrowserVerify(
           coverage = { status: 'crashed', reason: err instanceof Error ? err.message : String(err) }
         }
 
+        // Capture readiness (#3837): the click-walk may have started a JS-driven
+        // animation (a canvas rAF loop) that a one-frame wait records mid-flight.
+        // Wait for the preview to hold still BEFORE axe and the screenshot judge it.
+        //
+        // Runs BEFORE the replaced-document check below: a navigation a handler
+        // queued can commit after the click-walk returned (a loaded runner takes
+        // longer than the in-page grace), and the settle wait is exactly the
+        // window in which it lands. Checking for a replaced document first would
+        // miss it, attribute the escape to the NEXT scenario, and report a
+        // `navigatedAway` entry for a scenario that never navigated.
+        const runSettle = async (): Promise<SettleOutcome | { status: 'error'; reason: string }> => {
+          try {
+            return (await page.evaluate(
+              `(${SETTLE_SOURCE})(${settleMs}, ${settleTimeoutMs}, ${QUIET_SETTLE_MS})`,
+            )) as SettleOutcome
+          } catch (err) {
+            return { status: 'error', reason: err instanceof Error ? err.message : String(err) }
+          }
+        }
+        let settle = await runSettle()
+
         // A replaced document means the component navigated away in a way the
         // guard cannot stop. Reload the workbench, reselect the scenario (so
         // axe + the snapshot judge the un-interacted render) and carry on.
@@ -523,6 +544,9 @@ export async function runBrowserVerify(
           try {
             await bootWorkbench()
             await page.evaluate(selectScenario(component.id, scenario.id))
+            // The settle above ran against the document that was replaced; the
+            // reloaded, un-interacted render needs its own.
+            settle = await runSettle()
           } catch {
             // The next scenario retries the boot; this one's axe/snapshot
             // report their own failure rather than aborting the run.
@@ -565,18 +589,6 @@ export async function runBrowserVerify(
             status: 'fail',
             findings: [finding('coverage-errored', `coverage measurement errored: ${coverage.reason}`)],
           }
-        }
-
-        // Capture readiness (#3837): the click-walk may have started a JS-driven
-        // animation (a canvas rAF loop) that a one-frame wait records mid-flight.
-        // Wait for the preview to hold still BEFORE axe and the screenshot judge it.
-        let settle: SettleOutcome | { status: 'error'; reason: string }
-        try {
-          settle = (await page.evaluate(
-            `(${SETTLE_SOURCE})(${settleMs}, ${settleTimeoutMs}, ${QUIET_SETTLE_MS})`,
-          )) as SettleOutcome
-        } catch (err) {
-          settle = { status: 'error', reason: err instanceof Error ? err.message : String(err) }
         }
 
         // axe-core against the same live preview. Run in the page, through the

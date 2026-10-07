@@ -17,19 +17,18 @@ options:
   deploymentTarget:
     iOS: '17.0'
 
-# Pre-build script — runs the Pyreon compile loop BEFORE Swift
-# compilation. Same shape as native-router-demo-ios.
-preBuildScripts:
-  - script: |
-      cd "${SRCROOT}"
-      bash scripts/build.sh
-    name: '[Pyreon] Compile .tsx → generated/TasksApp.swift'
-    runOnlyWhenInstalling: false
-    basedOnDependencyAnalysis: false
-
 # Single iOS app target hosting the compiler-emitted TasksApp.
 targets:
   PyreonTasks:
+    # Pre-build script — runs the Pyreon compile loop BEFORE Swift
+    # compilation. Same shape as native-router-demo-ios.
+    preBuildScripts:
+      - script: |
+          cd "${SRCROOT}"
+          bash scripts/build.sh
+        name: '[Pyreon] Compile .tsx → generated/TasksApp.swift'
+        runOnlyWhenInstalling: false
+        basedOnDependencyAnalysis: false
     type: application
     platform: iOS
     deploymentTarget: '17.0'

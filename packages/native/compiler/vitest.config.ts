@@ -45,18 +45,13 @@ export default defineNodeConfig({
       // cold first compile. Workers attach through the env var it publishes.
       globalSetup: ['./src/tests/global-setup-kotlin-daemon.ts'],
       testTimeout: 180_000,
-      // Each file can launch several synchronous swiftc/kotlinc processes.
-      // Running files in parallel therefore starts multiple compiler/JVM
-      // processes on the same two-core Actions runner. The resulting CPU and
-      // memory contention has repeatedly stretched otherwise-valid Kotlin
-      // checks from seconds to the 25-minute job ceiling, where GitHub marks
-      // the matrix cell as `cancelled`. `PYREON_NATIVE_COMPILER_SERIAL=1`
-      // (set by the coverage runner, scripts/check-coverage.ts) serializes
-      // files for runs where V8 instrumentation already saturates the cores.
-      // The per-PR gate (native-validate.yml) leaves files parallel: its
-      // single-writer verdict cache is warm on almost every run, so a cold
-      // compiler stampede is the exception rather than the rule.
-      fileParallelism: process.env.PYREON_NATIVE_COMPILER_SERIAL !== '1',
+      // Every worker shares one Kotlin compiler JVM. Parallel files enqueue
+      // compiles behind one another, so a cold request spends its timeout
+      // waiting for other tests and may start a fallback JVM while the shared
+      // compiler is still busy. Library relocations change the stubs and
+      // legitimately invalidate the verdict cache: cold runs must work too.
+      // Serialize files in every lane; keep all real compiles and deadlines.
+      fileParallelism: false,
     },
   },
 })

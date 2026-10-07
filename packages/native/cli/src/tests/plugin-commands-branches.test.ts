@@ -143,7 +143,7 @@ describe('pluginsReport — discovery edge cases', () => {
     expect(lines.join('\n')).toContain('(replaced by a discovered plugin)')
   })
 
-  it('lists the elements and unlowered modules a plugin contributes on its row', async () => {
+  it('lists a package plugin’s capabilities and sorts each registry by name', async () => {
     addPackage(
       '@acme/rich',
       `export default {
@@ -151,14 +151,31 @@ describe('pluginsReport — discovery edge cases', () => {
         apiVersion: 1,
         services: { useRich: { swift: 'Rich()', kotlin: ['val {id} = Rich()'] } },
         elements: [{ module: '@acme/ui', tags: ['Banner', 'Badge'], emit: { swift: () => 'B()', kotlin: () => 'B()' } }],
-        unlowered: { '@acme/web': { advice: 'web only' } },
+        calls: { createZulu: () => ({ type: 'rich' }), createAlpha: () => ({ type: 'rich' }) },
+        decls: { rich: { swift: () => 'let rich = Rich()', kotlin: () => ['val rich = Rich()'] } },
+        memberCalls: {
+          write: { swift: () => '()', kotlin: () => 'Unit' },
+          read: { swift: () => '()', kotlin: () => 'Unit' },
+        },
+        unlowered: { '@acme/web': { advice: 'web only' }, '@acme/browser': { advice: 'browser only' } },
       }`,
     )
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
     const row = lines.find((l) => l.includes('@acme/rich'))!
     expect(row).toContain('elements: Banner, Badge')
-    expect(row).toContain('unlowered: @acme/web')
+    expect(row).toContain('unlowered: @acme/web, @acme/browser')
     expect(row).toContain('services: useRich')
+    expect(row).toContain('calls: createZulu, createAlpha')
+    expect(row).toContain('memberCalls: write, read')
+    expect(lines).toContain('  createAlpha  rich  decls: rich')
+    expect(lines).toContain('  createZulu  rich  decls: rich')
+    expect(lines.indexOf('  createAlpha  rich  decls: rich')).toBeLessThan(lines.indexOf('  createZulu  rich  decls: rich'))
+    expect(lines.indexOf('  .read()  rich')).toBeLessThan(lines.indexOf('  .write()  rich'))
+    expect(lines).toContain('  .read()  rich')
+    expect(lines).toContain('  .write()  rich')
+    expect(lines).toContain('  @acme/browser  rich')
+    expect(lines).toContain('  @acme/web  rich')
+    expect(lines.indexOf('  @acme/browser  rich')).toBeLessThan(lines.indexOf('  @acme/web  rich'))
   })
 })
