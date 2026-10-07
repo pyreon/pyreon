@@ -9,4 +9,3 @@
         const flow = createFlow({ nodes: seedNodes, edges: seedEdges })
         return <Text>{flow.edges().length}</Text>
       }
-    

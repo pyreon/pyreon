@@ -7,7 +7,7 @@
         const flow = createFlow({
           nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
           edges: [],
-          
+
         panOnScroll: true,
         panOnScrollSpeed: 0.75,
         zoomOnScroll: false,
@@ -16,8 +16,7 @@
         selectionKey: null,
         zoomActivationKey: 'meta',
         preventScrolling: false,
-      
+
         })
         return <Text>{flow.zoom()}</Text>
       }
-    

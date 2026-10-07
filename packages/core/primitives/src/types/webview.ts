@@ -48,6 +48,18 @@ export interface WebViewProps {
    * viewport, a selection) with each other.
    */
   onMessage?: (message: string) => void
+  /**
+   * Whether the hosted page may use DOM storage (`localStorage` /
+   * `sessionStorage`). Default `true` on every target. Android's WebView
+   * ships with `WebSettings.domStorageEnabled = false`, which makes
+   * `localStorage` throw in the hosted page, so the native host turns it on.
+   * `false` opts out: Android leaves it disabled; iOS (where WebKit cannot
+   * disable Web Storage) uses a non-persistent data store, so nothing
+   * survives the view. Native-only and read ONCE at creation — must be a
+   * literal `true`/`false` (a dynamic value warns and keeps the default); on
+   * web the `<iframe>` follows the browser and this prop is ignored.
+   */
+  domStorage?: boolean
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */
   [key: `data-${string}`]: unknown
   [key: `aria-${string}`]: unknown
