@@ -382,6 +382,32 @@ interface CoverageResult {
   shortfalls: MetricShortfall[]
 }
 
+type CoverageVerdict = Pick<CoverageResult, 'pass' | 'shortfalls'>
+
+function isFailingResult(r: CoverageVerdict): boolean {
+  return !r.pass || r.shortfalls.some((sf) => sf.regressed)
+}
+
+/** A ratchet pass still falls short of a declared target and must remain visible. */
+export function coverageResultStatus(r: CoverageVerdict): string {
+  if (isFailingResult(r)) return '\u274c'
+  return r.shortfalls.length > 0 ? '\u26a0\ufe0f ratchet' : '\u2705'
+}
+
+export function formatCoverageShortfall(pkg: string, sf: MetricShortfall): string {
+  return `${pkg}: ${sf.metric} ${sf.measured}% is below declared ${sf.declared}% ` +
+    `(ratchet floor ${sf.floor}%, tolerance ${FLOOR_TOLERANCE_PP}pp)`
+}
+
+/** Includes measurement/wiring failures, even when every measured row is green. */
+export function coverageRunSummary(results: readonly CoverageVerdict[], otherFailures: boolean): string {
+  if (otherFailures || results.some(isFailingResult)) return '\u274c Coverage gate failed'
+  const known = results.filter((r) => r.shortfalls.length > 0).length
+  return known > 0
+    ? `\u26a0\ufe0f Coverage gate passed with ${known} package(s) below declared targets; ratchet floors enforced`
+    : '\u2705 All packages meet their coverage thresholds'
+}
+
 /**
  * What a package's coverage run actually produced.
  *
@@ -1185,13 +1211,16 @@ async function runWithConcurrency(
         )
         results.push(outcome)
         const regressed = outcome.shortfalls.filter((s) => s.regressed)
-        const mark = outcome.pass && regressed.length === 0 ? '\u2705' : '\u274c'
+        const mark = coverageResultStatus(outcome)
         console.log(`  ${pkg.name}: ${outcome.statements}% ${mark}`)
         for (const s of regressed) {
           console.log(
             `    \u274c ${s.metric} ${s.measured}% is BELOW its ratchet floor ${s.floor}% ` +
               `(package declares ${s.declared}%)`,
           )
+        }
+        for (const s of outcome.shortfalls.filter((sf) => !sf.regressed)) {
+          console.log(`    \u26a0\ufe0f ${formatCoverageShortfall(pkg.name, s)}`)
         }
         if (NO_INSTRUMENTABLE_SOURCE[pkg.name]) {
           // The declaration has gone stale: the package now HAS measurable
@@ -1509,7 +1538,7 @@ for (const r of sorted) {
   // A row must not read \u2705 while the run fails. Before the declared-metric
   // comparison existed this was `r.pass` alone, so a package failing on a
   // ratcheted metric printed a green row beside a red gate.
-  const status = isFailingResult(r) ? '\u274c' : '\u2705'
+  const status = coverageResultStatus(r)
   reportLines.push(
     `| ${r.package} | ${r.statements}% | ${r.branches}% | ${r.functions}% | ${r.lines}% | ${r.threshold}% | ${status} |`,
   )
@@ -1528,6 +1557,13 @@ for (const p of sortedProblems) {
           ? 'TIMED OUT'
           : 'NO OUTPUT'
   reportLines.push(`| ${p.package} | \u2014 | \u2014 | \u2014 | \u2014 | \u2014 | \u274c ${what} |`)
+}
+
+const knownShortfalls = sorted.flatMap((r) =>
+  r.shortfalls.filter((sf) => !sf.regressed).map((sf) => formatCoverageShortfall(r.package, sf)),
+)
+if (knownShortfalls.length > 0) {
+  reportLines.push('', '\u26a0\ufe0f Declared coverage targets still unmet:', '', ...knownShortfalls.map((s) => `- ${s}`))
 }
 
 if (sortedProblems.length > 0) {
@@ -1581,21 +1617,7 @@ if (staleDeclarations.length > 0) {
   )
 }
 
-/**
- * The ONE failure predicate. Row status, summary line and exit code must all
- * ask the same question -- they did not, and the gate printed
- * "All packages meet their coverage thresholds" directly above three rows
- * marked with a cross, while exiting 1. A reader believes the sentence.
- */
-function isFailingResult(r: CoverageResult): boolean {
-  return !r.pass || r.shortfalls.some((sf) => sf.regressed)
-}
-
-if (sorted.some(isFailingResult)) {
-  reportLines.push('', '\u274c Some packages below their coverage threshold')
-} else if (sortedProblems.length === 0) {
-  reportLines.push('', '\u2705 All packages meet their coverage thresholds')
-}
+reportLines.push('', coverageRunSummary(sorted, hasFailures))
 
 const report = reportLines.join('\n')
 console.log(report)
@@ -1607,6 +1629,9 @@ if (isCI) {
       console.log(
         `::error::${r.package} coverage below threshold: ${r.statements}% statements (need ${r.threshold}%)`,
       )
+    }
+    for (const sf of r.shortfalls.filter((s) => !s.regressed)) {
+      console.log(`::warning::${formatCoverageShortfall(r.package, sf)}`)
     }
   }
   for (const p of sortedProblems) {
