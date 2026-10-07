@@ -11,7 +11,7 @@
  *
  * Shared by both emitters so the two targets resolve the same paint.
  */
-import type { ExprIR } from './types'
+import type { ExprIR } from '@pyreon/native-compiler/plugin-api'
 
 export type FlowPathPaintValue = { kind: 'none' } | { kind: 'literal'; value: string } | { kind: 'expr'; expr: ExprIR }
 

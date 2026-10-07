@@ -210,6 +210,8 @@ Position.Left // 'left'
 
 On iOS and Android the native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. This is a native view tree, not a WebView.
 
+The lowering ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`: the compiler carries no `@pyreon/flow` knowledge, and `--no-plugins` builds treat flow like any unclaimed library (a "no native lowering" warning).
+
 The same source provides all of these on web, iOS and Android:
 
 - Node and edge CRUD, selection, history and all seven layouts.

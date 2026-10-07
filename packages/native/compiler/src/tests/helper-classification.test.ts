@@ -19,7 +19,7 @@
 //    return ANNOTATION. `resolveHandleAnchor(...): { x, y, position } | null`
 //    ends in `return null` for the ordinary reason — no handle was found.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { parsePyreon } from '../parse'
 
 describe('a parameter typed with a locally-declared enum', () => {

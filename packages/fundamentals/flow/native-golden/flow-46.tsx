@@ -1,0 +1,1959 @@
+// Golden-only: a shape harvested from the native-compiler test suite that the rest of the corpus does not reach in the flow lowering
+// (@pyreon/flow native-plugin). Its expected output was recorded from the PRE-MOVE compiler, so a change here is a change of emitted Swift/Kotlin.
+// @ts-nocheck — PMTC handles typing; tsc multi-child JSX limitations
+// noisy (same `@ts-nocheck` rationale as native-todomvc-ios/src/TodoApp.tsx).
+//
+// PMTC Tasks Showcase — SINGLE source for web, iOS, Android.
+//
+// Gap 5 showcase, STORE-BACKED (2026-06-10, the Gap 4 closure). The
+// first rewrite dropped the auth-gate + cross-screen state because the
+// original scaffold faked them (prop-requiring components as bare
+// route components — broken on every target including web). This
+// revision restores BOTH on the real foundation: ONE `defineStore`
+// singleton holds the auth flag + the task list, every screen reads
+// and mutates it through the store, and the per-route `beforeEnter`
+// guard reads the same store state. PMTC lowers the store to an
+// `@Observable` singleton class (SwiftUI) / a `mutableStateOf`-backed
+// `object` (Compose) — both are reactive ACROSS screens, which is
+// exactly what `rememberPyreonStorage` could not provide on Android
+// (per-composable `remember(key)`).
+//
+// ## What this exercises (all proven end-to-end)
+//
+// - **Cross-screen store** — `defineStore('app', ...)` with a boolean
+//   auth flag + a `Task[]` list; reads (`useApp().store.tasks()`),
+//   writes (`.set(...)` → native assignment), and `<For
+//   each={useApp().store.tasks}>` all lower per-target.
+// - **Auth-gate** — `beforeEnter: () => useApp().store.isAuthed()`
+//   compiles into the dispatcher's inline guard; LoginPage flips the
+//   flag through the store and the gate opens. Logout flips it back.
+// - **Typed route params** — `/tasks/:id` + `props: { params: { id:
+//   string } }` → synthesized `TaskDetailPageParam` constructed by the
+//   dispatcher from the matched segment.
+// - **Multi-screen routing** — login / tasks / detail via
+//   `useNavigate()`.
+// - **Validated form (useForm)** — the login is a real validated form:
+//   runtime Field binding, per-field validator, error display via
+//   `form.errors.username`, submit gating. The device smokes assert
+//   the error path BEFORE the happy path.
+// - **Canonical primitives + signals** — `<Stack>` / `<Inline>` /
+//   `<Field>` / `<Button>` / `<Text>` / `<For>` / `<Show>`; component-
+//   local `signal` for the task draft; `computed` remaining-count over
+//   store state.
+//
+// ## What's NOT here (explicit deferrals)
+//
+// - **Real auth/task backend** — `useFetch` (Tier-1) replaces the
+//   local flag + literal seed when a backend exists.
+// - **Form validation** — deferred per the Gap 4 validation-port queue.
+// - **Store computeds/methods in the setup body** — store v1 lowers
+//   signals; derived state lives in component-level `computed` for now.
+
+import { QueryClient, QueryClientProvider, useQuery, useStream } from '@pyreon/query'
+import { model } from '@pyreon/state-tree'
+import { filter as filter_rx, map } from '@pyreon/rx'
+import { SizedMap } from '@pyreon/sized-map'
+import { usePermissions } from '@pyreon/permissions'
+import { createHttp } from '@pyreon/http'
+import { openEventStream, openNdjsonStream, type SseEvent } from '@pyreon/http/stream'
+import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
+import { useSortable } from '@pyreon/dnd'
+import { PyreonUI } from '@pyreon/ui-core'
+import { createTableState } from '@pyreon/table'
+import { kinetic } from '@pyreon/kinetic'
+import { createI18n } from '@pyreon/i18n'
+import { attrs } from '@pyreon/attrs'
+import { Container, Row, Col } from '@pyreon/coolgrid'
+import { Element } from '@pyreon/elements'
+import { createMachine } from '@pyreon/machine'
+import { useHotkey } from '@pyreon/hotkeys'
+import { rocketstyle } from '@pyreon/rocketstyle'
+import { styled } from '@pyreon/styler'
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+import { useStorage } from '@pyreon/storage'
+import { Toaster, toast } from '@pyreon/toast'
+import { announce } from '@pyreon/a11y'
+import { useUrlState } from '@pyreon/url-state'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import {
+  Arc,
+  Bar,
+  BoxplotChart,
+  CalendarChart,
+  GanttChart,
+  GaugeChart,
+  GraphChart,
+  MapChart,
+  ParallelChart,
+  PolarChart,
+  RadarChart,
+  RiverChart,
+  SankeyChart,
+  SunburstChart,
+  TreeChart,
+  TreemapChart,
+  Axis,
+  Cell,
+  Chart,
+  Legend,
+  Line,
+  Tooltip,
+  Zoom,
+  createChartHandle,
+  date,
+  visualMap,
+} from '@pyreon/charts'
+import { CandlestickChart, FunnelChart, HeatmapChart, PieChart, PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
+import type {
+  BrushRange,
+  GeoHeatPoint,
+  GeoOverlayPath,
+  GeoPie,
+  GeoTrail,
+  RadarAxis,
+  RadarHitIndex,
+  SankeyHitIndex,
+  SankeyLink,
+  SankeyNode,
+  TreeNode,
+  ZoomWindow,
+} from '@pyreon/charts'
+import { useForm } from '@pyreon/form'
+import { useFetch, useCrashReporter } from '@pyreon/hooks'
+import { defineStore } from '@pyreon/store'
+import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
+import {
+  Stack,
+  Inline,
+  Field,
+  Button,
+  Text,
+  Image,
+  Icon,
+  Scroll,
+  Modal,
+  WebView,
+} from '@pyreon/primitives'
+import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { Background, Controls, Flow, Handle, MiniMap, Position, createFlow } from '@pyreon/flow'
+import type { EdgeComponentProps, NodeComponentProps } from '@pyreon/flow'
+import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
+
+type Task = { id: number; title: string; done: boolean }
+type Quote = { id: number; text: string; author: string }
+
+// The streams screen's payload: `n` counts events, `resumed` is the
+// `Last-Event-ID` the SERVER saw on the connection that delivered it, so a
+// reconnect that forgot to resume is visible in the rendered log.
+interface StreamTick {
+  n: number
+  resumed: string
+}
+
+// scripts/stream-server.ts: /sse drops the connection half-way through event 3
+// and finishes on the resumed connection; /ndjson sends three rows and ends.
+// 8791 on the same loopback host as the quotes fixture — the Android job
+// `adb reverse`s it, so this one literal works on every target.
+const streams = createHttp({ baseUrl: 'http://127.0.0.1:8791' })
+const tickFeed = streams.endpoint('GET /sse', { responseType: 'stream' })
+const tickRows = streams.endpoint('GET /ndjson', { responseType: 'stream' })
+
+// Module-scope monotonic id — same shape as TodoMVC's `nextId`.
+let nextTaskId = 3
+
+// ── Shared state — ONE store, read/written from every screen ──
+
+const useApp = defineStore('app', () => {
+  let isAuthed = state(false)
+  let tasks = state.raw<Task[]>([
+    { id: 1, title: 'Ship the typed-params arc', done: false },
+    { id: 2, title: 'Keep the device gate green', done: false },
+  ])
+  return { isAuthed: signalOf<typeof isAuthed>(isAuthed), tasks: signalOf<typeof tasks>(tasks) }
+})
+
+// ── Screens ──
+
+function LoginPage() {
+  const navigate = useNavigate()
+
+  // The validated-form shape (the form-binding arc): the runtime
+  // Field binding routes keystrokes through setValue (re-validating
+  // once a field carries an error), submit() gates on validateAll,
+  // and onSubmit only fires when valid. This screen is the device
+  // proof for useForm — its UITest asserts the ERROR path (short
+  // username → message appears, navigation blocked) before the
+  // happy path.
+  const form = useForm({
+    initialValues: { username: '' },
+    validators: {
+      username: (v) => (v.length < 3 ? 'At least 3 characters' : ''),
+    },
+    onSubmit: (_values) => {
+      useApp().store.isAuthed.set(true)
+      navigate('/tasks')
+    },
+  })
+
+  return (
+    <Stack gap={3} padding={4} data-testid="login-page">
+      <Image
+        src="pyreon-logo.png"
+        alt="Pyreon"
+        width={28}
+        height={28}
+        fit="contain"
+        data-testid="brand-logo"
+      />
+      <Text font="Brand" data-testid="brand-title">
+        Sign In
+      </Text>
+      <Text>At least 3 characters — this is a demo.</Text>
+      <Field
+        value={form.values().username}
+        onChangeText={(v) => form.setFieldValue('username', v)}
+        placeholder="Username"
+        data-testid="login-username"
+      />
+      <Show when={() => form.errors().username !== ''}>
+        <Text data-testid="login-error">{form.errors().username}</Text>
+      </Show>
+      {/* `handleSubmit`, not `submit`: that is the name @pyreon/form's WEB
+          useForm returns, and both native runtimes ship a `handleSubmit`
+          alias, so it is the one spelling that works on all three targets.
+          `form.submit()` lowered fine and threw `form.submit is not a
+          function` in the browser — PMTC passes an unknown method through
+          verbatim, so nothing caught it until a web e2e ran. */}
+      <Button onPress={() => form.handleSubmit()} data-testid="login-submit">
+        Continue
+      </Button>
+    </Stack>
+  )
+}
+
+function TasksPage() {
+  const navigate = useNavigate()
+  let draft = state<string>('')
+
+  const remaining = derived(
+    () =>
+      useApp()
+        .store.tasks()
+        .filter((t) => !t.done).length,
+  )
+
+  const addTask = () => {
+    const title = draft.trim()
+    if (title.length === 0) return
+    useApp().store.tasks.set([...useApp().store.tasks(), { id: nextTaskId++, title, done: false }])
+    draft = ''
+  }
+
+  const toggle = (id: number) => {
+    useApp().store.tasks.set(
+      useApp()
+        .store.tasks()
+        .map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+    )
+  }
+
+  const logout = () => {
+    useApp().store.isAuthed.set(false)
+    navigate('/login')
+  }
+
+  return (
+    <Stack gap={3} padding={4} data-testid="tasks-page">
+      <Inline gap={2}>
+        <Icon name="star" color="primary" size="md" data-testid="header-icon" />
+        <Text>My Tasks</Text>
+        <Text>{remaining} open</Text>
+      </Inline>
+      <For each={useApp().store.tasks} by={(t) => t.id}>
+        {(t) => (
+          <Inline gap={2}>
+            <Button onPress={() => toggle(t.id)}>{t.done ? 'done' : 'todo'}</Button>
+            <Text>{t.title}</Text>
+          </Inline>
+        )}
+      </For>
+      <Field
+        value={signalOf<typeof draft>(draft)}
+        onChangeText={(v) => { draft = v }}
+        onSubmit={addTask}
+        placeholder="What needs doing?"
+        data-testid="new-task-title"
+      />
+      {/* Action buttons: two VERTICAL <Stack> columns side by side. A single
+          <Inline> row of buttons overflows on Android (Compose `Row` does not
+          wrap; iOS `HStack` shrinks and hides it), and a single vertical
+          <Stack> of eleven buttons pushes the last one (`tasks-logout`)
+          below the emulator fold, where a Compose performClick taps empty
+          coordinates and silently does nothing. The page root cannot be a
+          <Scroll>: the task list is a <For> (LazyColumn), which the compiler
+          refuses to nest inside a verticalScroll Column (infinite-height
+          measure). Two columns of six/five keep every button on-screen on
+          both targets with no scrolling at all. */}
+      <Inline gap={2}>
+        <Stack gap={2}>
+          <Button onPress={addTask} data-testid="new-task-add">
+            Add
+          </Button>
+          <Button onPress={() => navigate('/tasks/1')} data-testid="tasks-open-first">
+            Open task 1
+          </Button>
+          <Button onPress={() => navigate('/quotes')} data-testid="tasks-quotes">
+            Quotes
+          </Button>
+          <Button onPress={() => navigate('/vocab')} data-testid="tasks-vocab">
+            Vocab
+          </Button>
+          <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
+            Lifecycle
+          </Button>
+          <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
+            Flow
+          </Button>
+          <Button onPress={() => navigate('/flow-scale')} data-testid="tasks-flow-scale">
+            Flow scale
+          </Button>
+        </Stack>
+        <Stack gap={2}>
+          <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
+            Stats
+          </Button>
+          <Button onPress={() => navigate('/dashboard')} data-testid="tasks-dashboard">
+            Dashboard
+          </Button>
+          <Button onPress={() => navigate('/gallery')} data-testid="tasks-gallery">
+            Chart gallery
+          </Button>
+          <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
+            Toolkit
+          </Button>
+          <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
+            Streams
+          </Button>
+          <Button onPress={logout} data-testid="tasks-logout">
+            Logout
+          </Button>
+        </Stack>
+      </Inline>
+    </Stack>
+  )
+}
+
+function QuotesPage() {
+  const navigate = useNavigate()
+
+  // The networked screen (fetch-arc device proof): useFetch fires the
+  // request at mount on every target — web through @pyreon/hooks'
+  // signal container, iOS through the emitted URLSession `.task {}`,
+  // Android through the `LaunchedEffect` + kotlinx-serialization
+  // harness. 127.0.0.1 reaches the CI fixture server on BOTH device
+  // targets: the iOS Simulator shares the host loopback, and the
+  // Android job `adb reverse`s the port into the emulator.
+  const quotes = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
+  const quoteList = derived(() => quotes.data() ?? [])
+
+  return (
+    <Stack gap={3} padding={4} data-testid="quotes-page">
+      <Text>Quotes</Text>
+      <Show when={quotes.isPending}>
+        <Text data-testid="quotes-loading">Loading…</Text>
+      </Show>
+      <Show when={() => quotes.error() !== undefined}>
+        <Text data-testid="quotes-error">{quotes.error}</Text>
+      </Show>
+      <For each={signalOf<typeof quoteList>(quoteList)} by={(q) => q.id}>
+        {(q) => (
+          <Stack gap={1} data-testid="quote-row">
+            <Text>{q.text}</Text>
+            <Text>{q.author}</Text>
+          </Stack>
+        )}
+      </For>
+      <Inline gap={2}>
+        <Button onPress={() => quotes.refetch()} data-testid="quotes-refetch">
+          Refetch
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="quotes-back">
+          Back to tasks
+        </Button>
+      </Inline>
+    </Stack>
+  )
+}
+
+// A custom edge drawn from ARBITRARY SVG path data (a template literal, not a
+// path helper). The native runtimes parse the string themselves, so this is a
+// native view on iOS and Android, not a WebView. Pure green (#16a34a) is a
+// colour nothing else on the screen paints: the device suites count it.
+// The framework-wide colour mode, read by a component. Under a literal
+// <ColorModeProvider mode="dark"> it must read "dark" on every target, whatever
+// the device's own setting — on iOS the provider pins SwiftUI's colorScheme,
+// on Android the configuration's night bit.
+function ModeProbe() {
+  const mode = useColorMode()
+  return <Text data-testid="gal-color-mode">{mode()}</Text>
+}
+
+function WireEdge(props: EdgeComponentProps) {
+  return <path d={`M ${props.sourceX()} ${props.sourceY() + 12} L ${props.targetX()} ${props.targetY() + 12}`} style="fill: none; stroke: #16a34a; stroke-width: 4" />
+}
+
+// A custom node carrying an inline <svg>. The native compiler lowers the
+// shapes to path data and draws them in a canvas scaled by the viewBox, so this
+// is a native view on iOS and Android, not a WebView. The 8-unit viewBox is
+// drawn at 16x16, and purple (#7c3aed) is painted by nothing else on the
+// screen: the device suites measure its box to prove the viewBox scale.
+// It takes the same named data type as GridNode: a flow has ONE node data
+// type natively, and an inline `{ label: string }` would synthesize a second.
+function BadgeNode(props: NodeComponentProps<GridNodeData>) {
+  return (
+    <Stack>
+      <svg width={16} height={16} viewBox="0 0 8 8">
+        <rect width="8" height="8" fill="#7c3aed" />
+      </svg>
+      <Text>{props.data().label}</Text>
+    </Stack>
+  )
+}
+
+function FlowScreen() {
+  const navigate = useNavigate()
+  // Flow-native device proof: `createFlow` lowers to PyreonFlowState on both
+  // targets (#3295). Until this screen existed, NO example called it and no
+  // device assertion touched @pyreon/flow — the port was unit-tested and
+  // stub-typechecked, never proven to run. Every value below is read from
+  // the native engine: node count after addNode, zoom after zoomIn, the
+  // selection count after selectNode. The `<Flow>` canvas below (with its
+  // Background / Controls / MiniMap chrome) is the RENDERER half: the device
+  // tests tap its controls, drag a node, and read the engine back through
+  // the labels — the F3/F4 evidence the flow parity plan asks for.
+  const flow = createFlow({
+    nodes: [
+      { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' }, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }] },
+      { id: 'b', position: { x: 200, y: 0 }, data: { label: 'End' }, targetHandles: [{ id: 'in', type: 'target', position: 'left' }] },
+    ],
+    edges: [
+      { id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' },
+      { id: 'wire', source: 'a', target: 'b', type: 'wire' },
+    ],
+    minZoom: 0.5,
+    maxZoom: 2,
+  })
+  const nodeCount = derived(() => flow.nodes().length)
+  const edgeCount = derived(() => flow.edges().length)
+  const selectedCount = derived(() => flow.selectedNodes().length)
+  const zoomLabel = derived(() => `zoom ${flow.zoom()}`)
+  // Where node `a` sits, rounded — a drag on the canvas moves it, and the
+  // device tests read the move back through this label.
+  // A loop rather than `.find(...)`: the native emit does not narrow an
+  // optional through `=== undefined`, so the lookup stays a plain scan. The
+  // accumulator is the LABEL, not the coordinates — a numeric local would be
+  // seeded `0` and typed Int by the native emit, against the Double it then
+  // receives.
+  const aPos = derived(() => {
+    let label = 'gone'
+    for (const n of flow.nodes()) {
+      if (n.id === 'a') label = `${Math.round(n.position.x)},${Math.round(n.position.y)}`
+    }
+    return label
+  })
+  // Context-menu device proof: a long-press on a node (right-click on web)
+  // reaches `onNodeContextMenu`, which writes the node id here.
+  let lastMenu = state('none')
+  // Hover device proof (pointer hover; Android's test drives a mouse).
+  let lastHover = state('none')
+  // The connection gesture's own start/end, so a failed connect says which half broke.
+  let lastConnect = state('none')
+  onMount(() => {
+    flow.onNodeContextMenu((n) => { lastMenu = `menu ${n.id}` })
+    flow.onNodeMouseEnter((n) => { lastHover = `hover ${n.id}` })
+    flow.onConnectStart((c) => { lastConnect = `start ${c.nodeId}` })
+    // No member access on the optional: the native emit does not narrow it
+    // through `=== null` (the same limit as the `.find` note above).
+    flow.onConnectEnd((c) => { lastConnect = c === null ? 'end none' : 'end ok' })
+  })
+  // Which nodes are selected: the zIndex proof taps where two nodes overlap
+  // and reads which one received the tap.
+  const selectedIds = derived(() => {
+    let ids = ''
+    for (const id of flow.selectedNodes()) ids = ids === '' ? id : `${ids},${id}`
+    return ids === '' ? 'none' : ids
+  })
+  // The viewport offset, rounded: auto-pan moves it while a node is held at
+  // the canvas edge.
+  const vpLabel = derived(() => `${Math.round(flow.viewport().x)},${Math.round(flow.viewport().y)}`)
+  return (
+    <Stack gap={3} padding={4} data-testid="flow-page">
+      {/* Rows, not a column of labels: the canvas takes the height that is
+          left, and a short canvas puts the nodes inside the 40pt auto-pan
+          band, where any drag near them pans the graph. */}
+      <Inline gap={2}>
+        <Text>Flow</Text>
+        <Text data-testid="flow-node-count">{nodeCount}</Text>
+        <Text data-testid="flow-edge-count">{edgeCount}</Text>
+        <Text data-testid="flow-selected-count">{selectedCount}</Text>
+        <Text data-testid="flow-zoom">{zoomLabel}</Text>
+        <Text data-testid="flow-a-pos">{aPos}</Text>
+      </Inline>
+      <Inline gap={2}>
+        <Text data-testid="flow-menu">{lastMenu}</Text>
+        <Text data-testid="flow-hover">{lastHover}</Text>
+        <Text data-testid="flow-selected-ids">{selectedIds}</Text>
+        <Text data-testid="flow-vp">{vpLabel}</Text>
+        <Text data-testid="flow-connect">{lastConnect}</Text>
+      </Inline>
+      <Inline gap={2}>
+        <Button
+          onPress={() =>
+            flow.addNode({ id: 'c', type: 'badge', position: { x: 100, y: 80 }, data: { label: 'Extra' } })
+          }
+          data-testid="flow-add"
+        >
+          Add node
+        </Button>
+        <Button onPress={() => flow.selectNode('a')} data-testid="flow-select">
+          Select A
+        </Button>
+        <Button onPress={() => flow.zoomIn()} data-testid="flow-zoom-in">
+          Zoom in
+        </Button>
+        <Button onPress={() => flow.updateNodePosition('a', { x: 25, y: 35 })} data-testid="flow-move">
+          Move
+        </Button>
+      </Inline>
+      {/* View-wiring proofs: `connectionMode` (redraw e1 from the TARGET
+          handle after removing it) and `zIndex` (overlap A and B, raise A). */}
+      <Inline gap={2}>
+        {/* A and B side by side on one row, so the redraw is a SIDEWAYS drag
+            (a vertical one is claimed by the page's ScrollView on iOS before
+            the handle's gesture sees it), and at y = 80, clear of the canvas's
+            40pt auto-pan band: a slow drag starting in the band pans the graph
+            out from under the finger, exactly as on the web. */}
+        <Button
+          onPress={() => {
+            flow.removeEdge('e1')
+            flow.updateNodePosition('a', { x: 0, y: 80 })
+            flow.updateNodePosition('b', { x: 200, y: 80 })
+            // B selected = raised above the others. Its target handle must
+            // still take the drag: handles ride WITH their node's stacking.
+            flow.selectNode('b')
+          }}
+          data-testid="flow-drop-e1"
+        >
+          Drop e1
+        </Button>
+        <Button
+          onPress={() => {
+            flow.updateNodePosition('a', { x: 0, y: 0 })
+            flow.updateNodePosition('b', { x: 30, y: 10 })
+            flow.updateNode('a', { zIndex: 5 })
+            // Nothing selected, so selection elevation cannot stand in for zIndex.
+            flow.clearSelection()
+          }}
+          data-testid="flow-stack"
+        >
+          Stack
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
+          Back
+        </Button>
+      </Inline>
+      <Flow instance={flow} nodeTypes={{ badge: BadgeNode }} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
+        <Background variant="dots" />
+        <Controls />
+        <MiniMap />
+      </Flow>
+    </Stack>
+  )
+}
+
+interface GridNodeData {
+  label: string
+}
+
+// The scale grid renders through a CUSTOM node, so culling is proven for a
+// user renderer and its handles, not just the default box.
+function GridNode(props: NodeComponentProps<GridNodeData>) {
+  return (
+    <Stack>
+      <Handle id="in" type="target" position={Position.Left} />
+      <Text>{props.data().label}</Text>
+      <Handle id="out" type="source" position={Position.Right} />
+    </Stack>
+  )
+}
+
+function FlowScaleScreen() {
+  const navigate = useNavigate()
+  // F6 scale proof: a 20x20 grid of nodes with culling on. Both device lanes
+  // assert that only a bounded handful of the 400 nodes is ever MOUNTED, that
+  // panning swaps which ones are, and that a drag still reaches the engine on
+  // a node that scrolled in. Counts, not timings: a count is deterministic on
+  // every device, a timing is not.
+  const flow = createFlow<GridNodeData>({
+    nodes: [],
+    edges: [],
+    onlyRenderVisibleElements: true,
+    minZoom: 0.25,
+    maxZoom: 2,
+  })
+  const total = derived(() => `${flow.nodes().length}`)
+  const zoomLabel = derived(() => `zoom ${flow.zoom()}`)
+  const farPos = derived(() => {
+    let label = 'gone'
+    for (const n of flow.nodes()) {
+      if (n.id === 'g170') label = `${Math.round(n.position.x)},${Math.round(n.position.y)}`
+    }
+    return label
+  })
+  return (
+    <Stack gap={2} padding={4} data-testid="flow-scale-page">
+      <Text data-testid="flow-scale-total">{total}</Text>
+      <Text data-testid="flow-scale-zoom">{zoomLabel}</Text>
+      <Text data-testid="flow-scale-far-pos">{farPos}</Text>
+      <Inline gap={2}>
+        <Button
+          onPress={() => {
+            for (let row = 0; row < 20; row++) {
+              for (let col = 0; col < 20; col++) {
+                const index = row * 20 + col
+                flow.addNode({
+                  id: `g${index}`,
+                  type: 'grid',
+                  position: { x: col * 200, y: row * 100 },
+                  data: { label: `N${index}` },
+                  ariaLabel: `grid node ${index}`,
+                })
+              }
+            }
+          }}
+          data-testid="flow-scale-load"
+        >
+          Load
+        </Button>
+        <Button onPress={() => flow.setViewport({ x: -2000, y: -800, zoom: 1 })} data-testid="flow-scale-pan">
+          Pan
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="flow-scale-back">
+          Back
+        </Button>
+      </Inline>
+      <Flow instance={flow} nodeTypes={{ grid: GridNode }} ariaLabel="Scale flow">
+        <Background variant="dots" />
+      </Flow>
+    </Stack>
+  )
+}
+
+function VocabScreen() {
+  const navigate = useNavigate()
+  // Vocabulary-completion device proof: <Scroll> (verticalScroll),
+  // <Modal> (Dialog), and a REMOTE <Image> (AsyncImage / Coil) all
+  // emit androidx symbols that aren't in a star-imported package — the
+  // conditional-imports fix makes them compile on a real Android build
+  // (they were stub-masked: green in the kotlinc validate loop, red on
+  // gradle assembleDebug). This screen is the device proof.
+  let showModal = state<boolean>(false)
+  return (
+    <Stack data-testid="vocab-page">
+      <Scroll direction="vertical" data-testid="vocab-scroll">
+        <Stack gap={3} padding={4}>
+          <Text>Primitive Vocab</Text>
+          <Image
+            src="http://127.0.0.1:8787/remote-badge.png"
+            alt="remote badge"
+            width={48}
+            height={48}
+            data-testid="vocab-remote-img"
+          />
+          <Button onPress={() => { showModal = true }} data-testid="vocab-open-modal">
+            Open dialog
+          </Button>
+          <Button onPress={() => navigate('/tasks')} data-testid="vocab-back">
+            Back to tasks
+          </Button>
+        </Stack>
+      </Scroll>
+      {/* Modal is a SIBLING of the Scroll (not in scroll content) so the
+          iOS .sheet host isn't a zero-frame view buried in a ScrollView
+          — a SwiftUI presentation quirk. Compose Dialog is unaffected. */}
+      <Modal open={signalOf<typeof showModal>(showModal)} onClose={() => { showModal = false }} data-testid="vocab-modal">
+        <Stack gap={2}>
+          <Text data-testid="vocab-modal-text">Hello from a Dialog</Text>
+          <Button onPress={() => { showModal = false }} data-testid="vocab-close-modal">
+            Close
+          </Button>
+        </Stack>
+      </Modal>
+    </Stack>
+  )
+}
+
+function StreamsScreen() {
+  const navigate = useNavigate()
+  // SSE with the web's reconnect semantics: the server drops mid-event, and
+  // the resumed connection must carry `Last-Event-ID: 2` (the server echoes it
+  // into `resumed`). Opens on mount.
+  const sse = useStream<SseEvent<StreamTick>>((ctx) =>
+    openEventStream((c) => tickFeed({ signal: c.signal, headers: c.headers }), {
+      signal: ctx.signal,
+      onStatus: ctx.onStatus,
+    }),
+  )
+  const sseLog = computed(() =>
+    sse
+      .events()
+      .map((e) => `${e.id}:${e.data.n}@${e.data.resumed}`)
+      .join(','),
+  )
+  // NDJSON gated by `enabled` — it must sit `idle` until the button flips it —
+  // with `onEvent` summing each row as it lands.
+  const rowsOn = signal(false)
+  const rowSum = signal(0)
+  const rows = useStream<StreamTick>(
+    (ctx) =>
+      openNdjsonStream((c) => tickRows({ signal: c.signal, headers: c.headers }), {
+        signal: ctx.signal,
+        onStatus: ctx.onStatus,
+      }),
+    { enabled: () => rowsOn(), onEvent: (row) => rowSum.set(rowSum() + row.n) },
+  )
+  return (
+    <Stack gap={3} padding={4} data-testid="streams-page">
+      <Text data-testid="sse-status">{sse.status()}</Text>
+      <Text data-testid="sse-log">{sseLog()}</Text>
+      <Text data-testid="nd-status">{rows.status()}</Text>
+      <Text data-testid="nd-sum">{`${rowSum()}`}</Text>
+      <Button onPress={() => rowsOn.set(true)} data-testid="nd-start">
+        Start rows
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="streams-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+function LifecycleScreen() {
+  const navigate = useNavigate()
+  // Phase 2 device proof: real lifecycle semantics. Suspense reads the
+  // GOOD fetch's isPending (fallback → content on resolve); the
+  // ErrorBoundary reads the BAD fetch's error (missing path → rejects →
+  // fallback shows). The error path is the DETERMINISTIC discriminator
+  // vs the old inert wrappers, which never showed the fallback. One
+  // fetch per boundary's component keeps the reads precise.
+  return (
+    <Stack gap={4} padding={4} data-testid="lifecycle-page">
+      <SuspenseDemo />
+      <ErrorBoundaryDemo />
+      <Button onPress={() => navigate('/tasks')} data-testid="lifecycle-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+function SuspenseDemo() {
+  const ok = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
+  // The computed gives kotlinc the List<Quote> type context the inline
+  // `?? []` lacks (listOf() can't infer T) — same shape as QuotesPage.
+  const okList = derived(() => ok.data() ?? [])
+  return (
+    <Suspense fallback={<Text data-testid="lc-loading">Loading…</Text>}>
+      <For each={signalOf<typeof okList>(okList)} by={(q) => q.id}>
+        {(q) => <Text data-testid="lc-quote">{q.text}</Text>}
+      </For>
+    </Suspense>
+  )
+}
+
+function ErrorBoundaryDemo() {
+  const bad = useFetch<Quote[]>('http://127.0.0.1:8787/missing-on-purpose.json')
+  const badList = derived(() => bad.data() ?? [])
+  return (
+    <ErrorBoundary fallback={<Text data-testid="lc-error">Something went wrong</Text>}>
+      <For each={signalOf<typeof badList>(badList)} by={(q) => q.id}>
+        {(q) => <Text>{q.text}</Text>}
+      </For>
+    </ErrorBoundary>
+  )
+}
+
+function TaskDetailPage(props: { params: { id: string } }) {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={3} padding={4} data-testid="task-detail-page">
+      <Text>Task Detail</Text>
+      <Text>Viewing task {props.params.id}</Text>
+      <Button onPress={() => navigate('/tasks')} data-testid="detail-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+// Stats screen — the 2026-07 P1-sprint vocabulary, device-proven in one
+// realistic page: Object.keys/values over a DECLARED struct (the typeRef
+// resolution), a seeded reduce, JS `/` → Double division, the conditional
+// filter-map idiom (`flatMap(v => cond ? [v] : [])`), and a 2-param
+// index-callback with Int×Double coercion + a mixed comparison. The device
+// smokes assert the Int-derived texts ("247" / "2" / "3") — Double TEXT is
+// deliberately not asserted (Swift/Kotlin stringify Doubles differently);
+// the average rendering AT ALL proves the Double pipeline.
+type Scores = { math: number; art: number; gym: number }
+
+// Device proof for the plot engine's NATIVE hosts (#3255): the same
+// `<SankeyChart>` JSX renders on web (canvas), iOS (SwiftUI Canvas) and
+// Android (Compose Canvas) over the generated PyreonChartEngine — the
+// data is module-level literals typed by the engine's own structs, the
+// shape the compiler's external struct registry exists for.
+const FLOW_NODES: SankeyNode[] = [{ name: 'Backlog' }, { name: 'Doing' }, { name: 'Done' }]
+// The cartesian family on native (#3263): a bar per subject, the accessor
+// bodies inlined into the engine's Series on iOS/Android, the same canvas
+// on the web.
+interface ScoreRow {
+  subject: string
+  score: number
+}
+// Two series for `<Legend direct />` (each line named at its last point).
+interface TrendRow {
+  m: string
+  a: number
+  b: number
+}
+const TREND_ROWS: TrendRow[] = [
+  { m: 'Jan', a: 12, b: 8 },
+  { m: 'Feb', a: 15, b: 11 },
+  { m: 'Mar', a: 14, b: 16 },
+  { m: 'Apr', a: 19, b: 15 },
+]
+// Epoch-ms readings for a `date()`-formatted time axis.
+interface Reading {
+  at: number
+  v: number
+}
+const READINGS: Reading[] = [
+  { at: 1704067200000, v: 3 },
+  { at: 1709251200000, v: 5 },
+  { at: 1714521600000, v: 4 },
+  { at: 1719792000000, v: 7 },
+]
+// A small grid for `<Cell>` with a pinned visual map.
+interface HeatObs {
+  d: string
+  h: string
+  n: number
+}
+const HEAT_OBS: HeatObs[] = [
+  { d: 'Mon', h: '09', n: 2 },
+  { d: 'Mon', h: '12', n: 7 },
+  { d: 'Tue', h: '09', n: 5 },
+  { d: 'Tue', h: '12', n: 1 },
+]
+const SCORE_ROWS: ScoreRow[] = [
+  { subject: 'math', score: 82 },
+  { subject: 'art', score: 91 },
+  { subject: 'gym', score: 74 },
+]
+
+// Enough points for a rolling window to have something to roll over — a
+// 3-point series would leave every indicator a gap and the assertion below
+// would pass on an empty chart.
+interface WeekRow {
+  day: string
+  load: number
+}
+const LOAD_ROWS: WeekRow[] = [
+  { day: 'Mon', load: 41 },
+  { day: 'Tue', load: 55 },
+  { day: 'Wed', load: 38 },
+  { day: 'Thu', load: 62 },
+  { day: 'Fri', load: 47 },
+  { day: 'Sat', load: 71 },
+]
+interface TwoSeriesRow {
+  a: number
+  b: number
+}
+const TWO_SERIES_ROWS: TwoSeriesRow[] = [
+  { a: 6, b: 2 },
+  { a: 5, b: 3 },
+  { a: 4, b: 4 },
+]
+interface GrowthRow {
+  month: string
+  total: number
+}
+const GROWTH_ROWS_A: GrowthRow[] = [
+  { month: 'Jan', total: 12 },
+  { month: 'Feb', total: 18 },
+  { month: 'Mar', total: 9 },
+]
+const GROWTH_ROWS_B: GrowthRow[] = [
+  { month: 'Jan', total: 12 },
+  { month: 'Feb', total: 18 },
+  { month: 'Mar', total: 9 },
+  { month: 'Apr', total: 22 },
+  { month: 'May', total: 15 },
+]
+
+// The hosted flow (`@pyreon/flow/webview`) on device: a graph pushed INTO the
+// WKWebView / Android WebView, and its events delivered BACK over the reverse
+// bridge into native Text. `fit-view` makes the hosted renderer emit
+// `viewport-change`, so the initial command proves page→host on load and the
+// second (new id) proves the reactive command push — and that `initial-fit`
+// does not run twice.
+interface FlowFitCommand {
+  id: string
+  type: 'fit-view'
+}
+const FLOW_WEB_FIT_ONCE: FlowFitCommand[] = [{ id: 'initial-fit', type: 'fit-view' }]
+const FLOW_WEB_FIT_TWICE: FlowFitCommand[] = [
+  { id: 'initial-fit', type: 'fit-view' },
+  { id: 'second-fit', type: 'fit-view' },
+]
+// Both graphs are ONE symmetric row, so fit-view centres the middle node in the
+// WebView and a tap at the WebView's centre deterministically hits it on every
+// target. Swapping the graph must re-render in place: the same tap then selects
+// the NEW middle node. The shapes are LOCAL named types: PMTC synthesizes a
+// Codable struct for each, and a named position cannot be claimed by an
+// engine struct of the same field shape.
+type FlowRowPosition = { x: number; y: number }
+type FlowRowLabel = { label: string }
+type FlowRowNode = { id: string; position: FlowRowPosition; data: FlowRowLabel }
+type FlowRowEdge = { source: string; target: string }
+type FlowRowGraph = { nodes: FlowRowNode[]; edges: FlowRowEdge[] }
+const FLOW_WEB_GRAPH_A: FlowRowGraph = {
+  nodes: [
+    { id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } },
+    { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } },
+    { id: 'serve', position: { x: 440, y: 0 }, data: { label: 'Serve' } },
+  ],
+  edges: [
+    { source: 'ingest', target: 'transform' },
+    { source: 'transform', target: 'serve' },
+  ],
+}
+const FLOW_WEB_GRAPH_B: FlowRowGraph = {
+  nodes: [
+    { id: 'collect', position: { x: 0, y: 0 }, data: { label: 'Collect' } },
+    { id: 'enrich', position: { x: 220, y: 0 }, data: { label: 'Enrich' } },
+    { id: 'publish', position: { x: 440, y: 0 }, data: { label: 'Publish' } },
+  ],
+  edges: [
+    { source: 'collect', target: 'enrich' },
+    { source: 'enrich', target: 'publish' },
+  ],
+}
+// A node with NO position: the hosted renderer throws reading it, which is the
+// host failure path (`safeRender` -> `__pyreonFlowHostError` -> `onError`).
+type BrokenFlowNode = { id: string; data: FlowRowLabel }
+type BrokenFlowGraph = { nodes: BrokenFlowNode[]; edges: FlowRowEdge[] }
+// Two tiny hosts for the RELOAD proof. Swapping `html` must reload the page,
+// and the NEW page must receive the graph again and answer over the reverse
+// bridge: each reports `<host>:<node count>` as a selection.
+const FLOW_RELOAD_HOST_A =
+  '<!doctype html><html><body><script>(function(){function send(){var d=window.__pyreonData;if(typeof d==="string"){try{d=JSON.parse(d)}catch(e){return}}if(!d||!d.nodes||typeof window.pyreonPostMessage!=="function")return;window.pyreonPostMessage(JSON.stringify({id:"a:"+d.nodes.length}))}window.addEventListener("pyreondata",send);send()})()</script></body></html>'
+const FLOW_RELOAD_HOST_B =
+  '<!doctype html><html><body><script>(function(){function send(){var d=window.__pyreonData;if(typeof d==="string"){try{d=JSON.parse(d)}catch(e){return}}if(!d||!d.nodes||typeof window.pyreonPostMessage!=="function")return;window.pyreonPostMessage(JSON.stringify({id:"b:"+d.nodes.length}))}window.addEventListener("pyreondata",send);send()})()</script></body></html>'
+const FLOW_WEB_BROKEN: BrokenFlowGraph = {
+  nodes: [{ id: 'orphan', data: { label: 'Orphan' } }],
+  edges: [{ source: 'orphan', target: 'orphan' }],
+}
+const FLOW_LINKS: SankeyLink[] = [
+  { source: 'Backlog', target: 'Doing', value: 8 },
+  { source: 'Doing', target: 'Done', value: 5 },
+]
+
+// Dashboard — the native wave's gate (#3279): one shared-source page using
+// SIX plot families (funnel, gauge, pie, radar, heatmap, treemap; the stats
+// page adds sankey + the cartesian plot with its pinch + selection), device-
+// asserted on both platforms. The funnel's data is a SIGNAL so a button can
+// re-lay it out under the same tap — the repaint proof — and the gauge reads
+// a signal a button moves.
+interface Stage {
+  name: string
+  total: number
+}
+const STAGES_ALL: Stage[] = [
+  { name: 'Leads', total: 120 },
+  { name: 'Qualified', total: 80 },
+  { name: 'Won', total: 30 },
+]
+const STAGES_DROPPED: Stage[] = [
+  { name: 'Qualified', total: 80 },
+  { name: 'Won', total: 30 },
+]
+interface PieSlice {
+  name: string
+  total: number
+  tint: string
+}
+const SLICES: PieSlice[] = [
+  { name: 'iOS', total: 45, tint: '#0f766e' },
+  { name: 'Android', total: 35, tint: '#b45309' },
+  { name: 'Web', total: 20, tint: '#1d4ed8' },
+]
+interface Team {
+  name: string
+  scores: number[]
+}
+const TEAMS: Team[] = [{ name: 'Core', scores: [4, 3, 5] }]
+const SKILL_AXES: RadarAxis[] = [
+  { label: 'speed', max: 5 },
+  { label: 'size', max: 5 },
+  { label: 'dx', max: 5 },
+]
+interface HeatCellRow {
+  d: string
+  hour: string
+  n: number
+}
+const HEAT_CELLS: HeatCellRow[] = [
+  { d: 'Mon', hour: '09', n: 3 },
+  { d: 'Mon', hour: '10', n: 5 },
+  { d: 'Tue', hour: '09', n: 1 },
+  { d: 'Tue', hour: '10', n: 4 },
+]
+const TREE: TreeNode[] = [
+  { name: 'src', value: 60 },
+  { name: 'docs', value: 25 },
+  { name: 'tests', value: 15 },
+]
+// The boxplot on native: raw samples per row, reduced to five-number
+// summaries by the generated engine's `fiveNumber` on every target.
+interface Spread {
+  team: string
+  samples: number[]
+}
+const SPREAD: Spread[] = [
+  { team: 'web', samples: [3, 4, 5, 9, 4] },
+  { team: 'native', samples: [1, 2, 2, 8, 3] },
+]
+
+// The GALLERY — the ten chart families the device gates had never rendered.
+//
+// A separate page rather than more rows on the dashboard, deliberately: the
+// dashboard's device assertions tap TUNED COORDINATES (the funnel's top slab,
+// the radar's first vertex, the boxplot's left third), and anything inserted
+// above them moves every one of those taps. A gallery cannot break them.
+//
+// What it proves is narrower than the dashboard and worth stating: that each
+// family LAYS OUT AND PAINTS on a real device from shared source. The
+// dashboard proves interaction; this proves the ten that had neither.
+const CAL_VALUES: Record<string, Double> = { '2024-01-03': 4, '2024-01-11': 9, '2024-02-02': 2 }
+interface Candle {
+  day: string
+  o: Double
+  h: Double
+  l: Double
+  c: Double
+}
+const CANDLES: Candle[] = [
+  { day: 'Mon', o: 10.5, h: 12.5, l: 9.5, c: 12.0 },
+  { day: 'Tue', o: 12.0, h: 13.5, l: 11.0, c: 11.5 },
+  { day: 'Wed', o: 11.5, h: 14.0, l: 11.0, c: 13.5 },
+]
+const GANTT_TASKS: GanttTask[] = [
+  { id: 'a', name: 'Design', start: '2024-01-01', end: '2024-01-10', progress: 0.6 },
+  { id: 'b', name: 'Build', start: '2024-01-08', end: '2024-01-24' },
+  { id: 'c', name: 'Ship', start: '2024-01-25', end: '2024-01-30' },
+]
+const GRAPH_NODES: GraphNode[] = [
+  { id: 'a', name: 'API' },
+  { id: 'b', name: 'Web' },
+  { id: 'c', name: 'DB' },
+]
+const GRAPH_LINKS: GraphLink[] = [
+  { source: 'a', target: 'b' },
+  { source: 'a', target: 'c' },
+]
+// A PRECOMPUTED `GeoShape[]` — the one map shape that lowers, because the
+// registry, raw GeoJSON and `geoShapes()` itself all stay web (project once on
+// the web or in a build step). Two boxes are enough to prove the host paints.
+const GEO: GeoShape[] = [
+  {
+    name: 'West',
+    rings: [
+      [
+        { x: 0, y: 0 },
+        { x: 4, y: 0 },
+        { x: 4, y: 6 },
+        { x: 0, y: 6 },
+      ],
+    ],
+  },
+  {
+    name: 'East',
+    rings: [
+      [
+        { x: 5, y: 0 },
+        { x: 9, y: 0 },
+        { x: 9, y: 6 },
+        { x: 5, y: 6 },
+      ],
+    ],
+  },
+]
+const GEO_VALUES: Record<string, Double> = { West: 3, East: 8 }
+// A heat sample and a pie on the map — the geo layers beyond points and paths.
+const GEO_HEAT: GeoHeatPoint[] = [{ lon: 2, lat: 3, value: 9 }]
+const GEO_PIES: GeoPie[] = [{ lon: 7, lat: 3, radius: 18, innerRadius: 0, slices: [{ value: 2, label: 'a', color: '#0f766e' }, { value: 1, label: 'b', color: '#f59e0b' }] }]
+// A route with an animated trail — the device tests capture it twice and assert the frames differ.
+const GEO_ROUTES: GeoOverlayPath[] = [{ coords: [{ lon: 0, lat: 1 }, { lon: 9, lat: 5 }], width: 2 }]
+const GEO_TRAIL: GeoTrail = { period: 2, trailLength: 0.3, color: '#dc2626', symbolSize: 10 }
+// `rows` is typed `(Double | string | null)[]` on the web for a CATEGORY axis;
+// a homogeneous `Double[][]` is the shape that lowers, and is what a numeric
+// parallel plot uses anyway.
+const PARALLEL_AXES: ParallelAxis[] = [{ name: 'cost' }, { name: 'speed' }, { name: 'risk' }]
+const PARALLEL_ROWS: Double[][] = [
+  [1.5, 4.5, 2.5],
+  [3.5, 2.5, 4.5],
+  [2.5, 3.5, 1.5],
+]
+const POLAR_AXES: PolarAxes = { categories: ['N', 'E', 'S', 'W'] }
+const POLAR_SERIES: PolarSeries[] = [{ name: 'Wind', kind: 'bar', values: [3.5, 6.5, 2.5, 4.5] }]
+const RIVER_SERIES: RiverSeries[] = [
+  { name: 'core', values: [1.5, 4.5, 2.5, 6.5] },
+  { name: 'docs', values: [2.5, 1.5, 5.5, 3.5] },
+]
+const SUNBURST: TreeNode[] = [
+  {
+    name: 'app',
+    children: [
+      { name: 'ui', value: 30 },
+      { name: 'data', value: 20 },
+    ],
+  },
+  { name: 'infra', value: 25 },
+]
+
+function GalleryPage() {
+  let grammarPick = state(-1)
+  const navigate = useNavigate()
+  // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
+  let tbZoom = state('0-100')
+  // The option-placed families: a tap reads the index back through the frame the web computes.
+  let tbSaved = state('none')
+  let brushCount = state('none')
+  let seriesPickCount = state('none')
+  let growthRows = state<GrowthRow[]>(GROWTH_ROWS_A)
+  let growthCount = state(`${GROWTH_ROWS_A.length}`)
+  let flowWebEvent = state('none')
+  let flowWebEventCount = state(0)
+  let flowWebFitAgain = state(false)
+  let flowWebSelected = state('none')
+  let flowWebSwapped = state(false)
+  let flowWebFailure = state('none')
+  let flowWebReloadB = state(false)
+  let flowWebReloadStatus = state('none')
+  // The toolbox chart's imperative handle.
+  const tbHandle = createChartHandle()
+  return (
+    <Scroll direction="vertical" data-testid="gal-scroll">
+      <Stack gap={3} padding={4} data-testid="gal-page">
+        <Text>Chart gallery</Text>
+        <CalendarChart
+          start="2024-01-01"
+          end="2024-02-11"
+          values={CAL_VALUES}
+          height={160}
+          data-testid="gal-calendar"
+        />
+        <CandlestickChart
+          data={CANDLES}
+          open={(d: Candle) => d.o}
+          high={(d: Candle) => d.h}
+          low={(d: Candle) => d.l}
+          close={(d: Candle) => d.c}
+          x={(d: Candle) => d.day}
+          height={180}
+          data-testid="gal-candlestick"
+        />
+        <GanttChart tasks={GANTT_TASKS} height={160} data-testid="gal-gantt" />
+        <GraphChart nodes={GRAPH_NODES} links={GRAPH_LINKS} height={200} data-testid="gal-graph" />
+        <MapChart map={GEO} values={GEO_VALUES} heat={GEO_HEAT} pies={GEO_PIES} height={180} roam data-testid="gal-map" />
+        <MapChart map={GEO} values={GEO_VALUES} paths={GEO_ROUTES} trail={GEO_TRAIL} height={160} data-testid="gal-geo-trail" />
+        <ParallelChart
+          axes={PARALLEL_AXES}
+          rows={PARALLEL_ROWS}
+          height={180}
+          data-testid="gal-parallel"
+        />
+        <PolarChart axes={POLAR_AXES} series={POLAR_SERIES} height={200} data-testid="gal-polar" />
+        <RiverChart series={RIVER_SERIES} height={180} data-testid="gal-river" />
+        <SunburstChart data={SUNBURST} height={200} data-testid="gal-sunburst" />
+        <TreeChart data={SUNBURST} height={200} data-testid="gal-tree" />
+        {/* The stable API: <Chart> with mark children. Desugared at compile
+            time to the same hosts the components above lower to; asserted on
+            both device lanes so the grammar itself is device-proven. */}
+        <Chart data={SCORE_ROWS} x="subject" height={200} data-testid="gal-grammar-bars" onSelect={(i: number) => { grammarPick = i }}>
+          <Bar y="score" label="Points" />
+          <Tooltip />
+        </Chart>
+        <Text data-testid="gal-grammar-pick">{String(grammarPick)}</Text>
+        <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
+          <Arc value="score" label="subject" innerRadius={0.5} />
+        </Chart>
+        <Chart data={TREND_ROWS} x="m" height={180} data-testid="gal-direct-labels">
+          <Line y="a" label="North" />
+          <Line y="b" label="South" />
+          <Legend direct />
+        </Chart>
+        <Chart data={READINGS} xValue="at" height={160} data-testid="gal-date-axis">
+          <Line y="v" label="Reading" />
+          <Axis x time format={date('MMM YYYY')} />
+        </Chart>
+        <Chart data={TREND_ROWS} x="m" height={160} data-testid="gal-zoom-window">
+          <Bar y="a" label="North" />
+          <Zoom window={{ start: 0.5, end: 1 }} lock />
+        </Chart>
+        <Chart data={HEAT_OBS} height={160} data-testid="gal-cell-visualmap">
+          <Cell x="d" y="h" value="n" visualMap={visualMap({ domain: [0, 8] })} />
+        </Chart>
+        <ColorModeProvider mode="dark">
+          <ModeProbe />
+        </ColorModeProvider>
+        <PlotChart
+          data={SCORE_ROWS}
+          marks={[bars((d: ScoreRow) => d.score)]}
+          toolbox={{ dataZoom: true, dataView: true, magicType: ['line', 'bar'], restore: true }}
+          height={220}
+          handle={tbHandle}
+          data-testid="gal-toolbox"
+          onZoom={(w: ZoomWindow) => { tbZoom = `${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}` }}
+        />
+        <Text data-testid="gal-toolbox-zoom">{tbZoom}</Text>
+        <Button onPress={() => tbHandle.dispatch({ type: 'dataZoom', start: 0, end: 0.5 })} data-testid="gal-h-zoom">
+          Zoom to half
+        </Button>
+        <Button onPress={() => tbHandle.dispatch({ type: 'restore' })} data-testid="gal-h-reset">
+          Reset
+        </Button>
+        <PlotChart
+          data={LOAD_ROWS}
+          marks={[bars((d: WeekRow) => d.load)]}
+          brushType="lineX"
+          height={200}
+          data-testid="gal-brush"
+          onBrushSelected={(s: { seriesIndex: number; dataIndex: number[] }[]) => { brushCount = `${s.length}:${s.length > 0 ? s[0]!.dataIndex.length : 0}` }}
+        />
+        <Text data-testid="gal-brush-count">{brushCount}</Text>
+        <PlotChart
+          data={TWO_SERIES_ROWS}
+          marks={[bars((d: TwoSeriesRow) => d.a), bars((d: TwoSeriesRow) => d.b)]}
+          selectedMode="series"
+          height={200}
+          data-testid="gal-series-select"
+          onSelectIndex={(i: number) => { seriesPickCount = `${i}` }}
+        />
+        <Text data-testid="gal-series-select-datum">{seriesPickCount}</Text>
+        <PlotChart
+          data={() => growthRows}
+          marks={[bars((d: GrowthRow) => d.total)]}
+          universalTransition
+          updateDuration={250}
+          height={200}
+          data-testid="gal-growth"
+        />
+        <Button
+          onPress={() => {
+            const next = growthRows.length === GROWTH_ROWS_A.length ? GROWTH_ROWS_B : GROWTH_ROWS_A
+            growthRows = next
+            growthCount = `${next.length}`
+          }}
+          data-testid="gal-growth-toggle"
+        >
+          Toggle rows
+        </Button>
+        <Text data-testid="gal-growth-count">{growthCount}</Text>
+        <FlowWebView
+          graph={() => (flowWebSwapped ? FLOW_WEB_GRAPH_B : FLOW_WEB_GRAPH_A)}
+          commands={() => (flowWebFitAgain ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}
+          onEvent={(event) => {
+            flowWebEvent = event.type
+            flowWebEventCount = flowWebEventCount + 1
+          }}
+          onSelect={(node) => { flowWebSelected = node.id }}
+          onError={(error) => { flowWebEvent = 'error:' + error.message }}
+          data-testid="gal-flow-webview"
+        />
+        <Button onPress={() => { flowWebFitAgain = true }} data-testid="gal-flow-webview-fit">
+          Fit again
+        </Button>
+        <Text data-testid="gal-flow-webview-event">{flowWebEvent}</Text>
+        <Text data-testid="gal-flow-webview-events">{String(flowWebEventCount)}</Text>
+        <Text data-testid="gal-flow-webview-selected">{flowWebSelected}</Text>
+        <Button onPress={() => { flowWebSwapped = true }} data-testid="gal-flow-webview-swap">
+          Swap graph
+        </Button>
+        <FlowWebView
+          graph={FLOW_WEB_BROKEN as unknown as FlowWebViewGraph}
+          onError={(error) => { flowWebFailure = error.message.length > 0 ? 'error' : 'empty' }}
+          data-testid="gal-flow-webview-broken"
+        />
+        <Text data-testid="gal-flow-webview-failure">{flowWebFailure}</Text>
+        <FlowWebView
+          html={flowWebReloadB ? FLOW_RELOAD_HOST_B : FLOW_RELOAD_HOST_A}
+          graph={FLOW_WEB_GRAPH_A}
+          onSelect={(node) => { flowWebReloadStatus = node.id }}
+          data-testid="gal-flow-webview-reload"
+        />
+        <Button onPress={() => { flowWebReloadB = true }} data-testid="gal-flow-webview-reload-swap">
+          Reload host
+        </Button>
+        <Text data-testid="gal-flow-webview-reload-status">{flowWebReloadStatus}</Text>
+        <PieChart
+          data={SLICES}
+          value={(d: PieSlice) => d.total}
+          label={(d: PieSlice) => d.name}
+          height={180}
+          toolbox={{ saveAsImage: true }}
+          onSaveImage={(url: string) => { tbSaved = url.startsWith('data:image/png;') ? 'data:image/png;' : url }}
+          data-testid="gal-save"
+        />
+        <Text data-testid="gal-saved">{tbSaved}</Text>
+        <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
+  )
+}
+
+function DashboardPage() {
+  const navigate = useNavigate()
+  let stages = state<Stage[]>(STAGES_ALL)
+  let stagePick = state(-1)
+  const stageName = derived(() => (stagePick < 0 ? 'none' : stages[stagePick]!.name))
+  let load = state(40)
+  // The radar's tap reports the engine's `{ series, axis }` hit — a struct on every target.
+  let radarHit = state('none')
+  let boxPick = state(-1)
+  return (
+    <Scroll direction="vertical" data-testid="dash-scroll">
+      <Stack gap={3} padding={4} data-testid="dash-page">
+        <FunnelChart
+          data={stages}
+          value={(d: Stage) => d.total}
+          label={(d: Stage) => d.name}
+          height={180}
+          data-testid="dash-funnel"
+          onSelect={(i: number) => { stagePick = i }}
+        />
+        <Text data-testid="dash-stage">{stageName}</Text>
+        <Button onPress={() => { stages = STAGES_DROPPED }} data-testid="dash-drop">
+          Drop first stage
+        </Button>
+        <GaugeChart
+          value={load}
+          min={0}
+          max={100}
+          thickness={16}
+          valueColor="#b45309"
+          height={120}
+          data-testid="dash-gauge"
+        />
+        <Text data-testid="dash-load">{String(load)}</Text>
+        <Button onPress={() => { load = load + 25 }} data-testid="dash-load-up">
+          Load +25
+        </Button>
+        <PieChart
+          data={SLICES}
+          value={(d: PieSlice) => d.total}
+          label={(d: PieSlice) => d.name}
+          color={(d: PieSlice) => d.tint}
+          innerRadius={0.4}
+          height={200}
+          data-testid="dash-pie"
+        />
+        <RadarChart
+          data={TEAMS}
+          axes={SKILL_AXES}
+          values={(d: Team) => d.scores}
+          label={(d: Team) => d.name}
+          rings={3}
+          height={200}
+          title="Skills"
+          data-testid="dash-radar"
+          onSelectIndex={(h: RadarHitIndex) =>
+            { radarHit = h.series < 0 ? 'miss' : 'S' + String(h.series) + 'A' + String(h.axis) }
+          }
+        />
+        <Text data-testid="dash-radar-hit">{radarHit}</Text>
+        <BoxplotChart
+          data={SPREAD}
+          values={(d: Spread) => d.samples}
+          x={(d: Spread) => d.team}
+          height={160}
+          data-testid="dash-box"
+          onSelectIndex={(i: number) => { boxPick = i }}
+        />
+        <Text data-testid="dash-box-pick">{String(boxPick)}</Text>
+        <HeatmapChart
+          data={HEAT_CELLS}
+          x={(d: HeatCellRow) => d.hour}
+          y={(d: HeatCellRow) => d.d}
+          value={(d: HeatCellRow) => d.n}
+          gap={2}
+          height={160}
+          data-testid="dash-heat"
+        />
+        <TreemapChart data={TREE} height={180} data-testid="dash-tree" />
+        <Button onPress={() => navigate('/tasks')} data-testid="dash-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
+  )
+}
+
+function StatsPage() {
+  const navigate = useNavigate()
+  // The node index the last tap on the flow chart reported (-1 = none yet):
+  // `onSelectIndex` is the engine's index hit on every target — a click on the
+  // web canvas, a tap gesture over the same layout on iOS/Android.
+  let flowPick = state(-1)
+  // The bar index the last tap on the score chart reported (-1 = none yet).
+  let barPick = state(-1)
+  // The window as text, so a device assertion can name it — pinch, presets
+  // and the navigator all report through the same onZoom.
+  let zoomText = state('0-100')
+  // The brush's committed range as text ('none' when cleared) — #3277: a NAMED
+  // handler taking BrushRange | null narrows on every target.
+  let brushSel = state('none')
+  const onBrushRange = (r: BrushRange | null) =>
+    { brushSel = r === null ? 'none' : String(r.start) + '-' + String(r.end) }
+  let scores = state.raw<Scores>({ math: 82, art: 91, gym: 74 })
+  const subjects = derived(() => Object.keys(scores))
+  const total = derived(() => Object.values(scores).reduce((a: number, b: number) => a + b, 0))
+  const average = derived(() => total / subjects.length)
+  const high = derived(() => Object.values(scores).flatMap((v: number) => (v > 80 ? [v] : [])))
+  const curved = derived(() =>
+    Object.values(scores).filter((v: number, i: number) => v * 1.05 > i + 75),
+  )
+  return (
+    // The page outgrew the viewport when the navigator + brush charts landed:
+    // `stats-back` sat at y~900 and iOS's kAXScrollToVisibleAction could not
+    // reach it. Same shape as the dash and toolkit pages: <Scroll> outermost,
+    // the padded content <Stack> carrying `stats-page` — XCUITest finds that
+    // through `otherElements`, whereas a bare wrapper Stack is flattened out
+    // of the accessibility tree. Nothing lazy may live under this scroller:
+    // a <For> lowers to a LazyColumn, and a LazyColumn nested in
+    // Column(Modifier.verticalScroll()) is a measure-time crash on Android
+    // ("infinity maximum height constraints") — the emitter's warning for
+    // that shape only inspects the <Scroll>'s DIRECT children, so a <For>
+    // one level down crashes the device with no compile-time diagnostic.
+    <Scroll direction="vertical" data-testid="stats-scroll">
+      <Stack gap={3} padding={4} data-testid="stats-page">
+        <Text data-testid="stats-total">{String(total)}</Text>
+        <Text data-testid="stats-average">{String(average)}</Text>
+        <Text data-testid="stats-high">{String(high.length)}</Text>
+        <Text data-testid="stats-curved">{String(curved.length)}</Text>
+        <SankeyChart
+          nodes={FLOW_NODES}
+          links={FLOW_LINKS}
+          height={160}
+          title="Task flow"
+          data-testid="stats-flow"
+          onSelectIndex={(hit: SankeyHitIndex) => { flowPick = hit.node }}
+        />
+        <Text data-testid="stats-flow-pick">{String(flowPick)}</Text>
+        <PlotChart
+          data={SCORE_ROWS}
+          x={(d: ScoreRow) => d.subject}
+          marks={[bars((d: ScoreRow) => d.score, { label: 'Score', color: '#0f766e' })]}
+          // #3268: pinch + pan natively (wheel + drag on the web); tap indices stay
+          // GLOBAL, which is what the pinch-then-tap device assertion relies on.
+          dataZoom={true}
+          // #3270: the range-selector presets — the engine lays the strip out on
+          // every target; a tap on 'last 1' or 'all' writes the same window.
+          zoomPresets={[
+            { label: 'last 1', count: 1 },
+            { label: 'all', count: 0 },
+          ]}
+          // #3272: the legend, whose entries toggle their series on every target.
+          showLegend={true}
+          // #3274: the navigator strip — its band and handles drive the same window.
+          navigator={true}
+          height={240}
+          title="Scores by subject"
+          data-testid="stats-bars"
+          onSelect={(i: number) => { barPick = i }}
+          onZoom={(w: ZoomWindow) =>
+            { zoomText = `${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}` }
+          }
+        />
+        <Text data-testid="stats-bars-pick">{String(barPick)}</Text>
+        <Text data-testid="stats-zoom">{zoomText}</Text>
+        <PlotChart
+          data={SCORE_ROWS}
+          x={(d: ScoreRow) => d.subject}
+          marks={[line((d: ScoreRow) => d.score, { label: 'Trend', color: '#b45309' })]}
+          // #3277: brush-only (the bar chart's dataZoom makes its brush web-only).
+          brush={true}
+          height={120}
+          data-testid="stats-brush"
+          onBrush={onBrushRange}
+        />
+        <Text data-testid="stats-brush-sel">{brushSel}</Text>
+        {/*
+        The indicator marks, on the device. `sma` lowers to the crossing
+        `smaValues`, and the `bollinger` SPREAD expands to the band plus its
+        middle line — so this chart is the only place the whole chain runs on
+        a real simulator and emulator rather than through a stub typecheck.
+
+        The band is what the assertion reads: its accessible description says
+        "upper bound" / "lower bound", which is only true if the two-channel
+        crossing worked AND the envelope arithmetic produced numbers.
+      */}
+        <PlotChart
+          data={LOAD_ROWS}
+          x={(d: WeekRow) => d.day}
+          marks={[
+            line((d: WeekRow) => d.load, { label: 'Load', color: '#0f766e' }),
+            sma((d: WeekRow) => d.load, 3, { label: 'Average' }),
+            ...bollinger((d: WeekRow) => d.load, 3, 1.5, { label: 'Envelope' }),
+          ]}
+          height={140}
+          title="Weekly load"
+          data-testid="stats-indicators"
+        />
+        <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
+  )
+}
+
+// state-tree lowers at MODULE scope only — the mirror of createI18n, which
+// lowers only inside a component. Both were snippet-proven; neither had ever
+// run in an app.
+const prefs = model({ state: { compact: false, pageSize: 20 } }).create()
+
+// @pyreon/http is metadata: createHttp + endpoint declarations live at module
+// scope and are consumed by the endpoint-resolution pre-pass, then driven by
+// useFetch inside a component.
+interface TaskDto {
+  id: string
+  title: string
+}
+interface TableRow {
+  id: string
+  label: string
+}
+// The UI-SYSTEM tier. `styled` emits real CSS on the web and lowers to native
+// view modifiers, so the SAME declaration styles on all three targets.
+//
+// NOT rocketstyle here, deliberately: its `.theme()` values only become CSS
+// through a `.styles()` bridge that calls unistyle's `makeItResponsive` (see
+// `el` in the private @pyreon/ui/components). PMTC reads `.theme()` statically
+// and emits modifiers, so a bare `.theme()` chain styles on NATIVE and renders
+// unstyled on the web — architecture, not a bug, but it means rocketstyle's
+// crossing claim covers the emit rather than one source styling everywhere.
+const Card = styled(Stack)`
+  padding: 8px;
+  background: #6b7280;
+`
+
+// attrs: the prop-defaulting HOC. `.attrs({ gap: 2 })` bakes a default onto the
+// wrapped component on every target.
+const AttrsBox = attrs({ name: 'AttrsBox', component: Stack }).attrs({ gap: 2 })
+
+// validation: the DECLARATION form is what lowers — a top-level
+// `zodSchema(z.object({…}))` emits native field validators. Nothing READS from
+// it here on purpose: the runtime surface around the declaration (inline
+// `.parse()`, async validate, the adapter's own members) stays web, so a value
+// rendered from it would be outside the crossing subset. `ToolkitSchema.fields`
+// was the first attempt and fails on BOTH toolchains — the synthesized
+// `PyreonZodSchema_*` has no such member, correctly. Carrying the declaration
+// in a real app is the whole of what crosses.
+const ToolkitSchema = zodSchema(z.object({ name: z.string().min(3), age: z.number() }))
+
+// The WEBVIEW BRIDGE, which is the mechanism four packages (charts / code /
+// flow / rich-text) ride on. Their real host pages are produced at BUILD time,
+// so they can never appear in lowered source — a BUNDLED file is their only
+// route to a device, and that is what this exercises.
+//
+// `src`, not `html`: the page ships in assets/webhost/ and is materialized by
+// `pyreon-native assets` into the place each target's resolver reads
+// (Bundle.main on iOS, assets/ on Android, the served root on web). Until that
+// pipeline existed the runtimes resolved `src` and nothing could put a file
+// there, so every WebView had to inline its whole page as a string.
+
+// rocketstyle with `.theme()` and NO `.styles()` — the chain that used to be
+// fully styled on iOS/Android and completely unstyled in a browser. It now
+// renders its theme through unistyle on the web too, so the same declaration
+// styles on all three targets.
+const RocketCard = rocketstyle()({ name: 'RocketCard', component: Element }).theme(() => ({
+  backgroundColor: '#334155',
+  padding: 8,
+}))
+
+const api = createHttp({ baseUrl: 'https://example.com' })
+const getTask = api.endpoint('GET /tasks/:id')
+
+// kinetic: a preset chain lowers to a real mount animation — the preset names
+// an animation both targets know, and the enter is driven by a synthesized
+// mount flag (a constant `show` compiles and never animates).
+const FadeIn = kinetic('div').preset('fade')
+
+// Module scope, which is where SizedMap lowers.
+//
+// @pyreon/validate and @pyreon/feature were here and are deliberately NOT:
+// both emit a type named after the schema/feature (`PyreonZodSchema_*`,
+// `PyreonFeature_*`) rather than after the const, so neither binding is
+// addressable from a component. A DECLARATION-ONLY package in an app proves
+// nothing the registry snippet does not already prove, and lint was right to
+// call the bindings dead.
+const seen = new SizedMap<string, number>({ maxEntries: 8 })
+
+// ── Toolkit screen ──
+//
+// EXISTS TO BE DEVICE-PROVEN, not to be pretty.
+//
+// A package whose registry snippet transforms and compiles is proven at SNIPPET
+// level. That is genuinely weaker than running: the two worst native bugs found
+// so far — a `.task` re-firing forever on an unstable host, and a Compose Row
+// clipping its last child off-screen — both compiled perfectly and were only
+// caught on a device. Of the packages that cross, 14 were exercised by a gated
+// app and 22 were not; this screen starts closing that.
+//
+// Every call below uses the shape the coverage registry verifies, so a change
+// that breaks one breaks both this app and the gate.
+
+function ToolkitScreen() {
+  const navigate = useNavigate()
+  // createI18n lowers only INSIDE a component body — it becomes a `remember {}`
+  // / an @State, which has no meaning at file scope.
+  const i18n = createI18n({
+    locale: 'en',
+    messages: {
+      en: { title: 'Toolkit', saved: 'Saved' },
+      de: { title: 'Werkzeuge', saved: 'Gespeichert' },
+    },
+  })
+  // Filter lives in the URL on web; on native the router's query backs it.
+  const filter = useUrlState('filter', 'all')
+  // Seeded form: self-contained on every target. `usePermissions([...])` is
+  // what PMTC lowers to a PyreonPermissions, and it now needs no provider on
+  // the web either — before that, this exact line threw in a browser.
+  // machine: a two-state toggle. `createMachine` lowers only INSIDE a component
+  // body — it becomes a `remember {}` / an @State, which has no meaning at file
+  // scope, the same rule createI18n follows.
+  const mode = createMachine({
+    initial: 'off',
+    states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
+  })
+  // storage: a persisted scalar. On native this is @AppStorage /
+  // rememberPyreonStorage; on the web it is the storage backend.
+  const theme = useStorage('toolkit-theme', 'light')
+  // hotkeys: a LITERAL shortcut + an inline zero-arg handler is the shape that
+  // lowers (SwiftUI `.keyboardShortcut` on a hidden button; a Compose focused
+  // key handler). `mod` resolves per platform.
+  // validation, used for real rather than merely declared: the schema drives a
+  // form. `zodSchema(...)` at module scope is the DECLARATION form that lowers
+  // to native field validators; wiring it into `useForm({ schema })` is what
+  // makes it do something a test can observe.
+  const schemaForm = useForm({
+    initialValues: { name: '', age: 0 },
+    schema: ToolkitSchema,
+    onSubmit: (_values) => {
+      toast('valid')
+    },
+  })
+  // Forward: `data` is pushed into the live page without reloading it.
+  // Reverse: the page's echo arrives here and lands in native UI.
+  let bridgeEcho = state('none')
+  let hotkeyHits = state(0)
+  useHotkey('mod+s', () => {
+    hotkeyHits = hotkeyHits + 1
+  })
+  const perms = usePermissions(['tasks.write'])
+  // table: `createTableState` is the dependency-free half that lowers to the
+  // native PyreonTableState engine. `useTable` (the TanStack row model) stays
+  // web — this is the documented crossing surface, not a workaround.
+  let tableRows = state.raw<TableRow[]>([{ id: '1', label: 'Ada' }])
+  const table = createTableState({
+    data: () => tableRows,
+    columns: [{ id: 'label', accessor: (r: TableRow) => r.label }],
+    pageSize: 10,
+  })
+  // sync: a CRDT-backed counter. `doc` must be a binding — syncedSignal reads
+  // it, and omitting it is invalid on the web too.
+  const doc = new PyreonCrdtDoc('peer-1')
+  const synced = syncedSignal({ doc, key: 'toolkitCount', initial: 0 })
+  // sync, part 2: the MAP HANDLE and an actual CONVERGENCE, both device-proven.
+  //
+  // `doc.getMap(name)` is the shape the web contract documents -- you hold a map
+  // and call it -- and until it existed natively this lowered to a call on a
+  // method that was not there, silently.
+  //
+  // The assertion proves the ENGINE, not the facade: the key is written ONLY on
+  // `peer`, so `doc` can only know it by having applied `peer`'s ops. Reading
+  // back one's own write would pass against a plain Map with no CRDT in it.
+  // `has` is deliberate too -- it returns a plain Bool on web, Swift and Kotlin
+  // alike, whereas `get` returns `unknown` on web and `PyreonScalar?` natively,
+  // which does not stringify the same way on all three.
+  //
+  // These MUST live in onMount: a bare component-body statement is not lowered
+  // and is DROPPED (PMTC says so, by name). Only declarations, onMount and the
+  // return survive.
+  // crash reporting: lowers fully on both targets (recordError / breadcrumb /
+  // hadCrash / lastCrash / clear) and `start()` is auto-wired by both emits --
+  // and until now NO example used it, so no device gate had ever compiled it,
+  // let alone run it. A capability absent from every example is verified by
+  // nothing, however many gates exist.
+  //
+  // `hadCrash` reflects the PREVIOUS session, so it cannot be asserted in the
+  // same run that records: iOS proves it across a real terminate+relaunch, and
+  // Android reads the persisted file from the test process. Activity recreation
+  // would NOT do -- it keeps the process, so a persistence claim asserted that
+  // way passes against a purely in-memory store.
+  const crash = useCrashReporter()
+  let crashNote = state('idle')
+  const peer = new PyreonCrdtDoc('peer-2')
+  let crdtMerged = state('pending')
+  onMount(() => {
+    peer.getMap('room').set('title', 'from-peer')
+    doc.applyOps(peer.encodeState())
+    crdtMerged = String(doc.getMap('room').has('title'))
+  })
+  // http: the endpoint declared above, driven through useFetch.
+  // TYPED: an untyped useFetch lowers to `decode(Any.self, …)` on Swift, which
+  // does not round-trip — the compiler says so by name.
+  const taskReq = useFetch<TaskDto>(getTask({ params: { id: '1' } }))
+  // dnd: reorder over the same signal the rx chain reads. `activeKey` is the
+  // drag state the native runtime exposes (the TS-side items array is input,
+  // not a readable member of PyreonSortableState).
+  const sortable = useSortable({
+    items: () => nums(),
+    by: (n: number) => String(n),
+    onReorder: (next: number[]) => nums.set(next),
+  })
+  // rx: a derived chain over a signal, which lowers to chained computeds.
+  let nums = state.raw<number[]>([1, 2, 3, 4])
+  const evens = filter_rx(signalOf<typeof nums>(nums), (x: number) => x % 2 === 0)
+  const doubled = map(evens, (x: number) => x * 2)
+  // query: the same shape the registry verifies, so the gate and this app move
+  // together.
+  const q = useQuery<string>(() => ({
+    queryKey: ['toolkit', 'greeting'],
+    queryFn: () => fetch('https://example.com/greeting').then((r) => r.text()),
+  }))
+  return (
+    <PyreonUI>
+      {/* Scrollable, because this screen now carries ~20 packages' readouts and
+        overflows a phone viewport. Without it XCUITest fails the first tap
+        below the fold with `kAXScrollToVisibleAction` — it cannot scroll a
+        container that does not scroll. Found by the iOS device gate, and it
+        is a real app bug rather than a test artifact: a user could not reach
+        those controls either. */}
+      <Scroll direction="vertical" data-testid="toolkit-scroll">
+        <Stack gap={3} padding={4} data-testid="toolkit-page">
+          <Text data-testid="toolkit-title">{i18n.t('title')}</Text>
+          <Text data-testid="toolkit-filter">{filter()}</Text>
+          <Button
+            onPress={() => {
+              // toast + announce are the two feedback channels a real app uses on
+              // every mutation, and both lower to their native runtimes.
+              toast(i18n.t('saved'))
+              announce(i18n.t('saved'))
+            }}
+            data-testid="toolkit-save"
+          >
+            Save
+          </Button>
+          <Button onPress={() => filter.set('done')} data-testid="toolkit-filter-done">
+            Only done
+          </Button>
+          <Text data-testid="toolkit-pagesize">{String(prefs.pageSize())}</Text>
+          <Text data-testid="toolkit-evens">{String(doubled().length)}</Text>
+          <Text data-testid="toolkit-query">{q.data}</Text>
+          <Text data-testid="toolkit-cache">{String(seen.size)}</Text>
+          <Text data-testid="toolkit-perm">{String(perms('tasks.write'))}</Text>
+          <Card data-testid="toolkit-card">
+            <Text data-testid="toolkit-card-text">styled</Text>
+          </Card>
+          <AttrsBox data-testid="toolkit-attrs">
+            <Text data-testid="toolkit-attrs-text">attrs</Text>
+          </AttrsBox>
+          <Container data-testid="toolkit-grid">
+            <Row>
+              <Col>
+                <Text data-testid="toolkit-grid-cell">grid</Text>
+              </Col>
+            </Row>
+          </Container>
+          <Text data-testid="toolkit-hotkey">{String(hotkeyHits)}</Text>
+          <WebView
+            src="bridge.html"
+            data={'ping'}
+            onMessage={(m) => { bridgeEcho = m }}
+            data-testid="toolkit-webview"
+          />
+          <Text data-testid="toolkit-bridge">{bridgeEcho}</Text>
+          <Field
+            value={schemaForm.values().name}
+            onChangeText={(v) => schemaForm.setFieldValue('name', v)}
+            placeholder="Name"
+            data-testid="toolkit-schema-name"
+          />
+          <Button onPress={() => schemaForm.handleSubmit()} data-testid="toolkit-schema-submit">
+            Check
+          </Button>
+          <Text data-testid="toolkit-schema-valid">{String(schemaForm.isValid())}</Text>
+          <RocketCard data-testid="toolkit-rocket">
+            <Text data-testid="toolkit-rocket-text">rocket</Text>
+          </RocketCard>
+          <Element gap={2} data-testid="toolkit-element">
+            <Text data-testid="toolkit-el-a">a</Text>
+            <Text data-testid="toolkit-el-b">b</Text>
+          </Element>
+          <Text data-testid="toolkit-machine">{mode()}</Text>
+          <Text data-testid="toolkit-storage">{theme()}</Text>
+          <Button onPress={() => mode.send('TOGGLE')} data-testid="toolkit-machine-toggle">
+            Toggle mode
+          </Button>
+          <Text data-testid="toolkit-synced">{String(synced())}</Text>
+          <Text data-testid="toolkit-crdt-map">{crdtMerged}</Text>
+          <Text data-testid="toolkit-crash-had">{String(crash.hadCrash)}</Text>
+          <Text data-testid="toolkit-crash-note">{crashNote}</Text>
+          <Button
+            onPress={() => {
+              crash.breadcrumb('toolkit-tap')
+              crash.recordError('device-proof')
+              crashNote = 'survived'
+            }}
+            data-testid="toolkit-crash-record"
+          >
+            Record error
+          </Button>
+          <Button onPress={() => crash.clear()} data-testid="toolkit-crash-clear">
+            Clear crash
+          </Button>
+          <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
+          <Text data-testid="toolkit-http">{taskReq.data}</Text>
+          <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>
+          <FadeIn>
+            <Text data-testid="toolkit-fade">animated</Text>
+          </FadeIn>
+          <Button onPress={() => navigate('/tasks')} data-testid="toolkit-back">
+            Back to tasks
+          </Button>
+        </Stack>
+      </Scroll>
+    </PyreonUI>
+  )
+}
+
+// ── App root ──
+
+export function TasksApp() {
+  // The guard reads the SAME store the screens mutate — `beforeEnter`
+  // compiles into the dispatcher's inline conditional on each target,
+  // and the web router evaluates it at navigation time. Unauthed
+  // navigation to a gated route is denied (native renders the
+  // catch-all denial; web cancels the navigation).
+  //
+  // `mode: 'history'` is web-only; PMTC reads only `routes` and the
+  // native navigation stacks ignore it (same note as router-demo).
+  // Bound, not inlined: the docs' shape, and the one PMTC recognizes as the
+  // client declaration (it emits nothing). Inlined into the prop it is just a
+  // class construction to the parser, which warns by name — correctly in
+  // general, misleadingly here, since a transparent provider drops the attr.
+  const queryClient = new QueryClient()
+  const router = createRouter({
+    mode: 'history',
+    routes: [
+      { path: '/', component: LoginPage },
+      { path: '/login', component: LoginPage },
+      {
+        path: '/tasks',
+        component: TasksPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/tasks/:id',
+        component: TaskDetailPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/quotes',
+        component: QuotesPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/vocab',
+        component: VocabScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/toolkit',
+        component: ToolkitScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/streams',
+        component: StreamsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/lifecycle',
+        component: LifecycleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/stats',
+        component: StatsPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/dashboard',
+        component: DashboardPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/gallery',
+        component: GalleryPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/flow',
+        component: FlowScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/flow-scale',
+        component: FlowScaleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+    ],
+  })
+
+  return (
+    // `<QueryClientProvider>` is MANDATORY on the web — `useQuery` reads its
+    // client from it and throws `No QueryClient found` without one. It is
+    // transparent on native: `useQuery` lowers to a self-contained PyreonQuery,
+    // so the provider emits only its children and the client binding emits
+    // nothing at all. Carrying it here is what makes ONE source legal on all
+    // three targets; before PMTC lowered it, this exact line emitted a SwiftUI
+    // view that exists on neither platform, silently.
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router}>
+        <RouterView />
+        {/* `toast()` writes to a store; SOMETHING has to render it. Without a
+            <Toaster> the call silently does nothing on the web, while the
+            native targets show it — so a package that looked exercised was
+            only half-proven. PMTC lowers this tag on both targets. */}
+        <Toaster />
+      </RouterProvider>
+    </QueryClientProvider>
+  )
+}

@@ -37,14 +37,17 @@ describe('plugin boundary', () => {
 // boundary: the only door into the compiler is the published `plugin-api` subpath.
 // The charts plugin is the first-party instance; the same rule holds for any plugin
 // shipped by a library.
-describe('package-owned plugin boundary (@pyreon/charts)', () => {
-  const CHARTS_PLUGIN = join(SRC, '../../../fundamentals/charts/src/native-plugin')
+describe.each([
+  ['@pyreon/charts', 'charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
+  ['@pyreon/flow', 'flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
+] as const)('package-owned plugin boundary (%s)', (_pkg, dirName, expected) => {
+  const CHARTS_PLUGIN = join(SRC, `../../../fundamentals/${dirName}/src/native-plugin`)
   const COMPILER_SPECIFIER = /['"]@pyreon\/native-compiler(?:\/([^'"]*))?['"]/
   const COMPILER_RELATIVE = /['"](?:\.\.\/)+native\/compiler\//
   const charts = walk(CHARTS_PLUGIN).filter((f) => !f.includes('tests/'))
 
   it('finds the plugin sources (a vacuous scan would pass on nothing)', () => {
-    expect(charts).toEqual(expect.arrayContaining(['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']))
+    expect(charts).toEqual(expect.arrayContaining([...expected]))
   })
 
   it.each(charts)('%s reaches the compiler only through @pyreon/native-compiler/plugin-api', (file) => {

@@ -4,8 +4,8 @@
 // gap-free <Stack>. Everything else keeps the warning that names <FlowWebView>.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const DOM_WARNING = 'is a DOM/SVG element with no native lowering'
 

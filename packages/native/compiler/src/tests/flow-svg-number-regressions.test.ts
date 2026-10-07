@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { planFlowSvg } from '../flow-svg'
+import { planFlowSvg } from '../../../../fundamentals/flow/src/native-plugin/svg'
 import { parsePyreon } from '../parse'
 import type { ExprIR } from '../types'
 
@@ -11,6 +11,8 @@ function plan(value: string | number) {
   ).components[0]!
   return planFlowSvg(component.returnExpr as Extract<ExprIR, { kind: 'jsx-element' }>)
 }
+// Both entries are BUILT output (`lib/`): a spawned worker reads what a consumer would, so a source edit is
+// invisible here until `bun scripts/bootstrap.ts` rebuilds.
 const ENTRY = fileURLToPath(new URL('../../lib/index.js', import.meta.url))
 
 describe('native SVG number parsing', () => {
@@ -65,7 +67,9 @@ describe('native SVG number parsing', () => {
       // Drive the published API and actual Flow renderer; a timeout confines the
       // broken regex to a child process instead of hanging the test runner.
       const script = `
-      import {transform} from ${JSON.stringify(new URL('../../lib/index.js', import.meta.url).href)};
+      import {createCompiler} from ${JSON.stringify(new URL('../../lib/index.js', import.meta.url).href)};
+      import {flowPlugin} from ${JSON.stringify(new URL('../../../../fundamentals/flow/lib/native-plugin.js', import.meta.url).href)};
+      const {transform} = createCompiler({discovered:[flowPlugin]});
       const value = ${JSON.stringify(kind)} === 'digits' ? '0'.repeat(200000)+'!' : '0'+' '.repeat(200000)+'!';
       const source = "import {createFlow,Flow,type NodeComponentProps} from '@pyreon/flow';"+
         'function Icon(props:NodeComponentProps){return <svg width={'+JSON.stringify(value)+'} height={24}><circle r={4}/></svg>}'+

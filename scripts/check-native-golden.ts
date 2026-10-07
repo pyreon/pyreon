@@ -12,7 +12,7 @@
  * (code + warnings) per entry against a committed golden file:
  *
  *   - every `packages/native/compiler/src/fixtures/*.tsx`
- *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` and `packages/fundamentals/charts/native-golden/*.tsx`
+ *   - every `packages/native/compiler/src/golden-fixtures/*.tsx` and `packages/fundamentals/{charts,flow}/native-golden/*.tsx`
  *     (shapes that warn by design; the chart ones are owned by `@pyreon/charts`, whose plugin they exercise)
  *   - every shared example source `examples/native-STAR/src/*.tsx` (the
  *     `entry-client.tsx` web bootstraps are not PMTC input)
@@ -144,6 +144,7 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
   const goldenOnlyDirs = [
     join(root, 'packages/native/compiler/src/golden-fixtures'),
     join(root, 'packages/fundamentals/charts/native-golden'),
+    join(root, 'packages/fundamentals/flow/native-golden'),
   ]
   const goldenOnly = goldenOnlyDirs
     .flatMap((dir) => readdirOrEmpty(dir).filter((n) => n.endsWith('.tsx')).map((n) => ({ dir, n })))

@@ -19,7 +19,7 @@
  * An untracked name keeps the claim.
  */
 
-import type { EmitContext, SwiftEmitContext } from './emit-context'
+import type { KotlinEmitContext, SwiftEmitContext } from './emit-context'
 import type { JsxElementIR } from './types'
 
 /** What a retag may do besides returning the new element: report a warning against the tag the author wrote. */
@@ -41,17 +41,27 @@ export interface ElementLowering {
   /** Emit target code. A target with no function here falls through to the generic path. */
   readonly emit?: {
     swift?(el: JsxElementIR, ctx: SwiftEmitContext): string
-    kotlin?(el: JsxElementIR, ctx: EmitContext): string
+    kotlin?(el: JsxElementIR, ctx: KotlinEmitContext): string
   }
   /**
    * The tags may be the base of `styled()` / `rocketstyle()` / `attrs()` (they
    * lower to a canonical primitive, so the style connector applies unchanged).
    */
   readonly styleBase?: boolean
+  /**
+   * The tags are also claimed under an ALIAS: `import { FlowWebView as Hosted }`
+   * lowers `<Hosted>` the same as `<FlowWebView>`. Off by default — a renamed
+   * import of a layout primitive is usually the author's own component.
+   */
+  readonly aliasable?: boolean
 }
 
-/** The guard the emitters pass: is `tag` eligible to be claimed for `module`? */
-export type ElementClaimGuard = (tag: string, module: string) => boolean
+/**
+ * The guard the emitters pass: is `tag` eligible to be claimed for `module`?
+ * `expectedImport` is the symbol the tag must have been imported as (default:
+ * the tag itself); it differs from `tag` only for an aliased import.
+ */
+export type ElementClaimGuard = (tag: string, module: string, expectedImport?: string) => boolean
 
 export interface RegisteredElementLowering {
   readonly lowering: ElementLowering
@@ -62,8 +72,12 @@ export interface RegisteredElementLowering {
 /** One compiler instance's element lowerings, with the lookups the emitters need. */
 export interface ElementRegistry {
   readonly entries: readonly RegisteredElementLowering[]
-  /** The lowering that claims `tag` when `guard` accepts `(tag, module)`, or `undefined`. */
-  find(tag: string, guard: ElementClaimGuard): ElementLowering | undefined
+  /**
+   * The lowering that claims `tag` when `guard` accepts `(tag, module)`, or
+   * `undefined`. `importedAs` is the symbol `tag` was imported as, when it is an
+   * alias; only an `aliasable` lowering claims through it.
+   */
+  find(tag: string, guard: ElementClaimGuard, importedAs?: string): ElementLowering | undefined
   /** True when some lowering claims `name` (the parser then records where it was imported from). */
   hasTag(name: string): boolean
   /** True when `name` is a tag a lowering marks usable as a style base. */
@@ -110,9 +124,16 @@ export function createElementRegistry(
   }
   return Object.freeze<ElementRegistry>({
     entries,
-    find(tag, guard) {
+    find(tag, guard, importedAs) {
       for (const { lowering } of entries) {
         if (lowering.tags.includes(tag) && guard(tag, lowering.module)) return lowering
+      }
+      if (importedAs !== undefined && importedAs !== tag) {
+        for (const { lowering } of entries) {
+          if (lowering.aliasable === true && lowering.tags.includes(importedAs) && guard(tag, lowering.module, importedAs)) {
+            return lowering
+          }
+        }
       }
       return undefined
     },

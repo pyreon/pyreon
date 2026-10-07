@@ -25,18 +25,46 @@ export type {
 } from './plugin'
 
 export type * from './types'
-export type { EmitContext, EmitTarget, HostStateSlot, StaticAttrValue, SwiftEmitContext } from './emit-context'
 export type {
+  ComponentInfo,
+  EmitContext,
+  EmitTarget,
+  HostStateSlot,
+  KotlinEmitContext,
+  StaticAttrValue,
+  StructRegistry,
+  SwiftEmitContext,
+  WebViewFacade,
+} from './emit-context'
+export type {
+  AstNode,
   CallRecognizer,
   CallSite,
   DeclEmitter,
+  DeclLifecycle,
   ExtDeclSpec,
   MemberCallLowering,
   MemberCallSite,
   ParseContext,
 } from './call-lowering'
 export type { ElementLowering, RetagContext } from './element-lowering'
-export type { ParseRefinement, ParseRefinementTarget } from './parse-extensions'
+export type { ParseRefinement, ParseRefinementTarget, PropsTypeContext, PropsTypeResolver } from './parse-extensions'
+export type {
+  CallExprIR,
+  EmitPreparation,
+  EmitPreparationInput,
+  EmitPreparationResult,
+  FunctionLowering,
+  FunctionSite,
+  IdentifierLowering,
+  IntrinsicLowering,
+  MemberExprIR,
+  MemberReadLowering,
+  ReceiverAssignSite,
+  ReceiverLowering,
+  ReceiverSite,
+  ReceiverTargetLowering,
+} from './expr-lowering'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export type { UnloweredSpec } from './unlowered-modules'
@@ -44,6 +72,6 @@ export type { ServiceDescriptor } from './services'
 export type { PluginScope } from './plugin-scope'
 
 export { forEachExpr } from './expr-walk'
-export { substituteIdentifier } from './expr-utils'
+export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export { kotlinIdent, swiftIdent } from './identifier-safety'
 export { kotlinStr, swiftStr } from './string-literals'

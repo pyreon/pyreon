@@ -17,7 +17,7 @@
 // cannot drift from the docs tier table.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const importing = (pkg: string, sym: string) => `
   import { Stack } from '@pyreon/primitives'

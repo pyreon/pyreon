@@ -5,9 +5,9 @@
 // and the paint follows the browser's rules for an unstyled SVG path.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { resolveFlowPathPaint } from '../flow-path-paint'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { resolveFlowPathPaint } from '../../../../fundamentals/flow/src/native-plugin/path-paint'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const APP = `
   import { createFlow, Flow, type EdgeComponentProps } from '@pyreon/flow'

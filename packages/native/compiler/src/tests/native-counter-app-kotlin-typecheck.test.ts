@@ -30,8 +30,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { isKotlincAvailable } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const COUNTER = join(HERE, '../../../../../examples/native-counter-ios/src/Counter.tsx')

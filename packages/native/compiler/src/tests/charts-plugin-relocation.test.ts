@@ -36,6 +36,7 @@ describe('@pyreon/native-compiler/plugin-api', () => {
     expect(Object.keys(pluginApi).sort()).toEqual([
       'NATIVE_COMPILER_PLUGIN_API_VERSION',
       'forEachExpr',
+      'isNumericLiteralOrNegation',
       'kotlinIdent',
       'kotlinStr',
       'substituteIdentifier',

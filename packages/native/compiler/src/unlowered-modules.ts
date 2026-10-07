@@ -23,6 +23,12 @@ export interface UnloweredModule {
    * much larger scale, in the two most-used packages in the framework.
    */
   readonly unsupported?: ReadonlySet<string>
+  /**
+   * Exports the emitters DROP with their own named warning at the use site
+   * (a web-only component). The blanket "reproduced verbatim … the native build
+   * fails" line would be false for them, so it is skipped.
+   */
+  readonly dropped?: ReadonlySet<string> | undefined
 }
 
 /** What a plugin supplies per module (`CompilerPlugin.unlowered`); plain data, so it survives a JSON round trip. */
@@ -30,6 +36,8 @@ export interface UnloweredSpec {
   readonly advice: string
   /** Exports that DO lower and must stay silent. */
   readonly supported?: readonly string[] | undefined
+  /** Exports the emitters drop with their own named warning (so the blanket "verbatim" line is skipped for them). */
+  readonly dropped?: readonly string[] | undefined
 }
 
 export interface RegisteredUnlowered extends UnloweredModule {
@@ -63,6 +71,7 @@ export function createUnloweredRegistry(
       out.set(module, {
         advice: spec.advice,
         ...(spec.supported !== undefined ? { supported: new Set(spec.supported) } : {}),
+        ...(spec.dropped !== undefined ? { dropped: new Set(spec.dropped) } : {}),
         owner: plugin.name,
       })
     }

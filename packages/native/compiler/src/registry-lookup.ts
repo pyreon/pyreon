@@ -13,10 +13,19 @@ import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ScopeProvider } from './scope-provider'
 import type { ServiceDescriptor } from './services'
-import { emitExtDecl, lowerMemberCall } from './call-lowering'
+import { emitExtDecl, lowerMemberCall, type DeclLifecycle } from './call-lowering'
+import {
+  rootReceiverName,
+  type EmitPreparation,
+  type FunctionLowering,
+  type IdentifierLowering,
+  type IntrinsicLowering,
+  type MemberReadLowering,
+  type ReceiverLowering,
+} from './expr-lowering'
 import type { PluginScope } from './plugin-scope'
 import type { UnloweredModule } from './unlowered-modules'
-import type { EmitContext } from './emit-context'
+import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
 import type { DeclIR, ExprIR, ExtDecl } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
@@ -36,7 +45,10 @@ export function allServices(): readonly ServiceDescriptor[] {
  */
 export function hookClaimsSource(hook: string, source: string): boolean {
   const registries = activeRegistries()
-  const modules = registries.services.get(hook)?.modules ?? registries.calls.calls.get(hook)?.modules
+  const modules =
+    registries.services.get(hook)?.modules ??
+    registries.calls.calls.get(hook)?.modules ??
+    registries.exprs.functions.get(hook)?.modules
   return modules?.some((m) => source === m || source.startsWith(`${m}/`)) ?? false
 }
 
@@ -44,8 +56,9 @@ export function hookClaimsSource(hook: string, source: string): boolean {
 export function findElementLowering(
   tag: string,
   guard: ElementClaimGuard,
+  importedAs?: string,
 ): ElementLowering | undefined {
-  return activeRegistries().elements.find(tag, guard)
+  return activeRegistries().elements.find(tag, guard, importedAs)
 }
 
 /** True when some registered lowering or colour-scope provider claims `name` (the parser then records where it was imported from). */
@@ -150,4 +163,267 @@ export function hashServiceDeclsAsLegacy(_key: string, value: unknown): unknown 
     }
   }
   return value
+}
+
+/** The lifecycle contributions of an `ext` declaration's type, or `undefined` (pure state). */
+export function extDeclLifecycle(d: ExtDecl): DeclLifecycle | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.lifecycle
+}
+
+/**
+ * The receiver lowering for `expr` — a call, member read or assignment target
+ * whose chain is ROOTED at a binding one of a plugin's declarations created —
+ * with that declaration, or `undefined`. `undefined` is the common case and
+ * costs one array-length check when no plugin registered a receiver.
+ */
+export function findReceiverLowering(
+  expr: ExprIR,
+  scope: PluginScope,
+): { readonly lowering: ReceiverLowering; readonly receiver: ExtDecl } | undefined {
+  const receivers = activeRegistries().exprs.receivers
+  if (receivers.size === 0) return undefined
+  const root = rootReceiverName(expr)
+  if (root === undefined) return undefined
+  const receiver = scope.declByName(root)
+  if (receiver === undefined) return undefined
+  const lowering = receivers.get(receiver.plugin)?.get(receiver.type)
+  return lowering === undefined ? undefined : { lowering, receiver }
+}
+
+/**
+ * The function lowering a plugin registered for the IR callee `name` — the
+ * claimed name, or the `irName` the parser rewrote it to — with the claimed
+ * name, or `undefined`.
+ */
+export function findFunctionLowering(name: string): { readonly lowering: FunctionLowering; readonly claimed: string } | undefined {
+  const exprs = activeRegistries().exprs
+  const claimed = exprs.functions.has(name) ? name : exprs.functionsByIrName.get(name)
+  if (claimed === undefined) return undefined
+  const entry = exprs.functions.get(claimed)
+  return entry === undefined ? undefined : { lowering: entry.lowering, claimed }
+}
+
+/** The IR spelling the parser gives a call to the claimed function `name`, when its plugin asked for one. */
+export function functionIrName(name: string): string | undefined {
+  return activeRegistries().exprs.functions.get(name)?.lowering.irName
+}
+
+/** The identifier lowering a plugin registered for `name`, or `undefined`. */
+export function findIdentifierLowering(name: string): IdentifierLowering | undefined {
+  return activeRegistries().exprs.identifiers.get(name)?.lowering
+}
+
+/** The plugins' member-read lowerings, in plugin order (empty for the vast majority of compilations). */
+export function memberReadLowerings(): readonly MemberReadLowering[] {
+  return activeRegistries().exprs.memberReads.map((entry) => entry.lowering)
+}
+
+/** The intrinsic lowerings that name `tag`, in plugin order (empty for every tag but a plugin's own). */
+export function findIntrinsicLowerings(tag: string): readonly IntrinsicLowering[] {
+  const exprs = activeRegistries().exprs
+  if (!exprs.intrinsicTags.has(tag)) return []
+  return exprs.intrinsics.filter((entry) => entry.lowering.tags.includes(tag)).map((entry) => entry.lowering)
+}
+
+/** Every plugin's per-file preparation, in plugin order. */
+export function emitPreparations(): readonly { readonly owner: string; readonly prepare: EmitPreparation }[] {
+  return activeRegistries().exprs.preparations
+}
+
+/** The sentences loaded plugins append to the "DOM/SVG element has no native lowering" warning. */
+export function intrinsicElementAdvice(): readonly string[] {
+  return activeRegistries().exprs.intrinsicAdvice
+}
+
+/** The props type resolver a plugin registered for `name`, or `undefined`. */
+export function findPropsTypeResolver(name: string) {
+  return activeRegistries().propsTypes.get(name)?.resolver
+}
+
+type Target = 'swift' | 'kotlin'
+
+/**
+ * Lower a call or member read ROOTED at a binding a plugin's declaration
+ * created (`flow.nodes.set(x)`), through that plugin's receiver lowering;
+ * `undefined` when no plugin owns the root or the plugin declined.
+ */
+export function lowerPluginReceiver(
+  expr: Extract<ExprIR, { kind: 'call' | 'member' }>,
+  target: 'swift',
+  scope: PluginScope,
+  ctx: () => SwiftEmitContext,
+): string | undefined
+export function lowerPluginReceiver(
+  expr: Extract<ExprIR, { kind: 'call' | 'member' }>,
+  target: 'kotlin',
+  scope: PluginScope,
+  ctx: () => KotlinEmitContext,
+): string | undefined
+export function lowerPluginReceiver(
+  expr: Extract<ExprIR, { kind: 'call' | 'member' }>,
+  target: Target,
+  scope: PluginScope,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string | undefined {
+  const found = findReceiverLowering(expr, scope)
+  if (found === undefined) return undefined
+  const { lowering, receiver } = found
+  const site =
+    expr.kind === 'call'
+      ? ({ kind: 'call', expr, receiver } as const)
+      : ({ kind: 'member', expr, receiver } as const)
+  return target === 'swift'
+    ? lowering.swift?.expr?.(site, ctx() as SwiftEmitContext)
+    : lowering.kotlin?.expr?.(site, ctx() as KotlinEmitContext)
+}
+
+/**
+ * The value operand of `<receiver>.<path> <op> <value>` as a plugin that owns
+ * the receiver spells it (`Double(x)`), or `undefined` to keep the emitter's own.
+ */
+export function lowerPluginAssignValue(
+  assign: { readonly target: ExprIR; readonly op: string; readonly value: ExprIR; readonly emitted: string },
+  target: 'swift',
+  scope: PluginScope,
+  ctx: () => SwiftEmitContext,
+): string | undefined
+export function lowerPluginAssignValue(
+  assign: { readonly target: ExprIR; readonly op: string; readonly value: ExprIR; readonly emitted: string },
+  target: 'kotlin',
+  scope: PluginScope,
+  ctx: () => KotlinEmitContext,
+): string | undefined
+export function lowerPluginAssignValue(
+  assign: { readonly target: ExprIR; readonly op: string; readonly value: ExprIR; readonly emitted: string },
+  target: Target,
+  scope: PluginScope,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string | undefined {
+  if (assign.target.kind !== 'member') return undefined
+  const found = findReceiverLowering(assign.target, scope)
+  if (found === undefined) return undefined
+  const site = { target: assign.target, op: assign.op, value: assign.value, emitted: assign.emitted, receiver: found.receiver }
+  return target === 'swift'
+    ? found.lowering.swift?.assignValue?.(site, ctx() as SwiftEmitContext)
+    : found.lowering.kotlin?.assignValue?.(site, ctx() as KotlinEmitContext)
+}
+
+/** Lower a plain `name(args)` call through the plugin that claims `name`, or `undefined`. */
+export function lowerPluginFunction(
+  name: string,
+  args: readonly ExprIR[],
+  target: 'swift',
+  ctx: () => SwiftEmitContext,
+): string | undefined
+export function lowerPluginFunction(
+  name: string,
+  args: readonly ExprIR[],
+  target: 'kotlin',
+  ctx: () => KotlinEmitContext,
+): string | undefined
+export function lowerPluginFunction(
+  name: string,
+  args: readonly ExprIR[],
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string | undefined {
+  const found = findFunctionLowering(name)
+  if (found === undefined) return undefined
+  const site = { name: found.claimed, args }
+  return target === 'swift'
+    ? found.lowering.swift?.(site, ctx() as SwiftEmitContext)
+    : found.lowering.kotlin?.(site, ctx() as KotlinEmitContext)
+}
+
+/** Lower a bare identifier a plugin names (`DEFAULT_NODE_WIDTH`), or `undefined`. */
+export function lowerPluginIdentifier(
+  name: string,
+  target: 'swift',
+  ctx: () => SwiftEmitContext,
+): string | undefined
+export function lowerPluginIdentifier(
+  name: string,
+  target: 'kotlin',
+  ctx: () => KotlinEmitContext,
+): string | undefined
+export function lowerPluginIdentifier(
+  name: string,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string | undefined {
+  const lowering = findIdentifierLowering(name)
+  if (lowering === undefined) return undefined
+  return target === 'swift'
+    ? lowering.swift?.(name, ctx() as SwiftEmitContext)
+    : lowering.kotlin?.(name, ctx() as KotlinEmitContext)
+}
+
+/** Lower a member read through the plugins' shape-based member-read lowerings, or `undefined`. */
+export function lowerPluginMemberRead(
+  e: Extract<ExprIR, { kind: 'member' }>,
+  target: 'swift',
+  ctx: () => SwiftEmitContext,
+): string | undefined
+export function lowerPluginMemberRead(
+  e: Extract<ExprIR, { kind: 'member' }>,
+  target: 'kotlin',
+  ctx: () => KotlinEmitContext,
+): string | undefined
+export function lowerPluginMemberRead(
+  e: Extract<ExprIR, { kind: 'member' }>,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string | undefined {
+  for (const lowering of memberReadLowerings()) {
+    const out =
+      target === 'swift'
+        ? lowering.swift?.(e, ctx() as SwiftEmitContext)
+        : lowering.kotlin?.(e, ctx() as KotlinEmitContext)
+    if (out !== undefined) return out
+  }
+  return undefined
+}
+
+/**
+ * Lower a lowercase DOM tag through the plugins that claim it while their
+ * predicate holds (`<path>` inside a flow renderer), or `undefined` to leave it
+ * to the core. `undefined` is the common case and costs one `Set.has`.
+ */
+export function lowerPluginIntrinsic(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: 'swift',
+  ctx: () => SwiftEmitContext,
+): string | undefined
+export function lowerPluginIntrinsic(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: 'kotlin',
+  ctx: () => KotlinEmitContext,
+): string | undefined
+export function lowerPluginIntrinsic(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): string | undefined {
+  for (const lowering of findIntrinsicLowerings(el.tag)) {
+    const context = ctx()
+    if (!lowering.applies(context)) continue
+    const out =
+      target === 'swift'
+        ? lowering.emit.swift?.(el, context as SwiftEmitContext)
+        : lowering.emit.kotlin?.(el, context as KotlinEmitContext)
+    if (out !== undefined) return out
+  }
+  return undefined
+}
+
+/** The Swift modifier lines / Compose effect lines the `ext` declaration `d` contributes to its component's lifecycle. */
+export function pluginLifecycleLines(d: ExtDecl, target: Target, ctx: EmitContext): readonly string[] {
+  const lifecycle = extDeclLifecycle(d)
+  if (lifecycle === undefined) return []
+  return (target === 'swift' ? lifecycle.swift?.(d, ctx) : lifecycle.kotlin?.(d, ctx)) ?? []
+}
+
+/** True when `d` is an `ext` declaration whose type needs a stable host view on Swift. */
+export function pluginNeedsStableHost(d: DeclIR): boolean {
+  return d.kind === 'ext' && extDeclLifecycle(d)?.stableHost === true
 }

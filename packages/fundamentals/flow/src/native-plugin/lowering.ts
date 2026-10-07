@@ -11,7 +11,7 @@
  */
 
 /** Signal/Computed reads that lower to native properties (parens dropped). */
-import type { ExprIR, TypeIR } from './types'
+import type { ExprIR, TypeIR } from '@pyreon/native-compiler/plugin-api'
 
 export function resolveStaticFlowRendererMap(
   expression: ExprIR | undefined,
@@ -545,3 +545,13 @@ export function addEdgeDropWarnings(
   }
   return out
 }
+
+/**
+ * A native Flow `<path>` with no `d`. Any `d` lowers: a path-helper result or
+ * the connection line's `path()` keeps its segments, and any other string is
+ * SVG path data the runtime parses (`PyreonFlowPathResult(svgPath:)` /
+ * `pyreonFlowPathResultFromSvg`).
+ */
+export const FLOW_ARBITRARY_PATH_WARNING =
+  'A native Flow <path> needs a `d` attribute: path data, a path helper result (`get*Path({...}).path`), ' +
+  'or the custom connection line `path()` accessor. Without one there is nothing to draw, so it was dropped.'

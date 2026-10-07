@@ -35,7 +35,7 @@
 // iOS. Device evidence covers the path the example takes, not the API surface.
 
 import { describe, expect, it } from 'vitest'
-import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { flowPlugin, transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { nativeLoweredHooks } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
@@ -220,8 +220,11 @@ describe('every hook claimed to lower natively type-checks on both targets', () 
   it('claims coverage for nothing outside the allowlist', () => {
     // The inverse guard — a stale entry here would inflate the apparent
     // coverage of a hook the compiler no longer claims to lower.
+    // A hook a discovered plugin claims (`useFlow`) is not in the core allowlist by design; the
+    // plugin's own `calls` is its authority, asserted here so the exemption cannot go stale.
+    const pluginOwned = (n: string) => Object.hasOwn(flowPlugin.calls ?? {}, n)
     const stale = [...USAGES.map(([n]) => n), ...EXCLUDED.keys()].filter(
-      (n) => !NATIVE_LOWERED_HOOKS.has(n),
+      (n) => !NATIVE_LOWERED_HOOKS.has(n) && !pluginOwned(n),
     )
     expect(stale, `no longer in the allowlist: ${stale.join(', ')}`).toEqual([])
   })

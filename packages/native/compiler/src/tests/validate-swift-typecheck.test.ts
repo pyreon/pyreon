@@ -21,8 +21,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { transform } from '../index'
-import { isSwiftcAvailable, validateSwift, validateSwiftWithStubs } from '../validate'
+import { isSwiftcAvailable, validateSwift } from '../validate'
+// Examples use plugin-owned elements (flow, charts); emit and type-check them through the plugins.
+import { transform, validateSwiftWithStubs } from './first-party-plugins'
 
 // swiftc cold-starts its frontend per invocation; under parallel-suite load a
 // single compile can exceed the repo's 20s default. Give real headroom.

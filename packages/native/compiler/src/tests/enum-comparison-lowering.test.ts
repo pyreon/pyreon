@@ -31,8 +31,8 @@
 // Int×Double coercions fire. That is a separate change with its own drift
 // review, not a rider on a correctness fix.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwift } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable, validateSwift } from '../validate'
 
 /** Every enum-typed operand shape, in both operand positions. */
 const SRC = `

@@ -22,7 +22,7 @@ import {
   synthTypedStructName,
   typeShapeKey,
 } from '../expr-utils'
-import { planBaseEdge, planEdgeText } from '../flow-base-edge'
+import { planBaseEdge, planEdgeText } from '../../../../fundamentals/flow/src/native-plugin/base-edge'
 import {
   collectFlowRendererComponents,
   droppedFlowFieldsWarning,
@@ -30,9 +30,9 @@ import {
   flowSignalWriteWarning,
   nodeResizerTargetsAnotherNode,
   resolveStaticFlowRendererMap,
-} from '../flow-lowering'
-import { resolveFlowPathPaint } from '../flow-path-paint'
-import { planFlowSvg } from '../flow-svg'
+} from '../../../../fundamentals/flow/src/native-plugin/lowering'
+import { resolveFlowPathPaint } from '../../../../fundamentals/flow/src/native-plugin/path-paint'
+import { planFlowSvg } from '../../../../fundamentals/flow/src/native-plugin/svg'
 import { liftInlineObjectStructs } from '../inline-object-structs'
 import { liftSlotParamStructs, moduleViewHelpers, viewHelperFromDecl } from '../render-slots'
 import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StructIR, TypeIR } from '../types'

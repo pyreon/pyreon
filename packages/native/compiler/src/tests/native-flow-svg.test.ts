@@ -5,9 +5,9 @@
 // web markup and keeps its warning.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { planFlowSvg } from '../flow-svg'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { planFlowSvg } from '../../../../fundamentals/flow/src/native-plugin/svg'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const APP = `
   import { createFlow, Flow, Handle, type NodeComponentProps } from '@pyreon/flow'

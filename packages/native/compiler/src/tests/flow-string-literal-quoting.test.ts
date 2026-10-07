@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // Flow literals reach Swift and Kotlin source as string literals. JSON.stringify
 // is not a Kotlin quoter: it leaves `$` unescaped, so a label like "cost $total"

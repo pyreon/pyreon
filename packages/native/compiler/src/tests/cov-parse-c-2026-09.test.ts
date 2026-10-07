@@ -14,7 +14,8 @@
 // must not, and asserts the emitted code, the parsed IR, or the named warning.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { firstPartyCompiler, transform } from './first-party-plugins'
+import type { FlowStatePayload, FlowStateDecl } from '../../../../fundamentals/flow/src/native-plugin/types'
 import { parsePyreon } from '../parse'
 import type { DeclIR } from '../types'
 
@@ -293,7 +294,11 @@ describe('parse.ts — tryDeclFromSyncedSignal', () => {
 // createFlow / useFlow
 // ---------------------------------------------------------------------------
 
-type FlowDecl = Extract<DeclIR, { kind: 'flow-state' }>
+// The `createFlow` declaration is the flow plugin's `ext` declaration now; the payload carries what the
+// closed `flow-state` kind did, so the tests keep reading it through the same shape.
+type FlowDecl = FlowStateDecl
+const asFlowDecl = (d: DeclIR | undefined): FlowDecl | undefined =>
+  d?.kind === 'ext' && d.type === 'flow-state' ? { ...(d.payload as unknown as FlowStatePayload), name: d.name } : undefined
 
 const flowSrc = (cfg: string, factory = 'createFlow', pre = '', generic = '') => `import { ${factory} } from '@pyreon/flow'
 ${pre}
@@ -303,8 +308,8 @@ export function App(){
 }`
 
 const parseFlow = (cfg: string, factory = 'createFlow', pre = '', generic = '') => {
-  const r = parsePyreon(flowSrc(cfg, factory, pre, generic))
-  const decl = r.components[0]?.decls.find((d) => d.kind === 'flow-state') as FlowDecl | undefined
+  const r = parsePyreon(flowSrc(cfg, factory, pre, generic), undefined, { registries: firstPartyCompiler.registries })
+  const decl = asFlowDecl(r.components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'flow-state'))
   return { decl, warnings: r.warnings.join('\n') }
 }
 
