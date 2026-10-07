@@ -37,30 +37,29 @@ packages:
   PyreonRouter:
     path: ../../packages/native/router-swift
 
-# Pre-build script — runs the Pyreon compile loop BEFORE Swift
-# compilation. Without this, you'd have to remember to run
-# `./scripts/build.sh` manually before every Xcode build. The script
-# is idempotent — re-running it just overwrites `generated/`.
-#
-# `runOnlyWhenInstalling: false` ensures this runs on every build,
-# not just install builds. `basedOnDependencyAnalysis: false` tells
-# Xcode to always run it regardless of input-file mtimes — needed
-# because the script's outputs depend on contents the project's
-# dependency analyzer can't fully model (the bun runtime + workspace
-# resolution).
-preBuildScripts:
-  - script: |
-      # Run from the project directory regardless of how Xcode invokes us.
-      cd "${SRCROOT}"
-      bash scripts/build.sh
-    name: '[Pyreon] Compile .tsx → generated/Counter.swift'
-    runOnlyWhenInstalling: false
-    basedOnDependencyAnalysis: false
-
 # The single iOS app target. SwiftUI-only — no AppDelegate, no
 # storyboards. Hosts the compiler-emitted Counter struct.
 targets:
   PyreonCounter:
+    # Pre-build script — runs the Pyreon compile loop BEFORE Swift
+    # compilation. Without this, you'd have to remember to run
+    # `./scripts/build.sh` manually before every Xcode build. The script
+    # is idempotent — re-running it just overwrites `generated/`.
+    #
+    # `runOnlyWhenInstalling: false` ensures this runs on every build,
+    # not just install builds. `basedOnDependencyAnalysis: false` tells
+    # Xcode to always run it regardless of input-file mtimes — needed
+    # because the script's outputs depend on contents the project's
+    # dependency analyzer can't fully model (the bun runtime + workspace
+    # resolution).
+    preBuildScripts:
+      - script: |
+          # Run from the project directory regardless of how Xcode invokes us.
+          cd "${SRCROOT}"
+          bash scripts/build.sh
+        name: '[Pyreon] Compile .tsx → generated/Counter.swift'
+        runOnlyWhenInstalling: false
+        basedOnDependencyAnalysis: false
     type: application
     platform: iOS
     deploymentTarget: '17.0'
