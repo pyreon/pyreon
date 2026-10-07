@@ -133,6 +133,8 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Browser and iOS runner reliability
 
+- Before installing Linux browser dependencies, normalise the runner's Azure Ubuntu archive URLs to `https://archive.ubuntu.com` in `/etc/apt/sources.list` and every active `.list` or `.sources` file. APT reads both formats; leaving one Azure entry active can stall `apt-get update` even while the official archive responds. Preserve suites, components and signing options. `set-ci-apt-mirror.ts` and the real install-entry regression cover mixed source formats, idempotence and failed setup.
+
 - All Linux Playwright installs use `bash scripts/install-playwright.sh <engines>`. The OS-dependency timeout runs **inside sudo**, with SIGKILL for the whole process group at the deadline. A runner-owned timeout around Playwright cannot terminate its root-owned apt descendants, leaving a dpkg lock that poisons every retry. A TERM-then-KILL timer can also leave a resistant descendant if its immediate child exits before escalation. Repair interrupted dpkg before retrying or falling back; never remove lock files or kill unrelated package-manager processes.
 - Chromium-only setup keeps the fallback to Ubuntu's preinstalled libraries. WebKit/Firefox dependencies and all browser downloads fail hard after bounded attempts. Downloads run as the runner user so they reconcile the restored browser store. Engine suites run only after successful setup; a setup failure already makes the required job red.
 - `Test (browser)` has a 35-minute backstop derived from both setup budgets (10 + 16 minutes including retries/repair/download kill grace), test work and shared setup. Keep the outer timeout above the sum when changing any inner budget.

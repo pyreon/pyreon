@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,7 +45,9 @@ if (name === 'timeout') {
 }
 if (name === 'node') {
   if (args[0] === '-p') run(process.env.REAL_NODE, args)
+  if (args[0].endsWith('/set-ci-apt-mirror.ts')) run(process.env.REAL_NODE, [args[0], join(dir, 'apt')])
   if (args.includes('install-deps')) {
+    if (process.env.SCENARIO === 'mirror-stall' && [join(dir, 'apt/sources.list'), join(dir, 'apt/sources.list.d/ubuntu.sources')].some(file => readFileSync(file, 'utf8').includes('azure.archive.ubuntu.com'))) process.exit(124)
     const n = count('deps')
     if (process.env.SCENARIO === 'hang' && n === 1) {
       spawn(process.env.REAL_NODE, ['-e', "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.env.FIXTURE + '/apt-pid', String(process.pid)); setInterval(() => {}, 1000)"], { stdio: 'ignore' })
@@ -77,6 +79,9 @@ interface Call {
 function install(scenario: string, engines = ['webkit', 'firefox']) {
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-pw-install-'))
   try {
+    mkdirSync(join(dir, 'apt/sources.list.d'), { recursive: true })
+    writeFileSync(join(dir, 'apt/sources.list'), 'deb http://azure.archive.ubuntu.com/ubuntu noble main\n')
+    writeFileSync(join(dir, 'apt/sources.list.d/ubuntu.sources'), 'Types: deb\nURIs: http://azure.archive.ubuntu.com/ubuntu\nSuites: noble noble-updates\nComponents: main universe\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n')
     for (const command of ['sudo', 'timeout', 'node', 'dpkg', 'tee', 'grep', 'xargs']) {
       const file = join(dir, command)
       writeFileSync(file, COMMAND)
@@ -131,7 +136,7 @@ describe('Playwright install entry', () => {
     const result = install('deps-retry')
     expect(result.status).toBe(0)
     const operations = result.calls.filter(
-      (c) => (c.name === 'node' && c.args[0] !== '-p') || c.name === 'dpkg',
+      (c) => (c.name === 'node' && (c.args.includes('install-deps') || c.args.includes('install'))) || c.name === 'dpkg',
     )
     expect(operations.map((c) => (c.name === 'dpkg' ? 'repair' : c.args[1]))).toEqual([
       'install-deps',
@@ -176,5 +181,19 @@ describe('Playwright install entry', () => {
         result.calls.filter((c) => c.name === 'node' && c.args.includes('install-deps')),
       ).toHaveLength(2)
     })
+  })
+})
+
+
+describe('Ubuntu archive mirror setup', () => {
+  it('replaces every active source before the bounded dependency install', () => {
+    const result = install('mirror-stall')
+    expect(result.status).toBe(0)
+    const mirror = result.calls.findIndex(call => call.name === 'node' && call.args[0]?.endsWith('/set-ci-apt-mirror.ts'))
+    const dependencies = result.calls.findIndex(call => call.name === 'node' && call.args.includes('install-deps'))
+    expect(mirror).toBeGreaterThanOrEqual(0)
+    expect(result.calls[mirror]?.root).toBe(true)
+    expect(mirror).toBeLessThan(dependencies)
+    expect(result.calls.filter(call => call.name === 'node' && call.args.includes('install-deps'))).toHaveLength(1)
   })
 })
