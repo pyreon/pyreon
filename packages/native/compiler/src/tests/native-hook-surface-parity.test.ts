@@ -17,12 +17,12 @@ import { transform, validateSwiftWithStubs } from './first-party-plugins'
 import { isSwiftcAvailable } from '../validate'
 
 /** (hook, decl, a body exercising the members a web author would reach for) */
-const SURFACES: ReadonlyArray<readonly [string, string, string]> = [
-  ['useShare', 'const s = useShare()', 's.text("hi"); s.url("u"); s.textUrl("a", "b")'],
-  ['useHaptics', 'const h = useHaptics()', 'h.impact("light"); h.notification("success"); h.selection()'],
-  ['useNotifications', 'const n = useNotifications()', 'n.requestPermission(); n.notify("t", "b")'],
-  ['useBiometrics', 'const b = useBiometrics()', 'const ok = b.isAvailable()'],
-  ['useClipboard', 'const c = useClipboard()', 'c.copy("hi")'],
+const SURFACES: ReadonlyArray<readonly [string, string, string, string]> = [
+  ['useShare', 'const s = useShare()', 's.text("hi"); s.url("u"); s.textUrl("a", "b")', 'PyreonShare'],
+  ['useHaptics', 'const h = useHaptics()', 'h.impact("light"); h.notification("success"); h.selection()', 'PyreonHaptics'],
+  ['useNotifications', 'const n = useNotifications()', 'n.requestPermission(); n.notify("t", "b")', 'PyreonNotifications'],
+  ['useBiometrics', 'const b = useBiometrics()', 'const ok = b.isAvailable()', 'PyreonBiometrics'],
+  ['useClipboard', 'const c = useClipboard()', 'c.copy("hi")', 'PyreonClipboard'],
 ]
 
 const app = (hook: string, decl: string, body: string) => `import { ${hook} } from '@pyreon/hooks'
@@ -34,9 +34,10 @@ export function App() {
 }`
 
 describe('every lowered hook member a web author can reach type-checks', () => {
-  for (const [hook, decl, body] of SURFACES) {
+  for (const [hook, decl, body, nativeType] of SURFACES) {
     it.skipIf(!isSwiftcAvailable())(`${hook}`, () => {
       const out = transform(app(hook, decl, body), { target: 'swift' })
+      expect(out.code).toContain(`${nativeType}(`)
       const r = validateSwiftWithStubs(out.code)
       expect(r.ok, r.error ?? '').toBe(true)
     })
@@ -55,7 +56,9 @@ export function App() {
   const c = useClipboard()
   return <Text>{c.copied() ? c.text() : ''}</Text>
 }`
-    const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    const out = transform(src, { target: 'swift' })
+    expect(out.code).toContain('PyreonClipboard(')
+    const r = validateSwiftWithStubs(out.code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
