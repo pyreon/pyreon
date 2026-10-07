@@ -22,7 +22,7 @@ import {
   transform,
   validateKotlin,
   validateSwiftWithStubs,
-} from '@pyreon/native-compiler'
+} from './native-plugins'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 import { reconcileReach, verifyNative, worstVerdict, type VerifyReport } from '../verify/lower'

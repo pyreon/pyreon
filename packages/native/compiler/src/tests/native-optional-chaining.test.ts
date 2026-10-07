@@ -25,7 +25,7 @@
 //  - Swift: `swiftc -parse` (the harness rung — parse-only) + emit-shape.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
 
 const app = (body: string) =>

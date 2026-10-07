@@ -58,6 +58,11 @@
       "import": "./lib/stream.js",
       "types": "./lib/types/stream.d.ts"
     },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -80,9 +85,13 @@
     "lint": "oxlint ."
   },
   "peerDependencies": {
+    "@pyreon/native-compiler": "workspace:^",
     "@pyreon/validation": "workspace:^"
   },
   "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    },
     "@pyreon/validation": {
       "optional": true
     }
@@ -91,6 +100,7 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/form": "workspace:^",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/query": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/router": "workspace:^",
@@ -126,7 +136,11 @@
           "PyreonStream.kt",
           "PyreonStreamAndroid.kt"
         ]
-      }
+      },
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/http"
+      ]
     }
   }
 }

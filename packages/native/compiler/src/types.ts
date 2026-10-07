@@ -263,70 +263,6 @@ export type DeclIR =
       body?: string
     }
   /**
-   * `useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` from
-   * `@pyreon/query` (the native subset). The delta over `useFetch` is exactly
-   * what a query library adds over a bare fetch: a KEYED CACHE with
-   * stale-while-revalidate. Emits a `PyreonQuery<T>` reactive container plus a
-   * mount-time async harness that runs the fetch ONLY when the cached value is
-   * stale, driving the same `begin/resolve/reject` state machine:
-   *   Swift  →  @State private var q = PyreonQuery<T>(queryKey: "…", staleSeconds: N)
-   *             + `.task { if q.isStale { begin(); resolve(await …); } }`
-   *   Kotlin →  val q = remember { PyreonQuery<T>(queryKey = "…", staleMillis = N) }
-   *             + `LaunchedEffect(Unit) { if (q.isStale) { begin(); resolve(…) } }`
-   *
-   * v1 scope (conservative, same rule as `useFetch`): `queryKey` is an array
-   * of STRING/NUMBER literals (colon-joined into the cache key); `queryFn` is
-   * an inline `() => fetch('<url-literal>')` whose URL literal is baked;
-   * `staleTime` is a number literal (ms). Anything else warns and bails.
-   */
-  | {
-      kind: 'query'
-      name: string
-      /** The decoded result type `T` (from the generic arg). */
-      type: TypeIR
-      /** The literal fetch URL extracted from `queryFn`'s `fetch(...)` call.
-       *  Absent when `urlExpr` (a templated URL) or `valueExpr` (a non-fetch
-       *  queryFn) is present instead. */
-      url?: string
-      /**
-       * A RUNTIME fetch URL from a template-literal `fetch(\`/users/${id}\`)`.
-       * A `template` ExprIR the emit renders as native string interpolation
-       * INSIDE the async harness (where `self`/params are in scope). Mutually
-       * exclusive with `url` (a literal URL) and `valueExpr` (no fetch).
-       */
-      urlExpr?: ExprIR
-      /**
-       * A non-fetch `queryFn` (`() => <expr>` / `async () => <expr>`) that
-       * returns the value directly — the emit computes `<expr>` in the harness
-       * and `resolve`s it, no URLSession/decode. Mutually exclusive with
-       * `url`/`urlExpr`.
-       */
-      valueExpr?: ExprIR
-      /** The cache key — the `queryKey` array's literals colon-joined. */
-      queryKey: string
-      /**
-       * A RUNTIME cache key built from a `queryKey` array whose parts include
-       * non-literal expressions (`["user", userId]`, `["k", id()]`) — a
-       * `template` ExprIR the emit interpolates. When present, the query takes
-       * the runtime-key harness: constructed KEYLESS (SwiftUI's `@State`
-       * default can't reference other properties) and re-keyed at task time
-       * via `setKey`, with the harness KEYED on the string so a key change
-       * (new prop / signal) re-fetches — matching the web's reactive queryKey.
-       */
-      queryKeyExpr?: ExprIR
-      /** `staleTime` in milliseconds (Swift converts to seconds). 0 = always
-       *  revalidate, but serve the stale value instantly. */
-      staleMillis: number
-      /** HTTP verb from an inline `fetch(url, { method })` in queryFn. Absent =
-       *  GET (the bare URLSession/readText path); present routes through
-       *  PyreonHttp, exactly like useFetch. */
-      method?: string
-      /** Literal `{ 'Content-Type': 'application/json' }` header pairs. */
-      headers?: Record<string, string>
-      /** Literal request body (only a string literal survives). */
-      body?: string
-    }
-  /**
    * Phase 4.2 — form state via `useForm({ initialValues })` from
    * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
    * container:
@@ -370,11 +306,6 @@ export type DeclIR =
        */
       schemaName?: string
     }
-  // `const client = createQueryClient()`. The client exists on the web because
-  // `useQuery` reads it from `<QueryClientProvider>`; the native `useQuery`
-  // lowering is self-contained and has no client to hold. So the binding
-  // lowers to NOTHING, and the provider that consumes it is transparent.
-  | { kind: 'query-client'; name: string }
   /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle
    * escape hatch ("call .start()/.connect() from an onMount"). Lowers to a
@@ -617,61 +548,6 @@ export type DeclIR =
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
   | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
-  /**
-   * `useStream((ctx) => openEventStream(…) | openNdjsonStream(…))` — SSE or
-   * NDJSON over the native stream runtime (`PyreonStream`, co-located in
-   * `@pyreon/http/native`), with the web's reconnect + `Last-Event-ID`
-   * semantics. The request resolves exactly like an endpoint `useQuery`
-   * (`url` / `urlExpr` / `method` / `headers` / `body`), and the harness is
-   * KEYED on the URL, so a runtime `:param` reopens the stream when it changes.
-   *
-   *   Swift  → @State private var s = PyreonStream<Item>(maxEvents: N)
-   *            + `.task(id: "\(url)#\(s.restartTick)") { await s.runSse(…) }`
-   *   Kotlin → val s = remember { PyreonStream<Item>(maxEvents = N) }
-   *            + `DisposableEffect("…#…") { s.startSse(…); onDispose { s.stop() } }`
-   *
-   * `itemType` is what `events()` holds — `SseEvent<T>` for SSE, `T` for
-   * NDJSON; `dataType` is the decoded payload `T`.
-   */
-  | {
-      kind: 'stream'
-      name: string
-      format: 'sse' | 'ndjson'
-      itemType: TypeIR
-      dataType: TypeIR
-      /** SSE read with `data: 'text'` — the payload is the raw `data` string. */
-      sseText: boolean
-      url: string
-      urlExpr?: ExprIR
-      method: string
-      headers?: Record<string, string>
-      /** A non-default `Accept` (`application/jsonl`); absent = the format's default. */
-      accept?: string
-      /** The literal request body (`json` on the endpoint call). */
-      requestBody?: string
-      /** SSE: only these event types. */
-      events?: string[]
-      /** SSE: resume from this id on the first request. */
-      lastEventId?: string
-      /** SSE reconnect policy; `null` = `reconnect: false` (always null for NDJSON). */
-      reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null
-      maxEvents: number
-      /**
-       * A RUNTIME `json` body (`json: { prompt: prompt() }`) — serialized per
-       * run with the `JSON.stringify` lowering and part of the harness key, so
-       * a change re-opens the stream exactly as the web's tracked source does.
-       * Absent when the body is a literal (`requestBody`) or there is none.
-       */
-      requestBodyExpr?: ExprIR
-      /**
-       * `useStream(src, { enabled })` — the stream runs only while this is
-       * true. Part of the harness key; a false value stops the stream and
-       * reads `idle`, keeping the events received (the web's disabled branch).
-       */
-      enabled?: ExprIR
-      /** `useStream(src, { onEvent: (ev) => … })` — runs after each event lands. */
-      onEvent?: { param: string; body: StatementIR[] }
-    }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }
   | { kind: 'secureStorage'; name: string }

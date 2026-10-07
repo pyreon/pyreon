@@ -21,8 +21,11 @@ import {
   lowerPluginIntrinsic,
   lowerPluginMemberCall,
   lowerPluginMemberRead,
+  isHeadLifecycleDecl,
   lowerPluginReceiver,
+  pluginAsyncState,
   pluginLifecycleLines,
+  tailLifecycleDecls,
   serviceFor,
 } from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
@@ -551,8 +554,11 @@ let _formSubmitParamsKotlin: string[] = []
  * Field sets are kept next to the read-rewrite in emitKotlinExpr.
  */
 let _wsNames: Set<string> = new Set()
-/** `useStream` decl names — `s.events()` / `s.status()` read `.value`. */
-let _streamNames: Set<string> = new Set()
+/**
+ * The component's ASYNC SOURCES in declaration order — its `useFetch` containers plus every plugin
+ * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
+ */
+let _asyncDeclsKotlin: DeclIR[] = []
 
 /**
  * Is `obj.prop` a Phase-5 native-container reactive field backed by a Compose
@@ -565,7 +571,6 @@ function isContainerMutableStateField(obj: string, p: string): boolean {
   return (
     _serviceBindingsKotlin.get(obj)?.kotlinState?.includes(p) === true ||
     (_wsNames.has(obj) && ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
-    (_streamNames.has(obj) && ['events', 'latest', 'status', 'error'].includes(p)) ||
     (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
     (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
   )
@@ -1783,6 +1788,9 @@ function emitKotlinModuleDecl(md: ModuleDeclIR): string {
   return `private ${kw} ${kotlinIdent(md.name)}: ${kotlinType(md.type)} = ${initial}`
 }
 
+/** The component being emitted's `KotlinCtx` — what `EmitContext.statements` emits statements against. */
+let _activeKotlinCtx: KotlinCtx | undefined
+
 interface KotlinCtx {
   /** Anonymous object types synthesized as named data classes. */
   synthesizedDataClasses: { name: string; fields: { name: string; type: TypeIR }[] }[]
@@ -1935,7 +1943,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = bindServices(c.decls)
   _wsNames = new Set()
-  _streamNames = new Set()
+  _asyncDeclsKotlin = []
   _mapNames = new Set()
   _authNames = new Set()
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
@@ -1999,16 +2007,14 @@ function emitKotlinComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       _urlStateNames.add(d.name)
     }
-    // Phase 4: track useFetch AND useQuery decls so member reads append
-    // `.value`. PyreonQuery shares data/error/isPending (+ adds isFetching)
-    // with PyreonFetch and behaves identically under Suspense/ErrorBoundary
-    // and the destructure alias, so both live in the async-container set.
-    if (d.kind === 'fetch' || d.kind === 'query') _fetchNames.add(d.name)
+    // Phase 4: track useFetch decls so member reads append `.value`. A plugin declaration that is an
+    // async source (`useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
+    if (d.kind === 'fetch') _fetchNames.add(d.name)
+    if (d.kind === 'fetch' || pluginAsyncState(d, 'kotlin', kotlinEmitContext(0)) !== undefined) _asyncDeclsKotlin.push(d)
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
     // Phase 5: native data/services hook decl names (for the .value rewrite).
     if (d.kind === 'websocket') _wsNames.add(d.name)
-    if (d.kind === 'stream') _streamNames.add(d.name)
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
@@ -2033,6 +2039,8 @@ function emitKotlinComponent(c: ComponentIR): string {
     componentName: c.name,
     inferCtx,
   }
+  // The component's emit context, for a plugin that emits a statement list (`EmitContext.statements`).
+  _activeKotlinCtx = ctx
   // Expose the component's inference ctx to the object-literal emit so a
   // non-literal field (`{ id: count() }`) gets its data-class field type
   // inferred (mirrors the Swift `_exprInferCtx`).
@@ -2211,7 +2219,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // A plugin's own declarations may release what they hold when the composable leaves composition
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
-    if (d.kind !== 'ext') continue
+    if (!isHeadLifecycleDecl(d)) continue
     for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
   }
   for (const d of c.decls) {
@@ -2254,79 +2262,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
     lines.push(`  }`)
   }
-  // useQuery: a `LaunchedEffect(Unit)` per decl, guarded on `isStale` so a
-  // FRESH cache hit skips the network entirely (serving the hydrated value).
-  // The stale/miss path drives the same begin → resolve|reject machine as
-  // useFetch — a background refresh of already-cached data flips only
-  // isFetching, never isPending, so the UI never blanks.
-  for (const d of c.decls) {
-    if (d.kind !== 'query') continue
-    const name = kotlinIdent(d.name)
-    // Runtime queries key the `LaunchedEffect` on the computed key string, so a
-    // key change (new prop/signal) re-keys the cache (`setKey`) + re-runs the
-    // fetch — matching the web's reactive queryKey. Static queries use `Unit`.
-    const runtimeQuery =
-      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
-    if (runtimeQuery) {
-      const keyExpr =
-        d.queryKeyExpr !== undefined ? emitKotlinExpr(d.queryKeyExpr, 0) : kotlinStr(d.queryKey)
-      lines.push(`  LaunchedEffect(${keyExpr}) {`)
-      lines.push(`    ${name}.setKey(${keyExpr})`)
-    } else {
-      lines.push(`  LaunchedEffect(Unit) {`)
-    }
-    lines.push(`    if (${name}.isStale) {`)
-    lines.push(`      ${name}.begin()`)
-    if (d.valueExpr !== undefined) {
-      // A DIRECT-VALUE queryFn (`() => <expr>`): resolve the computed value.
-      // No network, no decode, no throwing call — so no try/catch.
-      lines.push(`      ${name}.resolve(${emitKotlinExpr(d.valueExpr, 0)})`)
-    } else {
-      const kotlinUrl =
-        d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : kotlinStr(d.url)
-      lines.push(`      try {`)
-      if (d.method || d.headers || d.body) {
-        // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or
-        // a body goes through PyreonHttp (readText() can express none of them).
-        const parts = [
-          `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
-          `url = ${kotlinUrl}`,
-        ]
-        if (d.headers) {
-          const pairs = Object.entries(d.headers)
-            .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
-            .join(', ')
-          parts.push(`headers = mapOf(${pairs})`)
-        }
-        if (d.body !== undefined) parts.push(`body = ${kotlinStr(d.body)}`)
-        lines.push(`        val __response = withContext(Dispatchers.IO) {`)
-        lines.push(`          PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
-        lines.push(`        }`)
-        lines.push(`        if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
-        lines.push(
-          `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
-        )
-      } else {
-        lines.push(
-          `        val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`,
-        )
-        lines.push(
-          `        ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`,
-        )
-      }
-      lines.push(`      } catch (e: Throwable) { ${name}.reject(e) }`)
-    }
-    lines.push(`    }`)
-    lines.push(`  }`)
-  }
-  // useStream: a `DisposableEffect` per decl, KEYED on the request URL plus
-  // the restart tick — a runtime `:param` or `restart()` re-keys it, which
-  // stops the old stream and opens a fresh one (the web's reactive-source
-  // semantic). The connection runs on the runtime's own thread; `onDispose`
-  // closes it, which is the only thing that ends a blocking socket read.
-  for (const d of c.decls) {
-    if (d.kind !== 'stream') continue
-    lines.push(...emitKotlinStreamHarness(d, ctx))
+  // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
+  // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
+  for (const d of tailLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
@@ -2413,7 +2352,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = new Map()
   _wsNames = new Set()
-  _streamNames = new Set()
+  _asyncDeclsKotlin = []
   _mapNames = new Set()
   _authNames = new Set()
   _routerRoutes = new Map()
@@ -2525,74 +2464,17 @@ function syncedInitialKotlin(
   return Number.isInteger(value as number) ? `${value}.0` : String(value)
 }
 
-/** The `DisposableEffect` that runs one `useStream` decl. */
-function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: KotlinCtx): string[] {
-  const name = kotlinIdent(d.name)
-  const url = d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : kotlinStr(d.url)
-  const req = [`method = ${kotlinStr(d.method)}`, `url = ${url}`]
-  if (d.headers) {
-    req.push(
-      `headers = mapOf(${Object.entries(d.headers)
-        .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
-        .join(', ')})`,
-    )
+/** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
+function asyncStateKotlin(d: DeclIR, indent: number): { pending: string; error: string } {
+  if (d.kind === 'fetch') {
+    return { pending: `${kotlinIdent(d.name)}.isPending.value`, error: `${kotlinIdent(d.name)}.error.value != null` }
   }
-  // A runtime body is serialized per run; it is ALSO in the key, so a change
-  // re-opens the stream — the web's tracked-source semantic.
-  const bodyJson = d.requestBodyExpr !== undefined ? emitKotlinExpr(d.requestBodyExpr, 0) : undefined
-  if (d.requestBody !== undefined) req.push(`body = ${kotlinStr(d.requestBody)}`)
-  else if (bodyJson !== undefined) req.push(`body = ${bodyJson}`)
-  const request = `PyreonStreamRequest(${req.join(', ')})`
-  const data = kotlinType(d.dataType, ctx)
-  const enabled = d.enabled !== undefined ? emitKotlinExpr(d.enabled, 0) : undefined
-  // Only the parts that exist join the key, so a plain stream's emit is unchanged.
-  const key = [`\${${url}}`, `\${${name}.restartTick.value}`]
-  if (enabled !== undefined) key.push(`\${${enabled}}`)
-  if (bodyJson !== undefined) key.push(`\${${bodyJson}}`)
-  const onEvent =
-    d.onEvent !== undefined
-      ? `, onEvent = { ${d.onEvent.param === '_' ? '_' : kotlinIdent(d.onEvent.param)} -> ${d.onEvent.body.map((st) => emitKotlinStatement(st, 6, ctx)).join('; ')} }`
-      : ''
-  const out = [`  DisposableEffect("${key.join('#')}") {`]
-  const pad = enabled !== undefined ? '      ' : '    '
-  if (enabled !== undefined) out.push(`    if (${enabled}) {`)
-  if (d.format === 'sse') {
-    const opts: string[] = []
-    if (d.events) opts.push(`events = listOf(${d.events.map((e) => kotlinStr(e)).join(', ')})`)
-    if (d.lastEventId !== undefined) opts.push(`lastEventId = ${kotlinStr(d.lastEventId)}`)
-    opts.push(
-      d.reconnect === null
-        ? 'reconnect = null'
-        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}L, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
-    )
-    const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
-    out.push(
-      `${pad}${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}${onEvent}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
-    )
-  } else {
-    const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
-    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
-  }
-  if (enabled !== undefined) {
-    // The web's disabled branch: stop, read `idle`, keep what was received.
-    out.push(`    } else {`)
-    out.push(`      ${name}.idle()`)
-    out.push(`    }`)
-  }
-  out.push(`    onDispose { ${name}.stop() }`)
-  out.push(`  }`)
-  return out
+  return pluginAsyncState(d, 'kotlin', kotlinEmitContext(indent))!
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
   if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') return ''
-  // The query client has no native counterpart: `useQuery` lowers to a
-  // self-contained runtime, so there is nothing for a client to hold. Emitting
-  // nothing is the whole lowering. Left unrecognized it emitted a bare
-  // `createQueryClient` — an identifier reference to a symbol that exists on
-  // neither target — with no warning.
-  if (d.kind === 'query-client') return ''
   if (d.kind === 'debounced-value') {
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${emitKotlinExpr(d.source, 2)}) }`
   }
@@ -2724,19 +2606,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'fetch') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonFetch<${kotlinType(d.type, ctx)}>() }`
   }
-  // `const q = useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` → a
-  // remembered PyreonQuery<T> seeded with the cache key + staleMillis. The
-  // LaunchedEffect harness (isStale-guarded) is emitted by emitKotlinComponent.
-  if (d.kind === 'query') {
-    // A runtime-key / templated-URL / direct-value query constructs KEYLESS to
-    // mirror the Swift @State constraint; the real key is applied in the
-    // LaunchedEffect harness via setKey (symmetric emit across both targets).
-    const key =
-      d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
-        ? '""'
-        : kotlinStr(d.queryKey)
-    return `val ${kotlinIdent(d.name)} = remember { PyreonQuery<${kotlinType(d.type, ctx)}>(queryKey = ${key}, staleMillis = ${d.staleMillis}L) }`
-  }
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
   // PyreonForm seeded with the literal defaults. No harness (pure state).
   if (d.kind === 'form') {
@@ -2804,14 +2673,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // append `.value` (see emitKotlinExpr); methods + Bool getters read bare.
   if (d.kind === 'websocket') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
-  }
-  // `const s = useStream(…)` → a remembered PyreonStream; the
-  // `DisposableEffect` that starts and stops it is emitted with the harnesses.
-  // `main = PyreonStreamMain` puts every state write and `onEvent` call on the
-  // main looper, where the web runs the whole hook — the loop itself reads on
-  // its own thread, and without this `onEvent` ran there.
-  if (d.kind === 'stream') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L, main = PyreonStreamMain) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -6471,7 +6332,8 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       component: () => kotlinComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitKotlinChild,
-      typeText: kotlinType,
+      // Against the component's own `KotlinCtx`: an inline object type (a query's `{ data: { id: string } }`) synthesizes a named data class there.
+      typeText: (type) => kotlinType(type, _activeKotlinCtx),
       inferType: (e) => inferType(e, _kotlinExprInferCtx),
       structs: kotlinStructRegistry,
       warnOnce: (message) => {
@@ -6480,6 +6342,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       webView: kotlinWebViewFacade,
       fileState: (key, init) => _moduleScope.state(key, init),
       layoutModifiersFor: (el, handled) => emitKotlinLayoutModifier(el, handled),
+      statements: (stmts, at) => stmts.map((st) => emitKotlinStatement(st, at, _activeKotlinCtx!)),
       intArg: kotlinIntArg,
     },
     indent,
@@ -6771,12 +6634,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
-  // Mirror of the Swift branch: `<QueryClientProvider>` is TRANSPARENT on
-  // native. The web needs it to inject the client `useQuery` reads; the native
-  // `useQuery` lowering is self-contained. Undispatched it emitted a
-  // `QueryClientProvider(client = …) { … }` composable that does not exist,
-  // silently.
-  if (tag === 'QueryClientProvider') return emitKotlinTransparentProvider(e, indent)
   if (tag === 'RouterProvider') return emitKotlinRouterProvider(e, indent)
   if (tag === 'RouterView') return emitKotlinRouterView(e, indent)
   // 8 other canonical primitives fall through to generic emit until
@@ -7524,10 +7381,9 @@ function emitKotlinSuspense(
   // fetch settles. Passing the value to a child composable subscribes
   // the wrong scope (device-found, mirrors the Swift fix). No fetch →
   // `false`.
-  const fetches = [..._fetchNames]
   const isLoading =
-    fetches.length > 0
-      ? fetches.map((f) => `${kotlinIdent(f)}.isPending.value`).join(' || ')
+    _asyncDeclsKotlin.length > 0
+      ? _asyncDeclsKotlin.map((d) => asyncStateKotlin(d, indent).pending).join(' || ')
       : 'false'
   return (
     `if (${isLoading}) {\n` +
@@ -7574,10 +7430,9 @@ function emitKotlinErrorBoundary(
   const fallbackBody = fallbackChildren
     .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
     .join('\n')
-  const fetches = [..._fetchNames]
   const hasError =
-    fetches.length > 0
-      ? fetches.map((f) => `${kotlinIdent(f)}.error.value != null`).join(' || ')
+    _asyncDeclsKotlin.length > 0
+      ? _asyncDeclsKotlin.map((d) => asyncStateKotlin(d, indent).error).join(' || ')
       : 'false'
   return (
     `if (${hasError}) {\n` +
@@ -9621,21 +9476,6 @@ function emitKotlinPermissionsProvider(
   const set = `PyreonPermissions(setOf(${seed.granted.map((g) => kotlinStr(g)).join(', ')}))`
   const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `CompositionLocalProvider(LocalPyreonPermissions provides ${set}) {\n${content}\n${' '.repeat(indent)}}`
-}
-
-/**
- * A provider whose only job on the web is to inject something the native
- * runtime already has. Emit the children and nothing else — Compose needs no
- * wrapper, since a composable body is a statement list.
- */
-function emitKotlinTransparentProvider(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  if (e.children.length === 0) return ''
-  const pad = ' '.repeat(indent + 2)
-  const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `Column {\n${content}\n${' '.repeat(indent)}}`
 }
 
 function emitKotlinRouterProvider(

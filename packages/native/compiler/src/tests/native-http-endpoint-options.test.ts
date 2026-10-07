@@ -20,7 +20,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -266,7 +266,7 @@ describe('endpoint DSL — the option set is CLOSED, not a list of instances', (
     expect(fields).toContain('json')
     expect(fields.length).toBeGreaterThanOrEqual(7)
 
-    const parseTs = readFileSync(join(import.meta.dirname, '../parse.ts'), 'utf8')
+    const parseTs = readFileSync(join(import.meta.dirname, '../../../../fundamentals/http/src/native-plugin/endpoint.ts'), 'utf8')
     const lowered = /ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set\(\[([^\]]*)\]/.exec(parseTs)?.[1]
     const named = /ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map\(\[([\s\S]*?)\n\]\)/.exec(
       parseTs,
@@ -280,7 +280,7 @@ describe('endpoint DSL — the option set is CLOSED, not a list of instances', (
     const unclassified = fields.filter((f) => !classified.has(f as string))
     expect(
       unclassified,
-      `EndpointArgs fields neither lowered nor named in parse.ts: ${unclassified.join(', ')}`,
+      `EndpointArgs fields neither lowered nor named in the http plugin's endpoint.ts: ${unclassified.join(', ')}`,
     ).toEqual([])
   })
 })

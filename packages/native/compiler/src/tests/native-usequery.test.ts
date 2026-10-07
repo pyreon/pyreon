@@ -16,13 +16,8 @@
 // mis-lowering.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `
 import { Stack, Text } from '@pyreon/primitives'

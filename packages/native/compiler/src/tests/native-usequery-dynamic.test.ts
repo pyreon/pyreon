@@ -18,13 +18,8 @@
 // → they lower.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // Runtime queryKey (a prop) + a templated fetch URL — the dominant real-app
 // shape (`useQuery(['user', userId], () => fetch(`/users/${userId}`))`).

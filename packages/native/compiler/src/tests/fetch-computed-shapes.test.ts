@@ -13,7 +13,7 @@
 // `fetches` map in infer-type.ts.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const QUOTES_SRC = `
   type Quote = { id: number; text: string; author: string }

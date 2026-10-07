@@ -3,15 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 /**
  * `useStream` over `@pyreon/http/stream` — SSE and NDJSON — lowers to the
@@ -325,14 +319,12 @@ describe('useStream emit compiles against the REAL runtime source', () => {
   }, 300_000)
 
   it.skipIf(!isKotlincAvailable())('Kotlin: real PyreonStream.kt in place of its stub', () => {
-    // The stub block is REPLACED by the shipped file (package / imports
-    // stripped into the stubs' default package), so a signature the stub
-    // got wrong fails here even though every stub gate passes.
-    const start = KOTLIN_COMPOSE_STUBS.indexOf('// PyreonStream — mirror of')
-    const end = KOTLIN_COMPOSE_STUBS.indexOf('// PyreonHttp — what a', start)
-    expect(start).toBeGreaterThan(-1)
-    expect(end).toBeGreaterThan(start)
-    const stubs = KOTLIN_COMPOSE_STUBS.slice(0, start) + KOTLIN_COMPOSE_STUBS.slice(end)
+    // The shipped file stands in for the stream stub, which now lives in the
+    // `@pyreon/query` plugin's stub augmentation rather than the Compose bundle —
+    // so compiling against the bundle alone leaves PyreonStream to the real source
+    // (package / imports stripped into the stubs' default package), and a signature
+    // the stub got wrong fails here even though every stub gate passes.
+    const stubs = KOTLIN_COMPOSE_STUBS
     const runtime = readFileSync(RUNTIME_KOTLIN, 'utf8')
       .replace(/^package .*$/m, '')
       .replace(/^import androidx\.compose\.runtime\..*$/gm, '')

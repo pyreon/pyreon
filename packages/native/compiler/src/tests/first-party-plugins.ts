@@ -15,18 +15,21 @@ import { chartsPlugin } from '../../../../fundamentals/charts/src/native-plugin/
 import { chartsStubs } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 import { flowPlugin } from '../../../../fundamentals/flow/src/native-plugin/plugin'
 import { flowStubs } from '../../../../fundamentals/flow/src/native-plugin/stubs'
+import { httpPlugin } from '../../../../fundamentals/http/src/native-plugin/plugin'
+import { queryPlugin } from '../../../../fundamentals/query/src/native-plugin/plugin'
+import { queryStubs } from '../../../../fundamentals/query/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, queryPlugin, queryStubs }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
-export const firstPartyCompiler = createCompiler({ discovered: [chartsPlugin, flowPlugin] })
+export const firstPartyCompiler = createCompiler({ discovered: [chartsPlugin, flowPlugin, httpPlugin, queryPlugin] })
 
 /** `transform` with the first-party plugins active. */
 export function transform(source: string, options: EmitOptions): TransformResult {
   return firstPartyCompiler.transform(source, options)
 }
 
-const augment: ValidateOptions = { augment: [chartsStubs, flowStubs] }
+const augment: ValidateOptions = { augment: [chartsStubs, flowStubs, queryStubs] }
 
 /** The compile gates, with the first-party stubs appended for inputs that name a plugin's runtime types. */
 export const validateSwiftWithStubs = (source: string) => validate.validateSwiftWithStubs(source, augment)

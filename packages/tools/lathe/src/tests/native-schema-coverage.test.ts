@@ -22,7 +22,7 @@
  * emits, still carries the `PyreonZodSchema_` marker, and the struct that
  * reaches iOS is simply missing a field.
  */
-import { transform } from '@pyreon/native-compiler'
+import { transform } from './native-plugins'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 

@@ -21,7 +21,8 @@
  */
 
 import type { EmitContext } from './emit-context'
-import type { ExprIR, ExtDecl, ExtPayload, TypeIR } from './types'
+import type { RequestOptions, ResolvedRequest } from './module-scan'
+import type { ExprIR, ExtDecl, ExtPayload, StatementIR, TypeIR } from './types'
 
 /** The call a recognizer is asked about. */
 export interface CallSite {
@@ -29,6 +30,8 @@ export interface CallSite {
   readonly callee: string
   /** How many arguments the author passed. */
   readonly argCount: number
+  /** True for `new Name(…)` — a recognizer that claims a constructor checks it. */
+  readonly construct?: boolean | undefined
 }
 
 /**
@@ -68,6 +71,24 @@ export interface ParseContext {
   hasDynamicKey(prop: AstNode | undefined): boolean
   /** The source text of a dynamic key, bracketed, for a warning (`[kind]`). */
   dynamicKeyText(prop: AstNode): string
+  /** The statically-known string an argument denotes — a literal, or a module-scope `const` holding one — else `null`. */
+  staticString(node: AstNode | null | undefined): string | null
+  /** The statements of a function body (`{ … }`) parsed to IR, for a recognizer that carries a callback. */
+  statements(block: AstNode): StatementIR[]
+  /** The first generic type argument of ANOTHER call node (`openEventStream<T>(…)`), `{ kind: 'unknown' }` when none was written. */
+  typeArgOf(call: AstNode): TypeIR
+  /** Plugin-owned memory for THIS file (see {@link ModuleScan.fileState}); namespace the key with the plugin name. */
+  fileState<T>(key: string, init: () => T): T
+  /** Requests plugins can resolve from a call of a binding they recorded (see `CompilerPlugin.requestSources`). */
+  readonly requests: {
+    has(name: string): boolean
+    resolve(name: string, arg: AstNode | undefined, options: RequestOptions): ResolvedRequest | null
+  }
+  /**
+   * Record that `type` is the decode type of a request whose `response` names a same-module schema,
+   * so the schema's number fields can refine the type's `Int`/`Double` fields once the structs exist.
+   */
+  recordDecode(type: TypeIR, response: ResolvedRequest['response']): void
 }
 
 /** An ESTree node as the parser produced it. A plugin reads it structurally. */
@@ -85,8 +106,13 @@ export interface ExtDeclSpec {
   readonly payload?: ExtPayload | undefined
 }
 
-/** Returns the declaration, or `undefined` to decline (the parser falls through). */
-export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | undefined
+/**
+ * Returns the declaration, `undefined` to DECLINE (the parser falls through to the rest of its chain, as if
+ * the plugin were absent), or `null` to CLAIM the call without declaring anything: the recognizer reported why
+ * the call cannot lower, and the binding must not fall through to a generic emit that would reference a symbol
+ * neither target has.
+ */
+export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | undefined | null
 
 /** Renders one declaration type on each target. */
 /**
@@ -103,15 +129,50 @@ export interface DeclLifecycle {
    * modifier.
    */
   readonly stableHost?: boolean | undefined
+  /**
+   * Emit this declaration's lines AFTER the compiler's own lifecycle modifiers, ordered by this
+   * number (then by declaration order) across every plugin. A declaration without it is emitted
+   * in declaration order before them. It exists so a moved lifecycle keeps the position it had.
+   */
+  readonly tailOrder?: number | undefined
   /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
   swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
   /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */
   kotlin?(decl: ExtDecl, ctx: EmitContext): readonly string[]
 }
 
+/**
+ * What the compiler reads off a declaration's type to INFER an expression's type.
+ * Without it a member read on a plugin's container is `unknown`, which the emitters
+ * treat conservatively (no optional unwrapping, no numeric coercion).
+ */
+export interface DeclTyping {
+  /** The type of the zero-argument CALL read `<binding>.<property>()` (the web's signal-read shape), or `undefined`. */
+  callRead?(decl: ExtDecl, property: string): TypeIR | undefined
+}
+
+/** The conditions `<Suspense>` / `<ErrorBoundary>` OR over, as target text. */
+export interface AsyncState {
+  /** True while the declaration's request is pending (`q.isPending`). */
+  readonly pending: string
+  /** True when it failed (`q.error != nil`). */
+  readonly error: string
+}
+
 export interface DeclEmitter {
   /** Lifecycle contributions of this declaration type. */
   readonly lifecycle?: DeclLifecycle | undefined
+  /** How expressions over this declaration's container are typed. */
+  readonly typing?: DeclTyping | undefined
+  /**
+   * Marks the declaration as an ASYNC SOURCE: a component's `<Suspense>` shows its fallback
+   * while ANY source is pending, and `<ErrorBoundary>` while ANY has failed. Read in declaration
+   * order, after the core's own sources.
+   */
+  readonly asyncState?: {
+    swift(decl: ExtDecl, ctx: EmitContext): AsyncState
+    kotlin(decl: ExtDecl, ctx: EmitContext): AsyncState
+  } | undefined
   /** One declaration line (or lines, joined with a newline). */
   swift(decl: ExtDecl, ctx: EmitContext): string
   /** One line, or several (joined with the same newline-and-indent a built-in multi-line declaration uses). */

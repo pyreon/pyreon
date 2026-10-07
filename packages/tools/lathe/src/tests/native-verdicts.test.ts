@@ -19,7 +19,7 @@ import {
   validateKotlinFiles,
   validateSwiftFilesWithStubs,
   validateSwiftWithStubs,
-} from '@pyreon/native-compiler'
+} from './native-plugins'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 import { classifyWarning, verifyNative, worstVerdict } from '../verify/lower'

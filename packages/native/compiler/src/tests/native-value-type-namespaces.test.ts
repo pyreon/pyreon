@@ -18,14 +18,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 const FIXTURE = readFileSync(join(import.meta.dirname, '../fixtures/value-type-namespaces.tsx'), 'utf8')
 

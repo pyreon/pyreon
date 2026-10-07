@@ -7,7 +7,7 @@
 
 import { buildUrl } from '@pyreon/http'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const src = (path: string, args: string): string => `
 import { createHttp } from '@pyreon/http'

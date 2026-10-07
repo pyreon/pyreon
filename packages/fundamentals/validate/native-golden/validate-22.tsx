@@ -1,0 +1,3 @@
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+const a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: z.literal(''), x: z.string() })]))

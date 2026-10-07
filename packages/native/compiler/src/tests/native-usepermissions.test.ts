@@ -11,7 +11,7 @@
 // the methods read the underlying reactive set internally and return Bool.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Phase 4 — usePermissions() native emit', () => {
   it('Swift: @State PyreonPermissions seeded with the literal grant keys', () => {

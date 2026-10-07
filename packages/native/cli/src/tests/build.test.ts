@@ -17,8 +17,15 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { transform } from '@pyreon/native-compiler'
+import { createCompiler } from '@pyreon/native-compiler'
+import { httpPlugin } from '../../../../fundamentals/http/src/native-plugin/plugin'
+import { queryPlugin } from '../../../../fundamentals/query/src/native-plugin/plugin'
 import { build, conditionalKotlinImports, findTsxFiles, isWebOnlyEntry } from '../build'
+
+// The libraries own their native lowering (a plugin in their own package); the compiler's fixtures use
+// `@pyreon/query`, so the tests that compile them load the plugin the way `pyreon-native` discovers it.
+const FIRST_PARTY = createCompiler({ discovered: [httpPlugin, queryPlugin] })
+const { transform } = FIRST_PARTY
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // Compiler fixtures live in the native-compiler package — reach them via
@@ -50,6 +57,7 @@ describe('@pyreon/native-cli build', () => {
   it('build compiles all fixtures to Swift', () => {
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'swift',
     })
@@ -81,6 +89,7 @@ describe('@pyreon/native-cli build', () => {
   it('build compiles all fixtures to Kotlin', () => {
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
     })
@@ -116,6 +125,7 @@ describe('@pyreon/native-cli build', () => {
     // multi-file host.
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
       kotlinPackage: 'com.pyreon.generated',
@@ -137,6 +147,7 @@ describe('@pyreon/native-cli build', () => {
     // not affect the emit. Swift has no `package` statement.
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'swift',
       kotlinPackage: 'com.pyreon.generated',
@@ -151,6 +162,7 @@ describe('@pyreon/native-cli build', () => {
     // Pre-extension behavior preserved when the option is unset.
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
     })
@@ -165,6 +177,7 @@ describe('@pyreon/native-cli build', () => {
   it('build output matches direct transform() result (modulo source-map + import headers)', () => {
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'swift',
     })
@@ -194,6 +207,7 @@ describe('@pyreon/native-cli build', () => {
   it('Swift outputs include the SwiftUI + PyreonRuntime + PyreonRouter import preamble', () => {
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'swift',
     })
@@ -207,6 +221,7 @@ describe('@pyreon/native-cli build', () => {
   it('Kotlin outputs include the Compose + Pyreon-runtime import preamble', () => {
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
       kotlinPackage: 'com.pyreon.generated',
@@ -236,6 +251,7 @@ describe('@pyreon/native-cli build', () => {
     // "non-fetch ⇒ no Json".
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
       kotlinPackage: 'com.pyreon.generated',
@@ -389,6 +405,7 @@ describe('@pyreon/native-cli build', () => {
     // branches in conditionalKotlinImports.
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
       kotlinPackage: 'com.pyreon.generated',
@@ -515,6 +532,7 @@ describe('@pyreon/native-cli build', () => {
     // verticalScroll/Dialog/AsyncImage branches in conditionalKotlinImports.
     const result = build({
       source: COMPILER_FIXTURES,
+      compiler: FIRST_PARTY,
       out: tempOut,
       target: 'kotlin',
       kotlinPackage: 'com.pyreon.generated',

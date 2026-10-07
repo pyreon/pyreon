@@ -19,9 +19,9 @@
 // emitter actually emits, which is a fixed-and-growing surface.
 
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
-import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
+import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findService } from './registry-lookup'
+import { findService, pluginCallReadType } from './registry-lookup'
 import { ERROR_OBJECT } from './services'
 
 export interface InferenceCtx {
@@ -78,11 +78,11 @@ export interface InferenceCtx {
    */
   fetches: Map<string, TypeIR>
   /**
-   * `useStream` decl name → its ITEM type (`SseEvent<T>` or the NDJSON `T`).
-   * `s.events()` is an array of it, `s.latest()` an optional one, `s.status()`
-   * a string. Optional so the many ctx literals need not construct it.
+   * Plugin declaration name → the declaration, so a zero-arg call read on its container
+   * (`s.events()`) is typed by the owner's `DeclEmitter.typing`. Optional so the many ctx literals
+   * need not construct it.
    */
-  streams?: Map<string, TypeIR> | undefined
+  extDecls?: Map<string, ExtDecl> | undefined
   /** Service-container binding name → decl kind (`geo` → `geolocation`). */
   services: Map<string, string>
   /**
@@ -679,9 +679,7 @@ export function buildInferenceCtx(
     fetches: new Map(
       decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
     ),
-    streams: new Map(
-      decls.flatMap((d) => (d.kind === 'stream' ? [[d.name, d.itemType] as const] : [])),
-    ),
+    extDecls: new Map(decls.flatMap((d) => (d.kind === 'ext' ? [[d.name, d] as const] : []))),
     // Service-container binding -> decl kind, so a member read on one can be
     // typed against SERVICE_OPTIONAL_FIELDS above.
     services: new Map(
@@ -1798,25 +1796,16 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
         }
       }
-      // useStream result reads — `s.events()` / `s.latest()` / `s.status()` /
-      // `s.error()`. `latest` and `error` are optional on every layer.
+      // A zero-arg call read on a plugin declaration's container (`s.events()` on a `useStream`):
+      // typed by the declaration's owner (`DeclEmitter.typing`).
       if (
         expr.args.length === 0 &&
         expr.callee.kind === 'member' &&
-        expr.callee.object.kind === 'identifier' &&
-        ctx.streams?.has(expr.callee.object.name) === true
+        expr.callee.object.kind === 'identifier'
       ) {
-        const item = ctx.streams.get(expr.callee.object.name)!
-        switch (expr.callee.property) {
-          case 'events':
-            return { kind: 'array', element: item }
-          case 'latest':
-            return { kind: 'union', branches: [item, { kind: 'undefined' }] }
-          case 'status':
-            return { kind: 'string' }
-          case 'error':
-            return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
-        }
+        const ext = ctx.extDecls?.get(expr.callee.object.name)
+        const typed = ext === undefined ? undefined : pluginCallReadType(ext, expr.callee.property)
+        if (typed !== undefined) return typed
       }
       // Store-read chain: `useApp().store.tasks()` — zero-arg call on a
       // field of `.store` on a zero-arg store-hook call. Resolves to

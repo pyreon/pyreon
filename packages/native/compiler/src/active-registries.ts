@@ -29,6 +29,7 @@ import {
   type RegisteredParseRefinement,
   type RegisteredPropsType,
 } from './parse-extensions'
+import { createScanRegistry, type ScanRegistry } from './module-scan'
 import { createScopeRegistry, type ScopeRegistry } from './scope-provider'
 import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
 import {
@@ -60,6 +61,8 @@ export interface CompilerRegistries {
   readonly propsTypes: ReadonlyMap<string, RegisteredPropsType>
   /** Receiver, function, member-read, intrinsic and preparation hooks. */
   readonly exprs: ExprRegistry
+  /** Per-file scanners, request sources and destructurable hooks. */
+  readonly scan: ScanRegistry
 }
 
 /**
@@ -105,6 +108,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     parseRefinements: createParseRefinements(ordered),
     propsTypes: createPropsTypeRegistry(ordered),
     exprs,
+    scan: createScanRegistry(ordered),
   })
 }
 

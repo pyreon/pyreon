@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /**
  * A generated API hook's whole point is `useGetUser(id)` where `id` is a

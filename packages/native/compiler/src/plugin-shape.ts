@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -283,7 +283,22 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   if (refineParse !== undefined && typeof refineParse !== 'function') {
     throw new Error(`[Pyreon] Plugin "${name}" refineParse must be a synchronous function.`)
   }
+  if (scanModule !== undefined && typeof scanModule !== 'function') {
+    throw new Error(`[Pyreon] Plugin "${name}" scanModule must be a synchronous function.`)
+  }
+  if (requestSources !== undefined) {
+    if (!Array.isArray(requestSources)) {
+      throw new Error(`[Pyreon] Plugin "${name}" requestSources must be an array of request sources.`)
+    }
+    for (const entry of requestSources as unknown[]) {
+      const source = entry as { has?: unknown; resolve?: unknown } | null
+      if (!source || typeof source !== 'object' || typeof source.has !== 'function' || typeof source.resolve !== 'function') {
+        throw new Error(`[Pyreon] Plugin "${name}" request source needs has and resolve functions.`)
+      }
+    }
+  }
   for (const [field, value] of [
+    ['destructureCalls', destructureCalls],
     ['runtimeTypes', runtimeTypes],
     ['modules', modules],
     ['requires', requires],

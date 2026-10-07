@@ -7,7 +7,7 @@
 // nothing can reach is not a crossing.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const app = (decl: string) =>
   `import { SizedMap } from '@pyreon/sized-map'

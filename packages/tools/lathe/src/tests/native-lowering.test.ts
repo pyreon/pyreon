@@ -10,7 +10,7 @@
  * `useQuery` verbatim — zero warnings, and Swift that cannot find the symbol.
  */
 
-import { transform } from '@pyreon/native-compiler'
+import { transform } from './native-plugins'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 import { verifyNative, worstVerdict } from '../verify/lower'
