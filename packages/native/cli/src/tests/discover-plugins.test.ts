@@ -475,3 +475,38 @@ describe('the shipped bin', () => {
     expect(run('explain').status).toBe(1)
   })
 })
+
+// Load the actual shipped package entry, rather than a compiler-local copy.
+describe('package-owned singleton plugins', () => {
+  for (const fixture of [
+    { owner: 'store', className: 'PyreonStore_example', source: `import { defineStore } from '@pyreon/store'
+      import { signal } from '@pyreon/reactivity'
+      import { Text } from '@pyreon/primitives'
+      const useExample = defineStore('example', () => { const amount = signal(0.5); return { amount } })
+      export function Example() { const api = useExample(); return <Text>{api.store.amount()}</Text> }` },
+    { owner: 'state-tree', className: 'PyreonModel_example', source: `import { model } from '@pyreon/state-tree'
+      import { Text } from '@pyreon/primitives'
+      const example = model({ state: { amount: 0.5 } }).views(self => ({ doubled: () => self.amount() * 2 })).create()
+      export function Example() { return <Text>{example.doubled()}</Text> }` },
+  ]) {
+    it(`discovers the built ${fixture.owner} entry and emits both targets without a compiler fallback`, async () => {
+      const ownerDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../fundamentals', fixture.owner)
+      expect(readFileSync(join(ownerDir, 'lib', 'native-plugin.js'), 'utf8').length).toBeGreaterThan(1000)
+      const nm = join(app, 'node_modules', '@pyreon')
+      mkdirSync(nm, { recursive: true })
+      symlinkSync(ownerDir, join(nm, fixture.owner), 'dir')
+      setApp([`@pyreon/${fixture.owner}`], fixture.source)
+      const found = await discoverPlugins(app, join(app, 'src'))
+      expect(found.map(entry => entry.plugin.name)).toEqual([`@pyreon/${fixture.owner}`])
+      const compiler = createCompiler({ discovered: found.map(entry => entry.plugin) })
+      for (const target of ['swift', 'kotlin'] as const) {
+        const bare = createCompiler().transform(fixture.source, { target })
+        expect(bare.code).not.toContain(fixture.className)
+        const result = compiler.transform(fixture.source, { target })
+        expect(result.warnings).toEqual([])
+        expect(result.code).toContain(target === 'swift' ? `final class ${fixture.className}` : `object ${fixture.className}`)
+        expect(result.code).toContain(`${fixture.className}${target === 'swift' ? '.shared' : ''}.${fixture.owner === 'store' ? 'amount' : 'doubled'}`)
+      }
+    })
+  }
+})

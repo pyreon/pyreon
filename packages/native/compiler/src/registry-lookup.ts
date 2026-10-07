@@ -26,7 +26,7 @@ import {
 } from './expr-lowering'
 import type { PluginScope } from './plugin-scope'
 import type { UnloweredModule } from './unlowered-modules'
-import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
+import type { EmitContext, KotlinEmitContext, SwiftEmitContext, MemberEmitScope } from './emit-context'
 import { emitExtExpr, emitModuleItem, findFieldValidators, fieldValidatorsAdvice, type ExtExprIR } from './module-items'
 import type { DeclIR, ExprIR, ExtDecl, ExtModuleItem, TypeIR } from './types'
 
@@ -177,6 +177,21 @@ export function extDeclLifecycle(d: ExtDecl): DeclLifecycle | undefined {
   return activeRegistries().calls.emitter(d.plugin, d.type)?.lifecycle
 }
 
+/** Type a read rooted at an item through its owning plugin. */
+export function pluginItemType(item: ExtModuleItem, expr: ExprIR, infer: (expr: ExprIR, scope?: MemberEmitScope) => TypeIR): TypeIR | undefined {
+  return activeRegistries().items.emitter(item.plugin, item.type)?.typing?.type?.(item, expr, infer)
+}
+
+/** Declaration scopes owned by the item; live functions receive ordinary numeric refinement. */
+export function pluginItemScopes(item: ExtModuleItem): readonly MemberEmitScope[] {
+  return activeRegistries().items.emitter(item.plugin, item.type)?.typing?.scopes?.(item) ?? []
+}
+
+/** The actual field nodes owned by an item; refinement mutates them in place. */
+export function pluginItemFields(item: ExtModuleItem): readonly { name: string; type: TypeIR; initial: ExprIR }[] {
+  return activeRegistries().items.emitter(item.plugin, item.type)?.typing?.fields?.(item) ?? []
+}
+
 /**
  * The receiver lowering for `expr` — a call, member read or assignment target
  * whose chain is ROOTED at a binding one of a plugin's declarations created —
@@ -259,19 +274,31 @@ export function lowerPluginReceiver(
   target: 'swift',
   scope: PluginScope,
   ctx: () => SwiftEmitContext,
+  isLocal?: (name: string) => boolean,
 ): string | undefined
 export function lowerPluginReceiver(
   expr: Extract<ExprIR, { kind: 'call' | 'member' }>,
   target: 'kotlin',
   scope: PluginScope,
   ctx: () => KotlinEmitContext,
+  isLocal?: (name: string) => boolean,
 ): string | undefined
 export function lowerPluginReceiver(
   expr: Extract<ExprIR, { kind: 'call' | 'member' }>,
   target: Target,
   scope: PluginScope,
   ctx: () => SwiftEmitContext | KotlinEmitContext,
+  isLocal?: (name: string) => boolean,
 ): string | undefined {
+  const root = rootReceiverName(expr)
+  const item = root === undefined || isLocal?.(root) === true ? undefined : scope.itemByName(root)
+  if (item !== undefined) {
+    const receiver = activeRegistries().items.emitter(item.plugin, item.type)?.receivers
+    const lowered = target === 'swift'
+      ? receiver?.swift?.({ expr, receiver: item }, ctx() as SwiftEmitContext)
+      : receiver?.kotlin?.({ expr, receiver: item }, ctx() as KotlinEmitContext)
+    if (lowered !== undefined) return lowered
+  }
   const found = findReceiverLowering(expr, scope)
   if (found === undefined) return undefined
   const { lowering, receiver } = found
@@ -587,7 +614,7 @@ export function itemLegacyList(item: ExtModuleItem): string | undefined {
 }
 
 /** The items that emit in `slot` (see `ModuleItemEmitter.after`), in file order. */
-export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'declarations' | 'data'): ExtModuleItem[] {
+export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'bindings' | 'models' | 'declarations' | 'data'): ExtModuleItem[] {
   const registry = activeRegistries().items
   return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'data') === slot)
 }

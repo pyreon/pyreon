@@ -76,8 +76,13 @@ export function App() {
   return <Stack><Text>{amount()}</Text><Text>{amount(whole())}</Text></Stack>
 }`
 
+const UNSUPPORTED_DESTRUCTURE = `${IMPORTS}
+const ignored = (x = 0, { value }, [q], ...rest) => x + value
+export function App() { return <Text>Ready</Text> }
+`
+
 describe('fractional defaults and singleton member scopes', () => {
-  for (const [name, source] of [['store', STORE], ['model', MODEL], ['helper', HELPER], ['array', ARRAY_DEFAULT], ['constant', CONSTANT_DEFAULT], ['inferred', INFERRED_DEFAULT]] as const) {
+  for (const [name, source] of [['store', STORE], ['model', MODEL], ['helper', HELPER], ['array', ARRAY_DEFAULT], ['constant', CONSTANT_DEFAULT], ['inferred', INFERRED_DEFAULT], ['unsupported mixed parameters', UNSUPPORTED_DESTRUCTURE]] as const) {
     it.skipIf(!isSwiftcAvailable() || ((name === 'store' || name === 'model') && !isObservationAvailable()))(`${name} accepts fractional state/defaults and integer callers on Swift`, () => {
       const output = transform(source, { target: 'swift' })
       const result = validateSwiftWithStubs(output.code)

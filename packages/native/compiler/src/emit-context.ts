@@ -18,9 +18,19 @@
  */
 
 import type { PluginScope } from './plugin-scope'
-import type { ChildIR, ExprIR, ExtDecl, JsxElementIR, StatementIR, TypeIR } from './types'
+import type { ChildIR, DeclIR, ExprIR, ExtDecl, JsxElementIR, StatementIR, TypeIR } from './types'
 
 export type EmitTarget = 'swift' | 'kotlin'
+
+/** A plugin-owned declaration scope, independent of any library or target class. */
+export interface MemberEmitScope {
+  readonly name: string
+  readonly declarations: readonly DeclIR[]
+  /** The parameter through which member bodies address this scope's signal values. */
+  readonly receiver?: string | undefined
+  /** Use the target's observable-class member spelling (Swift Observation). */
+  readonly observable?: boolean | undefined
+}
 
 /** A literal attribute value the compiler can read at compile time. */
 export type StaticAttrValue = string | number | boolean
@@ -76,6 +86,14 @@ export interface WebViewFacade {
 
 /** The emitter state a plugin-facing context reads beyond the basics — what a real emitter supplies and a toy backend may omit. */
 export interface EmitContextBackendExtras {
+  /** Emit inside a fresh declaration scope; restore the enclosing scope even when emission throws. */
+  memberScope<T>(scope: MemberEmitScope, run: () => T): T
+  /** Render a native member function through the compiler's ordinary function emitter. */
+  functionDeclaration(decl: Extract<DeclIR, { kind: 'function' }>): string
+  /** An argument emitted against a known native parameter type. */
+  argument(e: ExprIR, type: TypeIR | undefined, indent: number): string
+  /** A member accessed from outside a target-observable class. */
+  observableIdent(name: string): string
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -166,6 +184,14 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
 }
 
 export interface EmitContext {
+  /** Own signals/computeds/functions and an optional signal receiver, scoped for the synchronous callback. */
+  memberScope<T>(scope: MemberEmitScope, run: () => T): T
+  /** Emit a member function, including default parameters, return types and statement bodies. */
+  functionDeclaration(decl: Extract<DeclIR, { kind: 'function' }>): string
+  /** Convert numeric arguments when the known parameter stores fractional values. */
+  argument(e: ExprIR, type: TypeIR | undefined, at?: number): string
+  /** The target's spelling for a member of an observable class. */
+  observableIdent(name: string): string
   readonly target: EmitTarget
   /** Indentation (in spaces) of the element being emitted. */
   readonly indent: number
@@ -325,6 +351,10 @@ export function createEmitContext(
   return {
     target,
     indent,
+    memberScope: (scope, run) => (backend.memberScope ?? (() => missing('memberScope')))(scope, run),
+    functionDeclaration: (decl) => (backend.functionDeclaration ?? (() => missing('functionDeclaration')))(decl),
+    argument: (e, type, at = indent) => (backend.argument ?? (() => missing('argument')))(e, type, at),
+    observableIdent: (name) => (backend.observableIdent ?? (() => missing('observableIdent')))(name),
     emit: (el, at = indent) => backend.emit(el, at),
     pad: (n = indent) => ' '.repeat(n),
     staticAttr: (el, name) => backend.staticAttr(el, name),

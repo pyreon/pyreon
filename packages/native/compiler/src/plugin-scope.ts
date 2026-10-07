@@ -12,11 +12,13 @@
  * cannot read a plugin's {@link PluginScope.state} — that bag is opaque to it.
  */
 
-import type { DeclIR, ExtDecl } from './types'
+import type { DeclIR, ExtDecl, ExtModuleItem } from './types'
 
 export interface PluginScope {
   /** The ext declaration bound to `name` in the component being emitted. */
   declByName(name: string): ExtDecl | undefined
+  /** A file-scope item bound to `name`, unless this component declares the same name. */
+  itemByName(name: string): ExtModuleItem | undefined
   /** The ext declarations of `(plugin, type)` in the component being emitted, frozen. */
   decls(plugin: string, type: string): readonly ExtDecl[]
   /** A value that lives for the component being emitted: `init` runs on first use of `key`. */
@@ -73,8 +75,10 @@ interface Deferred {
  * A scope for one component (`decls` given) or for module-level emit (omitted —
  * there is no component text to substitute into, so `deferred` refuses).
  */
-export function createPluginScope(decls?: readonly DeclIR[]): PluginScope {
+export function createPluginScope(decls?: readonly DeclIR[], items: readonly ExtModuleItem[] = []): PluginScope {
   const byName = new Map<string, ExtDecl>()
+  const shadowed = new Set((decls ?? []).flatMap((d) => 'name' in d ? [d.name] : []))
+  const moduleItems = new Map(items.filter((item) => !shadowed.has(item.name)).map((item) => [item.name, item]))
   const ext: ExtDecl[] = []
   for (const d of decls ?? []) {
     if (d.kind !== 'ext') continue
@@ -86,6 +90,7 @@ export function createPluginScope(decls?: readonly DeclIR[]): PluginScope {
   const inComponent = decls !== undefined
   return {
     declByName: (name) => byName.get(name),
+    itemByName: (name) => moduleItems.get(name),
     decls: (plugin, type) =>
       Object.freeze(ext.filter((d) => d.plugin === plugin && d.type === type)),
     state<T>(key: string, init: () => T): T {

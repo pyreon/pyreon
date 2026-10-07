@@ -32,7 +32,7 @@
 // references the store), so the warning is the load-bearing signal in both.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const mk = (setup: string) => `
   import { defineStore } from '@pyreon/store'

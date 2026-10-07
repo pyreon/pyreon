@@ -37,6 +37,8 @@ export interface ModuleScan {
   skipTopLevel(skip: (node: AstNode) => boolean): void
   /** Mark `name` imported from `module` (`'*'`: from any module) as consumed by lowering, so it draws no "has NO native lowering" warning. */
   lowered(module: string, name: string): void
+  /** Register a file-local factory whose identifier bindings substitute an expression without emitting a declaration. */
+  aliasFactory(name: string, alias: ExprIR, destructureDiagnostic?: string): void
   /** Report a limitation to the author exactly as written. */
   report(message: string): void
 }

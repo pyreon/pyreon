@@ -2041,6 +2041,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
@@ -2053,8 +2054,12 @@
         "zod": "^4.6.5",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/storage": {
       "name": "@pyreon/storage",
@@ -2089,6 +2094,7 @@
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/core": "workspace:*",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:*",
         "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
@@ -2101,8 +2107,12 @@
         "zustand": "^5.0.15",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/sync": {
       "name": "@pyreon/sync",

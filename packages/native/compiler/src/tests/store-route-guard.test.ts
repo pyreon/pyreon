@@ -12,7 +12,7 @@
 // store IS the canonical channel — keep these green.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const STORE_AUTH_APP = `
   import { defineStore } from '@pyreon/store'

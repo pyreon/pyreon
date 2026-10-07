@@ -26,8 +26,8 @@
  */
 
 import { isJson, type AstNode } from './call-lowering'
-import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
-import type { ExprIR, ExtModuleItem, ExtPayload, StructIR, TypeIR } from './types'
+import type { EmitContext, KotlinEmitContext, MemberEmitScope, SwiftEmitContext } from './emit-context'
+import type { DeclIR, ExprIR, ExtModuleItem, ExtPayload, StructIR, TypeIR } from './types'
 
 /** What a top-level recognizer (or `ModuleParseContext.addItem`) returns. The compiler stamps `plugin`. */
 export interface ExtItemSpec {
@@ -51,6 +51,16 @@ export interface ModuleParseContext {
   staticString(node: AstNode | null | undefined): string | null
   /** Parse any sub-node to the IR the emitters consume. */
   expr(node: AstNode): ExprIR
+  /**
+   * Build a native function declaration, including typed and defaulted parameters.
+   * @example ctx.functionDeclaration('increment', actionNode)
+   */
+  functionDeclaration(name: string, node: AstNode): Extract<DeclIR, { kind: 'function' }>
+  /**
+   * Infer a seed's native type, including fractional and homogeneous array literals.
+   * @example ctx.initialType(ctx.expr(initializerNode))
+   */
+  initialType(initial: ExprIR): TypeIR
   /**
    * Report that `node` (`what`) has no native lowering, `hint` saying how to write it so it does, and
    * return `null` — the verdict a {@link MethodCallRecognizer} gives for a call it claims but cannot lower.
@@ -107,22 +117,51 @@ export interface FieldValidators {
   kotlin(item: ExtModuleItem, field: string, value: string): string
 }
 
+/** A call or member chain rooted at a file-scope item's primary binding. */
+export interface ModuleReceiverSite {
+  readonly expr: Extract<ExprIR, { kind: 'call' | 'member' }>
+  readonly receiver: ExtModuleItem
+}
+
+/**
+ * Lower expressions rooted at an item, including a callable binding (`useState().values.x`)
+ * or an instance binding (`state.x()`). A component-local binding shadows the item.
+ */
+export interface ModuleReceiverLowering {
+  swift?(site: ModuleReceiverSite, ctx: SwiftEmitContext): string | undefined
+  kotlin?(site: ModuleReceiverSite, ctx: KotlinEmitContext): string | undefined
+}
+
+/** The type evidence a file-scope item publishes to the compiler's inference passes. */
+export interface ModuleItemTyping {
+  /** Live function declarations and their own signal/computed scope, refined before return inference. */
+  scopes?(item: ExtModuleItem): readonly MemberEmitScope[]
+  /** Mutable field IR, so seed/struct refinement edits the owning item rather than a detached copy. */
+  fields?(item: ExtModuleItem): readonly { name: string; type: TypeIR; initial: ExprIR }[]
+  /** A read/call rooted at the item's primary binding, or `undefined` to decline. */
+  type?(item: ExtModuleItem, expr: ExprIR, infer: (expr: ExprIR, scope?: MemberEmitScope) => TypeIR): TypeIR | undefined
+}
+
 /** Renders one item type, and says how it takes part in the core's cross-cutting passes. */
 export interface ModuleItemEmitter {
   /**
-   * Where among the core's own module items this one emits, in order: after the models (`'models'`), then the
+   * Where this item emits: after ordinary file bindings and before free helpers (`'bindings'`), after helpers (`'models'`, a legacy slot name), then the
    * plugin DECLARATIONS a file introduces by name before its schemas (`'declarations'` — a feature's schema struct
    * and its binding), then every other data declaration (`'data'`, the default). Items of one slot emit in file order.
    */
-  readonly after?: 'models' | 'declarations' | 'data' | undefined
+  readonly after?: 'bindings' | 'models' | 'declarations' | 'data' | undefined
   /**
    * Only an item that used to be a closed core array needs this: the name of the array it hashed in
    * (`moduleTag`, the hash that names synthesized structs, hashes each lane's payloads where the array stood).
    * A new plugin has no prior output to preserve and omits it.
    */
-  readonly legacyList?: 'fieldMetas' | 'zodSchemas' | 'features' | undefined
+  readonly legacyList?: 'models' | 'stores' | 'fieldMetas' | 'zodSchemas' | 'features' | undefined
   readonly bindings?: ItemBindings | undefined
   readonly fieldValidators?: FieldValidators | undefined
+  /** Expression chains rooted at this item's primary binding; `undefined` declines. */
+  readonly receivers?: ModuleReceiverLowering | undefined
+  /** Field and expression type evidence supplied by the owning library. */
+  readonly typing?: ModuleItemTyping | undefined
   /** The item's declarations, one string each (nested declarations first). */
   swift(item: ExtModuleItem, ctx: EmitContext): readonly string[]
   kotlin(item: ExtModuleItem, ctx: EmitContext): readonly string[]
