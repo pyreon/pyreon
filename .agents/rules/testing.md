@@ -174,4 +174,4 @@ Kotlin cache misses are served by one warm compiler JVM per run (`src/kotlin-dae
 - A fast re-run is not a failed invalidation: after a Swift-only key change, `kotlinc` verdicts legitimately still hit. Check which keys should have moved.
 - `PYREON_VALIDATE_NO_CACHE=1` bypasses both tiers; `PYREON_VALIDATE_CACHE_DIR` relocates the store (CI restores it).
 - The nightly `schedule` run is deliberately uncached, to catch a new compiler release changing strictness.
-- Vitest runs files in parallel, so do not estimate per-file costs serially; that overstates wins by about 10×.
+- Native-compiler test files run serially in every lane (`fileParallelism: false`), because they share one Kotlin compiler JVM. Parallel files queued compiles behind each other, consumed request deadlines and triggered fallback JVMs. Keep the real compiles and existing deadlines; measure complete runs with the cache state reported, including direct SDK and runtime-execution fixtures that bypass the verdict cache.
