@@ -10,13 +10,8 @@
 // (no double-connect).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwift,
-} from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwift } from '../validate'
 
 const AUTO = `import { useWebSocket } from '@pyreon/hooks'
 import { Stack, Text, Button } from '@pyreon/primitives'
@@ -71,10 +66,13 @@ export function App() {
     expect(kt).not.toContain('LaunchedEffect(Unit) {')
   })
 
-  it.skipIf(!isSwiftUIAvailable())('iOS: the auto-connect emit TYPECHECKS against real SwiftUI', () => {
-    const r = validateSwift(transform(AUTO, { target: 'swift' }).code)
-    expect(r.ok, r.error ?? '').toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable())(
+    'iOS: the auto-connect emit TYPECHECKS against real SwiftUI',
+    () => {
+      const r = validateSwift(transform(AUTO, { target: 'swift' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    },
+  )
 
   it.skipIf(!isKotlincAvailable())('Android: the auto-connect emit compiles via kotlinc', () => {
     const r = validateKotlin(transform(AUTO, { target: 'kotlin' }).code)

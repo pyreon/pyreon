@@ -24,13 +24,8 @@
 // declined field is no worse off than before — it is just no longer silent.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const schema = (fields: string) => `import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
@@ -39,7 +34,7 @@ const User = zodSchema(z.object({ ${fields} }))
 export function App() { return <Text>x</Text> }`
 
 const APP = schema(
-  "site: z.string().url(), slug: z.string().regex(/^[a-z0-9-]+$/), code: z.string().regex(/^[A-Z]{3}$/i)",
+  'site: z.string().url(), slug: z.string().regex(/^[a-z0-9-]+$/), code: z.string().regex(/^[A-Z]{3}$/i)',
 )
 
 describe('.regex() reaches the emit instead of vanishing', () => {

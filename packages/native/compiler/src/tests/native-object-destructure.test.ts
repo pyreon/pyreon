@@ -22,14 +22,13 @@
 // to typecheck (anonymous-object types are the separate struct-synthesis gap).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { transform, validateKotlin } from './first-party-plugins'
 import {
   isSwiftcAvailable,
   isKotlincAvailable,
   isSwiftUIAvailable,
   validateSwift,
   validateSwiftTypecheck,
-  validateKotlin,
 } from '../validate'
 
 // One component exercising ALL four shapes — kept as a SINGLE source so the

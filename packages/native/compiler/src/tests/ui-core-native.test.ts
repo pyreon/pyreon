@@ -8,8 +8,8 @@
 // provider + defineTheme + Element layout + rocketstyle components — lower.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
@@ -48,12 +48,18 @@ describe('ui-core-native — PyreonUI transparent provider', () => {
 })
 
 describe('ui-core-native — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the full ui-system app root typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(APP).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the full ui-system app root compiles (real kotlinc)', () => {
-    const res = validateKotlin(kotlin(APP).code)
-    expect(res.ok, res.error).toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the full ui-system app root typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(APP).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the full ui-system app root compiles (real kotlinc)',
+    () => {
+      const res = validateKotlin(kotlin(APP).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
 })

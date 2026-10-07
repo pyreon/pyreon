@@ -24,13 +24,8 @@
 
 import { buildUrl } from '@pyreon/http'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const P = '@pyreon/primitives'
 const BASE = '/api'

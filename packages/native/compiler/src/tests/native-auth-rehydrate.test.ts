@@ -21,13 +21,8 @@
 //      keeps `!= null` — smart cast narrows a val local by language rule.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `import { onMount } from '@pyreon/core'
 import { useAuth, useSecureStorage } from '@pyreon/hooks'

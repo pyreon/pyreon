@@ -17,13 +17,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { s } from '@pyreon/validate'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const ANY = '/^[a-z][a-z0-9+.-]*$/i'
 const MAIL = '/^(https|mailto)$/'
@@ -102,7 +97,8 @@ function kotlinCondition(code: string, field: string): string {
   return (m as RegExpExecArray)[1] as string
 }
 
-const cases = (): string => CORPUS.map((v) => [...v].map((c) => c.codePointAt(0)).join(',')).join('\n')
+const cases = (): string =>
+  CORPUS.map((v) => [...v].map((c) => c.codePointAt(0)).join(',')).join('\n')
 
 function jvmPath(): string | undefined {
   try {
@@ -111,7 +107,11 @@ function jvmPath(): string | undefined {
   } catch {
     // fall through
   }
-  for (const c of ['/opt/homebrew/opt/openjdk/bin/java', '/opt/homebrew/opt/openjdk@17/bin/java', '/usr/bin/java']) {
+  for (const c of [
+    '/opt/homebrew/opt/openjdk/bin/java',
+    '/opt/homebrew/opt/openjdk@17/bin/java',
+    '/usr/bin/java',
+  ]) {
     if (existsSync(c)) return c
   }
   return undefined
@@ -141,12 +141,17 @@ describe('the emitted rule follows the authoring library', () => {
   })
 
   it('zod `.url()` keeps its any-scheme rule', () => {
-    expect(swiftCondition(transform(ZOD_APP, { target: 'swift' }).code, 'web')).toContain('URL(string: webVal)?.scheme == nil')
+    expect(swiftCondition(transform(ZOD_APP, { target: 'swift' }).code, 'web')).toContain(
+      'URL(string: webVal)?.scheme == nil',
+    )
   })
 
   it('a `protocol` that cannot port DECLINES by name instead of falling back to http(s)', () => {
     for (const bad of ['PROTO', '/^https?$/g', '{ ...o }']) {
-      const src = APP.replace(`{ protocol: ${ANY} }`, bad === '{ ...o }' ? bad : `{ protocol: ${bad} }`)
+      const src = APP.replace(
+        `{ protocol: ${ANY} }`,
+        bad === '{ ...o }' ? bad : `{ protocol: ${bad} }`,
+      )
       const r = transform(src, { target: 'swift' })
       expect(r.warnings.join('\n')).toMatch(/\.url\(\).*NOT (URL-)?validated on device/)
       expect(r.code).not.toContain('field: "any", rule: "url')
@@ -170,7 +175,8 @@ describe('web <-> native verdict parity, executed', () => {
     const code = transform(APP, { target: 'swift' }).code
     const got = inTemp('pyreon-url-rule-swift-', (dir) => {
       const funcs = FIELDS.map(
-        (f) => `func ok_${f}(_ ${f}Val: String) -> Bool { if ${swiftCondition(code, f)} { return false }; return true }`,
+        (f) =>
+          `func ok_${f}(_ ${f}Val: String) -> Bool { if ${swiftCondition(code, f)} { return false }; return true }`,
       ).join('\n')
       writeFileSync(join(dir, 'cases.txt'), cases())
       writeFileSync(
@@ -187,7 +193,9 @@ for line in text.split(separator: "\\n", omittingEmptySubsequences: false) {
 print(out.joined(separator: "\\n"))
 `,
       )
-      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], { stdio: 'pipe' })
+      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], {
+        stdio: 'pipe',
+      })
       return execFileSync(join(dir, 'run'), { encoding: 'utf8' }).split('\n')
     })
     const want = expected()
@@ -196,16 +204,19 @@ print(out.joined(separator: "\\n"))
     )
   })
 
-  it.skipIf(!isKotlincAvailable() || jvmPath() === undefined)('Kotlin', () => {
-    const code = transform(APP, { target: 'kotlin' }).code
-    const got = inTemp('pyreon-url-rule-kotlin-', (dir) => {
-      const funcs = FIELDS.map(
-        (f) => `fun ok_${f}(${f}Val: String): Boolean { if (${kotlinCondition(code, f)}) return false; return true }`,
-      ).join('\n')
-      writeFileSync(join(dir, 'cases.txt'), cases())
-      writeFileSync(
-        join(dir, 'Main.kt'),
-        `${funcs}
+  it.skipIf(!isKotlincAvailable() || jvmPath() === undefined)(
+    'Kotlin',
+    () => {
+      const code = transform(APP, { target: 'kotlin' }).code
+      const got = inTemp('pyreon-url-rule-kotlin-', (dir) => {
+        const funcs = FIELDS.map(
+          (f) =>
+            `fun ok_${f}(${f}Val: String): Boolean { if (${kotlinCondition(code, f)}) return false; return true }`,
+        ).join('\n')
+        writeFileSync(join(dir, 'cases.txt'), cases())
+        writeFileSync(
+          join(dir, 'Main.kt'),
+          `${funcs}
 fun main() {
   val lines = java.io.File(${JSON.stringify(join(dir, 'cases.txt'))}).readText().split("\\n")
   val out = lines.map { line ->
@@ -217,15 +228,23 @@ fun main() {
   print(out.joinToString("\\n"))
 }
 `,
-      )
-      execFileSync('kotlinc', [join(dir, 'Main.kt'), '-include-runtime', '-d', join(dir, 'out.jar')], {
-        stdio: 'pipe',
+        )
+        execFileSync(
+          'kotlinc',
+          [join(dir, 'Main.kt'), '-include-runtime', '-d', join(dir, 'out.jar')],
+          {
+            stdio: 'pipe',
+          },
+        )
+        return execFileSync(jvmPath() as string, ['-jar', join(dir, 'out.jar')], {
+          encoding: 'utf8',
+        }).split('\n')
       })
-      return execFileSync(jvmPath() as string, ['-jar', join(dir, 'out.jar')], { encoding: 'utf8' }).split('\n')
-    })
-    const want = expected()
-    expect(got.slice(0, want.length).map((v, i) => `${JSON.stringify(CORPUS[i])} ${v}`)).toEqual(
-      want.map((v, i) => `${JSON.stringify(CORPUS[i])} ${v}`),
-    )
-  }, 300_000)
+      const want = expected()
+      expect(got.slice(0, want.length).map((v, i) => `${JSON.stringify(CORPUS[i])} ${v}`)).toEqual(
+        want.map((v, i) => `${JSON.stringify(CORPUS[i])} ${v}`),
+      )
+    },
+    300_000,
+  )
 })
