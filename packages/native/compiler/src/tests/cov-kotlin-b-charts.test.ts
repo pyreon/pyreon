@@ -9,7 +9,7 @@
 // The Swift twins for most of these live in `chart-indicators-native` and
 // `chart-hosts`; the Kotlin halves of the DECLINE paths were the gap.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 const warn = (src: string) => kotlin(src).warnings

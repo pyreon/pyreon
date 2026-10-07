@@ -22,7 +22,7 @@
 // shape silently break on the device.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () => {
   describe('untyped `props` parameter', () => {

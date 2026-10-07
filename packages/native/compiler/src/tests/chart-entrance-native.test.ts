@@ -13,9 +13,9 @@
 // swiftc rejected against `TreeOptions`, and a non-nil options value was
 // read with `?.` — an error on a non-optional in Swift.
 import { describe, expect, it } from 'vitest'
-import { chartChromeUnlowered, chartHostAnimates } from '../chart-hosts'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { chartChromeUnlowered, chartHostAnimates } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const TREEMAP = `import { TreemapChart } from '@pyreon/charts'
 import type { TreeNode } from '@pyreon/charts'

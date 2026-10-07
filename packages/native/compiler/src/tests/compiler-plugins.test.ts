@@ -1,20 +1,7 @@
-import {
-  createCompiler,
-  SUPPORTED_PLUGIN_API_VERSIONS,
-  swiftBackend,
-  transform,
-  type CompilerModule,
-  type CompilerPlugin,
-} from '../index'
+import { chartsCompiler, chartsPlugin } from './charts-plugin'
+import { BUILT_IN_PLUGINS, createCompiler, transform, SUPPORTED_PLUGIN_API_VERSIONS, swiftBackend, type CompilerModule, type CompilerPlugin } from '../index'
 import { parsePyreon } from '../parse'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-  validateSwiftTypecheck,
-} from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck, validateSwiftWithStubs } from '../validate'
 const APP = 'export function Example() { return <Text>hello</Text> }'
 const BADGE = 'export function Example() { return <ReleaseBadge /> }'
 const plugin = (extra: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
@@ -77,6 +64,7 @@ describe('instance-owned compiler plugins', () => {
     const order: string[] = []
     const compiler = createCompiler({
       plugins: [
+        chartsPlugin,
         plugin({
           name: 'first',
           prepareIR: () => {
@@ -234,9 +222,10 @@ describe('instance-owned compiler plugins', () => {
   })
   it('isolates runtime chart declarations from custom passes', () => {
     const source = "import '@pyreon/charts'; " + APP
-    const baseline = transform(source, { target: 'swift' })
+    const baseline = chartsCompiler.transform(source, { target: 'swift' })
     createCompiler({
       plugins: [
+        chartsPlugin,
         plugin({
           prepareIR(module) {
             for (const struct of module.structs) struct.name = 'Changed'
@@ -244,7 +233,7 @@ describe('instance-owned compiler plugins', () => {
         }),
       ],
     }).transform(source, { target: 'swift' })
-    expect(transform(source, { target: 'swift' })).toEqual(baseline)
+    expect(chartsCompiler.transform(source, { target: 'swift' })).toEqual(baseline)
   })
   it('does not retain warnings across calls', () => {
     const compiler = createCompiler({
@@ -306,7 +295,7 @@ describe('instance-owned compiler plugins', () => {
     [{ plugins: [null] }, /nonempty name/],
     [{ plugins: [plugin({ name: '' })] }, /nonempty name/],
     [{ plugins: [plugin(), plugin()] }, /Duplicate native compiler plugin/],
-    [{ plugins: [plugin({ name: '@pyreon/charts' })] }, /Duplicate native compiler plugin/],
+    [{ plugins: [plugin({ name: BUILT_IN_PLUGINS[0]!.name })] }, /Duplicate native compiler plugin/],
     [{ plugins: [{ ...plugin(), apiVersion: 2 }] }, /supports API 1/],
     [{ plugins: [plugin({ transformIR: 1 as never })] }, /transformIR must be/],
     [{ plugins: [plugin({ prepareIR: 1 as never })] }, /prepareIR must be/],
@@ -379,7 +368,7 @@ describe('additive protocol fields (apiVersion stays 1)', () => {
       requires: ['@pyreon/charts'],
       builtIn: false,
     })
-    expect(createCompiler({ plugins: [extended] }).transform(APP, { target: 'kotlin' })).toEqual(
+    expect(createCompiler({ plugins: [chartsPlugin, extended] }).transform(APP, { target: 'kotlin' })).toEqual(
       transform(APP, { target: 'kotlin' }),
     )
   })

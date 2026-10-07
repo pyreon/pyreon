@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 /**
  * Chart FLAGS the native emit honours only as literals. A flag that is PRESENT

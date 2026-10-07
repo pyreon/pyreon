@@ -3,7 +3,6 @@
     "packages": {
       "@pyreon/a11y": 2,
       "@pyreon/atlas": 1,
-      "@pyreon/charts": 10,
       "@pyreon/code": 1,
       "@pyreon/config": 1,
       "@pyreon/connector-document": 1,

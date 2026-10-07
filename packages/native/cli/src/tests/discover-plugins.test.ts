@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,9 +11,10 @@ import {
   listPluginPackages,
 } from '../discover-plugins'
 import { explainReport, pluginsReport } from '../plugin-commands'
-import { mainWithPlugins } from '../cli'
+import { mainWithPlugins, resolveAppDir } from '../cli'
 
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '../../bin/pyreon-native.js')
+const SRC_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), '../cli.ts')
 const MARKERS = '__pyreonDiscoverMarkers'
 const g = globalThis as unknown as Record<string, string[] | undefined>
 
@@ -153,6 +154,21 @@ describe('conflicts', () => {
   })
 })
 
+describe('resolveAppDir', () => {
+  it('prefers --app, then the package containing the source or file, then the working directory', () => {
+    setApp([], "export const x = 1")
+    mkdirSync(join(app, 'src', 'deep'), { recursive: true })
+    expect(resolveAppDir({ app: '/elsewhere' })).toBe('/elsewhere')
+    expect(resolveAppDir({ source: join(app, 'src') })).toBe(app)
+    expect(resolveAppDir({ source: join(app, 'src', 'deep') })).toBe(app)
+    expect(resolveAppDir({ file: join(app, 'src', 'Example.tsx') })).toBe(app)
+    expect(resolveAppDir({ source: join(app, 'src', 'not-created-yet') })).toBe(app)
+    expect(resolveAppDir({})).toBe(process.cwd())
+    // A source with no package.json above it falls back to the working directory.
+    expect(resolveAppDir({ source: '/' })).toBe(process.cwd())
+  })
+})
+
 describe('mainWithPlugins discovery', () => {
   const build = (...extra: string[]) =>
     mainWithPlugins(['build', '--target=ios', `--source=${join(app, 'src')}`, `--out=${join(root, 'out')}`, `--app=${app}`, ...extra])
@@ -167,6 +183,14 @@ describe('mainWithPlugins discovery', () => {
 
   it('applies a discovered plugin to build', async () => {
     expect(await build()).toBe(0)
+    expect(emitted()).toContain('From package plugin')
+  })
+
+  it('defaults the app to the package containing --source, not the working directory', async () => {
+    // No --app and a cwd that is nowhere near the app: how a monorepo builds `examples/<app>/src` from its root.
+    expect(
+      await mainWithPlugins(['build', '--target=ios', `--source=${join(app, 'src')}`, `--out=${join(root, 'out')}`]),
+    ).toBe(0)
     expect(emitted()).toContain('From package plugin')
   })
 
@@ -186,6 +210,20 @@ describe('mainWithPlugins discovery', () => {
 })
 
 describe('plugins and explain reports', () => {
+  it('warns by default when a package plugin fails and the compiler has a built-in copy', async () => {
+    addPackage('@pyreon/hooks', declares(), `throw new Error('stale package plugin')`)
+    setApp(['@pyreon/hooks'], `import { useShare } from '@pyreon/hooks'`)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await discoverPlugins(app, join(app, 'src'))).toEqual([])
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('stale package plugin'))
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('Using the compiler\'s built-in copy of "@pyreon/hooks"'))
+    const compiler = createCompiler()
+    const source = `import { useShare } from '@pyreon/hooks'
+export function A() { const share = useShare(); return <Text>x</Text> }`
+    expect(compiler.transform(source, { target: 'swift' }).code).toContain('PyreonShare()')
+    expect(compiler.transform(source, { target: 'kotlin' }).code).toContain('PyreonShare(shareCtx)')
+  })
+
   it('lists built-ins, the registry owners and discovered plugins', async () => {
     addPackage(
       '@acme/badge',
@@ -195,11 +233,12 @@ describe('plugins and explain reports', () => {
     setApp(['@acme/badge'], "import '@acme/badge'")
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
-    expect(lines).toContain('  @pyreon/charts')
+    expect(lines).toContain('  @pyreon/elements')
+    // Library knowledge arrives with the library's own plugin, never from the compiler.
+    expect(lines).not.toContain('  @pyreon/charts')
     expect(lines).toContain('  useShare  @pyreon/hooks')
     expect(lines).toContain('  useBadge  badge')
-    expect(lines).toContain('  TooltipContent  @pyreon/charts')
-    expect(lines).toContain('parse refinements (1):')
+    expect(lines).toContain('parse refinements (0):')
     expect(lines).toContain('  badge  @acme/badge@1.2.3  services: useBadge')
   })
 
@@ -353,10 +392,9 @@ describe('code-shaped plugins (calls + decls)', () => {
   const TOY_SOURCE = `import { createToy } from '@acme/toy'
 export function Example() { const t = createToy('hi'); return <Text>{t.label}</Text> }`
 
-  it('the plugins listing shows the built-in call recognizer with its owner and declaration types', async () => {
+  it('the compiler alone recognizes no calls', async () => {
     const { lines } = await pluginsReport(app, false)
-    expect(lines).toContain('call recognizers (1):')
-    expect(lines).toContain('  createChartHandle  @pyreon/charts  decls: chart-handle')
+    expect(lines).toContain('call recognizers (0):')
   })
 
   it('a discovered package plugin lowers its call and is listed and explained by owner', async () => {
@@ -374,11 +412,71 @@ export function Example() { const t = createToy('hi'); return <Text>{t.label}</T
     expect(text).not.toContain('NO emitter')
   })
 
-  it('explain attributes the built-in chart handle to @pyreon/charts', () => {
-    const src = `import { createChartHandle } from '@pyreon/charts'
+})
+
+// The real first-party plugin package, discovered the way an app's install would find it: through the
+// manifest's `pyreon.native.plugin`, lazily, when a source file imports the package. This is the
+// end-to-end proof that `@pyreon/native-compiler` carries no chart knowledge of its own.
+describe('the real @pyreon/charts plugin package', () => {
+  const CHARTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../fundamentals/charts')
+  const CHART_SOURCE = `import { createChartHandle } from '@pyreon/charts'
 export function A() { const chart = createChartHandle(); return <Text>x</Text> }`
-    const { lines } = explainReport(src, join(app, 'A.tsx'), createCompiler(), app)
+
+  function installCharts() {
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    symlinkSync(CHARTS_DIR, join(nm, 'charts'), 'dir')
+    setApp(['@pyreon/charts'], CHART_SOURCE)
+  }
+
+  it('is built (a missing lib/ would make every assertion below vacuous)', () => {
+    expect(readFileSync(join(CHARTS_DIR, 'lib', 'native-plugin.js'), 'utf8').length).toBeGreaterThan(1000)
+  })
+
+  it('is listed with its owner, recognizer, runtime types and colour-scope providers', async () => {
+    installCharts()
+    const { lines, exitCode } = await pluginsReport(app, false)
+    expect(exitCode).toBe(0)
+    expect(lines).toContain('call recognizers (1):')
+    expect(lines).toContain('  createChartHandle  @pyreon/charts  decls: chart-handle')
+    expect(lines).toContain('  TooltipContent  @pyreon/charts')
+    expect(lines).toContain('parse refinements (1):')
+    expect(lines).toContain('colour-scope providers (3):')
+    expect(lines).toContain('  @pyreon/ui-core  PyreonUI, PyreonUIProvider  @pyreon/charts')
+    expect(lines).toContain('  @pyreon/charts  ChartThemeProvider  @pyreon/charts')
+  })
+
+  it('is NOT loaded when no source imports the package (lazy activation)', async () => {
+    installCharts()
+    expect(await discoverPlugins(app, join(app, 'src'))).toHaveLength(1)
+    writeFileSync(join(app, 'src', 'Example.tsx'), 'export function Example() { return <Text>x</Text> }')
+    expect(await discoverPlugins(app, join(app, 'src'))).toHaveLength(0)
+  })
+
+  it('explain attributes the chart handle to @pyreon/charts', async () => {
+    installCharts()
+    const found = await discoverPlugins(app, join(app, 'src'))
+    const compiler = createCompiler({ discovered: found.map((d) => d.plugin) })
+    const { lines } = explainReport(CHART_SOURCE, join(app, 'A.tsx'), compiler, app)
     expect(lines.join('\n')).toContain('chart = chart-handle  [call recognizer, owner: @pyreon/charts]  payload: {}')
+  })
+})
+
+// The repo's example builds run the SOURCE entry (`bun packages/native/cli/src/cli.ts build …`), not the
+// shipped bin. Its self-run guard called the plugin-less `main`, so every plugin-discovered library was
+// compiled as if it had no native lowering — green exit, wrong output. Exit codes only (captured stdout
+// is not deterministic under load); the proof is the file the plugin rewrote.
+describe('the source entry (bun src/cli.ts)', () => {
+  it('discovers package plugins, like the shipped bin', () => {
+    addPackage('@acme/badge', declares(), pluginModule('badge', BADGE_BODY))
+    setApp(['@acme/badge'], BADGE_SOURCE)
+    const run = spawnSync(
+      'bun',
+      [SRC_ENTRY, 'build', '--target=ios', `--source=${join(app, 'src')}`, `--out=${join(root, 'out')}`],
+      { encoding: 'utf8', timeout: 60_000 },
+    )
+    expect(run.status).toBe(0)
+    expect(readFileSync(join(root, 'out', 'Example.swift'), 'utf8')).toContain('From package plugin')
   })
 })
 

@@ -2,6 +2,8 @@ import type { CompilerRegistries } from './active-registries'
 import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
 import type { ParseRefinement } from './parse-extensions'
+import type { ScopeProvider } from './scope-provider'
+import type { StubAugmentation } from './stub-augmentation'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
 import type { UnloweredSpec } from './unlowered-modules'
@@ -81,6 +83,20 @@ export interface CompilerPlugin<Target extends string = string> {
    * load-time error naming both.
    */
   readonly elements?: readonly ElementLowering[] | undefined
+  /**
+   * Colour-scope providers this plugin contributes: compile-time scopes entered
+   * by `<PyreonUI mode>` / `<ColorModeProvider mode>` (or an element of the
+   * plugin's own) while their children are emitted, read back by the plugin's
+   * own elements through `EmitContext.colorScope()`. A `(module, tag)` pair
+   * claimed by two owners is a load-time error naming both.
+   */
+  readonly scopes?: readonly ScopeProvider[] | undefined
+  /**
+   * Type-gate stub text this plugin's emit needs beyond the SwiftUI / Compose
+   * stub bundle (see {@link StubAugmentation}). The compiler never reads it; a
+   * caller of the compile gates passes it as `ValidateOptions.augment`.
+   */
+  readonly stubs?: StubAugmentation | undefined
   /**
    * Calls this plugin RECOGNIZES, keyed by hook / function name
    * (`createChartHandle`). A recognizer reads the call through the `ParseContext`

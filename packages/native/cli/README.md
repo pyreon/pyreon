@@ -55,8 +55,11 @@ package's `modules` (`"pyreon": { "native": { "modules": [...] } }`, default the
 package name, matched exactly or as a `name/subpath`). The import scan is a
 conservative regex — it can over-activate, never under-activate, and activation
 never changes lowering. The module's default export is validated; errors name
-the package and file. `--no-plugins` disables discovery (explicit `--plugin`
-still loads). Discovery is skipped for `check --lsp` (no `--source`).
+the package and file. The app is `--app`, else the package that contains `--source` (so a monorepo example
+built from the repo root reads ITS dependencies, not the root's), else the working
+directory. `@pyreon/charts` is the first-party example: its lowering ships in the package,
+so a chart app needs nothing beyond depending on it. `--no-plugins` disables discovery
+(explicit `--plugin` still loads). Discovery is skipped for `check --lsp` (no `--source`).
 
 ```sh
 pyreon-native plugins [--app=<dir>] [--verify]   # built-ins, hook owners, discovered plugins

@@ -7,7 +7,7 @@
 // build. So the specs pair the warning TEXT (which is the only signal the user
 // gets) with the absence of the engine call that would have drawn something.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 const warn = (src: string) => kotlin(src).warnings

@@ -8,8 +8,7 @@
  * duration of one element.
  */
 
-import type { SwiftEmitContext } from '../../emit-context'
-import type { JsxElementIR } from '../../types'
+import type { JsxElementIR, SwiftEmitContext } from '@pyreon/native-compiler/plugin-api'
 import { withSwiftContext } from './swift-facade'
 import { emitSwiftChartHost } from './swift-hosts'
 

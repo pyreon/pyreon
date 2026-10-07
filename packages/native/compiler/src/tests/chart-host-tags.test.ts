@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_INDICATOR_TAGS, GRAMMAR_MARK_TAGS, chartHostTags, isChartHostTag } from '../chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_INDICATOR_TAGS, GRAMMAR_MARK_TAGS, chartHostTags, isChartHostTag } from '../../../../fundamentals/charts/src/native-plugin/hosts'
 import { createRegistries } from '../active-registries'
-import { BUILT_IN_PLUGINS } from '../built-in-plugins'
+import { chartsPlugin } from './charts-plugin'
 
 // The `@pyreon/charts` plugin claims `chartHostTags()`; the parser still tests `isChartHostTag`.
 // Two lists for one set would drift the day a host is added to one, so they are derived from the
@@ -32,8 +32,8 @@ describe('chartHostTags', () => {
     expect(new Set(tags).size).toBe(tags.length)
   })
 
-  it('is what the built-in @pyreon/charts plugin claims, from @pyreon/charts', () => {
-    const { elements } = createRegistries([...BUILT_IN_PLUGINS])
+  it('is what the @pyreon/charts plugin claims, from @pyreon/charts', () => {
+    const { elements } = createRegistries([chartsPlugin])
     const claimed = elements.entries.filter((e) => e.owner === '@pyreon/charts')
     expect(claimed).toHaveLength(1)
     expect(claimed[0]!.lowering.module).toBe('@pyreon/charts')

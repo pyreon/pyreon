@@ -8,8 +8,8 @@
 // charts below follow the platform scheme), and a provider with no literal mode
 // above it (the web follows the system scheme; natively the light theme applies).
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const HEAD = `import { Stack } from '@pyreon/primitives'
 import type { TreeNode } from '@pyreon/charts'

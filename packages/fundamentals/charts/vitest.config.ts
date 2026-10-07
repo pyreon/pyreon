@@ -52,6 +52,14 @@ export default defineNodeConfig({
     // Same class — canvas hosts covered only by their real-Chromium suites (gantt.browser.test.tsx, geo.browser.test.tsx).
     'src/engine/GanttChart.tsx',
     'src/engine/MapChart.tsx',
+    // The native-compiler plugin: tooling that runs in Node, not browser code. It has no unit tests
+    // in this package on purpose, because its emit is verified by behaviour in the native-compiler
+    // package suite (the golden corpus plus about 100 chart specs), which owns the swiftc and kotlinc
+    // lanes. It is NOT coverage-measured by either package today: the v8 range-tree merge overflows
+    // the stack on the native-compiler coverage run (it did before the move too). The
+    // coverage-lists-in-sync test names it as the one allowed exception to browser-measured.
+    'src/native-plugin.ts',
+    'src/native-plugin/**',
   ],
   // Re-baselined for the plot-engine family wave (2026-09): each family PR
   // lands geometry with statement-level specs and the interaction/edge specs

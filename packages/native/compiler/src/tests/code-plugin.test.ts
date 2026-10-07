@@ -9,6 +9,7 @@ import { parsePyreon } from '../parse'
 import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
+import { chartsCompiler, chartsPlugin } from './charts-plugin'
 import { transform } from '../index'
 
 // A plugin-supplied (NOT built-in) code-shaped lowering: it recognizes a call,
@@ -117,9 +118,9 @@ describe('code-shaped plugin: load-time errors', () => {
     )
   })
 
-  it('a call that a built-in plugin already recognizes cannot be re-claimed', () => {
+  it('a call that another loaded plugin already recognizes cannot be re-claimed', () => {
     const clash = toyPlugin({ calls: { createChartHandle: toyCall } })
-    expect(() => createCompiler({ plugins: [clash] })).toThrow(
+    expect(() => createCompiler({ plugins: [chartsPlugin, clash] })).toThrow(
       /call "createChartHandle" is claimed by both "@pyreon\/charts" and "@acme\/toy"/,
     )
   })
@@ -167,12 +168,12 @@ describe('code-shaped plugin: load-time errors', () => {
   })
 })
 
-describe('the built-in proof: createChartHandle() is a @pyreon/charts plugin declaration', () => {
+describe('the first-party proof: createChartHandle() is a @pyreon/charts plugin declaration', () => {
   it('parses to an ext declaration owned by @pyreon/charts, not a core `kind`', () => {
     const src = `import { createChartHandle } from '@pyreon/charts'
 import { Text } from '@pyreon/primitives'
 export function App() { const chart = createChartHandle(); return <Text>x</Text> }`
-    const parsed = parsePyreon(src)
+    const parsed = withRegistries(chartsCompiler.registries, () => parsePyreon(src))
     expect(parsed.components[0]!.decls).toEqual([
       { kind: 'ext', plugin: '@pyreon/charts', type: 'chart-handle', name: 'chart', payload: {} },
     ])
@@ -180,7 +181,8 @@ export function App() { const chart = createChartHandle(); return <Text>x</Text>
 
   it('hashes as the chart-handle kind it was, so synthesized struct names do not move', () => {
     const decl = { kind: 'ext', plugin: '@pyreon/charts', type: 'chart-handle', name: 'chart', payload: {} }
-    expect(JSON.stringify(decl, hashServiceDeclsAsLegacy)).toBe(JSON.stringify({ kind: 'chart-handle', name: 'chart' }))
+    const legacy = withRegistries(chartsCompiler.registries, () => JSON.stringify(decl, hashServiceDeclsAsLegacy))
+    expect(legacy).toBe(JSON.stringify({ kind: 'chart-handle', name: 'chart' }))
     // A plugin declaration without a legacyKind hashes as itself.
     const toy = { kind: 'ext', plugin: '@acme/toy', type: 'toy', name: 't', payload: { a: 1 } }
     expect(JSON.stringify(toy, hashServiceDeclsAsLegacy)).toBe(JSON.stringify(toy))

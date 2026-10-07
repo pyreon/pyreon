@@ -5,7 +5,7 @@
 // handler shapes, and the database-insert shape warning.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const sw = (src: string) => transform(src, { target: 'swift' })
 

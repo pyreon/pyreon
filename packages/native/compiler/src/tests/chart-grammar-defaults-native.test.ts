@@ -1,8 +1,7 @@
 // `<Legend direct />` on iOS and Android: the spec carries `endLabels`, so the
 // generated engine draws the same direct labels the web does.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 
 const src = (legend: string) => `import { Chart, Legend, Line } from '@pyreon/charts'
 interface Row { m: string; a: number; b: number }

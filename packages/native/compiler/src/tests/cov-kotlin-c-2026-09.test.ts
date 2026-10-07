@@ -11,7 +11,7 @@
 // argument as a Double literal, so the Double spelling is the assertion.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './charts-plugin'
 
 const kt = (src: string) => transform(src, { target: 'kotlin' })
 const ktCode = (src: string) => kt(src).code

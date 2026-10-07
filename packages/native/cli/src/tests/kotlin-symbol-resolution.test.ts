@@ -32,7 +32,9 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { transform } from '@pyreon/native-compiler'
+// The CLI loads package-owned lowerings before emitting an app. Exercise that
+// compiler here as well, so relocated hosts cannot become phantom symbols.
+import { transform } from '../../../../../scripts/native-first-party-plugins'
 import { describe, expect, it } from 'vitest'
 import { conditionalKotlinImports, importHeader } from '../build'
 

@@ -53,7 +53,8 @@
         "exemptPaths": [
           "__tests__/",
           ".test.",
-          "packages/native/compiler/src/golden-fixtures/"
+          "packages/native/compiler/src/golden-fixtures/",
+          "packages/fundamentals/charts/native-golden/"
         ]
       }
     ],
@@ -81,7 +82,8 @@
       "error",
       {
         "exemptPaths": [
-          "packages/native/compiler/src/golden-fixtures/"
+          "packages/native/compiler/src/golden-fixtures/",
+          "packages/fundamentals/charts/native-golden/"
         ]
       }
     ],
@@ -268,7 +270,8 @@
       "error",
       {
         "exemptPaths": [
-          "packages/native/compiler/src/golden-fixtures/"
+          "packages/native/compiler/src/golden-fixtures/",
+          "packages/fundamentals/charts/native-golden/"
         ]
       }
     ],
@@ -276,7 +279,8 @@
       "error",
       {
         "exemptPaths": [
-          "packages/native/compiler/src/golden-fixtures/"
+          "packages/native/compiler/src/golden-fixtures/",
+          "packages/fundamentals/charts/native-golden/"
         ]
       }
     ],

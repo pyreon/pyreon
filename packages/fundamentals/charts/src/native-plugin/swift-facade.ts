@@ -6,8 +6,7 @@
  * duration of the call and every function reads it through {@link host}.
  */
 
-import type { HostStateSlot, SwiftEmitContext } from '../../emit-context'
-import type { ExprIR } from '../../types'
+import type { ExprIR, HostStateSlot, SwiftEmitContext } from '@pyreon/native-compiler/plugin-api'
 import { createContextSlot, sharedHost } from './facade'
 
 const slot = createContextSlot<SwiftEmitContext>('Swift', 'withSwiftContext')

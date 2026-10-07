@@ -8,8 +8,8 @@
 // The override loop had the mirror bug: it `continue`d on every `strings` field
 // so a user's `theme={{ ramp: [...] }}` was dropped with no warning at all.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { CHART_THEMES } from '../chart-hosts'
+import { transform } from './charts-plugin'
+import { CHART_THEMES } from '../../../../fundamentals/charts/src/native-plugin/hosts'
 
 const emit = (jsx: string): { code: string; warnings: string[] } => {
   const r = transform(

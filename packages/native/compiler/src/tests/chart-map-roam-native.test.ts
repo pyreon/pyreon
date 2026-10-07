@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /**
  * `<MapChart roam>` crosses: the view (zoom and pan) is host state merged into

@@ -2,8 +2,8 @@
 // the native emit of the grammar form is byte-identical to the array form on
 // both targets, so everything the plot host lowers (gestures, legend, theme,
 // formatters) is inherited rather than re-implemented.
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const HEAD = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'

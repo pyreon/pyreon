@@ -11,6 +11,7 @@
 
 import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
+import type { ScopeProvider } from './scope-provider'
 import type { ServiceDescriptor } from './services'
 import { emitExtDecl, lowerMemberCall } from './call-lowering'
 import type { PluginScope } from './plugin-scope'
@@ -47,9 +48,15 @@ export function findElementLowering(
   return activeRegistries().elements.find(tag, guard)
 }
 
-/** True when some registered lowering claims `name` (the parser then records where it was imported from). */
+/** True when some registered lowering or colour-scope provider claims `name` (the parser then records where it was imported from). */
 export function isElementLoweringTag(name: string): boolean {
-  return activeRegistries().elements.hasTag(name)
+  const registries = activeRegistries()
+  return registries.elements.hasTag(name) || registries.scopes.hasTag(name)
+}
+
+/** The colour-scope provider that claims `tag` (see {@link ElementClaimGuard}), or `undefined`. */
+export function findScopeProvider(tag: string, guard: ElementClaimGuard): ScopeProvider | undefined {
+  return activeRegistries().scopes.find(tag, guard)
 }
 
 /** True when `name` is a tag a registered lowering marks usable as a style base. */

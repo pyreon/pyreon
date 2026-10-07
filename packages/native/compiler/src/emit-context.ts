@@ -51,7 +51,7 @@ export interface EmitContextBackend {
   action(handler: ExprIR, indent: number): string
   /** `_moduleConstExprs.get` / `_moduleConstExprsKotlin.get` — a module-level `const`'s initializer. */
   constExpr(name: string): ExprIR | undefined
-  /** `_chartThemeScope` — the compile-time colour-mode scope enclosing the element (opaque; the plugin that stored it types it). */
+  /** `_colorScope` — the compile-time colour-mode scope enclosing the element (opaque; the plugin that stored it types it). */
   colorScope(): object | undefined
 }
 
@@ -113,9 +113,9 @@ export interface EmitContext {
   /**
    * The compile-time colour-mode scope enclosing the element, as the value its
    * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
-   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>` /
-   * `<ChartThemeProvider>` handling (saved and restored in `finally`, so
-   * providers nest and a sibling inherits nothing). The facade does not know
+   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>`
+   * handling and by any plugin-declared scope provider (`CompilerPlugin.scopes`;
+   * saved and restored in `finally`, so providers nest and a sibling inherits nothing). The facade does not know
    * the value's type; the plugin that reads it names it (`colorScope<T>()`).
    */
   colorScope<T extends object>(): T | undefined
