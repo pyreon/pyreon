@@ -307,6 +307,16 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('PasswordVisualTransformation(')) {
     imports.push('import androidx.compose.ui.text.input.PasswordVisualTransformation')
   }
+  // <Field kind="number"|"email"|"tel"|"url"|"search"> emits
+  // `KeyboardOptions(keyboardType = KeyboardType.Uri)`. KeyboardType lives in
+  // androidx.compose.ui.text.input beside ImeAction, but the unconditional
+  // header imports only `ImeAction` from it (#3843: a real Compose compile
+  // failed with `Unresolved reference 'KeyboardType'`; no example used a
+  // non-text Field kind, and the kotlinc stub gate resolves it regardless).
+  // Guarded across every kind by tests/kotlin-symbol-resolution.test.ts.
+  if (/\bKeyboardType\./.test(emitted)) {
+    imports.push('import androidx.compose.ui.text.input.KeyboardType')
+  }
   if (emitted.includes('VisualTransformation.')) {
     imports.push('import androidx.compose.ui.text.input.VisualTransformation')
   }
@@ -521,7 +531,7 @@ export function conditionalKotlinImports(emitted: string): string {
   return imports.length === 0 ? '' : imports.join('\n') + '\n'
 }
 
-function importHeader(target: TargetLanguage): string {
+export function importHeader(target: TargetLanguage): string {
   if (target === 'swift') {
     return [
       'import SwiftUI',
