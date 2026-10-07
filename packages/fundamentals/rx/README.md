@@ -176,6 +176,10 @@ Every reactive overload accepts any `ReadableSignal<T[]>` — not just Pyreon `S
 
 Full docs: [pyreon.dev/docs/rx](https://pyreon.dev/docs/rx) (or `docs/src/content/docs/rx.md` in this repo).
 
+## Native (iOS / Android)
+
+`rx.filter(src, p)` and the standalone source-first transforms (`filter`, `map`, `take`, `unique`, …, `reduce`, `average`) lower to the idiomatic native collection call over the source signal's value, as a computed; `pipe` does not lower. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT

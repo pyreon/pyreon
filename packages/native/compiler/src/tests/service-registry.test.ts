@@ -1,12 +1,11 @@
-import { BUILT_IN_PLUGINS, createCompiler, type CompilerPlugin } from '../index'
+import { createCompiler, type CompilerPlugin } from '../index'
 import {
-  BUILT_IN_SERVICE_OWNER,
   createServiceRegistry,
   orderPlugins,
   selectDiscovered,
   serviceSpecsOf,
 } from '../service-registry'
-import { SERVICES } from '../services'
+import { hooksPlugin, SERVICES } from './first-party-plugins'
 
 const spec = { swift: 'PyreonThing()', kotlin: ['val {id} = remember { PyreonThing() }'] }
 const plugin = (name: string, extra: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
@@ -16,14 +15,14 @@ const plugin = (name: string, extra: Partial<CompilerPlugin> = {}): CompilerPlug
 })
 
 describe('createServiceRegistry', () => {
-  it('holds every built-in service under the compiler owner', () => {
-    const registry = createServiceRegistry(BUILT_IN_PLUGINS)
+  it('holds every hooks service under the hooks plugin, in its declaration order', () => {
+    const registry = createServiceRegistry([hooksPlugin])
     expect([...registry.keys()]).toEqual(SERVICES.map((s) => s.hook))
-    expect(registry.get('useShare')?.owner).toBe(BUILT_IN_SERVICE_OWNER)
+    expect(registry.get('useShare')?.owner).toBe('@pyreon/hooks')
   })
 
   it('adds a plugin service with its owner and the hook key filled in', () => {
-    const registry = createServiceRegistry([...BUILT_IN_PLUGINS, plugin('@acme/thing', { services: { useThing: spec } })])
+    const registry = createServiceRegistry([hooksPlugin, plugin('@acme/thing', { services: { useThing: spec } })])
     expect(registry.get('useThing')).toEqual({
       descriptor: { hook: 'useThing', legacyKind: 'service', ...spec },
       owner: '@acme/thing',
@@ -47,8 +46,8 @@ describe('createServiceRegistry', () => {
     ).toThrow(/hook "useThing" is claimed by both "A" and "B"/)
   })
 
-  it('refuses a plugin claiming a built-in hook', () => {
-    expect(() => createServiceRegistry([...BUILT_IN_PLUGINS, plugin('A', { services: { useShare: spec } })])).toThrow(
+  it('refuses a plugin claiming a hooks hook', () => {
+    expect(() => createServiceRegistry([hooksPlugin, plugin('A', { services: { useShare: spec } })])).toThrow(
       /hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/,
     )
   })
@@ -133,12 +132,13 @@ describe('createCompiler wiring', () => {
     )
   })
 
-  it('runs passes in requires order and lets a plugin require a built-in by name', () => {
+  it('runs passes in requires order and lets a plugin require another by name', () => {
     const order: string[] = []
     const compiler = createCompiler({
       plugins: [
+        hooksPlugin,
         plugin('second', { requires: ['first'], transformIR: () => void order.push('second') }),
-        plugin('first', { requires: ['@pyreon/coolgrid'], transformIR: () => void order.push('first') }),
+        plugin('first', { requires: ['@pyreon/hooks'], transformIR: () => void order.push('first') }),
       ],
     })
     compiler.transform('export function A() { return <Text>a</Text> }', { target: 'swift' })
@@ -146,10 +146,14 @@ describe('createCompiler wiring', () => {
   })
 
   it('replaces a built-in by name only through `discovered`', () => {
-    const replacement = plugin('@pyreon/coolgrid', { services: { useThing: spec } })
-    expect(() => createCompiler({ plugins: [replacement] })).toThrow(/Duplicate native compiler plugin/)
-    const compiler = createCompiler({ discovered: [replacement] })
-    expect(compiler.services.get('useThing')?.owner).toBe('@pyreon/coolgrid')
+    // No plugin ships built in today; the mechanism is exercised against a synthetic one.
+    const builtIn = [{ name: '@acme/builtin', builtIn: true as const }]
+    const replacement = plugin('@acme/builtin', { services: { useThing: spec } })
+    expect(selectDiscovered(builtIn, [], [replacement])).toEqual({ kept: [replacement], replaced: ['@acme/builtin'] })
+    // An explicit plugin of the same name wins over the discovered one.
+    expect(selectDiscovered(builtIn, [{ name: '@acme/builtin' }], [replacement])).toEqual({ kept: [], replaced: [] })
+    expect(createCompiler({ plugins: [plugin('@acme/builtin')], discovered: [replacement] }).services.has('useThing')).toBe(false)
+    expect(createCompiler({ discovered: [replacement] }).services.get('useThing')?.owner).toBe('@acme/builtin')
   })
 
   it.each([

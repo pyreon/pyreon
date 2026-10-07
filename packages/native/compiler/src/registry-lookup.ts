@@ -12,6 +12,7 @@
 import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ScopeProvider } from './scope-provider'
+import type { SignalPersistence } from './signal-persistence'
 import type { ServiceDescriptor } from './services'
 import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle, type DeclSwiftInit } from './call-lowering'
 import {
@@ -505,6 +506,16 @@ export function pluginCallReadType(d: ExtDecl, property: string): TypeIR | undef
   return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.callRead?.(d, property)
 }
 
+/** The return type of the method call `<binding>.<method>(…)` on a plugin declaration's container, by its owner's typing. */
+export function pluginMethodReturnType(d: ExtDecl, method: string): TypeIR | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.methodReturn?.(d, method)
+}
+
+/** The type of the property read `<binding>.<property>` on a plugin declaration's container, by its owner's typing. */
+export function pluginMemberReadType(d: ExtDecl, property: string): TypeIR | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.member?.(d, property)
+}
+
 /** The async state (pending / failed conditions) of an `ext` declaration that is an async source, else `undefined`. */
 export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): AsyncState | undefined {
   if (d.kind !== 'ext') return undefined
@@ -513,14 +524,45 @@ export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): A
   return target === 'swift' ? emitter.swift(d, ctx) : emitter.kotlin(d, ctx)
 }
 
+/** The persistence backend that renders `storageKey` signals; throws, naming the key, when none is loaded. */
+export function persistenceFor(key: string): SignalPersistence {
+  const registered = activeRegistries().persistence
+  if (registered === undefined) {
+    throw new Error(
+      `[Pyreon] a signal persists under the key ${JSON.stringify(key)} but no loaded plugin declares \`persistence\` — the plugin that recognized it must declare how it is rendered.`,
+    )
+  }
+  return registered.persistence
+}
+
+/** True when `d` is an `ext` declaration whose binding is callable (a zero-argument call of it keeps its parentheses). */
+export function pluginDeclIsCallable(d: DeclIR): boolean {
+  return d.kind === 'ext' && activeRegistries().calls.emitter(d.plugin, d.type)?.callable === true
+}
+
+/** True when `d` is an `ext` declaration that reads the active router (the SwiftUI View needs it in its environment). */
+export function pluginDeclUsesRouter(d: DeclIR): boolean {
+  return d.kind === 'ext' && activeRegistries().calls.emitter(d.plugin, d.type)?.usesRouter === true
+}
+
 /** True when `d` is an `ext` declaration whose type needs a stable host view on Swift. */
 export function pluginNeedsStableHost(d: DeclIR): boolean {
   return d.kind === 'ext' && extDeclLifecycle(d)?.stableHost === true
 }
 
 /** The type of an `ext-expr` node, by its owner's typing (`unknown` without one). */
-export function pluginExprType(e: ExtExprIR): TypeIR | undefined {
-  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.type?.(e)
+export function pluginExprType(e: ExtExprIR, infer: (e: ExprIR) => TypeIR): TypeIR | undefined {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.type?.(e, infer)
+}
+
+/** The reduction an `ext-expr` is (source, reducer, seed), by its owner's account, or `undefined`. */
+export function pluginExprReduce(e: ExtExprIR): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.reduce?.(e)
+}
+
+/** Whether a file-scope `const` holding this `ext-expr` is typed by the node's own type for later reads (default true). */
+export function pluginExprSeedsModuleConst(e: ExtExprIR): boolean {
+  return activeRegistries().items.exprEmitter(e.plugin, e.type)?.typing?.seedsModuleConst !== false
 }
 
 /** The type of `<ext-expr>.<property>` when the owner types member reads on its node, else `undefined`. */
@@ -545,9 +587,9 @@ export function itemLegacyList(item: ExtModuleItem): string | undefined {
 }
 
 /** The items that emit in `slot` (see `ModuleItemEmitter.after`), in file order. */
-export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'features'): ExtModuleItem[] {
+export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'declarations' | 'data'): ExtModuleItem[] {
   const registry = activeRegistries().items
-  return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'features') === slot)
+  return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'data') === slot)
 }
 
 /** Render a file-scope item on `target` through its owner's emitter: one string per declaration. */

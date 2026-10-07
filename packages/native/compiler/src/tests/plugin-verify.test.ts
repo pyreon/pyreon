@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { kotlinNamesOf, swiftTypeOf, verifyServiceTypes } from '../plugin-verify'
 import { serviceSpecsOf } from '../service-registry'
-import { SERVICES } from '../services'
+import { SERVICES } from './first-party-plugins'
 
 const NATIVE = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../fundamentals/hooks/native')
 

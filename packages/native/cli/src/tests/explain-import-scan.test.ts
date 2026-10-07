@@ -1,4 +1,5 @@
 import { createCompiler } from '@pyreon/native-compiler'
+import { coolgridPlugin } from '../../../../ui-system/coolgrid/src/native-plugin/plugin'
 import { explainReport } from '../plugin-commands'
 
 // `explain` reads the file's import statements to attribute element tags to the
@@ -6,7 +7,7 @@ import { explainReport } from '../plugin-commands'
 // at, so it must stay linear on hostile text (CodeQL js/polynomial-redos: a
 // `[^}]*` body rescans to the end of the file from every unclosed `import {`).
 
-const compiler = createCompiler()
+const compiler = createCompiler({ discovered: [coolgridPlugin] })
 const explain = (source: string) => explainReport(source, '/app/A.tsx', compiler, '/app')
 
 describe('explain — import statements are read correctly', () => {

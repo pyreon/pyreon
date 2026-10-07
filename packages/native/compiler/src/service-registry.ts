@@ -1,17 +1,9 @@
-import { HOOKS_PLUGIN_NAME } from './built-in-services.generated'
 import type { CompilerPlugin, ServiceSpec } from './plugin'
 import type { ServiceDescriptor } from './services'
 
-/**
- * Name of the built-in plugin that carries the `@pyreon/hooks` service table
- * (see `plugins/services.ts`). Also the owner recorded for those hooks. It is the
- * library's own package name so the library's discovered plugin replaces it.
- */
-export const BUILT_IN_SERVICE_OWNER = HOOKS_PLUGIN_NAME
-
 export interface RegisteredService {
   readonly descriptor: ServiceDescriptor
-  /** The plugin (or {@link BUILT_IN_SERVICE_OWNER}) that claimed the hook. */
+  /** The plugin that claimed the hook. */
   readonly owner: string
   /** Import specifiers the owning plugin serves (`CompilerPlugin.modules`), when it declared any. */
   readonly modules?: readonly string[] | undefined
@@ -31,14 +23,13 @@ export function serviceSpecsOf(
 }
 
 /**
- * Hook → descriptor + owner, from every plugin's `services` — the compiler's
- * own hooks arrive the same way, through the built-in services plugin, so there
- * is no private table beside this one. Two owners for one hook is an error:
+ * Hook → descriptor + owner, from every plugin's `services` — there is no private
+ * table beside this one. Two owners for one hook is an error:
  * silently picking one would make the emitted code depend on plugin order,
  * which the app cannot see.
  *
  * @example
- * const registry = createServiceRegistry([builtInServices, { name: '@acme/camera', services: { useShare: … } }])
+ * const registry = createServiceRegistry([hooksPlugin, { name: '@acme/camera', services: { useShare: … } }])
  * // throws: hook "useShare" is claimed by both "@pyreon/hooks" and "@acme/camera"
  */
 export function createServiceRegistry(plugins: readonly ServicePlugin[]): ServiceRegistry {
@@ -64,8 +55,8 @@ export function createServiceRegistry(plugins: readonly ServicePlugin[]): Servic
 
 /**
  * Tables the parser and emitters read at hot sites, derived ONCE when the
- * registry is built (never per call). Registry order is preserved, so a
- * built-in-only compile iterates in the same order the old `SERVICES` array did.
+ * registry is built (never per call). Registry order is preserved (plugin order, then each plugin's own declaration order),
+ * which is the order the Swift lifecycle modifiers emit in.
  */
 export interface ServiceTables {
   /** Every descriptor, in registry order. */

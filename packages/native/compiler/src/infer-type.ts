@@ -21,8 +21,7 @@
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findService, pluginCallReadType, pluginExprMemberType, pluginExprType } from './registry-lookup'
-import { ERROR_OBJECT } from './services'
+import { findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -69,14 +68,6 @@ export interface InferenceCtx {
    * other ctx literals don't need to construct it.
    */
   helperReturns?: Map<string, TypeIR> | undefined
-  /**
-   * Fetch decl name → decoded result type T (from `useFetch<T>(url)`).
-   * `x.data` / `x.data()` infer T; `x.isPending` infers boolean —
-   * without this, a computed over fetch state (`computed(() =>
-   * quotes.data() ?? [])`) degraded to `Any` / unknown and the Swift
-   * ForEach over it failed to typecheck.
-   */
-  fetches: Map<string, TypeIR>
   /**
    * Plugin declaration name → the declaration, so a zero-arg call read on its container
    * (`s.events()`) is typed by the owner's `DeclEmitter.typing`. Optional so the many ctx literals
@@ -191,11 +182,10 @@ export function buildModuleConstTypes(
  */
 export function moduleConstType(md: ModuleDeclIR, ctx: InferenceCtx): TypeIR | undefined {
   if (md.type.kind !== 'unknown') return md.type
-  // `new SizedMap<K, V>(…)` infers as a `map` for its READS, but the native
-  // value is a `PyreonSizedMap` class, not a dictionary: seeding it as a map
-  // re-spells `seen.size` as `.count`, which the class does not have. Left
-  // `unknown`, as before, so its own member surface is emitted verbatim.
-  if (md.initial.kind === 'new-sized-map') return undefined
+  // A plugin expression that types as a map for its READS but is a class natively (`new SizedMap<K, V>(…)`): seeding it
+  // as a map re-spells `seen.size` as `.count`, which the class does not have. Left `unknown` so its own member surface
+  // is emitted verbatim.
+  if (md.initial.kind === 'ext-expr' && !pluginExprSeedsModuleConst(md.initial)) return undefined
   const t = inferType(md.initial, ctx)
   return isSeedableModuleType(t) ? t : undefined
 }
@@ -213,7 +203,6 @@ export function emptyInferenceCtx(): InferenceCtx {
     valueConsts: new Map(),
     locals: new Map(),
     objectLocals: new Map(),
-    fetches: new Map(),
     services: new Map(),
     stores: new Map(),
     structs: new Map(),
@@ -246,83 +235,6 @@ export function emptyInferenceCtx(): InferenceCtx {
  * mutation converges) so every entry point (transform, direct emit calls
  * in tests) sees the widened decls.
  */
-/**
- * Synthesize the IMPLICIT auto-connect-on-mount that the web `useWebSocket(url)`
- * hook does — on native the binding (`PyreonWebSocket()`) is created but never
- * connects unless the user writes `onMount(() => ws.connect())`. For each
- * websocket decl with NO explicit `.connect()` call anywhere in the component,
- * append a synthetic `on-mount` decl calling `ws.connect()`. That reuses the
- * whole lifecycle machinery: the #1986 mount harness (Swift `.onAppear` on the
- * stable host / Kotlin `LaunchedEffect(Unit)`) emits it, and the connect
- * url-threading (`_websocketUrlsSwift` / `_websocketUrlsKotlin`) lowers the
- * 0-arg call to the faithful `connect(to: URL(...))` / `connect(url)`.
- *
- * Skips a decl that already has an explicit `.connect()` (avoids double-connect
- * — the explicit call already runs on its own mount/handler path). Idempotent:
- * a decl that already owns a synthetic on-mount connect is not re-appended.
- * Websocket-only — geolocation/push auto-start still needs the host-injected
- * Kotlin backends (a separate follow-up), so those keep the manual escape hatch.
- */
-export function synthesizeWebSocketAutoConnect(c: ComponentIR): void {
-  const wsNames = c.decls
-    .filter((d) => d.kind === 'websocket')
-    .map((d) => (d as Extract<DeclIR, { kind: 'websocket' }>).name)
-  if (wsNames.length === 0) return
-  // Collect names that ALREADY have an explicit `.connect()` call anywhere in
-  // the component IR (decls + return tree). A generic recursive walk mirroring
-  // widenFloatSignals — find a `call` whose callee is `member(identifier(ws),
-  // 'connect')`.
-  const explicit = new Set<string>()
-  const visit = (n: unknown): void => {
-    if (Array.isArray(n)) {
-      for (const x of n) visit(x)
-      return
-    }
-    if (n === null || typeof n !== 'object') return
-    const node = n as Record<string, unknown> & { kind?: string }
-    if (node.kind === 'call') {
-      const callee = node.callee as
-        | { kind?: string; object?: { kind?: string; name?: string }; property?: string }
-        | undefined
-      if (
-        callee?.kind === 'member' &&
-        callee.property === 'connect' &&
-        callee.object?.kind === 'identifier' &&
-        typeof callee.object.name === 'string' &&
-        wsNames.includes(callee.object.name)
-      ) {
-        explicit.add(callee.object.name)
-      }
-    }
-    for (const key of Object.keys(node)) {
-      if (key === 'kind') continue
-      visit(node[key])
-    }
-  }
-  visit(c.decls)
-  visit(c.returnExpr)
-  for (const name of wsNames) {
-    if (explicit.has(name)) continue
-    c.decls.push({
-      kind: 'on-mount',
-      body: [
-        {
-          kind: 'expr',
-          expr: {
-            kind: 'call',
-            callee: {
-              kind: 'member',
-              object: { kind: 'identifier', name },
-              property: 'connect',
-            },
-            args: [],
-          },
-        },
-      ],
-    })
-  }
-}
-
 export function widenFloatSignals(
   c: ComponentIR,
   storeDefs: StoreDefnIR[] = [],
@@ -455,117 +367,6 @@ function widenFloatSignalDecls(
 }
 
 /**
- * Public OPTIONAL fields on the native service containers, by decl kind.
- *
- * Both emitters already render an optional interpolation web-equivalently —
- * Swift `\((x).map { "\($0)" } ?? "")`, Kotlin `${x ?: ""}` — but the guard is
- * `typeIsOptional(inferType(...))`, and inference had no field model for these
- * containers. So every one of them fell through as non-optional and emitted a
- * RAW interpolation, which on Swift renders `Optional(37.3349)` instead of
- * `37.3349` (and `nil` instead of nothing). swiftc warns about exactly this;
- * the stub gate does not surface warnings, so nothing caught it.
- *
- * Same class as the `LocalizedStringKey` bug this file's sibling emit already
- * documents — renders differently on iOS than on web, and invisible in the
- * counter example because `Count: 0` has no optionals in it.
- *
- * Only PUBLIC, user-readable fields belong here; the containers' private
- * transport handles (`manager`, `task`, `session`, `monitor`) are not API.
- * `fetch.data` is deliberately absent — the member case below already types it
- * from the call's generic.
- */
-
-const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> = new Map([
-  [
-    'websocket',
-    new Map<string, TypeIR>([
-      ['lastMessage', { kind: 'string' }],
-      ['error', ERROR_OBJECT],
-    ]),
-  ],
-  [
-    // `auth` was OMITTED when this table was added (#2566) — the same pass that
-    // wrongly gave `map` an `error` it does not have. So the table had one
-    // field too many AND one too few, and both halves are corrected here.
-    //
-    // PyreonAuth declares `error: Error?` on Swift and `Throwable?` on Kotlin,
-    // so `{auth.error}` COMPILED and rendered `Optional("boom")` at runtime —
-    // silent, and invisible to a typecheck gate by construction. Worse, the
-    // workaround an author would reach for, `{auth.error ?? ''}`, does NOT
-    // compile: `Error?` cannot be coalesced with a String.
-    'auth',
-    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
-  ],
-  [
-    'map',
-    // NO `error` entry, unlike every sibling above. `PyreonMapState` has no
-    // such field on EITHER target — it holds camera/markers/selection, performs
-    // no I/O and cannot fail. It was listed here when this table was added
-    // (#2566) by generalising "every service container has an optional
-    // `error`" across the services without checking each runtime, so the table
-    // advertised a member that does not exist and `{map.error}` fails swiftc
-    // with "value of type 'PyreonMapState' has no member 'error'".
-    //
-    // Removing the entry rather than adding the field: an always-nil `error` on
-    // a container that cannot fail is dead surface, and if map ever gains I/O
-    // the field should arrive with the failure it reports.
-    new Map<string, TypeIR>([['selectedMarkerId', { kind: 'string' }]]),
-  ],
-  [
-    'fetch',
-    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
-  ],
-])
-
-/**
- * Optional-returning METHODS on the native service containers, by decl kind —
- * the CALL-RETURN sibling of `SERVICE_OPTIONAL_FIELDS` (which types member
- * READS). Without this, `const token = secrets.read('k')` inferred `unknown`,
- * so `classifyOptionalCondition` never fired and the natural session-rehydrate
- * shape `if (token) { auth.signInSucceeded(...) }` emitted a bare optional as
- * a condition — uncompilable on BOTH targets (swiftc: "optional type 'String?'
- * cannot be used as a boolean"; kotlinc: "condition type mismatch") — found by
- * the auth-rehydration probe, invisible to every prior gate because no gated
- * app branched on a service method's return.
- *
- * Only methods whose return the RUNTIMES declare optional belong here
- * (PyreonSecureStorage.read is `String?` on both targets). `db.get(...)`'s
- * optional RECORD return is the known next entry — its type is per-collection
- * (needs the collection→struct inference), tracked with the auth arc.
- */
-const SERVICE_METHOD_RETURNS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> = new Map([
-  [
-    'secureStorage',
-    new Map<string, TypeIR>([
-      ['read', { kind: 'union', branches: [{ kind: 'string' }, { kind: 'null' }] }],
-    ]),
-  ],
-  [
-    // `db.get(collection, id)` returns an optional RECORD on both runtimes
-    // (`PyreonRecord?` / `PyreonRecord?`), which makes the single most common
-    // database shape — read a row, branch on whether it exists —
-    //
-    //     const found = db.get('notes', id)
-    //     if (found) { … }
-    //
-    // fail on BOTH targets without this entry: swiftc "optional type
-    // 'PyreonRecord?' cannot be used as a boolean", kotlinc "condition type
-    // mismatch". Exactly the shape `secureStorage.read` above was added for;
-    // this was named as its follow-up when that landed.
-    //
-    // The branch is `unknown`, not a record type: the CONDITION lowering only
-    // needs the type to be OPTIONAL, and a per-collection record type would
-    // require collection→struct inference the compiler does not have. Member
-    // reads on the unwrapped value stay `Any`, which is what they were
-    // before — no capability is lost, and the presence check now compiles.
-    'database',
-    new Map<string, TypeIR>([
-      ['get', { kind: 'union', branches: [{ kind: 'unknown' }, { kind: 'null' }] }],
-    ]),
-  ],
-])
-
-/**
  * The key a declaration's service typing is filed under. A descriptor-backed
  * `service` declaration files under its HOOK (`useGeolocation`, whose
  * `optionalFields` live in services.ts); every other container under its decl
@@ -576,16 +377,12 @@ function serviceTypingKey(d: DeclIR): string | undefined {
   if (d.kind === 'service') {
     return findService(d.hook)?.optionalFields === undefined ? undefined : d.hook
   }
-  return SERVICE_OPTIONAL_FIELDS.has(d.kind) || SERVICE_METHOD_RETURNS.has(d.kind)
-    ? d.kind
-    : undefined
+  return undefined
 }
 
-/** The declared-optional type of `<key>.<prop>`, from whichever table owns `key`. */
+/** The declared-optional type of `<key>.<prop>` on a descriptor-backed service (a plugin's own declarations type themselves through `DeclEmitter.typing`). */
 function serviceOptionalField(key: string, prop: string): TypeIR | undefined {
-  const svc = findService(key)
-  if (svc !== undefined) return svc.optionalFields?.[prop]
-  return SERVICE_OPTIONAL_FIELDS.get(key)?.get(prop)
+  return findService(key)?.optionalFields?.[prop]
 }
 
 /**
@@ -676,9 +473,6 @@ export function buildInferenceCtx(
     structs: new Map(
       structDefs.map((s) => [s.name, new Map(s.fields.map((f) => [f.name, f.type]))]),
     ),
-    fetches: new Map(
-      decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
-    ),
     extDecls: new Map(decls.flatMap((d) => (d.kind === 'ext' ? [[d.name, d] as const] : []))),
     // Service-container binding -> decl kind, so a member read on one can be
     // typed against SERVICE_OPTIONAL_FIELDS above.
@@ -704,7 +498,6 @@ export function buildInferenceCtx(
             valueConsts: new Map(),
             locals: new Map(),
             objectLocals: new Map(),
-            fetches: new Map(),
             services: new Map(),
             stores: new Map(),
             structs: new Map(
@@ -1529,14 +1322,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
 /** The declared property type before optional-chain short-circuiting. */
 export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
-    // The declared generics ARE the type — a SizedMap<K, V> behaves as a map
-    // at every use site (`m.get(k)` yields V), so downstream inference reads
-    // it exactly like the built-in.
     // A plugin's own expression: typed by its owner (`ExprEmitter.typing.type`), `unknown` without one.
     case 'ext-expr':
-      return pluginExprType(expr) ?? { kind: 'unknown' }
-    case 'new-sized-map':
-      return { kind: 'map', key: expr.keyType, value: expr.valueType }
+      return pluginExprType(expr, (e) => inferType(e, ctx)) ?? { kind: 'unknown' }
     case 'new-collection': {
       if (expr.collection === 'map') {
         return { kind: 'map', key: expr.keyType!, value: expr.valueType! }
@@ -1625,16 +1413,13 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const rw = rewriteObjectValues(expr, ctx)
         if (rw !== null) return inferType(rw, ctx)
       }
-      // A method call on a service-container binding whose return the
-      // runtimes declare optional — `secrets.read('k')` → `string | null` —
-      // so a local seeded from it classifies for the optional-condition
-      // lowering (see SERVICE_METHOD_RETURNS above).
+      // A method call on a plugin declaration's container whose return the runtimes declare optional —
+      // `secrets.read('k')` → `string | null` — so a local seeded from it classifies for the optional-condition
+      // lowering: typed by the declaration's owner (`DeclEmitter.typing.methodReturn`).
       if (expr.callee.kind === 'member' && expr.callee.object.kind === 'identifier') {
-        const svcKind = ctx.services.get(expr.callee.object.name)
-        if (svcKind !== undefined) {
-          const ret = SERVICE_METHOD_RETURNS.get(svcKind)?.get(expr.callee.property)
-          if (ret !== undefined) return ret
-        }
+        const ext = ctx.extDecls?.get(expr.callee.object.name)
+        const ret = ext === undefined ? undefined : pluginMethodReturnType(ext, expr.callee.property)
+        if (ret !== undefined) return ret
       }
       // Zero-arg call on a bare identifier is the canonical signal /
       // computed read shape: `count()` reads signal `count`. Walk the
@@ -1745,52 +1530,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       {
         const m = inferMathCall(expr, ctx)
         if (m !== null) return m
-      }
-      // Fetch-field read: `quotes.data()` (CALL form — web reads the
-      // signal). data → T | undefined; isPending → boolean; error → unknown.
-      //
-      // `data` is OPTIONAL and every layer says so — the web hook is
-      // `signal<T | undefined>(undefined)`, Swift is `var data: T?`, Kotlin is
-      // `MutableState<T?>`. Inferring a bare `T` made the receiver look
-      // provably non-null, so the Swift member emit STRIPPED the `?.` the
-      // author wrote and produced `created.data.id` for `created.data()?.id`:
-      // uncompilable ("value of optional type 'Item?' must be unwrapped").
-      //
-      // Nothing caught it because every device-proven example fetches an
-      // ARRAY and reads it as `quotes.data() ?? []` — a `??` fallback, never
-      // an optional MEMBER access. So the single-object shape, which is the
-      // natural one for a POST response, had never been compiled.
-      if (
-        expr.args.length === 0 &&
-        expr.callee.kind === 'member' &&
-        expr.callee.object.kind === 'identifier' &&
-        ctx.fetches.has(expr.callee.object.name)
-      ) {
-        if (expr.callee.property === 'data') {
-          const t = ctx.fetches.get(expr.callee.object.name)!
-          // Already a union carrying null/undefined — leave it alone rather
-          // than nesting a second optional layer.
-          if (
-            t.kind === 'union' &&
-            t.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
-          ) {
-            return t
-          }
-          return { kind: 'union', branches: [t, { kind: 'undefined' }] }
-        }
-        if (expr.callee.property === 'isPending') return { kind: 'boolean' }
-        // `error` in CALL form. `SERVICE_OPTIONAL_FIELDS` already types the
-        // MEMBER read as optional, but the call form — which is what shared
-        // source actually writes, because web reads a signal — fell through to
-        // `unknown`. So `{fetch.error() ? 'x' : 'y'}` never reached the
-        // optional-condition rewrite and emitted a bare `Throwable?` as a
-        // Kotlin condition: "condition type mismatch: inferred type is
-        // 'Throwable?' but 'Boolean' was expected". Same class as the
-        // session-rehydrate `if (token)` shape SERVICE_METHOD_RETURNS exists
-        // for; the fetch container's call form was simply never listed.
-        if (expr.callee.property === 'error') {
-          return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
-        }
       }
       // A zero-arg call read on a plugin declaration's container (`s.events()` on a `useStream`):
       // typed by the declaration's owner (`DeclEmitter.typing`).
@@ -2032,11 +1771,13 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const szT = inferType(expr.object, ctx)
         if (szT.kind === 'map' || szT.kind === 'set') return { kind: 'number' }
       }
-      // Fetch-field read, property form (`quotes.data` — the native
-      // shape). Mirrors the call-form branch above.
-      if (expr.object.kind === 'identifier' && ctx.fetches.has(expr.object.name)) {
-        if (expr.property === 'data') return ctx.fetches.get(expr.object.name)!
-        if (expr.property === 'isPending') return { kind: 'boolean' }
+      // A property read on a plugin declaration's container (`q.data`, the native shape): typed by the declaration's owner
+      // (`DeclEmitter.typing.member`). Checked before the optional-field table below, which is how a declaration's own
+      // optional members (`f.error`) used to be reached.
+      if (expr.object.kind === 'identifier') {
+        const ext = ctx.extDecls?.get(expr.object.name)
+        const typed = ext === undefined ? undefined : pluginMemberReadType(ext, expr.property)
+        if (typed !== undefined) return typed
       }
       // Optional field on a service container (`geo.latitude`, `ws.lastMessage`,
       // `f.error`). Returned as a nullable union so `typeIsOptional` fires and
@@ -2324,63 +2065,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // Bare spread outside a context — degrade. The array case
       // handles the common path.
       return { kind: 'unknown' }
-    case 'rx-call': {
-      // RX-2 — type-infer `rx.METHOD(...)` results so the emitted
-      // computed properties get useful Swift return-type annotations.
-      // Mirrors the per-method dispatch in emit-{swift,kotlin}.ts.
-      const sourceType = inferType(expr.source, ctx)
-      const elementType: TypeIR =
-        sourceType.kind === 'array' ? sourceType.element : { kind: 'unknown' }
-      switch (expr.method) {
-        // Transforms preserving the source's element type → Array<T>.
-        case 'filter':
-        case 'reverse':
-        case 'take':
-        case 'skip':
-        case 'takeWhile':
-        case 'dropWhile':
-          return { kind: 'array', element: elementType }
-        // map / compact / flatten — element type would need arrow body
-        // typeflow (map) or per-method semantics (compact strips null,
-        // flatten unwraps a level). Degrade to Array<unknown> — Swift
-        // will still typecheck via the per-call closure inference.
-        case 'map':
-        case 'compact':
-        case 'flatten':
-        case 'unique':
-          return { kind: 'array', element: { kind: 'unknown' } }
-        // Scalar accessors — Swift `.first`/`.last`/`.first(where:)` and Kotlin
-        // `.first`/`.last`/`.find` ALL return Optional<T> (nil on empty), and JS
-        // `rx.first(arr)` returns `T | undefined`. The computed MUST be annotated
-        // `T?` — returning the bare element type emitted `var x: T { arr.first }`,
-        // which does NOT typecheck (`T?` → `T`, "cannot convert"). Mirrors the
-        // `.find` ARRAY-method case above; the nullable union maps to `T?` / `T?`
-        // via swiftUnionType / kotlinUnionType.
-        case 'first':
-        case 'last':
-        case 'find':
-          return { kind: 'union', branches: [elementType, { kind: 'undefined' }] }
-        // Boolean predicates.
-        case 'some':
-        case 'every':
-          return { kind: 'boolean' }
-        // min / max return Optional (nil on an EMPTY array — same contextual-
-        // typing bug as first/last). count / sum / average / reduce always
-        // produce a value (reduce has a seed), so they stay a bare number.
-        case 'min':
-        case 'max':
-          return { kind: 'union', branches: [{ kind: 'number' }, { kind: 'undefined' }] }
-        // average = sum / count → always Double (the emit computes
-        // `Double(sum) / Double(count)`), so annotate the computed Double, not Int.
-        case 'average':
-          return { kind: 'number', float: true }
-        case 'count':
-        case 'sum':
-        case 'reduce':
-          return { kind: 'number' }
-      }
-      return { kind: 'unknown' }
-    }
     case 'arrow':
     case 'jsx-element':
     case 'jsx-fragment':

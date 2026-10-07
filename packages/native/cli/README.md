@@ -62,7 +62,7 @@ so a chart app needs nothing beyond depending on it. `--no-plugins` disables dis
 (explicit `--plugin` still loads). Discovery is skipped for `check --lsp` (no `--source`).
 
 ```sh
-pyreon-native plugins [--app=<dir>] [--verify]   # built-ins, hook owners, discovered plugins
+pyreon-native plugins [--app=<dir>] [--verify]   # hook owners, call recognizers, discovered plugins
 pyreon-native explain <file.tsx> [--app=<dir>]   # per service hook: owner + emitted Swift/Kotlin
 ```
 

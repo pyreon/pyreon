@@ -20,10 +20,15 @@
 // `List` (data iteration) is a separate follow-up.
 // ============================================================================
 
-import type { ElementLowering, RetagContext } from '../element-lowering'
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CompilerPlugin } from '../plugin'
-import { unconsumedSlotWarning } from '../jsx-slot-attrs'
-import type { AttrIR, JsxElementIR } from '../types'
+import {
+  NATIVE_COMPILER_PLUGIN_API_VERSION,
+  unconsumedSlotWarning,
+  type AttrIR,
+  type CompilerPlugin,
+  type ElementLowering,
+  type JsxElementIR,
+  type RetagContext,
+} from '@pyreon/native-compiler/plugin-api'
 
 /** elements primitives this lowering maps to a canonical native primitive. */
 export const ELEMENTS_PRIMITIVE_ALIAS: Readonly<Record<string, string>> = {
@@ -96,10 +101,21 @@ export const elementsLowering: ElementLowering = Object.freeze({
   styleBase: true,
 })
 
-/** The elements lowering as a built-in plugin — registered like any third-party one. */
+/** The `@pyreon/elements` native plugin — discovered from the package manifest when a source imports it. */
 export const elementsPlugin: CompilerPlugin = Object.freeze({
   name: elementsLowering.module,
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
-  builtIn: true,
   elements: Object.freeze([elementsLowering]),
+  unlowered: Object.freeze({
+    // Measured every export: only `Element` lowers (to Stack). Text, List, Overlay and Portal all failed both
+    // targets SILENTLY — Overlay and Portal are inherently DOM (positioning, document-level mounting), and the
+    // Text/List variants are the rich web-only siblings of the canonical primitives. Inverse shape to
+    // @pyreon/rx: there, one export lowered and the rest did not, so `supported` carries the exception in both
+    // cases rather than splitting the map into two mechanisms.
+    '@pyreon/elements': Object.freeze({
+      advice:
+        'only `Element` lowers (to Stack) — Text / List / Overlay / Portal are DOM-based; use the canonical `Text` / `Stack` from @pyreon/primitives, or keep them in a `<Web>` branch',
+      supported: Object.freeze(Object.keys(ELEMENTS_PRIMITIVE_ALIAS)),
+    }),
+  }),
 })

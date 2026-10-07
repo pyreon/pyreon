@@ -21,6 +21,7 @@
  */
 
 import type { EmitContext } from './emit-context'
+import type { ExtExprSpec } from './module-items'
 import type { RequestOptions, ResolvedRequest } from './module-scan'
 import type { ExprIR, ExtDecl, ExtPayload, StatementIR, TypeIR } from './types'
 
@@ -113,12 +114,59 @@ export interface ExtDeclSpec {
 }
 
 /**
+ * A call that is a plain SIGNAL: the core builds the `signal` declaration (reads, writes, `.update`, type inference and
+ * struct synthesis are all its own), and the plugin only says which argument holds the initial value and whether the
+ * signal outlives the process. See `signal-persistence.ts`.
+ */
+export interface SignalSpec {
+  /** The call argument holding the initial value; absent, the initial is `0` exactly as for `signal()`. */
+  readonly initial?: AstNode | undefined
+  /**
+   * Persist the signal across launches under this compile-time key. Rendered by the loaded plugin's
+   * `persistence`; omit for a signal that lives and dies with the process (a session or memory store).
+   */
+  readonly persistKey?: string | undefined
+}
+
+/** A recognizer's verdict for a call that is a plain signal (see {@link SignalSpec}). */
+export interface SignalDeclSpec {
+  readonly signal: SignalSpec
+}
+
+/**
+ * A recognizer's verdict for a call that is a plain COMPUTED: the core declares it (a `computed` read like any other — no
+ * parentheses, typed from the expression) around the plugin's own expression, which its `exprs` emitter renders and types.
+ */
+export interface ComputedDeclSpec {
+  readonly computed: ExtExprSpec
+}
+
+/** Every verdict a declaration recognizer may give, besides declining (`undefined`) or claiming without declaring (`null`). */
+export type DeclVerdict = ExtDeclSpec | SignalDeclSpec | ComputedDeclSpec
+
+/**
  * Returns the declaration, `undefined` to DECLINE (the parser falls through to the rest of its chain, as if
  * the plugin were absent), or `null` to CLAIM the call without declaring anything: the recognizer reported why
  * the call cannot lower, and the binding must not fall through to a generic emit that would reference a symbol
  * neither target has.
  */
-export type CallRecognizer = (call: CallSite, ctx: ParseContext) => ExtDeclSpec | undefined | null
+export type CallRecognizer = (call: CallSite, ctx: ParseContext) => DeclVerdict | undefined | null
+
+/** The call a {@link DeclCallRecognizer} is asked about: the right-hand side of a `const x = <call>` declaration. */
+export interface DeclCallSite {
+  /** The callee as written (`rx.filter`, `keep`): the recognizer matches it against what its scan recorded. */
+  readonly callee: AstNode
+  readonly args: readonly AstNode[]
+}
+
+/**
+ * Recognize a declaration by the SHAPE of its callee rather than a hook name — for a call whose callee is whatever local name
+ * the file imported it as (`const active = rx.filter(todos, p)`, `const b = keep(todos, p)`), which no registry can key by
+ * name without claiming every `filter` in the app. Verdicts as {@link CallRecognizer}; `undefined` declines and the parser
+ * continues down its chain, `null` claims the declaration without declaring anything. Called for every call declaration once a
+ * plugin registers one, so the first check must be cheap.
+ */
+export type DeclCallRecognizer = (site: DeclCallSite, ctx: ParseContext) => DeclVerdict | undefined | null
 
 /** Renders one declaration type on each target. */
 /**
@@ -163,6 +211,18 @@ export interface DeclLifecycle {
 export interface DeclTyping {
   /** The type of the zero-argument CALL read `<binding>.<property>()` (the web's signal-read shape), or `undefined`. */
   callRead?(decl: ExtDecl, property: string): TypeIR | undefined
+  /**
+   * The type of the PROPERTY read `<binding>.<property>` (the native shape), or `undefined`. A member that may be absent is
+   * returned as a nullable union — which is what makes both emitters wrap its interpolation and lower a truthiness test on it
+   * to a nil test.
+   */
+  member?(decl: ExtDecl, property: string): TypeIR | undefined
+  /**
+   * The type a METHOD call on the container returns (`secrets.read('k')`, `db.get(c, id)`), or `undefined`. A method whose
+   * runtime return is optional is returned as a nullable union, so a local seeded from it classifies for the optional-condition
+   * lowering (`if (token) { … }`) instead of emitting a bare optional as a condition.
+   */
+  methodReturn?(decl: ExtDecl, method: string): TypeIR | undefined
 }
 
 /** The conditions `<Suspense>` / `<ErrorBoundary>` OR over, as target text. */
@@ -194,6 +254,18 @@ export interface DeclSwiftInit {
 }
 
 export interface DeclEmitter {
+  /**
+   * The binding is CALLABLE (`q()` through Swift's `callAsFunction` / Kotlin's `operator invoke`): a zero-argument call
+   * of it keeps its parentheses and a bare reference as an event handler is called, where an unknown identifier's
+   * zero-argument call reads as a property (`count()` → `count`).
+   */
+  readonly callable?: boolean | undefined
+  /**
+   * The declaration reads the active router (a search parameter, a path): on SwiftUI the View needs the router in
+   * its environment (`@Environment(\.pyreonRouter)`). Compose reads `LocalPyreonRouter.current` directly and needs
+   * nothing.
+   */
+  readonly usesRouter?: boolean | undefined
   /** Lifecycle contributions of this declaration type. */
   readonly lifecycle?: DeclLifecycle | undefined
   /** Lines this declaration seeds in the component's generated SwiftUI `init()` (see {@link DeclSwiftInit}). */
@@ -260,6 +332,10 @@ export interface CallRegistry {
   readonly calls: ReadonlyMap<string, RegisteredCall>
   /** Every claimed hook name. */
   readonly names: ReadonlySet<string>
+  /** Declaration recognizers keyed by callee shape, in plugin order. */
+  readonly declCalls: readonly { readonly owner: string; readonly recognize: DeclCallRecognizer }[]
+  /** Callee name → the plugin that declared it `tier2Calls` (a call it ships no lowering for; see `CompilerPlugin.tier2Calls`). */
+  readonly tier2Calls: ReadonlyMap<string, string>
   /** Plugin name → declaration type → emitter. */
   readonly emitters: ReadonlyMap<string, ReadonlyMap<string, DeclEmitter>>
   /** The emitter for `(plugin, type)`, or `undefined`. */
@@ -272,6 +348,8 @@ type CallPlugin = {
   readonly name: string
   readonly modules?: readonly string[] | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  readonly declCalls?: DeclCallRecognizer | undefined
+  readonly tier2Calls?: readonly string[] | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
   readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
 }
@@ -290,7 +368,11 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   const calls = new Map<string, RegisteredCall>()
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
   const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
+  const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
+  const tier2Calls = new Map<string, string>()
   for (const plugin of plugins) {
+    if (plugin.declCalls !== undefined) declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
+    for (const callee of plugin.tier2Calls ?? []) if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
     // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
     // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
     for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
@@ -319,6 +401,8 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   return Object.freeze<CallRegistry>({
     calls,
     names: new Set(calls.keys()),
+    declCalls: Object.freeze(declCalls),
+    tier2Calls,
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),
     memberCalls,

@@ -32,6 +32,7 @@ import {
 } from './parse-extensions'
 import { createScanRegistry, type ScanRegistry } from './module-scan'
 import { createScopeRegistry, type ScopeRegistry } from './scope-provider'
+import { createPersistenceRegistry, type RegisteredPersistence } from './signal-persistence'
 import { createUnloweredRegistry, type RegisteredUnlowered } from './unlowered-modules'
 import {
   createServiceRegistry,
@@ -64,6 +65,8 @@ export interface CompilerRegistries {
   readonly exprs: ExprRegistry
   /** Per-file scanners, request sources and destructurable hooks. */
   readonly scan: ScanRegistry
+  /** The one plugin that renders persisted signals (`CompilerPlugin.persistence`), if any is loaded. */
+  readonly persistence: RegisteredPersistence | undefined
   /** File-scope item recognizers and emitters, method-call recognizers, `ext-expr` emitters, struct refinements and module finishers. */
   readonly items: ItemRegistry
 }
@@ -113,6 +116,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     exprs,
     scan: createScanRegistry(ordered),
     items: createItemRegistry(ordered),
+    persistence: createPersistenceRegistry(ordered),
   })
 }
 

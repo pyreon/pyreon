@@ -19,6 +19,24 @@ description: "Common build pipeline mistakes in Pyreon and how to fix them."
 
 ---
 
+### Porting a recognizer's happy path but not the shapes the core CLAIMED
+
+(the `rx` move, 2026-10). The core's rx recognizer returned `null` for a computed member (`rx['filter'](nums, p)`), and a LATER arm — "an out-of-set `rx.<method>` must not bind `rx` as a value" — turned every such `null` into a claim. The first plugin port declined that shape (`undefined`), so it fell to the value-const catch-all and emitted `let r = rx["filter"](nums, …)`: uncompilable, no warning. Only the golden fixture for the shape (`rx-06`) caught it. Before porting a recognizer read every `return null` AND every later arm that special-cases its failure, and give each a fixture recorded from the PARENT. `rx.pipe` had the same split (namespace form claimed, standalone form declined).
+
+---
+
+### A plugin NAME claim is not a diagnostic: it renames foreign imports of the same name
+
+(the `@pyreon/feature` move). Registering `calls: { defineFeature }` to keep the Tier-2 warning made `hook-binding.ts` treat a `defineFeature` imported from `./mine` as foreign and rename it `defineFeature_`, changing a fixture's output. A Tier-2 diagnostic only needs the callee as written, so `tier2Calls` matches it WITHOUT claiming the name. Claim a name only when the plugin lowers it.
+
+---
+
+### A generated fallback copy of a library's lowering caps what the library can own
+
+(the `@pyreon/hooks` table, deleted 2026-10). The compiler kept a script-generated copy of the hooks service table so a zero-config `transform()` lowered `useShare` with nothing installed. A generated copy can carry DATA, never recognizers and emitters, so it made `useFetch` and every other code-shaped hook unmovable, and it was the last library named in the lowering. The fix was not a smarter generator but deleting the copy (hooks is discovered like every other library) and the CLI fallback that existed only for it. Prefer one source of truth and an explicit discovery step over a fallback that duplicates the source.
+
+---
+
 ### Moving an element onto a registry claim can skip every check the old dispatch path ran on the way to it
 
 (the Swift chart hosts, 2026-10; the Kotlin hosts reuse the fix as `warnUnreadKotlinAttrs`): `emitSwiftJsx` looks a tag up in the element registry BEFORE the generic preludes (spread-on-a-non-component, JSX-valued attribute no emitter reads). A tag that used to reach its emitter through `if (isChartHostTag(tag))` — AFTER those preludes — and is now claimed first silently loses both warnings: `<PieChart {...props}>` dropped its props with no diagnostic, byte-identical OUTPUT and every golden entry green, because the corpus had no spread on a chart. **When you move an emit behind a dispatcher, list what ran between the dispatcher's entry and the old branch, and keep it** (here one `warnUnreadSwiftAttrs` called at the top AND before a registry `emit`; a `retag` skips it because its result re-enters dispatch). Two companions found by the same move: the old bare-name match had no import guard, so a user's own `Legend`/`Cell` component was treated as a chart mark (the claim now requires the `@pyreon/charts` import); and a host's `@State` registration (`_hostStateDecls`) is spliced only when a component ends as a STRUCT — a stateless component lowers to a `@ViewBuilder func`, never reaches the splice, and the registration leaked into the next component AND the next compile (non-deterministic output; reset at emit start, and the func shape still cannot carry the state — give such a component a signal until it lowers to a struct). On Kotlin the same claim guard fixes the same hijack (`kotlin-chart-plugin.test.ts`); it has no host-state registration to leak. Locked by `swift-chart-plugin.test.ts` and `kotlin-chart-plugin.test.ts` (claim guard, spread warning, per-compile reset — each bisect-verified).

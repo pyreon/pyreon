@@ -27,7 +27,7 @@
 //      (type-mapper contract, locked by type-mapper.test.ts).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function tx(source: string, target: 'swift' | 'kotlin'): string {
   return transform(source, { target }).code

@@ -21,7 +21,7 @@
  * emitter fails that target's spec with `warnings were: []`.
  */
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const src = (perms: string) => `import { PermissionsProvider, usePermissions } from '@pyreon/permissions'
 import { Text } from '@pyreon/primitives'

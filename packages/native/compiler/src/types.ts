@@ -215,71 +215,6 @@ export type DeclIR =
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
   /**
-   * `const q = useUrlState('q', '')` from `@pyreon/url-state` — a signal-shaped
-   * binding over ONE router search parameter. Lowers to a small value type
-   * wrapping the active router's `query` / `setQueryParam`, so the web call
-   * shape (`q()` to read, `q.set(v)` to write) survives on both targets.
-   *
-   * `valueType` is inferred from the DEFAULT literal, using the same
-   * integer-vs-fractional rule every other PMTC lowering uses
-   * (`inferTypeFromInitial`): `useUrlState('page', 1)` is an Int binding,
-   * `useUrlState('zoom', 1.5)` a Double, `useUrlState('open', false)` a Bool.
-   * A URL carries strings, so each non-string type emits a codec that mirrors
-   * the web's `inferSerializer` — see `SWIFT_URL_NUMBER` for the ToNumber
-   * fidelity that costs.
-   *
-   * `defaultValue` is the value rendered verbatim into the native
-   * initializer, so it is already target-syntax (`"all"` stays quoted for the
-   * string case; `1` / `1.5` / `false` are bare).
-   *
-   * Still undeclared: array and object defaults (the web infers a comma /
-   * `\0REPEAT\0` join and a `JSON.parse`, neither of which has a native type
-   * to decode INTO at this call site), and any non-literal default.
-   */
-  | {
-      kind: 'url-state'
-      name: string
-      key: string
-      defaultValue: string
-      valueType: 'string' | 'int' | 'double' | 'boolean'
-    }
-  /**
-   * Phase 4 — data fetch via `useFetch<T>('/url')` from `@pyreon/query`
-   * (the native subset). Emits a `PyreonFetch<T>` reactive container plus
-   * a mount-time async harness that drives its `begin/resolve/reject`
-   * state machine:
-   *   Swift   →  @State private var x = PyreonFetch<T>()
-   *              + `.task { begin(); resolve(await URLSession…decode) }`
-   *                modifier on the View body
-   *   Kotlin  →  val x = remember { PyreonFetch<T>() }
-   *              + `LaunchedEffect(Unit) { begin(); resolve(…) }`
-   *
-   * `type` is the decoded result type `T` (from the generic arg);
-   * `url` is the literal request path. Non-literal URLs fall through to
-   * undeclared (the parser bails), same conservative rule as `useStorage`.
-   */
-  | {
-      kind: 'fetch'
-      name: string
-      type: TypeIR
-      url: string
-      /**
-       * HTTP verb from `useFetch<T>(url, { method })`. Absent = GET.
-       *
-       * Before this existed the whole init object was READ BY NOBODY: the
-       * parser only ever looked at `arguments[0]`, so `{ method: 'POST',
-       * body: … }` was dropped without a word and both targets emitted a
-       * plain GET. The app compiled, ran, and silently performed the wrong
-       * verb — which is worse than not supporting verbs at all, because
-       * nothing anywhere said so.
-       */
-      method?: string
-      /** Literal `{ 'Content-Type': 'application/json' }` header pairs. */
-      headers?: Record<string, string>
-      /** Literal request body. Only a string literal survives (see parse). */
-      body?: string
-    }
-  /**
    * Phase 4.2 — form state via `useForm({ initialValues })` from
    * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
    * container:
@@ -359,30 +294,6 @@ export type DeclIR =
    * where `const { id } = useParams()` referenced an undeclared `id`.
    */
   | { kind: 'params-destructure'; params: { key: string; local: string }[] }
-  /**
-   * Phase 4 — permission set via `usePermissions(['posts.edit', 'posts.*'])`
-   * from `@pyreon/permissions` (the native subset). Emits the PyreonPermissions
-   * reactive container the runtime ports ship:
-   *   Swift  → @State private var can = PyreonPermissions(["posts.edit", "posts.*"])
-   *   Kotlin → val can = remember { PyreonPermissions(setOf("posts.edit", "posts.*")) }
-   *
-   * `grants` carries the literal initial grant keys captured from the array
-   * argument (string literals only; a non-array / non-literal arg yields an
-   * empty set — `usePermissions` never bails). Reads are METHOD CALLS
-   * (`can.can("x")` / `cannot` / `all` / `any` / `grant` / `revoke` / `set`),
-   * so unlike useFetch / useForm there is NO `.value` field-read rewrite —
-   * the methods read the underlying reactive set internally and return a
-   * plain Bool / Void on both targets.
-   */
-  | {
-      kind: 'permissions'
-      name: string
-      grants: string[]
-      /** The call passed an ARRAY LITERAL (`usePermissions([...])`, including
-       *  `[]`) — a self-contained instance. False for a bare call, which reads
-       *  the provider. Mirrors the web's presence-not-length mode selection. */
-      seeded: boolean
-    }
   /**
    * `useToggle(initial)` / `useCounter(initial, { min, max })` from
    * `@pyreon/hooks` — pure state containers with no platform dependency at
@@ -566,12 +477,7 @@ export type DeclIR =
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
   | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
-  | { kind: 'websocket'; name: string; url: string }
-  | { kind: 'database'; name: string }
-  | { kind: 'secureStorage'; name: string }
   | { kind: 'fieldArray'; name: string; initial: string[] }
-  | { kind: 'map'; name: string }
-  | { kind: 'auth'; name: string; userType: TypeIR }
   /**
    * Phase B6 (native readiness audit 2026-06, partial CRIT-4 closure).
    * `const data = useLoaderData<User>()` binding — reads the active
@@ -949,23 +855,6 @@ export type ExprIR =
        */
       entries?: [ExprIR, ExprIR][]
     }
-  /**
-   * `new SizedMap<K, V>({ maxEntries, lru })` from `@pyreon/sized-map` — a
-   * bounded FIFO/LRU map. Kept as its OWN kind rather than folded into
-   * `new-collection`: it carries construction OPTIONS, not just element types,
-   * and the two targets spell the call differently (`maxEntries:` vs
-   * `maxEntries =`).
-   *
-   * Generic arguments are REQUIRED, for the reason `new Map<K, V>()` states —
-   * neither target can infer element types from later use sites.
-   */
-  | {
-      kind: 'new-sized-map'
-      keyType: TypeIR
-      valueType: TypeIR
-      maxEntries: number
-      lru: boolean
-    }
   | {
       kind: 'binary'
       // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit
@@ -1053,19 +942,6 @@ export type ExprIR =
       stmts?: StatementIR[]
       async?: boolean
     }
-  /**
-   * RX-2 — `@pyreon/rx` namespace call. Produced by parse.ts'
-   * `tryRxNamespaceLowering` when it encounters `rx.METHOD(signal, ...)`.
-   * Each emitter handles the dispatch per-target since Swift `[T]` and
-   * Kotlin `List<T>` have divergent method names for many operations
-   * (`rx.count` → Swift `.count` / Kotlin `.size`, `rx.take` → Swift
-   * `Array(s.prefix(n))` / Kotlin `s.take(n)`, etc.).
-   *
-   * `source` is the signal/collection source (typically a call
-   * expression `signalName()` representing a signal read), `args` are
-   * the remaining arguments after the source.
-   */
-  | { kind: 'rx-call'; method: string; source: ExprIR; args: ExprIR[] }
   | { kind: 'jsx-element'; tag: string; attrs: AttrIR[]; children: ChildIR[] }
   | { kind: 'jsx-fragment'; children: ChildIR[] }
   | { kind: 'array'; elements: ExprIR[]; elementType?: TypeIR }
@@ -1315,30 +1191,6 @@ export interface ModelDefnIR {
   methods?: (Extract<DeclIR, { kind: 'function' }> & { selfParam: string })[]
 }
 
-/**
- * Gap 4 follow-up — @pyreon/feature schema-driven CRUD config.
- * `const Todo = defineFeature({ name: 'todo', schema: { ... } })`
- * with literal field-type map emits a per-feature schema struct +
- * a module-scope const exposing `name` + `initialValues`. The CRUD
- * runtime methods (`useList`, `useById`, etc.) are NOT ported —
- * tier2 silent-drop diagnostic still fires for component-body uses
- * pointing users to the Layer-4 workaround. Schema struct + name
- * + initialValues are the v1 deliverable: gives downstream code
- * something REAL to reference for forms / data shapes.
- *
- * v1 scope: literal schema shape `{ field: "string" | "number" |
- * "boolean" }`. Zod / Valibot / ArkType schemas fall through to
- * the existing tier2 silent-drop diagnostic.
- */
-export interface FeatureDefnIR {
-  /** Top-level binding name (e.g. `Todo`). */
-  bindingName: string
-  /** Feature name from `defineFeature({ name: 'X', ... })`. */
-  featureName: string
-  /** Schema fields parsed from the literal `schema: { ... }` map. */
-  fields: { name: string; type: 'string' | 'number' | 'boolean' }[]
-}
-
 export interface ParseResult {
   /** Decoded static import specifiers, collected from the parser's AST. */
   imports: string[]
@@ -1358,13 +1210,6 @@ export interface ParseResult {
    * the consuming component body.
    */
   models: ModelDefnIR[]
-  /**
-   * Gap 4 follow-up: @pyreon/feature definitions from
-   * `const X = defineFeature({ name, schema })`. Each one emits a
-   * per-feature schema struct + module-scope const exposing the
-   * schema's initialValues + name.
-   */
-  features: FeatureDefnIR[]
   /**
    * File-scope items plugins own (see {@link ExtModuleItem}): declarations a plugin's `topLevel` recognizer
    * claimed, then the ones its expression recognizers synthesized. Emitted in plugin-declared slots beside the

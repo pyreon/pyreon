@@ -9,7 +9,7 @@
 // the generic emit (valid Kotlin `reduce {}`; a known Swift gap).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = (expr: string) =>
   `import { signal, computed } from '@pyreon/reactivity'

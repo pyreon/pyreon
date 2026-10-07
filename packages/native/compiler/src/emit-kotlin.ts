@@ -30,6 +30,8 @@ import {
   lowerPluginReceiver,
   lowerPluginRefModifiers,
   pluginAsyncState,
+  persistenceFor,
+  pluginDeclIsCallable,
   pluginLifecycleLines,
   tailLifecycleDecls,
   serviceFor,
@@ -92,13 +94,11 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
-  synthesizeWebSocketAutoConnect,
   registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
 import { clampExpr, pureStateBindings } from './pure-state'
-import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
 import { KOTLIN_INT } from './spelling'
@@ -173,7 +173,6 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  FeatureDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
@@ -263,11 +262,6 @@ let _synthExprStructKeys: Map<string, string> = new Map()
 // non-literal field (`{ id: count() }`) can have its type inferred for
 // data-class synthesis. Set per `emitKotlinComponent`; empty otherwise.
 let _kotlinExprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCtx([])
-// websocket decl name → url. `ws.connect()` (the 0-arg TS surface — the web
-// hook auto-connects) lowers to the OkHttp transport extension shipped in
-// `@pyreon/native-runtime-kotlin` (`fun PyreonWebSocket.connect(url: String)`),
-// threading the registered url. Mirror of emit-swift's `_websocketUrlsSwift`.
-let _websocketUrlsKotlin: Map<string, string> = new Map()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
 /** Mirror of emit-swift's `_jsxFnNames`. */
@@ -512,15 +506,6 @@ function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
 /**
- * Phase 4: every `useFetch` decl name in scope. Member reads of a fetch
- * decl's reactive fields (`x.data` / `x.error` / `x.isPending`) emit with
- * a trailing `.value` because the Kotlin PyreonFetch exposes them as
- * Compose `MutableState` (the Swift side exposes plain @Observable
- * properties, so it needs no rewrite — the platforms diverge here exactly
- * like PyreonRouter's `params`).
- */
-let _fetchNames: Set<string> = new Set()
-/**
  * Phase 4.2: every `useForm` decl name in scope. Member reads of a form
  * decl's reactive fields (`form.values` / `errors` / `touched` /
  * `isSubmitting`) emit with a trailing `.value` (Compose `MutableState`).
@@ -541,14 +526,6 @@ let _moduleItems: ExtModuleItem[] = []
  */
 let _formSubmitParamsKotlin: string[] = []
 /**
- * Phase 5: native data/services hook decl names → per-hook MutableState
- * field-read rewrite (append `.value`). Each maps a binding name to the
- * container's reactive fields; non-listed members (Bool getters + methods)
- * read bare. Swift exposes everything as @Observable, so it needs no rewrite.
- * Field sets are kept next to the read-rewrite in emitKotlinExpr.
- */
-let _wsNames: Set<string> = new Set()
-/**
  * The component's ASYNC SOURCES in declaration order — its `useFetch` containers plus every plugin
  * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
  */
@@ -563,18 +540,11 @@ let _asyncDeclsKotlin: DeclIR[] = []
  */
 function isContainerMutableStateField(obj: string, p: string): boolean {
   return (
-    _serviceBindingsKotlin.get(obj)?.kotlinState?.includes(p) === true ||
-    (_wsNames.has(obj) && ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
-    (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
-    (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
+    _serviceBindingsKotlin.get(obj)?.kotlinState?.includes(p) === true
   )
 }
-let _mapNames: Set<string> = new Set()
-let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
-/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
-let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (persists across the whole emit) — seeded
  * into each component's `_functionNames` so a `dbl(21)` call resolves as a
  * free-function call regardless of which component emits it. */
@@ -697,7 +667,6 @@ export function emitKotlin(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
-  features: FeatureDefnIR[] = [],
   moduleItems: ExtModuleItem[] = [],
   // fonts: Android resolves at runtime via pyreonFont(res/font), so
   // the map is accepted for signature symmetry but unused here.
@@ -881,9 +850,8 @@ export function emitKotlin(
   for (const m of models) parts.push(emitKotlinModel(m))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
   for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
-  // Gap 4 follow-up — feature v1: emit per-feature schema data class
-  // + module-scope object.
-  for (const f of features) parts.push(emitKotlinFeature(f))
+  // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
+  for (const item of itemsInSlot(moduleItems, 'declarations')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Plugin module items (`CompilerPlugin.items`): schemas and the like.
   // `PyreonSchemaError` and `PyreonParseResult` — what every schema throws
   // and returns — live in the runtime (`PyreonSchema.kt`), NOT in this file.
@@ -896,7 +864,7 @@ export function emitKotlin(
   // local in every file: a provider in the app root and a reader on another
   // page never met, so the reader silently denied everything.
   _moduleItems = moduleItems
-  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
+  for (const item of itemsInSlot(moduleItems, 'data')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -1087,66 +1055,6 @@ function emitKotlinModel(m: ModelDefnIR): string {
   }
   lines.push(`}`)
   return lines.join('\n')
-}
-
-/**
- * Gap 4 follow-up — feature v1 emit (Kotlin). Mirror of
- * emitSwiftFeature. Produces:
- *
- *   data class PyreonFeatureSchema_Todo(
- *       var id: String = "",
- *       var title: String = "",
- *       var done: Boolean = false,
- *   )
- *
- *   object PyreonFeature_Todo {
- *       const val name = "todo"
- *       val initialValues = PyreonFeatureSchema_Todo()
- *   }
- */
-function emitKotlinFeature(f: FeatureDefnIR): string {
-  const lines: string[] = []
-  lines.push(`data class PyreonFeatureSchema_${f.bindingName}(`)
-  for (const field of f.fields) {
-    const t =
-      field.type === 'string'
-        ? 'String'
-        : field.type === 'number'
-          ? KOTLIN_INT
-          : 'Boolean'
-    const initial =
-      field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${kotlinMember(field.name)}: ${t} = ${initial},`)
-  }
-  lines.push(`)`)
-  lines.push(``)
-  lines.push(`object PyreonFeature_${f.bindingName} {`)
-  lines.push(`    const val name = ${kotlinStr(f.featureName)}`)
-  lines.push(
-    `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
-  )
-  lines.push(`}`)
-  // See the Swift mirror. A VALUE binding, not a `typealias` — for symmetry with
-  // the sibling lowerings, not for collision safety: both forms collide with a
-  // same-named user type, which parse.ts warns about by name.
-  lines.push(``)
-  lines.push(`val ${f.bindingName} = PyreonFeature_${f.bindingName}`)
-  return lines.join('\n')
-}
-
-/**
- * Value type → emitted helper. A total `Record` rather than a lookup with a
- * fallback: adding a `valueType` without an emitter is then a compile error,
- * not a silent default to the string helper.
- */
-const KOTLIN_URL_STATE_TYPES: Record<
-  Extract<DeclIR, { kind: 'url-state' }>['valueType'],
-  string
-> = {
-  string: 'PyreonUrlState',
-  int: 'PyreonUrlStateInt',
-  double: 'PyreonUrlStateDouble',
-  boolean: 'PyreonUrlStateBool',
 }
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
@@ -1392,14 +1300,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = bindServices(c.decls)
-  _wsNames = new Set()
   _asyncDeclsKotlin = []
-  _mapNames = new Set()
-  _authNames = new Set()
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
   _hasAsyncHandler = false
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
@@ -1447,30 +1351,17 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'router-hook' && d.hook === 'navigate') {
       _functionNames.add(d.name)
     }
-    // `q` is CALLABLE (`operator fun invoke`), so a reference must keep its
-    // parens — the Swift mirror adds it for the same reason.
-    if (d.kind === 'url-state') {
-      _functionNames.add(d.name)
-      _urlStateNames.add(d.name)
-    }
-    // Phase 4: track useFetch decls so member reads append `.value`. A plugin declaration that is an
-    // async source (`useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
-    if (d.kind === 'fetch') _fetchNames.add(d.name)
-    if (d.kind === 'fetch' || pluginAsyncState(d, 'kotlin', kotlinEmitContext(0)) !== undefined) _asyncDeclsKotlin.push(d)
+    // A CALLABLE plugin declaration (`q` through `operator fun invoke`) keeps its parens at every reference — the Swift
+    // mirror adds it for the same reason.
+    if (d.kind === 'ext' && pluginDeclIsCallable(d)) _functionNames.add(d.name)
+    // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
+    if (pluginAsyncState(d, 'kotlin', kotlinEmitContext(0)) !== undefined) _asyncDeclsKotlin.push(d)
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
-    // Phase 5: native data/services hook decl names (for the .value rewrite).
-    if (d.kind === 'websocket') _wsNames.add(d.name)
-    if (d.kind === 'map') _mapNames.add(d.name)
-    if (d.kind === 'auth') _authNames.add(d.name)
   }
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
   widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs, _moduleConstTypes)
-  // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
-  // decls with no explicit .connect() — reuses the on-mount harness +
-  // connect url-threading. Mutates c.decls (idempotent).
-  synthesizeWebSocketAutoConnect(c)
   const inferCtx = buildInferenceCtx(
     c.decls,
     _kotlinStoreDefs,
@@ -1490,11 +1381,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Expose the component's inference ctx to the object-literal emit so a
   // non-literal field (`{ id: count() }`) gets its data-class field type
   // inferred (mirrors the Swift `_exprInferCtx`).
-  _websocketUrlsKotlin = new Map(
-    c.decls
-      .filter((d) => d.kind === 'websocket')
-      .map((d) => [(d as { name: string }).name, (d as { url: string }).url] as const),
-  )
   // Mirror of the Swift emitter's call — see infer-type.ts:widenFloatLocals.
   for (const d of c.decls) {
     if (d.kind === 'function') widenFloatLocals(d.body, inferCtx)
@@ -1509,7 +1395,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // `declTexts` so it can be emitted later inside the function body
   // (after the signature line).
   // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
-  _databaseNames = new Set()
   _fieldArrayNamesKotlin = new Set()
   _fieldArrayItemParamsKotlin = []
   const declTexts = c.decls
@@ -1654,46 +1539,6 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (!isHeadLifecycleDecl(d)) continue
     for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
-  for (const d of c.decls) {
-    if (d.kind !== 'fetch') continue
-    const name = kotlinIdent(d.name)
-    lines.push(`  LaunchedEffect(Unit) {`)
-    lines.push(`    ${name}.begin()`)
-    lines.push(`    try {`)
-    if (d.method || d.headers || d.body) {
-      // Mirrors the Swift branch one-for-one: a request carrying a VERB,
-      // headers, or a body goes through PyreonHttp — the runtime that shipped
-      // on both targets with full verb support and nothing lowering to it.
-      // `readText()` below cannot express any of the three.
-      const parts = [
-        `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
-        `url = ${kotlinStr(d.url)}`,
-      ]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
-          .join(', ')
-        parts.push(`headers = mapOf(${pairs})`)
-      }
-      if (d.body !== undefined) parts.push(`body = ${kotlinStr(d.body)}`)
-      lines.push(`      val __response = withContext(Dispatchers.IO) {`)
-      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
-      lines.push(`      }`)
-      // A non-2xx REJECTS rather than decoding — handing an error page to the
-      // JSON decoder reads as "the server sent bad JSON" and hides the status.
-      lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
-      lines.push(
-        `      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(__response.body))`,
-      )
-    } else {
-      lines.push(
-        `      val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(d.url)}).readText() }`,
-      )
-      lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
-    }
-    lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
-    lines.push(`  }`)
-  }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
@@ -1773,15 +1618,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
-  _urlStateNames = new Set()
-  _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = new Map()
-  _wsNames = new Set()
   _asyncDeclsKotlin = []
-  _mapNames = new Set()
-  _authNames = new Set()
   _routerRoutes = new Map()
   _pureStateKotlin = new Map()
   const finished = _pluginScope.finalize(lines.join('\n'))
@@ -1813,14 +1653,6 @@ function emitKotlinDataClass(synth: {
   return `${ser}data class ${synth.name}(${params})`
 }
 
-/**
- * Per-component: `useDatabase()` binding names.
- *
- * Needed so `db.insert(collection, { id, fields })` can lower its object
- * literal to a `PyreonRecord` rather than the generic anonymous-object path.
- * Mirrors `_databaseNames` in emit-swift.ts.
- */
-let _databaseNames: Set<string> = new Set()
 // Field-array accessor unwrap — mirror of _fieldArrayNamesSwift: web signal
 // CALLS (`tags.items()`, `item.value()`) are PROPERTIES on the Kotlin
 // PyreonFieldArray, so the call emit strips the parens. Item params are a
@@ -1862,11 +1694,8 @@ function resolveKotlinStructFields(elem: TypeIR): { name: string; type: TypeIR }
   return []
 }
 
-/** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
+/** The pending / failed conditions of one async source (a plugin declaration that declares `asyncState`). */
 function asyncStateKotlin(d: DeclIR, indent: number): { pending: string; error: string } {
-  if (d.kind === 'fetch') {
-    return { pending: `${kotlinIdent(d.name)}.isPending.value`, error: `${kotlinIdent(d.name)}.error.value != null` }
-  }
   return pluginAsyncState(d, 'kotlin', kotlinEmitContext(indent))!
 }
 
@@ -1897,60 +1726,27 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
     const initial = withExpectedTypeKotlin(d.type, () => emitKotlinExpr(d.initial, 0))
     _activeEnumType = undefined
-    // G5 — persistent signal via `useStorage<T>('key', default)`. Compose's
-    // `rememberSaveable` saves/restores state across configuration changes
-    // (rotation, dark-mode flip) and process death-restoration. Same
-    // `by` delegate as `remember` → bare reads / writes at use sites
-    // continue to work without parens.
-    //
-    // Phase 2 follow-up — Compose Saver glue. When the type is NOT
-    // natively Saveable (Bundle-compatible primitives + enums), emit
-    // a kotlinx-serialization JSON-backed `Saver<T, String>` passed
-    // via `rememberSaveable(saver = ...)`. Closes G5's known caveat
-    // ("`rememberSaveable<List<Todo>>` needs a custom Saver"). The
-    // emit assumes the consumer's Compose project includes the
-    // `kotlinx-serialization-json` runtime dep (same kotlinx-
-    // serialization plugin that #857 already requires for the
-    // `@Serializable` data class annotation).
-    //
-    // Native types continue to use the direct shape — no Saver
-    // overhead when not needed. Native iff `kind in {string,
-    // number, boolean}` OR a known enum (G6 emit produces enum
-    // class with Bundle-friendly String raw value).
-    const isStorage = d.storageKey !== undefined
-    const usesPyreonRuntime = isStorage && !isRememberSaveableNativeType(d.type)
     const typeStr = kotlinType(d.type, ctx, d.name)
-
-    // Phase 2.5: non-native storage types use rememberPyreonStorage<T>
-    // from @pyreon/native-runtime-kotlin — collapses the
-    // previous 4-line Saver boilerplate to one line at the call site.
-    // Same MutableState<T> projection, same `by` delegate, but with
-    // a pluggable backend (InMemoryBackend default, DataStoreBackend
-    // for real cross-launch persistence).
-    //
-    // Consumer apps must `import com.pyreon.runtime.rememberPyreonStorage`
-    // for the symbol to resolve. The compiler doesn't auto-emit imports —
-    // same convention as @AppStorage on iOS (requires `import SwiftUI`).
-    //
-    // Pre-2.5: hand-rolled `Saver<T, String>` inlining `Json.encodeToString` /
-    // `Json.decodeFromString`. Identical Compose-state behaviour at runtime;
-    // just dramatically more emit code AND tied to `rememberSaveable`'s
-    // configuration-change semantics rather than real cross-launch
-    // persistence. The new shape (when backed by DataStoreBackend in real
-    // apps) survives process restart too — matching the iOS @AppStorage
-    // contract.
-    if (usesPyreonRuntime) {
-      if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
-        return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${kotlinStr(d.storageKey)}, listOf())`
-      }
-      return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${kotlinStr(d.storageKey)}, ${initial})`
+    // A signal that outlives the process (`storageKey`): the loaded plugin's persistence backend either owns the whole
+    // declaration (its own runtime, for the types Compose cannot save) or names the `remember`-like delegate and keeps
+    // the core's own `mutableStateOf` line (null seeds, empty lists and all). The core decides only WHICH: native iff
+    // `kind in {string, number, boolean}` or a known enum (Bundle-friendly String raw value).
+    let wrapperFn = 'remember'
+    if (d.storageKey !== undefined) {
+      const persisted = persistenceFor(d.storageKey).kotlin(
+        {
+          name: d.name,
+          key: d.storageKey,
+          type: typeStr,
+          initial,
+          nativeType: isRememberSaveableNativeType(d.type),
+          emptyList: d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0,
+        },
+        kotlinEmitContext(0),
+      )
+      if ('line' in persisted) return persisted.line
+      wrapperFn = persisted.wrapper
     }
-
-    // Native types continue to use the direct shape — no Pyreon runtime
-    // dependency when not needed. Native iff `kind in {string, number,
-    // boolean}` OR a known enum (G6 emit produces enum class with
-    // Bundle-friendly String raw value).
-    const wrapperFn = isStorage ? 'rememberSaveable' : 'remember'
     if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
       return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${typeStr}>(listOf()) }`
     }
@@ -1998,11 +1794,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     }
     inner.push('  }')
     return `val ${kotlinIdent(d.name)} = remember { ${inner.join('\n  ')} }`
-  }
-  // Phase 4: `const x = useFetch<T>('/url')` → a remembered PyreonFetch<T>.
-  // The LaunchedEffect harness that runs it is emitted by emitKotlinComponent.
-  if (d.kind === 'fetch') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonFetch<${kotlinType(d.type, ctx)}>() }`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
   // PyreonForm seeded with the literal defaults. No harness (pure state).
@@ -2065,47 +1856,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // constructor route and fail to compile again.
     return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${parts.join(', ')}) }`
   }
-  // Native data/services hooks without a descriptor: reactive FIELD reads
-  // append `.value` (see emitKotlinExpr); methods + Bool getters read bare.
-  if (d.kind === 'websocket') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
-  }
-  if (d.kind === 'database') {
-    _databaseNames.add(d.name)
-    // `PyreonDatabase(context)` — NOT the bare `PyreonDatabase()` this emitted
-    // until 2026-07. The bare form resolved to the in-memory backend, so a
-    // `useDatabase()` app lost every record on relaunch, silently. Android
-    // needs a Context to find app-private storage, so the Context is threaded
-    // here exactly as `useNativeModule` does. (Swift needs no equivalent:
-    // Foundation resolves Application Support unaided, so `PyreonDatabase()`
-    // persists there on its own.)
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonDatabase(${id}Ctx) }`,
-    ].join('\n  ')
-  }
-  if (d.kind === 'secureStorage') {
-    // `PyreonSecureStorage(context)` — the KeystoreSecureBackend factory
-    // (AndroidKeyStore AES-GCM over app-private storage). Context threaded
-    // exactly as `useDatabase` does; a bare constructor deliberately does
-    // not exist (a secret store must never silently fall back to memory).
-    const id = kotlinIdent(d.name)
-    return [
-      `val ${id}Ctx = LocalContext.current`,
-      `val ${id} = remember { PyreonSecureStorage(${id}Ctx) }`,
-    ].join('\n  ')
-  }
   if (d.kind === 'fieldArray') {
     _fieldArrayNamesKotlin.add(d.name)
     const init = d.initial.length === 0 ? '' : `listOf(${d.initial.map((v) => kotlinStr(v)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonFieldArray(${init}) }`
-  }
-  if (d.kind === 'map') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonMapState() }`
-  }
-  if (d.kind === 'auth') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonAuth<${kotlinType(d.userType, ctx)}>() }`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a `val` that calls
   // the runtime helper. The reified-generic `useLoaderData<T>()` reads
@@ -2130,29 +1884,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       .map((p) => `val ${kotlinIdent(p.local)} = useParams()[${kotlinStr(p.key)}] ?: ""`)
       .join('\n  ')
   }
-  // Phase 4: `const can = usePermissions([...])` → a remembered
-  // PyreonPermissions seeded with the literal grant keys. Reads are method
-  // calls (`can.can("x")`) — no `.value` field-read rewrite needed.
   // Mirror of the Swift pure-state emit: a plain mutableStateOf field, with
   // the mutators rewritten at their use sites.
   if (d.kind === 'pure-state') {
     // A counter is a TS integer — Long on Kotlin (see KOTLIN_INT).
     const init = typeof d.initial === 'number' && Number.isInteger(d.initial) ? `${d.initial}L` : String(d.initial)
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${init}) }`
-  }
-  if (d.kind === 'permissions') {
-    // Mirror of Swift: a BARE `usePermissions()` reads the provider's
-    // CompositionLocal rather than constructing an empty set that denies.
-    if (!d.seeded) {
-      return `val ${kotlinIdent(d.name)} = LocalPyreonPermissions.current`
-    }
-    // `usePermissions([])` — an explicit empty grant list is a deny-all
-    // container, not a provider read (matches the web runtime).
-    if (d.grants.length === 0) {
-      return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions() }`
-    }
-    const seed = `setOf(${d.grants.map((g) => kotlinStr(g)).join(', ')})`
-    return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
   // instance of the APP's own class. A Context is hoisted and injected
@@ -2206,19 +1943,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
   // explicit router arg needed (unlike Swift). `useParams()` follows
   // the same shape.
-  if (d.kind === 'url-state') {
-    // `defaultValue` arrives as target syntax (quoted for a string, bare for a
-    // number or bool), so it is interpolated, not re-stringified.
-    //
-    // The router comes from `LocalPyreonRouter.current`, NOT a `useRouter()`
-    // call: router-kotlin ships useNavigate / useParams / useLoaderData and no
-    // useRouter at all. The emit called one anyway and the STUB declared it, so
-    // every stub-level check passed while a real `gradle assembleDebug` failed
-    // with `Unresolved reference 'useRouter'` -- a superset stub masking a real
-    // emit bug, which is the exact failure mode a stub is supposed to prevent.
-    const helper = KOTLIN_URL_STATE_TYPES[d.valueType]
-    return `val ${kotlinIdent(d.name)} = ${helper}(LocalPyreonRouter.current, ${kotlinStr(d.key)}, ${d.defaultValue})`
-  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     return `val ${kotlinIdent(d.name)} = ${fn}()`
@@ -3548,47 +3272,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         )
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
       }
-      // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
-      // is the primary write, and the object literal was lowered by the
-      // generic path into `(id = "1", fields = __Obj0(...))` — not even a
-      // valid Kotlin expression, let alone a `PyreonRecord`. So the call never
-      // compiled, on either target. `insert` is the only way to get data in,
-      // which is why no gated app has ever rendered FROM the database.
-      //
-      // Field values are emitted AS WRITTEN: `fields` is `Map<String, String>`,
-      // and silently wrapping a number in `.toString()` would hide a real
-      // mistake behind a coercion.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _databaseNames.has(e.callee.object.name) &&
-        e.callee.property === 'insert' &&
-        e.args.length === 2 &&
-        e.args[1]?.kind === 'object'
-      ) {
-        const lit = e.args[1] as Extract<ExprIR, { kind: 'object' }>
-        const idField = lit.fields.find((f) => f.name === 'id')
-        const fieldsField = lit.fields.find((f) => f.name === 'fields')
-        const unknown = lit.fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
-        if (idField && unknown.length === 0) {
-          const parts = [emitKotlinExpr(idField.value, indent)]
-          if (fieldsField) {
-            if (fieldsField.value.kind === 'object') {
-              const entries = fieldsField.value.fields
-                .map((f) => `${kotlinStr(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
-                .join(', ')
-              parts.push(entries === '' ? 'emptyMap()' : `mapOf(${entries})`)
-            } else {
-              parts.push(emitKotlinExpr(fieldsField.value, indent))
-            }
-          }
-          const collection = emitKotlinExpr(e.args[0]!, indent)
-          return `${kotlinIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
-        }
-        // Recognized shape didn't match — say why before falling through to
-        // the doomed generic path below.
-        warnDatabaseInsertShape(e.callee.object.name, lit.fields)
-      }
       // `console.log(…)` → `println(…)` — the universal TS debug call
       // maps to Kotlin's stdlib print (Swift mirror: `print`).
       if (
@@ -3823,21 +3506,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           `isNaN(${nStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
         )
       }
-      // `ws.connect()` on Kotlin — the runtime's connect takes a
-      // `ws.connect()` (0-arg TS surface) → the OkHttp transport extension
-      // `PyreonWebSocket.connect(url)` (from @pyreon/native-runtime-kotlin,
-      // #1987), threading the registered url. Mirror of the Swift
-      // `connect(to: URL(...))` lowering — the default-OkHttp-transport
-      // follow-up that closes the Kotlin side of the lifecycle auto-start.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 'connect' &&
-        e.callee.object.kind === 'identifier' &&
-        _websocketUrlsKotlin.has(e.callee.object.name) &&
-        e.args.length === 0
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.connect(${kotlinStr(_websocketUrlsKotlin.get(e.callee.object.name)!)})`
-      }
       // `Boolean(x)` — JS truthiness coercion as a VALUE. Kotlin has no
       // `Boolean(x)` function (the raw emit fails "unresolved reference"),
       // so lower by the arg's INFERRED type — the mirror of the Swift
@@ -3984,22 +3652,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `((${arg}).toLongOrNull() ?: 0L)`
         }
         return `((${arg}).toDoubleOrNull() ?: 0.0)`
-      }
-      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
-      // `quotes.isPending()` (the web signal-read shape) → MutableState
-      // `.value` read. `refetch` is excluded (real method, parens
-      // preserved by the generic call emit below).
-      if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _fetchNames.has(e.callee.object.name) &&
-        (e.callee.property === 'data' ||
-          e.callee.property === 'isPending' ||
-          e.callee.property === 'isFetching' ||
-          e.callee.property === 'error')
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${e.callee.property}.value`
       }
       // Phase-5 native-container reactive FIELD read via the web signal-read
       // idiom `ws.lastMessage()` → `ws.lastMessage.value` (drop the call parens
@@ -4832,18 +4484,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return kotlinIdent(e.property)
       }
-      // Phase 4: a useFetch decl's reactive fields are Compose MutableState
-      // — `x.data` / `x.error` / `x.isPending` read through `.value`.
-      if (
-        e.object.kind === 'identifier' &&
-        _fetchNames.has(e.object.name) &&
-        (e.property === 'data' ||
-          e.property === 'error' ||
-          e.property === 'isPending' ||
-          e.property === 'isFetching')
-      ) {
-        return `${kotlinIdent(e.object.name)}.${e.property}.value`
-      }
       // Phase 4.2: a useForm decl's MutableState fields read through `.value`.
       // `isValid` is a derived Boolean getter (not MutableState) → plain read.
       if (
@@ -5214,11 +4854,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // with "an explicit type is required on a value parameter").
       return `{ ${ktLambdaParams()} -> ${emitKotlinExpr(e.body, indent)} }`
     }
-    case 'new-sized-map': {
-      // Mirror of the Swift emit; Kotlin spells named arguments with `=`.
-      const lru = e.lru ? ', lru = true' : ''
-      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}L${lru})`
-    }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
       // final; contents mutate through it).
@@ -5235,8 +4870,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.seed !== undefined) return `(${emitKotlinExpr(e.seed, indent)}).toMutableSet()`
       return `mutableSetOf<${kotlinType(e.elementType!)}>()`
     }
-    case 'rx-call':
-      return emitKotlinRxCall(e, indent)
     case 'jsx-element':
       return emitKotlinJsx(e, indent)
     case 'jsx-fragment': {
@@ -5487,44 +5120,6 @@ function warnUntypeableObjectLiteral(
   )
 }
 
-/**
- * `db.insert(collection, <literal>)` reached the record recognizer above and
- * did not match its `{ id, fields }` shape — every OTHER object-literal shape
- * still falls through to the GENERIC struct-synthesis path a few lines below,
- * and that fallthrough was silent: `warnUntypeableObjectLiteral`'s question is
- * "could a struct be synthesized at all", and the common mistake here — a
- * FLAT domain object (`{ id, description, amount }`, no `fields` key) — answers
- * yes. The struct compiles fine on its own. It just isn't `PyreonRecord`, the
- * NOMINAL type `insert`'s real signature requires on both targets, so the call
- * is guaranteed to fail to build regardless of how well-typed the individual
- * fields are — a struct with matching structure still doesn't satisfy a
- * nominally-typed Swift/Kotlin parameter. That guarantee is what makes this
- * warning TOTAL rather than best-effort, unlike `warnUntypeableObjectLiteral`:
- * there is no shape reaching this function that still compiles.
- *
- * An `id`-only literal (no `fields` key at all) is legitimate — both runtimes
- * default `fields` to empty — and is handled by the recognizer above, so it
- * never reaches here. Mirror of emit-swift's.
- */
-function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: ExprIR }[]): void {
-  const hasId = fields.some((f) => f.name === 'id')
-  const unknown = fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
-  const given = fields.map((f) => f.name).join(', ') || '(empty)'
-  const reasons: string[] = []
-  if (!hasId) reasons.push('no `id` field')
-  if (unknown.length > 0) {
-    const names = unknown.map((f) => `\`${f.name}\``).join(', ')
-    const plural = unknown.length === 1 ? ['is', 'it'] : ['are', 'them']
-    reasons.push(`${names} ${plural[0]} not \`id\`/\`fields\` — nest ${plural[1]} under \`fields: { ... }\``)
-  }
-  _emitWarnings.push(
-    `${dbName}.insert(...) argument { ${given} } is not the { id, fields } shape 'PyreonRecord' requires ` +
-      `(${reasons.join('; ')}). No struct synthesized here can satisfy insert's PyreonRecord parameter — ` +
-      `Swift/Kotlin are nominally typed, so this will NOT compile. Write ` +
-      `\`db.insert(collection, { id, fields: { ...columns } })\`.`,
-  )
-}
-
 /** The facade element lowerings emit through — closes over this emitter's state. */
 function kotlinEmitContext(indent: number): KotlinEmitContext {
   return createKotlinEmitContext(
@@ -5547,6 +5142,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       component: () => kotlinComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitKotlinChild,
+      generic: emitKotlinGeneric,
       // Against the component's own `KotlinCtx`: an inline object type (a query's `{ data: { id: string } }`) synthesizes a named data class there.
       typeText: (type) => kotlinType(type, _activeKotlinCtx),
       rowType: resolveKotlinRowTypeName,
@@ -5833,7 +5429,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
-  if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitKotlinRouterProvider(e, indent)
   if (tag === 'RouterView') return emitKotlinRouterView(e, indent)
   // 8 other canonical primitives fall through to generic emit until
@@ -8616,46 +8211,6 @@ function emitKotlinLink(
  * Falls back to the bare-content emit when routes aren't resolvable
  * (back-compat with C4 scaffold + foreign-router-attr shapes).
  */
-/**
- * `<PermissionsProvider permissions={{ … }}>` → a CompositionLocal the bare
- * `usePermissions()` reads. Mirror of emitSwiftPermissionsProvider; see its
- * comment for why the injection is what makes the web-correct call work.
- */
-function emitKotlinPermissionsProvider(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const seed = permissionsProviderSeed(e)
-  if (seed === null) {
-    // The suppression of the blanket unlowered-module line is keyed on the
-    // TAG being present, so a provider that cannot be baked would otherwise
-    // go silent — worse than before the tag lowered at all. The emit is the
-    // authority on whether it lowered, so it reports.
-    _emitWarnings.push(
-      '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
-    )
-    return emitKotlinGeneric(e, indent)
-  }
-  if (seed.deniedUnderWildcard.length > 0) {
-    // The native container is grant-only, so an explicit `false` has nowhere to
-    // live. That is exact when the map has no wildcards — an unlisted key is
-    // denied either way — but under a wildcard the `false` is the ONLY thing
-    // denying it, so dropping it makes native GRANT what the web DENIES.
-    // `permissionsProviderSeed` computed this and its docstring said the caller
-    // reports it; no caller did, so an authorization primitive was failing OPEN
-    // in silence. A wrong-direction authz divergence must be loud.
-    _emitWarnings.push(
-      `<PermissionsProvider>: ${seed.deniedUnderWildcard
-        .map((d) => kotlinStr(d))
-        .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
-    )
-  }
-  const pad = ' '.repeat(indent + 2)
-  const set = `PyreonPermissions(setOf(${seed.granted.map((g) => kotlinStr(g)).join(', ')}))`
-  const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
-  return `CompositionLocalProvider(LocalPyreonPermissions provides ${set}) {\n${content}\n${' '.repeat(indent)}}`
-}
-
 function emitKotlinRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -9272,95 +8827,6 @@ function escapeKotlinStringSegment(s: string): string {
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')
 }
-
-/**
- * Lower a `kind: 'rx-call'` ExprIR to Kotlin. Dispatches on `method` to
- * produce idiomatic Kotlin code on `List<T>`. Mirrors emitSwiftRxCall
- * in shape; the per-method lowerings are documented in
- * docs/src/content/docs/multiplatform-libraries.md (Strategy A table).
- *
- * Predicate / mapper / reducer args are inlined as Kotlin lambdas
- * (`{ t -> body }`); count args inline as Kotlin Int literals.
- */
-function emitKotlinRxCall(
-  e: { method: string; source: ExprIR; args: ExprIR[] },
-  indent: number,
-): string {
-  const src = emitKotlinExpr(e.source, indent)
-  const arg = (i: number): string =>
-    e.args[i] === undefined ? '' : emitKotlinExpr(e.args[i] as ExprIR, indent)
-  const intArg = (i: number): string =>
-    e.args[i] === undefined ? '' : kotlinIntArg(e.args[i] as ExprIR, indent)
-  switch (e.method) {
-    // Transforms — name-matched on Kotlin Collection<T> for the v1 set.
-    case 'filter':
-      return `${src}.filter(${arg(0)})`
-    case 'map':
-      return `${src}.map(${arg(0)})`
-    case 'reverse':
-      return `${src}.reversed()`
-    case 'compact':
-      // Kotlin's filterNotNull() is the idiomatic equivalent of JS rx.compact.
-      return `${src}.filterNotNull()`
-    case 'flatten':
-      return `${src}.flatten()`
-    case 'unique':
-      // Kotlin's distinct() is insertion-order-preserving — strictly
-      // better than Swift's Array(Set(...)). Matches rx.unique semantics.
-      return `${src}.distinct()`
-    case 'take':
-      return `${src}.take(${intArg(0)})`
-    case 'skip':
-      return `${src}.drop(${intArg(0)})`
-    case 'takeWhile':
-      return `${src}.takeWhile(${arg(0)})`
-    case 'dropWhile':
-      return `${src}.dropWhile(${arg(0)})`
-    // Scalar accessors — Kotlin's first/last throw on empty; we use
-    // the *OrNull variants to match Swift's Optional<T> semantics.
-    case 'first':
-      return `${src}.firstOrNull()`
-    case 'last':
-      return `${src}.lastOrNull()`
-    case 'find':
-      return `${src}.find(${arg(0)})`
-    case 'some':
-      return `${src}.any(${arg(0)})`
-    case 'every':
-      return `${src}.all(${arg(0)})`
-    // Aggregations — count/size, sum is direct, min/max use OrNull
-    // matching Swift Optional.
-    case 'count':
-      // `.size` is a property on List<T> (O(1) on RandomAccess lists); a TS
-      // count is a Long (see KOTLIN_INT).
-      return kotlinLongOf(`${src}.size`)
-    case 'sum':
-      // Iterable<Int>.sum() / Iterable<Double>.sum() are stdlib
-      // extension functions. For non-numeric T the user should use
-      // reduce; this lowering assumes the consumer passes a numeric
-      // source signal (matches rx.sum's type signature on the web).
-      return `${src}.sum()`
-    case 'min':
-      return `${src}.minOrNull()`
-    case 'max':
-      return `${src}.maxOrNull()`
-    case 'reduce':
-      // rx.reduce(s, reducer, initial) ≈ Kotlin fold(initial, reducer).
-      // Same arg-flip as Swift (JS order: reducer-then-initial).
-      return `${src}.fold(${arg(1)}, ${arg(0)})`
-    case 'average': {
-      // Kotlin's Iterable<Number>.average() returns Double directly +
-      // returns NaN for empty (not 0). Match rx.average's "0 for empty"
-      // semantic explicitly via an empty-check lambda.
-      return `(${src}.let { if (it.isEmpty()) 0.0 else it.sum().toDouble() / it.size })`
-    }
-    default:
-      return `/* unsupported rx.${e.method} */ ${src}`
-  }
-}
-
-
-
 
 /**
  * The current component's plugin scope (its ext declarations, plugin state,

@@ -75,7 +75,8 @@ describe('the nested route dispatcher on Kotlin', () => {
 
 describe('provider tags on Kotlin', () => {
   const PROV = `import { signal } from '@pyreon/reactivity'
-import { Stack, Text, Link, PermissionsProvider, RouterProvider } from '@pyreon/primitives'
+import { PermissionsProvider } from '@pyreon/permissions'
+import { Stack, Text, Link, RouterProvider } from '@pyreon/primitives'
 import { QueryClientProvider } from '@pyreon/query'
 export function App() {
   const dyn = signal({ read: true })

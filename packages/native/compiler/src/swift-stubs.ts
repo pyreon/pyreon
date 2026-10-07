@@ -850,8 +850,8 @@ public struct PyreonFilePicker { public init() {}; public func pick() async -> S
 // emit uses it) drives runtime reactivity; these only satisfy conformance.
 public protocol PyreonStoreProtocol: AnyObject {}
 public protocol PyreonModelProtocol: AnyObject {}
-// AppStorage - SwiftUI's own wrapper, which \`useStorage\` emits for SCALAR
-// values (a struct value routes to PyreonAppStorage below instead). Stripped
+// AppStorage - SwiftUI's own wrapper, which a persisted signal (\`useStorage\`) emits for SCALAR
+// values (a struct value routes to the library's own PyreonAppStorage instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was
 // UNGATED. Mirrors SwiftUI's REAL constrained overloads rather than a loose
 // generic: a permissive \`<Value>\` would MASK an emit that ever sent an
@@ -872,58 +872,6 @@ extension AppStorage where Value == Double {
 extension AppStorage where Value == Bool {
   public init(wrappedValue: Value, _ key: String) { self._key = key }
 }
-@propertyWrapper public struct PyreonAppStorage<Value> {
-  public init(wrappedValue: Value, _ key: String) {}
-  public var wrappedValue: Value { get { fatalError() } nonmutating set {} }
-}
-// PyreonPermissions - MIRRORS the real init exactly:
-// \`public init(_ granted: Set<String> = [])\`. The stub previously declared
-// \`init(_ grants: [String])\` - no default, and an Array where the real type
-// takes a Set - so it REJECTED the emit's correct \`PyreonPermissions()\`.
-// That is the inverse of the usual masking failure: a stub STRICTER than
-// reality fails correct code. Latent only because no fixture used the hook.
-// The real type is an @Observable FINAL CLASS, not a struct. That is not a
-// cosmetic difference: the emit binds it through @Environment (read-only), so
-// a struct cannot typecheck the mutators at all - \`p.grant("x")\` on a struct
-// needs \`mutating\`, which an @Environment binding cannot satisfy. The struct
-// stub therefore rejected correct code twice over: wrong kind AND five missing
-// members (can/cannot/set/grant/revoke, plus the granted property).
-// warningSink/warnUnprovidedOnce/resetWarningForTesting mirror the no-provider
-// dev warning (usePermissions() with no <PermissionsProvider> above it) — the
-// same subset-stub-manufactures-a-bug shape, this time an outright missing
-// member rather than a mismatched signature.
-public final class PyreonPermissions {
-  public init(_ granted: Set<String> = []) {}
-  public static func makeUnprovided() -> PyreonPermissions { PyreonPermissions() }
-  public let isUnprovidedFallback: Bool = false
-  public private(set) var granted: Set<String> = []
-  public static var warningSink: (String) -> Void = { print($0) }
-  public static func warnUnprovidedOnce() {}
-  public static func resetWarningForTesting() {}
-  public func can(_ key: String) -> Bool { false }
-  public func cannot(_ key: String) -> Bool { false }
-  public func not(_ key: String) -> Bool { false }
-  public func all(_ keys: String...) -> Bool { false }
-  public func any(_ keys: String...) -> Bool { false }
-  public func callAsFunction(_ key: String) -> Bool { false } // used as \`can("x")\`
-  public func set(_ keys: Set<String>) {}
-  public func grant(_ key: String) {}
-  public func revoke(_ key: String) {}
-}
-// BEGIN runtime mirror: fundamentals/permissions/native/swift/PyreonPermissionsEnvironment.swift
-@available(iOS 17.0, macOS 14.0, *)
-private struct PyreonPermissionsKey: EnvironmentKey {
-    static let defaultValue = PyreonPermissions.makeUnprovided()
-}
-
-@available(iOS 17.0, macOS 14.0, *)
-extension EnvironmentValues {
-    public var pyreonPermissions: PyreonPermissions {
-        get { self[PyreonPermissionsKey.self] }
-        set { self[PyreonPermissionsKey.self] = newValue }
-    }
-}
-// END runtime mirror
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-swift's
 // PyreonNetworkStatus.swift surface the emit touches: the no-arg constructor
 // plus the isOnline Bool read (bare, since the real type is @Observable).
@@ -1403,23 +1351,6 @@ public struct Font {
 // is the subset-stub failure mode: a stub NARROWER than the real API
 // manufactures failures on valid source, the mirror image of a superset stub
 // masking real breakage.
-// PyreonSizedMap — mirrors packages/core/sized-map/native/swift/PyreonSizedMap.swift.
-// Signature copied from the shipped class, not approximated: maxEntries is
-// required and lru defaults, which is what makes a snippet passing only
-// maxEntries compile while a maxSize typo still fails.
-public final class PyreonSizedMap<Key: Hashable, Value> {
-  public init(maxEntries: Int, lru: Bool = false) {}
-  public var size: Int { 0 }
-  public func get(_ key: Key) -> Value? { nil }
-  public func set(_ key: Key, _ value: Value) {}
-  public func has(_ key: Key) -> Bool { false }
-  @discardableResult public func delete(_ key: Key) -> Bool { false }
-  public func clear() {}
-  public func keys() -> [Key] { [] }
-  public func values() -> [Value] { [] }
-  public func entries() -> [(Key, Value)] { [] }
-}
-
 // KeyEquivalent / EventModifiers — the two types a keyboard shortcut needs.
 // The named members are exactly those SwiftUI declares; an emit asking for one
 // it does not have (e.g. 'insert') must FAIL the gate rather than compile

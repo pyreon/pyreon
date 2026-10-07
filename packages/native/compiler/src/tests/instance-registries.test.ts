@@ -11,6 +11,7 @@ import {
   type ElementLowering,
 } from '../index'
 import { testNativePlugin } from '../testing'
+import { hooksPlugin } from './first-party-plugins'
 
 const SERVICE_SPEC = {
   swift: 'AcmeGadget()',
@@ -102,16 +103,17 @@ describe('a third-party plugin lowers services AND elements end to end', () => {
 describe('conflicts are load-time errors naming both owners', () => {
   const retag = (el: Parameters<NonNullable<ElementLowering['retag']>>[0]) => el
 
-  it('a plugin service claiming a built-in hook', () => {
+  it('a plugin service claiming a hook the hooks plugin owns', () => {
     expect(() =>
-      createCompiler({ plugins: [{ name: 'A', apiVersion: 1, services: { useShare: SERVICE_SPEC } }] }),
+      createCompiler({ plugins: [hooksPlugin, { name: 'A', apiVersion: 1, services: { useShare: SERVICE_SPEC } }] }),
     ).toThrow(/hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/)
   })
 
-  it('a plugin element claiming a built-in (module, tag)', () => {
+  it('a plugin element claiming another plugin\'s (module, tag)', () => {
     expect(() =>
       createCompiler({
         plugins: [
+          { name: '@pyreon/coolgrid', apiVersion: 1, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
           { name: 'A', apiVersion: 1, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
         ],
       }),
@@ -131,13 +133,13 @@ describe('conflicts are load-time errors naming both owners', () => {
 
   it('a discovered plugin replacing a builtIn plugin by name is NOT a conflict', () => {
     const replacement: CompilerPlugin = {
-      name: '@pyreon/coolgrid',
+      name: '@pyreon/hooks',
       apiVersion: 1,
-      elements: [{ module: '@pyreon/coolgrid', tags: ['Row', 'Col', 'Container'], retag }],
+      elements: [{ module: '@pyreon/hooks', tags: ['Row', 'Col', 'Container'], retag }],
     }
     const compiler = createCompiler({ discovered: [replacement] })
-    expect(compiler.registries.elements.entries.filter((e) => e.owner === '@pyreon/coolgrid')).toHaveLength(1)
-    expect(compiler.registries.elements.entries.find((e) => e.owner === '@pyreon/coolgrid')?.lowering).toBe(
+    expect(compiler.registries.elements.entries.filter((e) => e.owner === '@pyreon/hooks')).toHaveLength(1)
+    expect(compiler.registries.elements.entries.find((e) => e.owner === '@pyreon/hooks')?.lowering).toBe(
       replacement.elements![0],
     )
     const services = createCompiler({
@@ -157,8 +159,9 @@ describe('conflicts are load-time errors naming both owners', () => {
     expect(() => bad([{ module: 'm', tags: ['A'], retag: 1 }])).toThrow(/retag must be a function/)
   })
 
-  it('built-in plugins are marked builtIn', () => {
+  it('built-in plugins are marked builtIn — and none ship: every library is discovered', () => {
     expect(BUILT_IN_PLUGINS.every((p) => p.builtIn === true)).toBe(true)
+    expect(BUILT_IN_PLUGINS).toHaveLength(0)
   })
 })
 

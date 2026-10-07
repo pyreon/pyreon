@@ -175,6 +175,10 @@ Each request gets its own instance — no cross-request leakage. Same pattern fo
 
 Full docs: [pyreon.dev/docs/permissions](https://pyreon.dev/docs/permissions) (or `docs/src/content/docs/permissions.md` in this repo).
 
+## Native (iOS / Android)
+
+`usePermissions([...])` and `<PermissionsProvider>` lower to the native permission set (SwiftUI environment key, Compose composition local) with the grants baked from a literal list. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`; `--no-plugins` builds treat the package like any unclaimed library.
+
 ## License
 
 MIT

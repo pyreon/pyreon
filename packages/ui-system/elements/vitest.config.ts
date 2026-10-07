@@ -16,6 +16,10 @@ export default defineNodeConfig({
     'src/Overlay/positioning.ts',
     'src/Text/styled.ts',
     'src/helpers/Content/styled.ts',
+    // The native-compiler plugin is tooling that runs in Node, not library code; its emit is verified by behaviour in
+    // the @pyreon/native-compiler suite (golden corpus + elements-native specs), which owns the toolchain lanes.
+    'src/native-plugin.ts',
+    'src/native-plugin/**',
   ],
   // Node-suite coverage is 100% on all four metrics. The handful of genuinely
   // unreachable / SSR-only / prod-only defensive arms (Element's onMount null

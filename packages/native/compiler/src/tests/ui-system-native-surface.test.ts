@@ -23,7 +23,7 @@
 //              it is asserted as a warning here rather than treated as a defect.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const COOLGRID = `import { Container, Row, Col } from '@pyreon/coolgrid'

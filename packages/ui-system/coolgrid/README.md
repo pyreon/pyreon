@@ -177,6 +177,10 @@ Swap any layer's root element via `component`:
 
 Full docs: [pyreon.dev/docs/coolgrid](https://pyreon.dev/docs/coolgrid) (or `docs/src/content/docs/coolgrid.md` in this repo).
 
+## Native (iOS / Android)
+
+`Container` and `Row` lower to native stacks, and a `<Col size={n}>` with a literal integer span to a fractional width of a 12-column grid (a responsive or non-literal `size` collapses to an equal-fill child with a named warning). The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT

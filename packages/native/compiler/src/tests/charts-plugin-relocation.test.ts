@@ -57,6 +57,7 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'swiftIdent',
       'swiftStr',
       'topLevelDeclarators',
+      'unconsumedSlotWarning',
       'unwrapTypeLayers',
     ])
     expect(pluginApi.NATIVE_COMPILER_PLUGIN_API_VERSION).toBe(chartsPlugin.apiVersion)

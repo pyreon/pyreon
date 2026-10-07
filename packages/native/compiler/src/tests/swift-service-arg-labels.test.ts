@@ -30,7 +30,7 @@
 // that claim rather than assume it.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const wrap = (decl: string, call: string) => `
   import { useMap, useDatabase } from '@pyreon/hooks'

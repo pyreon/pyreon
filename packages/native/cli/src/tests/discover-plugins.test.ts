@@ -210,30 +210,16 @@ describe('mainWithPlugins discovery', () => {
 })
 
 describe('plugins and explain reports', () => {
-  it('warns by default when a package plugin fails and the compiler has a built-in copy', async () => {
-    addPackage('@pyreon/hooks', declares(), `throw new Error('stale package plugin')`)
-    setApp(['@pyreon/hooks'], `import { useShare } from '@pyreon/hooks'`)
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(await discoverPlugins(app, join(app, 'src'))).toEqual([])
-    expect(warning).toHaveBeenCalledWith(expect.stringContaining('stale package plugin'))
-    expect(warning).toHaveBeenCalledWith(expect.stringContaining('Using the compiler\'s built-in copy of "@pyreon/hooks"'))
-    const compiler = createCompiler()
-    const source = `import { useShare } from '@pyreon/hooks'
-export function A() { const share = useShare(); return <Text>x</Text> }`
-    expect(compiler.transform(source, { target: 'swift' }).code).toContain('PyreonShare()')
-    expect(compiler.transform(source, { target: 'kotlin' }).code).toContain('PyreonShare(shareCtx)')
-  })
-
-  it('lists built-ins, the registry owners and discovered plugins', async () => {
+  it('lists the registry owners and discovered plugins', async () => {
     addPackage(
       '@acme/badge',
       declares(),
       pluginModule('badge', "services: { useBadge: { swift: 'PyreonBadge()', kotlin: ['val {id} = remember { PyreonBadge() }'] } }"),
     )
-    setApp(['@acme/badge'], "import '@acme/badge'")
+    addPackage('@pyreon/hooks', declares({ modules: ['@pyreon/hooks'] }), pluginModule('@pyreon/hooks', "services: { useShare: { legacyKind: 'share', swift: 'PyreonShare()', kotlin: ['val {id}Ctx = LocalContext.current', 'val {id} = remember { PyreonShare({id}Ctx) }'] } }"))
+    setApp(['@acme/badge', '@pyreon/hooks'], "import '@acme/badge'")
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
-    expect(lines).toContain('  @pyreon/elements')
     // Library knowledge arrives with the library's own plugin, never from the compiler.
     expect(lines).not.toContain('  @pyreon/charts')
     expect(lines).toContain('  useShare  @pyreon/hooks')
@@ -262,8 +248,9 @@ export function A() { const share = useShare(); return <Text>x</Text> }`
   })
 
   it('explain prints hook, owner and the emitted declaration for both targets', () => {
+    const hooks = { name: '@pyreon/hooks', apiVersion: 1 as const, modules: ['@pyreon/hooks'], services: { useShare: { legacyKind: 'share', swift: 'PyreonShare()', kotlin: ['val {id}Ctx = LocalContext.current', 'val {id} = remember { PyreonShare({id}Ctx) }'] } } }
     const source = "import { useShare } from '@pyreon/hooks'\nexport function A() { const share = useShare(); return <Button onClick={() => share.text('hi')}>x</Button> }"
-    const { lines, exitCode } = explainReport(source, join(app, 'A.tsx'), createCompiler(), app)
+    const { lines, exitCode } = explainReport(source, join(app, 'A.tsx'), createCompiler({ plugins: [hooks] }), app)
     expect(exitCode).toBe(0)
     const text = lines.join('\n')
     expect(text).toContain('share = useShare()  [owner: @pyreon/hooks]')
@@ -272,11 +259,11 @@ export function A() { const share = useShare(); return <Text>x</Text> }`
   })
 })
 
-describe("a package-owned '@pyreon/hooks' plugin replaces the built-in of the same name", () => {
+describe("a package-owned '@pyreon/hooks' plugin lowers the library's hooks", () => {
   const SHARE_SOURCE =
     "import { useShare } from '@pyreon/hooks'\nexport function Example() { const share = useShare(); return <Button onClick={() => share.text('hi')}>x</Button> }"
-  // ONE hook, a different Swift container: if replacement is real the emitted text changes, and the
-  // built-in's other hooks (useOnline, …) are gone because the discovered plugin owns the name wholesale.
+  // ONE hook with its own Swift container: the emitted text comes from the discovered plugin, and a hook it does not
+  // declare (useOnline, …) is not lowered at all — the compiler carries no table of its own.
   const REPLACEMENT = pluginModule(
     '@pyreon/hooks',
     "services: { useShare: { legacyKind: 'share', swift: 'NewerShare()', kotlin: ['val {id} = remember { NewerShare() }'] } }",
@@ -298,12 +285,13 @@ describe("a package-owned '@pyreon/hooks' plugin replaces the built-in of the sa
     expect(emitted()).not.toContain('PyreonShare()')
   })
 
-  it('--no-plugins keeps the built-in copy (so the difference above is the replacement, not the source)', async () => {
+  it('--no-plugins lowers nothing: the hook is not the compiler\'s to know', async () => {
     expect(await build('--no-plugins')).toBe(0)
-    expect(emitted()).toContain('@State private var share = PyreonShare()')
+    expect(emitted()).not.toContain('PyreonShare()')
+    expect(emitted()).not.toContain('NewerShare()')
   })
 
-  it('the registry attributes the hook to the single owner, and the built-in is not also loaded', async () => {
+  it('the registry attributes the hook to the single owner', async () => {
     const found = await discoverPlugins(app, join(app, 'src'))
     const compiler = createCompiler({ discovered: found.map((f) => f.plugin) })
     expect(compiler.services.get('useShare')?.owner).toBe('@pyreon/hooks')
@@ -315,27 +303,16 @@ describe("a package-owned '@pyreon/hooks' plugin replaces the built-in of the sa
   })
 })
 
-describe('a built-in plugin package that fails to load degrades to the built-in copy', () => {
+describe('a plugin package that fails to load is a hard error — nothing ships inside the compiler to fall back to', () => {
   it.each([
     ['a missing file', undefined, /does not exist/],
     ['a module that throws', 'throw new Error("boom")', /failed to load: boom/],
-  ])('%s warns and keeps the built-in, instead of breaking the build', async (_label, body, message) => {
-    addPackage('@pyreon/hooks', declares({ modules: ['@pyreon/hooks'] }), body)
-    setApp(['@pyreon/hooks'], "import { useShare } from '@pyreon/hooks'\nexport function A() { return null }")
-    const warnings: string[] = []
-    const found = await discoverPlugins(app, join(app, 'src'), (m) => warnings.push(m))
-    expect(found).toEqual([])
-    expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toMatch(message)
-    expect(warnings[0]).toContain('built-in copy of "@pyreon/hooks"')
-    // The built-in still lowers the hook, so the build does not need the plugin file at all.
-    expect(createCompiler({ discovered: found.map((f) => f.plugin) }).services.has('useShare')).toBe(true)
-  })
-
-  it('a THIRD-PARTY plugin with no built-in copy still fails hard (there is nothing to fall back to)', async () => {
-    addPackage('@acme/kit', declares(), undefined)
-    setApp(['@acme/kit'], "import '@acme/kit'")
-    await expect(discoverPlugins(app, join(app, 'src'), () => {})).rejects.toThrow(/does not exist/)
+  ])('%s fails naming the package and file, for the hooks package and any other', async (_label, body, message) => {
+    for (const pkg of ['@pyreon/hooks', '@acme/kit']) {
+      addPackage(pkg, declares({ modules: [pkg] }), body)
+      setApp([pkg], `import { x } from '${pkg}'\nexport function A() { return null }`)
+      await expect(discoverPlugins(app, join(app, 'src'))).rejects.toThrow(message)
+    }
   })
 })
 
@@ -371,14 +348,21 @@ export function A() { const gadget = useGadget(); return <Button onClick={() => 
   it('still flags a registered hook the parser really did not lower (a genuine failure)', () => {
     const inline = `import { useShare } from '@pyreon/hooks'
 export function A() { return <Button onClick={() => useShare().text('hi')}>x</Button> }`
-    const { lines } = explainReport(inline, join(app, 'A.tsx'), createCompiler(), app)
+    const hooks = { name: '@pyreon/hooks', apiVersion: 1 as const, modules: ['@pyreon/hooks'], services: { useShare: { legacyKind: 'share', swift: 'PyreonShare()', kotlin: ['val {id} = remember { PyreonShare() }'] } } }
+    const { lines } = explainReport(inline, join(app, 'A.tsx'), createCompiler({ plugins: [hooks] }), app)
     expect(lines.join('\n')).toContain('useShare() is registered but was not lowered as a service declaration in this file')
   })
 
-  it('the plugins listing shows element lowerings with their owners', async () => {
+  it('the plugins listing shows element lowerings with their owners (only the compiler-less app has none)', async () => {
+    expect((await pluginsReport(app, false)).lines).toContain('element lowerings (0):')
+    addPackage(
+      '@acme/grid',
+      declares(),
+      pluginModule('@acme/grid', "elements: [{ module: '@acme/grid', tags: ['Container', 'Row', 'Col'], retag: (el) => el }]"),
+    )
+    setApp(['@acme/grid'], "import '@acme/grid'")
     const { lines } = await pluginsReport(app, false)
-    expect(lines).toContain('  @pyreon/coolgrid  Container, Row, Col  @pyreon/coolgrid')
-    expect(lines).toContain('  @pyreon/elements  Element  @pyreon/elements')
+    expect(lines).toContain('  @acme/grid  Container, Row, Col  @acme/grid')
   })
 })
 

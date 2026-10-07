@@ -13,7 +13,7 @@
 // an app that reads local state at launch and branches on whether it is there.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

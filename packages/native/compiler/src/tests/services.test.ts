@@ -7,13 +7,19 @@
 // pins every hook × target explicitly, plus an identifier that needs escaping).
 
 import { describe, expect, it } from 'vitest'
-import { parsePyreon, nativeLoweredHooks } from '../parse'
+import { parsePyreon as parsePyreonIn, nativeLoweredHooks as nativeLoweredHooksIn } from '../parse'
 import { moduleTag } from '../expr-utils'
-import { transform } from '../index'
-import { activeRegistries } from '../active-registries'
-import { serviceFor } from '../registry-lookup'
-import { SERVICES, renderKotlinService } from '../services'
+import { firstPartyCompiler, transform, SERVICES } from './first-party-plugins'
+import { withRegistries } from '../active-registries'
+import { serviceFor as serviceForIn } from '../registry-lookup'
+import { renderKotlinService } from '../services'
 import type { ParseResult } from '../types'
+
+// The service table belongs to `@pyreon/hooks`' plugin, so every lookup runs against a compiler that has it loaded.
+const registries = firstPartyCompiler.registries
+const parsePyreon = (source: string): ParseResult => withRegistries(registries, () => parsePyreonIn(source))
+const nativeLoweredHooks = (): ReadonlySet<string> => withRegistries(registries, () => nativeLoweredHooksIn())
+const serviceFor = (hook: string) => withRegistries(registries, () => serviceForIn(hook))
 
 interface Expected {
   readonly hook: string
@@ -220,7 +226,7 @@ describe('service descriptors — invariants', () => {
   it('hooks are unique and indexed', () => {
     const hooks = SERVICES.map((s) => s.hook)
     expect(new Set(hooks).size).toBe(hooks.length)
-    const { byHook } = activeRegistries().serviceTables
+    const { byHook } = registries.serviceTables
     for (const h of hooks) expect(byHook.get(h)?.hook).toBe(h)
     expect(byHook.size).toBe(SERVICES.length)
   })
@@ -581,6 +587,6 @@ describe('service descriptors — module tag stays representation-independent', 
         ),
       })),
     }
-    expect(moduleTag(parsed)).toBe(moduleTag(legacy))
+    expect(withRegistries(registries, () => moduleTag(parsed))).toBe(withRegistries(registries, () => moduleTag(legacy)))
   })
 })

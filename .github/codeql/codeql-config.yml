@@ -45,6 +45,9 @@ paths-ignore:
   # dropping them moved 11 entries). Same class as the test/e2e/example
   # fixtures above: hardcoded inputs under the author's control.
   - '**/golden-fixtures/**'
+  # Package-owned copies of the same compiler-only inputs after plugin relocation.
+  # These directories are not shipped; runtime and native-plugin src stay scanned.
+  - '**/native-golden/**'
   # The validate runtime JIT — the reference pattern the compiled-verdicts.ts
   # comment above already cites. `tryCompileJit` emits a specialized validator
   # via `new Function` from the DEVELOPER'S schema definition (never untrusted

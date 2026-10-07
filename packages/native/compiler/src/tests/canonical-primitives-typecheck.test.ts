@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { CANONICAL_PRIMITIVES } from '../canonical-primitives'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 /** One minimal, REALISTIC usage per primitive — props included, because a

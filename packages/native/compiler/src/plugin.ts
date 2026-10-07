@@ -1,5 +1,5 @@
 import type { CompilerRegistries } from './active-registries'
-import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
+import type { CallRecognizer, DeclCallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
 import type {
   EmitPreparation,
@@ -10,7 +10,7 @@ import type {
   MemberReadLowering,
   ReceiverLowering,
 } from './expr-lowering'
-import type { ModuleScanner, RequestSource } from './module-scan'
+import type { JsxElementRewrite, ModuleScanner, RequestSource } from './module-scan'
 import type {
   ExprEmitter,
   CallExprRecognizer,
@@ -22,6 +22,7 @@ import type {
 } from './module-items'
 import type { ParseRefinement, PropsTypeResolver } from './parse-extensions'
 import type { ScopeProvider } from './scope-provider'
+import type { SignalPersistence } from './signal-persistence'
 import type { StubAugmentation } from './stub-augmentation'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
@@ -126,6 +127,19 @@ export interface CompilerPlugin<Target extends string = string> {
    * name is a load-time error. Pair it with `decls`.
    */
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  /**
+   * A declaration recognizer keyed by the SHAPE of the callee, not a name (see `DeclCallRecognizer`): `const active = rx.filter(todos, p)`
+   * where `rx` / `filter` are whatever this file imported. Pair it with `exprs` (a `computed` verdict) or `decls`.
+   */
+  readonly declCalls?: DeclCallRecognizer | undefined
+  /**
+   * Calls of this package that ship NO native lowering, by callee name (`defineFeature` for a package whose literal form lowers
+   * at file scope but whose component-body form does not). A declaration `const x = <callee>(…)` that no recognizer claimed gets
+   * the standing Tier-2 diagnostic naming this plugin — the setup call would otherwise emit as an unresolved reference — and
+   * nothing is emitted. Unlike `calls` it does not CLAIM the name: it is matched by the callee as written, whatever it was
+   * imported from, so another module's same-named function is never mistaken for this package's by the hook-binding pass.
+   */
+  readonly tier2Calls?: readonly string[] | undefined
   /**
    * How this plugin's declarations render on each target, keyed by the
    * declaration `type` a `calls` recognizer returns. The emitter receives the
@@ -276,6 +290,11 @@ export interface CompilerPlugin<Target extends string = string> {
   readonly refineStructs?: StructRefinement | undefined
   /** A last pass over the finished item list (inline-synthesized items included), once per file. */
   readonly finishModule?: ModuleFinish | undefined
+  /**
+   * Rewrite a JSX element the parser just built, for a tag that names a LOCAL binding this plugin recorded when it scanned
+   * the file (see `JsxElementRewrite`). The rewrite may ask for declarations on the component being parsed.
+   */
+  readonly rewriteElement?: JsxElementRewrite | undefined
   /** Hooks of this plugin whose result may be destructured (`const { data, isPending } = useQuery(…)`). */
   readonly destructureCalls?: readonly string[] | undefined
   /**
@@ -284,6 +303,12 @@ export interface CompilerPlugin<Target extends string = string> {
    * named warning saying the placement is wrong, instead of printing the call verbatim into the emit.
    */
   readonly componentOnlyCalls?: readonly string[] | undefined
+  /**
+   * How a signal that outlives the process (a recognizer's `SignalDeclSpec` with a `persistKey`) is declared on each
+   * target — the library's own persistence primitive. A compiler has exactly one backend; two plugins declaring one is
+   * a load-time error. See `signal-persistence.ts`.
+   */
+  readonly persistence?: SignalPersistence | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
   readonly requires?: readonly string[] | undefined
   /** Marks a compiler-shipped plugin that a discovered plugin may replace by name. */

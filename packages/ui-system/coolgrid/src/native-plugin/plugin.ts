@@ -29,10 +29,14 @@
 // parent-relative.
 // ============================================================================
 
-import type { EmitContext } from '../emit-context'
-import type { ElementLowering } from '../element-lowering'
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CompilerPlugin } from '../plugin'
-import type { AttrIR, JsxElementIR } from '../types'
+import {
+  NATIVE_COMPILER_PLUGIN_API_VERSION,
+  type AttrIR,
+  type CompilerPlugin,
+  type ElementLowering,
+  type EmitContext,
+  type JsxElementIR,
+} from '@pyreon/native-compiler/plugin-api'
 
 /** coolgrid tags this lowering claims. */
 export const COOLGRID_TAGS = ['Container', 'Row', 'Col'] as const
@@ -183,10 +187,9 @@ export const coolgridLowering: ElementLowering = Object.freeze({
   emit: Object.freeze({ swift: emitSwiftCol, kotlin: emitKotlinCol }),
 })
 
-/** The coolgrid lowering as a built-in plugin — registered like any third-party one. */
+/** The `@pyreon/coolgrid` native plugin — discovered from the package manifest when a source imports it. */
 export const coolgridPlugin: CompilerPlugin = Object.freeze({
   name: coolgridLowering.module,
   apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
-  builtIn: true,
   elements: Object.freeze([coolgridLowering]),
 })
