@@ -28,7 +28,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { transform as transformWithPlugins, validateSwiftWithStubs as validateWithPlugins } from './first-party-plugins'
+import { transform as transformWithPlugins, validateKotlin as validateKotlinWithPlugins, validateSwiftWithStubs as validateWithPlugins } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
@@ -111,6 +111,13 @@ export function A() {
     expect(code).not.toContain('seen.count')
     if (isSwiftcAvailable()) {
       const v = validateWithPlugins(code)
+      expect(v.ok, v.error).toBe(true)
+    }
+    const kt = transformWithPlugins(src, { target: 'kotlin' }).code
+    expect(kt).toContain('PyreonSizedMap<String, Long>')
+    expect(kt).toContain('seen.size')
+    if (isKotlincAvailable()) {
+      const v = validateKotlinWithPlugins(kt)
       expect(v.ok, v.error).toBe(true)
     }
   }, 240_000)
