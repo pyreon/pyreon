@@ -710,6 +710,22 @@ export function _pushKotlinEmitWarning(msg: string): void {
   _emitWarnings.push(msg)
 }
 
+/** Convert integer arguments when a known signature requires fractional number storage. */
+function kotlinTypedArgument(arg: ExprIR, expected: TypeIR | undefined, indent: number): string {
+  const text = emitKotlinExpr(arg, indent)
+  if (expected === undefined) return text
+  const actual = inferType(arg, _kotlinExprInferCtx)
+  if (
+    expected.kind === 'number' && expected.float === true &&
+    actual.kind === 'number' && actual.float !== true
+  ) return `(${text}).toDouble()`
+  if (
+    expected.kind === 'array' && expected.element.kind === 'number' && expected.element.float === true &&
+    actual.kind === 'array' && actual.element.kind === 'number' && actual.element.float !== true
+  ) return `(${text}).map { it.toDouble() }`
+  return text
+}
+
 export function emitKotlin(
   components: ComponentIR[],
   enums: EnumIR[] = [],
@@ -856,8 +872,8 @@ export function emitKotlin(
   // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
   _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
   // v2 — per-hook method registry for the chain-call rewrite.
-  _storeMethodNamesKotlin = new Map(
-    stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
+  _storeMethodsKotlin = new Map(
+    stores.map((st) => [st.hookName, new Map((st.methods ?? []).map((m) => [m.name, m]))]),
   )
   // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
   _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
@@ -870,8 +886,8 @@ export function emitKotlin(
       new Set([...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name)]),
     ]),
   )
-  _modelMethodNamesKotlin = new Map(
-    models.map((m) => [m.instanceName, new Set((m.methods ?? []).map((mm) => mm.name))]),
+  _modelMethodsKotlin = new Map(
+    models.map((m) => [m.instanceName, new Map((m.methods ?? []).map((mm) => [mm.name, mm]))]),
   )
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
   // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
@@ -946,11 +962,11 @@ export function emitKotlin(
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
-  _storeMethodNamesKotlin = new Map()
+  _storeMethodsKotlin = new Map()
   _modelInstancesKotlin = new Map()
   _serviceBindingsKotlin = new Map()
   _modelReadNamesKotlin = new Map()
-  _modelMethodNamesKotlin = new Map()
+  _modelMethodsKotlin = new Map()
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -971,7 +987,7 @@ let _componentParamsInfoKotlin: Map<
 /** Map of useStoreName → storeId for Kotlin emit chain rewriting. */
 let _storeHooksKotlin: Map<string, string> = new Map()
 /** Per-hook store METHOD names — chain calls keep parens + args. */
-let _storeMethodNamesKotlin: Map<string, Set<string>> = new Map()
+let _storeMethodsKotlin: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
 
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
 let _modelInstancesKotlin: Map<string, string> = new Map()
@@ -990,7 +1006,7 @@ let _activeModelSelfParamKotlin: string | undefined
 /** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
 let _modelReadNamesKotlin: Map<string, Set<string>> = new Map()
 /** Per-instance model ACTION names — calls keep their parens + args. */
-let _modelMethodNamesKotlin: Map<string, Set<string>> = new Map()
+let _modelMethodsKotlin: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
 
 /**
  * Emit a per-store Kotlin object singleton:
@@ -4074,8 +4090,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         ) {
           return `PyreonModel_${modelId}.${member}`
         }
-        if (_modelMethodNamesKotlin.get(instance)?.has(e.callee.property) === true) {
-          const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
+        if (_modelMethodsKotlin.get(instance)?.has(e.callee.property) === true) {
+          const params = _modelMethodsKotlin.get(instance)!.get(e.callee.property)!.params
+          const args = e.args.map((a, i) => kotlinTypedArgument(a, params[i]?.type, indent)).join(', ')
           return `PyreonModel_${modelId}.${member}(${args})`
         }
       }
@@ -4212,10 +4229,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.property === 'store' &&
         e.callee.object.object.kind === 'call' &&
         e.callee.object.object.callee.kind === 'identifier' &&
-        _storeMethodNamesKotlin.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
+        _storeMethodsKotlin.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
       ) {
         const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
-        const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
+        const params = _storeMethodsKotlin.get(e.callee.object.object.callee.name)!.get(e.callee.property)!.params
+        const args = e.args.map((a, i) => kotlinTypedArgument(a, params[i]?.type, indent)).join(', ')
         return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}(${args})`
       }
       // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
@@ -4929,7 +4947,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
       }
       const callee = emitKotlinExpr(e.callee, indent)
-      const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
+      const params = e.callee.kind === 'identifier' ? _helperParamTypesKotlin.get(e.callee.name) : undefined
+      const args = e.args.map((a, i) => kotlinTypedArgument(a, params?.[i], indent)).join(', ')
       // Optional call `f?.()` → Kotlin's nullable-function invocation
       // `f?.invoke(args)` (a bare `f?()` is not Kotlin syntax — a nullable
       // function is invoked via `.invoke` under `?.`).

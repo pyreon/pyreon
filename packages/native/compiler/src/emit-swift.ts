@@ -1095,6 +1095,22 @@ const SWIFT_URL_STATE_TYPES: Record<
   boolean: 'PyreonUrlStateBool',
 }
 
+/** Convert integer arguments when a known signature requires fractional number storage. */
+function swiftTypedArgument(arg: ExprIR, expected: TypeIR | undefined, indent: number): string {
+  const text = emitSwiftExpr(arg, indent)
+  if (expected === undefined) return text
+  const actual = inferType(arg, _activeInferCtx)
+  if (
+    expected.kind === 'number' && expected.float === true &&
+    actual.kind === 'number' && actual.float !== true
+  ) return `Double(${text})`
+  if (
+    expected.kind === 'array' && expected.element.kind === 'number' && expected.element.float === true &&
+    actual.kind === 'array' && actual.element.kind === 'number' && actual.element.float !== true
+  ) return `(${text}).map { Double($0) }`
+  return text
+}
+
 export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
@@ -1258,8 +1274,8 @@ export function emitSwift(
   // field read still emitted `if hs {` after the structs were available.
   _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   // v2 — per-hook method registry for the chain-call rewrite.
-  _storeMethodNames = new Map(
-    stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
+  _storeMethods = new Map(
+    stores.map((st) => [st.hookName, new Map((st.methods ?? []).map((m) => [m.name, m]))]),
   )
   // Gap 4 v2 follow-up: track model instance names → modelId so use-site
   // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
@@ -1274,8 +1290,8 @@ export function emitSwift(
       new Set([...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name)]),
     ]),
   )
-  _modelMethodNames = new Map(
-    models.map((m) => [m.instanceName, new Set((m.methods ?? []).map((mm) => mm.name))]),
+  _modelMethods = new Map(
+    models.map((m) => [m.instanceName, new Map((m.methods ?? []).map((mm) => [mm.name, mm]))]),
   )
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
@@ -1355,12 +1371,12 @@ export function emitSwift(
   _storeHooks = new Map()
   _storeDefs = []
   _structDefs = []
-  _storeMethodNames = new Map()
+  _storeMethods = new Map()
   _modelInstances = new Map()
   _pureStateSwift = new Map()
   _serviceBindings = new Map()
   _modelReadNames = new Map()
-  _modelMethodNames = new Map()
+  _modelMethods = new Map()
   _needsSwiftKeepAliveWrapper = false
   _needsSwiftNumString = false
   const warnings = [..._emitWarnings]
@@ -1371,7 +1387,7 @@ export function emitSwift(
 /** Map of useStoreName → storeId (e.g. `useCounter` → `"counter"`). */
 let _storeHooks: Map<string, string> = new Map()
 /** Per-hook store METHOD names — chain calls keep parens + args. */
-let _storeMethodNames: Map<string, Set<string>> = new Map()
+let _storeMethods: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
 /** Full store definitions — feeds per-component inference ctx (field types). */
 let _storeDefs: StoreDefnIR[] = []
 /** Declared module structs — feeds per-component inference ctx so member
@@ -1419,7 +1435,7 @@ let _activeModelSelfParam: string | undefined
 /** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
 let _modelReadNames: Map<string, Set<string>> = new Map()
 /** Per-instance model ACTION names — calls keep their parens + args. */
-let _modelMethodNames: Map<string, Set<string>> = new Map()
+let _modelMethods: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
 
 /**
  * Emit a per-store @Observable singleton class:
@@ -1464,6 +1480,9 @@ function emitSwiftStoreBody(s: StoreDefnIR): string {
   if (hasMembers) {
     const prevSignals = _signalNames
     const prevFunctions = _functionNames
+    const prevInfer = _activeInferCtx
+    const prevExprInfer = _exprInferCtx
+    const prevParams = _helperParamTypes
     _signalNames = new Set([
       ...s.fields.map((f) => f.name),
       ...(s.computeds ?? []).map((c) => c.name),
@@ -1485,22 +1504,31 @@ function emitSwiftStoreBody(s: StoreDefnIR): string {
       undefined,
       _moduleConstTypes,
     )
-    for (const c of s.computeds ?? []) {
-      const t = inferType(c.expr, storeCtx)
-      const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
-      lines.push(`    var ${swiftIdent(c.name)}: ${anno} { ${emitSwiftExpr(c.expr, 4)} }`)
-      // Later computeds may read earlier ones.
-      storeCtx.computeds.set(c.name, t)
-      _signalNames.add(c.name)
+    _activeInferCtx = storeCtx
+    _exprInferCtx = storeCtx
+    _helperParamTypes = new Map([...prevParams, ...(s.methods ?? []).map((method) => [method.name, method.params.map((param) => param.type)] as const)])
+    try {
+      for (const c of s.computeds ?? []) {
+        const t = inferType(c.expr, storeCtx)
+        const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
+        lines.push(`    var ${swiftIdent(c.name)}: ${anno} { ${emitSwiftExpr(c.expr, 4)} }`)
+        // Later computeds may read earlier ones.
+        storeCtx.computeds.set(c.name, t)
+        _signalNames.add(c.name)
+      }
+      for (const m of s.methods ?? []) {
+        // Internal (not private) — components call these through the
+        // chain rewrite (`useX().store.M(...)` →
+        // `PyreonStore_id.shared.M(...)`).
+        lines.push(`    ${emitSwiftFunction(m, 'internal')}`)
+      }
+    } finally {
+      _signalNames = prevSignals
+      _functionNames = prevFunctions
+      _activeInferCtx = prevInfer
+      _exprInferCtx = prevExprInfer
+      _helperParamTypes = prevParams
     }
-    for (const m of s.methods ?? []) {
-      // Internal (not private) — components call these through the
-      // chain rewrite (`useX().store.M(...)` →
-      // `PyreonStore_id.shared.M(...)`).
-      lines.push(`    ${emitSwiftFunction(m, 'internal')}`)
-    }
-    _signalNames = prevSignals
-    _functionNames = prevFunctions
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
@@ -1549,6 +1577,9 @@ function emitSwiftModelBody(m: ModelDefnIR): string {
   if (hasMembers) {
     const prevSignals = _signalNames
     const prevFunctions = _functionNames
+    const prevInfer = _activeInferCtx
+    const prevExprInfer = _exprInferCtx
+    const prevParams = _helperParamTypes
     const prevPropsParam = _activePropsParamName
     const prevModelSelf = _activeModelSelfParam
     _signalNames = new Set([
@@ -1570,25 +1601,36 @@ function emitSwiftModelBody(m: ModelDefnIR): string {
       undefined,
       _moduleConstTypes,
     )
-    for (const v of m.views ?? []) {
-      _activePropsParamName = v.selfParam
-      _activeModelSelfParam = v.selfParam
-      const t = inferType(v.expr, modelCtx)
-      const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
-      lines.push(`    var ${swiftIdent(v.name)}: ${anno} { ${emitSwiftExpr(v.expr, 4)} }`)
-      // A later view may read an earlier one (the web's cumulative `self`).
-      modelCtx.computeds.set(v.name, t)
-      _signalNames.add(v.name)
+    _activeInferCtx = modelCtx
+    _exprInferCtx = modelCtx
+    _helperParamTypes = new Map([...prevParams, ...(m.methods ?? []).map((method) => [method.name, method.params.map((param) => param.type)] as const)])
+    try {
+      for (const v of m.views ?? []) {
+        _activePropsParamName = v.selfParam
+        _activeModelSelfParam = v.selfParam
+        modelCtx.signalReceiver = v.selfParam
+        const t = inferType(v.expr, modelCtx)
+        const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
+        lines.push(`    var ${swiftIdent(v.name)}: ${anno} { ${emitSwiftExpr(v.expr, 4)} }`)
+        // A later view may read an earlier one (the web's cumulative `self`).
+        modelCtx.computeds.set(v.name, t)
+        _signalNames.add(v.name)
+      }
+      for (const mm of m.methods ?? []) {
+        _activePropsParamName = mm.selfParam
+        _activeModelSelfParam = mm.selfParam
+        modelCtx.signalReceiver = mm.selfParam
+        lines.push(`    ${emitSwiftFunction(mm, 'internal')}`)
+      }
+    } finally {
+      _signalNames = prevSignals
+      _functionNames = prevFunctions
+      _activeInferCtx = prevInfer
+      _exprInferCtx = prevExprInfer
+      _helperParamTypes = prevParams
+      _activePropsParamName = prevPropsParam
+      _activeModelSelfParam = prevModelSelf
     }
-    for (const mm of m.methods ?? []) {
-      _activePropsParamName = mm.selfParam
-      _activeModelSelfParam = mm.selfParam
-      lines.push(`    ${emitSwiftFunction(mm, 'internal')}`)
-    }
-    _signalNames = prevSignals
-    _functionNames = prevFunctions
-    _activePropsParamName = prevPropsParam
-    _activeModelSelfParam = prevModelSelf
   }
   lines.push(`    private init() {}`)
   lines.push(`}`)
@@ -5185,8 +5227,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         ) {
           return `PyreonModel_${modelId}.shared.${member}`
         }
-        if (_modelMethodNames.get(instance)?.has(e.callee.property) === true) {
-          const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+        if (_modelMethods.get(instance)?.has(e.callee.property) === true) {
+          const params = _modelMethods.get(instance)!.get(e.callee.property)!.params
+          const args = e.args.map((a, i) => swiftTypedArgument(a, params[i]?.type, indent)).join(', ')
           return `PyreonModel_${modelId}.shared.${member}(${args})`
         }
       }
@@ -5315,7 +5358,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg
       // read rewrite below: a zero-arg method call (`clear()`) would
       // otherwise emit as a property read (`.shared.clear` — missing
-      // parens). `_storeMethodNames` is the per-hook method registry
+      // parens). `_storeMethods` is the per-hook method registry
       // built in the emitSwift pre-pass.
       if (
         e.callee.kind === 'member' &&
@@ -5323,10 +5366,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.property === 'store' &&
         e.callee.object.object.kind === 'call' &&
         e.callee.object.object.callee.kind === 'identifier' &&
-        _storeMethodNames.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
+        _storeMethods.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
       ) {
         const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
-        const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+        const params = _storeMethods.get(e.callee.object.object.callee.name)!.get(e.callee.property)!.params
+        const args = e.args.map((a, i) => swiftTypedArgument(a, params[i]?.type, indent)).join(', ')
         return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
       }
       // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
@@ -6359,7 +6403,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
       }
       const callee = emitSwiftExpr(e.callee, indent)
-      const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+      const params = e.callee.kind === 'identifier' ? _helperParamTypes.get(e.callee.name) : undefined
+      const args = e.args.map((a, i) => swiftTypedArgument(a, params?.[i], indent)).join(', ')
       // Optional call `f?.()` → Swift's optional-call syntax `f?(args)`
       // (short-circuits to nil if the callee is nil). The optional-function
       // field type already parenthesizes `(() -> Void)?`, so `f?()` is valid.
@@ -11866,4 +11911,3 @@ function swiftSpreadResolver(indent: number): SpreadResolver {
     label: (e) => emitSwiftExpr(e, indent),
   }
 }
-
