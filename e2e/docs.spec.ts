@@ -884,7 +884,10 @@ test.describe('the charts page mounts every mark it documents', () => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(String(e)))
     page.on('console', (m) => {
-      if (m.type() === 'error') errors.push(m.text())
+      if (m.type() === 'error') errors.push(`${m.text()} (${m.location().url})`)
+    })
+    page.on('response', (response) => {
+      if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`)
     })
 
     await page.goto('/docs/charts')
