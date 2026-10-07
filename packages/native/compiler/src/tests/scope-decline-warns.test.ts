@@ -14,7 +14,7 @@
 // because the gate counted warnings and there were none to count.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const atModuleScope = (call: string, imp: string) => `
 import { ${imp} } from '@pyreon/${imp === 'createMachine' ? 'machine' : imp === 'createI18n' ? 'i18n' : 'sync'}'

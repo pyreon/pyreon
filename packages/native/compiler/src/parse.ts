@@ -5,7 +5,6 @@
 // either passed through as unknown or surfaces a warning.
 
 import { forEachExpr } from './expr-walk'
-import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
 import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
 import {
@@ -18,7 +17,7 @@ import {
 import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
 import { stampExtDecl, type AstNode, type ParseContext } from './call-lowering'
-import { stampExtExpr, stampModuleItem, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
+import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { ModuleScan, ResolvedRequest } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -147,14 +146,6 @@ interface ParseCtx {
    */
   storeAliases: Map<string, string>
   /**
-   * Local names bound to the imperative `toast` import from `@pyreon/toast`
-   * (`import { toast }` → `toast`; `import { toast as notify }` → `notify`).
-   * `parseExpr` rewrites a call on one of these — `toast("x")` or a preset
-   * `toast.success("x")` — to a `toast-call` ExprIR so the emit lowers it to
-   * `PyreonToast`. Empty unless the file imports `toast`.
-   */
-  toastNames: Set<string>
-  /**
    * Module bindings created by the `kinetic()` factory (`const Box =
    * kinetic('div').preset('fade')`). The factory is a WEB CSS-class engine with
    * no native analogue, so the binding must not reach the emit: a verbatim
@@ -209,12 +200,6 @@ interface ParseCtx {
    * pass runs before JSX is walked.
    */
   hasPermissionsProvider: boolean
-  /**
-   * Local names bound to the `announce` import from `@pyreon/a11y` (handles
-   * `import { announce as say }`). `parseExpr` lowers a call on one of these to
-   * an `announce-call` ExprIR (→ PyreonA11y). Empty unless `announce` is imported.
-   */
-  announceNames: Set<string>
   /**
    * Per-component HOOK-FIELD aliases: a destructured local name →
    * `{ object, field }` where `object` is a synthetic single-binding
@@ -355,7 +340,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
-    toastNames: new Set(),
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
     typedComponentAliases: new Map(),
@@ -364,7 +348,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     rxImportedNames: new Map(),
     sizedMapNames: new Set(),
     hasPermissionsProvider: false,
-    announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -437,16 +420,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
-  // `@pyreon/sync` CRDT members with no native counterpart. PMTC reproduces a
-  // member call VERBATIM, so an un-lowered one fails the Swift/Kotlin build
-  // inside a GENERATED file naming a method the user never wrote in that
-  // language. Program-level because a call can appear anywhere (a handler, a
-  // nested closure), not only in a declaration.
-  warnUnlowerdCrdtMembers(ast.program as AnyNode, ctx.warnings, source)
-  // Pre-pass: record the local name(s) bound to the imperative `toast` import
-  // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
-  // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
-  collectToastNames(ast.program.body as AnyNode[], ctx)
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -460,9 +433,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // because the warn pass runs before the JSX walk — the same ordering that
   // forced the schema pre-scans above.
   ctx.hasPermissionsProvider = /<\s*PermissionsProvider[\s/>]/.test(source)
-  // Record the local name(s) bound to `announce` from @pyreon/a11y so parseExpr
-  // can lower `announce(...)` to PyreonA11y. Handles renamed imports.
-  collectAnnounceNames(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
@@ -1075,7 +1045,8 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
         continue
       }
     }
-    // SCOPE-AWARE DECLINE. `createMachine` / `createI18n` / `syncedSignal` are
+    // SCOPE-AWARE DECLINE. Every call a plugin lists in `componentOnlyCalls` (`createMachine`,
+    // `createI18n`, `syncedSignal`) is
     // recognised only by the COMPONENT-BODY statement walk — they lower to
     // `remember {}` / an `@State`, which have no meaning at file scope, so the
     // recognizers are structurally unreachable here. Before this, such a
@@ -1088,11 +1059,7 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     // that is in fact already implemented one scope down.
     if (init.type === 'CallExpression') {
       const scopedName = init.callee?.name as string | undefined
-      if (
-        scopedName === 'createMachine' ||
-        scopedName === 'createI18n' ||
-        scopedName === 'syncedSignal'
-      ) {
+      if (scopedName !== undefined && activeRegistries().scan.componentOnlyCalls.has(scopedName)) {
         ctx.warnings.push(
           `${scopedName}() lowers to native only INSIDE a component body — it becomes a ` +
             `\`remember {}\` / \`@State\`, which has no meaning at module scope. \`${name}\` is ` +
@@ -1213,11 +1180,6 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
   }
 }
 
-/**
- * Record the local name(s) bound to `toast` imported from `@pyreon/toast`.
- * `import { toast }` → `toast`; `import { toast as notify }` → `notify`. These
- * are the callees `parseExpr` lowers to a `toast-call` ExprIR.
- */
 /** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
  *
  * Gated on the IMPORT rather than the bare name: `SizedMap` is a plausible
@@ -1481,19 +1443,6 @@ function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
   return false
 }
 
-function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/toast') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'toast') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.toastNames.add(local)
-      }
-    }
-  }
-}
-
 /**
  * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
  * package and called as `useX()` falls through to the generic
@@ -1528,10 +1477,6 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useDebouncedCallback', 'useThrottledCallback',
   // Pure timing over a callback — lowered at STATEMENT position.
   'useInterval', 'useTimeout',
-  // `@pyreon/dnd` — list reorder only. The element-getter hooks
-  // (useDraggable/useDroppable), the page-global useDragMonitor and the
-  // OS-file useFileDrop deliberately stay OUT, so they keep warning by name.
-  'useSortable',
 ])
 
 // Derived once per registry (keyed on the registry itself, so the entry dies with
@@ -1688,41 +1633,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     },
   ],
   [
-    '@pyreon/dnd',
-    {
-      // `useSortable` lowers (PyreonSortableState); the rest do not, and the
-      // reasons differ per hook rather than per package — so name the one that
-      // crosses instead of letting the blanket "web-only" line imply none do.
-      //
-      // useDraggable/useDroppable take `element: () => HTMLElement | null` —
-      // an imperative DOM-registration shape with no declarative analogue on
-      // either target. useDragMonitor is a page-global drag bus neither
-      // SwiftUI nor Compose exposes. useFileDrop is an OS-level file drag
-      // between apps (iPad multitasking / Android multi-window), a different
-      // model entirely.
-      advice:
-        '`useSortable({ items, by, onReorder })` DOES lower — it emits the native PyreonSortableState engine, and `ref={s.containerRef}` / `ref={s.itemRef(key)}` become SwiftUI .draggable/.dropDestination + Compose long-press drag modifiers. The element-getter hooks (useDraggable/useDroppable) are imperative DOM registration, useDragMonitor is a page-global drag bus, and useFileDrop is OS-level file DnD — none of the three has a native analogue',
-      supported: new Set(['useSortable']),
-    },
-  ],
-  [
-    '@pyreon/table',
-    {
-      // The blanket line calls a package "renders via the DOM / a browser-only
-      // library", which is simply FALSE here: TanStack Table is HEADLESS. It
-      // also stops short of naming the native answer, which this package's own
-      // manifest states plainly — native lists are `<For>` + primitives.
-      //
-      // The row-model RENDER surface (getRowModel / getVisibleCells /
-      // flexRender) is what has no native analogue; the SORT/FILTER state is
-      // ordinary logic an author can hold in signals today, so the fix is a
-      // real one rather than "give up".
-      advice:
-        "`createTableState({ data, columns, pageSize })` LOWERS to the native PyreonTableState engine — render its `rows()` with `<For>` + primitives. The TanStack-backed `useTable` (getRowModel / getVisibleCells / flexRender) is the WEB render surface with no native analogue; keep it behind a `<Web>` branch",
-      supported: new Set(['createTableState']),
-    },
-  ],
-  [
     '@pyreon/permissions',
     {
       // The previous advice — "`usePermissions()` DOES lower — use the hook
@@ -1732,19 +1642,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // every check denies. Name the seeding shape instead.
       advice:
         'a literal `<PermissionsProvider permissions={{ … }}>` DOES lower — it injects the grants a bare `usePermissions()` reads. What does not lower is a NON-literal permissions map (a variable, a fetch result), and `createPermissions()` used outside the provider',
-    },
-  ],
-  [
-    '@pyreon/a11y',
-    {
-      // `announce` now LOWERS to PyreonA11y (a VoiceOver / announceForAccessibility
-      // call). The remaining exports (VisuallyHidden / LiveRegion / SkipLink /
-      // createA11yId) are DOM-based and still warn — hence a per-export
-      // `supported` set, not a package-level entry (the `rx` lesson: warn per
-      // export, since a module can be only PARTLY unlowered).
-      supported: new Set(['announce']),
-      advice:
-        'the live-region helpers are DOM-based — native a11y goes through the `accessibilityLabel` / `accessibilityHidden` props on the canonical primitives (or `announce(...)`, which lowers), which lower on all three targets',
     },
   ],
   [
@@ -1819,23 +1716,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
  * Same shape and same reasoning as the hook and control-flow warnings: keyed on
  * the IMPORT, so a user's own `map` or `s` from their own module is untouched.
  */
-/**
- * Record the local name(s) bound to `announce` imported from `@pyreon/a11y`.
- * `import { announce }` → `announce`; `import { announce as say }` → `say`.
- */
-function collectAnnounceNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/a11y') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'announce') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.announceNames.add(local)
-      }
-    }
-  }
-}
-
 function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
   const seen = new Set<string>()
   for (const node of body) {
@@ -3611,7 +3491,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     enumTypeNames: ctx.enumTypeNames,
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
-    toastNames: new Set(),
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
     // here rather than sharing the parent's.
@@ -3623,7 +3502,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     rxImportedNames: new Map(),
     sizedMapNames: new Set(),
     hasPermissionsProvider: false,
-    announceNames: new Set(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -4757,6 +4635,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
     propKey: (prop) => staticPropKey(prop as AnyNode | undefined),
     hasDynamicKey: (prop) => hasDynamicKey(prop as AnyNode | undefined),
     dynamicKeyText: (prop) => dynamicKeyText(prop as AnyNode, ctx),
+    warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     statements: (block) => parseStatementBlock(block as AnyNode, ctx),
     typeArgOf: (other) => parseGenericTypeArg(other as AnyNode, ctx),
@@ -4791,6 +4670,7 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     },
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
+    warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     unsupported: (node, what, hint) => {
       unsupportedExpr(ctx, node as AnyNode, what, hint)
       return null
@@ -4845,6 +4725,26 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
   }
   for (const { owner, recognize } of recognizers) {
     const verdict = runPluginHook(owner, `methodCalls.${method}`, () => recognize(site, moduleParseContextFor(ctx, owner)))
+    if (verdict === undefined) continue
+    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
+  }
+  return undefined
+}
+
+/**
+ * A call a plugin's `callExprs` recognizer claims by its callee (the names its `scanModule` recorded): the open
+ * `ext-expr` node, the empty literal every unsupported expression becomes (`null` verdict), or `undefined`.
+ */
+function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
+  const registry = activeRegistries().items
+  if (registry.callExprs.length === 0) return undefined
+  const site: CallExprSite = {
+    node: node as AstNode,
+    callee: node.callee as AstNode,
+    args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
+  }
+  for (const { owner, recognize } of registry.callExprs) {
+    const verdict = runPluginHook(owner, 'callExprs', () => recognize(site, moduleParseContextFor(ctx, owner)))
     if (verdict === undefined) continue
     return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
   }
@@ -5055,59 +4955,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
-  // Gap 4 PR-3 (2026-06-05 audit) — Strategy-B port for
-  // `@pyreon/i18n/core`. `const i18n = createI18n({ locale, messages,
-  // fallbackLocale? })` becomes a PyreonI18n reactive container; the
-  // runtime port defines `t(key)`. Runs BEFORE the Tier-2 silent-drop
-  // diagnostic block so `createI18n` is recognized as a real port.
-  const i18nDecl = tryDeclFromCreateI18n(node, ctx)
-  if (i18nDecl) return i18nDecl
-
-  // Gap 4 PR-2 (2026-06-05 audit) — full Strategy-B port for
-  // `@pyreon/machine`. `const m = createMachine({ initial, states })`
-  // becomes a PyreonMachine reactive container; method calls
-  // (`.send`/`.matches`/`.can`/`.nextEvents`) flow through unchanged
-  // because the runtime port defines them. `m()` read-current-state
-  // also works unchanged via Swift `callAsFunction()` / Kotlin
-  // `operator fun invoke()`. Runs BEFORE the Tier-2 silent-drop
-  // diagnostic block so `createMachine` is recognized as a real port
-  // (no warning fires).
-  const machineDecl = tryDeclFromCreateMachine(node, ctx)
-  if (machineDecl) return machineDecl
-
-  // `@pyreon/sync` — `const doc = new PyreonCrdtDoc(...)` + `const x =
-  // syncedSignal({ doc, key, initial })`. The doc is the shared LWW-CRDT
-  // document; each synced signal is a `Signal<T>` view over one scalar key.
-  // Run BEFORE the Tier-2 silent-drop block so both are recognized as real
-  // ports (no warning fires).
-  const crdtDocDecl = tryDeclFromCrdtDoc(node, ctx)
-  if (crdtDocDecl) return crdtDocDecl
-
   // A constructor a plugin claims (`new QueryClient()` from `@pyreon/query`): `CompilerPlugin.calls`
   // recognizers also see `new Name(…)` with `construct` set.
   const constructed = tryPluginConstruct(node, ctx)
   if (constructed) return constructed
 
-  const syncedSignalDecl = tryDeclFromSyncedSignal(node, ctx)
-  if (syncedSignalDecl) return syncedSignalDecl
-
-  // `@pyreon/table` — `const t = createTableState({ data, columns, pageSize })`
-  // lowers to the @Observable PyreonTableState engine. Runs BEFORE the Tier-2
-  // silent-drop block so it is recognized as a real port.
-  const tableStateDecl = tryDeclFromCreateTableState(node, ctx)
-  if (tableStateDecl) return tableStateDecl
-
-  // `@pyreon/dnd` — `const s = useSortable({ items, by, onReorder })` lowers to
-  // the PyreonSortableState engine. Same placement rationale as the table
-  // state above: recognized as a real port before the silent-drop block.
-  const sortableDecl = tryDeclFromUseSortable(node, ctx)
-  if (sortableDecl) return sortableDecl
-
-
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
-  // the remaining 3 callees. `createI18n` and `createMachine` were
-  // REMOVED from the list because they now have full ports via
-  // tryDeclFromCreateI18n / tryDeclFromCreateMachine above.
+  // the remaining 3 callees. `createI18n` and `createMachine` are NOT in the
+  // list because their libraries' plugins lower them.
   if (init?.type === 'CallExpression') {
     const calleeName = init.callee?.name as string | undefined
     const tier2StrategyB: Record<string, string> = {
@@ -6251,127 +6106,6 @@ function tryRxNamespaceLowering(
 }
 
 /**
- * Gap 4 PR-2 (2026-06-05 native-readiness audit) — `createMachine({
- * initial, states })` from `@pyreon/machine` → DeclIR.machine.
- *
- * Extracts the literal `initial` string + the literal `states` map
- * (state name → event map → next state name). Non-literal configs
- * fall through to null so the parent falls through to the Tier-2
- * silent-drop diagnostic (binding emits unresolved with a warning).
- *
- * The `as const` on `initial: 'idle' as const` is unwrapped via the
- * shared `unwrapTypeLayers` helper.
- *
- * Method calls on the binding (`m.send(...)` / `m.matches(...)` /
- * `m.can(...)` / `m.nextEvents()`) flow through emit as-is — the
- * PyreonMachine runtime container defines them. `m()` also works as
- * a current-state read via Swift `callAsFunction()` / Kotlin
- * `operator fun invoke()` — no compiler-side member-access rewriting
- * needed.
- */
-function tryDeclFromCreateMachine(
-  node: AnyNode,
-  ctx: ParseCtx,
-): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  const calleeName = init.callee?.name as string | undefined
-  if (calleeName !== 'createMachine') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const configArg = args[0]
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createMachine declaration \`${name}\`: config argument is not an object literal — emit needs the literal { initial, states } shape to bake the transition table. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Walk the config object: pick out `initial: 'X'` and `states: { ... }`.
-  let initial: string | undefined
-  let statesNode: AnyNode | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `createMachine declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'initial') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        initial = valueNode.value
-      }
-    } else if (keyName === 'states') {
-      statesNode = valueNode
-    }
-  }
-
-  if (!initial) {
-    ctx.warnings.push(
-      `createMachine declaration \`${name}\`: \`initial\` field is missing or not a string literal — required to seed PyreonMachine. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (!statesNode || statesNode.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createMachine declaration \`${name}\`: \`states\` field is missing or not an object literal — required to bake the transition table. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Parse the states map: { stateName: { on: { EVENT: nextState } }, ... }
-  // Empty state objects (`done: {}`) are kept as states with no transitions —
-  // they're valid terminal states.
-  const transitions: Record<string, Record<string, string>> = {}
-  for (const stateProp of (statesNode.properties as AnyNode[] | undefined) ?? []) {
-    if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(stateProp)) {
-      warnDynamicKey(stateProp, `createMachine declaration \`${name}\`: states`, ctx)
-      continue
-    }
-    const stateName = staticPropKey(stateProp)
-    if (!stateName) continue
-    const stateConfig = unwrapTypeLayers(stateProp.value as AnyNode | undefined)
-    transitions[stateName] = {}
-    if (stateConfig?.type !== 'ObjectExpression') continue
-    // Find `on: { EVENT: nextState }`
-    for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
-      if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') continue
-      if (hasDynamicKey(innerProp)) {
-        warnDynamicKey(innerProp, `createMachine declaration \`${name}\`: state \`${stateName}\``, ctx)
-        continue
-      }
-      const innerKey = staticPropKey(innerProp)
-      if (innerKey !== 'on') continue
-      const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
-      if (eventsMap?.type !== 'ObjectExpression') continue
-      for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
-        if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') continue
-        if (hasDynamicKey(eventProp)) {
-          warnDynamicKey(eventProp, `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\``, ctx)
-          continue
-        }
-        const eventName = staticPropKey(eventProp)
-        const evVal = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
-        if (
-          eventName &&
-          evVal?.type === 'Literal' &&
-          typeof evVal.value === 'string'
-        ) {
-          transitions[stateName]![eventName] = evVal.value
-        }
-      }
-    }
-  }
-
-  return { kind: 'machine', name, initial, transitions }
-}
-
-/**
  * `const x = new Name(…)` where a plugin claims `Name` (`CompilerPlugin.calls`): the recognizer
  * receives `construct: true`. `null` when the shape is not a constructor of a claimed name, or the
  * plugin declined.
@@ -6391,423 +6125,11 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 }
 
 /**
- * `const doc = new PyreonCrdtDoc(...)` from `@pyreon/sync` → a `crdt-doc` decl.
- * The actor id, if a string literal, is baked; otherwise (a `createActorId()`
- * call, an identifier, or no argument) the emit generates a fresh UUID.
- */
-function tryDeclFromCrdtDoc(node: AnyNode, _ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'NewExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'PyreonCrdtDoc') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const actorArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (actorArg?.type === 'Literal' && typeof actorArg.value === 'string') {
-    return { kind: 'crdt-doc', name, actorLiteral: actorArg.value }
-  }
-  return { kind: 'crdt-doc', name }
-}
-
-/**
- * `const x = syncedSignal({ doc, key, initial })` from `@pyreon/sync` → a
- * `synced-signal` decl. v1 lowers a SCALAR synced signal (string/number/boolean
- * initial) over a `doc` identifier that references a `new PyreonCrdtDoc(...)`
- * binding. Anything outside that shape warns + silent-drops (falls back to the
- * web-only diagnostic).
- */
-function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'syncedSignal') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: argument must be an object literal { doc, key, initial } to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  let docBinding: string | undefined
-  let key: string | undefined
-  let map: string | undefined
-  let initialValue: string | number | boolean | undefined
-  let scalarType: 'string' | 'double' | 'bool' | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `syncedSignal declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'doc') {
-      if (valueNode?.type === 'Identifier') docBinding = valueNode.name as string
-    } else if (keyName === 'key') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') key = valueNode.value
-    } else if (keyName === 'map') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') map = valueNode.value
-    } else if (keyName === 'initial' && valueNode?.type === 'Literal') {
-      const v = valueNode.value
-      if (typeof v === 'string') {
-        initialValue = v
-        scalarType = 'string'
-      } else if (typeof v === 'number') {
-        initialValue = v
-        scalarType = 'double'
-      } else if (typeof v === 'boolean') {
-        initialValue = v
-        scalarType = 'bool'
-      }
-    }
-  }
-
-  if (!docBinding) {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: \`doc\` must reference a \`new PyreonCrdtDoc(...)\` binding by identifier. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (key === undefined) {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: \`key\` must be a string literal. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (initialValue === undefined || !scalarType) {
-    ctx.warnings.push(
-      `syncedSignal declaration \`${name}\`: \`initial\` must be a string, number, or boolean literal (native v1 lowers scalar synced signals). Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  return {
-    kind: 'synced-signal',
-    name,
-    docBinding,
-    key,
-    scalarType,
-    initialValue,
-    ...(map !== undefined ? { map } : {}),
-  }
-}
-
-
-/**
- * `const t = createTableState({ data, columns, pageSize })` from `@pyreon/table`
- * → a `table-state` decl. v1 lowers: `data: () => <expr>` (the reactive row
- * source), `columns: [{ id }]` (string ids, default `row[id]` accessor), and an
- * optional numeric `pageSize`. Anything outside that shape warns + silent-drops.
- */
-function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'createTableState') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createTableState declaration \`${name}\`: argument must be an object literal { data, columns, pageSize } to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  let dataBody: ExprIR | undefined
-  let pageSize = 0
-  const columns: { id: string }[] = []
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `createTableState declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'data') {
-      if (
-        (valueNode?.type === 'ArrowFunctionExpression' ||
-          valueNode?.type === 'FunctionExpression') &&
-        valueNode.body?.type !== 'BlockStatement'
-      ) {
-        dataBody = parseExpr(valueNode.body as AnyNode, ctx)
-      }
-    } else if (keyName === 'pageSize') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'number') {
-        pageSize = valueNode.value
-      }
-    } else if (keyName === 'columns' && valueNode?.type === 'ArrayExpression') {
-      for (const el of (valueNode.elements as AnyNode[] | undefined) ?? []) {
-        const col = unwrapTypeLayers(el)
-        if (col?.type !== 'ObjectExpression') continue
-        for (const cp of (col.properties as AnyNode[] | undefined) ?? []) {
-          if (cp?.type !== 'Property' && cp?.type !== 'ObjectProperty') continue
-          if (hasDynamicKey(cp)) {
-            warnDynamicKey(cp, `createTableState declaration \`${name}\`: column`, ctx)
-            continue
-          }
-          const ckName = staticPropKey(cp)
-          const cv = unwrapTypeLayers(cp.value as AnyNode | undefined)
-          if (ckName === 'id' && cv?.type === 'Literal' && typeof cv.value === 'string') {
-            columns.push({ id: cv.value })
-          }
-        }
-      }
-    }
-  }
-
-  if (!dataBody) {
-    ctx.warnings.push(
-      `createTableState declaration \`${name}\`: \`data\` must be an expression-body getter (\`() => rows\`) to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (columns.length === 0) {
-    ctx.warnings.push(
-      `createTableState declaration \`${name}\`: needs at least one \`columns: [{ id }]\` entry with a string id to lower natively (v1). Falling back to silent-drop.`,
-    )
-    return null
-  }
-  return { kind: 'table-state', name, dataBody, pageSize, columns }
-}
-
-/**
- * `const s = useSortable({ items, by, onReorder, axis? })` from `@pyreon/dnd`
- * → a `sortable` decl (the native PyreonSortableState engine).
- *
- * v1 lowers the four load-bearing options. Options that would silently do
- * NOTHING natively — `groupId` / `onCrossListDrop` / `onCrossListReceive`
- * (cross-list boards) and `label` (screen-reader announcement text) — WARN by
- * name rather than being dropped without a word, because a board that quietly
- * stops accepting cross-list drops on device is the worst possible failure.
- */
-function tryDeclFromUseSortable(node: AnyNode, ctx: ParseCtx): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'useSortable') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `useSortable declaration \`${name}\`: argument must be an object literal { items, by, onReorder } to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  let itemsBody: ExprIR | undefined
-  let keyParam: string | undefined
-  let keyBody: ExprIR | undefined
-  let reorderParam: string | undefined
-  let reorderBody: StatementIR[] | undefined
-  let axis: 'vertical' | 'horizontal' = 'vertical'
-
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `useSortable declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-
-    if (keyName === 'items') {
-      // `items: () => rows()` — an expression-body getter, same contract as
-      // createTableState's `data`.
-      if (
-        (valueNode?.type === 'ArrowFunctionExpression' ||
-          valueNode?.type === 'FunctionExpression') &&
-        valueNode.body?.type !== 'BlockStatement'
-      ) {
-        itemsBody = parseExpr(valueNode.body as AnyNode, ctx)
-      }
-    } else if (keyName === 'by') {
-      if (
-        valueNode?.type === 'ArrowFunctionExpression' &&
-        (valueNode.params as AnyNode[] | undefined)?.length === 1 &&
-        valueNode.body?.type !== 'BlockStatement'
-      ) {
-        const p = ((valueNode.params as AnyNode[])[0] as AnyNode | undefined)?.name as
-          | string
-          | undefined
-        if (p !== undefined) {
-          keyParam = p
-          keyBody = parseExpr(valueNode.body as AnyNode, ctx)
-        }
-      }
-    } else if (keyName === 'onReorder') {
-      // A VOID callback, so an expression body must lower to a bare expression
-      // statement — NOT `tryFunctionDecl`, whose `return <expr>` is invalid
-      // inside a Kotlin lambda (`return` there targets the enclosing function,
-      // and an assignment is not an expression). Same shape `useInterval` uses.
-      if (valueNode?.type === 'ArrowFunctionExpression') {
-        const p = ((valueNode.params as AnyNode[] | undefined)?.[0] as AnyNode | undefined)?.name as
-          | string
-          | undefined
-        reorderParam = p ?? 'next'
-        reorderBody =
-          valueNode.body?.type === 'BlockStatement'
-            ? parseStatementBlock(valueNode.body as AnyNode, ctx)
-            : [{ kind: 'expr' as const, expr: parseExpr(valueNode.body as AnyNode, ctx) }]
-      }
-    } else if (keyName === 'axis') {
-      if (valueNode?.type === 'Literal' && valueNode.value === 'horizontal') {
-        axis = 'horizontal'
-      }
-    } else if (
-      keyName === 'groupId' ||
-      keyName === 'onCrossListDrop' ||
-      keyName === 'onCrossListReceive'
-    ) {
-      ctx.warnings.push(
-        `useSortable declaration \`${name}\`: \`${keyName}\` (cross-list boards) has NO native lowering — the native engine reorders WITHIN one list only, so a drag between two lists will not fire on iOS/Android. Keep a cross-list board behind a \`<Web>\` escape hatch, or model the move explicitly (remove from one signal, insert into the other).`,
-      )
-    } else if (keyName === 'label') {
-      ctx.warnings.push(
-        `useSortable declaration \`${name}\`: \`label\` (screen-reader announcement text) is not used natively — VoiceOver/TalkBack announce the item's own accessibility label instead. Set \`accessibilityLabel\` on the row for a native-friendly announcement.`,
-      )
-    }
-  }
-
-  if (!itemsBody) {
-    ctx.warnings.push(
-      `useSortable declaration \`${name}\`: \`items\` must be an expression-body getter (\`() => rows()\`) to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (keyParam === undefined || !keyBody) {
-    ctx.warnings.push(
-      `useSortable declaration \`${name}\`: \`by\` must be a single-param expression-body arrow (\`(item) => item.id\`) to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (reorderParam === undefined || !reorderBody) {
-    ctx.warnings.push(
-      `useSortable declaration \`${name}\`: \`onReorder\` must be an arrow function (\`(next) => items.set(next)\`) to lower natively. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  return { kind: 'sortable', name, itemsBody, keyParam, keyBody, reorderParam, reorderBody, axis }
-}
-
-/**
  * Phase 4 — pull literal string elements out of an array argument
  * (`['a', 'b']`). Used to seed `usePermissions`' initial grant set. Returns
  * the string-literal entries; a missing / non-array / non-literal argument
  * yields an empty array so the caller never bails.
  */
-/**
- * Gap 4 PR-3 — `createI18n({ locale, messages, fallbackLocale? })` from
- * `@pyreon/i18n/core` → DeclIR.i18n.
- *
- * Extracts the literal `locale` string + the literal `messages` map
- * (locale → key → value) + optional `fallbackLocale`. Non-literal
- * configs warn and fall through to silent-drop.
- *
- * v1 SCOPE: string keys, string values. Async loaders, nested message
- * objects beyond one-level (e.g. `{ user: { greeting: '...' } }`),
- * pluralization suffixes, interpolation, namespaces are deferred.
- * Top-level dot-keys ARE preserved verbatim so a `{ 'section.title':
- * 'Report' }` shape works for the lookup-by-flat-key v1 contract.
- */
-function tryDeclFromCreateI18n(
-  node: AnyNode,
-  ctx: ParseCtx,
-): DeclIR | null {
-  const init = node.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  const calleeName = init.callee?.name as string | undefined
-  if (calleeName !== 'createI18n') return null
-  if (node.id?.type !== 'Identifier') return null
-  const name = node.id.name as string
-
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const configArg = args[0]
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createI18n declaration \`${name}\`: config argument is not an object literal — emit needs the literal { locale, messages, fallbackLocale? } shape. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  let locale: string | undefined
-  let fallbackLocale: string | undefined
-  let messagesNode: AnyNode | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `createI18n declaration \`${name}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'locale') {
-      // A module-scope `const` resolves — a default locale named once and shared
-      // is ordinary, and the value is just as known at build time.
-      locale = staticStringArg(valueNode, ctx) ?? undefined
-    } else if (keyName === 'fallbackLocale') {
-      fallbackLocale = staticStringArg(valueNode, ctx) ?? undefined
-    } else if (keyName === 'messages') {
-      messagesNode = valueNode
-    }
-  }
-
-  if (!locale) {
-    ctx.warnings.push(
-      `createI18n declaration \`${name}\`: \`locale\` field is missing or not a string literal — required to seed PyreonI18n. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  if (!messagesNode || messagesNode.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `createI18n declaration \`${name}\`: \`messages\` field is missing or not an object literal — required to bake the translation table. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Parse `messages: { en: { hello: 'Hi' } }` into the nested record.
-  const messages: Record<string, Record<string, string>> = {}
-  for (const localeProp of (messagesNode.properties as AnyNode[] | undefined) ?? []) {
-    if (localeProp?.type !== 'Property' && localeProp?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(localeProp)) {
-      warnDynamicKey(localeProp, `createI18n declaration \`${name}\`: messages`, ctx)
-      continue
-    }
-    const locName = staticPropKey(localeProp)
-    if (!locName) continue
-    const dict = unwrapTypeLayers(localeProp.value as AnyNode | undefined)
-    messages[locName] = {}
-    if (dict?.type !== 'ObjectExpression') continue
-    for (const entry of (dict.properties as AnyNode[] | undefined) ?? []) {
-      if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-      if (hasDynamicKey(entry)) {
-        warnDynamicKey(entry, `createI18n declaration \`${name}\`: messages \`${locName}\``, ctx)
-        continue
-      }
-      const k = staticPropKey(entry)
-      const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
-      if (k && eVal?.type === 'Literal' && typeof eVal.value === 'string') {
-        messages[locName]![k] = eVal.value
-      }
-      // Nested objects + interpolation tokens are v1-out-of-scope —
-      // silently dropped at the per-key level (the IR still has the
-      // locale entry).
-    }
-  }
-
-  const result: DeclIR = { kind: 'i18n', name, locale, messages }
-  if (fallbackLocale !== undefined) {
-    return { ...result, fallbackLocale }
-  }
-  return result
-}
-
 function tryExtractStringArray(arg: AnyNode | undefined): string[] {
   if (!arg || arg.type !== 'ArrayExpression') return []
   const out: string[] = []
@@ -8418,114 +7740,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // A method call a plugin recognizes by shape (`CompilerPlugin.methodCalls`).
       const pluginCall = tryPluginMethodCall(node, ctx)
       if (pluginCall !== undefined) return pluginCall
-      // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
-      // `toast("x")` (info) or a preset `toast.success("x")` / `.error` /
-      // `.warning` / `.info` / `.loading`. The message is the first argument; a
-      // literal `duration` (ms) in the 2nd-arg options object sets the
-      // auto-dismiss (0 = persistent); other options (onDismiss/description/
-      // icon/action) are dropped in v1 (the preset method carries the type).
-      if (ctx.toastNames.size > 0) {
-        const c = node.callee
-        const PRESETS = new Set(['success', 'error', 'warning', 'info', 'loading'])
-        let toastType: string | undefined
-        if (c?.type === 'Identifier' && ctx.toastNames.has(c.name)) {
-          toastType = 'info'
-        } else if (
-          c?.type === 'MemberExpression' &&
-          c.object?.type === 'Identifier' &&
-          ctx.toastNames.has(c.object.name) &&
-          c.property?.type === 'Identifier' &&
-          PRESETS.has(c.property.name)
-        ) {
-          // `loading` has no distinct native variant in v1 → treat as info.
-          toastType = c.property.name === 'loading' ? 'info' : c.property.name
-        } else if (
-          c?.type === 'MemberExpression' &&
-          c.object?.type === 'Identifier' &&
-          ctx.toastNames.has(c.object.name)
-        ) {
-          // Any OTHER member call on the toast binding used to pass through
-          // VERBATIM (`toast.bogus("q")` → a Swift/Kotlin call on a name that
-          // does not exist), with no warning. Name it: a real-but-unlowered
-          // method gets the follow-up hint, anything else is not a toast API.
-          const method =
-            c.computed !== true && c.property?.type === 'Identifier'
-              ? (c.property.name as string)
-              : undefined
-          const REAL_UNLOWERED = new Set(['update', 'dismiss', 'remove', 'promise'])
-          return unsupportedExpr(
-            ctx,
-            node,
-            method !== undefined ? `\`${c.object.name}.${method}(…)\`` : `a computed \`${c.object.name}[…]\` call`,
-            method !== undefined && REAL_UNLOWERED.has(method)
-              ? `\`toast.${method}\` has no native lowering yet (only \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets lower) — the call is DROPPED on iOS/Android.`
-              : `@pyreon/toast has no such method; the native lowering covers \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets. The call is DROPPED on iOS/Android.`,
-          )
-        }
-        if (toastType !== undefined) {
-          const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
-          const message: ExprIR = argNodes[0]
-            ? parseExpr(argNodes[0], ctx)
-            : { kind: 'literal', value: '' }
-          // A literal `duration` (ms) in the options object → auto-dismiss.
-          let durationMillis: number | undefined
-          const opts = argNodes[1]
-          if (opts?.type === 'ObjectExpression') {
-            for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-              if (hasDynamicKey(prop)) {
-                warnDynamicKey(prop, 'toast() options', ctx)
-                continue
-              }
-              const key = staticPropKey(prop)
-              const val = prop.value as AnyNode | undefined
-              if (
-                key === 'duration' &&
-                (val?.type === 'Literal' || val?.type === 'NumericLiteral') &&
-                typeof val.value === 'number'
-              ) {
-                durationMillis = val.value
-              }
-            }
-          }
-          return durationMillis !== undefined
-            ? { kind: 'toast-call', message, toastType, durationMillis }
-            : { kind: 'toast-call', message, toastType }
-        }
-      }
-      // Imperative `@pyreon/a11y` `announce("msg", { politeness })` →
-      // `announce-call` ExprIR (→ PyreonA11y). The message is the first arg; an
-      // options object's `politeness: 'assertive'` sets `assertive` (default
-      // polite). A `clear` option is dropped in v1.
-      if (
-        ctx.announceNames.size > 0 &&
-        node.callee?.type === 'Identifier' &&
-        ctx.announceNames.has(node.callee.name)
-      ) {
-        const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
-        const message: ExprIR = argNodes[0]
-          ? parseExpr(argNodes[0], ctx)
-          : { kind: 'literal', value: '' }
-        let assertive = false
-        const opts = argNodes[1]
-        if (opts?.type === 'ObjectExpression') {
-          for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-            if (hasDynamicKey(prop)) {
-              warnDynamicKey(prop, 'announce() options', ctx)
-              continue
-            }
-            const key = staticPropKey(prop)
-            const val = prop.value
-            if (
-              key === 'politeness' &&
-              (val?.type === 'Literal' || val?.type === 'StringLiteral') &&
-              val.value === 'assertive'
-            ) {
-              assertive = true
-            }
-          }
-        }
-        return { kind: 'announce-call', message, assertive }
-      }
+      // A call a plugin recognizes by a callee it recorded when it scanned the file (`CompilerPlugin.callExprs`).
+      const calleeCall = tryPluginCallExpr(node, ctx)
+      if (calleeCall !== undefined) return calleeCall
       // A claimed library function keeps the callee spelling its plugin asked for (`FunctionLowering.irName`).
       const parsedCallee = parseExpr(node.callee, ctx)
       const irName = parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined

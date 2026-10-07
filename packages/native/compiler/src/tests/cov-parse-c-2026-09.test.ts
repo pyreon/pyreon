@@ -739,22 +739,24 @@ export function App(){
   return <Text>{i18n.t('hello')}</Text>
 }`
 
-describe('parse.ts — tryDeclFromCreateI18n', () => {
+describe('i18n plugin — createI18n recognizer', () => {
   it('reads literal / const-resolved locales and one-level messages, skipping odd entries', () => {
-    const r = parsePyreon(
-      i18nApp(
-        `{ 'locale': LOC, fallbackLocale: 'en', ...rest, messages: { en: { hello: 'Hi', 'a.b': 'AB', nested: { x: 'y' }, [k]: 'z', ...m }, 'cs': 'bad', ...z } }`,
-        `const LOC = 'cs'`,
+    const d = extDecl(
+      declsOf(
+        i18nApp(
+          `{ 'locale': LOC, fallbackLocale: 'en', ...rest, messages: { en: { hello: 'Hi', 'a.b': 'AB', nested: { x: 'y' }, [k]: 'z', ...m }, 'cs': 'bad', ...z } }`,
+          `const LOC = 'cs'`,
+        ),
       ),
+      'i18n',
     )
-    const d = r.components[0]!.decls.find((x) => x.kind === 'i18n') as Extract<DeclIR, { kind: 'i18n' }>
-    expect(d).toMatchObject({ locale: 'cs', fallbackLocale: 'en', messages: { en: { hello: 'Hi', 'a.b': 'AB' }, cs: {} } })
+    expect(payloadOf(d)).toMatchObject({ locale: 'cs', fallbackLocale: 'en', messages: { en: { hello: 'Hi', 'a.b': 'AB' }, cs: {} } })
   })
 
   it('omits fallbackLocale when absent', () => {
-    const r = parsePyreon(i18nApp(`{ locale: 'en', messages: { en: {} } }`))
-    const d = r.components[0]!.decls.find((x) => x.kind === 'i18n')!
-    expect('fallbackLocale' in d).toBe(false)
+    const d = extDecl(declsOf(i18nApp(`{ locale: 'en', messages: { en: {} } }`)), 'i18n')
+    expect(d).toBeDefined()
+    expect('fallbackLocale' in payloadOf(d)).toBe(false)
   })
 
   it('warns for a non-object config, a missing locale, and missing messages', () => {
@@ -826,7 +828,11 @@ describe('parse.ts — Kotlin parity spot-checks for the lowered recognizers', (
 // config fields, and the router/form readers' skip arms.
 // ---------------------------------------------------------------------------
 
-const declsOf = (src: string) => parsePyreon(src).components[0]?.decls ?? []
+const declsOf = (src: string) => parsePyreon(src, undefined, { registries: firstPartyCompiler.registries }).components[0]?.decls ?? []
+// A plugin's declaration is the open `ext` kind; its payload carries what the closed kind did.
+const extDecl = (decls: readonly DeclIR[], type: string) =>
+  decls.find((d) => d.kind === 'ext' && d.type === type) as Extract<DeclIR, { kind: 'ext' }> | undefined
+const payloadOf = (d: Extract<DeclIR, { kind: 'ext' }> | undefined) => (d?.payload ?? {}) as Record<string, unknown>
 
 describe('parse.ts — useQuery residual arms', () => {
   it('an unrecognised fetch-init key (`mode`) is ignored, not mis-read as a header', () => {
@@ -859,14 +865,17 @@ describe('parse.ts — rx callee shapes that are not rx', () => {
 // MISREAD `[k]` as the key "k"); every one now NAMES it and lowers the rest.
 describe('parse.ts — computed-expression keys are named by every literal-config reader', () => {
   it('createMachine: config / state / `on` / event keys', () => {
-    const decl = declsOf(
+    // The machine is the `@pyreon/machine` plugin's `ext` declaration; its payload carries the transition table.
+    const decl = parsePyreon(
       machineApp(`{ [a + b]: 1, id: 'm', initial: 'idle', states: {
         [a + b]: {},
         idle: { [a + b]: 1, 'on': { [a + b]: 'x', GO: 'run' }, after: { T: 'x' } },
         run: { on: { ...back, BACK: 'idle' } },
       } }`),
-    ).find((d) => d.kind === 'machine') as Extract<DeclIR, { kind: 'machine' }>
-    expect(decl.transitions).toEqual({ idle: { GO: 'run' }, run: { BACK: 'idle' } })
+      undefined,
+      { registries: firstPartyCompiler.registries },
+    ).components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'machine') as Extract<DeclIR, { kind: 'ext' }>
+    expect((decl.payload as { transitions: unknown }).transitions).toEqual({ idle: { GO: 'run' }, run: { BACK: 'idle' } })
     const w = warn(swift(machineApp(`{ [a + b]: 1, initial: 'idle', states: { idle: { on: { [a + b]: 'x', GO: 'idle' } } } }`)))
     expect(w).toContain('createMachine declaration `m`: config: the computed key `[a + b]`')
     expect(w).toContain('createMachine declaration `m`: state `idle` `on`: the computed key `[a + b]`')
@@ -889,22 +898,21 @@ describe('parse.ts — computed-expression keys are named by every literal-confi
   })
 
   it('createTableState: config + column keys', () => {
-    const d = declsOf(tableApp(`{ [a + b]: 1, data: () => rows(), columns: [{ [a + b]: 'x', id: 'name' }] }`)).find(
-      (x) => x.kind === 'table-state',
-    ) as Extract<DeclIR, { kind: 'table-state' }>
-    expect(d.columns).toEqual([{ id: 'name' }])
+    const d = extDecl(declsOf(tableApp(`{ [a + b]: 1, data: () => rows(), columns: [{ [a + b]: 'x', id: 'name' }] }`)), 'table-state')
+    expect(payloadOf(d).columns).toEqual([{ id: 'name' }])
   })
 
   it('useSortable: a computed key is skipped', () => {
     const d = declsOf(sortApp('{ [a + b]: 1, items: () => items(), by: (it) => it.id, onReorder: (n) => items.set(n) }'))
-    expect(d.some((x) => x.kind === 'sortable')).toBe(true)
+    expect(extDecl(d, 'sortable')).toBeDefined()
   })
 
   it('createI18n: config / locale / message keys', () => {
-    const d = declsOf(
-      i18nApp(`{ [a + b]: 1, locale: 'en', extra: true, messages: { [a + b]: {}, en: { [a + b]: 'z', hi: 'Hi', n: 1 } } }`),
-    ).find((x) => x.kind === 'i18n') as Extract<DeclIR, { kind: 'i18n' }>
-    expect(d.messages).toEqual({ en: { hi: 'Hi' } })
+    const d = extDecl(
+      declsOf(i18nApp(`{ [a + b]: 1, locale: 'en', extra: true, messages: { [a + b]: {}, en: { [a + b]: 'z', hi: 'Hi', n: 1 } } }`)),
+      'i18n',
+    )
+    expect(payloadOf(d).messages).toEqual({ en: { hi: 'Hi' } })
   })
 
   it('createFlow: a computed config key is named in the dropped-keys warning', () => {
@@ -957,8 +965,9 @@ describe('parse.ts — createTableState / useSortable residual arms', () => {
 
 describe('parse.ts — createI18n residual arms', () => {
   it('a non-literal fallbackLocale is dropped (no fallback), not mis-baked', () => {
-    const d = declsOf(i18nApp(`{ locale: 'en', fallbackLocale: fb(), messages: { en: {} } }`)).find((x) => x.kind === 'i18n')!
-    expect('fallbackLocale' in d).toBe(false)
+    const d = extDecl(declsOf(i18nApp(`{ locale: 'en', fallbackLocale: fb(), messages: { en: {} } }`)), 'i18n')
+    expect(d).toBeDefined()
+    expect('fallbackLocale' in payloadOf(d)).toBe(false)
   })
 })
 

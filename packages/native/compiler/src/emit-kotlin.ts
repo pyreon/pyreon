@@ -26,7 +26,9 @@ import {
   lowerPluginMemberCall,
   lowerPluginMemberRead,
   isHeadLifecycleDecl,
+  midLifecycleDecls,
   lowerPluginReceiver,
+  lowerPluginRefModifiers,
   pluginAsyncState,
   pluginLifecycleLines,
   tailLifecycleDecls,
@@ -59,7 +61,6 @@ import {
   synthTypedStructName,
   namedInlineParamType,
   classifyDynamicStylingAttr,
-  classifySortableRef,
   exprHasOptionalLink,
   structShapeKey as rawStructShapeKey,
   literalShapeKey,
@@ -596,27 +597,6 @@ const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 let _zeroArgFnNames: Set<string> = new Set()
 /** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
 let _zeroArgHelperNames: Set<string> = new Set()
-/**
- * Per-component: every machine decl name (DeclIR.machine — Gap 4
- * PR-2). PyreonMachine has `operator fun invoke()` so `m()` reads
- * current state. Without this set, the call-emit drops parens for
- * unknown zero-arg identifiers (same code path as signal reads),
- * which would emit `m` (a PyreonMachine reference) instead of `m()`
- * (the current state String).
- */
-let _machineNames: Set<string> = new Set()
-/** `syncedSignal(...)` bindings — read `x()` (Kotlin `invoke`), write `x.set(v)`
- *  (a real method). Both the read paren-drop AND the `.set()`→`=` rewrite skip
- *  them (they are PyreonSyncedSignal facade objects, not bare state values). */
-let _syncedSignalNames: Set<string> = new Set()
-/** `createTableState(...)` bindings — property reads drop parens; methods flow through. */
-let _tableNames: Set<string> = new Set()
-/** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
-let _sortableNames: Set<string> = new Set()
-/** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
- *  object-literal values arg to a map at this call shape. Mirror of
- *  emit-swift's `_i18nNames`. */
-let _i18nNamesKotlin: Set<string> = new Set()
 /**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
@@ -1412,11 +1392,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _machineNames = new Set()
-  _syncedSignalNames = new Set()
-  _tableNames = new Set()
-  _sortableNames = new Set()
-  _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1454,14 +1429,6 @@ function emitKotlinComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    // Gap 4 PR-2: PyreonMachine. Keep `m` OUT of _signalNames (so
-    // `m()` keeps parens for `operator fun invoke()`) AND OUT of
-    // _functionNames (it's a property, not a free fn).
-    if (d.kind === 'machine') _machineNames.add(d.name)
-    if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
-    if (d.kind === 'table-state') _tableNames.add(d.name)
-    if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
@@ -1632,24 +1599,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`  }`)
   }
-  // sortable: wire the item source + key extractor + reorder sink. Bound in
-  // the composable body (not inside `remember`) for the same reason the form's
-  // onSubmit is: the closures reference the component's OWN state, which is
-  // not in scope inside the state object's own initializer. The captured
-  // `items` is a `by remember { mutableStateOf }` delegate, so the closure
-  // reads the LIVE value on every call rather than a first-composition
-  // snapshot. The key is coerced to String — the native engine keys on String
-  // while the web `by` returns `string | number`.
-  for (const d of c.decls) {
-    if (d.kind !== 'sortable') continue
-    const name = kotlinIdent(d.name)
-    const p = kotlinIdent(d.keyParam)
-    const key = kotlinSortKeyExpr(d)
-    const next = kotlinIdent(d.reorderParam)
-    const body = d.reorderBody.map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`).join('\n')
-    lines.push(`  ${name}.bind({ ${emitKotlinExpr(d.itemsBody, 2)} }, { ${p} -> ${key} }) { ${next} ->`)
-    lines.push(body)
-    lines.push(`  }`)
+  // A plugin container that binds its source and sinks here (`midOrder`): closures over the component's own state,
+  // which is not in scope inside the container's own initializer.
+  for (const d of midLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
   // first composition (Compose's async-on-mount hook), driving the
@@ -1699,7 +1652,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
@@ -1744,7 +1697,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(`  ${line}`)
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2))) lines.push(line === '' ? '' : `  ${line}`)
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
@@ -1821,11 +1774,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _urlStateNames = new Set()
-  _machineNames = new Set()
-  _syncedSignalNames = new Set()
-  _tableNames = new Set()
-  _sortableNames = new Set()
-  _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
   _formSubmitParamsKotlin = []
@@ -1880,24 +1828,6 @@ let _databaseNames: Set<string> = new Set()
 let _fieldArrayNamesKotlin: Set<string> = new Set()
 let _fieldArrayItemParamsKotlin: string[] = []
 
-/**
- * The `by` key expression for a sortable, coerced to `String` — the Kotlin
- * mirror of `swiftSortKeyExpr`. The web `by` returns `string | number`; the
- * native engine keys on String so both targets agree on one key type.
- */
-function kotlinSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
-  const emitted = emitKotlinExpr(d.keyBody, 2)
-  const t = inferType(d.keyBody, _kotlinExprInferCtx)
-  return t.kind === 'string' ? emitted : `(${emitted}).toString()`
-}
-
-/** A PyreonCell expression for a table column, chosen by the field's type. */
-function kotlinTableCell(fieldType: TypeIR | undefined, expr: string): string {
-  if (fieldType?.kind === 'string') return `PyreonCell.Str(${expr})`
-  if (fieldType?.kind === 'number') return `PyreonCell.Num((${expr}).toDouble())`
-  return `PyreonCell.Str("${'$'}{${expr}}")`
-}
-
 /** The row struct's Kotlin type name — a named typeRef, or the synthesized
  *  struct whose fields match an inline object (matching what the data list
  *  actually holds, e.g. `__Obj0`). */
@@ -1930,17 +1860,6 @@ function resolveKotlinStructFields(elem: TypeIR): { name: string; type: TypeIR }
     if (s) return s.fields
   }
   return []
-}
-
-/** Kotlin literal for a synced signal's initial scalar value (`number` → Double). */
-function syncedInitialKotlin(
-  scalar: 'string' | 'double' | 'bool',
-  value: string | number | boolean,
-): string {
-  if (scalar === 'string') return kotlinStr(String(value))
-  if (scalar === 'bool') return value ? 'true' : 'false'
-  // A Double literal so `PyreonSyncedSignal<Double>` is inferred (JS number).
-  return Number.isInteger(value as number) ? `${value}.0` : String(value)
 }
 
 /** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
@@ -2261,93 +2180,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // descriptor in services.ts (see `renderKotlinService`).
   if (d.kind === 'service') {
     return renderKotlinService(serviceFor(d.hook), kotlinIdent(d.name))
-  }
-  // Gap 4 PR-3: `const i18n = createI18n({...})` →
-  // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
-  // flows through unchanged (PyreonI18n.t is defined on the runtime
-  // container).
-  if (d.kind === 'i18n') {
-    const entries = Object.entries(d.messages)
-      .map(([loc, kv]) => {
-        const inner = Object.entries(kv)
-          .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
-          .join(', ')
-        return `${kotlinStr(loc)} to ${inner === '' ? 'mapOf()' : `mapOf(${inner})`}`
-      })
-      .join(', ')
-    const msgLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
-    const fbArg =
-      d.fallbackLocale !== undefined
-        ? `, fallbackLocale = ${kotlinStr(d.fallbackLocale)}`
-        : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${kotlinStr(d.locale)}, messages = ${msgLit}${fbArg}) }`
-  }
-  // Gap 4 PR-2: `const m = createMachine({ initial, states })` →
-  // `val m = remember { PyreonMachine(initial = "idle",
-  // transitions = mapOf("idle" to mapOf("FETCH" to "loading"), ...)) }`.
-  // Method calls flow through unchanged (`m.send("X")`, `m.matches("Y")`,
-  // `m.can("Z")`, `m.nextEvents()`); `m()` works via Kotlin
-  // `operator fun invoke()`. Empty transitions map → `mapOf()`.
-  if (d.kind === 'machine') {
-    const entries = Object.entries(d.transitions)
-      .map(([state, events]) => {
-        const ev = Object.entries(events)
-          .map(
-            ([event, next]) =>
-              `${kotlinStr(event)} to ${kotlinStr(next)}`,
-          )
-          .join(', ')
-        const inner = ev === '' ? 'mapOf()' : `mapOf(${ev})`
-        return `${kotlinStr(state)} to ${inner}`
-      })
-      .join(', ')
-    const transLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
-    return `val ${kotlinIdent(d.name)} = remember { PyreonMachine(initial = ${kotlinStr(d.initial)}, transitions = ${transLit}) }`
-  }
-  // `@pyreon/sync` — `remember { }` blocks run sequentially in composition, so
-  // (unlike Swift's @State) the doc and its signals can reference each other
-  // directly; no synthesized init needed. `title()` / `title.set(v)` flow
-  // through unchanged (the facade defines `invoke` / `set`).
-  if (d.kind === 'crdt-doc') {
-    const actor =
-      d.actorLiteral !== undefined
-        ? kotlinStr(d.actorLiteral)
-        : 'java.util.UUID.randomUUID().toString()'
-    return `val ${kotlinIdent(d.name)} = remember { PyreonCrdtDoc(${actor}) }`
-  }
-  if (d.kind === 'synced-signal') {
-    const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
-    const mapArg = d.map !== undefined ? `, ${kotlinStr(d.map)}` : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${kotlinStr(d.key)}, ${initial}${mapArg}) }`
-  }
-  // `@pyreon/table` — Compose's sequential `remember` lets the data lambda
-  // reference the row signal directly (no @State cross-ref like Swift), so it's
-  // passed in the constructor. Reading it inside `rows()` during composition
-  // tracks the signal → a row change recomposes.
-  if (d.kind === 'table-state') {
-    const dt = inferType(d.dataBody, _kotlinExprInferCtx)
-    const elem: TypeIR = dt.kind === 'array' ? dt.element : { kind: 'unknown' }
-    const rowType = resolveKotlinRowTypeName(elem)
-    const fields = resolveKotlinStructFields(elem)
-    const cols = d.columns
-      .map((c) => {
-        const f = fields.find((x) => x.name === c.id)
-        return `PyreonTableColumn(${kotlinStr(c.id)}) { ${kotlinTableCell(f?.type, `it.${kotlinIdent(c.id)}`)} }`
-      })
-      .join(', ')
-    const pageArg = d.pageSize > 0 ? `, ${d.pageSize}` : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonTableState<${rowType}>({ ${emitKotlinExpr(d.dataBody, 2)} }, listOf(${cols})${pageArg}) }`
-  }
-  // `@pyreon/dnd` — the PyreonSortableState engine. `remember` keeps ONE
-  // instance across recompositions (the drag state lives in it); the reactive
-  // item source + reorder sink are wired by a `bind` call emitted into the
-  // composable body, mirroring how the form's onSubmit is assigned post-decl.
-  if (d.kind === 'sortable') {
-    const it = inferType(d.itemsBody, _kotlinExprInferCtx)
-    const elem: TypeIR = it.kind === 'array' ? it.element : { kind: 'unknown' }
-    const rowType = resolveKotlinRowTypeName(elem)
-    const axisArg = d.axis === 'horizontal' ? 'PyreonSortAxis.HORIZONTAL' : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonSortableState<${rowType}>(${axisArg}) }`
   }
   // Phase 4 follow-up: `const scheme = useColorScheme()` →
   // `val ${name} = if (isSystemInDarkTheme()) "dark" else "light"`.
@@ -3631,16 +3463,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `scope.launch { … }` coroutine provides the suspension context. Emit
       // just the inner call.
       return emitKotlinExpr(e.expr, indent)
-    case 'toast-call': {
-      // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
-      // `toast("x")` / `toast.success("x")` → PyreonToast.add("x", "…").
-      // A literal duration (ms) sets the auto-dismiss (Long).
-      const durArg = e.durationMillis !== undefined ? `, ${e.durationMillis}L` : ''
-      return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${kotlinStr(e.toastType)}${durArg})`
-    }
-    case 'announce-call':
-      // Imperative @pyreon/a11y announce → PyreonA11y (the registered announcer).
-      return `PyreonA11y.announce(${emitKotlinExpr(e.message, indent)}, ${e.assertive})`
     case 'ext-expr':
       return lowerPluginExpr(e, 'kotlin', () => kotlinEmitContext(indent))
     case 'json-stringify':
@@ -4138,16 +3960,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
-      // PyreonTableState property reads drop parens (methods flow through).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _tableNames.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
-      }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
       // NaN on failure; the `?:` default keeps a non-null Int/Double.
@@ -4217,27 +4029,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
         const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
         return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}(${args})`
-      }
-      // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
-      // object-literal VALUES argument lowers to a Kotlin map (the
-      // runtime's `t(key, values: Map<String, Any?>)` overload). The
-      // general object-literal emit produces a data-class construction
-      // / `(field = value)` pseudo-tuple — wrong in this call position.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 't' &&
-        e.callee.object.kind === 'identifier' &&
-        _i18nNamesKotlin.has(e.callee.object.name) &&
-        e.args.length === 2 &&
-        e.args[1]!.kind === 'object' &&
-        (e.args[1]! as Extract<ExprIR, { kind: 'object' }>).spreads === undefined
-      ) {
-        const keyArg = emitKotlinExpr(e.args[0]!, indent)
-        const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
-        const entries = obj.fields
-          .map((f) => `${kotlinStr(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
-          .join(', ')
-        return `${kotlinIdent(e.callee.object.name)}.t(${keyArg}, mapOf(${entries}))`
       }
       // Gap 4 v1: signal-style read on a store field — drop the parens.
       // Same chain-shape as Swift: call(member(<field>, member(store,
@@ -4348,14 +4139,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // delegated `var by` shape.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
-          return `${kotlinIdent(e.callee.name)}()`
-        }
-        // Gap 4 PR-2: PyreonMachine — `m()` invokes
-        // `operator fun invoke()` to read the current state.
-        if (_machineNames.has(e.callee.name)) {
-          return `${kotlinIdent(e.callee.name)}()`
-        }
-        if (_syncedSignalNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
         // A web service accessor is CALLED (`net()`, `state()`, `s()`);
@@ -5766,6 +5549,8 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       child: emitKotlinChild,
       // Against the component's own `KotlinCtx`: an inline object type (a query's `{ data: { id: string } }`) synthesizes a named data class there.
       typeText: (type) => kotlinType(type, _activeKotlinCtx),
+      rowType: resolveKotlinRowTypeName,
+      rowFields: resolveKotlinStructFields,
       inferType: (e) => inferType(e, _kotlinExprInferCtx),
       structs: kotlinStructRegistry,
       warnOnce: (message) => {
@@ -5888,23 +5673,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     } finally {
       _colorScope = prevScope
     }
-  }
-
-  // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
-  // queue. Reading `PyreonToast.toasts.value` (Compose MutableState) subscribes
-  // this composable, so it recomposes as toasts appear/expire. v1: a Column of
-  // the active messages; positioning/styling/animation are a follow-up. Swift
-  // dispatcher parity.
-  if (tag === 'Toaster' && canAliasIntercept(tag, '@pyreon/toast')) {
-    const p = ' '.repeat(indent + 2)
-    const pi = ' '.repeat(indent + 4)
-    return (
-      `Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {\n` +
-      `${p}PyreonToast.toasts.value.forEach { __toast ->\n` +
-      `${pi}Text(text = __toast.message)\n` +
-      `${p}}\n` +
-      `${' '.repeat(indent)}}`
-    )
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
@@ -7465,33 +7233,11 @@ function emitKotlinLayoutModifier(
   // `hideFromAccessibility()` (only lands in 1.8). Emitted LAST so a
   // contradictory label+hidden combo resolves to hidden (parity with web/iOS).
   parts.push(...kotlinAccessibilityHiddenModifier(e))
-  // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
-  // sortable Modifier extensions. Emitted LAST for the same reason as Swift:
-  // the long-press drag wraps the element's own padding/background.
-  const sortableRef = kotlinSortableRef(e)
-  if (sortableRef !== undefined) parts.push(sortableRef)
+  // A modifier a plugin derives from the element's `ref` (`@pyreon/dnd`'s `ref={s.containerRef}`), LAST so it wraps the
+  // element's own padding / background.
+  parts.push(...lowerPluginRefModifiers(e, 'kotlin', () => kotlinEmitContext(0)))
   if (parts.length === 0) return ''
   return `Modifier${parts.join('')}`
-}
-
-/**
- * The sortable Modifier extension for this element's `ref` attr, if it binds
- * one. Mirror of `swiftSortableRef`; both route through the SHARED
- * `classifySortableRef` so the two backends cannot disagree on the shape.
- */
-function kotlinSortableRef(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-): string | undefined {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
-  if (attr === undefined || attr.kind !== 'attr') return undefined
-  const binding = classifySortableRef(attr.value, _sortableNames)
-  if (binding === null) return undefined
-  const state = kotlinIdent(binding.state)
-  if (binding.kind === 'container') return `.pyreonSortableContainer(${state})`
-  const keyExpr = emitKotlinExpr(binding.key, 0)
-  const t = inferType(binding.key, _kotlinExprInferCtx)
-  const key = t.kind === 'string' ? keyExpr : `(${keyExpr}).toString()`
-  return `.pyreonSortableItem(${state}, ${key})`
 }
 
 /**

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/a11y",
   "version": "0.52.0",
-  "description": "Accessibility primitives for Pyreon \u2014 screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
+  "description": "Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/a11y#readme",
   "bugs": {
@@ -27,6 +27,11 @@
       "bun": "./src/router.ts",
       "import": "./lib/router.js",
       "types": "./lib/types/router.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -49,7 +54,8 @@
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "@pyreon/router": "workspace:^"
+    "@pyreon/router": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@pyreon/router": {
@@ -59,6 +65,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/router": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
@@ -72,7 +79,11 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/a11y"
+      ]
     }
   }
 }

@@ -6,13 +6,8 @@
 // REAL TOOLCHAIN accepting the emit (or the semantic value it produces), not a
 // string match; the string assertions are there to make a failure diagnosable.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const APP = (body: string, read = `"x"`) =>
   `import { signal, computed } from '@pyreon/reactivity'\n` +

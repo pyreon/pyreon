@@ -163,6 +163,10 @@ afterEach(_reset)
 - **`onDismiss` fires on manual dismiss AND auto-timeout** — there's no separate "auto-dismiss" callback. Compare with `duration === 0` upstream if you need to disambiguate.
 - **`<Toaster>` uses a Portal** — make sure your app has a mounted DOM root before any `toast()` call, or the queue accumulates until the Toaster mounts.
 
+## Native (iOS / Android)
+
+The imperative `toast("msg")` call and its `success` / `error` / `warning` / `info` / `loading` presets lower to the process-global `PyreonToast` queue, and `<Toaster />` to a native overlay over it. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/toast](https://pyreon.dev/docs/toast) (or `docs/src/content/docs/toast.md` in this repo).

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/toast",
   "version": "0.52.0",
-  "description": "Imperative toast notifications for Pyreon \u2014 no provider needed",
+  "description": "Imperative toast notifications for Pyreon — no provider needed",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/toast#readme",
   "bugs": {
@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -46,11 +51,18 @@
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.0.2",
@@ -65,7 +77,11 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/toast"
+      ]
     }
   }
 }

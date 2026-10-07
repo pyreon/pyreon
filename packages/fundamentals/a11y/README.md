@@ -124,6 +124,10 @@ The hook form `useRouteAnnouncer(options?)` is equivalent — call it once from 
 
 Imported from the `@pyreon/a11y/router` subpath (with `@pyreon/router` as an **optional** peer dependency), so the base `@pyreon/a11y` entry stays router-free for consumers who only use `announce()` / `<VisuallyHidden>` / `createA11yId`. SSR-safe — the hook registers only in `onMount` and `announce()` no-ops on the server.
 
+## Native (iOS / Android)
+
+The imperative `announce("msg", { politeness })` call lowers to `PyreonA11y` (a VoiceOver / TalkBack announcement); the DOM-based helpers (`VisuallyHidden`, `LiveRegion`, `SkipLink`) have no native lowering. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## License
 
 MIT

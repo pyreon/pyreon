@@ -598,149 +598,6 @@ export type DeclIR =
    * now exists, but the auto-loader gap remains intentional.
    */
   | { kind: 'useLoaderData'; name: string; type: TypeIR }
-  /**
-   * Gap 4 PR-3 (2026-06-05 native-readiness audit) — Strategy-B port
-   * for `@pyreon/i18n/core`. `const i18n = createI18n({ locale,
-   * messages, fallbackLocale? })` emits the PyreonI18n container the
-   * runtime ports ship:
-   *   Swift  → @State private var i18n = PyreonI18n(locale: "en",
-   *               messages: ["en": ["hello": "Hi"]],
-   *               fallbackLocale: nil)
-   *   Kotlin → val i18n = remember { PyreonI18n(
-   *               initialLocale = "en",
-   *               messages = mapOf("en" to mapOf("hello" to "Hi")),
-   *               fallbackLocale = null) }
-   *
-   * Method calls flow through unchanged (`i18n.t("key")`); the runtime
-   * container defines `t(_:)` / `t(...)`.
-   *
-   * v1 SCOPE — single-arg `t(key)` only. Interpolation values
-   * (`t('key', { name })`), locale writes (`setLocale` /
-   * `locale.set`), pluralization, namespaces, and async loading are
-   * documented follow-ups — each its own PR.
-   *
-   * `locale` is the literal default locale; `messages` is parsed from
-   * the literal `{ <locale>: { <key>: <value> } }` config (string-
-   * keyed, string-valued, dot-key expansion preserved by the parser);
-   * `fallbackLocale` is optional string literal.
-   */
-  | {
-      kind: 'i18n'
-      name: string
-      locale: string
-      messages: Record<string, Record<string, string>>
-      fallbackLocale?: string
-    }
-  /**
-   * Gap 4 (2026-06-05 native-readiness audit) Strategy-B first port —
-   * `createMachine({ initial, states })` from `@pyreon/machine`. Emits
-   * the PyreonMachine reactive container the runtime ports ship:
-   *   Swift  → @State private var m = PyreonMachine(initial: "idle",
-   *               transitions: ["idle": ["FETCH": "loading"], ...])
-   *   Kotlin → val m = remember { PyreonMachine(initial = "idle",
-   *               transitions = mapOf("idle" to mapOf("FETCH" to "loading"), ...)) }
-   *
-   * Method calls flow through unchanged (`m.send("X")` / `m.matches("Y")`
-   * / `m.can("Z")` / `m.nextEvents()`) — the runtime container defines
-   * them. The `m()` read-current-state syntax also works unchanged via
-   * Swift `callAsFunction()` and Kotlin `operator fun invoke()`.
-   *
-   * `initial` is the string-literal state name from the config's
-   * `initial: 'X' as const` (the `as const` is stripped). `transitions`
-   * is the parsed `{ state: { event: nextState } }` map from the
-   * `states` config field. Closed PR #1319's "machine emit structurally
-   * broken" silent-drop AND PR #1444's Tier-2 diagnostic warning (it
-   * disappears now that emit is correct).
-   */
-  | {
-      kind: 'machine'
-      name: string
-      initial: string
-      transitions: Record<string, Record<string, string>>
-    }
-  /**
-   * `const doc = new PyreonCrdtDoc(...)` from `@pyreon/sync`. The LWW-CRDT
-   * document a group of `syncedSignal`s shares. Emits:
-   *   Swift  → `@State private var doc: PyreonCrdtDoc` seeded in a generated
-   *            component `init()` (`_doc = State(initialValue: PyreonCrdtDoc(...))`)
-   *            because a synced signal's `@State` initializer must reference it,
-   *            and one `@State` cannot reference another at property init.
-   *   Kotlin → `val doc = remember { PyreonCrdtDoc(...) }`
-   * `actorLiteral` is a string-literal actor id if the user passed one; absent
-   * → a fresh UUID (matching web's `createActorId()`).
-   */
-  | {
-      kind: 'crdt-doc'
-      name: string
-      actorLiteral?: string
-    }
-  /**
-   * `const title = syncedSignal({ doc, key, initial })` from `@pyreon/sync`.
-   * Binds a `Signal<T>` to one scalar entry in a shared `PyreonCrdtDoc`. Emits
-   * `PyreonSyncedSignal<T>(doc: <docBinding>, key: "<key>", initial: <initial>)`;
-   * `title()` / `title.set(v)` flow through unchanged (the facade defines
-   * `callAsFunction` / `set`). Scalars only (`string`/`number`/`boolean`);
-   * `number` → `Double`. `docBinding` is the `doc` identifier's name.
-   */
-  | {
-      kind: 'synced-signal'
-      name: string
-      docBinding: string
-      map?: string
-      key: string
-      scalarType: 'string' | 'double' | 'bool'
-      initialValue: string | number | boolean
-    }
-  /**
-   * `const t = createTableState({ data, columns, pageSize })` from
-   * `@pyreon/table` — the dependency-free sort/filter/paginate/select engine.
-   * Lowers to the `@Observable` PyreonTableState port (#2828):
-   *   Swift  → `@State private var t = PyreonTableState<Row>(columns: […], pageSize: n)`
-   *            + `.onAppear { t.setData { <data> } }` (the data closure is wired
-   *            after init so it can capture the view's @State source signal).
-   *   Kotlin → `val t = remember { PyreonTableState<Row>({ <data> }, listOf(…), n) }`
-   * Column cell accessors (`{ .string($0.name) }`) are codegen'd at emit time
-   * from the row struct's inferred field types. `t.rows()`/`t.toggleSort(id)`/…
-   * flow through (methods); `t.page()`/`t.sortColumn()`/… drop parens (property
-   * reads). v1: scalar (string/number) columns with the default `row[id]`
-   * accessor; explicit accessors / rowId / filterFn are follow-ups.
-   */
-  | {
-      kind: 'table-state'
-      name: string
-      /** The `data: () => <body>` arrow body (the reactive row source). */
-      dataBody: ExprIR
-      pageSize: number
-      columns: { id: string }[]
-    }
-  /**
-   * `const s = useSortable({ items, by, onReorder, axis? })` from
-   * `@pyreon/dnd` → the native PyreonSortableState engine.
-   *
-   * The web hook returns REFS the author attaches to DOM nodes; on native the
-   * same `ref={s.itemRef(key)}` / `ref={s.containerRef}` attributes lower to
-   * view modifiers, so one source drives both. The reorder ARITHMETIC is
-   * shared (a verbatim port of `performReorder`), while the gesture is each
-   * platform's own — SwiftUI `.draggable`/`.dropDestination`, Compose
-   * long-press drag.
-   *
-   * v1 lowers the four load-bearing options. `groupId` /
-   * `onCrossListDrop` / `onCrossListReceive` (cross-list boards) and `label`
-   * (screen-reader text) warn by name rather than dropping silently.
-   */
-  | {
-      kind: 'sortable'
-      name: string
-      /** The `items: () => <body>` arrow body (the reactive row source). */
-      itemsBody: ExprIR
-      /** The `by: (item) => <body>` key extractor. */
-      keyParam: string
-      keyBody: ExprIR
-      /** The `onReorder: (next) => …` commit sink. */
-      reorderParam: string
-      reorderBody: StatementIR[]
-      axis: 'vertical' | 'horizontal'
-    }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
@@ -1025,19 +882,11 @@ export type ExprIR =
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   /**
-   * The open expression: a plugin's own expression (`<receiver>.<method>(…)` its `methodCalls` recognizer
-   * claimed), rendered and typed by the same plugin's `exprs[type]`. The compiler stamps `plugin`; `payload`
+   * The open expression: a plugin's own expression (`<receiver>.<method>(…)` its `methodCalls` recognizer, or a
+   * call its `callExprs` recognizer, claimed), rendered and typed by the same plugin's `exprs[type]`. The compiler stamps `plugin`; `payload`
    * is JSON and `args` are the sub-expressions the plugin asked the parser for.
    */
   | { kind: 'ext-expr'; plugin: string; type: string; payload: ExtPayload; args: ExprIR[] }
-  /**
-   * An imperative `@pyreon/toast` call — `toast("msg")` or a preset
-   * `toast.success("msg")` / `.error` / `.warning` / `.info` / `.loading`.
-   * Lowers to `PyreonToast.shared.add(message, type:)` (Swift) /
-   * `PyreonToast.add(message, type)` (Kotlin). `toastType` is the resolved
-   * variant; `message` is the first-argument expression.
-   */
-  | { kind: 'toast-call'; message: ExprIR; toastType: string; durationMillis?: number }
   /**
    * `JSON.stringify(x)` → a native serialization of an Encodable/@Serializable
    * value. Swift `String(data: try! JSONEncoder().encode(x), …)`, Kotlin
@@ -1045,13 +894,6 @@ export type ExprIR =
    * which needs a native error model (a tracked follow-up), so it still warns.
    */
   | { kind: 'json-stringify'; arg: ExprIR }
-  /**
-   * An imperative `@pyreon/a11y` `announce("msg", { politeness })` call.
-   * Lowers to `PyreonA11y.announce(message, assertive:)` — a VoiceOver
-   * announcement (Swift) / registered-announcer call (Kotlin). `assertive` is
-   * true when the options carried `politeness: 'assertive'`.
-   */
-  | { kind: 'announce-call'; message: ExprIR; assertive: boolean }
   /**
    * `await expr` — an awaited async-result call inside an `async` handler
    * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin

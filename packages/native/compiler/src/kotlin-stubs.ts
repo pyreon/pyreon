@@ -696,14 +696,6 @@ object Modifier {
   fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(key1: Any?, key2: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   fun pointerInput(vararg keys: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
-  // @pyreon/dnd sortable modifiers. Real Compose ships them as top-level
-  // extensions on Modifier (PyreonSortableModifier.kt); the stub Modifier is
-  // an object, so they are modelled as members with the IDENTICAL parameter
-  // lists — same shape testTag / semantics / clickable already use here.
-  @Suppress("UNUSED_PARAMETER")
-  fun <T> pyreonSortableItem(state: PyreonSortableState<T>, key: String): Modifier = this
-  @Suppress("UNUSED_PARAMETER")
-  fun <T> pyreonSortableContainer(state: PyreonSortableState<T>): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
   // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
@@ -1545,169 +1537,6 @@ fun PyreonRouteLoader(path: String, load: () -> Any?, content: @Composable () ->
   content()
 }
 
-// PyreonI18n — Gap 4 PR-3 (Strategy-B port for @pyreon/i18n/core, v1).
-// Real impl in @pyreon/native-runtime-kotlin's PyreonI18n.kt.
-class PyreonI18n(
-  initialLocale: String,
-  val messages: Map<String, Map<String, String>>,
-  val fallbackLocale: String? = null,
-) {
-  var locale: String = initialLocale
-    private set
-  fun t(key: String): String {
-    messages[locale]?.get(key)?.let { return it }
-    if (fallbackLocale != null) {
-      messages[fallbackLocale]?.get(key)?.let { return it }
-    }
-    return key
-  }
-  // Two-arg overload — interpolation + one/other plurals. Mirrors the
-  // REAL runtime-kotlin signature t(key, values: Map<String, Any?>)
-  // (see PyreonI18n.kt) so the emitted dict-arg call shape
-  // i18n.t("items", mapOf("count" to n)) typechecks here.
-  fun t(key: String, values: Map<String, Any?>): String {
-    var out = t(key)
-    for ((name, value) in values) {
-      out = out.replace("{{" + name + "}}", value?.toString() ?: "")
-    }
-    return out
-  }
-}
-
-// PyreonMachine — Gap 4 PR-2 (Strategy-B port for @pyreon/machine).
-// Real impl in @pyreon/native-runtime-kotlin's PyreonMachine.kt.
-class PyreonMachine(initial: String, val transitions: Map<String, Map<String, String>>) {
-  var state: String = initial
-    private set
-  fun send(event: String) { transitions[state]?.get(event)?.let { state = it } }
-  fun matches(s: String): Boolean = state == s
-  fun can(event: String): Boolean = transitions[state]?.containsKey(event) == true
-  fun nextEvents(): List<String> = transitions[state]?.keys?.toList() ?: emptyList()
-  operator fun invoke(): String = state
-}
-
-// @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
-// PyreonCrdt.kt / PyreonSyncedSignal.kt SURFACE.
-// A stub NARROWER than the runtime rejects CORRECT emit; one that is WIDER
-// hides a missing symbol. Mirrored from PyreonCrdt.kt, not approximated to
-// what the emitter happens to produce today — \`Null\` and the whole map facade
-// were both absent while this comment already claimed to mirror the surface.
-sealed class PyreonScalar {
-  data class Str(val v: String) : PyreonScalar()
-  data class Num(val v: Double) : PyreonScalar()
-  data class Bool(val v: Boolean) : PyreonScalar()
-  object Null : PyreonScalar()
-}
-data class PyreonCrdtOp(
-  val map: String,
-  val key: String,
-  val value: PyreonScalar,
-  val clock: Int,
-  val actor: String,
-)
-class PyreonCrdtMap {
-  fun get(key: String): PyreonScalar? = null
-  fun has(key: String): Boolean = false
-  fun keys(): List<String> = emptyList()
-  fun set(key: String, value: PyreonScalar) {}
-  fun set(key: String, value: String) {}
-  fun set(key: String, value: Long) {}
-  fun set(key: String, value: Int) {}
-  fun set(key: String, value: Double) {}
-  fun set(key: String, value: Boolean) {}
-  fun observe(cb: (Set<String>) -> Unit): () -> Unit = {}
-}
-class PyreonCrdtDoc(val actor: String) {
-  var onLocalOps: ((List<PyreonCrdtOp>) -> Unit)? = null
-  fun getMap(name: String): PyreonCrdtMap = PyreonCrdtMap()
-  fun get(map: String, key: String): PyreonScalar? = null
-  fun has(map: String, key: String): Boolean = false
-  fun keys(map: String): List<String> = emptyList()
-  fun set(map: String, key: String, value: PyreonScalar) {}
-  fun observe(map: String, cb: (Set<String>) -> Unit): () -> Unit = {}
-  fun applyOps(ops: List<PyreonCrdtOp>) {}
-  fun encodeState(): List<PyreonCrdtOp> = emptyList()
-  fun encodeMessage(ops: List<PyreonCrdtOp>): String = ""
-  fun applyMessage(json: String) {}
-}
-const val PYREON_SYNCED_DEFAULT_MAP = "pyreon"
-class PyreonSyncedSignal<T>(
-  doc: PyreonCrdtDoc,
-  key: String,
-  initial: T,
-  map: String = PYREON_SYNCED_DEFAULT_MAP,
-) {
-  private var _value: T = initial
-  val value: T get() = _value
-  operator fun invoke(): T = _value
-  fun set(v: T) { _value = v }
-  // Mirror of the runtime's dispose(); its absence rejected correct code.
-  fun dispose() {}
-}
-// @pyreon/table — the PyreonTableState engine. Mirrors PyreonTableState.kt.
-sealed class PyreonCell {
-  data class Str(val v: String) : PyreonCell()
-  data class Num(val v: Double) : PyreonCell()
-  object None : PyreonCell()
-}
-class PyreonTableColumn<T>(val id: String, val accessor: (T) -> PyreonCell)
-class PyreonTableState<T>(
-  dataProvider: () -> List<T>,
-  columns: List<PyreonTableColumn<T>> = emptyList(),
-  pageSize: Long = 0L,
-  rowId: ((T, Long) -> String)? = null,
-  filterFn: ((T, String, List<PyreonTableColumn<T>>) -> Boolean)? = null,
-) {
-  fun rows(): List<T> = emptyList()
-  fun pageCount(): Long = 1L
-  fun filteredCount(): Long = 0L
-  fun selectedIds(): List<String> = emptyList()
-  fun toggleSort(c: String) {}
-  fun setFilter(q: String) {}
-  fun setPage(i: Long) {}
-  fun nextPage() {}
-  fun prevPage() {}
-  fun isSelected(id: String): Boolean = false
-  fun toggleSelected(id: String) {}
-  fun clearSelection() {}
-  fun rowId(row: T, index: Long): String = ""
-  val page: Long get() = 0L
-  val sortColumn: String? get() = null
-  val sortDirection: String get() = "asc"
-  val filterValue: String get() = ""
-  val selected: List<String> get() = emptyList()
-}
-
-// @pyreon/dnd — the PyreonSortableState engine. Mirrors PyreonSortable.kt.
-// The Modifier extensions it pairs with (PyreonSortableModifier.kt) are
-// mirrored as Modifier MEMBERS below, the same shape testTag/semantics use —
-// the stub Modifier is an object, so a real top-level extension is modelled
-// as a member with the identical parameter list.
-enum class PyreonSortAxis { VERTICAL, HORIZONTAL }
-enum class PyreonDropEdge { TOP, BOTTOM, LEFT, RIGHT }
-class PyreonSortableState<T>(
-  val axis: PyreonSortAxis = PyreonSortAxis.VERTICAL,
-) {
-  fun bind(items: () -> List<T>, by: (T) -> String, onReorder: (List<T>) -> Unit) {}
-  fun isActive(key: String): Boolean = false
-  fun isOverKey(key: String): Boolean = false
-  fun activeId(): String? = null
-  fun overId(): String? = null
-  fun overEdge(): String? = null
-  fun pickUp(key: String) {}
-  fun dragBy(delta: Float, extent: Float) {}
-  fun drop(): Boolean = false
-  fun cancel() {}
-  fun reordered(dragKey: String, dropKey: String, edge: PyreonDropEdge): List<T>? = null
-  val activeKey: String? get() = null
-  val overKey: String? get() = null
-  val currentEdge: PyreonDropEdge? get() = null
-  companion object {
-    fun <T> moveIndex(list: List<T>, from: Long, to: Long): List<T> = list
-  }
-}
-
-
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape
 // (operator invoke), not / cannot / all / any. Added with the
@@ -2003,23 +1832,6 @@ class PyreonAppState(phase: String = "active") {
 // hosting Activity's lifecycle).
 @Composable
 fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
-
-// PyreonToast — mirror of runtime-kotlin's PyreonToast.kt surface the emit
-// touches: the object singleton, \`toasts\` (a MutableState<List<Item>> the
-// \`<Toaster/>\` forEach iterates, each item carrying \`message\`), and \`add\`.
-data class PyreonToastItem(val id: String, val message: String, val type: String)
-object PyreonToast {
-  val toasts: MutableState<List<PyreonToastItem>> = mutableStateOf(emptyList())
-  var maxToasts: Long = 50L
-  fun add(message: String, type: String = "info", durationMillis: Long? = null): String = ""
-  fun dismiss(id: String) {}
-  fun clear() {}
-}
-// PyreonA11y — mirror of runtime-kotlin's PyreonA11y.kt: the object with an
-// \`announce(message, assertive)\` the imperative \`announce(...)\` call lowers to.
-object PyreonA11y {
-  fun announce(message: String, assertive: Boolean = false) {}
-}
 
 // PyreonCrashReporter — mirror of the runtime-kotlin surface the emit touches:
 // lastCrash/hadCrash MutableState (read dot-value), recordError/breadcrumb/

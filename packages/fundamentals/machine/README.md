@@ -154,6 +154,10 @@ function logState(s: FetcherState) {
 - **`dispose()` is final** — after it runs, every method becomes a no-op and listeners are dropped. Don't reuse a disposed machine.
 - **States with no `on:` map are terminal** for the framework's purposes — `nextEvents()` returns `[]` and every `send()` is a no-op until something else (a manual `reset()` or another machine) brings it out.
 
+## Native (iOS / Android)
+
+`createMachine({ initial, states })` lowers to the `PyreonMachine` container on SwiftUI and Compose. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/machine](https://pyreon.dev/docs/machine) (or `docs/src/content/docs/machine.md` in this repo).

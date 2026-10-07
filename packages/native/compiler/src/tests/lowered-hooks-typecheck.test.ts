@@ -35,7 +35,7 @@
 // iOS. Device evidence covers the path the example takes, not the API surface.
 
 import { describe, expect, it } from 'vitest'
-import { flowPlugin, queryPlugin, transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { dndPlugin, flowPlugin, queryPlugin, transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { nativeLoweredHooks } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
@@ -222,7 +222,7 @@ describe('every hook claimed to lower natively type-checks on both targets', () 
     // coverage of a hook the compiler no longer claims to lower.
     // A hook a discovered plugin claims (`useFlow`) is not in the core allowlist by design; the
     // plugin's own `calls` is its authority, asserted here so the exemption cannot go stale.
-    const pluginOwned = (n: string) => Object.hasOwn(flowPlugin.calls ?? {}, n) || Object.hasOwn(queryPlugin.calls ?? {}, n)
+    const pluginOwned = (n: string) => Object.hasOwn(flowPlugin.calls ?? {}, n) || Object.hasOwn(queryPlugin.calls ?? {}, n) || Object.hasOwn(dndPlugin.calls ?? {}, n)
     const stale = [...USAGES.map(([n]) => n), ...EXCLUDED.keys()].filter(
       (n) => !NATIVE_LOWERED_HOOKS.has(n) && !pluginOwned(n),
     )

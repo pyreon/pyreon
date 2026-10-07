@@ -233,6 +233,10 @@ Over a messages object typed as `TranslationDictionary` (index signature) the he
 - **`addMessages` deep-merges** — it does not replace the entire namespace.
 - **`/core` entry only depends on `@pyreon/reactivity`** — picking the right entry per consumer keeps backend bundles JSX-free.
 
+## Native (iOS / Android)
+
+`createI18n({ locale, messages })` (from `@pyreon/i18n/core`) lowers to the `PyreonI18n` container on SwiftUI and Compose, and `i18n.t(key, { count })` to the runtime's dictionary overload. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`. `--no-plugins` builds treat the package like any unclaimed library.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/i18n](https://pyreon.dev/docs/i18n) (or `docs/src/content/docs/i18n.md` in this repo).

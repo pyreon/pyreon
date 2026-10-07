@@ -31,7 +31,10 @@ import {
   lowerPluginMemberCall,
   lowerPluginMemberRead,
   isHeadLifecycleDecl,
+  swiftInitDecls,
+  midLifecycleDecls,
   lowerPluginReceiver,
+  lowerPluginRefModifiers,
   pluginAsyncState,
   tailLifecycleDecls,
   pluginLifecycleLines,
@@ -66,7 +69,6 @@ import {
   synthTypedStructName,
   namedInlineParamType,
   classifyDynamicStylingAttr,
-  classifySortableRef,
   exprHasOptionalLink,
   exprReferencesIdent,
   structShapeKey as rawStructShapeKey,
@@ -517,25 +519,6 @@ function withExpectedType<T>(t: TypeIR | undefined, fn: () => T): T {
  */
 let _signalNames: Set<string> = new Set()
 /**
- * Per-component: every machine decl name in scope (DeclIR.machine —
- * Gap 4 PR-2). PyreonMachine's `callAsFunction()` requires `m()`
- * (parens preserved) to read current state, NOT bare `m` (which
- * would emit as a property reference and return the PyreonMachine
- * instance itself). Disambiguates `m()` from signal `count()`
- * (parens dropped) and from function `addTodo()` (parens preserved).
- */
-let _machineNames: Set<string> = new Set()
-/** `syncedSignal(...)` bindings — read `x()` (callAsFunction), write `x.set(v)`
- *  (a real method), so BOTH the signal-read paren-drop AND the `.set()`→`=`
- *  rewrite must skip them (they are facade objects, not bare @State values). */
-let _syncedSignalNames: Set<string> = new Set()
-/** `createTableState(...)` bindings. Its PROPERTY reads (`t.page()`→`t.page`,
- *  sortColumn/sortDirection/filterValue) drop parens; its METHODS (rows/
- *  toggleSort/setFilter/…) flow through unchanged. */
-let _tableNames: Set<string> = new Set()
-/** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
-let _sortableNames: Set<string> = new Set()
-/**
  * Per-component: binding name → service descriptor for every `service`
  * declaration (services.ts). The read-site rewrites consult it: `accessorReads`
  * (web accessor call → native property), `callRead` (`net()` → `net.isOnline`).
@@ -667,9 +650,6 @@ let _websocketUrlsSwift: Map<string, string> = new Map()
  * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
  */
 let _asyncDeclsSwift: DeclIR[] = []
-/** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
- *  object-literal values arg to a dictionary at this call shape. */
-let _i18nNames: Set<string> = new Set()
 /**
  * Per-component: every function decl name in scope (DeclIR.function —
  * Parser-A). Disambiguates `addTodo()` (function call — keeps parens)
@@ -1785,8 +1765,6 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'hotkey',
   'on-mount',
   'rate-limited',
-  'sortable',
-  'table-state',
   'tick',
 ])
 
@@ -1921,16 +1899,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
-  // callAsFunction).
-  _machineNames = new Set()
-  _syncedSignalNames = new Set()
-  _tableNames = new Set()
-  _sortableNames = new Set()
   _serviceBindings = bindServices(c.decls)
   _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
-  _i18nNames = new Set()
   _formNamesSwift = new Set()
   _formSubmitParamsSwift = []
   _fetchNamesSwift = new Set()
@@ -1980,19 +1951,11 @@ function emitSwiftComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    // Gap 4 PR-2: PyreonMachine reads via `m()` (callAsFunction).
-    // Keep machine names OUT of _signalNames (parens preserved) and
-    // OUT of _functionNames (it's a property, not a free function).
-    if (d.kind === 'machine') _machineNames.add(d.name)
-    if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
-    if (d.kind === 'table-state') _tableNames.add(d.name)
-    if (d.kind === 'sortable') _sortableNames.add(d.name)
     if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
       _serviceKindByNameSwift.set(d.name as string, d.kind)
     }
-    if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
     // A plugin declaration that is an async source (`useQuery`) joins the Suspense / ErrorBoundary set.
@@ -2063,6 +2026,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Swift doesn't require that ordering at file scope, but it keeps the
   // file readable and byte-mirrors the Kotlin emit's layout.
   const synth: SwiftSynthCtx = { componentName: c.name, structs: [] }
+  _activeSynth = synth
   // Optional props (`label?: string` → union-with-undefined) emit as
   // `var label: String? = nil` — the explicit `= nil` default is what
   // makes the MEMBERWISE initializer's parameter omittable, so a call
@@ -2087,9 +2051,7 @@ function emitSwiftComponent(c: ComponentIR): string {
       ? null
       : optionalSlotNames.length > MAX_SWIFT_OPTIONAL_SLOTS
         ? `it has ${optionalSlotNames.length} optional render props, and each subset needs its own initializer (at most ${MAX_SWIFT_OPTIONAL_SLOTS} are lowered, ${2 ** MAX_SWIFT_OPTIONAL_SLOTS} initializers)`
-        : c.decls.some((d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal')
-          ? 'its synced state already needs a generated init() that seeds it, and the optional-slot initializers cannot'
-          : null
+        : (swiftInitDecls(c.decls)[0]?.init.optionalSlotReason ?? null)
   _optionalSlotsAsRequired = optionalSlotFallback === null ? new Set() : new Set(optionalSlotNames)
   const initParams: SwiftInitParam[] = []
   const propLines = c.props.map((p) => {
@@ -2249,16 +2211,11 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'on-mount' || d.kind === 'tick' || d.kind === 'hotkey') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
-  // `@pyreon/sync` — a doc + its synced signals are declared as TYPED @State
-  // above; seed them in a generated init() (a synced signal's @State
-  // initializer references the doc, which a plain @State cannot do). Props are
-  // threaded as init params (reproducing SwiftUI's memberwise init) so the
-  // component can still take props. Docs are created + seeded before signals so
-  // each signal can reference its doc's local.
-  const syncDecls = c.decls.filter(
-    (d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal',
-  )
-  if (syncDecls.length > 0 && !isLayout) {
+  // A plugin's declarations that are declared TYPED with no initializer (a `@State` initializer cannot reference another
+  // property) are seeded in a generated init() (`DeclEmitter.swiftInit`). Props are threaded as init params (reproducing
+  // SwiftUI's memberwise init) so the component can still take props.
+  const seededDecls = swiftInitDecls(c.decls)
+  if (seededDecls.length > 0 && !isLayout) {
     const params = c.props
       .map((p) =>
         typeIsOptional(p.type)
@@ -2270,22 +2227,8 @@ function emitSwiftComponent(c: ComponentIR): string {
     for (const p of c.props) {
       lines.push(`    self.${swiftIdent(p.name)} = ${swiftIdent(p.name)}`)
     }
-    for (const d of syncDecls) {
-      if (d.kind === 'crdt-doc') {
-        const actor =
-          d.actorLiteral !== undefined ? swiftStr(d.actorLiteral) : 'UUID().uuidString'
-        lines.push(`    let ${swiftIdent(d.name)} = PyreonCrdtDoc(actor: ${actor})`)
-        lines.push(`    _${swiftIdent(d.name)} = State(initialValue: ${swiftIdent(d.name)})`)
-      }
-    }
-    for (const d of syncDecls) {
-      if (d.kind === 'synced-signal') {
-        const mapArg = d.map !== undefined ? `map: ${swiftStr(d.map)}, ` : ''
-        const initial = syncedInitialSwift(d.scalarType, d.initialValue)
-        lines.push(
-          `    _${swiftIdent(d.name)} = State(initialValue: PyreonSyncedSignal(doc: ${swiftIdent(d.docBinding)}, ${mapArg}key: ${swiftStr(d.key)}, initial: ${initial}))`,
-        )
-      }
+    for (const { decl, init } of seededDecls) {
+      for (const line of init.lines(decl, swiftEmitContext(2))) lines.push(`    ${line}`)
     }
     lines.push(`  }`)
   }
@@ -2445,7 +2388,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(line === '' ? '' : `      ${line}`)
   }
   // useHotkey → a hidden shortcut Button in `.background`.
   //
@@ -2480,36 +2423,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        .opacity(0)`)
     lines.push(`      )`)
   }
-  // table-state: wire the reactive data source in `.onAppear`, where the
-  // closure can capture the view's @State (a @State initializer cannot). The
-  // read happens during body evaluation via `table.rows()`, so SwiftUI tracks
-  // the source signal and a row change re-renders.
-  for (const d of c.decls) {
-    if (d.kind !== 'table-state') continue
-    lines.push(
-      `      .onAppear { ${swiftIdent(d.name)}.setData { ${emitSwiftExpr(d.dataBody, 8)} } }`,
-    )
-  }
-  // sortable: wire the item source + key extractor + reorder sink, same
-  // `.onAppear` rationale as table-state (a @State initializer cannot capture
-  // the view's own @State). The key is coerced to String because the native
-  // engine keys on String while the web `by` returns `string | number`.
-  for (const d of c.decls) {
-    if (d.kind !== 'sortable') continue
-    const name = swiftIdent(d.name)
-    const p = swiftIdent(d.keyParam)
-    const key = swiftSortKeyExpr(d)
-    const next = swiftIdent(d.reorderParam)
-    const body = d.reorderBody.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
-    lines.push(`      .onAppear {`)
-    lines.push(`        ${name}.bind(`)
-    lines.push(`          items: { ${emitSwiftExpr(d.itemsBody, 10)} },`)
-    lines.push(`          by: { ${p} in ${key} },`)
-    lines.push(`          onReorder: { ${next} in`)
-    lines.push(body)
-    lines.push(`          }`)
-    lines.push(`        )`)
-    lines.push(`      }`)
+  // A plugin container that binds its source and sinks here (`midOrder`) — closures over the component's own state,
+  // which a property initializer cannot capture.
+  for (const d of midLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(line === '' ? '' : `      ${line}`)
   }
   // Service lifecycle (services.ts `lifecycle`): START the live monitor. These
   // runtimes shipped a real monitor behind `start()` — NWPathMonitor, the
@@ -2582,7 +2499,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(`      ${line}`)
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2))) lines.push(line === '' ? '' : `      ${line}`)
   }
   lines.push(`  }`)
   lines.push(`}`)
@@ -2618,6 +2535,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's deferred values (a chart handle's series count) are known only once the body has emitted.
   const joined = _pluginScope.finalize(lines.join('\n'))
   _pluginScope = outerPluginScope
+  _activeSynth = undefined
   _pureStateSwift = new Map()
   return joined
 }
@@ -2853,21 +2771,6 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
   return stmts.map(mapStmt)
 }
 
-/** Swift type for a synced signal's scalar (`number` → `Double`). */
-function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
-  return scalar === 'string' ? 'String' : scalar === 'double' ? 'Double' : 'Bool'
-}
-
-/**
- * The `by` key expression for a sortable, coerced to `String`.
- *
- * The web `by` returns `string | number` (both are valid `<For by>` keys), but
- * the native engine keys on `String` so one drag payload type serves every row
- * type — `String` already conforms to `Transferable`, which is what lets a
- * consumer's row type stay conformance-free. A string-typed key passes through
- * unchanged; anything else is interpolated (total, and identical to the
- * `String(describing:)` result for the scalar keys this accepts).
- */
 /**
  * One template-literal interpoland. A Double goes through the runtime's
  * `pyreonNumberString`, because Swift interpolation prints a whole-valued
@@ -2881,21 +2784,7 @@ function swiftTemplatePart(expr: ExprIR, indent: number): string {
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
 }
 
-function swiftSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
-  const emitted = emitSwiftExpr(d.keyBody, 10)
-  const t = inferType(d.keyBody, _activeInferCtx)
-  return t.kind === 'string' ? emitted : `"\\(${emitted})"`
-}
-
-/** A PyreonCell expression for a table column, chosen by the field's type. */
-function swiftTableCell(fieldType: TypeIR | undefined, expr: string): string {
-  if (fieldType?.kind === 'string') return `.string(${expr})`
-  if (fieldType?.kind === 'number') return `.number(Double(${expr}))`
-  // Total fallback (bool/enum/unknown) — stringify so comparison stays defined.
-  return `.string("\\(${expr})")`
-}
-
-/** The row struct's fields, whether inline-object or a named (synthesized) struct. */
+/** The row struct's fields, whether inline-object or a named struct. */
 function resolveSwiftStructFields(
   elem: TypeIR,
   synth: SwiftSynthCtx | undefined,
@@ -2907,17 +2796,6 @@ function resolveSwiftStructFields(
   }
   return []
 }
-
-/** Swift literal for a synced signal's initial scalar value. */
-function syncedInitialSwift(
-  scalar: 'string' | 'double' | 'bool',
-  value: string | number | boolean,
-): string {
-  if (scalar === 'string') return swiftStr(String(value))
-  if (scalar === 'bool') return value ? 'true' : 'false'
-  return String(value)
-}
-
 
 /**
  * SwiftUI `KeyEquivalent` for a parsed hotkey base key.
@@ -3326,91 +3204,6 @@ function emitSwiftDecl(
   }
   // A declaration a plugin recognized (`CompilerPlugin.calls`) — emitted by its owner.
   if (d.kind === 'ext') return emitPluginDecl(d, 'swift', swiftEmitContext(2))
-  // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
-  // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
-  // is defined on the runtime container). Read access to `i18n.locale`
-  // is the plain String property.
-  if (d.kind === 'i18n') {
-    const msgEntries = Object.entries(d.messages)
-      .map(([loc, kv]) => {
-        const inner = Object.entries(kv)
-          .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
-          .join(', ')
-        return `${swiftStr(loc)}: ${inner === '' ? '[:]' : `[${inner}]`}`
-      })
-      .join(', ')
-    const msgLit = msgEntries === '' ? '[:]' : `[${msgEntries}]`
-    const fbArg =
-      d.fallbackLocale !== undefined
-        ? `, fallbackLocale: ${swiftStr(d.fallbackLocale)}`
-        : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonI18n(locale: ${swiftStr(d.locale)}, messages: ${msgLit}${fbArg})`
-  }
-  // Gap 4 PR-2: `const m = createMachine({ initial, states })` → an
-  // @State PyreonMachine seeded with the literal initial state +
-  // transitions table. Method calls (`m.send`/`m.matches`/`m.can`/
-  // `m.nextEvents`) flow through unchanged because the runtime
-  // container defines them. The `m()` read-current-state syntax
-  // also works unchanged via Swift's `callAsFunction()`.
-  if (d.kind === 'machine') {
-    const transEntries = Object.entries(d.transitions)
-      .map(([state, events]) => {
-        const eventEntries = Object.entries(events)
-          .map(
-            ([event, next]) =>
-              `${swiftStr(event)}: ${swiftStr(next)}`,
-          )
-          .join(', ')
-        // Empty inner event map → `[:]` (Swift empty-dict literal);
-        // a bare `[]` parses as empty Array, not Dictionary, and
-        // fails typecheck against the [String: String] inner value.
-        const inner = eventEntries === '' ? '[:]' : `[${eventEntries}]`
-        return `${swiftStr(state)}: ${inner}`
-      })
-      .join(', ')
-    // Empty outer transitions map → `[:]` for the same reason.
-    const transLit = transEntries === '' ? '[:]' : `[${transEntries}]`
-    return `@State private var ${swiftIdent(d.name)} = PyreonMachine(initial: ${swiftStr(d.initial)}, transitions: ${transLit})`
-  }
-  // `@pyreon/sync` — the doc + each synced signal are declared as TYPED @State
-  // with NO inline initializer; they're seeded in the component's generated
-  // `init()` (emitSwiftComponent), because a synced signal's initializer must
-  // reference the doc and one @State cannot reference another at property init.
-  if (d.kind === 'crdt-doc') {
-    return `@State private var ${swiftIdent(d.name)}: PyreonCrdtDoc`
-  }
-  if (d.kind === 'synced-signal') {
-    return `@State private var ${swiftIdent(d.name)}: PyreonSyncedSignal<${syncedSignalSwiftType(d.scalarType)}>`
-  }
-  // `@pyreon/table` — a self-seeding @State PyreonTableState. The reactive data
-  // source is wired in `.onAppear` (emitSwiftComponent), so the initializer has
-  // no `self` reference and stays self-contained. Column accessors are codegen'd
-  // from the row struct's inferred field types.
-  if (d.kind === 'table-state') {
-    const dt = inferType(d.dataBody, inferCtx)
-    const elem: TypeIR = dt.kind === 'array' ? dt.element : { kind: 'unknown' }
-    const rowType = swiftType(elem, synth)
-    const fields = resolveSwiftStructFields(elem, synth)
-    const cols = d.columns
-      .map((c) => {
-        const f = fields.find((x) => x.name === c.id)
-        return `PyreonTableColumn(id: ${swiftStr(c.id)}, accessor: { ${swiftTableCell(f?.type, `$0.${swiftIdent(c.id)}`)} })`
-      })
-      .join(', ')
-    const pageArg = d.pageSize > 0 ? `, pageSize: ${d.pageSize}` : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonTableState<${rowType}>(columns: [${cols}]${pageArg})`
-  }
-  // (see swiftSortKeyExpr below for the `by` key coercion)
-  // `@pyreon/dnd` — a self-seeding @State PyreonSortableState. Same shape as
-  // the table above: the reactive item source + reorder sink are wired in
-  // `.onAppear` (emitSwiftComponent) so the initializer captures no `self`.
-  if (d.kind === 'sortable') {
-    const it = inferType(d.itemsBody, inferCtx)
-    const elem: TypeIR = it.kind === 'array' ? it.element : { kind: 'unknown' }
-    const rowType = swiftType(elem, synth)
-    const axisArg = d.axis === 'horizontal' ? 'axis: .horizontal' : ''
-    return `@State private var ${swiftIdent(d.name)} = PyreonSortableState<${rowType}>(${axisArg})`
-  }
   // Phase 4 follow-up: `const scheme = useColorScheme()` → a computed
   // property reading the View's @Environment(\.colorScheme) injection
   // (added at the component-emit level via _usesColorScheme). Returns
@@ -4479,6 +4272,9 @@ interface SwiftSynthCtx {
   structs: StructIR[]
 }
 
+/** The struct-synthesis context of the component being emitted — what `EmitContext.rowType` / `rowFields` resolve against. */
+let _activeSynth: SwiftSynthCtx | undefined
+
 /**
  * `UserPage` + `params` → `UserPageParam`; `TasksListPage` + `tasks` →
  * `TasksListPageTask`. EXACT mirror of emit-kotlin's
@@ -4769,17 +4565,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // expression. Only reachable inside an `async` arrow, whose action
       // emitter wraps the body in a `Task { … }` async scope.
       return `await ${emitSwiftExpr(e.expr, indent)}`
-    case 'toast-call': {
-      // Imperative `@pyreon/toast` call → the process-global PyreonToast queue.
-      // `toast("x")` / `toast.success("x")` → PyreonToast.shared.add("x", type: "…").
-      // A literal duration (ms) sets the auto-dismiss (converted to seconds).
-      const durArg =
-        e.durationMillis !== undefined ? `, duration: ${e.durationMillis / 1000}` : ''
-      return `PyreonToast.shared.add(${emitSwiftExpr(e.message, indent)}, type: ${swiftStr(e.toastType)}${durArg})`
-    }
-    case 'announce-call':
-      // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
-      return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
     case 'ext-expr':
       return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
     case 'json-stringify':
@@ -5233,8 +5018,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (m === 'reset') return `${field} = ${clamp(String(info.initial))}`
         }
       }
-      // PyreonTableState PROPERTY reads: web `t.page()` / `t.sortColumn()` /
-      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
+      // PyreonForm PROPERTY reads: web `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
       // the native `PyreonForm` exposes them as stored Bool properties. Without
       // this the web-correct spelling emitted `form.isValid()`, which swiftc
       // rejects with "cannot call value of non-function type 'Bool'". Same
@@ -5245,18 +5029,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _formNamesSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['isValid', 'isSubmitting'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
-      // `t.sortDirection()` / `t.filterValue()` are accessor calls, but on Swift
-      // these are stored properties — drop the parens. Its METHODS (rows /
-      // pageCount / toggleSort / setFilter / …) keep parens (flow through).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _tableNames.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
@@ -5328,28 +5100,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
         const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
         return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
-      }
-      // i18n two-arg t(): `i18n.t('items', { count: n() })` — the
-      // object-literal VALUES argument lowers to a Swift dictionary
-      // (the runtime's `t(_:_:[String: CustomStringConvertible])`
-      // overload). The general object-literal emit produces a struct
-      // construction / labeled tuple — wrong in this call position (a
-      // single-field labeled tuple is a Swift PARSE error).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 't' &&
-        e.callee.object.kind === 'identifier' &&
-        _i18nNames.has(e.callee.object.name) &&
-        e.args.length === 2 &&
-        e.args[1]!.kind === 'object' &&
-        (e.args[1]! as Extract<ExprIR, { kind: 'object' }>).spreads === undefined
-      ) {
-        const keyArg = emitSwiftExpr(e.args[0]!, indent)
-        const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
-        const entries = obj.fields
-          .map((f) => `${swiftStr(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
-          .join(', ')
-        return `${swiftIdent(e.callee.object.name)}.t(${keyArg}, [${entries}])`
       }
       // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
       // is the primary write, and the object literal was lowered by the
@@ -5632,16 +5382,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the snapshot doesn't expose lurking gaps prematurely.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
         if (_functionNames.has(e.callee.name)) {
-          return `${swiftIdent(e.callee.name)}()`
-        }
-        // Gap 4 PR-2: PyreonMachine names need parens preserved so
-        // `m()` invokes `callAsFunction()` and reads the current state.
-        if (_machineNames.has(e.callee.name)) {
-          return `${swiftIdent(e.callee.name)}()`
-        }
-        // A syncedSignal `title()` invokes the facade's `callAsFunction()` to
-        // read the current value (parens preserved, like a machine read).
-        if (_syncedSignalNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
         }
         // A web service accessor is CALLED (`net()`, `state()`, `s()`); natively
@@ -7326,6 +7066,8 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       isFunctionName: (name) => _functionNames.has(name),
       child: emitSwiftChild,
       typeText: swiftType,
+      rowType: (element) => swiftType(element, _activeSynth),
+      rowFields: (element) => resolveSwiftStructFields(element, _activeSynth),
       inferType: (e) => inferType(e, _activeInferCtx),
       structs: swiftStructRegistry,
       warnOnce: (message) => {
@@ -7444,23 +7186,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     } finally {
       _colorScope = prevScope
     }
-  }
-
-  // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
-  // queue. Reading `PyreonToast.shared.toasts` (an @Observable) subscribes this
-  // view, so it re-renders as toasts appear/expire. v1: a vertical stack of the
-  // active messages the app places where it wants (typically the root);
-  // positioning, per-type styling, and enter/leave animation are a follow-up.
-  if (tag === 'Toaster' && canAliasIntercept(tag, '@pyreon/toast')) {
-    const p = ' '.repeat(indent + 2)
-    const pi = ' '.repeat(indent + 4)
-    return (
-      `VStack(spacing: 8) {\n` +
-      `${p}ForEach(PyreonToast.shared.toasts, id: \\.id) { __toast in\n` +
-      `${pi}Text(__toast.message)\n` +
-      `${p}}\n` +
-      `${' '.repeat(indent)}}`
-    )
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
@@ -9286,33 +9011,10 @@ function emitSwiftLayoutModifiers(
   if (swiftTrait !== null) {
     parts.push(`.accessibilityAddTraits(${swiftTrait})`)
   }
-  // `@pyreon/dnd` — `ref={s.containerRef}` / `ref={s.itemRef(key)}` become the
-  // sortable view modifiers. Emitted LAST so the drag wrapper sits outside the
-  // element's own padding/background, which is what an author writing the
-  // SwiftUI by hand would do (the lifted row carries its styling with it).
-  const sortableRef = swiftSortableRef(e)
-  if (sortableRef !== undefined) parts.push(sortableRef)
+  // A modifier a plugin derives from the element's `ref` (`@pyreon/dnd`'s `ref={s.containerRef}`), LAST so it wraps the
+  // element's own padding / background — which is what an author writing the SwiftUI by hand would do.
+  parts.push(...lowerPluginRefModifiers(e, 'swift', () => swiftEmitContext(0)))
   return parts.join('')
-}
-
-/**
- * The sortable modifier for this element's `ref` attr, if it binds one.
- * `null`-returning by construction for every other ref value, so an unrelated
- * `ref` keeps its existing native behaviour (ignored) rather than mis-lowering.
- */
-function swiftSortableRef(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-): string | undefined {
-  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
-  if (attr === undefined || attr.kind !== 'attr') return undefined
-  const binding = classifySortableRef(attr.value, _sortableNames)
-  if (binding === null) return undefined
-  const state = swiftIdent(binding.state)
-  if (binding.kind === 'container') return `.pyreonSortableContainer(${state})`
-  const keyExpr = emitSwiftExpr(binding.key, 0)
-  const t = inferType(binding.key, _activeInferCtx)
-  const key = t.kind === 'string' ? keyExpr : `"\\(${keyExpr})"`
-  return `.pyreonSortableItem(${state}, key: ${key})`
 }
 
 /**

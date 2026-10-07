@@ -11,7 +11,7 @@
 // which is the property, rather than by the key string, which is internal.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const sw = (src: string): string => transform(src, { target: 'swift' }).code
 const kt = (src: string): string => transform(src, { target: 'kotlin' }).code

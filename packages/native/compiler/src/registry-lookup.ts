@@ -13,7 +13,7 @@ import { activeRegistries } from './active-registries'
 import type { ElementClaimGuard, ElementLowering } from './element-lowering'
 import type { ScopeProvider } from './scope-provider'
 import type { ServiceDescriptor } from './services'
-import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle } from './call-lowering'
+import { emitExtDecl, lowerMemberCall, type AsyncState, type DeclLifecycle, type DeclSwiftInit } from './call-lowering'
 import {
   rootReceiverName,
   type EmitPreparation,
@@ -341,6 +341,40 @@ export function lowerPluginFunction(
     : found.lowering.kotlin?.(site, ctx() as KotlinEmitContext)
 }
 
+/**
+ * The modifiers plugins append to `el`'s layout chain from its `ref` attribute, in plugin order (see `RefModifierLowering`).
+ * Empty — one array-length check — when the element has no `ref` or no plugin registered a lowering.
+ */
+export function lowerPluginRefModifiers(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: 'swift',
+  ctx: () => SwiftEmitContext,
+): readonly string[]
+export function lowerPluginRefModifiers(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: 'kotlin',
+  ctx: () => KotlinEmitContext,
+): readonly string[]
+export function lowerPluginRefModifiers(
+  el: Extract<ExprIR, { kind: 'jsx-element' }>,
+  target: Target,
+  ctx: () => SwiftEmitContext | KotlinEmitContext,
+): readonly string[] {
+  const lowerings = activeRegistries().exprs.refModifiers
+  if (lowerings.length === 0) return []
+  const attr = el.attrs.find((a) => a.kind === 'attr' && a.name === 'ref')
+  if (attr === undefined || attr.kind !== 'attr') return []
+  const out: string[] = []
+  for (const { lowering } of lowerings) {
+    const modifier =
+      target === 'swift'
+        ? lowering.swift?.(attr.value, el, ctx() as SwiftEmitContext)
+        : lowering.kotlin?.(attr.value, el, ctx() as KotlinEmitContext)
+    if (modifier !== undefined) out.push(modifier)
+  }
+  return out
+}
+
 /** Lower a bare identifier a plugin names (`DEFAULT_NODE_WIDTH`), or `undefined`. */
 export function lowerPluginIdentifier(
   name: string,
@@ -439,9 +473,31 @@ export function tailLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
     .map((entry) => entry.d)
 }
 
+/** The ext declarations of `decls` whose lifecycle is a MID one, in emit order (`midOrder`, then declaration order). */
+export function midLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
+  const mid = decls.filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.midOrder !== undefined)
+  return mid
+    .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.midOrder! }))
+    .sort((a, b) => a.order - b.order || a.i - b.i)
+    .map((entry) => entry.d)
+}
+
+/** The ext declarations of `decls` that seed the generated SwiftUI `init()`, in init order (`order`, then declaration order). */
+export function swiftInitDecls(decls: readonly DeclIR[]): { readonly decl: ExtDecl; readonly init: DeclSwiftInit }[] {
+  const out: { decl: ExtDecl; init: DeclSwiftInit; index: number }[] = []
+  decls.forEach((d, index) => {
+    if (d.kind !== 'ext') return
+    const init = activeRegistries().calls.emitter(d.plugin, d.type)?.swiftInit
+    if (init !== undefined) out.push({ decl: d, init, index })
+  })
+  return out.sort((a, b) => a.init.order - b.init.order || a.index - b.index).map(({ decl, init }) => ({ decl, init }))
+}
+
 /** True when `d` is an `ext` declaration that emits its lifecycle in declaration order (before the compiler's own modifiers). */
 export function isHeadLifecycleDecl(d: DeclIR): d is ExtDecl {
-  return d.kind === 'ext' && extDeclLifecycle(d)?.tailOrder === undefined
+  if (d.kind !== 'ext') return false
+  const lifecycle = extDeclLifecycle(d)
+  return lifecycle?.tailOrder === undefined && lifecycle?.midOrder === undefined
 }
 
 /** The type of the zero-arg call read `<binding>.<property>()` on a plugin declaration, or `undefined`. */

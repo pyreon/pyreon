@@ -32,6 +32,11 @@
       "bun": "./src/devtools.ts",
       "import": "./lib/devtools.js",
       "types": "./lib/types/devtools.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -53,11 +58,18 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -69,7 +81,11 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/i18n"
+      ]
     }
   }
 }

@@ -24,6 +24,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { I18N_KOTLIN_STUBS, I18N_SWIFT_STUBS } from '../../../../fundamentals/i18n/src/native-plugin/stubs'
 
 const HERE = resolve(import.meta.dirname ?? __dirname)
 const NATIVE = resolve(HERE, '..', '..', '..')
@@ -130,10 +131,8 @@ describe('stub ↔ real runtime fidelity (both drift directions)', () => {
   })
 
   it('the Swift STUB mirrors that default — a required param rejects valid source', () => {
-    const stub = readFileSync(
-      resolve(HERE, '..', 'swift-stubs.ts'),
-      'utf8',
-    )
+    // The stub now ships with the library's plugin (`@pyreon/i18n/native-plugin`), not the compiler.
+    const stub = I18N_SWIFT_STUBS
     // Bounded by the NEXT member rather than the next `}` — the surrounding
     // comment contains braces, and slicing on those cut the init in half.
     const from = stub.indexOf('public struct PyreonI18n')
@@ -181,7 +180,7 @@ describe('stub ↔ real runtime fidelity (both drift directions)', () => {
 
   it('the Kotlin stub and runtime agree too (this target was already correct)', () => {
     const real = read('../fundamentals/i18n/native/kotlin/com/pyreon/runtime/PyreonI18n.kt')
-    const stub = readFileSync(resolve(HERE, '..', 'kotlin-stubs.ts'), 'utf8')
+    const stub = I18N_KOTLIN_STUBS
     expect(real).toContain('val fallbackLocale: String? = null')
     expect(stub).toContain('val fallbackLocale: String? = null')
   })

@@ -520,6 +520,7 @@ public struct DragGesture: Gesture {
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
 public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
+public struct CGPoint { public var x: Double = 0; public var y: Double = 0 }
 // MagnificationGesture — what <PlotChart dataZoom> lowers its pinch to. The
 // value is the cumulative scale (CGFloat) since the gesture began.
 public struct MagnificationGesture: Gesture {
@@ -676,7 +677,7 @@ extension View {
   // which lowers to .scaledToFill(), meaning every plain <Image src alt /> --
   // the most common usage of a canonical primitive -- failed the required Swift
   // gate on valid SwiftUI. Only fit="contain" (scaledToFit) and fit="none" (no
-  // modifier) got through. Same SUBSET-stub defect as PyreonI18n above, found
+  // modifier) got through. Same SUBSET-stub defect as the PyreonI18n stub (now in @pyreon/i18n's plugin), found
   // the same way: Kotlin accepted the identical source.
   public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
@@ -849,186 +850,6 @@ public struct PyreonFilePicker { public init() {}; public func pick() async -> S
 // emit uses it) drives runtime reactivity; these only satisfy conformance.
 public protocol PyreonStoreProtocol: AnyObject {}
 public protocol PyreonModelProtocol: AnyObject {}
-// Mirrors the real @Observable final class. The struct stub was missing
-// \`can\` / \`nextEvents\` / the \`state\` property / \`transitions\`, so a correct
-// \`m.can("GO")\` - a documented member of the web Machine interface, which
-// \`createMachine\` lowers to this type - failed the type gate on iOS while
-// compiling fine on Android, whose stub was already complete.
-public final class PyreonMachine {
-  public init(initial: String, transitions: [String: [String: String]]) {
-    self.state = initial
-    self.transitions = transitions
-  }
-  public private(set) var state: String
-  public let transitions: [String: [String: String]]
-  public func callAsFunction() -> String { state }
-  public func send(_ event: String) {}
-  public func matches(_ s: String) -> Bool { false }
-  public func can(_ event: String) -> Bool { false }
-  public func nextEvents() -> [String] { [] }
-}
-// @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
-// PyreonCrdt.swift / PyreonSyncedSignal.swift SURFACE (not a superset); the
-// stub omits @available so the emitted View compiles on any deployment target.
-public enum PyreonScalar: Equatable {
-  case string(String)
-  case int(Int)
-  case double(Double)
-  case bool(Bool)
-  case null
-}
-// A stub that is NARROWER than the runtime rejects CORRECT emit, and one that
-// is WIDER hides a missing symbol. Both halves of the surface below are
-// therefore mirrored from PyreonCrdt.swift, not approximated to what the
-// emitter happens to produce today.
-extension PyreonScalar: Codable {}
-public struct PyreonCrdtOp: Codable, Equatable {
-  public let map: String
-  public let key: String
-  public let value: PyreonScalar
-  public let clock: Int
-  public let actor: String
-}
-public struct PyreonCrdtMap {
-  public func get(_ key: String) -> PyreonScalar? { nil }
-  public func has(_ key: String) -> Bool { false }
-  public func keys() -> [String] { [] }
-  public func set(_ key: String, _ value: PyreonScalar) {}
-  public func set(_ key: String, _ value: String) {}
-  public func set(_ key: String, _ value: Int) {}
-  public func set(_ key: String, _ value: Double) {}
-  public func set(_ key: String, _ value: Bool) {}
-  public func observe(_ cb: @escaping (Set<String>) -> Void) -> () -> Void { {} }
-}
-public final class PyreonCrdtDoc {
-  public var onLocalOps: (([PyreonCrdtOp]) -> Void)?
-  public init(actor: String) {}
-  public func getMap(_ name: String) -> PyreonCrdtMap { PyreonCrdtMap() }
-  public func get(_ map: String, _ key: String) -> PyreonScalar? { nil }
-  public func has(_ map: String, _ key: String) -> Bool { false }
-  public func keys(_ map: String) -> [String] { [] }
-  public func set(_ map: String, _ key: String, _ value: PyreonScalar) {}
-  public func observe(_ map: String, _ cb: @escaping (Set<String>) -> Void) -> () -> Void { {} }
-  public func applyOps(_ ops: [PyreonCrdtOp]) {}
-  public func encodeState() -> [PyreonCrdtOp] { [] }
-  public func encodeMessage(_ ops: [PyreonCrdtOp]) -> String { "" }
-  public func applyMessage(_ json: String) {}
-}
-public protocol PyreonScalarConvertible: Equatable {
-  init?(pyreonScalar: PyreonScalar)
-  var pyreonScalar: PyreonScalar { get }
-}
-extension String: PyreonScalarConvertible {
-  public init?(pyreonScalar: PyreonScalar) { nil }
-  public var pyreonScalar: PyreonScalar { .string(self) }
-}
-extension Double: PyreonScalarConvertible {
-  public init?(pyreonScalar: PyreonScalar) { nil }
-  public var pyreonScalar: PyreonScalar { .double(self) }
-}
-extension Bool: PyreonScalarConvertible {
-  public init?(pyreonScalar: PyreonScalar) { nil }
-  public var pyreonScalar: PyreonScalar { .bool(self) }
-}
-public let PYREON_SYNCED_DEFAULT_MAP = "pyreon"
-public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
-  public private(set) var value: T
-  public init(doc: PyreonCrdtDoc, map: String = PYREON_SYNCED_DEFAULT_MAP, key: String, initial: T) {
-    self.value = initial
-  }
-  public func callAsFunction() -> T { value }
-  public func set(_ v: T) {}
-  // The runtime ships this and the stub did not, so a correct
-  // \`s.dispose()\` was rejected by the type gate.
-  public func dispose() {}
-}
-// @pyreon/table — the PyreonTableState engine. Mirrors PyreonTableState.swift.
-public enum PyreonCell { case string(String); case number(Double); case none }
-public enum PyreonSortDirection { case asc, desc }
-public struct PyreonTableColumn<T> {
-  public init(id: String, accessor: @escaping (T) -> PyreonCell) {}
-}
-public final class PyreonTableState<T> {
-  public init(data: (() -> [T])? = nil, columns: [PyreonTableColumn<T>] = [], pageSize: Int = 0, rowId: ((T, Int) -> String)? = nil, filterFn: ((T, String, [PyreonTableColumn<T>]) -> Bool)? = nil) {}
-  public func setData(_ data: @escaping () -> [T]) {}
-  public func rows() -> [T] { [] }
-  public func pageCount() -> Int { 1 }
-  public func filteredCount() -> Int { 0 }
-  public func selectedIds() -> [String] { [] }
-  public func toggleSort(_ c: String) {}
-  public func setFilter(_ q: String) {}
-  public func setPage(_ i: Int) {}
-  public func nextPage() {}
-  public func prevPage() {}
-  public func isSelected(_ id: String) -> Bool { false }
-  public func toggleSelected(_ id: String) {}
-  public func clearSelection() {}
-  public func rowId(_ row: T, _ index: Int) -> String { "" }
-  public private(set) var page: Int = 0
-  public private(set) var sortColumn: String?
-  public private(set) var sortDirection: PyreonSortDirection = .asc
-  public private(set) var filterValue: String = ""
-  public private(set) var selected: [String] = []
-}
-// @pyreon/dnd — the PyreonSortableState engine + its two View modifiers.
-// Mirrors PyreonSortable.swift EXACTLY (minus @Observable/@available, which are
-// runtime-reactivity/availability macros rather than type-level contract — the
-// same omission PyreonTableState/PyreonNetworkStatus document).
-public enum PyreonSortAxis: String, Equatable { case vertical, horizontal }
-public enum PyreonDropEdge: String, Equatable { case top, bottom, left, right }
-public struct CGPoint { public var x: Double = 0; public var y: Double = 0 }
-public final class PyreonSortableState<T> {
-  public init(axis: PyreonSortAxis = .vertical) {}
-  public func bind(
-    items: @escaping () -> [T],
-    by: @escaping (T) -> String,
-    onReorder: @escaping ([T]) -> Void
-  ) {}
-  public func isActive(_ key: String) -> Bool { false }
-  public func isOverKey(_ key: String) -> Bool { false }
-  public func activeId() -> String? { nil }
-  public func overId() -> String? { nil }
-  public func overEdge() -> String? { nil }
-  public func pickUp(_ key: String) {}
-  public func dragOver(_ key: String, edge: PyreonDropEdge) {}
-  public func dragLeave(_ key: String) {}
-  public func cancel() {}
-  @discardableResult
-  public func drop(source: String, on target: String, edge: PyreonDropEdge) -> Bool { false }
-  public static func moveIndex(_ list: [T], from: Int, to: Int) -> [T] { list }
-  public func reordered(dragKey: String, dropKey: String, edge: PyreonDropEdge) -> [T]? { nil }
-  public func edgeAt(_ point: CGPoint, in size: CGSize) -> PyreonDropEdge { .top }
-  public private(set) var activeKey: String?
-  public private(set) var overKey: String?
-  public private(set) var currentEdge: PyreonDropEdge?
-  public let axis: PyreonSortAxis = .vertical
-}
-extension View {
-  public func pyreonSortableItem<T>(
-    _ state: PyreonSortableState<T>,
-    key: String
-  ) -> some View { self }
-  public func pyreonSortableContainer<T>(
-    _ state: PyreonSortableState<T>
-  ) -> some View { self }
-}
-public struct PyreonI18n {
-  // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
-  // made it required, so \`createI18n({ locale, messages })\` — the two-argument
-  // form the docs show and the common case — was REJECTED by the gate with
-  // "missing argument for parameter 'fallbackLocale'". Valid source, failing
-  // build. Same class as the coolgrid frame stub: a SUBSET stub manufactures
-  // failures exactly as a SUPERSET stub masks them, and the fix is the same —
-  // mirror the real signature, do not guess at it.
-  public init(
-    locale: String,
-    messages: [String: [String: String]],
-    fallbackLocale: String? = nil
-  ) {}
-  // t(key) OR t(key, interpolation values) — the emit passes [String: Any]-shaped
-  // dictionary literals ([String: String] and [String: Int] both coerce).
-  public func t(_ key: String, _ values: [String: Any] = [:]) -> String { "" }
-}
 // AppStorage - SwiftUI's own wrapper, which \`useStorage\` emits for SCALAR
 // values (a struct value routes to PyreonAppStorage below instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was
@@ -1131,28 +952,6 @@ public final class PyreonAppState {
   public func start() {}
   public func stop() {}
   public init(phase: String = "active") { self.phase = phase }
-}
-// PyreonToast — mirror of runtime-swift's PyreonToast.swift surface the emit
-// touches: the shared singleton, \`toasts\` (a collection of Identifiable items
-// with a \`message\`, iterated by the \`<Toaster/>\` ForEach), and the
-// \`add(_:type:)\` the imperative \`toast(...)\` call lowers to.
-public struct PyreonToastItem: Identifiable {
-  public let id: String
-  public let message: String
-  public let type: String
-}
-public final class PyreonToast {
-  public static let shared = PyreonToast()
-  public private(set) var toasts: [PyreonToastItem] = []
-  @discardableResult
-  public func add(_ message: String, type: String = "info", duration: TimeInterval? = nil) -> String { "" }
-  public func dismiss(_ id: String) {}
-  public func clear() {}
-}
-// PyreonA11y — mirror of runtime-swift's PyreonA11y.swift: a static
-// \`announce(_:assertive:)\` the imperative \`announce(...)\` call lowers to.
-public enum PyreonA11y {
-  public static func announce(_ message: String, assertive: Bool = false) {}
 }
 // PyreonCrashReporter — mirror of the runtime-swift surface the emit touches:
 // no-arg init, start(), the lastCrash/hadCrash reads (bare — the real type is
