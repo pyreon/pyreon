@@ -9,7 +9,7 @@
 // the web spelling is gone.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const kt = (src: string) => transform(src, { target: 'kotlin' })
 

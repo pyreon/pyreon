@@ -37,7 +37,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const TODOMVC_SOURCE_PATH = join(
   __dirname,

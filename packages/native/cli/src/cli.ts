@@ -171,7 +171,7 @@ upward — hoisting- and pnpm-symlink-safe, unlike the scaffold's fixed
 the resolved Gradle srcDirs list build.gradle.kts reads; --json prints
 the full wiring (srcDirs + iOS SwiftPM packages + co-located sources).
 
-plugins lists the compiler's built-in plugins, the service registry (each
+plugins lists the service registry (each
 hook and the plugin that owns it), the call recognizers, the element lowerings and every package-declared plugin
 (package.json "pyreon.native.plugin"). --verify checks that each service's
 Swift/Kotlin types are really declared in that package's own native sources.

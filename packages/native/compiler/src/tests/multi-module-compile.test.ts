@@ -86,7 +86,8 @@ export function ${name}() {
 
 // A provider-only module and a reader in ANOTHER module: they must name the
 // same app-wide key, and the provider file must compile with no reader in it.
-const PERM_PROVIDER = `import { PermissionsProvider, Stack, Text } from '@pyreon/primitives'
+const PERM_PROVIDER = `import { PermissionsProvider } from '@pyreon/permissions'
+import { Stack, Text } from '@pyreon/primitives'
 export function Shell() {
   return (
     <PermissionsProvider permissions={{ 'posts.read': true }}>

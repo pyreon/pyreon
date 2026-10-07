@@ -18,7 +18,7 @@
 // tells an author already using the hook to "use the hook instead".
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const bare = `import { usePermissions } from '@pyreon/permissions'
 import { Text } from '@pyreon/primitives'

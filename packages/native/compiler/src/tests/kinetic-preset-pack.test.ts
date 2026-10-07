@@ -11,7 +11,7 @@
 // whereas a named decline is one they can act on.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const src = (imported: string) => `

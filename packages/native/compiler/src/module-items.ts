@@ -26,7 +26,7 @@
  */
 
 import { isJson, type AstNode } from './call-lowering'
-import type { EmitContext } from './emit-context'
+import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
 import type { ExprIR, ExtModuleItem, ExtPayload, StructIR, TypeIR } from './types'
 
 /** What a top-level recognizer (or `ModuleParseContext.addItem`) returns. The compiler stamps `plugin`. */
@@ -61,6 +61,10 @@ export interface ModuleParseContext {
    * (the compiler's own wording). `where` is the prefix, e.g. `toast() options`.
    */
   warnDynamicKey(prop: AstNode, where: string): void
+  /** The type arguments of a call or `new` node (`new Box<string, number>(…)`), each parsed to a type; none when there are none. */
+  typeArgs(node: AstNode): TypeIR[]
+  /** The source location of `node` as the compiler spells it in its own messages (`file.tsx:3:14`), for a message that names a call. */
+  loc(node: AstNode): string
   /**
    * Add an item found OUTSIDE a declaration (a schema synthesized from an inline `s.object({ … }).safeParse(x)`).
    * Appended after every declaration-level item, in the order added.
@@ -106,16 +110,17 @@ export interface FieldValidators {
 /** Renders one item type, and says how it takes part in the core's cross-cutting passes. */
 export interface ModuleItemEmitter {
   /**
-   * Where among the core's own module items this one emits: after the models (`'models'`) or after the
-   * features (`'features'`, the default — beside every other data declaration).
+   * Where among the core's own module items this one emits, in order: after the models (`'models'`), then the
+   * plugin DECLARATIONS a file introduces by name before its schemas (`'declarations'` — a feature's schema struct
+   * and its binding), then every other data declaration (`'data'`, the default). Items of one slot emit in file order.
    */
-  readonly after?: 'models' | 'features' | undefined
+  readonly after?: 'models' | 'declarations' | 'data' | undefined
   /**
    * Only an item that used to be a closed core array needs this: the name of the array it hashed in
    * (`moduleTag`, the hash that names synthesized structs, hashes each lane's payloads where the array stood).
    * A new plugin has no prior output to preserve and omits it.
    */
-  readonly legacyList?: 'fieldMetas' | 'zodSchemas' | undefined
+  readonly legacyList?: 'fieldMetas' | 'zodSchemas' | 'features' | undefined
   readonly bindings?: ItemBindings | undefined
   readonly fieldValidators?: FieldValidators | undefined
   /** The item's declarations, one string each (nested declarations first). */
@@ -156,6 +161,8 @@ export interface CallExprSite {
   /** The callee as written (`toast`, `toast.success`): the recognizer matches it against what its scan recorded. */
   readonly callee: AstNode
   readonly args: readonly AstNode[]
+  /** True for `new Name(…)`: a recognizer that claims a constructor checks it, and one that claims a call ignores a construction. */
+  readonly construct?: boolean | undefined
 }
 
 /**
@@ -168,15 +175,24 @@ export type CallExprRecognizer = (site: CallExprSite, ctx: ModuleParseContext) =
 
 /** Renders and types one `ext-expr` type. */
 export interface ExprEmitter {
-  swift(e: ExtExprIR, ctx: EmitContext): string
-  kotlin(e: ExtExprIR, ctx: EmitContext): string
+  swift(e: ExtExprIR, ctx: SwiftEmitContext): string
+  kotlin(e: ExtExprIR, ctx: KotlinEmitContext): string
   /** How expressions over the node are typed (without it the node is `unknown`). */
   readonly typing?:
     | {
-        /** The node's own type. */
-        type?(e: ExtExprIR): TypeIR
+        /**
+         * The node's own type. `infer` types any expression in the active component — a source read, an argument — for a
+         * node whose type follows from its parts (`rx.filter(todos, p)` is an array of `todos`' element).
+         */
+        type?(e: ExtExprIR, infer: (e: ExprIR) => TypeIR): TypeIR
         /** The type of `<node>.<property>`; when present it decides every member read on the node. */
         member?(e: ExtExprIR, property: string): TypeIR
+        /**
+         * Whether a file-scope `const` initialized with this node is typed by `type` for the READS that follow it.
+         * Default true; false when the node's `type` describes how it reads (a map) but not what it is (a class
+         * whose own member surface must be emitted verbatim).
+         */
+        seedsModuleConst?: boolean
       }
     | undefined
   /**
@@ -186,6 +202,12 @@ export interface ExprEmitter {
   legacyHash?(e: ExtExprIR): unknown
   /** Apply a value rename (old → new) to the payload, in place. */
   rename?(e: ExtExprIR, renames: ReadonlyMap<string, string>): void
+  /**
+   * The node is a reduction over a collection: its source, its reducer (an arrow whose second parameter is the element) and its
+   * seed — returned as the SAME nodes the expression holds, since the core widens an integer-valued seed to a Double in place when
+   * the reducer accumulates a fractional value. Without it a plugin reduction keeps the seed it was written with.
+   */
+  reduce?(e: ExtExprIR): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined
 }
 
 /** What a struct refinement may edit and read. */
@@ -350,7 +372,7 @@ export function emitExtExpr(
   registry: ItemRegistry,
   e: ExtExprIR,
   target: 'swift' | 'kotlin',
-  ctx: EmitContext,
+  ctx: SwiftEmitContext | KotlinEmitContext,
 ): string {
   const emitter = registry.exprEmitter(e.plugin, e.type)
   if (emitter === undefined) {
@@ -358,7 +380,7 @@ export function emitExtExpr(
       `[Pyreon] expression "${e.type}" of plugin "${e.plugin}" has no emitter in this compiler — the plugin that recognized it is not loaded here.`,
     )
   }
-  return target === 'swift' ? emitter.swift(e, ctx) : emitter.kotlin(e, ctx)
+  return target === 'swift' ? emitter.swift(e, ctx as SwiftEmitContext) : emitter.kotlin(e, ctx as KotlinEmitContext)
 }
 
 /**

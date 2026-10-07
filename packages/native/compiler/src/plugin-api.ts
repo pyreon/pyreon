@@ -39,6 +39,12 @@ export type {
 export type {
   AstNode,
   CallRecognizer,
+  ComputedDeclSpec,
+  DeclCallRecognizer,
+  DeclCallSite,
+  DeclVerdict,
+  SignalDeclSpec,
+  SignalSpec,
   CallSite,
   DeclEmitter,
   DeclLifecycle,
@@ -68,7 +74,7 @@ export type {
   StructRefinementTarget,
   TopLevelRecognizer,
 } from './module-items'
-export type { ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
+export type { JsxElementRewrite, JsxRewriteContext, ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
 export type { ParseRefinement, ParseRefinementTarget, PropsTypeContext, PropsTypeResolver } from './parse-extensions'
 export type {
   CallExprIR,
@@ -88,6 +94,7 @@ export type {
   ReceiverTargetLowering,
 } from './expr-lowering'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
+export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } from './signal-persistence'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export type { UnloweredSpec } from './unlowered-modules'
 export type { ServiceDescriptor } from './services'
@@ -108,6 +115,7 @@ export {
   unwrapTypeLayers,
 } from './plugin-ast'
 export { forEachExpr } from './expr-walk'
+export { unconsumedSlotWarning } from './jsx-slot-attrs'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
 export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'

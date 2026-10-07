@@ -20,11 +20,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createCompiler } from '@pyreon/native-compiler'
 import { httpPlugin } from '../../../../fundamentals/http/src/native-plugin/plugin'
 import { queryPlugin } from '../../../../fundamentals/query/src/native-plugin/plugin'
+import hooksPlugin from '../../../../fundamentals/hooks/src/native-plugin'
 import { build, conditionalKotlinImports, findTsxFiles, isWebOnlyEntry } from '../build'
 
 // The libraries own their native lowering (a plugin in their own package); the compiler's fixtures use
 // `@pyreon/query`, so the tests that compile them load the plugin the way `pyreon-native` discovers it.
-const FIRST_PARTY = createCompiler({ discovered: [httpPlugin, queryPlugin] })
+const FIRST_PARTY = createCompiler({ discovered: [httpPlugin, queryPlugin, hooksPlugin] })
 const { transform } = FIRST_PARTY
 
 const HERE = dirname(fileURLToPath(import.meta.url))

@@ -9,7 +9,7 @@
  * lifecycle. Before this module each such hook was a recognizer branch in
  * `parse.ts`, a `DeclIR` union member, and one emit branch per target, all
  * restating the same shape. Now a plain service is ONE entry in the library's
- * plugin (see `SERVICES` below);
+ * plugin (`@pyreon/hooks`' `native-plugin.ts`);
  * the parser lowers it to the generic `{ kind: 'service', hook }` declaration
  * and both emitters render it from the descriptor.
  *
@@ -37,7 +37,6 @@
  * `useStream<T>`).
  */
 
-import { HOOKS_SERVICES } from './built-in-services.generated'
 import type { TypeIR } from './types'
 
 /**
@@ -110,21 +109,6 @@ export interface ServiceDescriptor {
    */
   readonly optionalFields?: Readonly<Record<string, TypeIR>>
 }
-
-/**
- * Every built-in service, in registry order, as descriptors.
- *
- * The DATA is not written here: `@pyreon/hooks` owns it
- * (`packages/fundamentals/hooks/src/native-plugin.ts`) and
- * `scripts/gen-native-builtin-plugins.ts` copies it into
- * `built-in-services.generated.ts`, so a zero-config `transform()` lowers these
- * hooks without the compiler depending on the library. This file keeps only the
- * descriptor VOCABULARY (the types above) and the derivation. To add a service,
- * add it to the library's plugin and regenerate.
- */
-export const SERVICES: readonly ServiceDescriptor[] = Object.entries(HOOKS_SERVICES).map(
-  ([hook, spec]) => ({ ...spec, hook, legacyKind: spec.legacyKind ?? 'service' }),
-)
 
 /** Render a descriptor's Kotlin lines for a Kotlin identifier. */
 export function renderKotlinService(s: ServiceDescriptor, id: string): string {

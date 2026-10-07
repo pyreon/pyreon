@@ -14,7 +14,7 @@
 // EMIT SHAPE + is the bisect target.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `import { useNotifications } from '@pyreon/hooks'
 export function App() {

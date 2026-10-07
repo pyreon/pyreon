@@ -7,7 +7,6 @@ export { swiftBackend, kotlinBackend } from './backends'
 export { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
 export { assertPluginShape } from './plugin-shape'
 export {
-  BUILT_IN_SERVICE_OWNER,
   createServiceRegistry,
   orderPlugins,
   selectDiscovered,
@@ -34,8 +33,14 @@ export type {
   CallRegistry,
   CallSite,
   DeclEmitter,
+  ComputedDeclSpec,
+  DeclCallRecognizer,
+  DeclCallSite,
+  DeclVerdict,
   ExtDeclSpec,
   MemberCallLowering,
+  SignalDeclSpec,
+  SignalSpec,
   MemberCallSite,
   ParseContext,
   RegisteredCall,
@@ -53,10 +58,11 @@ export type {
 } from './module-items'
 export type { UnloweredModule, UnloweredSpec } from './unlowered-modules'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
+export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } from './signal-persistence'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'
-export { SERVICES, renderKotlinService } from './services'
+export { renderKotlinService } from './services'
 export { parsePyreon } from './parse'
 export type { ParseOptions } from './parse'
 export type { ServiceDescriptor } from './services'

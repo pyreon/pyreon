@@ -10,12 +10,9 @@
  * types below are imported as TYPES only, so this package gains no runtime
  * dependency on the compiler.
  *
- * This file is the SOURCE OF TRUTH. `@pyreon/native-compiler` keeps a
- * generated copy (`src/built-in-services.generated.ts`, written by
- * `scripts/gen-native-builtin-plugins.ts`) so a zero-config `transform()` needs
- * no library installed; an app whose `@pyreon/hooks` is newer than the compiler
- * has this plugin discovered from `pyreon.native.plugin` and it REPLACES the
- * built-in of the same name. The declaration ORDER is meaningful (the Swift
+ * This file is the ONLY copy. `@pyreon/native-compiler` carries no hooks table (it used to keep a
+ * generated one): the plugin is discovered from `pyreon.native.plugin` when a source imports
+ * `@pyreon/hooks`, like every other library's. The declaration ORDER is meaningful (the Swift
  * lifecycle modifiers emit in registry order) — do not sort it.
  *
  * `legacyKind` keeps each hook's synthesized struct names identical to the
@@ -27,7 +24,9 @@
  * `native/kotlin` (or the shared runtimes); `scripts/check-native-plugin-types.ts`
  * fails otherwise.
  */
-import type { CompilerPlugin } from '@pyreon/native-compiler'
+import type { CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
+import { containerPlugin } from './native-plugin/containers'
+import { fetchDecl, fetchReceiver, FETCH_TYPE, recognizeFetch } from './native-plugin/fetch'
 
 const num = { kind: 'number' as const }
 const str = { kind: 'string' as const }
@@ -38,6 +37,14 @@ const nativePlugin = {
   name: '@pyreon/hooks',
   apiVersion: 1,
   modules: ['@pyreon/hooks'],
+  // Code-shaped lowerings, beside the data-only service table below: `useFetch<T>(url, init?)` and its container.
+  calls: { useFetch: recognizeFetch, ...containerPlugin.calls },
+  // `const { data, isPending } = useFetch(url)` aliases onto the container.
+  destructureCalls: ['useFetch', ...containerPlugin.destructureCalls],
+  decls: { [FETCH_TYPE]: fetchDecl, ...containerPlugin.decls },
+  receivers: { [FETCH_TYPE]: fetchReceiver, ...containerPlugin.receivers },
+  // The websocket's implicit connect-on-mount (see `containers.ts`).
+  prepareEmit: containerPlugin.prepareEmit,
   services: {
     // M3.2 — share sheet. iOS presents a UIActivityViewController from the key
     // window itself; Android needs a Context (hoisted from LocalContext because

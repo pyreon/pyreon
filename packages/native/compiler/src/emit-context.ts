@@ -82,6 +82,8 @@ export interface EmitContextBackendExtras {
   isFunctionName(name: string): boolean
   /** `emitSwiftChild` / `emitKotlinChild` — one JSX child at `indent`. */
   child(child: ChildIR, indent: number): string
+  /** `emitSwiftGeneric` / `emitKotlinGeneric` — the element as an unclaimed component call, bypassing every lowering. */
+  generic(el: JsxElementIR, indent: number): string
   /** `swiftType` / `kotlinType` — the target spelling of a type. */
   typeText(type: TypeIR): string
   /** The target type name of a typed container's element (a table row, a sortable item) — see {@link EmitContext.rowType}. */
@@ -224,6 +226,12 @@ export interface EmitContext {
   isFunctionName(name: string): boolean
   /** One JSX child, emitted through the full dispatcher at `at` (default: this context's indentation). */
   child(child: ChildIR, at?: number): string
+  /**
+   * The element emitted as the compiler's generic component call (`Name(attr: …) { children }`), WITHOUT consulting
+   * any lowering — what an element lowering falls back to when it declines a shape it cannot lower. `emit` would
+   * re-enter the dispatcher and claim the same tag again.
+   */
+  generic(el: JsxElementIR, at?: number): string
   /** The target's spelling of `type`. */
   typeText(type: TypeIR): string
   /**
@@ -337,6 +345,7 @@ export function createEmitContext(
     component: () => (backend.component ?? (() => missing('component')))(),
     isFunctionName: (name) => (backend.isFunctionName ?? (() => missing('isFunctionName')))(name),
     child: (child, at = indent) => (backend.child ?? (() => missing('child')))(child, at),
+    generic: (el, at = indent) => (backend.generic ?? (() => missing('generic')))(el, at),
     typeText: (type) => (backend.typeText ?? (() => missing('typeText')))(type),
     rowType: (element) => (backend.rowType ?? (() => missing('rowType')))(element),
     rowFields: (element) => (backend.rowFields ?? (() => missing('rowFields')))(element),

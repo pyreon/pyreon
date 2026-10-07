@@ -19,7 +19,7 @@
 // check) keep the old emit and warn LOUDLY — the warning-free silence was
 // the actual bug.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,

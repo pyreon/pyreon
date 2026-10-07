@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PARSE_SRC = readFileSync(join(HERE, '../parse.ts'), 'utf8')
@@ -108,7 +108,8 @@ describe('a Pyreon hook with no native lowering', () => {
     )
     expect(setBlock, 'NATIVE_LOWERED_STATIC_HOOKS not found').toBeTruthy()
     const listed = [...setBlock![1]!.matchAll(/'(use[A-Za-z]+)'/g)].map((m) => m[1]!)
-    expect(listed.length).toBeGreaterThan(20)
+    // The stateful containers and useFetch moved into @pyreon/hooks' plugin (phase 3m), so the core set shrank.
+    expect(listed.length).toBeGreaterThan(10)
 
     // Each must appear OUTSIDE the set literal — i.e. in the parser's actual
     // recognition logic.

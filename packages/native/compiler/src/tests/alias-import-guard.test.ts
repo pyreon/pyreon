@@ -6,7 +6,7 @@
 // so the guard only SUPPRESSES a name imported from another package (purely
 // additive precision).
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const swift = (src: string) => transform(src, { target: 'swift' }).code
 const kotlin = (src: string) => transform(src, { target: 'kotlin' }).code
@@ -57,6 +57,22 @@ export function App() { return (<PyreonUI>Hi</PyreonUI>) }`
 export function App() { return (<PyreonUI>Hi</PyreonUI>) }`
     expect(swift(src)).not.toContain('Group {')
     expect(swift(src)).toContain('PyreonUI {')
+  })
+})
+
+describe('alias-import guard — @pyreon/permissions PermissionsProvider', () => {
+  const PROVIDER = (from: string) => `import { PermissionsProvider } from '${from}'
+export function App() { return (<PermissionsProvider permissions={{ 'a': true }}>Hi</PermissionsProvider>) }`
+
+  it('PermissionsProvider from @pyreon/permissions injects the grants on both targets', () => {
+    expect(swift(PROVIDER('@pyreon/permissions'))).toContain('.environment(\\.pyreonPermissions, PyreonPermissions(["a"]))')
+    expect(kotlin(PROVIDER('@pyreon/permissions'))).toContain('LocalPyreonPermissions provides PyreonPermissions(setOf("a"))')
+  })
+
+  it('PermissionsProvider from a USER module is NOT hijacked (kept as a component); the old emitter claimed it by name alone', () => {
+    expect(swift(PROVIDER('./my-providers'))).not.toContain('pyreonPermissions')
+    expect(swift(PROVIDER('./my-providers'))).toContain('PermissionsProvider(')
+    expect(kotlin(PROVIDER('./my-providers'))).not.toContain('LocalPyreonPermissions')
   })
 })
 

@@ -413,8 +413,6 @@ const WRAPS: Record<string, Wrap> = {
   'ternary then': (h) => ({ kind: 'ternary', cond: lit(true), then: h, otherwise: lit(2) }),
   'ternary otherwise': (h) => ({ kind: 'ternary', cond: lit(true), then: lit(1), otherwise: h }),
   arrow: (h) => ({ kind: 'arrow', params: ['q'], body: h }) as ExprIR,
-  'rx-call source': (h) => ({ kind: 'rx-call', method: 'count', source: h, args: [] }),
-  'rx-call arg': (h) => ({ kind: 'rx-call', method: 'take', source: id('s'), args: [h] }),
   array: (h) => ({ kind: 'array', elements: [lit(1), h] }),
   template: (h) => ({ kind: 'template', quasis: ['a', 'b'], exprs: [h] }),
   'object field': (h) => ({ kind: 'object', fields: [{ name: 'a', value: h }] }),
@@ -443,9 +441,8 @@ describe('expr-utils — exprReferencesIdent is total', () => {
   it('an arrow re-binding the name hides it; the leaf kinds reference nothing', () => {
     expect(exprReferencesIdent(SHADOW, 'x')).toBe(false)
     expect(exprReferencesIdent({ kind: 'new-collection', collection: 'set' }, 'x')).toBe(false)
-    expect(
-      exprReferencesIdent({ kind: 'new-sized-map', keyType: { kind: 'string' }, valueType: { kind: 'number' }, maxEntries: 3, lru: true }, 'x'),
-    ).toBe(false)
+    // A plugin expression with no argument slots (`new SizedMap<K, V>({ … })` carries only literal options) can never reference one.
+    expect(exprReferencesIdent({ kind: 'ext-expr', plugin: '@acme/toy', type: 'toy', payload: { maxEntries: 3 }, args: [] }, 'x')).toBe(false)
   })
 })
 
@@ -502,8 +499,8 @@ describe('expr-utils — lowerRouteParams walks every kind', () => {
     expect(lowerRouteParams(jsx, 'ctx')).toEqual({ expr: jsx, usesParams: false, residualCtx: false })
     const empty: ExprIR = { kind: 'new-collection', collection: 'map' }
     expect(lowerRouteParams(empty, 'ctx').expr).toBe(empty)
-    const sized: ExprIR = { kind: 'new-sized-map', keyType: { kind: 'string' }, valueType: { kind: 'number' }, maxEntries: 1, lru: false }
-    expect(lowerRouteParams(sized, 'ctx').expr).toBe(sized)
+    const sized: ExprIR = { kind: 'ext-expr', plugin: '@acme/toy', type: 'toy', payload: { maxEntries: 1 }, args: [] }
+    expect(lowerRouteParams(sized, 'ctx').expr).toEqual(sized)
   })
 })
 

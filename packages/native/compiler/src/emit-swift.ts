@@ -38,6 +38,9 @@ import {
   pluginAsyncState,
   tailLifecycleDecls,
   pluginLifecycleLines,
+  persistenceFor,
+  pluginDeclIsCallable,
+  pluginDeclUsesRouter,
   pluginNeedsStableHost,
   serviceFor,
   serviceLifecycle,
@@ -103,7 +106,6 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
-  synthesizeWebSocketAutoConnect,
   registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
@@ -117,7 +119,6 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { clampExpr, pureStateBindings } from './pure-state'
-import { permissionsProviderSeed } from './permissions-provider'
 import type { AttrsComponentIR } from './attrs-native'
 import { createSwiftEmitContext, type ComponentInfo, type HostStateSlot, type StructRegistry, type SwiftEmitContext, type WebViewFacade } from './emit-context'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
@@ -185,7 +186,6 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  FeatureDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
@@ -527,57 +527,9 @@ let _signalNames: Set<string> = new Set()
  */
 let _serviceBindings: Map<string, ServiceDescriptor> = new Map()
 /**
- * Per-component: `useDatabase()` decl names.
- *
- * Swift API-design convention gives `PyreonDatabase` LABELLED arguments
- * (`delete(_ collection: String, id: String)`), while the shared TS surface is
- * positional (`db.delete('tx', id)`). The generic pass-through emitted the
- * arguments positionally, producing `db.delete("tx", "a")` — which does not
- * compile ("missing argument label 'id:' in call").
- *
- * `swiftc -parse` accepts it (labels are a TYPE-level concern), so this shipped
- * unnoticed: `get`, `delete` and `find` have NEVER produced compilable Swift.
- * Surfaced the moment the showcase-app emit was type-checked (M-gate.1f) — the
- * gate paying for itself again.
- *
- * Kotlin is unaffected: named arguments are optional there, so the positional
- * call is already valid.
- */
-let _databaseNames: Set<string> = new Set()
-/**
- * The labels `PyreonDatabase` declares, per method, for arguments AFTER the
- * leading unlabelled collection name. `null` = that position is unlabelled.
- * Mirrors runtime-swift EXACTLY; a method absent here keeps the plain
- * positional emit (`insert`, `all`, `count` take one unlabelled argument).
- */
-const SWIFT_DATABASE_ARG_LABELS: Record<string, readonly (string | null)[]> = {
-  get: ['id'],
-  delete: ['id'],
-  find: ['field', 'equals'],
-}
-
-/**
- * The SAME defect, generalised past the one service it was first found on.
- *
- * `SWIFT_DATABASE_ARG_LABELS` above fixed `PyreonDatabase` when the type gate
- * surfaced it, but the CLASS is "any native service method whose Swift
- * signature labels its arguments, called positionally from the shared TS
- * surface". `PyreonMapState` is another member and was still broken:
- * `map.moveTo(37.3, -122.0)` and `map.removeMarker('a')` — the primary map API
- * — emitted positionally and failed with "missing argument labels
- * 'latitude:longitude:'". Kotlin accepted the identical source, since named
- * arguments are optional there.
- *
- * Enumerated rather than guessed: every `public func` in runtime-swift with a
- * labelled parameter was listed, then each was probed for reachability from TS.
- * `PyreonGeolocation.update` and the `PyreonWebSocket` internals are NOT on the
- * hook surface, `selectMarker(_ id:)` is unlabelled natively, and
- * `PyreonSecureStorage` is not lowered at all (deferred in v1) — so map is the
- * only reachable gap left.
- *
- * Labels here cover EVERY argument position, `null` meaning unlabelled — the
- * database table's "labels after a leading unlabelled argument" shape cannot
- * express `moveTo`, where the FIRST argument is labelled too.
+ * Native service methods whose Swift signature LABELS its arguments while the shared TS surface is positional, keyed by decl
+ * kind. Labels cover EVERY argument position, `null` meaning unlabelled. (The containers `@pyreon/hooks` owns —
+ * `PyreonDatabase`, `PyreonMapState`, `PyreonSecureStorage` — apply their labels through their own plugin's receivers.)
  */
 const SWIFT_SERVICE_ARG_LABELS: Record<
   string,
@@ -587,21 +539,6 @@ const SWIFT_SERVICE_ARG_LABELS: Record<
     // move(from:to:) is the one labelled method; the rest are unlabelled
     // positionals mirroring the web surface.
     move: ['from', 'to'],
-  },
-  secureStorage: {
-    // write(key:value:) — key FIRST everywhere (web/Swift/Kotlin); the
-    // labels make a crossed positional call uncompilable rather than a
-    // silent wrong-key write (both parameters are String).
-    write: ['key', 'value'],
-    read: ['key'],
-    remove: ['key'],
-    contains: ['key'],
-  },
-  map: {
-    // moveTo(latitude:longitude:zoom:) — zoom is defaulted, so BOTH the
-    // 2-argument and 3-argument calls are legal and both must be labelled.
-    moveTo: ['latitude', 'longitude', 'zoom'],
-    removeMarker: ['id'],
   },
 }
 
@@ -636,18 +573,8 @@ let _moduleItems: ExtModuleItem[] = []
  */
 let _formSubmitParamsSwift: string[] = []
 /**
- * Fetch-arc: every `useFetch` decl name in scope. A zero-arg CALL on a
- * fetch FIELD (`quotes.data()` — the web signal-read shape) rewrites to
- * a plain property read (`quotes.data`); `refetch()` keeps its parens
- * (real method).
- */
-let _fetchNamesSwift: Set<string> = new Set()
-// websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
-// hook carries the url) lowers to the runtime's `connect(to: URL)`.
-let _websocketUrlsSwift: Map<string, string> = new Map()
-/**
- * The component's ASYNC SOURCES in declaration order — its `useFetch` containers plus every plugin
- * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
+ * The component's ASYNC SOURCES in declaration order — every plugin
+ * declaration that declares an `asyncState` (`useFetch`, `useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
  */
 let _asyncDeclsSwift: DeclIR[] = []
 /**
@@ -658,8 +585,6 @@ let _asyncDeclsSwift: DeclIR[] = []
  * `call(callee=identifier, args=[])` in the IR.
  */
 let _functionNames: Set<string> = new Set()
-/** Bindings from `useUrlState` — callable, but NOT signals (see the `.set` guard). */
-let _urlStateNames: Set<string> = new Set()
 /** File-scope helper-function names (module-level, persists across the whole
  * emit) — seeded into each component's `_functionNames` so a `dbl(21)` call
  * resolves as a free-function call regardless of which component emits it. */
@@ -1060,21 +985,6 @@ export function _pushSwiftEmitWarning(msg: string): void {
 }
 
 
-/**
- * Value type → emitted helper. A total `Record` rather than a lookup with a
- * fallback: adding a `valueType` without an emitter is then a compile error,
- * not a silent default to the string helper.
- */
-const SWIFT_URL_STATE_TYPES: Record<
-  Extract<DeclIR, { kind: 'url-state' }>['valueType'],
-  string
-> = {
-  string: 'PyreonUrlState',
-  int: 'PyreonUrlStateInt',
-  double: 'PyreonUrlStateDouble',
-  boolean: 'PyreonUrlStateBool',
-}
-
 /** Convert integer arguments when a known signature requires fractional number storage. */
 function swiftTypedArgument(arg: ExprIR, expected: TypeIR | undefined, indent: number): string {
   const text = emitSwiftExpr(arg, indent)
@@ -1098,7 +1008,6 @@ export function emitSwift(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
-  features: FeatureDefnIR[] = [],
   moduleItems: ExtModuleItem[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
@@ -1293,9 +1202,8 @@ export function emitSwift(
   for (const m of models) parts.push(emitSwiftModel(m))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
   for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
-  // Gap 4 follow-up — feature v1: emit per-feature schema struct +
-  // module-scope const exposing initialValues + name.
-  for (const f of features) parts.push(emitSwiftFeature(f))
+  // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
+  for (const item of itemsInSlot(moduleItems, 'declarations')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Plugin module items (`CompilerPlugin.items`): schemas and the like. What every schema throws and
   // returns (`PyreonSchemaError`, `PyreonParseResult`) lives in the runtime (`PyreonSchema.swift`), NOT in the
   // emitted file — emitted per file they collided: two schema-bearing files in one Xcode target each
@@ -1309,7 +1217,7 @@ export function emitSwift(
   // reader in another must name the SAME key, which no per-file declaration
   // can guarantee.
   _moduleItems = moduleItems
-  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  for (const item of itemsInSlot(moduleItems, 'data')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -1618,59 +1526,6 @@ function emitSwiftModelBody(m: ModelDefnIR): string {
 }
 
 /**
- * Gap 4 follow-up — feature v1 emit. Produces a Codable struct
- * representing the schema shape PLUS a module-scope enum holding
- * the `name` + `initialValues` accessors. Downstream code can
- * reference `PyreonFeatureSchema_<binding>` as the data type and
- * `<binding>.initialValues` for default state.
- *
- *   struct PyreonFeatureSchema_Todo: Codable {
- *       var id: String = ""
- *       var title: String = ""
- *       var done: Bool = false
- *   }
- *
- *   enum PyreonFeature_Todo {
- *       static let name = "todo"
- *       static let initialValues = PyreonFeatureSchema_Todo()
- *   }
- */
-function emitSwiftFeature(f: FeatureDefnIR): string {
-  const lines: string[] = []
-  lines.push(`struct PyreonFeatureSchema_${f.bindingName}: Codable {`)
-  for (const field of f.fields) {
-    const t =
-      field.type === 'string' ? 'String' : field.type === 'number' ? 'Int' : 'Bool'
-    const initial = field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
-    lines.push(`    var ${swiftIdent(field.name)}: ${t} = ${initial}`)
-  }
-  lines.push(...swiftCodingKeysLines(f.fields.map((x) => x.name), '    '))
-  lines.push(`}`)
-  lines.push(``)
-  lines.push(`enum PyreonFeature_${f.bindingName} {`)
-  lines.push(`    static let name = ${swiftStr(f.featureName)}`)
-  lines.push(
-    `    static let initialValues = PyreonFeatureSchema_${f.bindingName}()`,
-  )
-  lines.push(`}`)
-  // The binding the SOURCE actually names. Without it the declaration is
-  // unreachable: shared source writes `Todo.name`, the emit declares
-  // `PyreonFeature_Todo`, and swiftc/kotlinc fail with "cannot find 'Todo' in
-  // scope" on a file the author never wrote. The two sibling lowerings in this
-  // file (`PyreonFieldMeta`, `PyreonZodSchema`) both emit this alias; the
-  // feature one did not.
-  //
-  // A VALUE binding (`.self`, a metatype) rather than a `typealias`, matching
-  // the two siblings. It is NOT collision-proof and must not be sold as such:
-  // Swift and Kotlin share one namespace for types and values, so a same-named
-  // user type collides with EITHER form (measured both ways). parse.ts warns by
-  // name for that shape instead.
-  lines.push(``)
-  lines.push(`let ${f.bindingName} = PyreonFeature_${f.bindingName}.self`)
-  return lines.join('\n')
-}
-
-/**
  * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
  * value backing lets Swift convert between the string literal source
  * and the enum case via init?(rawValue:) — useful for storage / URL
@@ -1802,7 +1657,6 @@ let _activePropsParamName: string | undefined
  */
 const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'debounced-value',
-  'fetch',
   'form',
   'hotkey',
   'on-mount',
@@ -1865,10 +1719,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
   // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
   widenFloatSignals(c, _storeDefs, _structDefs, _moduleConstTypes)
-  // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
-  // decls with no explicit .connect() — reuses the on-mount harness +
-  // connect url-threading. Mutates c.decls (idempotent).
-  synthesizeWebSocketAutoConnect(c)
   // Shape A: pass file-scope helper return types so the computeds pre-inference
   // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
   // build would be too late — the computed type is already cached).
@@ -1942,12 +1792,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _serviceBindings = bindServices(c.decls)
-  _databaseNames = new Set()
   _serviceKindByNameSwift = new Map()
   _formNamesSwift = new Set()
   _formSubmitParamsSwift = []
-  _fetchNamesSwift = new Set()
-  _websocketUrlsSwift = new Map()
   _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
@@ -1993,16 +1840,13 @@ function emitSwiftComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
     if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
       _serviceKindByNameSwift.set(d.name as string, d.kind)
     }
     if (d.kind === 'form') _formNamesSwift.add(d.name)
-    if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
-    // A plugin declaration that is an async source (`useQuery`) joins the Suspense / ErrorBoundary set.
-    if (d.kind === 'fetch' || pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
-    if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
+    // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
+    if (pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -2026,15 +1870,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 3: `const { id } = useParams()` reads via useParams(router:),
     // so the View needs the @Environment(\.pyreonRouter) injection.
     if (d.kind === 'params-destructure') _usesRouter = true
-    // useUrlState reads/writes the active router's query.
-    if (d.kind === 'url-state') {
-      _usesRouter = true
-      _urlStateNames.add(d.name)
-      // `q` is CALLABLE (callAsFunction), so the reference must keep its
-      // parens — unlike useParams, which returns a dictionary and is
-      // deliberately kept out of this set to avoid surprise parens.
-      _functionNames.add(d.name)
-    }
+    // A plugin declaration that reads the active router's query (`useUrlState`) needs the View's router injection,
+    // and a CALLABLE one keeps its parens (`q()` through callAsFunction — unlike useParams, which returns a dictionary).
+    if (pluginDeclUsesRouter(d)) _usesRouter = true
+    if (d.kind === 'ext' && pluginDeclIsCallable(d)) _functionNames.add(d.name)
     // Phase 4 follow-up: useColorScheme reads SwiftUI's
     // @Environment(\.colorScheme), so the View needs the injection.
     if (d.kind === 'color-scheme') _usesColorScheme = true
@@ -2290,7 +2129,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentSwift = isLayout
-  // When the component has a useFetch decl, the appended `.task { }` MUST
+  // When the component has an async-source decl (`useFetch`), the appended `.task { }` MUST
   // attach to a STABLE-identity view. A bare `Group { if isPending … }`
   // (what `<Suspense>` / `<ErrorBoundary>` emit) is transparent —
   // SwiftUI redistributes `.task` onto the if/else BRANCH, so every time
@@ -2332,10 +2171,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`    ${emitSwiftReturnExpr(c.returnExpr, 4)}`)
   }
   _emittingLayoutComponentSwift = false
-  // Phase 4: append a mount-time `.task { }` per useFetch decl. SwiftUI
-  // runs `.task` when the view appears (the natural async-on-mount hook);
-  // it drives the PyreonFetch state machine via begin → resolve|reject,
-  // awaiting URLSession + decoding into the typed result.
   // Form-binding arc: attach env/instance-capturing onSubmit callbacks
   // post-init (see the form-decl emit's comment for why init can't).
   // Rate limiters: attach the state-capturing action post-init, exactly as
@@ -2493,51 +2328,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       if (svc.lifecycle === 'start-stop') lines.push(`      .onDisappear { ${name}.stop() }`)
     }
   }
-  for (const d of c.decls) {
-    if (d.kind !== 'fetch') continue
-    const name = swiftIdent(d.name)
-    lines.push(`      .task {`)
-    lines.push(`        ${name}.begin()`)
-    lines.push(`        do {`)
-    if (d.method || d.headers || d.body) {
-      // A request with a VERB, headers, or a body goes through PyreonHttp —
-      // the runtime that has shipped on both targets with full verb support
-      // and, until now, nothing that lowered to it. The bare-GET path below
-      // is left alone deliberately: it is device-proven, and re-routing it
-      // would put a proven path behind a brand-new Android executor. Folding
-      // the two together once this one is device-proven is the follow-up.
-      const method = (d.method ?? 'GET').toLowerCase()
-      const parts = [`method: .${method}`, `url: ${swiftStr(d.url)}`]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
-          .join(', ')
-        parts.push(`headers: [${pairs}]`)
-      }
-      if (d.body !== undefined) parts.push(`body: Data(${swiftStr(d.body)}.utf8)`)
-      lines.push(`          let __response = try await PyreonHttp.send(`)
-      lines.push(`            PyreonHttpRequest(${parts.join(', ')})`)
-      lines.push(`          )`)
-      // A non-2xx must REJECT rather than decode. Handing an error page to
-      // JSONDecoder surfaces as a decode failure, which reads as "the server
-      // sent bad JSON" and hides the actual status.
-      lines.push(`          guard __response.isOK else {`)
-      lines.push(
-        `            throw PyreonHttpError.badStatus(__response.status)`,
-      )
-      lines.push(`          }`)
-      lines.push(`          ${name}.resolve(try __response.decode(${swiftType(d.type)}.self))`)
-    } else {
-      lines.push(
-        `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(d.url)})!)`,
-      )
-      lines.push(
-        `          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`,
-      )
-    }
-    lines.push(`        } catch { ${name}.reject(error) }`)
-    lines.push(`      }`)
-  }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
@@ -2567,7 +2357,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
-  _urlStateNames = new Set()
   _usesRouter = false
   _routerRoutes = new Map()
   if (_hostStateDecls.length > 0) {
@@ -2887,11 +2676,8 @@ function swiftEventModifiers(mods: readonly HotkeyModifier[]): string {
   return `[${out.join(', ')}]`
 }
 
-/** The pending / failed conditions of one async source (`useFetch`, or a plugin declaration that declares `asyncState`). */
+/** The pending / failed conditions of one async source (a plugin declaration that declares `asyncState`). */
 function asyncStateSwift(d: DeclIR, indent: number): { pending: string; error: string } {
-  if (d.kind === 'fetch') {
-    return { pending: `${swiftIdent(d.name)}.isPending`, error: `${swiftIdent(d.name)}.error != nil` }
-  }
   return pluginAsyncState(d, 'swift', swiftEmitContext(indent))!
 }
 
@@ -2981,39 +2767,21 @@ function emitSwiftDecl(
           ? swiftType(t, synth, d.name)
           : (synthSwiftSignalAnnotation(d.initial) ?? type)
     }
-    // G5 — persistent signal via `useStorage<T>('key', default)`. SwiftUI's
-    // `@AppStorage("key")` property wrapper writes through to UserDefaults
-    // and triggers re-renders on change (same reactive contract as @State).
-    //
-    // Phase 2 follow-up — when the declared type is NOT one of @AppStorage's
-    // native types (String / Int / Double / Bool / URL / Data /
-    // RawRepresentable), emit a Codable-Data bridge: the actual @AppStorage
-    // slot stores a `Data` JSON blob; a computed property wraps it for
-    // type-safe read/write via JSONEncoder/Decoder. This closes G5's
-    // known typecheck caveat (`@AppStorage([Todo])` was rejected by
-    // `swiftc -typecheck`); now `[Todo]` round-trips cleanly via JSON.
-    //
-    // Native types (String, enums via RawRepresentable, etc.) continue
-    // to use the direct shape — no bridge overhead when not needed.
+    // A signal that outlives the process (`storageKey`): the loaded plugin's persistence backend owns the declaration —
+    // its own runtime wrapper, or SwiftUI's `@AppStorage` for the types the platform persists directly (scalars,
+    // RawRepresentable enums, optionals of them). The core decides only WHICH, not what the primitive is called.
     if (d.storageKey !== undefined) {
-      if (isAppStorageNativeType(d.type)) {
-        return `@AppStorage(${swiftStr(d.storageKey)}) private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
-      }
-      // Phase 2.5: non-native types use @PyreonAppStorage from
-      // @pyreon/native-runtime-swift — collapses the previous
-      // 14-line @AppStorage(Data) + Codable bridge to one line. Same
-      // UserDefaults backing, same Binding<T> projection via `$name`,
-      // same silent-fallback failure semantics.
-      //
-      // Consumer apps must `import PyreonRuntime` for the wrapper to
-      // resolve. The compiler doesn't auto-emit imports — same
-      // convention as @AppStorage (which requires `import SwiftUI`).
-      //
-      // Pre-2.5 (still in git history): a hand-rolled bridge with a
-      // `@AppStorage` Data slot + computed property doing JSON
-      // round-trip via JSONEncoder/Decoder. Identical behaviour at
-      // runtime; just dramatically more emit code.
-      return `@PyreonAppStorage(${swiftStr(d.storageKey)}) private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
+      return persistenceFor(d.storageKey).swift(
+        {
+          name: d.name,
+          key: d.storageKey,
+          type: anno,
+          initial,
+          nativeType: isAppStorageNativeType(d.type),
+          emptyList: false,
+        },
+        swiftEmitContext(0),
+      )
     }
     return `@State private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
   }
@@ -3062,24 +2830,11 @@ function emitSwiftDecl(
   // env-dependent derivations. `useParams()` follows the same shape;
   // return types are per the runtime's signature ((String) -> Void
   // for navigate, [String: String] for params).
-  if (d.kind === 'url-state') {
-    // `defaultValue` arrives as target syntax (quoted for a string, bare for a
-    // number or bool), so it is interpolated, not re-stringified.
-    const helper = SWIFT_URL_STATE_TYPES[d.valueType]
-    return `private var ${swiftIdent(d.name)}: ${helper} { ${helper}(router: pyreonRouter, key: ${swiftStr(d.key)}, defaultValue: ${d.defaultValue}) }`
-  }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
     const returnType =
       d.hook === 'navigate' ? '(String) -> Void' : '[String: String]'
     return `private var ${swiftIdent(d.name)}: ${returnType} { ${fn}(router: pyreonRouter) }`
-  }
-  // Phase 4: `const x = useFetch<T>('/url')` → an @State PyreonFetch<T>
-  // container. The mount-time async harness (`.task { ... }`) that drives
-  // it is appended to the View body by emitSwiftComponent — it reads
-  // `data`/`isPending`/`error` as @Observable properties directly.
-  if (d.kind === 'fetch') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonFetch<${swiftType(d.type)}>()`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → an @State
   // PyreonForm container seeded with the literal string defaults. Unlike
@@ -3143,32 +2898,9 @@ function emitSwiftDecl(
     // emitSwiftComponent (mirrors the useFetch `.task` harness).
     return `@State private var ${swiftIdent(d.name)} = PyreonForm(${parts.join(', ')})`
   }
-  // Native data/services hooks without a descriptor (websocket takes a URL
-  // from the call). Swift containers expose reactive fields via @Observable
-  // (read bare, no rewrite); the `onMount(() => ws.connect())` escape hatch
-  // LOWERS (see the on-mount decl harness) — Swift threads the url into
-  // connect(to:); Kotlin's connect needs a host transport (named warning)
-  // until the default-OkHttp-transport follow-up lands.
-  if (d.kind === 'websocket') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
-  }
-  if (d.kind === 'database') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
-  }
-  if (d.kind === 'secureStorage') {
-    // Keychain-backed default (`KeychainSecureBackend`) — persists across
-    // relaunches on its own; no Context equivalent needed on iOS.
-    return `@State private var ${swiftIdent(d.name)} = PyreonSecureStorage()`
-  }
   if (d.kind === 'fieldArray') {
     const init = d.initial.length === 0 ? '' : `[${d.initial.map((v) => swiftStr(v)).join(', ')}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonFieldArray(${init})`
-  }
-  if (d.kind === 'map') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonMapState()`
-  }
-  if (d.kind === 'auth') {
-    return `@State private var ${swiftIdent(d.name)} = PyreonAuth<${swiftType(d.userType)}>()`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a COMPUTED
   // property reading the active router's loaderData entry for the
@@ -3202,30 +2934,12 @@ function emitSwiftDecl(
       )
       .join('\n  ')
   }
-  // Phase 4: `const can = usePermissions([...])` → an @State PyreonPermissions
-  // seeded with the literal grant keys. Reads are method calls
-  // (`can.can("x")`), so no field-read rewrite — plain method emit on Swift.
   // `useToggle` / `useCounter` — a plain @State field. The mutators are
   // rewritten at their use sites (see the call case), so there is no runtime
   // and no wrapper type.
   if (d.kind === 'pure-state') {
     const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
-  }
-  if (d.kind === 'permissions') {
-    // A BARE `usePermissions()` is the web-correct call — the grants come
-    // from `<PermissionsProvider>`. Read them from the environment rather
-    // than constructing an empty set in which every check denies.
-    if (!d.seeded) {
-      return `@Environment(\\.pyreonPermissions) private var ${swiftIdent(d.name)}`
-    }
-    // `usePermissions([])` — an explicit empty grant list is a deny-all
-    // container, not a provider read (matches the web runtime).
-    if (d.grants.length === 0) {
-      return `@State private var ${swiftIdent(d.name)} = PyreonPermissions()`
-    }
-    const seed = `[${d.grants.map((g) => swiftStr(g)).join(', ')}]`
-    return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → an @State
   // instance of the APP's own class. Identical shape to the built-in
@@ -5110,22 +4824,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return `(Double(${arg}) ?? 0)`
       }
-      // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
-      // `quotes.isPending()` (the web signal-read shape) → plain
-      // @Observable property read. `refetch` is excluded (real method,
-      // parens preserved by the generic call emit below).
-      if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _fetchNamesSwift.has(e.callee.object.name) &&
-        (e.callee.property === 'data' ||
-          e.callee.property === 'isPending' ||
-          e.callee.property === 'isFetching' ||
-          e.callee.property === 'error')
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
-      }
       // Store METHOD call — `useX().store.M(args…)` rewrites to
       // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg
       // read rewrite below: a zero-arg method call (`clear()`) would
@@ -5145,53 +4843,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const args = e.args.map((a, i) => swiftTypedArgument(a, params[i]?.type, indent)).join(', ')
         return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
       }
-      // PyreonDatabase RECORD literals. `db.insert('todos', { id, fields })`
-      // is the primary write, and the object literal was lowered by the
-      // generic path into an anonymous TUPLE — `(id: "1", fields: __Obj0(...))`
-      // — which is not a `PyreonRecord`, so the call never compiled. `insert`
-      // is the only way to get data in, which is why no gated app has ever
-      // rendered FROM the database.
-      //
-      // `swiftc -parse` waves it through (a tuple is syntactically fine), so
-      // this needed the type gate to see, exactly like the argument labels
-      // below. Field values are emitted AS WRITTEN: `fields` is
-      // `[String: String]`, and silently wrapping a number in `String(...)`
-      // would hide a real mistake behind a coercion.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _databaseNames.has(e.callee.object.name) &&
-        e.callee.property === 'insert' &&
-        e.args.length === 2 &&
-        e.args[1]?.kind === 'object'
-      ) {
-        const lit = e.args[1] as Extract<ExprIR, { kind: 'object' }>
-        const idField = lit.fields.find((f) => f.name === 'id')
-        const fieldsField = lit.fields.find((f) => f.name === 'fields')
-        const unknown = lit.fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
-        if (idField && unknown.length === 0) {
-          const parts = [`id: ${emitSwiftExpr(idField.value, indent)}`]
-          if (fieldsField) {
-            if (fieldsField.value.kind === 'object') {
-              const entries = fieldsField.value.fields
-                .map((f) => `${swiftStr(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
-                .join(', ')
-              parts.push(`fields: [${entries === '' ? ':' : entries}]`)
-            } else {
-              // A variable holding the dictionary — pass it through.
-              parts.push(`fields: ${emitSwiftExpr(fieldsField.value, indent)}`)
-            }
-          }
-          const collection = emitSwiftExpr(e.args[0]!, indent)
-          return `${swiftIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
-        }
-        // Recognized shape didn't match — say why before falling through to
-        // the doomed generic path below.
-        warnDatabaseInsertShape(e.callee.object.name, lit.fields)
-      }
       // Native-service argument labels, for services whose Swift signature
       // labels its arguments while the shared TS surface is positional. Same
-      // defect the PyreonDatabase block below fixes, generalised past the one
+      // defect the argument-label rewrites fix, generalised past the one
       // service it was first found on — `map.moveTo(37.3, -122.0)` emitted
       // positionally and failed swiftc with "missing argument labels
       // 'latitude:longitude:'". Kotlin needs no equivalent: named arguments
@@ -5211,21 +4865,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (
             _fieldArrayNamesSwift.has(recv) &&
             (e.callee.property === 'items' || e.callee.property === 'length')
-          ) {
-            return `${swiftIdent(recv)}.${e.callee.property}`
-          }
-          // WebSocket read-field unwrap — `ws.isConnected()` etc. are web
-          // signal READS; the Swift runtime declares them as PROPERTIES
-          // (`public private(set) var isConnected: Bool`), so the call
-          // parens must go. Kotlin has had this unwrap since the hook
-          // landed (_wsNames in emit-kotlin); Swift never did — the
-          // lowered-hooks matrix missed it because its usage never READ a
-          // field, only sent.
-          if (
-            _websocketUrlsSwift.has(recv) &&
-            ['lastMessage', 'messages', 'isConnected', 'error'].includes(
-              e.callee.property,
-            )
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
@@ -5249,36 +4888,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const labelled = e.args.map((a, i) => {
             const src = emitSwiftExpr(a, indent)
             const label = labels[i]
-            return label === null || label === undefined ? src : `${label}: ${src}`
-          })
-          return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
-        }
-      }
-      // PyreonDatabase argument labels. The shared TS surface is positional
-      // (`db.delete('tx', id)`), but Swift API-design convention gives the
-      // runtime labelled arguments (`delete(_ collection: String, id: String)`).
-      // The generic member-call emit is positional, so `get` / `delete` / `find`
-      // produced Swift that does not compile ("missing argument label 'id:'").
-      // `swiftc -parse` waves that through — labels are a type-level concern —
-      // so it shipped unnoticed until the showcase emit was type-checked.
-      //
-      // Kotlin needs no equivalent: named arguments are optional there, so its
-      // positional emit is already valid.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _databaseNames.has(e.callee.object.name) &&
-        typeof e.callee.property === 'string' &&
-        SWIFT_DATABASE_ARG_LABELS[e.callee.property] !== undefined
-      ) {
-        const labels = SWIFT_DATABASE_ARG_LABELS[e.callee.property]!
-        // Only rewrite when the arity matches the declared surface; anything
-        // else falls through to the generic emit so a genuinely wrong call
-        // still surfaces as a compiler error rather than being papered over.
-        if (e.args.length === labels.length + 1) {
-          const emitted = e.args.map((a) => emitSwiftExpr(a, indent))
-          const labelled = emitted.map((src, i) => {
-            const label = i === 0 ? null : labels[i - 1]
             return label === null || label === undefined ? src : `${label}: ${src}`
           })
           return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
@@ -5455,19 +5064,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Each rewrite preserves the semantic intent. Methods with the
       // same name AND semantics on both targets (`.filter`, `.map`,
       // `.reduce`) pass through unchanged.
-      // `ws.connect()` — the TS hook surface is 0-arg (useWebSocket(url)
-      // carries the url); the Swift runtime's signature is
-      // `connect(to: URL)`. Thread the decl's url through. The bare
-      // 0-arg emit failed "missing argument for parameter 'to'".
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 'connect' &&
-        e.callee.object.kind === 'identifier' &&
-        _websocketUrlsSwift.has(e.callee.object.name) &&
-        e.args.length === 0
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.connect(to: URL(string: ${swiftStr(_websocketUrlsSwift.get(e.callee.object.name)!)})!)`
-      }
       if (e.callee.kind === 'member') {
         const obj = emitSwiftExpr(e.callee.object, indent)
         // A method call on an OPTIONAL receiver keeps the chain optional:
@@ -6746,13 +6342,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
       return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
     }
-    case 'new-sized-map': {
-      // `new SizedMap<K, V>({ maxEntries, lru })` → the co-located
-      // PyreonSizedMap runtime. `lru` is emitted only when true so the
-      // default-FIFO call stays as short as the source that produced it.
-      const lru = e.lru ? ', lru: true' : ''
-      return `PyreonSizedMap<${swiftType(e.keyType)}, ${swiftType(e.valueType)}>(maxEntries: ${e.maxEntries}${lru})`
-    }
     case 'new-collection': {
       // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
       // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in
@@ -6771,8 +6360,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`
       return `Set<${swiftType(e.elementType!)}>()`
     }
-    case 'rx-call':
-      return emitSwiftRxCall(e, indent)
     case 'jsx-element':
       return emitSwiftJsx(e, indent)
     case 'jsx-fragment': {
@@ -7010,44 +6597,6 @@ function warnUntypeableObjectLiteral(fields: { name: string; value: ExprIR }[]):
 }
 
 /**
- * `db.insert(collection, <literal>)` reached the record recognizer above and
- * did not match its `{ id, fields }` shape — every OTHER object-literal shape
- * still falls through to the GENERIC struct-synthesis path a few lines below,
- * and that fallthrough was silent: `warnUntypeableObjectLiteral`'s question is
- * "could a struct be synthesized at all", and the common mistake here — a
- * FLAT domain object (`{ id, description, amount }`, no `fields` key) — answers
- * yes. The struct compiles fine on its own. It just isn't `PyreonRecord`, the
- * NOMINAL type `insert`'s real signature requires on both targets, so the call
- * is guaranteed to fail to build regardless of how well-typed the individual
- * fields are — a struct with matching structure still doesn't satisfy a
- * nominally-typed Swift/Kotlin parameter. That guarantee is what makes this
- * warning TOTAL rather than best-effort, unlike `warnUntypeableObjectLiteral`:
- * there is no shape reaching this function that still compiles.
- *
- * An `id`-only literal (no `fields` key at all) is legitimate — both runtimes
- * default `fields` to empty — and is handled by the recognizer above, so it
- * never reaches here.
- */
-function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: ExprIR }[]): void {
-  const hasId = fields.some((f) => f.name === 'id')
-  const unknown = fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
-  const given = fields.map((f) => f.name).join(', ') || '(empty)'
-  const reasons: string[] = []
-  if (!hasId) reasons.push('no `id` field')
-  if (unknown.length > 0) {
-    const names = unknown.map((f) => `\`${f.name}\``).join(', ')
-    const plural = unknown.length === 1 ? ['is', 'it'] : ['are', 'them']
-    reasons.push(`${names} ${plural[0]} not \`id\`/\`fields\` — nest ${plural[1]} under \`fields: { ... }\``)
-  }
-  _emitWarnings.push(
-    `${dbName}.insert(...) argument { ${given} } is not the { id, fields } shape 'PyreonRecord' requires ` +
-      `(${reasons.join('; ')}). No struct synthesized here can satisfy insert's PyreonRecord parameter — ` +
-      `Swift/Kotlin are nominally typed, so this will NOT compile. Write ` +
-      `\`db.insert(collection, { id, fields: { ...columns } })\`.`,
-  )
-}
-
-/**
  * The two "an attribute no emitter reads would vanish" checks every element
  * passes before its emitter runs. They run at the top of dispatch for the
  * generic path AND before a registry-claimed `emit` lowering (a plugin reads
@@ -7110,6 +6659,7 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       component: () => swiftComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitSwiftChild,
+      generic: emitSwiftGeneric,
       typeText: swiftType,
       rowType: (element) => swiftType(element, _activeSynth),
       rowFields: (element) => resolveSwiftStructFields(element, _activeSynth),
@@ -7403,7 +6953,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
-  if (tag === 'PermissionsProvider') return emitSwiftPermissionsProvider(e, indent)
   if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
   if (tag === 'RouterView') return emitSwiftRouterView(e, indent)
   // 9 other canonical primitives (Layer, Scroll, Spacer, Heading,
@@ -10441,59 +9990,6 @@ function emitSwiftLink(
  * when routes can't be resolved — back-compat with C4 scaffold OR
  * apps that pass a router from outside the component scope.
  */
-/**
- * `<PermissionsProvider permissions={{ … }}>` → the grants injected into the
- * SwiftUI environment, where a bare `usePermissions()` reads them.
- *
- * Web `usePermissions()` takes no arguments — the grants come from this
- * provider. Without the injection the correct web call had nowhere to read
- * from and lowered to an empty set in which every check denied, silently.
- *
- * Only `true` entries are granted: the native set is grant-only, so a `false`
- * value has nowhere to live. That is exact when the map has no wildcards, and
- * the recognizer warns when it does — a `false` under a wildcard grant is a
- * denial the native set cannot express.
- */
-function emitSwiftPermissionsProvider(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const seed = permissionsProviderSeed(e)
-  if (seed === null) {
-    // The suppression of the blanket unlowered-module line is keyed on the
-    // TAG being present, so a provider that cannot be baked would otherwise
-    // go silent — worse than before the tag lowered at all. The emit is the
-    // authority on whether it lowered, so it reports.
-    _emitWarnings.push(
-      '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
-    )
-    return emitSwiftGeneric(e, indent)
-  }
-  if (seed.deniedUnderWildcard.length > 0) {
-    // The native container is grant-only, so an explicit `false` has nowhere to
-    // live. That is exact when the map has no wildcards — an unlisted key is
-    // denied either way — but under a wildcard the `false` is the ONLY thing
-    // denying it, so dropping it makes native GRANT what the web DENIES.
-    // `permissionsProviderSeed` computed this and its docstring said the caller
-    // reports it; no caller did, so an authorization primitive was failing OPEN
-    // in silence. A wrong-direction authz divergence must be loud.
-    _emitWarnings.push(
-      `<PermissionsProvider>: ${seed.deniedUnderWildcard
-        .map((d) => swiftStr(d))
-        .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
-    )
-  }
-  const pad = ' '.repeat(indent + 2)
-  const set = `PyreonPermissions([${seed.granted.map((g) => swiftStr(g)).join(', ')}])`
-  if (e.children.length === 0) {
-    return `EmptyView().environment(\\.pyreonPermissions, ${set})`
-  }
-  const content = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  // The modifier attaches to the GROUP, so every child sees the value —
-  // attaching it to the last child would scope it to that child alone.
-  return `Group {\n${content}\n${' '.repeat(indent)}}.environment(\\.pyreonPermissions, ${set})`
-}
-
 function emitSwiftRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -11465,113 +10961,6 @@ function escapeSwiftStringSegment(s: string): string {
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')
-}
-
-/**
- * Lower a `kind: 'rx-call'` ExprIR to Swift. Dispatches on `method` to
- * produce idiomatic Swift code on `Array<T>`. Mirrors emitKotlinRxCall
- * in shape; the per-method lowerings are documented in
- * docs/src/content/docs/multiplatform-libraries.md (Strategy A table).
- *
- * Predicate / mapper / reducer args are inlined as Swift closures
- * (`{ t in body }`); count args inline as Swift Int literals.
- */
-function emitSwiftRxCall(
-  e: { method: string; source: ExprIR; args: ExprIR[] },
-  indent: number,
-): string {
-  const src = emitSwiftExpr(e.source, indent)
-  const arg = (i: number): string =>
-    e.args[i] === undefined ? '' : emitSwiftExpr(e.args[i] as ExprIR, indent)
-  switch (e.method) {
-    // Transforms returning a new collection — first six match the JS
-    // method names on Swift `Array<T>`.
-    case 'filter':
-      return `${src}.filter(${arg(0)})`
-    case 'map':
-      return `${src}.map(${arg(0)})`
-    case 'reverse':
-      return `${src}.reversed()`
-    case 'compact':
-      // JS rx.compact drops null/undefined; Swift Array<T?> uses
-      // compactMap which unwraps and drops nil.
-      return `${src}.compactMap { $0 }`
-    case 'flatten':
-      // Swift's joined() returns a FlattenSequence; Array(...) makes it
-      // a concrete Array<T> matching consumer expectations.
-      return `Array(${src}.joined())`
-    case 'unique':
-      // Order-preserving, because that is what rx does. The previous emit
-      // was `Array(Set(_:))`, whose comment claimed it matched rx's "set of
-      // unique values" semantic — measured, rx returns FIRST-occurrence
-      // order ([3,1,2,3,4] → [3,1,2,4]), and Kotlin's `distinct()` preserves
-      // it too. So Swift was the only one of the three that did not, and a
-      // `<For>` over unique(...) rendered in an arbitrary order on iOS and a
-      // stable one everywhere else.
-      //
-      // `reduce(into:)` is O(n²) against Set's O(n), which is the right
-      // trade for a UI list: the alternative is the wrong answer. It also
-      // needs only Equatable, where Set needed Hashable — strictly more
-      // permissive.
-      // `reduce(into: [])` would be the obvious spelling and does NOT
-      // typecheck — the empty seed leaves the accumulator ambiguous, so
-      // `contains` resolves to `contains(where:)` and swiftc asks for the
-      // missing label. This form needs no seed annotation.
-      //
-      // It reads `src` twice. That is safe here because a source is a pure
-      // computed-property read, and unique is O(n²) either way; the
-      // alternative was the wrong ORDER, which is not a trade.
-      return `${src}.enumerated().filter { ${src}.firstIndex(of: $0.element) == $0.offset }.map { $0.element }`
-    // Bounded transforms — take / skip + their while variants. Swift's
-    // `.prefix(_:)` and `.dropFirst(_:)` return ArraySlice; Array(...)
-    // promotes to a concrete Array<T>.
-    case 'take':
-      return `Array(${src}.prefix(${arg(0)}))`
-    case 'skip':
-      return `Array(${src}.dropFirst(${arg(0)}))`
-    case 'takeWhile':
-      return `Array(${src}.prefix(while: ${arg(0)}))`
-    case 'dropWhile':
-      return `Array(${src}.drop(while: ${arg(0)}))`
-    // Scalar accessors — first/last as properties (Optional<T>),
-    // find/some/every as predicate-returning methods.
-    case 'first':
-      return `${src}.first`
-    case 'last':
-      return `${src}.last`
-    case 'find':
-      return `${src}.first(where: ${arg(0)})`
-    case 'some':
-      return `${src}.contains(where: ${arg(0)})`
-    case 'every':
-      return `${src}.allSatisfy(${arg(0)})`
-    // Aggregations — count/sum/min/max + the reduce + average combos.
-    case 'count':
-      return `${src}.count`
-    case 'sum':
-      // Swift Array<Numeric> has reduce(_:_:) but no direct .sum() —
-      // reduce(0, +) is the idiomatic shape.
-      return `${src}.reduce(0, +)`
-    case 'min':
-      return `${src}.min()`
-    case 'max':
-      return `${src}.max()`
-    case 'reduce':
-      // rx.reduce(s, reducer, initial) ≈ Swift reduce(initial, reducer).
-      // Arg 0 = reducer fn, Arg 1 = initial. JS argument order is
-      // (reducer, initial); Swift's is (initial, reducer) — we flip.
-      return `${src}.reduce(${arg(1)}, ${arg(0)})`
-    case 'average': {
-      // Multi-statement Swift closure: bind reduce sum, branch on
-      // empty, divide. IIFE for expression-position usage.
-      return `({ let __xs = ${src}; return __xs.isEmpty ? 0 : Double(__xs.reduce(0, +)) / Double(__xs.count) }())`
-    }
-    default:
-      // Defensive — parse.ts's RX_V1_METHODS set is the authoritative
-      // gate, but if a method slips through we emit a noisy `?rx.X?`
-      // marker so missing dispatch is obvious in failed swiftc output.
-      return `/* unsupported rx.${e.method} */ ${src}`
-  }
 }
 
 /**

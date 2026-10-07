@@ -10,7 +10,7 @@ import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
 import { chartsCompiler, chartsPlugin } from './charts-plugin'
-import { transform } from '../index'
+import { hooksPlugin, transform } from './first-party-plugins'
 
 // A plugin-supplied (NOT built-in) code-shaped lowering: it recognizes a call,
 // reads its argument, and emits its own declaration on both targets.
@@ -108,12 +108,10 @@ describe('code-shaped plugin: load-time errors', () => {
 
   it('a call that is also a service hook fails to load, naming both owners', () => {
     const clash = toyPlugin({ calls: { useShare: toyCall } })
-    // Whoever owns the service today (the compiler itself, or a package plugin
-    // such as @pyreon/hooks once a library owns its lowering) must be named —
-    // so read the owner from the registry rather than hardcoding it.
-    const owner = createCompiler().services.get('useShare')?.owner
+    // Whoever owns the service must be named — so read the owner from the registry rather than hardcoding it.
+    const owner = createCompiler({ plugins: [hooksPlugin] }).services.get('useShare')?.owner
     expect(owner, 'useShare must be a registered service for this spec to mean anything').toBeDefined()
-    expect(() => createCompiler({ plugins: [clash] })).toThrow(
+    expect(() => createCompiler({ plugins: [hooksPlugin, clash] })).toThrow(
       new RegExp(`hook "useShare" is claimed by both "${owner!.replace(/[/]/g, '\\/')}" \\(services\\) and "@acme\\/toy" \\(calls\\)`),
     )
   })

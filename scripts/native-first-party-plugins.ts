@@ -13,6 +13,8 @@
  * Add a plugin here when another library moves its lowering into its package.
  */
 import { createCompiler } from '../packages/native/compiler/src/compiler'
+import type { CompilerPlugin } from '../packages/native/compiler/src/plugin'
+import type { ServiceDescriptor } from '../packages/native/compiler/src/services'
 import type { ValidateOptions } from '../packages/native/compiler/src/stub-augmentation'
 import type { EmitOptions, TransformResult } from '../packages/native/compiler/src/types'
 import { chartsPlugin } from '../packages/fundamentals/charts/src/native-plugin/plugin'
@@ -36,13 +38,26 @@ import { tablePlugin } from '../packages/fundamentals/table/src/native-plugin/pl
 import { tableStubs } from '../packages/fundamentals/table/src/native-plugin/stubs'
 import { dndPlugin } from '../packages/fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../packages/fundamentals/dnd/src/native-plugin/stubs'
+import { kineticPlugin } from '../packages/ui-system/kinetic/src/native-plugin/plugin'
+import hooksPlugin from '../packages/fundamentals/hooks/src/native-plugin'
+import { featurePlugin } from '../packages/fundamentals/feature/src/native-plugin/plugin'
+import { rxPlugin } from '../packages/fundamentals/rx/src/native-plugin/plugin'
+import { sizedMapPlugin } from '../packages/core/sized-map/src/native-plugin/plugin'
+import { sizedMapStubs } from '../packages/core/sized-map/src/native-plugin/stubs'
+import { storagePlugin } from '../packages/fundamentals/storage/src/native-plugin/plugin'
+import { storageStubs } from '../packages/fundamentals/storage/src/native-plugin/stubs'
+import { urlStatePlugin } from '../packages/fundamentals/url-state/src/native-plugin/plugin'
+import { permissionsPlugin } from '../packages/fundamentals/permissions/src/native-plugin/plugin'
+import { permissionsStubs } from '../packages/fundamentals/permissions/src/native-plugin/stubs'
+import { elementsPlugin } from '../packages/ui-system/elements/src/native-plugin/plugin'
+import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin/plugin'
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin])
+export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, storagePlugin, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, kineticPlugin, elementsPlugin, coolgridPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs, storageStubs, sizedMapStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 
@@ -50,3 +65,10 @@ const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 export function transform(source: string, options: EmitOptions): TransformResult {
   return compiler.transform(source, options)
 }
+
+/** The `@pyreon/hooks` plain-service table as descriptors, in the plugin's own (meaningful) order. */
+export const HOOKS_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] = Object.entries(hooksPlugin.services).map(([hook, spec]) => ({
+  ...spec,
+  hook,
+  legacyKind: (spec as { legacyKind?: string }).legacyKind ?? 'service',
+}))

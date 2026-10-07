@@ -72,13 +72,15 @@ Compile-time checks cannot catch these:
 5. A Compose `performClick` does not scroll. On a `<Scroll>` page call `performScrollTo()` before interacting with a node that may be past the fold.
 6. Hardware-accelerated `WebView`s on the SwiftShader emulator (CI's `-gpu swiftshader_indirect`) intermittently leave the WHOLE window unpainted. Every Compose node still reports `displayed=true`, but captures of the root and UiAutomation screenshots are pure white. Pixel waits then fail on whichever chart comes first ("gal-datazoom showed no red bar", "gal-map did not paint"), and the failure reads like a bug in that one chart. Diagnose from the ROOT capture: if the whole window is white, the chart host is not the cause. A longer wait does not help. Instrumented tests on a screen with WebViews set `PyreonWebViewRendering.softwareLayer = true` in `@Before`. Measured on API 33 with fresh boots: 5 of 10 runs failed on hardware WebViews, 0 of 10 with the flag. `-gpu swangle_indirect` did not fix it.
 
+
 ## Hooks are matched by import binding
 
 PMTC lowers a `useX` call by what the name is BOUND to, not by the bare name. `hook-binding.ts` runs before any recognizer: an aliased framework hook (`import { useOnline as useNet } from '@pyreon/hooks'`) is lowered under its canonical name; a same-named function the author declared, or a hook imported from a non-`@pyreon/` module, is renamed `<name>_` so no recognizer claims it, and a foreign import reports why. A name that is neither imported nor declared still lowers (snippets omit imports). PMTC has no module graph, so a local re-export of a framework hook is not seen through: import it from `@pyreon/hooks`.
 
+
 ## Service descriptors
 
-A *plain* service container is a hook whose whole lowering is "hold one runtime container for the component's lifetime" (`useShare`, `useLinking`, `useHaptics`, `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`, `useCamera`): no arguments, no reactive state, no read rewrite, no lifecycle, every call a member method that flows through unchanged. These are DATA, owned by `@pyreon/hooks` (`packages/fundamentals/hooks/src/native-plugin.ts`) and carried — through the compiler's generated copy `built-in-services.generated.ts` — by the built-in `@pyreon/hooks` plugin (`plugins/services.ts`) into each compiler instance's service registry — not code in three files. `services.ts` keeps the descriptor vocabulary and derives `SERVICES` from the generated copy.
+A *plain* service container is a hook whose whole lowering is "hold one runtime container for the component's lifetime" (`useShare`, `useLinking`, `useHaptics`, `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`, `useCamera`, …): no arguments, no reactive state, no read rewrite, no lifecycle, every call a member method that flows through unchanged. These are DATA, owned by `@pyreon/hooks` (`packages/fundamentals/hooks/src/native-plugin.ts`, the ONLY copy: the compiler carries no hooks table and no built-in plugin) and reach each compiler instance's service registry through the discovered `@pyreon/hooks` plugin, like every other library's lowering. `services.ts` keeps the descriptor vocabulary.
 
 A `ServiceDescriptor` has three core fields: `hook` (what the author calls), `swift` (the initialiser expression placed after `@State private var <id> = `) and `kotlin` (declaration lines, joined with `\n  `, where `{id}` is the Kotlin identifier and a line carries its own extra indentation). The parser lowers any listed hook to the one generic declaration `{ kind: 'service', name, hook }` and both emitters render it from the descriptor; the parser's lowered-hook set (`nativeLoweredHooks()`) is the hand-written list plus every registered service hook, derived once per registry.
 
@@ -96,17 +98,150 @@ A service that is more than a bare container is still ONE entry: the satellite b
 | `optionalFields` | members the runtimes declare optional (typed nullable so the interpolation/condition lowering fires) | | |
 | `legacyKind` | the pre-descriptor decl kind; `moduleTag` hashes a service decl as that kind so synthesized struct names (`__Obj0_<hash>`) do not churn when a hook becomes a descriptor | | |
 
-The Swift lifecycle modifiers are emitted from ONE loop over the registered services (`allServices()`, so their relative order is registry order — built-ins first, in the hooks plugin's declaration order, then plugins — not declaration order). `scripts/check-native-lifecycle-wiring.ts` derives from it: an AUTO registry entry names a `hook`, and the gate fails when that descriptor has no `lifecycle`, when its Kotlin line is not the self-installing factory, when the Swift loop is gone, or when a descriptor declares a `lifecycle` that no registry entry classifies. Do not weaken it.
+The Swift lifecycle modifiers are emitted from ONE loop over the registered services (`allServices()`, so their relative order is registry order — plugin order, then each plugin's own declaration order — not declaration order). `scripts/check-native-lifecycle-wiring.ts` derives from the hooks plugin's descriptors: an AUTO registry entry names a `hook`, and the gate fails when that descriptor has no `lifecycle`, when its Kotlin line is not the self-installing factory, when the Swift loop is gone, or when a descriptor declares a `lifecycle` that no registry entry classifies. Do not weaken it.
 
-To add a built-in service, add ONE entry to the `services` of `packages/fundamentals/hooks/src/native-plugin.ts`, run `bun scripts/gen-native-builtin-plugins.ts` (plus the Swift/Kotlin runtime container and the stub entries it needs). Nothing else changes: no `DeclIR` variant, no parser branch, no emit branch, no hook-list edit. `tests/services.test.ts` holds each hook's exact emit shape per target, the accessor/callRead/kotlinState tables (typed by hand from the code the descriptors replaced) and the descriptor invariants; extend its tables.
+To add a service, add ONE entry to the `services` of `packages/fundamentals/hooks/src/native-plugin.ts` (plus the Swift/Kotlin runtime container and the stub entries it needs). Nothing else changes: no `DeclIR` variant, no parser branch, no emit branch, no hook-list edit, nothing to regenerate. `tests/services.test.ts` holds each hook's exact emit shape per target, the accessor/callRead/kotlinState tables (typed by hand from the code the descriptors replaced) and the descriptor invariants; extend its tables.
 
-Still hand-written, with the reason: `useDatabase` (its `insert` object-literal lowering and Swift argument labels are call LOGIC, not data), `useWebSocket` (constructor URL taken from the call, synthesized auto-connect), and the struct-typed generics (`useAuth<T>`, `useFetch<T>`, `useStream<T>`).
+`useFetch` is code-shaped (a URL, a request init, a decoded type), so it is not a descriptor: it lives in the same plugin as a `calls` + `decls` lowering (`native-plugin/fetch.ts`). What is still hand-written in the compiler, with the reason, is listed under "Not moved yet".
 
 Function defaults contribute numeric type evidence before return inference. A fractional default (`amount: number = 0.25`, including a module constant or a numeric array) requires `Double` storage. Calls to a known helper, store method or model action convert integer arguments to that storage type. Store computeds and model views/actions infer within the singleton's own fields; later model views can read earlier ones. Real `swiftc`/`kotlinc` regressions are in `singleton-fractional-members.test.ts`; golden equality alone does not establish that emitted code compiles.
 
-## Package-owned plugins
+## The rule: the compiler knows no library
 
-A library owns its native lowering as a plugin file in its OWN package; the compiler core knows no library. **`@pyreon/hooks` is the first library to do this for real**: `packages/fundamentals/hooks/src/native-plugin.ts` (exported as `@pyreon/hooks/native-plugin`, built to `lib/native-plugin.js`, declared as `pyreon.native.plugin` + `modules`) is the SOURCE OF TRUTH for the 23 platform-service hooks. It imports only the plugin TYPE (`import type { CompilerPlugin } from '@pyreon/native-compiler'`), so hooks has no runtime dependency on the compiler. To let a zero-config `transform()` lower these hooks with no library installed, the compiler keeps a GENERATED copy — `packages/native/compiler/src/built-in-services.generated.ts`, written by `scripts/gen-native-builtin-plugins.ts` (the same pattern as the generated web-only package list) and registered as the `builtIn` plugin named `@pyreon/hooks`. An app whose installed `@pyreon/hooks` is newer has the library's plugin discovered and it replaces that built-in by name. The declaration order is preserved (never sorted): it is the Swift lifecycle-modifier order. Two gates keep it honest, both in `validate-fast`: `gen-native-builtin-plugins --check` (the copy is stale against the library) and `check-native-plugin-types` (every Swift/Kotlin type the plugin names is declared in the library's `native/` dirs or the shared runtimes — no phantom capability; bisect-verified by renaming one type). **Adding a library plugin** = write `src/native-plugin.ts`, add the `./native-plugin` export + `pyreon.native.{plugin,modules}`, and — only if the compiler must lower it with nothing installed — extend the generator and add the output to the boundary ratchet's `generated` list. The package ships `native/plugin.ts` (built to ESM) whose default export is a `CompilerPlugin` with `services` (plain service descriptors, see above) and/or `elements` (JSX element lowerings, below), and declares it in `package.json`: `"pyreon": { "native": { "plugin": "native/plugin.mjs", "modules": ["@acme/camera"] } }`. `pyreon-native build|check` discovers it from the app's declared dependencies and loads it only when the source imports one of `modules` (default: the package name). Rules: one owner per hook (a second claim is a load-time error naming both plugins — the app removes one); a plugin whose name equals a `builtIn` plugin replaces it silently (identity by name), an explicit `--plugin` of the same name wins over a discovered one; `requires` orders passes and a missing requirement or a cycle is a load-time error. Prove a plugin with `@pyreon/native-compiler/testing` (`testNativePlugin`) and `pyreon-native plugins --verify` (every service type is declared in the package's own sources). A plugin's hook is claimed when it is imported from `@pyreon/*` OR from one of the plugin's `modules` (exact or `name/` prefix) — `hook-binding.ts` renames a hook imported from anywhere else, so a plugin that omits `modules` cannot lower a hook from its own package. The registry (`compiler.services`/`context.services`) is the one the parser and both emitters read, so a plugin-owned service and element are lowered end to end; `pyreon-native explain` attributes each to its owning plugin.
+`@pyreon/native-compiler` knows its CONTRACT and nothing else. Contract means the surface PMTC exists to lower for every app: the canonical primitives, `signal` / `computed` / `effect` / `onMount`, the router (below), the ui-system authoring API (`styled`, `rocketstyle`, theme tokens), and the runtime packages it targets. Everything else is a library, and a library's lowering lives in the library's own package as a plugin. The test for any line in the compiler is: "if I deleted package X from the monorepo, would this line need editing?" If yes, the compiler is carrying X's knowledge.
+
+**The plan this document records** (the compiler-boundary arc, phases 3h to 3m): move every library's recognizers, emitters, typing, stubs and unlowered-module advice out of `parse.ts`, `emit-swift.ts`, `emit-kotlin.ts` and `infer-type.ts` into `packages/<cat>/<pkg>/src/native-plugin*`, one library at a time, each as its own independently green commit, with three constraints that never relaxed:
+
+1. **Byte-identical output.** `bun scripts/check-native-golden.ts` (below) is never run with `--update` to absorb a diff. A diff is a bug in the move, or a corpus gap to close with a fixture recorded from the PARENT compiler, never a snapshot to refresh.
+2. **Library-agnostic seams.** Every new core seam is proven by a toy plugin in the compiler's own tests that is NOT the library that motivated it, and bisected (neuter the seam in the compiler; that spec, and only that spec, fails). A seam that only its first user exercises is a back door.
+3. **The boundary only shrinks.** `scripts/check-compiler-boundary.ts` counts library specifiers and hook-name literals in non-test compiler source against `scripts/compiler-boundary-baseline.json`. A number may go down (`--update` tightens it) and never up.
+
+Where the arc stands (native-compiler): **47 library specifiers across 39 packages and 113 hook-name literals before phase 3l; 16 / 12 / 109 after it; 4 / 3 / 86 now.** The four specifiers left are `@pyreon/store`, `@pyreon/state-tree` (the Tier-2 diagnostic table) and `@pyreon/ui-core` twice (the `PyreonUI` scope plumbing, which stays: see "What stays in the core"). The golden corpus grew from 536 entries (phase 3i) to 964, 1410 and now 1500, all byte-identical across every move.
+
+## Ownership map
+
+Every first-party plugin is a package's own file, discovered from its manifest (`pyreon.native.plugin` + `modules`). `scripts/native-first-party-plugins.ts` is the ONE list the repo's scripts and tests load (the compiler's tests re-export it from `src/tests/first-party-plugins.ts`); adding a plugin means adding it there and to `plugin-boundary.test.ts`.
+
+| Plugin (package) | What it owns |
+| --- | --- |
+| `@pyreon/hooks` | the platform-service table (`services`, 23+ hooks); `useFetch` (`calls` + `decls` + `receivers` + `lifecycle` + `asyncState` + `typing`); and the stateful containers `useWebSocket`, `useDatabase`, `useSecureStorage`, `useMap`, `useAuth` (`native-plugin/containers.ts`: receivers for labelled Swift calls, record literals and `.value` reads, optional typing, and a `prepareEmit` that synthesizes the socket's connect-on-mount) |
+| `@pyreon/charts`, `@pyreon/flow` | chart hosts + handle; flow state, helpers, renderers, hosts (phases 3h, 3i) |
+| `@pyreon/http`, `@pyreon/query` | endpoint scan + request resolution (a request SOURCE); `useQuery` / `useStream` / `QueryClient` + harnesses (phase 3j) |
+| `@pyreon/validate`, `@pyreon/validation` | schema items, `withField`, `safeParse` expressions, decode-type evidence, form validators (phase 3k) |
+| `@pyreon/machine`, `@pyreon/i18n`, `@pyreon/toast`, `@pyreon/a11y`, `@pyreon/table`, `@pyreon/dnd`, `@pyreon/sync` | phase 3l (declarations, call expressions, lifecycle and init seeds) |
+| `@pyreon/permissions`, `@pyreon/url-state`, `@pyreon/storage` | `usePermissions` + `<PermissionsProvider>`; `useUrlState` (reads the active router); `useStorage` / `useSessionStorage` / `useMemoryStorage` as persisted SIGNALS through the `persistence` backend |
+| `@pyreon/sized-map` | `new SizedMap<K, V>({ maxEntries, lru })` through `callExprs` (construct) |
+| `@pyreon/rx` | `rx.filter(src, p)` and the standalone source-first transforms as a core `computed` around an `ext-expr` (`declCalls`) |
+| `@pyreon/feature` | `defineFeature({ name, schema })` as a module item; the Tier-2 diagnostic through `tier2Calls` |
+| `@pyreon/kinetic` | factory-bound motion boxes (`kinetic('div').preset(…)`) through `rewriteElement` + `requestComponentDecls` |
+| `@pyreon/elements`, `@pyreon/coolgrid` | `Element` (retagged to `Stack`), `Container` / `Row` / `Col` |
+
+`pyreon-native plugins` prints this table for an app (hook owners, call recognizers, element lowerings, module items, unlowered-module metadata); `pyreon-native explain <file>` attributes each lowered declaration to its owner.
+
+## Writing a plugin
+
+A package ships `src/native-plugin.ts` (exported as `./native-plugin`, built to `lib/native-plugin.js`, declared as `"pyreon": { "native": { "plugin": "./lib/native-plugin.js", "modules": ["@acme/camera"] } }`). It imports from `@pyreon/native-compiler/plugin-api` and nothing else of the compiler (`tests/plugin-boundary.test.ts` fails on any other `@pyreon/native-compiler/*` specifier or a relative path into `native/compiler`). `@pyreon/native-compiler` is an OPTIONAL peer plus a dev dependency, so no web import reaches the plugin.
+
+```ts
+import {
+  NATIVE_COMPILER_PLUGIN_API_VERSION,
+  type CallRecognizer, type CompilerPlugin, type DeclEmitter,
+} from '@pyreon/native-compiler/plugin-api'
+
+const recognize: CallRecognizer = (call, ctx) => {
+  const label = ctx.stringLiteralArg(0)
+  if (label === undefined) {
+    ctx.warn('useGadget needs a string literal label.')   // named, attributed to the declaration
+    return null                                           // CLAIM: report, declare nothing
+  }
+  return { type: 'gadget', payload: { label } }            // or `undefined` to DECLINE (fall through)
+}
+
+const gadget: DeclEmitter = {
+  swift: (d, ctx) => `@State private var ${ctx.ident(d.name)} = Gadget(${ctx.stringLiteral(String(d.payload.label))})`,
+  kotlin: (d, ctx) => `val ${ctx.ident(d.name)} = remember { Gadget(${ctx.stringLiteral(String(d.payload.label))}) }`,
+}
+
+export default {
+  name: '@acme/gadget', apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  modules: ['@acme/gadget'], calls: { useGadget: recognize }, decls: { gadget },
+} satisfies CompilerPlugin
+```
+
+Rules a plugin lives by:
+
+- **A recognizer has three answers.** A declaration (a plugin `type` + a JSON `payload`), `undefined` to DECLINE (the parser continues as if the plugin were absent), or `null` to CLAIM the call without declaring anything (the recognizer already said why it cannot lower; the binding must not fall to a generic emit that would reference a symbol neither target has). Reproduce the OLD code's fall-through, not only its happy path: porting `rx` first declined a shape (`rx['filter'](…)`) the core had CLAIMED, and the golden caught it as a declaration that suddenly emitted verbatim.
+- **Payloads are JSON.** The pass pipeline `structuredClone`s the IR; functions, `NaN`, cycles and class instances are refused at recognition naming the plugin (`undefined` is allowed: it is how the IR spells an absent slot). IR (`TypeIR`, `ExprIR`) inside a payload is cast through `ExtPayload`.
+- **Claims are by import, never by bare name.** A hook is the plugin's when it is imported from `@pyreon/*` or from one of its `modules`; `hook-binding.ts` renames a same-named function the author declared, or imported from anywhere else, so no recognizer claims it. If the lowering must apply to a call that is NOT claimed that way (a Tier-2 diagnostic for any `defineFeature(…)`), use `tier2Calls`, which matches the callee as written and does not claim the name: a name claim also changes how a foreign import of the same name is treated, which a byte-identical move cannot allow.
+- **Moved output keeps its identity.** A declaration that used to be a closed core kind sets `legacyKind` (and a module item `legacyList`, an expression `legacyHash`) so `moduleTag` — the hash that names synthesized `__ObjN_<hash>` structs — reads the payload as the retired shape. A plugin with no prior output omits them.
+- **Prove it.** `@pyreon/native-compiler/testing` (`testNativePlugin`) compiles a source through a plugin; `pyreon-native plugins --verify` checks every service type is declared in the package's own sources; the compiler's golden corpus carries the package's `native-golden/` fixtures.
+
+## Discovery and activation
+
+`pyreon-native build|check|watch|explain` (and the LSP) read the app's DIRECT dependencies, load a package's plugin only when a source file imports one of its `modules` (default: the package name), and pass the result to `createCompiler({ discovered })`. Deciding by asking the module would defeat the laziness, so activation is manifest data (`pyreon.native.modules`). Consequences:
+
+- **Activation decides ownership.** A hook is owned by the package the app imports it FROM, not by the runtime it happens to drive: `useFetch` is imported from `@pyreon/hooks`, so it is the hooks plugin's even though its URL comes from an `@pyreon/http` endpoint. Facts cross plugins through the compiler, never by import (`ParseContext.requests`, `recordDecode`, `items[type].fieldValidators`), so there is no `requires` between plugins whose packages an app may declare independently.
+- **Nothing ships inside the compiler.** `BUILT_IN_PLUGINS` is empty. `@pyreon/hooks` was the last holdout (a generated copy of its service table, written by a script and gated for freshness); it blocked moving any code-shaped hook, because a generated copy can carry data, not recognizers. It is deleted along with its generator and gate. A bare `transform()` / `createCompiler()` with no plugins therefore lowers only the core's own contract, and a plugin that fails to load is a hard error naming the package and file. The `builtIn` mechanism (a discovered plugin of the same name replaces a compiler-shipped one) is kept, unit-tested against a synthetic plugin, and currently has no user.
+- **`--no-plugins`** turns discovery off. **`--plugin <file>`** loads an explicit local ESM plugin; one of the same name beats a discovered one.
+- **Conflicts are load-time errors naming both owners**: two plugins claiming one hook, one `(module, tag)`, one function / identifier name, one runtime type, one unlowered-module entry, or one `persistence` backend.
+
+## The plugin protocol
+
+`CompilerPlugin` (`src/plugin.ts`, re-exported types in `src/plugin-api.ts`) is a bag of OPTIONAL, additive members. Adding a member never bumps `NATIVE_COMPILER_PLUGIN_API_VERSION` (an older plugin simply does not use it); an incompatible change does. The shape is validated at load (`assertPluginShape`), so a malformed member fails naming the plugin.
+
+| Member | Lowers | Core site |
+| --- | --- | --- |
+| `services` | plain service hooks as data (above) | `service-registry.ts`, the generic `service` decl |
+| `calls` + `decls` | a hook / function call into the plugin's open `ext` declaration; its emitter per target | `tryDeclFromVarDeclarator`, `emitExtDecl` |
+| `declCalls` | a declaration recognized by the SHAPE of its callee (`rx.filter(src, p)`, `keep(src, p)`), not a name; verdicts as `calls` | `tryPluginDeclCall` |
+| `tier2Calls` | callee names the package ships no lowering for: the standing Tier-2 diagnostic naming the plugin | the Tier-2 branch of `tryDeclFromVarDeclarator` |
+| `memberCalls` / `receivers` | `<receiver>.<method>(…)` / any call, read or write rooted at a binding the plugin's decls created | `lowerPluginReceiver`, `lowerPluginAssign` |
+| `functions`, `identifiers`, `memberReads` | a plain `name(args)` call, a bare library constant, a member read recognized by shape | `registry-lookup.ts` |
+| `callExprs` / `methodCalls` + `exprs` | a CALL (`toast("x")`, `new SizedMap<K, V>(…)`) / `<recv>.<method>(…)` into the open `ext-expr` node, rendered, typed, renamed and hashed by the plugin | `tryPluginCallExpr`, `tryPluginMethodCall`, `lowerPluginExpr` |
+| `topLevel` + `items` | a file-scope declaration as a module item; slot, hash lane, name bindings, form validators | `tryPluginTopLevel`, `lowerPluginItem` |
+| `scanModule`, `requestSources` | a per-file pre-pass (facts, skipped metadata, lowered imports); a binding resolved to a concrete request | `module-scan.ts` |
+| `refineStructs`, `finishModule`, `refineParse` | struct edits from items and decode sites; a last pass over items; an IR edit INSIDE the parse | `parsePyreon` |
+| `elements`, `scopes`, `intrinsics`, `rewriteElement` | claimed JSX tags (retag or emit), colour-scope providers, lowercase DOM tags inside the plugin's renderers, a local-binding tag rewritten to another element | `element-lowering.ts`, `scope-provider.ts` |
+| `prepareEmit`, `propsTypes`, `runtimeTypes`, `refModifiers` | per-file extra components, library props types, runtime type names, a modifier from a `ref` value | the emitters |
+| `unlowered`, `intrinsicAdvice`, `componentOnlyCalls`, `destructureCalls` | advice for the "no native lowering" warning and the exports that DO lower; a module-scope decline warning; hooks whose result may be destructured | `unlowered-modules.ts`, `parse.ts` |
+| `persistence` | how a persisted SIGNAL is declared on each target (a library's own `@AppStorage` / `by rememberPersisted`) | `signal-persistence.ts` |
+| `stubs` | compile-gate stub text beyond the SwiftUI / Compose bundle; the compiler never reads it, the caller passes it as `ValidateOptions.augment` | `stub-augmentation.ts` |
+| `modules`, `requires`, `builtIn`, `transformIR`, `prepareIR`, `backends` | activation, ordering, replacement-by-name, IR passes, extra backends | `compiler.ts` |
+
+**A declaration recognizer's verdict** (`CallRecognizer`, `DeclCallRecognizer`) is one of: `{ type, payload }` (the plugin's own `ext` decl); `{ signal: { initial, persistKey? } }` (a plain core SIGNAL, built with the core's own rules, so a library's signal reads, writes, infers and synthesizes structs exactly like `signal()`); `{ computed: ExtExprSpec }` (a core `computed` around the plugin's own expression); `undefined` (decline); `null` (claim without declaring).
+
+**`DeclEmitter`** carries, besides `swift` / `kotlin`: `callable` (the binding is called through `callAsFunction` / `invoke`, so a zero-argument call keeps its parens), `usesRouter` (the View needs the router in its environment), `lifecycle` (`stableHost`, `tailOrder` / `midOrder` placement, Swift modifier lines, Compose effect lines), `swiftInit` (lines seeded in the generated `init()`), `typing` (`callRead` types `x.f()`, `member` types `x.f`, `methodReturn` types `x.m(…)`), `asyncState` (the declaration is an async source for `<Suspense>` / `<ErrorBoundary>`), `legacyKind`.
+
+**`ExprEmitter`** carries `swift` / `kotlin`, `typing` (`type(e, infer)` — typed from its parts, `member`, `seedsModuleConst`), `legacyHash`, `rename`, and `reduce` (the node is a reduction, so the core widens an integer seed over a fractional accumulation exactly as it does for an array `reduce`). The core walks an `ext-expr`'s `args` like any expression, which is how nested reads, renames and inference reach them.
+
+**`ModuleItemEmitter`** carries `swift` / `kotlin`, `after` (the emit slot: `'models'`, then `'declarations'`, then the default `'data'`; items of one slot emit in file order), `legacyList` (`'fieldMetas'` | `'zodSchemas'` | `'features'`, the retired core arrays an item's payload hashes as), `bindings` (`names`, `reserved`, `rename`: the file's one value/type namespace) and `fieldValidators`.
+
+### What phase 3m added (each library-agnostic, each with a toy-plugin user that is not the library that needed it)
+
+| Seam | Why | Toy spec |
+| --- | --- | --- |
+| `EmitContext.generic(el)`, `KotlinEmitContext.intArg` | a retag-free element lowering that re-enters the generic component emit; an `Int`-only Compose argument | `plugin-rewrite-element.test.ts`, element specs |
+| `DeclEmitter.callable` / `usesRouter` | `useUrlState`'s `q()` and router environment, without the core naming it | `plugin-decl-flags.test.ts` |
+| plugin-recognized hooks in render callbacks | a hook a plugin recognizes, declared inside a `<For>` / `<Show>` callback, is named exactly like a built-in one (the `HOOK_NAMES` set derives from the registry) | `plugin-hook-render-callback.test.ts` |
+| the `{ signal }` verdict + `persistence` | `useStorage` is a persisted SIGNAL, not a container | `plugin-signal-persistence.test.ts` |
+| `CallExprSite.construct`, `ModuleParseContext.typeArgs` / `loc`, `typing.seedsModuleConst` | `new SizedMap<K, V>(…)`: a construction, its generic arguments, a located message, and a file-scope const that must not be typed as a dictionary | `plugin-construct-exprs.test.ts` |
+| `rewriteElement` + `requestComponentDecls` | a tag naming a LOCAL factory binding; a rewrite that needs a declaration on the component being parsed (`kinetic`'s mount flag) | `plugin-rewrite-element.test.ts` |
+| `declCalls` + `{ computed }`, `typing.type(e, infer)`, `ExprEmitter.reduce`, `ext-expr` walking | `rx.filter(todos, p)` is a computed whose type follows its source; a reduction's seed widens | `plugin-decl-calls.test.ts`, `plugin-rx-legacy-hash.test.ts` |
+| items `after: 'declarations'`, the `features` hash lane | a feature's declarations emit before the schemas, with unchanged struct names | `plugin-module-items.test.ts` |
+| `tier2Calls` | the Tier-2 diagnostic for a call the package does not lower, WITHOUT claiming the name | `plugin-tier2-calls.test.ts` |
+| `DeclEmitter.typing.member` | the type of the property form `q.data`; a nullable union when the member may be absent | `plugin-decl-typing-member.test.ts` |
+| `DeclEmitter.typing.methodReturn` | the type of a method call result `x.m(…)` (`vault.read(k)` is optional), so an optional used as a condition lowers to a nil test | `plugin-decl-typing-method-return.test.ts` |
+
+Traps this arc surfaced, each now locked:
+
+- **A name CLAIM is not free.** `calls: { defineFeature }` made `hook-binding.ts` rename a `defineFeature` imported from another module, changing the output of a fixture the golden holds. `tier2Calls` exists because "diagnose this call" and "own this name" are different statements.
+- **A fixed-position fast path hides a second consumer.** The `rx` exception clause (every `rx.<anything>` member declaration was dropped) had to be reproduced in the plugin's recognizer, not just its happy path.
+- **A seam's first user is not its proof.** Bisecting each moved mechanism against the golden found, repeatedly, a mechanism no entry discriminated (the response-evidence refinement, the endpoint json-body default, the method upper-casing, property-form typing). A green golden with a mechanism neutered means the corpus does not reach it; record a fixture from the PARENT and bisect again.
+- **`satisfies CompilerPlugin` narrows a plugin literal**, and an array of narrowed literals loses `.calls` on its union; the shared list is annotated `readonly CompilerPlugin[]`.
+
+## Reference: the compiler extension boundary, the facades and each seam in detail
+
+The rest of this document is reference for the seams in the protocol table above, in the order a plugin author meets them. Where a section describes how a library was moved, it is the worked example of the seam, not a statement of what the compiler still carries.
 
 ## Compiler extension boundary
 
@@ -114,7 +249,7 @@ A library owns its native lowering as a plugin file in its OWN package; the comp
 shared `CompilerModule` IR with synchronous `transformIR`/`prepareIR` callbacks,
 or register a distinct backend target. Source transformations run before all
 runtime preparation; synthesized module identity excludes external declarations.
-Charts use a built-in preparation plugin and parsed import declarations.
+Charts prepare through their own package's plugin and parsed import declarations.
 
 Keep plugin registration instance-owned (see "Instance-owned registries" below); do not add process-global registries,
 source regex import detection, or emitter-specific positional arguments to the
@@ -127,21 +262,23 @@ Native CLI build/check/watch/LSP accept the same explicit local ESM `--plugin`
 list. Protocol and shared IR are experimental API v1; incompatible changes
 require a version bump. See `packages/native/compiler/README.md`.
 
+
 ## Instance-owned registries
 
-Every `createCompiler` instance owns one `CompilerRegistries` — `{ services, serviceTables, elements, calls, unlowered }` — built once, at load time, from its built-in + discovered + explicit plugins (replacement-by-name, `requires` order, conflict errors as above). The built-in services and the elements/coolgrid lowerings are `builtIn` plugin objects in `built-in-plugins.ts`; nothing else registers them. Two compilers in one process therefore never share or leak registrations.
+Every `createCompiler` instance owns one `CompilerRegistries` — `{ services, serviceTables, elements, calls, unlowered }` — built once, at load time, from its discovered + explicit plugins (replacement-by-name, `requires` order, conflict errors as above). There is no private table beside it and no built-in plugin (`BUILT_IN_PLUGINS` is empty). Two compilers in one process therefore never share or leak registrations.
 
 The parser and both emitters keep large module-level state, so they are not handed a registry per call. `transform` installs its registries in a SCOPED slot (`active-registries.ts`: `withRegistries(registries, fn)`) for exactly the duration of parse + passes + emit, and restores the previous value in `finally`. It is not global state: outside a `withRegistries` call the slot is empty and lookups fall back to the immutable built-in defaults; a nested `transform` on another compiler sees its own registries and the outer one is back afterwards; a throwing pass or parse never leaves a stale slot. Everything that reads a service or element goes through `registry-lookup.ts` (`serviceFor`, `bindServices`, `allServices`, `findElementLowering`, `isElementLoweringTag`, `isStyleBasePrimitive`, `hookClaimsSource`, `emitPluginDecl`) or `activeRegistries().serviceTables`, whose hook sets are derived once when the registry is built. `parsePyreon(source, filename, { registries })` takes them explicitly for direct callers and tests. The slot is synchronous only — every compiler hook is — and the emitters' own module-level state is still not reentrant (`tests/instance-registries.test.ts` proves slot isolation, restore-on-throw and nesting).
 
-## Element lowering plugins
+
+## Element lowering plugins and the `EmitContext` facade
 
 A library's JSX elements reach native code through `element-lowering.ts`, not through `if (tag === …)` branches in the emitters. An `ElementLowering` is `{ module, tags, retag?, emit?: { swift?, kotlin? }, styleBase? }`:
 
 - **Claim.** Tags are claimed only when the emitters' import guard accepts `(tag, module)` — the same `canAliasIntercept` rule as before: not shadowed by a same-named user / styled / rocketstyle / attrs component, and when the import is tracked it must come from `module` under its own name. `parse.ts` records the import source of every tag any registered lowering names (a scoped sub-path import normalises to the package root), so a plugin's tags get the guard with no parser edit. A user `Row` from `./mine` is never claimed; a renamed import (`Row as R`) is not either, because the claim is on the local tag.
 - **Retag.** `retag(el)` returns another element (usually a canonical `Stack`), which re-enters the emitter's dispatcher; returning `undefined` declines and the element goes to `emit`. A retag must not return a tag it claims itself.
 - **Emit.** `emit.swift` / `emit.kotlin` receive `(el, ctx: EmitContext)` and return target text. A target without a function falls through to the generic component path. All per-target differences live in these functions, never in the facade.
-- **Registration.** A lowering is declared on a plugin: `CompilerPlugin.elements`. `createCompiler` builds one `ElementRegistry` per instance from the built-in, discovered and explicit plugins; a `(module, tag)` pair claimed twice is a load-time error naming both owners (no load-order precedence), except that a discovered plugin replaces a `builtIn` one by name. The built-ins (`plugins/elements.ts`, `plugins/coolgrid.ts`) are `builtIn` plugins registered through exactly that path — there is no private back door and no process-global registry.
-- **Boundary.** Element-lowering files in `plugins/` use only `../emit-context`, `../element-lowering` (types), `../plugin` and `../types`, never `emit-swift`, `emit-kotlin` or `parse` (`tests/plugin-boundary.test.ts`).
+- **Registration.** A lowering is declared on a plugin: `CompilerPlugin.elements`. `createCompiler` builds one `ElementRegistry` per instance from the discovered and explicit plugins; a `(module, tag)` pair claimed twice is a load-time error naming both owners (no load-order precedence), except that a discovered plugin replaces a `builtIn` one by name. `@pyreon/elements` and `@pyreon/coolgrid` register through exactly that path from their own packages — there is no private back door and no process-global registry.
+- **Boundary.** A package's plugin files import only `@pyreon/native-compiler/plugin-api`, never `emit-swift`, `emit-kotlin` or `parse` (`tests/plugin-boundary.test.ts`).
 
 `EmitContext` (`emit-context.ts`) is the only way a plugin emits. It closes over the emitter's module-level state; each emitter builds one per element (`swiftEmitContext` / `kotlinEmitContext`):
 
@@ -180,7 +317,7 @@ A library's JSX elements reach native code through `element-lowering.ts`, not th
 
 Extend the facade only when a plugin needs it, and add its row here. A `DeclEmitter` receives this same context (built by `swiftEmitContext(2)` / `kotlinEmitContext(2)`; its `emit` / `staticAttr` are the element ones and a declaration has no element, so they are not useful there).
 
-**Target-only members (`SwiftEmitContext`).** `emit.swift` receives a `SwiftEmitContext` — the shared facade plus the members only the Swift emitter has state for. A member moves up to `EmitContext` when BOTH emitters supply it: `stringAttr`, `layoutModifiers`, `action`, `constExpr` and `colorScope` started on the Swift context for the Swift chart hosts and moved up (rows above) when the Kotlin chart hosts needed the same capability from `emit-kotlin.ts`. What stays here has no Compose analogue, which is why there is **no `KotlinEmitContext`**: `emit.kotlin` receives a plain `EmitContext`.
+**Target-only members (`SwiftEmitContext`).** `emit.swift` receives a `SwiftEmitContext` — the shared facade plus the members only the Swift emitter has state for. A member moves up to `EmitContext` when BOTH emitters supply it: `stringAttr`, `layoutModifiers`, `action`, `constExpr` and `colorScope` started on the Swift context for the Swift chart hosts and moved up (rows above) when the Kotlin chart hosts needed the same capability from `emit-kotlin.ts`. What stays here has no Compose analogue. `emit.kotlin` receives a `KotlinEmitContext`, which is the shared `EmitContext` plus `intArg` (an argument to an `Int`-only Compose API: a TS integer is a `Long`, so it narrows at exactly the call that needs it).
 
 | Member | Replaces (in `emit-swift.ts`) | Why Kotlin has none | Used by |
 | --- | --- | --- | --- |
@@ -219,7 +356,7 @@ The `@pyreon/charts` plugin (shipped by `@pyreon/charts` itself since Phase 3h; 
 
 Recipe for the next parse-side extraction: find what the parser edits for a library, then ask whether anything between parse and the pass boundary reads the edited value. If not, use `transformIR`. If so, it is a `refineParse`, and the test is a helper whose RETURN depends on the edited parameter.
 
-### Moving a library's emit into a plugin
+### Moving a library's emit into a plugin: the procedure
 
 1. **Inventory the section first.** Extract the contiguous region into a scratch file and list (by AST, not grep) every top-level name it uses that is defined elsewhere in the emitter, and every name it defines that code outside it uses. The first set is the facade you must provide; the second must stay in core or cross the facade. The Swift chart section used 13 outside names: 10 emitter state or generic emit helpers (the facade now supplies them) and 3 (the inference context) that belonged to `swiftSpreadResolver`, a generic neighbour that merely sat in the range and stayed in core. The Kotlin section used 11 (`_emitWarnings`, `readStaticAttrKotlin`, `emitKotlinExpr`, `withExpectedTypeKotlin`, `readStringAttrExprKotlin`, `emitKotlinLayoutModifier`, `emitKotlinAction`, `_moduleConstExprsKotlin`, `_chartThemeScope`, `_pluginScope`, `isChartHandleDecl`) plus the pure string/identifier helpers, and DEFINED none that outside code reads except the two state lets that stay. Six names it DEFINES are read by core (`_pluginScope`, `_hostStateDecls`, `_swiftHostStateSeq`, `_chartThemeScope`, `swiftSpreadResolver`, the host entry): the first four are state the core owns, so they stay and are exposed through the facade.
 2. **Grow the facade by that list and nothing else**, one row per member in the tables above, each with a real user. State the member's target scope: shared members must have both emitters' equivalents; otherwise put it on the target's context type. **For the second target, look first for members the first target put on its own context type that the second needs too, and promote them** (five moved up for Kotlin); both emitters' own helpers keep their names, only the facade's backend interface gained a member each.
@@ -228,7 +365,7 @@ Recipe for the next parse-side extraction: find what the parser edits for a libr
 5. **Prove byte identity at two levels.** The golden corpus (`bun scripts/check-native-golden.ts`; `--dump` parent and branch and `diff -r`) covers what it covers — list which entries exercise the moved code and add golden-only fixtures recorded from PARENT output for any path none does. **Measure before harvesting:** run `collectCorpus()` for the one target under vitest v8 coverage restricted to the moved files (Kotlin: 92.2% statements / 84.2% branches before, 97.4% / 92.2% after 54 fixtures; two more lock the spread warning and the interpolated label). To pick fixtures, capture every source the library's tests compile (a temporary env-gated append in `compiler.transform`; run with `PYREON_SKIP_NATIVE_VALIDATE=1` so the swiftc/kotlinc tests do not hold the run hostage under load), bundle the compiler (`bun build … --packages=external --sourcemap=external`), run each source under `node:inspector` precise coverage and map the executed ranges back through the source map, then greedy-cover the statements the corpus misses. Compare at STATEMENT start (line AND column) — a line-level match over-reports, because `if (x) return y` is one line and two statements. Prove each new entry against the parent by copying the fixtures into a parent worktree and diffing `--dump` output, then check the parent against the updated golden file: it must pass there too. Then run EVERY test mentioning the library's tags on parent and branch with a temporary capture patch around `emitSwift` / `emitKotlin` that logs `hash(args) hash(result)`, and compare the logs: a test only asserts what its author thought of, the capture compares every input the suite ever compiled.
 6. **Bisect the seams.** Break the registry dispatch, each facade member, the scope restore; golden AND the library's tests must fail.
 
-## Package-owned plugins: `plugin-api`, `scopes`, `stubs` (Phase 3h)
+## `plugin-api`, `scopes` and `stubs`
 
 `@pyreon/charts` was the first library whose plugin is code-shaped AND large (≈15,000 lines with the generated engine registry), and it now lives in `packages/fundamentals/charts/src/native-plugin/`, so `@pyreon/native-compiler` has no dependency on it. The relocation needed three things the compiler did not have:
 
@@ -236,11 +373,11 @@ Recipe for the next parse-side extraction: find what the parser edits for a libr
 - **Colour-scope providers (`CompilerPlugin.scopes`).** `<PyreonUI mode>` and `<ColorModeProvider mode>` pin the framework-wide colour mode and `<ChartThemeProvider>` layers a theme over it; none has a runtime context natively — each is a compile-time scope entered while the element's children are emitted. The CORE keeps the plumbing (`enterColorScope`, saved/restored in `finally`, the transparent `Group`/`Box`, the colour-scheme pin of a literal `<ColorModeProvider mode>`); the VALUE of the scope belongs to the plugin: `scopes: [{ module, tags, enter(el, { warn, outer }) → object | undefined, transparent? }]`. `transparent` marks an element that exists only to provide a scope (the core emits its children under it); leave it off for core-emitted ones. A `(module, tag)` pair has one owner (load-time error naming both); the claim goes through the same `canAliasIntercept` guard as element lowerings, and `isElementLoweringTag` also covers scope tags so the parser records where they were imported from. A plugin reads the scope back through `EmitContext.colorScope<T>()`. Without a provider the scope simply stays empty — the compiler alone opens scopes nobody reads.
 - **Stub augmentation (`CompilerPlugin.stubs`).** The compile gates (`validateSwiftWithStubs`, `validateSwiftFilesWithStubs`, `validateKotlin`, `validateKotlinFiles`) take `ValidateOptions { augment: StubAugmentation[] }`; a `StubAugmentation` is `{ swift?(source) → string, kotlin?(source) → string }`, appended to the stub bundle only for inputs that need it (return `''` otherwise). The charts plugin's `stubs` appends the REAL generated engine plus the canvas-owned draw-list types for any emit that names `PyreonChartCanvas(`, exactly as `validate.ts` did before. The compiler never reads `plugin.stubs`; the caller passes it (`scripts/native-first-party-plugins.ts` for repo scripts, `src/tests/charts-plugin.ts` for the compiler's tests). Verdict-cache keys already hash the bytes handed to the compiler, so an augmentation is part of the key by construction.
 
-**Discovery, not a built-in.** The charts plugin ships in `@pyreon/charts`' manifest (`pyreon.native.plugin: "./lib/native-plugin.js"`, `modules: ["@pyreon/charts"]`), so `pyreon-native build|check|plugins|explain` loads it lazily when a source file imports the package AND the app declares it. There is NO built-in copy in the compiler (unlike the data-shaped `@pyreon/hooks` descriptors, a copy of 15,000 lines would defeat the point): a bare `transform()` / `createCompiler()` without discovery does not lower charts, and `--no-plugins` turns them off. The package-level contract that a zero-config API user must now load `@pyreon/charts/native-plugin` themselves is the one behaviour change of this phase.
+**Discovery, not a built-in.** The charts plugin ships in `@pyreon/charts`' manifest (`pyreon.native.plugin: "./lib/native-plugin.js"`, `modules: ["@pyreon/charts"]`), so `pyreon-native build|check|plugins|explain` loads it lazily when a source file imports the package AND the app declares it. There is NO built-in copy in the compiler: a bare `transform()` / `createCompiler()` without discovery does not lower charts, and `--no-plugins` turns them off. The contract that a zero-config API user must load `@pyreon/charts/native-plugin` themselves was the one behaviour change of that phase, and it is now the rule for every library, `@pyreon/hooks` included.
 
 **Where the chart tests run.** They stay in `@pyreon/native-compiler`'s suite, because that package owns the toolchain lanes (the warm Kotlin daemon, the 180s spec timeout, the real-SDK swiftc job in `native-validate.yml`). `src/tests/charts-plugin.ts` loads the plugin from the sibling package's SOURCE by relative path (the precedent is `native-chart-mirror-parity.test.ts`, which reads the engine the same way) — a `devDependency` back to `@pyreon/charts` would be a package cycle. The golden corpus keeps the chart fixtures under `packages/fundamentals/charts/native-golden/` (their keys and compile filenames are unchanged, so the hashes did not move); `scripts/check-native-golden.ts` reads both directories. The engine generator moved with the registry it writes: `bun packages/fundamentals/charts/scripts/gen-native-engine.ts` (it runs the public compiler API only, with no plugin loaded, which is itself a check that the engine source needs none).
 
-## Expression and lifecycle seams (Phase 3i — the flow plugin)
+## Expression and lifecycle seams (`receivers`, `functions`, `memberReads`, `prepareEmit`, …)
 
 `@pyreon/flow` is the second library whose lowering lives in its own package (`packages/fundamentals/flow/src/native-plugin/`, discovered through `pyreon.native.plugin`), and `@pyreon/native-compiler` has no `@pyreon/flow` specifier left (13 → 0 in the boundary baseline). Flow, unlike charts, is not a set of claimed JSX tags: it is a state object (`createFlow`/`useFlow`) whose methods, config writes, helper functions, constants and renderer components are reached from the middle of ordinary expressions. Each new seam below has one row, a `plugin-expression-seams.test.ts` user that is NOT flow, and a bisect (neutered in the compiler: that spec and only that spec fails).
 
@@ -264,7 +401,7 @@ Traps the move surfaced, each now locked:
 - **`ExtDecl.payload` may carry `undefined`.** An embedded `ExprIR` spells an untyped lambda parameter's `paramTypes[i]` as `undefined`; it survives `structuredClone`, so the JSON check refuses functions, `NaN`, class instances and cycles but not `undefined`.
 - **A local named `host` shadows the facade.** The plugin's own host state and the `host.*` facade slot are different things; name the former otherwise.
 - **Plugin-less compiles no longer lower flow.** A test or tool that compiles flow source must load the first-party plugins (`tests/first-party-plugins.ts`); without the plugin the source warns "no native lowering" like any unclaimed library.
-- **Verified here:** golden (536 entries) byte-identical, plus a TasksApp capture identical to the parent. **Not verified here:** swiftc / kotlinc compile of the flow output (neither toolchain exists on this machine; the stub gates run in the toolchain lanes).
+- **Verified:** golden (536 entries) byte-identical, plus a TasksApp capture identical to the parent. The CI reconciliation also passed the complete native suite with real Swift/Kotlin compilers and SDK fixtures. Phase 3i passed all required hosted checks, including iOS simulator UI tests and device SDK archive, before auto-merge.
 
 ## Code-shaped plugins (`calls` + `decls` + `memberCalls` + `unlowered`)
 
@@ -297,17 +434,17 @@ A service is DATA (a hook with no arguments). When the lowering needs CODE — r
 
 **Worked proof: `createChartHandle()`.** `native-plugin/plugin.ts` (the `@pyreon/charts` plugin) owns the recognizer, both declaration emitters, the `handle.dispatch({...})` lowering (`memberCalls`) and the `@pyreon/charts` unlowered-module metadata; `parse.ts`, the `chart-handle` `DeclIR` kind and both emitters' handle-name sets, series map, placeholder regex and `dispatch` branches are gone, and the emitted Swift/Kotlin is byte-identical (golden corpus). The `<PlotChart handle={chart}>` host lives in the plugin on both targets (see "Worked proof: the chart hosts").
 
-## Shared-fact libraries: `@pyreon/http`, `@pyreon/query`, `@pyreon/validate` / `validation` (Phase 3j)
+## Shared facts between plugins (`scanModule`, `requestSources`)
 
 These three libraries do not lower independently: an `@pyreon/http` endpoint feeds `useFetch` / `useQuery` / `useStream`, a schema bound to an endpoint's `response` is evidence for the decode type's `Int`/`Double` fields, and `@pyreon/validation`'s adapters emit the same schema struct `@pyreon/validate`'s `s` DSL does. A plugin split has to put each FACT with its owner and give consumers a way to read it without importing the owner's parser.
 
-**Activation decides ownership.** A plugin is loaded only when the app imports one of its `modules` AND depends on its package. A hook is therefore owned by the package an app imports it FROM, not by the runtime it happens to drive: `useFetch` is imported from `@pyreon/hooks`, so it stays with the hooks lowering (its `fetch` declaration and `PyreonFetch` harness remain in the core until the hooks plugin moves them); `useQuery` / `useStream` / `new QueryClient()` / `<QueryClientProvider>` come from `@pyreon/query`; `createHttp` / `.endpoint()` come from `@pyreon/http`; `s` / `withField` from `@pyreon/validate`; `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`.
+**Activation decides ownership.** A plugin is loaded only when the app imports one of its `modules` AND depends on its package. A hook is therefore owned by the package an app imports it FROM, not by the runtime it happens to drive: `useFetch` is imported from `@pyreon/hooks`, so it is the hooks plugin's (its `fetch` declaration and `PyreonFetch` harness live in `packages/fundamentals/hooks/src/native-plugin/fetch.ts`); `useQuery` / `useStream` / `new QueryClient()` / `<QueryClientProvider>` come from `@pyreon/query`; `createHttp` / `.endpoint()` come from `@pyreon/http`; `s` / `withField` from `@pyreon/validate`; `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`.
 
 | Plugin (package) | Owns | Publishes |
 | --- | --- | --- |
 | `@pyreon/http` | the module scan (clients, endpoints), endpoint → request resolution (URL templating, query string, literal headers / json body, runtime `:param` via `PyreonURL`, response-schema evidence), the "http metadata declares nothing" skip, its `unlowered` entry | a **request source** |
 | `@pyreon/query` | `useQuery` (`query`), `useStream` (`stream`), `new QueryClient()` (`query-client`), `<QueryClientProvider>`, the stream-opener scan, their harnesses, typing, receivers, stubs | — |
-| `@pyreon/validate` / `validation` | moved in Phase 3k (next section) | schema items |
+| `@pyreon/validate` / `validation` | see "Module-level seams" below | schema items |
 
 There is NO `requires` between `@pyreon/query` and `@pyreon/http`: a request source is optional (an app with `useQuery` and no endpoint has none), and a hard `requires` would make every `@pyreon/query` app load `@pyreon/http`. The facts cross through `ParseContext.requests`, which is simply empty when no source is loaded.
 
@@ -330,19 +467,15 @@ There is NO `requires` between `@pyreon/query` and `@pyreon/http`: a request sou
 
 **Byte-identical contract.** Moved declarations keep their legacy kind (`legacyKind`), so struct names hash unchanged, and the payload key order reproduces the old IR object's, which `moduleTag` hashes. The golden corpus carries 192 fixtures harvested from the pre-move tests (`packages/fundamentals/{http,query,validate}/native-golden/`), recorded from the parent compiler BEFORE any code moved; the gate was byte-identical (no `--update`) after the move.
 
-### What is NOT moved, and why
-
-- **`useFetch` / the `fetch` declaration** stays in the core: its owner is `@pyreon/hooks` (see "Activation decides ownership"), whose plugin is a separate phase. It now reads endpoints through `ParseContext.requests`, so it already has no `@pyreon/http` knowledge.
-
-## Module-level seams (Phase 3k — `@pyreon/validate` / `@pyreon/validation`)
+## Module-level seams (`topLevel`, `items`, `methodCalls`, `exprs`)
 
 A schema is not a declaration inside a component. It is a FILE-SCOPE item that emits beside the structs and enums, before every component, and that other code reads BY NAME: a form's `schema: Pet`, an endpoint's `response: Pet`, `Pet.safeParse(x)`. Four small, library-agnostic seams carry that (`module-items.ts`, `plugin-api` types, one row each below, one toy-plugin user each in `tests/plugin-module-items.test.ts` that is NOT a schema). Every recognizer may DECLINE (`undefined`): the parser then continues as if the plugin were absent.
 
 | `CompilerPlugin` member | What it lowers | Core site |
 | --- | --- | --- |
 | `topLevel` + `items[type]` | a file-scope declaration (`const Pet = s.object({ … })`, `const email = withField(…)`): the recognizer returns `{ type, name, payload }`, the compiler stamps `plugin` and refuses a type with no emitter or a payload that is not JSON; the emitter returns one string per declaration on each target. The open `ExtModuleItem` sits in `ParseResult.moduleItems`; the first plugin to return an item owns the node | `tryPluginTopLevel` (`parse.ts`), `lowerPluginItem` |
-| `items[type].after` | where the item emits among the core's own module items: `'models'` or `'features'` (default) — the slots the two retired arrays (`fieldMetas`, `zodSchemas`) emitted in | `itemsInSlot` |
-| `items[type].legacyList` | the closed array an item REPLACED, so `moduleTag` hashes its payload where the array stood (`'fieldMetas'` \| `'zodSchemas'`); an item without one is hashed as an extra trailing element | `moduleTag` |
+| `items[type].after` | where the item emits among the core's own module items, in order: `'models'`, `'declarations'` (a feature's schema struct and binding, which emitted before every schema), then the default `'data'` | `itemsInSlot` |
+| `items[type].legacyList` | the closed array an item REPLACED, so `moduleTag` hashes its payload where the array stood (`'fieldMetas'` \| `'zodSchemas'` \| `'features'`); an item without one is hashed as an extra trailing element | `moduleTag` |
 | `items[type].bindings` (`names`, `reserved`, `rename`) | the file's one value/type namespace: which value bindings an item declares (a same-named `type` makes the value `Pet` → `PetValue`), every other name it takes, and how it applies the rename (it may add follow-on names, e.g. `Book_Author` after `Book`) | `disambiguateValueTypeNames` |
 | `items[type].fieldValidators` | per-field validation a form that names the item gets: `useForm({ schema: Pet })` reads `fields(item)` and the plugin's per-target validator body; `declaredBy` is the vocabulary the "no declaration by that name" warning uses, so the core names no library | `formFieldValidators` (both emitters) |
 | `methodCalls[method]` + `exprs[type]` | `<receiver>.<method>(…)` recognized by SHAPE, keyed by method name (the key `'*'` sees every method call after the ones keyed by its own name — how `@pyreon/validate` warns about ANY method on a schema binding). The verdict is an `ext-expr` spec, `undefined` (decline, the next plugin's recognizer sees it) or `null` (claimed and reported through `ctx.unsupported`; the parser substitutes the empty literal). The open `ext-expr` IR node is rendered per target, typed by `exprs[type].typing` (`type`, and `member` which decides EVERY property read on the node), renamed by `exprs[type].rename` and hashed as a retired kind by `legacyHash` | `tryPluginMethodCall`, `lowerPluginExpr`, `inferTypeValue` |
@@ -352,7 +485,7 @@ A schema is not a declaration inside a component. It is a FILE-SCOPE item that e
 
 Traps the seams were built around, each now locked by a spec:
 
-- **A `legacyList` the hash does not have drops the item from `moduleTag` silently**, so the shape check rejects anything but the two real lanes.
+- **A `legacyList` the hash does not have drops the item from `moduleTag` silently**, so the shape check rejects anything but the three real lanes.
 - **`reserved` must be in the namespace BEFORE the primary renames are chosen**, otherwise a primary `FooValue` can land on a nested name of the same spelling.
 - **A recognizer that does not unwrap `export const` sees nothing**: an `ExportNamedDeclaration` is a different top-level node. The toy's first cut had exactly this bug and its binding test passed anyway, because the expression half of the rename still matched — the assertion now requires the item's own struct and value binding to follow.
 
@@ -369,45 +502,57 @@ The shared model is exported from `@pyreon/validation/native-plugin`; `@pyreon/v
 
 What this removed from the core: `ParseResult.fieldMetas` / `zodSchemas` (now `moduleItems`), the `schema-validate` `ExprIR` kind (now `ext-expr`), ~3,300 lines of recognizer and emitter, `url-rule.ts`, `schemaInputNeedsConversion`, the `validateSchema*` / `inlineSchema*` parse state, the two table entries and two `tier2` entries naming the packages, and `@pyreon/validate` (5) / `@pyreon/validation` (8) from the boundary baseline. `@pyreon/native-compiler/plugin-api` gained the pure spelling helpers the emitters share with plugins (`KOTLIN_INT`, `swiftCodingKeysLines`, `localBase`, `kotlinMember`).
 
-### Verification (Phase 3k)
+### How the schema libraries were verified
 
 - **Golden:** 964 entries byte-identical, none updated. Before anything moved, 22 more fixtures (44 entries) were recorded from the parent compiler: 17 chosen from an lcov run, then 5 more after a BISECT of the move found four mechanisms no entry discriminated (the response-schema `Int`/`Double` refinement, the metadata item's slot and hash lane, the expression rename) plus a form's schema link under a rename. A green golden with a mechanism neutered means the corpus does not reach it, not that the mechanism is dead — bisect every moved mechanism against the corpus AND the specs. The lcov run: an lcov run over the corpus showed 78 + 20 + 3 + 16 unreached lines across the schema recognizers, emitters, form coupling, response refinement and the value/type rename; the new fixtures reach all but an unreachable discriminated-union guard and a `Map` arm of the namespace walker.
 - **Behaviour changes, by design:** the `useForm({ schema })` "no declaration" warning names its libraries from the loaded plugins (identical text when `@pyreon/validation` is loaded, a generic sentence otherwise); `reserved` names enter the namespace BEFORE a rename is chosen (a nested schema named `FooValue` can no longer be collided with by renaming `Foo`); the Tier-2 declines now require the call to be imported from the package (a user's own `zodField` no longer warns, an aliased import does).
-- **Not verified here:** swiftc / kotlinc compile of the emitted schema output (neither toolchain exists on this machine); the toolchain lanes run them. The emitted text is byte-identical to the parent's, and the schema emitters were moved, not rewritten.
+- **Compiler verification:** the CI reconciliation passed the complete native suite with real Swift/Kotlin compilers and SDK fixtures: 8,909 passing tests, 17 expected failures across 599 files. All 964 golden entries remained unchanged. The published head must also pass the required hosted native and device checks.
 
 ### Verification notes
 
 `@pyreon/lathe`'s multiplatform emit asserts positive markers (`PyreonQuery<`, `PyreonZodSchema_`) by running the REAL compiler. It now loads the project's own `@pyreon/http` / `@pyreon/query` plugins (resolved, never fetched) before compiling — `verify/lower.ts:resolveNativeCompiler`.
 
-## Phase 3l — machine, i18n, toast, a11y, table, dnd, sync
+## The gates
 
-Moved byte-identically into package-owned plugins (`src/native-plugin.ts` in each package):
-`@pyreon/machine`, `@pyreon/i18n`, `@pyreon/toast`, `@pyreon/a11y`, `@pyreon/table`, `@pyreon/dnd`, `@pyreon/sync`.
+| Gate | What it proves | Run |
+| --- | --- | --- |
+| **Golden corpus** | `scripts/native-golden.json` holds a hash of code AND warnings per entry and target for every `golden-fixtures/*.tsx`, every package's own `native-golden/*.tsx`, the example apps and a set of snippets, compiled with ALL first-party plugins. A refactor must not change emitted output. | `bun scripts/check-native-golden.ts` (`--dump <dir>` writes the outputs to diff; `--update` is for a deliberate, reviewed behaviour change and is never used to absorb a move) |
+| **Compiler boundary ratchet** | library specifiers and hook-name literals in the compiler's non-test source only decrease (`scripts/compiler-boundary-baseline.json`) | `bun scripts/check-compiler-boundary.ts` (`--update` only tightens) |
+| **Plugin boundary** | a package plugin imports only `@pyreon/native-compiler/plugin-api` | `tests/plugin-boundary.test.ts` |
+| **Plugin type gate** | every Swift/Kotlin type a service names is declared in the package's `native/` dirs or the shared runtimes — no phantom capability | `bun scripts/check-native-plugin-types.ts` (reads `@pyreon/hooks`' plugin directly) |
+| **Lifecycle wiring** | every native container exposing `start()` / `connect()` is auto-started or documented manual | `bun scripts/check-native-lifecycle-wiring.ts` |
+| **srcdirs drift / declarations** | the co-sourced Swift/Kotlin directories and package declarations agree | `validate-fast` (`check-native-srcdirs-drift`, `check-declarations`) |
+| **Compile gates** | `swiftc -typecheck` / `kotlinc` against stubs on Linux, the real SDK on macOS, devices in `native-device.yml` | see "Reality checks" |
 
-New library-agnostic seams: `componentOnlyCalls` (module-scope decline warning), `warnDynamicKey` on
-`ParseContext`/`ModuleParseContext`, `callExprs` (a call recognized by a scan-recorded callee),
-`DeclLifecycle.midOrder`, `EmitContext.rowType/rowFields`, `refModifiers`, `DeclEmitter.swiftInit`
-(seeds lines in the generated SwiftUI `init()`).
+The golden corpus is only as strong as what it reaches. A plugin move therefore starts by MEASURING it: run `collectCorpus()` under v8 coverage restricted to the code being moved, list the lines no entry reaches, and record fixtures from the PARENT compiler for those lines BEFORE touching the code (a fixture recorded after the move proves only that the new code agrees with itself). Then bisect: neuter each moved mechanism in turn; the golden or a spec must fail. Gaps found that way are closed with another fixture recorded from the parent, which is why the git history of this arc interleaves `test(native): golden fixtures …` commits with the moves.
 
-First-party plugin list is single-sourced in `scripts/native-first-party-plugins.ts`.
+## What stays in the core, and why
 
-Behaviour changes by design: a bare transform with no plugins no longer lowers these libraries; `<Toaster/>`
-must be imported from `@pyreon/toast`; module-scope warnings for createMachine/createI18n/syncedSignal come only
-from loaded plugins.
+These are not libraries, so their presence is correct, not a debt:
 
-### Verification (Phase 3l)
+- **The router.** `createRouter`, `useParams`, `useNavigate`, `useLoaderData`, `<RouterView>` and the canonical `Link` are PMTC's own navigation contract: `@pyreon/native-router-swift` / `-kotlin` are PMTC runtimes, and the emitted route dispatch (`matchPath` over a route table) is generated, not lowered from a library's implementation. A plugin could not own it without owning the app shell.
+- **The ui-system authoring API.** `styled(Prim)`, `rocketstyle()`, theme tokens and the 2-bucket size-class model are how PMTC styles the canonical primitives; the `styled` / `rocketstyle` frontends resolve at use-sites in the parser, and `useSizeClass` is read by the style emit.
+- **The colour-scope PLUMBING.** `<PyreonUI mode>` and `<ColorModeProvider mode>` pin the framework-wide colour mode; the core opens and closes the scope (saved and restored in `finally`) and emits the transparent wrapper, while the scope's VALUE comes from a plugin's `scopes` (the charts plugin supplies it). Moving the wrapper would only move the plumbing next to a value it does not own. These two specifiers are what keeps `@pyreon/ui-core` in the boundary baseline.
+- **`fetch` as a concept.** An async source driving `<Suspense>` / `<ErrorBoundary>` is the core's `asyncState` seam; what moved is the hook that declares one.
 
-Golden 964 -> 1410 entries, byte-identical, never `--update`d (fixtures recorded from the parent first).
-Boundary, native-compiler: 47 -> 16 library specifiers (39 -> 12 packages); hook-name literals 113 -> 109.
-No swiftc/kotlinc exists locally: emitted Swift/Kotlin was verified by golden byte-equality, not compiled.
+## Not moved yet (with the reason and the seam each needs)
 
-### What is NOT moved (and why)
+Everything below is still named in the compiler. None of it is hidden by the ratchet: it is the remaining baseline (4 specifiers, 86 hook-name literals).
 
-- `@pyreon/rx`: needs a seam to declare a core `computed` from a plugin ext-expr, a typing hook, and the
-  reduce-seed float hook; large emitters. Next phase.
-- `@pyreon/sized-map`: `new SizedMap` needs a `newExprs`-style seam.
-- `permissions`, `storage`, `store`, `state-tree`, `form`, `feature`, `kinetic`, `coolgrid`, `elements`: not yet
-  analysed; the ratchet baseline lists them.
-- hooks-owned leftovers (`useFetch`/`fetch` decl, `useDatabase`, `useWebSocket`, pure-state, router hooks):
-  need an expression-rewrite hook.
-- `web-only-packages.ts`: already manifest-derived and generated, counted as generated by the ratchet.
+- **`@pyreon/store` (`defineStore`) and `@pyreon/state-tree` (`model().create()`).** They are not call lowerings: each is a MODULE-SCOPE singleton whose IR (`StoreDefnIR`, `ModelDefnIR`) the parser collects, whose class the emitters write, whose use sites (`useApp().store.x`, `counter.n`, assignments, method calls) are rewritten in about a dozen expression arms per emitter, and whose signal fields take part in the float-widening and struct-synthesis passes. Moving them needs three generic seams that do not exist: (1) an item-rooted receiver (a `receivers` variant keyed by a module item and rooted at a hook CALL or an instance binding, not at a declaration inside a component); (2) the parser's function-declaration and signal-declaration builders on `ModuleParseContext`, so a recognizer can build method and field IR; (3) item fields in the inference context (`typing.fields`), so a store's signals type reads and widen. The recognizers themselves are small; the three seams are the work.
+- **`@pyreon/form` (`useForm`, `useFieldArray`).** The container is the easy half. The hard half is its integration with core primitives: `<Field value={form.values.x}>` emits a two-way `Binding`, `<For each={fa.items()}>` scopes its row parameter so `item.value()` unwraps, and an `onSubmit` parameter reads a dictionary. Seams needed: a value-binding provider for `<Field>`, a `<For>` row-scope hook, and a handler-parameter scope.
+- **The remaining `@pyreon/hooks` hooks: `useNativeModule`, `useSizeClass`, `useColorScheme` / `useColorMode`, `useToggle` / `useCounter`, `useDebouncedValue` / `useDebouncedCallback` / `useThrottledCallback`, `useInterval` / `useTimeout`.** `useFetch` and the five stateful containers (`useWebSocket`, `useDatabase`, `useSecureStorage`, `useMap`, `useAuth`) are the template: a recognizer, a decl emitter, `receivers` and `typing`. What is left each reaches deeper into the core than a container does. `useSizeClass` and `useColorScheme` / `useColorMode` feed the style emit and the colour-scope plumbing (core contract above); `useToggle` / `useCounter` are scope-sensitive metadata the emitters key by component (`pure-state`); the debounce / throttle hooks and `useInterval` / `useTimeout` lower at STATEMENT position and weave into the component's mount harness, which needs a statement-position recognizer seam; `useNativeModule` threads an app-defined module name into the Kotlin `Context`. `useHotkey` belongs to `@pyreon/hotkeys`, not hooks.
+- **`web-only-packages.ts`** is generated from every package manifest's `multiplatform` declaration by `check-multiplatform-tier --write-table`, which also gates it; it is data the compiler carries so a standalone `transform()` can name a web-only import, and is excluded from the ratchet by name.
+
+Known defects found while moving code, deliberately NOT fixed here (the golden holds the current output, and a fix is a reviewed behaviour change, not a refactor): a nested `rx.take(rx.reverse(ids), 2)` emits `rx.reverse(ids)()` for the inner call (the recognizer wraps the source argument in a read instead of lowering it recursively); a component-level `const` holding `new SizedMap<…>()` mis-types its member reads as a dictionary's.
+
+## Verification record
+
+| Phase | Plugins moved | Golden entries | native-compiler library specifiers (packages) | hook-name literals |
+| --- | --- | --- | --- | --- |
+| 3i | flow | 536 | flow 13 → 0 | |
+| 3k | validate, validation | 964 | validate 5 → 0, validation 8 → 0 | |
+| 3l | machine, i18n, toast, a11y, table, dnd, sync | 1410 | 47 (39) → 16 (12) | 113 → 109 |
+| 3m | elements, coolgrid, permissions, url-state, storage, sized-map, kinetic, rx, feature; the hooks table; `useFetch`; the hooks containers | 1516 | 16 (12) → 4 (3) | 109 → 66 |
+
+For phase 3m: every golden entry byte-identical, never `--update`d; every new seam has a toy-plugin spec and a bisect; every moved mechanism was bisected against the golden and the specs (gaps closed with fixtures recorded from the parent); the seven native example apps build to identical output on both targets with plugins discovered. The CI reconciliation passed the complete native suite with real Swift/Kotlin compilers and SDK fixtures: 9,000 passing tests, 17 expected failures across 612 files. The earlier toolchain-free failures are not exemptions from this check. Compiler fixtures load the actual owning plugins; negative controls reproduce the stale fixture failures before restoring the fix. All 55 fast gates and the affected package typechecks passed. Required hosted native and device checks still run on the published head; local results do not replace them.

@@ -348,7 +348,7 @@ export function moduleTag(parsed: ParseResult): string {
       parsed.stores,
       parsed.models,
       lane('fieldMetas'),
-      parsed.features,
+      lane('features'),
       lane('zodSchemas'),
       parsed.helperFns,
       parsed.styledComponents,
@@ -698,12 +698,6 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
           ([k, v]) => exprReferencesIdent(k, name) || exprReferencesIdent(v, name),
         ) ?? false
       )
-    // A SizedMap constructor carries only literal options (cap + flag), so it
-    // can never reference an identifier, be hoisted around one, or need a
-    // param rewrite. Enumerated rather than left to a default so the
-    // exhaustiveness check keeps working for the NEXT ExprIR member.
-    case 'new-sized-map':
-      return false
     case 'literal':
       return false
     case 'identifier':
@@ -735,11 +729,6 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
       // occurrences BOUND (a different variable), so they don't count.
       if (expr.params.includes(name)) return false
       return exprReferencesIdent(expr.body, name)
-    case 'rx-call':
-      return (
-        exprReferencesIdent(expr.source, name) ||
-        expr.args.some((a) => exprReferencesIdent(a, name))
-      )
     case 'array':
       return expr.elements.some((el) => exprReferencesIdent(el, name))
     case 'template':
@@ -831,8 +820,6 @@ export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | 
   const name = subst.shadow
   if (subst.matches(expr)) return replacement
   switch (expr.kind) {
-    case 'new-sized-map':
-      return expr
     case 'new-collection': {
       if (expr.seed !== undefined) {
         const seed = substituteMatching(expr.seed, subst)
@@ -911,17 +898,6 @@ export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | 
       const body = substituteMatching(expr.body, subst)
       if (body === null) return null
       return { ...expr, body }
-    }
-    case 'rx-call': {
-      const source = substituteMatching(expr.source, subst)
-      if (source === null) return null
-      const args: ExprIR[] = []
-      for (const a of expr.args) {
-        const sub = substituteMatching(a, subst)
-        if (sub === null) return null
-        args.push(sub)
-      }
-      return { ...expr, source, args }
     }
     case 'array': {
       const elements: ExprIR[] = []
@@ -1084,8 +1060,6 @@ function walkLowerParams(
         return { ...expr, entries: expr.entries.map(([k, v]): [ExprIR, ExprIR] => [rec(k), rec(v)]) }
       }
       return expr
-    case 'new-sized-map':
-      return expr
     case 'literal':
       return expr
     case 'identifier':
@@ -1121,8 +1095,6 @@ function walkLowerParams(
       return { ...expr, cond: rec(expr.cond), then: rec(expr.then), otherwise: rec(expr.otherwise) }
     case 'arrow':
       return { ...expr, body: rec(expr.body) }
-    case 'rx-call':
-      return { ...expr, source: rec(expr.source), args: expr.args.map(rec) }
     case 'array':
       return { ...expr, elements: expr.elements.map(rec) }
     case 'template':
@@ -1436,8 +1408,8 @@ export function exprContainsJsx(e: ExprIR): boolean {
     case 'template':
       return e.exprs.some(exprContainsJsx)
     default:
-      // literal / identifier / update / json-stringify / schema-validate /
-      // rx-call / new-collection / new-sized-map —
+      // literal / identifier / update / json-stringify /
+      // new-collection —
       // none can carry JSX in the shapes PMTC parses.
       return false
   }

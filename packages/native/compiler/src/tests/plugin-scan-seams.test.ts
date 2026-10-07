@@ -4,6 +4,7 @@ import { createScanRegistry } from '../module-scan'
 import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
+import { hooksPlugin } from './first-party-plugins'
 
 // The file-level parse seams the `@pyreon/http` / `@pyreon/query` plugins needed: `scanModule`
 // (facts, skipped metadata, lowered imports), `requestSources` (a fact crossing plugins through
@@ -92,9 +93,8 @@ export function App() { return <Stack><Text>x</Text></Stack> }`,
     expect(warnings.some((w) => w.includes('endpoint (from @acme/endpoints)'))).toBe(false)
   })
 
-  it('requestSources: the core useFetch resolves a call of a plugin-recorded binding', () => {
-    const { code } = testNativePlugin(
-      endpointsPlugin(),
+  it('requestSources: `useFetch` (the hooks plugin) resolves a call of a plugin-recorded binding', () => {
+    const { code } = createCompiler({ plugins: [hooksPlugin, endpointsPlugin()] }).transform(
       `import { endpoint } from '@acme/endpoints'
 import { useFetch } from '@pyreon/hooks'
 ${HEAD}const getThing = endpoint('/things')
@@ -105,7 +105,7 @@ export function App() {
 }`,
       { target },
     )
-    expect(code).toContain(target === 'swift' ? 'PyreonFetch<Thing>' : 'PyreonFetch<Thing>')
+    expect(code).toContain('PyreonFetch<Thing>')
     expect(code).toContain('"/things"')
   })
 

@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 // compiler core back inside the plugin — the dependency this directory exists to
 // remove — and silently re-couple it to emitter internals.
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
-const PLUGINS = join(SRC, 'plugins')
 const FORBIDDEN = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]\.\.\/(?:emit-swift|emit-kotlin|parse)(?:\.[jt]s)?['"]/
 
 // A plugin may keep its emitters in a subdirectory, so the scan walks the whole tree.
@@ -19,31 +18,22 @@ function walk(dir: string, prefix = ''): string[] {
   })
 }
 
-describe('plugin boundary', () => {
-  const files = walk(PLUGINS)
-
-  it('scans the plugins directory (a vacuous scan would pass on nothing)', () => {
-    expect(files).toEqual(expect.arrayContaining(['coolgrid.ts', 'elements.ts', 'services.ts']))
-  })
-
-  it.each(files)('%s imports nothing from emit-swift, emit-kotlin or parse', (file) => {
-    const source = readFileSync(join(PLUGINS, file), 'utf8')
-    const hit = source.split('\n').find((line) => FORBIDDEN.test(line))
-    expect(hit, `plugins/${file} imports an emitter or the parser: ${hit}`).toBeUndefined()
-  })
-})
-
-// A package-owned plugin lives OUTSIDE this package, so the boundary is a package
-// boundary: the only door into the compiler is the published `plugin-api` subpath.
-// The charts plugin is the first-party instance; the same rule holds for any plugin
-// shipped by a library.
 describe.each([
-  ['@pyreon/charts', 'charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
-  ['@pyreon/flow', 'flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
-  ['@pyreon/validation', 'validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
-  ['@pyreon/validate', 'validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
+  ['@pyreon/charts', 'fundamentals/charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
+  ['@pyreon/flow', 'fundamentals/flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
+  ['@pyreon/validation', 'fundamentals/validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
+  ['@pyreon/validate', 'fundamentals/validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
+  ['@pyreon/permissions', 'fundamentals/permissions', ['plugin.ts', 'stubs.ts']],
+  ['@pyreon/url-state', 'fundamentals/url-state', ['plugin.ts']],
+  ['@pyreon/storage', 'fundamentals/storage', ['plugin.ts', 'stubs.ts']],
+  ['@pyreon/sized-map', 'core/sized-map', ['plugin.ts', 'stubs.ts']],
+  ['@pyreon/rx', 'fundamentals/rx', ['plugin.ts']],
+  ['@pyreon/feature', 'fundamentals/feature', ['plugin.ts']],
+  ['@pyreon/kinetic', 'ui-system/kinetic', ['plugin.ts']],
+  ['@pyreon/elements', 'ui-system/elements', ['plugin.ts']],
+  ['@pyreon/coolgrid', 'ui-system/coolgrid', ['plugin.ts']],
 ] as const)('package-owned plugin boundary (%s)', (_pkg, dirName, expected) => {
-  const CHARTS_PLUGIN = join(SRC, `../../../fundamentals/${dirName}/src/native-plugin`)
+  const CHARTS_PLUGIN = join(SRC, `../../../${dirName}/src/native-plugin`)
   const COMPILER_SPECIFIER = /['"]@pyreon\/native-compiler(?:\/([^'"]*))?['"]/
   const COMPILER_RELATIVE = /['"](?:\.\.\/)+native\/compiler\//
   const charts = walk(CHARTS_PLUGIN).filter((f) => !f.includes('tests/'))

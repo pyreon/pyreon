@@ -22,7 +22,7 @@
 // (bisect-verified by moving the reset below the pre-pass).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const motionApp = `
   import { Stack, Text } from '@pyreon/primitives'

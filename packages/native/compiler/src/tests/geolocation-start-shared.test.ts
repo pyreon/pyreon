@@ -23,7 +23,7 @@
 // forever, indistinguishable from "no fix yet" — the harder bug to diagnose.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const app = (body: string) =>

@@ -221,6 +221,10 @@ sort.set('name') // URL keeps ?sort=name instead of dropping it
 
 Full docs: [pyreon.dev/docs/url-state](https://pyreon.dev/docs/url-state) (or `docs/src/content/docs/url-state.md` in this repo).
 
+## Native (iOS / Android)
+
+`useUrlState` lowers to a callable native container reading and writing the active router's query. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT

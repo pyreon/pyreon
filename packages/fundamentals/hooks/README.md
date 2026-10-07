@@ -193,6 +193,10 @@ Pass `value` as a function (`() => props.checked`) so the controlled read tracks
 
 Full docs: [pyreon.dev/docs/hooks](https://pyreon.dev/docs/hooks) (or `docs/src/content/docs/hooks.md` in this repo).
 
+## Native (iOS / Android)
+
+The platform-service hooks (`useShare`, `useOnline`, `useGeolocation`, … — 23 of them) and `useFetch` lower to SwiftUI and Compose through this package's plugin (`src/native-plugin.ts` and `src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`). It is the only copy: `@pyreon/native-compiler` carries no hooks table and no built-in plugin, so a bare `transform()` lowers none of them. The Swift/Kotlin runtime containers they hold ship under `native/`.
+
 ## License
 
 MIT

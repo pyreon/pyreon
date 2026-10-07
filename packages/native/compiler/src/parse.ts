@@ -14,11 +14,11 @@ import {
   dynamicKeyText,
   unwrapTypeLayers,
 } from './plugin-ast'
-import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag } from './registry-lookup'
+import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
-import { stampExtDecl, type AstNode, type ParseContext } from './call-lowering'
+import { stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
 import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
-import type { ModuleScan, ResolvedRequest } from './module-scan'
+import type { JsxRewriteContext, ModuleScan } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -32,12 +32,12 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  FeatureDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   ParseResult,
   RocketstyleComponentIR,
   RouteIR,
+  JsxElementIR,
   StatementIR,
   StoreDefnIR,
   StructIR,
@@ -146,60 +146,17 @@ interface ParseCtx {
    */
   storeAliases: Map<string, string>
   /**
-   * Module bindings created by the `kinetic()` factory (`const Box =
-   * kinetic('div').preset('fade')`). The factory is a WEB CSS-class engine with
-   * no native analogue, so the binding must not reach the emit: a verbatim
-   * `private let Box = kinetic("div")…` references a function that exists on
-   * neither target and fails the native build. Same treatment as
-   * `createHttp()` metadata and `defineTheme()`.
-   *
-   * The name is kept (not just skipped) because unlike those two this binding
-   * is USED AS A JSX TAG, so `<Box>` must lower to something — a plain
-   * container, which is what the animation degrades to.
-   */
-  /**
-   * Kinetic factory bindings, mapped to the `.preset('x')` in their chain (or
-   * undefined when the chain declares none). The preset is what makes the
-   * lowering possible: it names an animation both targets already know, via the
-   * same table `<Transition name>` uses.
-   */
-  kineticFactoryNames: Map<string, string | undefined>
-  /** Local names bound to the `kinetic` import (supports `as` renaming). */
-  kineticImportNames: Set<string>
-  /**
    * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
    * only fixes a component's type argument. It compiles to the component
    * itself, so the alias is a TAG rename: `<RevenueBar>` lowers as `<Bar>`.
    */
   typedComponentAliases: Map<string, string>
   /**
-   * Set while parsing a component whose tree used a PRESET-bearing kinetic
-   * binding, so the component gets one synthesized mount flag. One per
-   * component, not per binding: every kinetic box in a component enters on the
-   * same mount, so they can share the flag.
+   * Declarations a plugin's element rewrite asked for (`JsxRewriteContext.requestComponentDecls`), by key: applied to the
+   * component when it is finished. One per key per component, not per element — every box of one kind enters on the same
+   * mount, so they share what they asked for.
    */
-  kineticMountPending: boolean
-  /** local name -> exported name, for presets imported from kinetic-presets. */
-  kineticPresetImports: Map<string, string>
-  /** Local name(s) bound to `SizedMap` imported from `@pyreon/sized-map`. */
-  sizedMapNames: Set<string>
-  /**
-   * Local names imported from `@pyreon/rx`, mapped to their ORIGINAL export
-   * name (so `import { map as project }` resolves).
-   *
-   * The STANDALONE transforms are source-first — `map(src, fn)` is
-   * structurally `rx.map(src, fn)` — but `map` / `filter` / `first` are names
-   * a user is overwhelmingly likely to have of their own, so the recognizer
-   * gates on the IMPORT and never on the bare name.
-   */
-  rxImportedNames: Map<string, string>
-  /**
-   * A `<PermissionsProvider permissions={{ … }}>` appears in this file, so a
-   * bare `usePermissions()` reads real grants from the environment rather
-   * than lowering to an empty set. Decided in a pre-scan because the warn
-   * pass runs before JSX is walked.
-   */
-  hasPermissionsProvider: boolean
+  componentDeclRequests: Map<string, { head: DeclIR[]; tail: DeclIR[] }>
   /**
    * Per-component HOOK-FIELD aliases: a destructured local name →
    * `{ object, field }` where `object` is a synthetic single-binding
@@ -340,14 +297,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
-    kineticFactoryNames: new Map(),
-    kineticImportNames: new Set(),
     typedComponentAliases: new Map(),
-    kineticMountPending: false,
-    kineticPresetImports: new Map(),
-    rxImportedNames: new Map(),
-    sizedMapNames: new Set(),
-    hasPermissionsProvider: false,
+    componentDeclRequests: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -420,19 +371,11 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
-  collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
   collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
-  collectRxImportedNames(ast.program.body as AnyNode[], ctx)
-  collectSizedMapNames(ast.program.body as AnyNode[], ctx)
   // Plugin pre-passes (`CompilerPlugin.scanModule`): a library records the facts its top-level
   // declarations carry (an `@pyreon/http` client and its endpoints) before any hook that reads
   // them is parsed, regardless of where the declaration sits relative to the component.
   runModuleScanners(ast.program as AnyNode, source, ctx)
-  // A `<PermissionsProvider>` anywhere in the file means a bare
-  // `usePermissions()` has somewhere to read from. Checked against the source
-  // because the warn pass runs before the JSX walk — the same ordering that
-  // forced the schema pre-scans above.
-  ctx.hasPermissionsProvider = /<\s*PermissionsProvider[\s/>]/.test(source)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
@@ -455,7 +398,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const moduleDecls: ModuleDeclIR[] = []
   const stores: StoreDefnIR[] = []
   const models: ModelDefnIR[] = []
-  const features: FeatureDefnIR[] = []
   const moduleItems: ExtModuleItem[] = []
   const styledComponents: StyledComponentIR[] = []
   const rocketstyleComponents: RocketstyleComponentIR[] = []
@@ -528,18 +470,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
       moduleItems.push(claimedItem)
       continue
     }
-    // Gap 4 follow-up — @pyreon/feature. `const Todo =
-    // defineFeature({ name, schema: { ... literal ... } })`
-    // extracted as FeatureDefnIR. Emits a per-feature schema
-    // struct/data-class + a module-scope const holding initialValues
-    // + name. Component-body uses of `Todo.useList()` etc. still hit
-    // the tier2 silent-drop diagnostic (the CRUD runtime is not
-    // ported in v1).
-    const fd = tryFeatureDefnFromTopLevel(node, ctx)
-    if (fd) {
-      features.push(fd)
-      continue
-    }
     // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
     // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
     // catch-alls so the styled const isn't mis-parsed as a broken module binding.
@@ -578,13 +508,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // native runtime, so it must not fall through to the module-decl catch-all and emit an
     // unresolved binding that fails the native build (the same treatment defineTheme gets).
     if (ctx.skipTopLevel.some((skip) => skip(node))) continue
-    // A `const Box = kinetic('div').preset('fade')` is a WEB animation-engine
-    // binding. Skipped for the same reason as `createHttp` above: emitting it
-    // verbatim produces `private let Box = kinetic("div")…`, a call to a
-    // function that exists on neither target, so the whole native build fails.
-    // The pre-pass has already recorded the name and warned; `<Box>` lowers to
-    // a plain container.
-    if (isKineticFactoryNode(node, ctx)) continue
     if (isTypedAliasNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
@@ -731,7 +654,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     moduleDecls,
     stores,
     models,
-    features,
     moduleItems,
     styledComponents,
     rocketstyleComponents,
@@ -1025,8 +947,9 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
  *   - declarators inside function bodies (already handled by
  *     tryDeclFromVarDeclarator)
  *   - declarators whose init is a CallExpression to `signal` / `computed`
- *     / `useStorage` (those are component-scope reactive decls, not
- *     module-level bindings — caught by tryComponentFromTopLevel)
+ *     (those are component-scope reactive decls, not module-level
+ *     bindings — caught by tryComponentFromTopLevel); a plugin's
+ *     `componentOnlyCalls` get the same treatment below
  *   - destructured patterns (`const { a, b } = obj`) — Phase 3
  *   - non-init declarators (`let x` without value) — defensive bail
  */
@@ -1051,19 +974,14 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     if (!name) continue // destructured — skip silently
     const init = declarator.init as AnyNode | undefined
     if (!init) continue // bare `let x` — skip
-    // Skip declarators whose init is a `signal()` / `computed()` /
-    // `useStorage()` call — those belong inside a component, not at
-    // module scope. They shouldn't show up here (the parser walks
+    // Skip declarators whose init is a `signal()` / `computed()` call — those
+    // belong inside a component, not at module scope. They shouldn't show up here (the parser walks
     // function bodies separately), but defensive bail catches any
     // shape where a user accidentally writes `const x = signal(0)` at
     // module scope (which would be a runtime bug in Pyreon anyway).
     if (init.type === 'CallExpression') {
       const calleeName = init.callee?.name as string | undefined
-      if (
-        calleeName === 'signal' ||
-        calleeName === 'computed' ||
-        calleeName === 'useStorage'
-      ) {
+      if (calleeName === 'signal' || calleeName === 'computed') {
         ctx.warnings.push(
           `Module-level binding ${name} initializes via ${calleeName}() — these belong inside a component. Skipped.`,
         )
@@ -1205,24 +1123,6 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
   }
 }
 
-/** Record the local name(s) bound to `SizedMap` from `@pyreon/sized-map`.
- *
- * Gated on the IMPORT rather than the bare name: `SizedMap` is a plausible
- * name for a user's own class, and mis-lowering someone else's constructor is
- * worse than not lowering ours. */
-function collectSizedMapNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/sized-map') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'SizedMap') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.sizedMapNames.add(local)
-      }
-    }
-  }
-}
-
 
 /**
  * Push the shared named warning for a computed non-literal key in a config
@@ -1234,17 +1134,6 @@ function warnDynamicKey(prop: AnyNode, where: string, ctx: ParseCtx): void {
   )
 }
 
-/**
- * Collect `kinetic()` factory bindings in a PRE-PASS, before any component body
- * is parsed.
- *
- * A pre-pass rather than a check inside the top-level loop, because the JSX tag
- * rewrite has to be in place no matter where the component sits relative to the
- * `const` in source order. TS forces the const first for a value reference, but
- * a hoisted `function` component can legally appear above it, and getting the
- * order wrong here would emit an unresolved tag for exactly one file layout —
- * the kind of bug that reproduces on nobody's machine.
- */
 /** The component an instantiation expression names: `Bar<Row>` → `'Bar'`, following an alias of an alias. */
 function instantiatedComponent(init: AnyNode | undefined, ctx: ParseCtx): string | undefined {
   if (init?.type !== 'TSInstantiationExpression') return undefined
@@ -1272,202 +1161,6 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
   })
 }
 
-function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
-  const decls = topLevelDeclarators(node)
-  if (decls.length === 0) return false
-  return decls.every((d) => {
-    const n = d.id?.name as string | undefined
-    return typeof n === 'string' && ctx.kineticFactoryNames.has(n)
-  })
-}
-
-function collectKineticFactoryNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    // Named presets from @pyreon/kinetic-presets are the DOCUMENTED way to use
-    // the factory (`kinetic('div').preset(fadeUp)`), so an identifier argument
-    // has to resolve or the package's own example does not animate.
-    if (node.source?.value === '@pyreon/kinetic-presets') {
-      for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-        if (spec.type === 'ImportSpecifier') {
-          const local = spec.local?.name
-          const imported = spec.imported?.name
-          if (typeof local === 'string' && typeof imported === 'string') {
-            ctx.kineticPresetImports.set(local, imported)
-          }
-        }
-      }
-      continue
-    }
-    if (node.source?.value !== '@pyreon/kinetic') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'kinetic') {
-        const local = spec.local?.name
-        if (typeof local === 'string') ctx.kineticImportNames.add(local)
-      }
-    }
-  }
-  if (ctx.kineticImportNames.size === 0) return
-  for (const node of body) {
-    for (const d of topLevelDeclarators(node)) {
-      const name = d.id?.name as string | undefined
-      const init = d.init as AnyNode | undefined
-      if (typeof name !== 'string' || !init) continue
-      if (!basesOnKineticCall(init, ctx)) continue
-      const preset = presetOfKineticChain(init, ctx)
-      ctx.kineticFactoryNames.set(name, preset)
-      if (preset !== undefined) continue // a preset LOWERS — see the tag rewrite
-      // An UNMAPPED named preset is a different failure from "no preset at all",
-      // and blaming the factory for it sends the author to the wrong place: the
-      // chain is right, that particular animation just has no native analogue.
-      const packName = unmappedPresetPackName(init, ctx)
-      if (packName !== undefined) {
-        ctx.warnings.push(
-          `\`${name}\`: the \`${packName}\` preset has no native analogue — iOS and Android know ` +
-            `fade / scale / scale-in / slide-up|down|left|right, and mapping anything else to the ` +
-            `nearest one would silently animate the WRONG thing. \`<${name}>\` renders as a plain ` +
-            `container on iOS/Android. Pick a preset in that vocabulary to animate on all three.`,
-        )
-        continue
-      }
-      ctx.warnings.push(
-        `\`${name}\` is built by the \`kinetic()\` factory, which does not lower to native: it ` +
-          `drives animation through CSS classes and rAF over a real CSSOM, and neither target has ` +
-          `one. \`<${name}>\` renders as a plain container on iOS/Android — the layout and ` +
-          `children are preserved, the animation is dropped. For an animation that DOES cross, use ` +
-          `\`<Transition show name="fade">\` from \`@pyreon/primitives\`, whose preset vocabulary ` +
-          `lowers to SwiftUI \`.transition\`/\`.animation\` and Compose \`AnimatedVisibility\`.`,
-      )
-    }
-  }
-}
-
-/**
- * Does this expression chain BOTTOM OUT in a call to the `kinetic` import?
- *
- * The factory is a builder — `kinetic('div').preset('fade').duration(200)` — so
- * the callee is a member chain of arbitrary depth and only its base identifies
- * it. Matching the outermost callee instead would recognise a bare
- * `kinetic('div')` and miss every chained form, which is the shape everyone
- * actually writes.
- */
-/**
- * The `.preset('fade')` argument in a kinetic builder chain, if any.
- *
- * Walks the whole chain rather than only the outermost call, because
- * `.preset()` is rarely last (`kinetic('div').preset('fade').duration(200)`).
- */
-/** Shared by the rewrite and the synthesis; internal, so `__`-prefixed. */
-const KINETIC_MOUNT_FLAG = '__kineticIn'
-
-/**
- * Map a `@pyreon/kinetic-presets` export name onto the native preset
- * vocabulary, or undefined when it has no analogue.
- *
- * Only UNAMBIGUOUS names map. The pack ships 123 presets and native knows
- * seven, so most of them (backInDown, blurScale, bounceIn, flip*, rotate*, …)
- * have nothing to lower to. Mapping those to the nearest fade would silently
- * animate the wrong thing, which is worse than declining by name — and the
- * decline is what the author can act on.
- *
- * Diagonal and magnitude variants (fadeDownLeft, slideUpBig) are deliberately
- * NOT mapped: native has neither a diagonal nor a distance parameter, so a
- * mapping would drop half the intent without saying so.
- */
-/** The kinetic-presets export a chain names, when it maps to nothing native. */
-function unmappedPresetPackName(expr: AnyNode, ctx: ParseCtx): string | undefined {
-  let cur: AnyNode | undefined = expr
-  while (cur) {
-    if (cur.type === 'CallExpression') {
-      const callee = cur.callee as AnyNode | undefined
-      if (
-        callee?.type === 'MemberExpression' &&
-        (callee.property?.name as string | undefined) === 'preset'
-      ) {
-        const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
-        if (arg?.type === 'Identifier') {
-          const exported = ctx.kineticPresetImports.get(arg.name as string)
-          if (exported !== undefined && nativePresetForPackName(exported) === undefined) {
-            return exported
-          }
-        }
-      }
-      cur = callee
-      continue
-    }
-    if (cur.type === 'MemberExpression') {
-      cur = cur.object as AnyNode | undefined
-      continue
-    }
-    return undefined
-  }
-  return undefined
-}
-
-function nativePresetForPackName(name: string): string | undefined {
-  const exact: Readonly<Record<string, string>> = {
-    fade: 'fade',
-    fadeUp: 'slide-up',
-    fadeDown: 'slide-down',
-    fadeLeft: 'slide-left',
-    fadeRight: 'slide-right',
-    slideUp: 'slide-up',
-    slideDown: 'slide-down',
-    slideLeft: 'slide-left',
-    slideRight: 'slide-right',
-    scaleIn: 'scale-in',
-    scale: 'scale',
-  }
-  return exact[name]
-}
-
-function presetOfKineticChain(expr: AnyNode, ctx?: ParseCtx): string | undefined {
-  let cur: AnyNode | undefined = expr
-  while (cur) {
-    if (cur.type === 'CallExpression') {
-      const callee = cur.callee as AnyNode | undefined
-      if (
-        callee?.type === 'MemberExpression' &&
-        (callee.property?.name as string | undefined) === 'preset'
-      ) {
-        const arg = (cur.arguments as AnyNode[] | undefined)?.[0]
-        if (arg?.type === 'Literal' && typeof arg.value === 'string') return arg.value as string
-        if (arg?.type === 'Identifier' && ctx !== undefined) {
-          const exported = ctx.kineticPresetImports.get(arg.name as string)
-          if (exported !== undefined) return nativePresetForPackName(exported)
-        }
-      }
-      cur = callee
-      continue
-    }
-    if (cur.type === 'MemberExpression') {
-      cur = cur.object as AnyNode | undefined
-      continue
-    }
-    return undefined
-  }
-  return undefined
-}
-
-function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
-  let cur: AnyNode | undefined = expr
-  while (cur) {
-    if (cur.type === 'CallExpression') {
-      const callee = cur.callee as AnyNode | undefined
-      const name = callee?.name as string | undefined
-      if (typeof name === 'string') return ctx.kineticImportNames.has(name)
-      cur = callee
-      continue
-    }
-    if (cur.type === 'MemberExpression') {
-      cur = cur.object as AnyNode | undefined
-      continue
-    }
-    return false
-  }
-  return false
-}
-
 /**
  * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
  * package and called as `useX()` falls through to the generic
@@ -1486,18 +1179,15 @@ function basesOnKineticCall(expr: AnyNode, ctx: ParseCtx): boolean {
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
 const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
-  'useAuth', 'useColorMode', 'useColorScheme',
-  'useDatabase', 'useFetch', 'useFieldArray', 'useForm',
-  'useHotkey', 'useLoaderData', 'useMap',
+  'useColorMode', 'useColorScheme',
+  'useFieldArray', 'useForm',
+  'useHotkey', 'useLoaderData',
   'useNativeModule', 'useNavigate',
-  'useParams', 'usePermissions',
+  'useParams',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
   'useToggle', 'useCounter',
-  'useUrlState',
-  'useSecureStorage',
-  'useSizeClass', 'useStorage', 'useWebSocket',
-  'useSessionStorage', 'useMemoryStorage',
+  'useSizeClass',
   'useDebouncedValue',
   'useDebouncedCallback', 'useThrottledCallback',
   // Pure timing over a callback — lowered at STATEMENT position.
@@ -1613,62 +1303,7 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  * and `@pyreon/state-tree`'s `model()` lowers cleanly, so none of them is
  * listed.
  */
-const RX_V1_METHODS = new Set([
-  'filter',
-  'map',
-  'reverse',
-  'count',
-  'sum',
-  'min',
-  'max',
-  'first',
-  'last',
-  'take',
-  'skip',
-  'takeWhile',
-  'dropWhile',
-  'find',
-  'some',
-  'every',
-  'unique',
-  'compact',
-  'flatten',
-  'reduce',
-  'average',
-])
-
 export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
-  [
-    '@pyreon/rx',
-    {
-      // The NAMESPACE form lowers: `import { rx } from '@pyreon/rx'` and then
-      // `rx.filter` / `rx.map` / `rx.reverse` emit natively (RX-1). Only the
-      // standalone transforms do not. A package-wide warning here fired on `rx`
-      // itself and broke the existing rx-lowering lock — caught by that suite,
-      // which is exactly the over-warning failure a per-package list invites.
-      // The STANDALONE transforms lower too now. They are source-first
-      // (`map(src, fn)` is structurally `rx.map(src, fn)`), and rx's own
-      // manifest reaches for them 43 times against 5 for the namespace — so
-      // the documented, dominant idiom was the one emitting itself verbatim.
-      // `pipe` is deliberately NOT in the supported set; see
-      // tryRxPipeLowering for the measured reason.
-      advice:
-        'this export has no native lowering yet. The standalone COLLECTION transforms DO lower (filter / map / take / unique / …, source-first) — chain those through consts, or compose with `computed()`',
-      supported: new Set(['rx', ...RX_V1_METHODS]),
-    },
-  ],
-  [
-    '@pyreon/permissions',
-    {
-      // The previous advice — "`usePermissions()` DOES lower — use the hook
-      // instead" — was addressed to someone ALREADY using the hook, and
-      // following it changed nothing: `<PermissionsProvider>` is where the
-      // grants come from, so a hook without it lowers to an EMPTY set and
-      // every check denies. Name the seeding shape instead.
-      advice:
-        'a literal `<PermissionsProvider permissions={{ … }}>` DOES lower — it injects the grants a bare `usePermissions()` reads. What does not lower is a NON-literal permissions map (a variable, a fetch result), and `createPermissions()` used outside the provider',
-    },
-  ],
   [
     '@pyreon/reactivity',
     {
@@ -1694,43 +1329,6 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       advice:
         'these have no native emit — build class strings inline instead of `cx()`, destructure props directly instead of `splitProps()`, and use a plain counter or a stable literal instead of `createUniqueId()`; `lazy()` has no native code-splitting equivalent',
       unsupported: new Set(['lazy', 'cx', 'createUniqueId', 'splitProps']),
-    },
-  ],
-  [
-    '@pyreon/elements',
-    {
-      // Measured every export: only `Element` lowers (to Stack). Text, List,
-      // Overlay and Portal all failed both targets SILENTLY — Overlay and
-      // Portal are inherently DOM (positioning, document-level mounting), and
-      // the Text/List variants are the rich web-only siblings of the canonical
-      // primitives.
-      //
-      // Inverse shape to @pyreon/rx: there, one export lowered and the rest did
-      // not, so `supported` carries the exception in both cases rather than
-      // splitting the map into two mechanisms.
-      advice:
-        'only `Element` lowers (to Stack) — Text / List / Overlay / Portal are DOM-based; use the canonical `Text` / `Stack` from @pyreon/primitives, or keep them in a `<Web>` branch',
-      supported: new Set(['Element']),
-    },
-  ],
-  [
-    '@pyreon/storage',
-    {
-      // Three of the five backends lower. The two that do not are the two
-      // with no native analogue AT ALL, and saying which is which is the
-      // point — the generic line left an author guessing whether their
-      // backend was merely unimplemented or genuinely impossible.
-      //
-      //   useStorage        → @AppStorage / rememberPyreonStorage (persistent)
-      //   useSessionStorage → plain state (the process IS the session)
-      //   useMemoryStorage  → plain state (definitionally process-scoped)
-      //   useCookie         → no analogue: cookies are an HTTP/browser
-      //                       concept; a native app has no cookie jar its
-      //                       own UI reads from
-      //   useIndexedDB      → no analogue: use `useDatabase()`, which lowers
-      //                       to SQLite on both targets
-      advice:
-        '`useStorage(key, initial)` DOES lower on both targets (as do `useSessionStorage` and `useMemoryStorage`) — use a hook rather than the factory. `useCookie` and `useIndexedDB` have no native analogue at all: a native app has no cookie jar, and for structured local data `useDatabase()` lowers to SQLite on both targets',
     },
   ],
 ])
@@ -1779,17 +1377,6 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // diagnostic into noise, and `rx` is a live example of a module that is
       // only PARTLY unlowered.
       if (entry.supported?.has(imported)) continue
-      // `<PermissionsProvider permissions={{ … }}>` LOWERS now — it injects
-      // the grants into the SwiftUI environment / Compose CompositionLocal a
-      // bare `usePermissions()` reads. Keeping the blanket line would print
-      // "has NO native lowering" directly above the injection it performs.
-      if (
-        src === '@pyreon/permissions' &&
-        imported === 'PermissionsProvider' &&
-        ctx.hasPermissionsProvider
-      ) {
-        continue
-      }
       // An import a plugin's scan marked as consumed by lowering (`createHttp({ schema })`'s schema
       // name, a stream opener used only as a `useStream` source): nothing of it reaches the emit.
       if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`)) continue
@@ -2410,134 +1997,6 @@ function tryModelDefnFromTopLevel(
   return result
 }
 
-/**
- * Gap 4 follow-up — `@pyreon/feature` `defineFeature({ name, schema })`
- * top-level recognizer. v1 supports the LITERAL schema shape
- * `schema: { id: 'string', title: 'string', done: 'boolean' }` and
- * emits a per-feature schema struct + a module-scope const exposing
- * `name` + `initialValues`. Zod / Valibot / ArkType runtime schemas
- * bail and fall through to the tier2 silent-drop diagnostic.
- *
- * Shape (v1):
- *   const Todo = defineFeature({
- *     name: 'todo',
- *     schema: { id: 'string', title: 'string', done: 'boolean' },
- *   })
- *
- * Deferred (each its own PR):
- *   - Zod / Valibot / ArkType schema introspection (Strategy-A)
- *   - CRUD runtime: useList / useById / useCreate / useUpdate / etc.
- *   - Network-fetcher integration
- *   - Validators / form integration
- */
-function tryFeatureDefnFromTopLevel(
-  node: AnyNode,
-  ctx: ParseCtx,
-): FeatureDefnIR | null {
-  let varDecl: AnyNode | null = null
-  if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  } else if (node.type === 'VariableDeclaration') {
-    varDecl = node
-  }
-  if (!varDecl) return null
-  const declarators = varDecl.declarations as AnyNode[]
-  if (declarators.length !== 1) return null
-  const declarator = declarators[0]
-  if (!declarator) return null
-  if (declarator.id?.type !== 'Identifier') return null
-  const bindingName = declarator.id.name as string
-
-  const init = declarator.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  if (init.callee?.type !== 'Identifier') return null
-  if ((init.callee.name as string) !== 'defineFeature') return null
-
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const configArg = args[0]
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    return null // tier2 silent-drop will catch the bad-shape case
-  }
-
-  // Pull `name: '...'` and `schema: { ... literal ... }` from the config.
-  let featureName: string | undefined
-  let schemaNode: AnyNode | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `defineFeature declaration \`${bindingName}\`: config`, ctx)
-      continue
-    }
-    const keyName = staticPropKey(prop)
-    if (!keyName) continue
-    const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (keyName === 'name') {
-      if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-        featureName = valueNode.value
-      }
-    } else if (keyName === 'schema') {
-      schemaNode = valueNode
-    }
-    // `api`, `fetcher`, `initialValues`, `validate` keys are deliberately
-    // dropped — runtime CRUD is not ported in v1.
-  }
-
-  if (!featureName) {
-    ctx.warnings.push(
-      `defineFeature declaration \`${bindingName}\`: \`name\` field is missing or not a string literal — v1 emit requires the literal shape. Falling back to tier2 silent-drop.`,
-    )
-    return null
-  }
-  if (!schemaNode || schemaNode.type !== 'ObjectExpression') {
-    // Non-literal schema (Zod, Valibot, ArkType, etc.) — bail to
-    // silent-drop. v2 follow-up will introspect those validator
-    // schemas via Strategy-A per-validator lowering.
-    ctx.warnings.push(
-      `defineFeature declaration \`${bindingName}\`: \`schema\` is not a literal object — v1 emit only supports the literal field-type map shape (\`{ id: 'string', ... }\`). Zod / Valibot / ArkType schemas fall through to tier2 silent-drop.`,
-    )
-    return null
-  }
-
-  // Parse the literal `schema: { id: 'string', title: 'string', ... }`
-  const fields: FeatureDefnIR['fields'] = []
-  for (const entry of (schemaNode.properties as AnyNode[] | undefined) ?? []) {
-    if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(entry)) {
-      warnDynamicKey(entry, `defineFeature declaration \`${bindingName}\`: schema`, ctx)
-      continue
-    }
-    const fieldName = staticPropKey(entry)
-    if (!fieldName) continue
-    const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
-    if (eVal?.type !== 'Literal' || typeof eVal.value !== 'string') {
-      ctx.warnings.push(
-        `defineFeature declaration \`${bindingName}\`: schema field \`${fieldName}\` is not a type-name string literal — v1 supports 'string' | 'number' | 'boolean' field types. Dropping field.`,
-      )
-      continue
-    }
-    const typeName = eVal.value
-    if (typeName === 'string' || typeName === 'number' || typeName === 'boolean') {
-      fields.push({ name: fieldName, type: typeName })
-    } else {
-      ctx.warnings.push(
-        `defineFeature declaration \`${bindingName}\`: schema field \`${fieldName}\` has unsupported type '${typeName}' — v1 supports 'string' | 'number' | 'boolean'. Dropping field.`,
-      )
-    }
-  }
-
-  if (fields.length === 0) {
-    ctx.warnings.push(
-      `defineFeature declaration \`${bindingName}\`: no recognized schema fields. Falling back to tier2 silent-drop.`,
-    )
-    return null
-  }
-
-  return { bindingName, featureName, fields }
-}
-
 /** Tiny initial-value type inference for store signals.
  *  Matches the inference contract `tryDeclFromVarDeclarator` uses
  *  for component-scope signals. */
@@ -2677,78 +2136,6 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (flat !== null) return flat
   }
   return { kind: 'unknown' }
-}
-
-/**
- * Resolve `useUrlState(key, DEFAULT)`'s second argument into the native
- * initializer text plus the value type the emit builds a codec for.
- *
- * The int-vs-double split is `inferTypeFromInitial`'s rule, deliberately —
- * every other PMTC lowering reads an integer literal as Int and a fractional
- * one as Double, and a url-state binding that alone produced `1.0` where its
- * sibling `useStorage('page', 1)` produced `1` would be the anomaly. It also
- * keeps interpolation honest: `` `Page ${page()}` `` renders "Page 1" on web
- * and on both targets.
- *
- * A missing default stays the empty string — unchanged from before this
- * function existed. (The web would carry `undefined` through its `default:`
- * serializer arm; native has no null-valued binding to represent that, and
- * narrowing the gap is not what this change is for.)
- *
- * Returns null for anything not a scalar literal — arrays, objects,
- * identifiers, template strings. The caller warns and leaves the call to the
- * web.
- */
-/**
- * Why {@link resolveUrlStateDefault} rejected a default — the reason has to
- * match the SHAPE. Every rejection used to say "an array or object default",
- * which sent the author of `useUrlState('k', 1e999)` (a literal that parses to
- * `Infinity`) looking for a collection they never wrote.
- */
-function urlStateDefaultRejection(defNode: AnyNode | undefined): string {
-  const inner =
-    defNode?.type === 'UnaryExpression' && (defNode.operator === '-' || defNode.operator === '+')
-      ? (defNode.argument as AnyNode | undefined)
-      : defNode
-  if (inner?.type === 'ArrayExpression' || inner?.type === 'ObjectExpression') {
-    return 'an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site.'
-  }
-  const nonFinite =
-    (inner?.type === 'Literal' && typeof inner.value === 'number' && !Number.isFinite(inner.value)) ||
-    (inner?.type === 'Identifier' && (inner.name === 'Infinity' || inner.name === 'NaN'))
-  if (nonFinite) {
-    return 'this default is a NON-FINITE number (`Infinity` / `NaN` — a literal like `1e999` overflows to `Infinity`), which has no Int or Double literal on either native target and does not round-trip through the URL.'
-  }
-  return 'this default is not a literal, so its type cannot be decided at compile time.'
-}
-
-function resolveUrlStateDefault(
-  defNode: AnyNode | undefined,
-): { defaultValue: string; valueType: 'string' | 'int' | 'double' | 'boolean' } | null {
-  if (defNode === undefined) return { defaultValue: '""', valueType: 'string' }
-  // `useUrlState('offset', -1)` parses as a unary wrapping the literal, the
-  // same shape `inferTypeFromInitial` unwraps for `signal(-5)`.
-  let node = defNode
-  let sign = ''
-  if (node.type === 'UnaryExpression' && (node.operator === '-' || node.operator === '+')) {
-    const inner = node.argument as AnyNode | undefined
-    if (inner?.type !== 'Literal' || typeof inner.value !== 'number') return null
-    // A leading `+` is identity in both target languages but reads as an
-    // operator; drop it and keep only a real negation.
-    if (node.operator === '-') sign = '-'
-    node = inner
-  }
-  if (node.type !== 'Literal') return null
-  const v = node.value
-  if (typeof v === 'string') return { defaultValue: JSON.stringify(v), valueType: 'string' }
-  if (typeof v === 'boolean') return { defaultValue: String(v), valueType: 'boolean' }
-  if (typeof v === 'number') {
-    if (!Number.isFinite(v)) return null
-    return Number.isInteger(v)
-      ? { defaultValue: `${sign}${v}`, valueType: 'int' }
-      : { defaultValue: `${sign}${v}`, valueType: 'double' }
-  }
-  return null
 }
 
 /**
@@ -2972,9 +2359,8 @@ function refineReduceSeedFloats(
   for (const c of components) {
     const ctx = componentCtx(c)
     const visit = (e: ExprIR): void => {
-      // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and the
-      // rx-namespace reduce (`rx.reduce(xs, cb, seed)` → rx-call). Each
-      // carries a source + args [reducer, seed].
+      // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and a plugin's
+      // reduction (`rx.reduce(xs, cb, seed)`). Each carries a source + a reducer + a seed.
       let source: ExprIR | undefined
       let reducer: ExprIR | undefined
       let seed: ExprIR | undefined
@@ -2987,10 +2373,14 @@ function refineReduceSeedFloats(
         source = e.callee.object
         reducer = e.args[0]
         seed = e.args[1]
-      } else if (e.kind === 'rx-call' && e.method === 'reduce' && e.args.length === 2) {
-        source = e.source
-        reducer = e.args[0]
-        seed = e.args[1]
+      } else if (e.kind === 'ext-expr') {
+        // A plugin's reduction (`rx.reduce(xs, cb, seed)`), by its owner's account of which parts are which.
+        const reduction = pluginExprReduce(e)
+        if (reduction !== undefined) {
+          source = reduction.source
+          reducer = reduction.reducer
+          seed = reduction.seed
+        }
       }
       if (
         source === undefined ||
@@ -3531,14 +2921,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
     // here rather than sharing the parent's.
-    kineticFactoryNames: new Map(),
-    kineticImportNames: new Set(),
     typedComponentAliases: new Map(),
-    kineticMountPending: false,
-    kineticPresetImports: new Map(),
-    rxImportedNames: new Map(),
-    sizedMapNames: new Set(),
-    hasPermissionsProvider: false,
+    componentDeclRequests: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
@@ -4331,30 +3715,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   for (const w of deferredPropsWarnings) ctx.warnings.push(w)
   for (const w of droppedStmtWarnings) ctx.warnings.push(w)
 
-  if (ctx.kineticMountPending) {
-    // Synthesized, not hand-written: a signal that starts false and an on-mount
-    // that flips it. Both reuse paths already proven — the on-mount harness
-    // even carries the SwiftUI stable-identity host that a `.task`/`.onAppear`
-    // needs, so the enter fires once instead of thrashing per recomposition.
-    decls.unshift({
-      kind: 'signal',
-      name: KINETIC_MOUNT_FLAG,
-      type: { kind: 'boolean' },
-      initial: { kind: 'literal', value: false },
-    })
-    decls.push({
-      kind: 'on-mount',
-      body: [
-        {
-          kind: 'assign',
-          target: { kind: 'identifier', name: KINETIC_MOUNT_FLAG },
-          op: '=',
-          value: { kind: 'literal', value: true },
-        },
-      ],
-    })
-    ctx.kineticMountPending = false
+  // Declarations a plugin's element rewrite asked for while this component's tree was parsed. A request made while
+  // parsing something that turned out not to be a component is applied to the next one: the flag has only ever been
+  // cleared HERE, and moving that would move emitted output.
+  for (const { head, tail } of ctx.componentDeclRequests.values()) {
+    decls.unshift(...head)
+    decls.push(...tail)
   }
+  ctx.componentDeclRequests.clear()
   return { name, props, propsParamName, decls, returnExpr }
 }
 
@@ -4719,6 +4087,11 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
+    typeArgs: (node) =>
+      (((node as AnyNode).typeArguments?.params ?? (node as AnyNode).typeParameters?.params ?? []) as AnyNode[]).map((t) =>
+        parseTypeAnnotation(t, ctx),
+      ),
+    loc: (node) => locOf(node as AnyNode, ctx),
     unsupported: (node, what, hint) => {
       unsupportedExpr(ctx, node as AnyNode, what, hint)
       return null
@@ -4780,7 +4153,7 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
 }
 
 /**
- * A call a plugin's `callExprs` recognizer claims by its callee (the names its `scanModule` recorded): the open
+ * A call (or `new` construction) a plugin's `callExprs` recognizer claims by its callee (the names its `scanModule` recorded): the open
  * `ext-expr` node, the empty literal every unsupported expression becomes (`null` verdict), or `undefined`.
  */
 function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
@@ -4790,6 +4163,7 @@ function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
     node: node as AstNode,
     callee: node.callee as AstNode,
     args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
+    ...(node.type === 'NewExpression' ? { construct: true } : {}),
   }
   for (const { owner, recognize } of registry.callExprs) {
     const verdict = runPluginHook(owner, 'callExprs', () => recognize(site, moduleParseContextFor(ctx, owner)))
@@ -4893,19 +4267,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // Service descriptors that declare `destructure` (services.ts).
     ...activeRegistries().serviceTables.destructureHooks,
     ...activeRegistries().scan.destructureCalls,
-    'useFetch',
     'useForm',
-    'useStorage',
-    'usePermissions',
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
     'useNetworkStatus',
-    'useWebSocket',
-    'useSecureStorage',
-    'useDatabase',
-    'useMap',
-    'useAuth',
   ])
   if (
     node.id?.type === 'ObjectPattern' &&
@@ -5009,7 +4375,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (constructed) return constructed
 
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
-  // the remaining 3 callees. `createI18n` and `createMachine` are NOT in the
+  // the remaining 2 callees (`defineStore`, `model`). `createI18n` and `createMachine` are NOT in the
   // list because their libraries' plugins lower them.
   if (init?.type === 'CallExpression') {
     const calleeName = init.callee?.name as string | undefined
@@ -5020,10 +4386,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       // name → silent-drop never fired against real user code. Fixed
       // in Gap 4 follow-up (state-tree foundation PR).
       model: '@pyreon/state-tree',
-      defineFeature: '@pyreon/feature',
     }
-    if (calleeName && calleeName in tier2StrategyB) {
-      const pkg = tier2StrategyB[calleeName]
+    const tier2Owner = calleeName ? activeRegistries().calls.tier2Calls.get(calleeName) : undefined
+    if (calleeName && (calleeName in tier2StrategyB || tier2Owner !== undefined)) {
+      const pkg = tier2Owner ?? tier2StrategyB[calleeName]
       const bindingName =
         node.id?.type === 'Identifier'
           ? (node.id.name as string)
@@ -5244,31 +4610,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
   }
 
-  // RX-1 — `@pyreon/rx` namespace lowering. Source like
-  //   const active = rx.filter(todos, t => !t.done)
-  //   const top5   = rx.take(active, 5)
-  //   const cnt    = rx.count(active)
-  // PMTC's recognition list previously knew only top-level callee names
-  // (`signal`, `useStorage`, …). `rx.METHOD(...)` is a MemberExpression
-  // callee, so the previous code path treated the whole declaration as
-  // an unknown CallExpression and silently dropped it from emit (see
-  // PR #1317's `tier2-rx-silent-drop.test.ts` regression-lock).
-  //
-  // This block recognises the `rx.*` namespace and rewrites each
-  // supported method into the equivalent expression on the underlying
-  // signal-carried collection — `rx.filter(s, p)` becomes a `computed`
-  // whose body is `s().filter(p)`. The native collection methods on
-  // Swift `[T]` and Kotlin `List<T>` carry identical names for the
-  // v1 set (`filter` / `map` / `reverse`); per-method per-target
-  // dispatch for the divergent set (`count`/`size`, `take`/`prefix`,
-  // `every`/`allSatisfy`, …) is the immediate follow-up — the existing
-  // computed-emit pipeline handles everything once the IR is built.
-  //
-  // Per-target compileability of the resulting emit is locked by the
-  // hand-crafted proof in `docs/src/content/docs/multiplatform-libraries.md`
-  // ("Compileability proof" — `swiftc -parse` + `kotlinc` both exit 0).
-  const rxLowered = tryRxNamespaceLowering(name, init, ctx)
-  if (rxLowered !== null) return rxLowered
+  // A declaration a plugin recognizes by the SHAPE of its callee (`CompilerPlugin.declCalls`) — `const active = rx.filter(todos, p)`,
+  // where the callee is whatever local name the file imported. Ahead of every by-name branch below, as the by-shape one always was.
+  const shaped = tryPluginDeclCall(name, init, ctx)
+  if (shaped !== undefined) return shaped
 
   const calleeName = init.callee?.name as string | undefined
   if (calleeName === 'signal') {
@@ -5291,65 +4636,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
     const type = hasGeneric ? generic : inferTypeFromInitial(initial)
     return { kind: 'signal', name, type, initial }
-  }
-  // `useSessionStorage` / `useMemoryStorage` — process-scoped storage, so
-  // the honest native mapping is a plain state field with NO persistence.
-  //
-  // On the web, sessionStorage survives a reload and dies with the tab.
-  // Native has neither a tab nor a reload: the process IS the session, so
-  // in-memory state is the exact analogue rather than an approximation of
-  // one. `useMemoryStorage` is definitionally that on every platform.
-  //
-  // Emitting them as a `signal` decl WITHOUT a storageKey is what makes
-  // this correct: the same IR `useStorage` produces, minus the @AppStorage /
-  // rememberSaveable persistence that would wrongly outlive the process.
-  if (calleeName === 'useSessionStorage' || calleeName === 'useMemoryStorage') {
-    const initialArg = init.arguments?.[1]
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
-    const generic = parseGenericTypeArg(init, ctx)
-    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
-    const type = hasGeneric ? generic : inferTypeFromInitial(initial)
-    return { kind: 'signal', name, type, initial }
-  }
-
-  // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
-  // PERSISTENT signal. Same shape as `signal()` plus a storage-key
-  // string. The emitter routes storage signals to platform-idiomatic
-  // persistence primitives:
-  //   Swift   →  @AppStorage("key") private var x: T = default
-  //   Kotlin  →  var x by rememberSaveable { mutableStateOf(default) }
-  // The `_signalNames` set in the emitters picks up storage signals
-  // automatically (since they're DeclIR.signal), so `todos()` correctly
-  // drops parens at call sites without a separate `_storageNames` set.
-  if (calleeName === 'useStorage') {
-    const type = parseGenericTypeArg(init, ctx)
-    const keyArg = init.arguments?.[0]
-    const initialArg = init.arguments?.[1]
-    // The storage key MUST be a string literal — anything else (template
-    // string, identifier, member access) can't be baked into the
-    // `@AppStorage(...)` string at compile time. Conservative — fall
-    // through to undeclared if the key isn't a static literal.
-    // A module-scope `const` counts as a literal here: the value is known at
-    // build time, which is the only thing the bake needs. Sharing the key with
-    // whatever else reads that slot is the ordinary way to write this.
-    const storageKey = staticStringArg(keyArg, ctx)
-    if (storageKey === null) {
-      ctx.warnings.push(
-        `Declaration ${name}: useStorage needs a statically-known key — an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit, so a computed or imported one cannot be resolved at build time. Got ${keyArg?.type ?? 'nothing'}.`,
-      )
-      return null
-    }
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
-    // Same initial-literal inference as plain `signal()` (no-generic
-    // form only) — @AppStorage needs a concrete native type, so `Any`
-    // is even worse here.
-    const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
-    const inferredType = hasGeneric ? type : inferTypeFromInitial(initial)
-    return { kind: 'signal', name, type: inferredType, initial, storageKey }
   }
   if (calleeName === 'computed') {
     const arg = init.arguments?.[0]
@@ -5416,39 +4702,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
   }
-  if (calleeName === 'useUrlState') {
-    // `const q = useUrlState('q', '')`. Both arguments must be literals so the
-    // key can be baked into the emit — same conservative rule as useFetch's
-    // URL and useStorage's key. A dynamic key would need a runtime lookup the
-    // value type does not carry.
-    const args = (init.arguments as AnyNode[] | undefined) ?? []
-    const keyNode = args[0]
-    const defNode = args[1]
-    const key = staticStringArg(keyNode, ctx)
-    if (key === null) {
-      // Dropping the declaration silently is what this used to do, and it left
-      // every later reference pointing at a binding that no longer existed —
-      // so both targets failed to compile with nothing naming the cause.
-      ctx.warnings.push(
-        `const ${name} = useUrlState(…) needs a statically-known key: an inline string, or a module-scope \`const\` holding one. The key is BAKED into the native emit (there is no runtime key lookup in the lowered value), so a computed or imported key cannot be resolved at build time. Move the key into a module-scope const in this file, or keep the call behind a \`<Web>\` escape hatch.`,
-      )
-      return null
-    }
-    const resolved = resolveUrlStateDefault(defNode)
-    if (resolved === null) {
-      ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — ${urlStateDefaultRejection(defNode)} Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
-      )
-      return null
-    }
-    return {
-      kind: 'url-state',
-      name,
-      key,
-      defaultValue: resolved.defaultValue,
-      valueType: resolved.valueType,
-    }
-  }
   if (calleeName === 'useParams') {
     // The WHOLE-OBJECT form. It lowers to a `[String: String]` / `Map`, so the
     // natural JS follow-up — `p.id` — emits `p.id`, which is not how a Swift
@@ -5466,150 +4719,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       `const ${name} = useParams() lowers to a native dictionary/map, so a property read like \`${name}.id\` emits \`${name}.id\` and does NOT compile on either target. Destructure instead — \`const { id } = useParams()\` — which lowers per key (\`useParams(router:)["id"] ?? ""\`) and works on both.`,
     )
     return { kind: 'router-hook', name, hook: 'params' }
-  }
-  // Phase 4 — `useFetch<T>('/url')`. The decoded result type comes from
-  // the generic arg; the request path MUST be a string literal so it can
-  // be baked into the emitted harness. Non-literal URLs (template strings,
-  // identifiers) bail to undeclared — same conservative rule as useStorage.
-  if (calleeName === 'useFetch') {
-    const type = parseGenericTypeArg(init, ctx)
-    const urlArg = init.arguments?.[0]
-    // A request source's endpoint DSL — `useFetch<T>(getUser({ params: { id: '1' } }))`
-    // (`@pyreon/http`, through `CompilerPlugin.requestSources`). A same-file,
-    // compile-time-templated call resolves to a concrete URL literal + HTTP method, then feeds the
-    // fetch path below exactly as if the author had written `useFetch<T>('/api/users/1',
-    // { method: 'GET' })`. Reactive params / a non-literal client baseUrl bail (the source pushes
-    // the warning) and the call stays web.
-    let resolvedUrl: string | undefined
-    let resolvedEndpoint: ResolvedRequest | undefined
-    const requests = parseContextFor(name, init, ctx).requests
-    if (
-      urlArg?.type === 'CallExpression' &&
-      urlArg.callee?.type === 'Identifier' &&
-      requests.has(urlArg.callee.name as string)
-    ) {
-      const resolved = requests.resolve(urlArg.callee.name as string, urlArg.arguments?.[0] as AstNode | undefined, {
-        allowRuntimeParams: false,
-        streaming: false,
-      })
-      if (!resolved) return null // warning already pushed; stays web
-      ctx.responseDecodes.push({ type, response: resolved.response })
-      resolvedUrl = resolved.url
-      resolvedEndpoint = resolved
-    }
-    // A module-scope `const` counts: naming an endpoint once and reusing it is
-    // ordinary, and the value is as known at build time as an inline string.
-    const constUrl = resolvedUrl === undefined ? staticStringArg(urlArg, ctx) : null
-    if (resolvedUrl === undefined && constUrl === null) {
-      ctx.warnings.push(
-        `Declaration ${name}: useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
-      )
-      return null
-    }
-    const url = resolvedUrl ?? (constUrl as string)
-    // No generic -> TypeIR `unknown` -> Swift emits `decode(Any.self, ...)`,
-    // which does NOT compile: `Any` cannot conform to Decodable. Kotlin is
-    // unaffected, so this is a Swift-only silent break, and the device-proven
-    // examples all use the typed form -- which is why nothing caught it.
-    if (type.kind === 'unknown') {
-      ctx.warnings.push(
-        `Declaration ${name}: useFetch without a response type lowers to decode(Any.self, ...) on Swift, which does NOT compile - Any cannot conform to Decodable. Give it the shape you expect: useFetch<Response>('${url}') with a type/interface declared alongside the component. Kotlin compiles either way, so this breaks iOS only.`,
-      )
-    }
-    // The request init — `useFetch<T>(url, { method, headers, body })`.
-    //
-    // Read LOUDLY. Every field here used to be discarded in silence: nothing
-    // looked past `arguments[0]`, so an author writing `method: 'POST'` got a
-    // GET on both targets with no diagnostic anywhere. The rule below is the
-    // same one the url argument already follows — literals are baked, anything
-    // non-literal WARNS rather than being quietly ignored, because a request
-    // that silently uses the wrong verb is a data-corrupting no-op, not a
-    // missing feature.
-    const initArg = init.arguments?.[1]
-    const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
-    // An endpoint's verb / headers / json body are the DEFAULTS; an explicit
-    // second arg still wins (the init loop below overwrites each field).
-    if (resolvedEndpoint?.method) req.method = resolvedEndpoint.method
-    if (resolvedEndpoint?.headers) req.headers = resolvedEndpoint.headers
-    if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
-    if (initArg) {
-      if (initArg.type !== 'ObjectExpression') {
-        ctx.warnings.push(
-          `Declaration ${name}: useFetch init must be an object literal to lower to native; got ${initArg.type}. The request will be a plain GET on iOS and Android.`,
-        )
-      } else {
-        for (const prop of initArg.properties ?? []) {
-          if (prop.type !== 'Property') continue
-          if (hasDynamicKey(prop)) {
-            warnDynamicKey(prop, `Declaration ${name}: useFetch init`, ctx)
-            continue
-          }
-          const key = staticPropKey(prop)
-          if (!key) continue
-          const value = prop.value
-          const isStringLit =
-            (value?.type === 'Literal' || value?.type === 'StringLiteral') &&
-            typeof value.value === 'string'
-
-          if (key === 'method') {
-            if (!isStringLit) {
-              ctx.warnings.push(
-                `Declaration ${name}: useFetch method must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be a plain GET on iOS and Android.`,
-              )
-              continue
-            }
-            req.method = String(value.value).toUpperCase()
-          } else if (key === 'body') {
-            if (!isStringLit) {
-              // A JSON.stringify(obj) body is the obvious next shape and is
-              // NOT supported — say so rather than sending an empty body.
-              ctx.warnings.push(
-                `Declaration ${name}: useFetch body must be a string literal to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO body on iOS and Android.`,
-              )
-              continue
-            }
-            req.body = String(value.value)
-          } else if (key === 'headers') {
-            if (value?.type !== 'ObjectExpression') {
-              ctx.warnings.push(
-                `Declaration ${name}: useFetch headers must be an object literal of string literals to lower to native; got ${value?.type ?? 'nothing'}. The request will be sent with NO headers on iOS and Android.`,
-              )
-              continue
-            }
-            const headers: Record<string, string> = {}
-            for (const h of value.properties ?? []) {
-              if (h.type !== 'Property') continue
-              if (hasDynamicKey(h)) {
-                warnDynamicKey(h, `Declaration ${name}: useFetch headers`, ctx)
-                continue
-              }
-              const hk = staticPropKey(h)
-              const hv = h.value
-              if (
-                hk &&
-                (hv?.type === 'Literal' || hv?.type === 'StringLiteral') &&
-                typeof hv.value === 'string'
-              ) {
-                headers[hk] = hv.value
-              } else if (hk) {
-                ctx.warnings.push(
-                  `Declaration ${name}: useFetch header "${hk}" must be a string literal to lower to native; it will be OMITTED on iOS and Android.`,
-                )
-              }
-            }
-            if (Object.keys(headers).length > 0) req.headers = headers
-          } else {
-            // `signal`, `credentials`, `mode`, … are web-fetch options with no
-            // native analogue. Naming them beats dropping them silently.
-            ctx.warnings.push(
-              `Declaration ${name}: useFetch init option "${key}" has no native equivalent and is ignored on iOS and Android.`,
-            )
-          }
-        }
-      }
-    }
-
-    return { kind: 'fetch', name, type, url, ...req }
   }
   // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
   // arg is optional; when present we capture the string-keyed literal
@@ -5676,30 +4785,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
     }
     return decl
-  }
-  // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
-  // @pyreon/permissions. The array of literal grant keys seeds the native
-  // PyreonPermissions container. Always succeeds (no bail): a bare
-  // `usePermissions()` or a non-literal arg yields an empty grant set and the
-  // emit produces a default-constructed container.
-  if (calleeName === 'usePermissions') {
-    const grantsArg = init.arguments?.[0] as AnyNode | undefined
-    const grants = tryExtractStringArray(grantsArg)
-    // An array literal — even an EMPTY one — is the self-contained form, the
-    // same mode selection the web runtime makes (by presence, not length).
-    // `usePermissions([])` means "this screen grants nothing": deny-all, never
-    // a fallback to the provider.
-    const seeded = grantsArg?.type === 'ArrayExpression'
-    // A bare `usePermissions()` is the CORRECT web call: it reads the grants
-    // of the nearest `<PermissionsProvider>`, which lowers to the app-wide
-    // environment key / CompositionLocal in @pyreon/permissions' runtime. This
-    // used to WARN when the provider was not in the SAME file — accurate while
-    // the key was emitted per file (a Kotlin `private val` was a different
-    // local in every file, so a provider elsewhere never reached the reader).
-    // With one key for the whole app, the canonical shape — provider in the
-    // root layout, reader on a page — is correct, and a per-file check cannot
-    // see the provider, so the warning would fire on exactly the right code.
-    return { kind: 'permissions', name, grants, seeded }
   }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
   // containers with NO platform dependency: a signal plus a few mutators.
@@ -5880,7 +4965,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       parseContextFor(name, init, ctx),
     )
     if (spec === null) return null
-    if (spec !== undefined) return stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
+    if (spec !== undefined) return declFromSpec(recognized.owner, name, spec, init, ctx)
   }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
@@ -5902,19 +4987,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `"compact" | "regular"` string the web hook uses.
   if (calleeName === 'useSizeClass') {
     return { kind: 'size-class', name }
-  }
-  if (calleeName === 'useSecureStorage') {
-    // Lowered for real (the v1 warn-drop is gone): the deferral's stated
-    // blocker — "Kotlin has no auto-constructible backend" — was resolved by
-    // `KeystoreSecureBackend(context)` (PyreonSecureStorageAndroid.kt), so
-    // both targets now construct a REAL encrypted default: Swift
-    // `PyreonSecureStorage()` (Keychain), Kotlin
-    // `PyreonSecureStorage(ctx)` (AndroidKeyStore AES-GCM) via the same
-    // Context-threading shape as `useDatabase`.
-    return { kind: 'secureStorage', name }
-  }
-  if (calleeName === 'useDatabase') {
-    return { kind: 'database', name }
   }
   // `useFieldArray(['a', 'b'])` — the dynamic form-list container
   // (PyreonFieldArray on both targets, mirroring the web @pyreon/form
@@ -5943,46 +5015,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
     }
     return { kind: 'fieldArray', name, initial }
-  }
-  if (calleeName === 'useMap') {
-    return { kind: 'map', name }
-  }
-  // `useAuth<User>()` — generic over the app's user type (mirrors
-  // useFetch<T>'s generic capture). No-generic form falls back to a
-  // placeholder type the emit handles.
-  if (calleeName === 'useAuth') {
-    return { kind: 'auth', name, userType: parseGenericTypeArg(init, ctx) }
-  }
-  // `useStream((ctx) => openEventStream((c) => ep({ … }), { … }))` from
-  // `useWebSocket('wss://…')` — the URL must be a string literal so it can
-  // be baked into the emitted connect call (same rule as useFetch).
-  if (calleeName === 'useWebSocket') {
-    const urlArg = init.arguments?.[0]
-    if (
-      !urlArg ||
-      (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
-      typeof urlArg.value !== 'string'
-    ) {
-      ctx.warnings.push(
-        `Declaration ${name}: useWebSocket url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
-      )
-      return null
-    }
-    return { kind: 'websocket', name, url: urlArg.value }
-  }
-  // EXCEPTION: an out-of-set `rx.<method>(...)` reached here because
-  // `tryRxNamespaceLowering` warned + returned null (the method needs a
-  // Strategy-B runtime port). `rx` is NOT a real native symbol, so binding it
-  // as a value-const would emit uncompilable `let r = rx.method(...)` — keep
-  // the deliberate warn-drop. (In-set rx methods become computeds earlier and
-  // never reach here; only the dropped out-of-set ones do.)
-  if (
-    init.type === 'CallExpression' &&
-    init.callee?.type === 'MemberExpression' &&
-    init.callee.object?.type === 'Identifier' &&
-    (init.callee.object.name as string | undefined) === 'rx'
-  ) {
-    return null
   }
   // Fallback — `const foo = <call>` binding an arbitrary call result that
   // none of the factory/hook branches above claimed: a signal/computed READ
@@ -6056,101 +5088,43 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
 
 
 /**
- * Collect the local names imported from `@pyreon/rx`, mapped to their
- * ORIGINAL export name. Only the standalone transforms belong here — the
- * `rx` namespace object has its own recognizer.
+ * A recognizer's verdict as a declaration: a plain SIGNAL (`{ signal }`, built here with the core's own rules so a
+ * library's signal reads, writes, infers and synthesizes structs exactly like `signal()`), else the plugin's own `ext`
+ * declaration.
+ *
+ * The type is the written generic when there is one, else it is inferred from the initial literal — the contract
+ * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
+ * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
  */
-function collectRxImportedNames(body: AnyNode[], ctx: ParseCtx): void {
-  for (const node of body) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== '@pyreon/rx') continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type !== 'ImportSpecifier') continue
-      const imported = spec.imported?.name as string | undefined
-      const local = spec.local?.name as string | undefined
-      if (imported && local && imported !== 'rx') ctx.rxImportedNames.set(local, imported)
-    }
-  }
+function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR {
+  if ('computed' in spec) return { kind: 'computed', name, expr: stampExtExpr(activeRegistries().items, owner, spec.computed) }
+  if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
+  const { initial: initialArg, persistKey } = spec.signal
+  const initial: ExprIR = initialArg ? parseExpr(initialArg as AnyNode, ctx) : { kind: 'literal', value: 0 }
+  const hasGeneric = ((call.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+  const type = hasGeneric ? parseGenericTypeArg(call, ctx) : inferTypeFromInitial(initial)
+  return persistKey === undefined
+    ? { kind: 'signal', name, type, initial }
+    : { kind: 'signal', name, type, initial, storageKey: persistKey }
 }
 
 /**
- * `pipe(source, f1, f2, …)` does NOT lower, and this is a measured answer
- * rather than an untested guess.
- *
- * The natural emit is an immediately-applied closure per stage
- * (`{ xs in … }(nums)`), which discards the parameter's type. Compiled
- * against both real toolchains that fails on each — Swift with "value of
- * type 'Any' has no member 'count'", Kotlin with "cannot infer type for type
- * parameter 'T'". Inlining each stage by substituting its parameter would fix
- * it and is the follow-up; emitting the closure form meanwhile would ship
- * code that does not build.
- *
- * The collection transforms it composes DO lower, so the advice names a real
- * alternative rather than an escape hatch.
+ * A `const x = <call>` a plugin recognizes by callee shape: its declaration, `null` (claimed without declaring — the
+ * recognizer said why), or `undefined` (declined; the parser continues down its chain).
  */
-function tryRxPipeLowering(name: string, ctx: ParseCtx): DeclIR | null {
-  ctx.warnings.push(
-    `Declaration ${name}: pipe() has no native lowering — each stage would emit as an immediately-applied closure, which loses its parameter type and fails to compile on both targets. Chain the standalone transforms instead (const a = filter(src, p); const b = map(a, f)), which do lower, or keep the call behind a \`<Web>\` escape hatch.`,
-  )
-  return null
-}
-
-function tryRxNamespaceLowering(
-  name: string,
-  init: AnyNode,
-  ctx: ParseCtx,
-): DeclIR | null {
-  const callee = init.callee as AnyNode | undefined
-  let methodName: string | undefined
-  if (callee?.type === 'MemberExpression') {
-    const obj = callee.object as AnyNode | undefined
-    if (obj?.type !== 'Identifier' || (obj.name as string | undefined) !== 'rx') return null
-    const prop = callee.property as AnyNode | undefined
-    if (prop?.type !== 'Identifier') return null
-    methodName = prop.name as string | undefined
-  } else if (callee?.type === 'Identifier') {
-    // STANDALONE form, resolved through the IMPORT — never the bare name.
-    methodName = ctx.rxImportedNames.get(callee.name as string)
-    if (methodName === undefined) return null
-  } else {
-    return null
+function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR | null | undefined {
+  const { declCalls } = activeRegistries().calls
+  if (declCalls.length === 0) return undefined
+  const site: DeclCallSite = {
+    callee: init.callee as AstNode,
+    args: ((init.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
-  if (!methodName) return null
-  if (methodName === 'pipe') return tryRxPipeLowering(name, ctx)
-
-  const args = (init.arguments as AnyNode[] | undefined) ?? []
-  const sourceArg = args[0]
-  if (!sourceArg) {
-    ctx.warnings.push(
-      `Declaration ${name}: rx.${methodName} requires a signal source as its first argument.`,
-    )
-    return null
+  for (const { owner, recognize } of declCalls) {
+    const verdict = runPluginHook(owner, 'declCalls', () => recognize(site, parseContextFor(name, init, ctx)))
+    if (verdict === undefined) continue
+    return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
   }
-  if (!RX_V1_METHODS.has(methodName)) {
-    ctx.warnings.push(
-      `Declaration ${name}: rx.${methodName} is not yet lowered to native (v1 covers ${[...RX_V1_METHODS].join(' / ')}; remaining methods need Strategy B runtime ports — see docs/src/content/docs/multiplatform-libraries.md).`,
-    )
-    return null
-  }
-
-  // Build the rx-call IR. The source signal becomes `signalName()` (a
-  // no-arg call expression that the per-target emit lowers to the
-  // unwrapped state binding). Args are method args (predicate, count,
-  // initial value, etc.) — passed through verbatim.
-  //
-  // The rx-call IR is target-agnostic: each emitter switches on
-  // `method` and produces idiomatic Swift / Kotlin. See
-  // `emitSwiftExpr` / `emitKotlinExpr` `case 'rx-call':` blocks.
-  const sourceExpr = parseExpr(sourceArg, ctx)
-  const sourceCall: ExprIR = { kind: 'call', callee: sourceExpr, args: [] }
-  const restArgs = args.slice(1).map((a) => parseExpr(a, ctx))
-  const rxCallExpr: ExprIR = {
-    kind: 'rx-call',
-    method: methodName,
-    source: sourceCall,
-    args: restArgs,
-  }
-  return { kind: 'computed', name, expr: rxCallExpr }
+  return undefined
 }
 
 /**
@@ -6169,28 +5143,7 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     { callee: calleeName, argCount: init.arguments?.length ?? 0, construct: true },
     parseContextFor(name, init, ctx),
   )
-  return spec === undefined || spec === null ? null : stampExtDecl(activeRegistries().calls, recognized.owner, name, spec)
-}
-
-/**
- * Phase 4 — pull literal string elements out of an array argument
- * (`['a', 'b']`). Used to seed `usePermissions`' initial grant set. Returns
- * the string-literal entries; a missing / non-array / non-literal argument
- * yields an empty array so the caller never bails.
- */
-function tryExtractStringArray(arg: AnyNode | undefined): string[] {
-  if (!arg || arg.type !== 'ArrayExpression') return []
-  const out: string[] = []
-  for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
-    if (
-      el &&
-      (el.type === 'Literal' || el.type === 'StringLiteral') &&
-      typeof el.value === 'string'
-    ) {
-      out.push(el.value)
-    }
-  }
-  return out
+  return spec === undefined || spec === null ? null : declFromSpec(recognized.owner, name, spec, init, ctx)
 }
 
 /**
@@ -8262,45 +7215,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // bare `new Map()` has none — the local's USE sites can't type it, so
       // it stays a named warning: annotate the generics). Other `new X`
       // falls through to the default unsupported warning.
+      // A construction a plugin claims by the callee it recorded when it scanned the file (`CompilerPlugin.callExprs`).
+      const constructed = tryPluginCallExpr(node, ctx)
+      if (constructed !== undefined) return constructed
       const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
       const typeArgs = (node.typeArguments?.params ?? node.typeParameters?.params ?? []) as AnyNode[]
-      // `new SizedMap<K, V>({ maxEntries: N, lru?: B })`. Gated on the IMPORT
-      // (see collectSizedMapNames): `SizedMap` is a plausible name for a
-      // user's own class, and mis-lowering someone else's constructor is
-      // worse than not lowering ours.
-      if (ctx.sizedMapNames.has(calleeName) && typeArgs.length === 2) {
-        const optsNode = (node.arguments as AnyNode[] | undefined)?.[0]
-        const readNum = (key: string): number | undefined => {
-          for (const prop of (optsNode?.properties as AnyNode[] | undefined) ?? []) {
-            const k = staticPropKey(prop)
-            if (k === key && prop.value?.type === 'Literal') {
-              const v = prop.value.value
-              if (typeof v === 'number') return v
-              if (typeof v === 'boolean') return v ? 1 : 0
-            }
-          }
-          return undefined
-        }
-        const maxEntries = readNum('maxEntries')
-        if (optsNode?.type !== 'ObjectExpression' || maxEntries === undefined) {
-          // A non-literal cap cannot be baked in — the same conservative rule
-          // useFetch applies to its URL and useStorage to its key.
-          ctx.warnings.push(
-            `[${locOf(node, ctx)}] new ${calleeName}(...) lowers only with a LITERAL \`{ maxEntries: N }\` option object — a computed cap cannot be baked into the native emit. Use a literal, or keep the call behind a \`<Web>\` escape hatch.`,
-          )
-          // Return here: falling through reached the generic "class
-          // construction is not supported" arm, naming the SAME call twice.
-          return { kind: 'literal', value: '' }
-        } else {
-          return {
-            kind: 'new-sized-map',
-            keyType: parseTypeAnnotation(typeArgs[0]!, ctx),
-            valueType: parseTypeAnnotation(typeArgs[1]!, ctx),
-            maxEntries,
-            lru: readNum('lru') === 1,
-          }
-        }
-      }
       // v1 scope: only SCALAR (number/string/boolean) element/key/value types
       // lower to native collections. A non-scalar element (`Set<{x:number}>`, a
       // `typeRef`, a nested array/union) has no `Hashable`/native-key guarantee
@@ -8475,34 +7394,25 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
     warnIfHookInsideRenderCallback(tag, node.children as AnyNode[] | undefined, ctx)
   }
 
-  // `<Box>` where Box came from `kinetic()` — the binding was skipped, so the
-  // tag would otherwise emit as an unresolved `Box { … }`. Rewriting to the
-  // canonical container HERE, rather than in each emitter, means both targets
-  // pick it up through their existing Stack handling (VStack / Column) with no
-  // emitter change and no third place to keep in sync.
-  if (ctx.kineticFactoryNames.has(tag)) {
-    const preset = ctx.kineticFactoryNames.get(tag)
-    if (preset === undefined) {
-      // No `.preset()` in the chain — there is no animation vocabulary to carry
-      // across, so this degrades to the plain container as before.
-      return { kind: 'jsx-element', tag: 'Stack', attrs, children }
+  // A tag naming a LOCAL binding a plugin recorded when it scanned the file (`const Box = kinetic('div')…`): the binding was
+  // skipped, so the tag would otherwise emit as an unresolved `Box { … }`. Rewriting HERE, rather than in each emitter,
+  // means both targets pick the replacement up through their existing handling with no emitter change.
+  const { elementRewriters } = activeRegistries().scan
+  if (elementRewriters.length > 0) {
+    const element: JsxElementIR = { kind: 'jsx-element', tag, attrs, children }
+    const rewriteCtx: JsxRewriteContext = {
+      fileState: <T>(key: string, init: () => T): T => {
+        if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
+        return ctx.pluginState.get(key) as T
+      },
+      requestComponentDecls: (key, requested) => {
+        if (ctx.componentDeclRequests.has(key)) return
+        ctx.componentDeclRequests.set(key, { head: [...(requested.head ?? [])], tail: [...(requested.tail ?? [])] })
+      },
     }
-    // A preset NAMES an animation both targets already know, so the box lowers
-    // to the same `<Transition>` path the primitive uses — presets, durations
-    // and both emitters, all already verified. What it needs that a primitive
-    // does not is a TRIGGER: `<Transition show={true}>` compiles and never
-    // animates (`.animation(value: true)` watches a constant), so the enter has
-    // to be driven by a flag that FLIPS on mount.
-    ctx.kineticMountPending = true
-    return {
-      kind: 'jsx-element',
-      tag: 'Transition',
-      attrs: [
-        { kind: 'attr', name: 'show', value: { kind: 'identifier', name: KINETIC_MOUNT_FLAG } },
-        { kind: 'attr', name: 'name', value: { kind: 'literal', value: preset } },
-        ...attrs,
-      ],
-      children,
+    for (const { owner, rewrite } of elementRewriters) {
+      const replaced = runPluginHook(owner, 'rewriteElement', () => rewrite(element, rewriteCtx))
+      if (replaced !== undefined) return replaced
     }
   }
   return { kind: 'jsx-element', tag, attrs, children }
@@ -8526,23 +7436,16 @@ function warnIfHookInsideRenderCallback(
   // Same set the body parser extracts at the top level — if it's here,
   // it should have been declared in the parent component.
   const HOOK_NAMES = new Set([
-    // Every service descriptor (services.ts).
+    // Every service descriptor (services.ts) and every call a plugin recognizes.
     ...activeRegistries().serviceTables.hooks,
+    ...activeRegistries().calls.names,
     'signal',
     'computed',
-    'useStorage',
-    'useFetch',
     'useForm',
     'useNativeModule',
     'useColorScheme',
     'useColorMode',
     'useSizeClass',
-    'usePermissions',
-    'useWebSocket',
-    'useSecureStorage',
-    'useDatabase',
-    'useMap',
-    'useAuth',
   ])
   for (const child of children) {
     if (child?.type !== 'JSXExpressionContainer') continue

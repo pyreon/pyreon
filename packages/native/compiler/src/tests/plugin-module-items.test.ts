@@ -5,6 +5,7 @@ import { moduleTag } from '../expr-utils'
 import type { CompilerPlugin } from '../plugin'
 import { assertPluginShape } from '../plugin-shape'
 import { testNativePlugin } from '../testing'
+import { hooksPlugin } from './first-party-plugins'
 import type { ParseResult } from '../types'
 
 // The module-level seams the `@pyreon/validate` / `@pyreon/validation` plugins needed: `topLevel` +
@@ -46,6 +47,9 @@ const unitsPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
       }
       return { type: 'unit', name, payload: { bindingName: name, symbol, fields: ['label', 'unit'] } }
     }
+    if (callee === 'defineDecl') {
+      return { type: 'decl', name, payload: { text: ctx.staticString(d?.init?.arguments?.[0] as never) ?? '' } }
+    }
     if (callee === 'defineNote') {
       return { type: 'note', name, payload: { text: ctx.staticString(d?.init?.arguments?.[0] as never) ?? '' } }
     }
@@ -82,6 +86,11 @@ const unitsPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
         `object AcmeUnit_${item.payload.bindingName} { const val symbol = ${JSON.stringify(item.payload.symbol)} }`,
         `val ${item.name} = AcmeUnit_${item.payload.bindingName}`,
       ],
+    },
+    decl: {
+      after: 'declarations',
+      swift: (item) => [`// decl: ${item.payload.text}`],
+      kotlin: (item) => [`// decl: ${item.payload.text}`],
     },
     note: {
       after: 'models',
@@ -147,23 +156,22 @@ export function App() { return <Stack><Text>x</Text></Stack> }`,
     expect(warnings.some((w) => w.includes('defineUnit `Meters`: the symbol must be a string literal.'))).toBe(true)
   })
 
-  it('slots: an item with `after: models` emits before a core feature, a default item after it', () => {
+  it('slots: `models` emits before `declarations`, which emit before the default `data` slot — whatever the order in the file', () => {
     const { code } = testNativePlugin(
       unitsPlugin(),
-      `import { defineUnit, defineNote } from '@acme/units'
-import { defineFeature } from '@pyreon/feature'
+      `import { defineUnit, defineNote, defineDecl } from '@acme/units'
 ${HEAD}const Meters = defineUnit('m')
+const D = defineDecl('declared')
 const N = defineNote('hello')
-const Todo = defineFeature({ name: 'todo', schema: { id: 'string' } })
 export function App() { return <Stack><Text>x</Text></Stack> }`,
       { target },
     )
     const note = code.indexOf('// note: hello')
-    const feature = code.indexOf('PyreonFeatureSchema_Todo')
+    const decl = code.indexOf('// decl: declared')
     const unit = code.indexOf('AcmeUnit_Meters')
     expect(note).toBeGreaterThanOrEqual(0)
-    expect(note).toBeLessThan(feature)
-    expect(feature).toBeLessThan(unit)
+    expect(note).toBeLessThan(decl)
+    expect(decl).toBeLessThan(unit)
   })
 
   it('methodCalls + exprs: the call becomes an ext-expr the plugin renders, with its argument emitted through ctx.expr', () => {
@@ -383,7 +391,8 @@ export function App() {
   const t = useFetch<Thing>(getThing({}))
   return <Stack><Text>{String(t.data()?.pages)}</Text></Stack>
 }`
-    const result = createCompiler({ plugins: [plugin, endpoints] }).transform(source, { target })
+    // `useFetch` is the hooks plugin's: it is the consumer of the request source.
+    const result = createCompiler({ plugins: [hooksPlugin, plugin, endpoints] }).transform(source, { target })
     expect(result.code).toContain(target === 'swift' ? 'var pages: Double' : 'pages: Double')
     expect(seen).toContain('unit:Meters')
     expect(result.warnings).toContain('units saw 1 item(s)')
@@ -421,7 +430,6 @@ describe('module-item registry, hash lane and shape', () => {
     moduleDecls: [],
     stores: [],
     models: [],
-    features: [],
     moduleItems: [],
     helperFns: [],
     styledComponents: [],
@@ -468,7 +476,7 @@ describe('module-item registry, hash lane and shape', () => {
     const bad = (extra: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 1, ...extra })
     expect(bad({ topLevel: 'x' })).toThrow('topLevel must be a synchronous function')
     expect(bad({ items: { unit: { swift: () => [] } } })).toThrow('items.unit needs a swift and a kotlin function')
-    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], legacyList: 'nope' } } })).toThrow('legacyList must be "fieldMetas" or "zodSchemas"')
+    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], legacyList: 'nope' } } })).toThrow('legacyList must be "fieldMetas", "zodSchemas" or "features"')
     expect(bad({ exprs: { e: { kotlin: () => '' } } })).toThrow('exprs.e needs a swift and a kotlin function')
     expect(bad({ methodCalls: { convert: 1 } })).toThrow('methodCalls.convert must be a synchronous function')
     expect(bad({ refineStructs: 1 })).toThrow('refineStructs must be a synchronous function')

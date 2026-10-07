@@ -18,8 +18,8 @@
 // a compile-level assertion can only ever confirm the code agrees with itself).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { coolgridToStack, isCoolgridTag } from '../plugins/coolgrid'
+import { transform } from './first-party-plugins'
+import { coolgridToStack, isCoolgridTag } from '../../../../ui-system/coolgrid/src/native-plugin/plugin'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })

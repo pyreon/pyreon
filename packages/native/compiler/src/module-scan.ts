@@ -19,7 +19,7 @@
  */
 
 import type { AstNode, ParseContext } from './call-lowering'
-import type { ExprIR } from './types'
+import type { DeclIR, ExprIR, JsxElementIR } from './types'
 
 /** What a scanner may read and record while the file's top level is walked. */
 export interface ModuleScan {
@@ -43,6 +43,25 @@ export interface ModuleScan {
 
 /** A per-file pre-pass; runs once per compile, in plugin order. */
 export type ModuleScanner = (scan: ModuleScan) => void
+
+/** What an element rewrite may ask of the parser. */
+export interface JsxRewriteContext {
+  /** Plugin-owned memory for THIS file (shared with `scanModule`); namespace the key with the plugin name. */
+  fileState<T>(key: string, init: () => T): T
+  /**
+   * Ask for declarations on the component being parsed: `head` ahead of its own declarations, `tail` after them.
+   * Requested once per `key` however many elements ask, and applied when the component is finished (a request made
+   * while parsing something that turns out not to be a component is applied to the next one, as it always was).
+   */
+  requestComponentDecls(key: string, decls: { readonly head?: readonly DeclIR[]; readonly tail?: readonly DeclIR[] }): void
+}
+
+/**
+ * Rewrite a JSX element the parser just built — for a tag that names a LOCAL binding the plugin recorded when it scanned the
+ * file (`const Box = kinetic('div').preset('fade')`), which no import guard can claim. Returns the element that replaces
+ * it, or `undefined` to leave it. Called for every element once a plugin registers one, so the first check must be cheap.
+ */
+export type JsxElementRewrite = (el: JsxElementIR, ctx: JsxRewriteContext) => JsxElementIR | undefined
 
 /** A call of a plugin-known binding, lowered to a concrete request. */
 export interface ResolvedRequest {
@@ -75,6 +94,7 @@ export interface RequestSource {
 type ScanPlugin = {
   readonly name: string
   readonly scanModule?: ModuleScanner | undefined
+  readonly rewriteElement?: JsxElementRewrite | undefined
   readonly requestSources?: readonly RequestSource[] | undefined
   readonly destructureCalls?: readonly string[] | undefined
   readonly componentOnlyCalls?: readonly string[] | undefined
@@ -82,6 +102,8 @@ type ScanPlugin = {
 
 export interface ScanRegistry {
   readonly scanners: readonly { readonly owner: string; readonly scan: ModuleScanner }[]
+  /** Element rewrites in plugin order. */
+  readonly elementRewriters: readonly { readonly owner: string; readonly rewrite: JsxElementRewrite }[]
   readonly sources: readonly { readonly owner: string; readonly source: RequestSource }[]
   /** Hooks whose result may be destructured (`const { data } = useQuery(…)`). */
   readonly destructureCalls: ReadonlySet<string>
@@ -92,14 +114,16 @@ export interface ScanRegistry {
 /** Build the registry from every plugin's scan-side hooks, in plugin order. */
 export function createScanRegistry(plugins: readonly ScanPlugin[]): ScanRegistry {
   const scanners: { owner: string; scan: ModuleScanner }[] = []
+  const elementRewriters: { owner: string; rewrite: JsxElementRewrite }[] = []
   const sources: { owner: string; source: RequestSource }[] = []
   const destructureCalls = new Set<string>()
   const componentOnlyCalls = new Set<string>()
   for (const plugin of plugins) {
     if (plugin.scanModule !== undefined) scanners.push({ owner: plugin.name, scan: plugin.scanModule })
+    if (plugin.rewriteElement !== undefined) elementRewriters.push({ owner: plugin.name, rewrite: plugin.rewriteElement })
     for (const source of plugin.requestSources ?? []) sources.push({ owner: plugin.name, source })
     for (const name of plugin.destructureCalls ?? []) destructureCalls.add(name)
     for (const name of plugin.componentOnlyCalls ?? []) componentOnlyCalls.add(name)
   }
-  return Object.freeze({ scanners: Object.freeze(scanners), sources: Object.freeze(sources), destructureCalls, componentOnlyCalls })
+  return Object.freeze({ scanners: Object.freeze(scanners), elementRewriters: Object.freeze(elementRewriters), sources: Object.freeze(sources), destructureCalls, componentOnlyCalls })
 }

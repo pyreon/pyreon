@@ -1530,10 +1530,17 @@
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^5.0.2",
       },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/a11y": {
       "name": "@pyreon/a11y",
@@ -1742,6 +1749,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -1751,8 +1759,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/flow": {
       "name": "@pyreon/flow",
@@ -1825,8 +1837,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/hotkeys": {
       "name": "@pyreon/hotkeys",
@@ -1929,14 +1945,19 @@
         "@casl/ability": "^7.0.1",
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/query": {
       "name": "@pyreon/query",
@@ -1996,6 +2017,7 @@
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -2003,8 +2025,12 @@
         "solid-js": "^1.9.15",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/state-tree": {
       "name": "@pyreon/state-tree",
@@ -2036,6 +2062,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2045,8 +2072,12 @@
         "zustand": "^5.0.15",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/store": {
       "name": "@pyreon/store",
@@ -2162,6 +2193,7 @@
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/core": "workspace:*",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
@@ -2169,8 +2201,12 @@
         "nuqs": "^2.10.1",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/validate": {
       "name": "@pyreon/validate",
@@ -2851,6 +2887,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/styler": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
@@ -2861,8 +2898,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/document-primitives": {
       "name": "@pyreon/document-primitives",
@@ -2900,6 +2941,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/styler": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -2911,8 +2953,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/kinetic": {
       "name": "@pyreon/kinetic",
@@ -2922,6 +2968,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
@@ -2933,9 +2980,13 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/kinetic-presets": {
       "name": "@pyreon/kinetic-presets",

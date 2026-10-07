@@ -236,6 +236,10 @@ Applies to `tag`, `direction`, `alignX`, `alignY`, `gap`, `block`, `equalCols`, 
 
 Full docs: [pyreon.dev/docs/elements](https://pyreon.dev/docs/elements) (or `docs/src/content/docs/elements.md` in this repo).
 
+## Native (iOS / Android)
+
+`Element` lowers to the canonical `Stack` on SwiftUI and Compose; `Text`, `List`, `Overlay` and `Portal` are DOM-based and stay web-only (the compiler names them). The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+
 ## License
 
 MIT
