@@ -66,6 +66,8 @@ export function definePlaywrightConfig(opts: DefinePlaywrightConfigOptions): Pla
     use: {
       headless: true,
       browserName: 'chromium',
+      trace: 'on-first-retry',
+      screenshot: 'only-on-failure',
     },
     projects: opts.projects.map((p) => ({
       name: p.name,
