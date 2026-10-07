@@ -41,6 +41,16 @@ export type {
   RegisteredCall,
 } from './call-lowering'
 export type { EmitContext, EmitTarget, StaticAttrValue } from './emit-context'
+export { createItemRegistry } from './module-items'
+export type {
+  ExprEmitter,
+  ExtExprSpec,
+  ExtItemSpec,
+  ItemRegistry,
+  ModuleItemEmitter,
+  ModuleParseContext,
+  TopLevelRecognizer,
+} from './module-items'
 export type { UnloweredModule, UnloweredSpec } from './unlowered-modules'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'

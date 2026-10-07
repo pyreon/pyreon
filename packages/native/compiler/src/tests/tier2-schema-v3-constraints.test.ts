@@ -4,7 +4,7 @@
 // when present (z.string().email().optional()).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Gap 4 v3 — per-element array constraints + constraints on optionals', () => {
   // ─────────────────── per-element array constraints (Swift) ───────────────────

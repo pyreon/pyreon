@@ -9,7 +9,6 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { lowerWebViewDomStorage } from './webview-options'
-import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
 import {
@@ -23,6 +22,11 @@ import {
   lowerPluginAssignValue,
   lowerPluginFunction,
   lowerPluginIdentifier,
+  lowerPluginExpr,
+  formFieldValidators,
+  formSchemaAdvice,
+  itemsInSlot,
+  lowerPluginItem,
   lowerPluginIntrinsic,
   lowerPluginMemberCall,
   lowerPluginMemberRead,
@@ -74,7 +78,6 @@ import {
   jsxInStringifiedChildWarning,
   isNullableType,
   optionalSpreadWarning,
-  schemaInputNeedsConversion,
   synthStructName,
 } from './expr-utils'
 import {
@@ -103,10 +106,9 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
-import { localBase, safeIdent, swiftIdent, swiftEnumCase, swiftObservableIdent, withObservableMembers } from './identifier-safety'
+import { safeIdent, swiftIdent, swiftEnumCase, swiftObservableIdent, withObservableMembers } from './identifier-safety'
+import { swiftCodingKeysLines } from './spelling'
 
-/** A backticked keyword keeps its JSON key — only a REWRITTEN name needs a CodingKey. */
-const SWIFT_KEYWORD_ONLY = /^[A-Za-z_][A-Za-z0-9_]*$/
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
@@ -182,16 +184,13 @@ import type {
   EnumIR,
   ExprIR,
   FeatureDefnIR,
-  FieldMetaDefnIR,
   ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
   StoreDefnIR,
   StructIR,
   TypeIR,
-  ZodFieldConstraints,
-  ZodFieldType,
-  ZodSchemaDefnIR,
+  ExtModuleItem,
   HotkeyModifier,
 } from './types'
 
@@ -636,10 +635,8 @@ let _fieldArrayItemParamsSwift: string[] = []
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
 let _formNamesSwift: Set<string> = new Set()
-// zodSchema binding name -> its STRING field names. Lets a `useForm({ schema })`
-// wire per-field validators without threading the schema list through every
-// decl emitter. String-only because a form Field is a text input.
-let _zodStringFieldsSwift: Map<string, string[]> = new Map()
+// The file's plugin-owned module items — what `useForm({ schema })` resolves its per-field validators against.
+let _moduleItems: ExtModuleItem[] = []
 /**
  * The onSubmit param name currently in scope, if any — a STACK so a nested
  * form emit can't clobber the outer one.
@@ -1105,9 +1102,8 @@ export function emitSwift(
   moduleDecls: ModuleDeclIR[] = [],
   stores: StoreDefnIR[] = [],
   models: ModelDefnIR[] = [],
-  fieldMetas: FieldMetaDefnIR[] = [],
   features: FeatureDefnIR[] = [],
-  zodSchemas: ZodSchemaDefnIR[] = [],
+  moduleItems: ExtModuleItem[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
   styledComponents: StyledComponentIR[] = [],
@@ -1299,21 +1295,15 @@ export function emitSwift(
   // Gap 4 v2 follow-up: emit per-model singleton class BEFORE components
   // so `<instance>.<field>` use sites resolve to PyreonModel_<id>.shared.
   for (const m of models) parts.push(emitSwiftModel(m))
-  // Gap 4 follow-up — withField metadata structs.
-  for (const fm of fieldMetas) parts.push(emitSwiftFieldMeta(fm))
+  // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
+  for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Gap 4 follow-up — feature v1: emit per-feature schema struct +
   // module-scope const exposing initialValues + name.
   for (const f of features) parts.push(emitSwiftFeature(f))
-  // Gap 4 follow-up — Zod / Valibot / ArkType schema structs.
-  // `PyreonSchemaError` and `PyreonParseResult` — what every schema throws
-  // and returns — live in the runtime (`PyreonSchema.swift`), NOT in this
-  // file. Emitted per file they collided: two schema-bearing files in one
-  // Xcode target each declared the enum → `invalid redeclaration`.
-  _zodStringFieldsSwift = new Map()
-  for (const zs of zodSchemas) {
-    const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
-    if (names.length > 0) _zodStringFieldsSwift.set(zs.bindingName, names)
-  }
+  // Plugin module items (`CompilerPlugin.items`): schemas and the like. What every schema throws and
+  // returns (`PyreonSchemaError`, `PyreonParseResult`) lives in the runtime (`PyreonSchema.swift`), NOT in the
+  // emitted file — emitted per file they collided: two schema-bearing files in one Xcode target each
+  // declared the enum → `invalid redeclaration`.
   // `PyreonUrlState*` (router-swift) and the `\.pyreonPermissions` environment
   // key (permissions' co-located runtime) are NOT emitted here. Emitted per
   // file they collided: two files using `useUrlState` in one Xcode target each
@@ -1322,13 +1312,8 @@ export function emitSwift(
   // key has a second reason to be app-wide: a provider in one file and a
   // reader in another must name the SAME key, which no per-file declaration
   // can guarantee.
-  // Gap 4 v3.2 — recursively emit auxSchemas BEFORE their parent
-  // schema so Swift can resolve type references top-down.
-  const emitSchemaTree = (zs: ZodSchemaDefnIR): void => {
-    for (const aux of zs.auxSchemas ?? []) emitSchemaTree(aux)
-    parts.push(emitSwiftZodSchema(zs))
-  }
-  for (const zs of zodSchemas) emitSchemaTree(zs)
+  _moduleItems = moduleItems
+  for (const item of itemsInSlot(moduleItems, 'features')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -1611,30 +1596,6 @@ function emitSwiftModelBody(m: ModelDefnIR): string {
 }
 
 /**
- * Gap 4 follow-up — `@pyreon/validate` withField metadata emit
- * (Swift). PMTC discards the schema argument and emits a per-binding
- * struct holding the literal `meta` fields. Downstream native code
- * uses `emailField.label` etc. directly via the emitted struct.
- *
- *   struct PyreonFieldMeta_emailField {
- *       let label: String = "Email"
- *       let placeholder: String = "name@example.com"
- *   }
- *   let emailField = PyreonFieldMeta_emailField()
- */
-function emitSwiftFieldMeta(fm: FieldMetaDefnIR): string {
-  const lines: string[] = []
-  lines.push(`struct PyreonFieldMeta_${fm.bindingName} {`)
-  for (const m of fm.meta) {
-    lines.push(`    let ${m.name}: String = ${swiftStr(m.value)}`)
-  }
-  lines.push(`}`)
-  lines.push(``)
-  lines.push(`let ${fm.bindingName} = PyreonFieldMeta_${fm.bindingName}()`)
-  return lines.join('\n')
-}
-
-/**
  * Gap 4 follow-up — feature v1 emit. Produces a Codable struct
  * representing the schema shape PLUS a module-scope enum holding
  * the `name` + `initialValues` accessors. Downstream code can
@@ -1688,463 +1649,6 @@ function emitSwiftFeature(f: FeatureDefnIR): string {
 }
 
 /**
- * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Swift).
- * Produces a Codable struct + module-scope const. Apps validate at
- * JSON-decode time via Codable; v1 doesn't yet emit runtime .parse()
- * methods (v2 follow-up).
- *
- *   struct PyreonZodSchema_userSchema: Codable {
- *       var name: String = ""
- *       var age: Int = 0
- *       var active: Bool = false
- *   }
- *   let userSchema = PyreonZodSchema_userSchema()
- */
-function swiftFieldType(t: ZodFieldType): string {
-  if (typeof t === 'string') {
-    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Bool'
-  }
-  if (t.kind === 'object') {
-    // Gap 4 v3.2 — nested object reference. Emit the synthesized struct name.
-    return `PyreonZodSchema_${t.schemaName}`
-  }
-  // v2.2 array — element may now be a nested object (v3.2).
-  let elem: string
-  if (typeof t.element === 'string') {
-    elem = t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Bool'
-  } else {
-    elem = `PyreonZodSchema_${t.element.schemaName}`
-  }
-  return `[${elem}]`
-}
-
-function swiftFieldInitial(t: ZodFieldType): string {
-  if (typeof t === 'string') {
-    return t === 'string' ? '""' : t === 'boolean' ? 'false' : '0'
-  }
-  if (t.kind === 'object') {
-    // Initialize nested object with its own default constructor
-    return `PyreonZodSchema_${t.schemaName}()`
-  }
-  return '[]'
-}
-
-/**
- * Gap 4 v2.1 — emit Swift constraint-check guards for a scalar value.
- * Used at three call sites: required scalar field, optional scalar
- * field (inside the present-checked block), and array-element loop
- * body (with `ruleSuffix: ' (element)'` for clearer error messages).
- */
-function emitSwiftScalarConstraints(
-  lines: string[],
-  targetName: string,
-  t: ZodFieldType,
-  constraints: ZodFieldConstraints | undefined,
-  fieldName: string,
-  indent: number,
-  ruleSuffix = '',
-): void {
-  if (!constraints) return
-  // Only scalar string/number constraints apply at the scalar-emit level.
-  const isString = t === 'string'
-  const isNumber = t === 'number'
-  if (!isString && !isNumber) return
-  const ind = ' '.repeat(indent)
-  const innerInd = ' '.repeat(indent + 4)
-  const c = constraints
-  if (isString) {
-    if (c.min !== undefined) {
-      // `.utf16.count`, NOT `.count`. Swift's String.count counts GRAPHEME
-      // CLUSTERS; JS `.length` and Kotlin `.length` both count UTF-16 code
-      // units. The web is the reference implementation here — @pyreon/validate
-      // checks `value.length` — so `.count` made iOS REJECT strings web and
-      // Android accept: `min(2)` against "👍" is 2 units (pass) but 1 grapheme
-      // (fail). A validator that disagrees per platform is a data-integrity
-      // bug, not a rounding difference.
-      lines.push(`${ind}if ${targetName}.utf16.count < ${c.min} {`)
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "min length ${c.min}${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-    if (c.max !== undefined) {
-      lines.push(`${ind}if ${targetName}.utf16.count > ${c.max} {`)
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "max length ${c.max}${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-    if (c.email) {
-      lines.push(
-        `${ind}if ${targetName}.range(of: #"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$"#, options: [.regularExpression, .caseInsensitive]) == nil {`,
-      )
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "email${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-    if (c.url) {
-      // The AUTHORING library's rule (see `UrlRule`), not one rule for all.
-      const rule = c.url
-      if (rule.kind === 'scheme') {
-        // zod: `URL(string:)` is a PARSER, not a validator — it accepts
-        // "not a url", "x.com" and "/relative", all of which zod rejects.
-        // Requiring a scheme reproduces zod's rule (an absolute URL), which
-        // still accepts "mailto:a@b.co" and "ftp://x.com" as zod does.
-        lines.push(`${ind}if URL(string: ${targetName})?.scheme == nil {`)
-      } else if (rule.kind === 'http') {
-        // `@pyreon/validate`'s default: http(s) with a host, exactly.
-        lines.push(
-          `${ind}if ${targetName}.range(of: #"${HTTP_URL_PATTERN}"#, options: [.regularExpression]) == nil {`,
-        )
-      } else {
-        // `.url({ protocol })`: an absolute URI, then the scheme (the text
-        // before the first colon) partially matched, as `RegExp.test()` is.
-        const opts = rule.ignoreCase ? '[.regularExpression, .caseInsensitive]' : '[.regularExpression]'
-        lines.push(
-          `${ind}if ${targetName}.range(of: #"${URI_PATTERN}"#, options: [.regularExpression]) == nil || String(${targetName}.prefix(while: { $0 != ":" })).range(of: #"${rule.source}"#, options: ${opts}) == nil {`,
-        )
-      }
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "url${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-    if (c.regex) {
-      // Partial match, which is what `RegExp.test()` does on the web — an
-      // anchored pattern still anchors. Raw string so backslashes survive.
-      const opts = c.regex.ignoreCase
-        ? '[.regularExpression, .caseInsensitive]'
-        : '[.regularExpression]'
-      lines.push(
-        `${ind}if ${targetName}.range(of: #"${c.regex.source}"#, options: ${opts}) == nil {`,
-      )
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "regex${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-    if (c.uuid) {
-      lines.push(`${ind}if UUID(uuidString: ${targetName}) == nil {`)
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "uuid${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-  } else if (isNumber) {
-    if (c.min !== undefined) {
-      lines.push(`${ind}if ${targetName} < ${c.min} {`)
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "min ${c.min}${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-    if (c.max !== undefined) {
-      lines.push(`${ind}if ${targetName} > ${c.max} {`)
-      lines.push(
-        `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "max ${c.max}${ruleSuffix}")`,
-      )
-      lines.push(`${ind}}`)
-    }
-  }
-}
-
-/**
- * Gap 4 v3 — emit a `for elem in <field>Val { ... }` loop that
- * applies the array's `elementConstraints` to each element. Only
- * called for array field types; no-op for scalars.
- */
-function emitSwiftArrayElementConstraints(
-  lines: string[],
-  targetName: string,
-  t: ZodFieldType,
-  fieldName: string,
-  indent: number,
-): void {
-  if (typeof t === 'string') return
-  if (t.kind !== 'array') return
-  // v3.2 — object-element arrays don't have primitive elementConstraints;
-  // their per-element validation flows through the nested schema's parse().
-  if (typeof t.element !== 'string') return
-  if (!t.elementConstraints) return
-  if (Object.keys(t.elementConstraints).length === 0) return
-  const ind = ' '.repeat(indent)
-  const elementVar = `${fieldName}Element`
-  lines.push(`${ind}for ${elementVar} in ${targetName} {`)
-  emitSwiftScalarConstraints(
-    lines,
-    elementVar,
-    t.element,
-    t.elementConstraints,
-    fieldName,
-    indent + 4,
-    ' (element)',
-  )
-  lines.push(`${ind}}`)
-}
-
-/**
- * Gap 4 v3.3 — emit a discriminated union as a Swift enum with
- * associated values. Each variant case wraps its aux struct.
- */
-function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
-  const d = zs.discriminator!
-  const lines: string[] = []
-  const typeName = `PyreonZodSchema_${zs.bindingName}`
-  lines.push(`enum ${typeName} {`)
-  for (const v of d.variants) {
-    lines.push(`    case ${swiftIdent(camelCase(v.caseName))}(PyreonZodSchema_${v.schemaName})`)
-  }
-  lines.push(``)
-  lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
-  lines.push(
-    `        guard let discr = input[${swiftStr(d.field)}] as? String else {`,
-  )
-  lines.push(
-    `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(d.field)}, expected: "String")`,
-  )
-  lines.push(`        }`)
-  lines.push(`        switch discr {`)
-  for (const v of d.variants) {
-    lines.push(`        case ${swiftStr(v.literal)}:`)
-    lines.push(
-      `            return .${swiftIdent(camelCase(v.caseName))}(try PyreonZodSchema_${v.schemaName}.parse(input))`,
-    )
-  }
-  lines.push(`        default:`)
-  lines.push(
-    `            throw PyreonSchemaError.constraintViolation(field: ${swiftStr(d.field)}, rule: "unknown discriminator value")`,
-  )
-  lines.push(`        }`)
-  lines.push(`    }`)
-  lines.push(``)
-  lines.push(
-    `    static func safeParse(_ input: [String: Any]) -> Result<Self, PyreonSchemaError> {`,
-  )
-  lines.push(`        do { return .success(try parse(input)) }`)
-  lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
-  lines.push(`        catch { return .failure(.missingOrWrongType(field: "?", expected: "?")) }`)
-  lines.push(`    }`)
-  lines.push(`}`)
-  return lines.join('\n') + '\n'
-}
-
-/**
- * Gap 4 v3.3 — lowercase the first character of an identifier.
- * Used to convert PascalCased variant caseName ("Cat") to a Swift
- * enum case ("cat").
- */
-function camelCase(s: string): string {
-  if (s.length === 0) return s
-  return s[0]!.toLowerCase() + s.slice(1)
-}
-
-function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
-  // Gap 4 v3.3 — discriminated union: emit as a Swift enum with
-  // associated values. Each variant case wraps the variant's struct
-  // and parse() routes via a switch on the discriminator value.
-  if (zs.discriminator) return emitSwiftDiscriminatedUnion(zs)
-  const lines: string[] = []
-  lines.push(`struct PyreonZodSchema_${zs.bindingName}: Codable {`)
-  for (const f of zs.fields) {
-    const t = swiftFieldType(f.type)
-    if (f.optional) {
-      lines.push(`    var ${swiftIdent(f.name)}: ${t}? = nil`)
-    } else {
-      const initial = swiftFieldInitial(f.type)
-      lines.push(`    var ${swiftIdent(f.name)}: ${t} = ${initial}`)
-    }
-  }
-  lines.push(...swiftCodingKeysLines(zs.fields.map((f) => f.name), '    '))
-  lines.push(``)
-  // Gap 4 v2 — runtime .parse() / .safeParse() methods. Take a
-  // `[String: Any]` (decoded JSON map), type-check each field,
-  // return the validated struct or throw PyreonSchemaError.
-  lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
-  lines.push(`        var result = Self()`)
-  for (const f of zs.fields) {
-    const t = swiftFieldType(f.type)
-    // Gap 4 v3.2 — nested object field: route via the nested schema's
-    // own parse() method.
-    if (typeof f.type !== 'string' && f.type.kind === 'object') {
-      const nestedType = `PyreonZodSchema_${f.type.schemaName}`
-      if (f.optional) {
-        lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
-        lines.push(
-          `            guard let ${localBase(f.name)}Raw = raw as? [String: Any] else {`,
-        )
-        lines.push(
-          `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(nestedType)})`,
-        )
-        lines.push(`            }`)
-        lines.push(
-          `            result.${swiftIdent(f.name)} = try ${nestedType}.parse(${localBase(f.name)}Raw)`,
-        )
-        lines.push(`        }`)
-      } else {
-        lines.push(
-          `        guard let ${localBase(f.name)}Raw = input[${swiftStr(f.name)}] as? [String: Any] else {`,
-        )
-        lines.push(
-          `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(nestedType)})`,
-        )
-        lines.push(`        }`)
-        lines.push(
-          `        result.${swiftIdent(f.name)} = try ${nestedType}.parse(${localBase(f.name)}Raw)`,
-        )
-      }
-      continue
-    }
-    // Gap 4 v3.2 — array of objects field: route via per-element parse().
-    if (
-      typeof f.type !== 'string' &&
-      f.type.kind === 'array' &&
-      typeof f.type.element !== 'string' &&
-      f.type.element.kind === 'object'
-    ) {
-      const nestedType = `PyreonZodSchema_${f.type.element.schemaName}`
-      const arrayType = `[${nestedType}]`
-      if (f.optional) {
-        lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
-        lines.push(
-          `            guard let ${localBase(f.name)}Raw = raw as? [[String: Any]] else {`,
-        )
-        lines.push(
-          `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(arrayType)})`,
-        )
-        lines.push(`            }`)
-        lines.push(
-          `            result.${swiftIdent(f.name)} = try ${localBase(f.name)}Raw.map { try ${nestedType}.parse($0) }`,
-        )
-        lines.push(`        }`)
-      } else {
-        lines.push(
-          `        guard let ${localBase(f.name)}Raw = input[${swiftStr(f.name)}] as? [[String: Any]] else {`,
-        )
-        lines.push(
-          `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(arrayType)})`,
-        )
-        lines.push(`        }`)
-        lines.push(
-          `        result.${swiftIdent(f.name)} = try ${localBase(f.name)}Raw.map { try ${nestedType}.parse($0) }`,
-        )
-      }
-      continue
-    }
-    if (f.optional) {
-      // Optional field — missing → leave nil, present-but-wrong-type → throw
-      lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
-      lines.push(`            guard let ${localBase(f.name)}Val = raw as? ${t} else {`)
-      lines.push(
-        `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(t)})`,
-      )
-      lines.push(`            }`)
-      // Gap 4 v3 — constraints on optional fields apply ONLY when the
-      // field is present (the missing-case left nil above).
-      emitSwiftScalarConstraints(
-        lines,
-        `${localBase(f.name)}Val`,
-        f.type,
-        f.constraints,
-        f.name,
-        12,
-      )
-      // Gap 4 v3 — element constraints for optional arrays apply per-element.
-      emitSwiftArrayElementConstraints(lines, `${localBase(f.name)}Val`, f.type, f.name, 12)
-      lines.push(`            result.${swiftIdent(f.name)} = ${localBase(f.name)}Val`)
-      lines.push(`        }`)
-      continue
-    }
-    lines.push(
-      `        guard let ${localBase(f.name)}Val = input[${swiftStr(f.name)}] as? ${t} else {`,
-    )
-    lines.push(
-      `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(t)})`,
-    )
-    lines.push(`        }`)
-    // Gap 4 v2.1 — enforce scalar constraints from the modifier chain.
-    emitSwiftScalarConstraints(
-      lines,
-      `${localBase(f.name)}Val`,
-      f.type,
-      f.constraints,
-      f.name,
-      8,
-    )
-    // Gap 4 v3 — enforce per-element constraints for array fields.
-    emitSwiftArrayElementConstraints(lines, `${localBase(f.name)}Val`, f.type, f.name, 8)
-    lines.push(`        result.${swiftIdent(f.name)} = ${localBase(f.name)}Val`)
-  }
-  lines.push(`        return result`)
-  lines.push(`    }`)
-  lines.push(``)
-  lines.push(
-    `    static func safeParse(_ input: [String: Any]) -> Result<Self, PyreonSchemaError> {`,
-  )
-  lines.push(`        do { return .success(try parse(input)) }`)
-  lines.push(`        catch let e as PyreonSchemaError { return .failure(e) }`)
-  lines.push(`        catch { return .failure(.unknown) }`)
-  lines.push(`    }`)
-  // Per-FIELD validation, so `useForm({ schema })` can wire the schema into the
-  // form. `PyreonForm` takes `[String: (String) -> String]` ("" = valid), and
-  // without this the option was dropped SILENTLY: `isValid` stayed true on
-  // native for input the web rejected. Found by the iOS device gate.
-  //
-  // Reuses `emitSwiftScalarConstraints` — the same generator `parse()` uses —
-  // so the two can never disagree about what a constraint means. Only STRING
-  // fields are emitted: a form Field is a text input, and a non-string field is
-  // not bound to one.
-  const _stringFields = zs.fields.filter((f) => f.type === 'string')
-  if (_stringFields.length > 0) {
-    lines.push(``)
-    lines.push(`    /// "" when valid, else the violated rule — the PyreonForm validator shape.`)
-    lines.push(`    static func validateField(_ field: String, _ value: String) -> String {`)
-    lines.push(`        do {`)
-    lines.push(`            switch field {`)
-    for (const f of _stringFields) {
-      lines.push(`            case ${swiftStr(f.name)}:`)
-      const guards: string[] = []
-      emitSwiftScalarConstraints(guards, 'value', 'string', f.constraints, f.name, 16)
-      if (guards.length === 0) guards.push(`                break`)
-      lines.push(...guards)
-    }
-    lines.push(`            default: break`)
-    lines.push(`            }`)
-    lines.push(`        } catch let e as PyreonSchemaError {`)
-    lines.push(`            if case .constraintViolation(_, let rule) = e { return rule }`)
-    lines.push(`            return "invalid"`)
-    lines.push(`        } catch { return "invalid" }`)
-    lines.push(`        return ""`)
-    lines.push(`    }`)
-  }
-  // Standalone-validation: the web-faithful result shape. `s.object({ … })
-  // .safeParse(x)` returns `{ success, data }` on the web, but Swift's `Result`
-  // carries no `.success` Bool — so an inline-validated schema also gets a
-  // `safeParseResult` returning `PyreonParseResult<Self>` (success + data).
-  if (zs.emitSafeParseResult) {
-    lines.push(``)
-    lines.push(
-      `    static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self> {`,
-    )
-    lines.push(`        switch safeParse(input) {`)
-    lines.push(`        case .success(let v): return PyreonParseResult(success: true, data: v)`)
-    lines.push(`        case .failure: return PyreonParseResult(success: false, data: nil)`)
-    lines.push(`        }`)
-    lines.push(`    }`)
-  }
-  lines.push(`}`)
-  // An INLINE schema (synthesized from `s.object({ … }).safeParse(x)`) is
-  // referenced only through its static `safeParseResult` — it needs no
-  // module-scope instance binding (which exists so a top-level schema NAME
-  // resolves as a value).
-  if (!zs.inline) {
-    lines.push(``)
-    lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
-  }
-  return lines.join('\n')
-}
-
-/**
  * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
  * value backing lets Swift convert between the string literal source
  * and the enum case via init?(rawValue:) — useful for storage / URL
@@ -2194,27 +1698,6 @@ function emitSwiftEnum(e: EnumIR): string {
  *   - JSON encode/decode round-trip in user code
  *   - Pyreon's storage / network adapter layers
  */
-/**
- * A `CodingKeys` enum for a Codable struct whose field names are not all
- * plain Swift identifiers, or `[]` when none needs one.
- *
- * A KEYWORD name does NOT need it: `` var `where`: String `` synthesizes the
- * key "where" (backticks are not part of the name — verified by a real
- * encode/decode round trip, `identifier-safety-codable.test.ts`). Only a name
- * `swiftIdent` has to REWRITE (`'my-key'` → `myKey`) diverges from its JSON
- * key, and then every field of the struct must be listed.
- */
-function swiftCodingKeysLines(names: readonly string[], pad: string): string[] {
-  if (!names.some((n) => !SWIFT_KEYWORD_ONLY.test(n))) return []
-  const lines = [`${pad}enum CodingKeys: String, CodingKey {`]
-  for (const n of names) {
-    const ident = swiftIdent(n)
-    lines.push(`${pad}  case ${ident}${ident === n || ident === '`' + n + '`' ? '' : ` = ${swiftStr(n)}`}`)
-  }
-  lines.push(`${pad}}`)
-  return lines
-}
-
 function emitSwiftStruct(s: StructIR): string {
   const lines: string[] = []
   // A FUNCTION-typed field can't derive Codable — closures aren't
@@ -3711,19 +3194,17 @@ function emitSwiftDecl(
     // Explicit `validators` win: they are per-field and more specific, so a
     // field carrying both keeps the hand-written one.
     if (d.schemaName !== undefined) {
-      const fields = _zodStringFieldsSwift.get(d.schemaName)
+      const provided = formFieldValidators(_moduleItems, d.schemaName)
+      const fields = provided?.fields
       if (fields === undefined) {
         _emitWarnings.push(
-          `useForm({ schema: ${d.schemaName} }): no top-level zodSchema/valibotSchema/arkTypeSchema declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
+          `useForm({ schema: ${d.schemaName} }): no top-level ${formSchemaAdvice() ?? 'schema'} declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
         )
       } else {
         const explicit = new Set((d.validators ?? []).map((v) => v.key))
         const entries = fields
           .filter((f) => !explicit.has(f))
-          .map(
-            (f) =>
-              `${swiftStr(f)}: { v in PyreonZodSchema_${d.schemaName}.validateField(${swiftStr(f)}, v) }`,
-          )
+          .map((f) => `${swiftStr(f)}: { v in ${provided!.validators.swift(provided!.item, f, 'v')} }`)
         if (entries.length > 0) {
           const existing = parts.findIndex((p) => p.startsWith('validators: ['))
           if (existing >= 0) {
@@ -5252,50 +4733,6 @@ function emitSwiftIndexedClosure(
   }
 }
 
-/**
- * Standalone-validation: emit an ExprIR as a DYNAMIC Swift value for a
- * `safeParse` argument — an object literal becomes a `[String: Any]`
- * dictionary (NOT a synthesized struct), an array becomes a native array with
- * dynamic elements, and any other expression is emitted verbatim (it must
- * already be `[String: Any]`-typed). Recurses so nested objects/arrays lower
- * to nested dictionaries. This is what keeps `s.object(…).safeParse({ n: 1 })`
- * validating a runtime map the way the web `safeParse(unknown)` does.
- */
-function emitSwiftDynamicValue(e: ExprIR, indent: number): string {
-  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) {
-    if (e.fields.length === 0) return `[String: Any]()`
-    const entries = e.fields
-      .map((f) => `${swiftStr(f.name)}: ${emitSwiftDynamicValue(f.value, indent)}`)
-      .join(', ')
-    return `[${entries}] as [String: Any]`
-  }
-  if (e.kind === 'array') {
-    if (e.elements.length === 0) return `[Any]()`
-    const elems = e.elements.map((el) => emitSwiftDynamicValue(el, indent)).join(', ')
-    return `[${elems}]`
-  }
-  // A typed value (struct, inline object, or a collection of them) nested in
-  // a literal: the schema reads plain values, so it goes through its own
-  // Codable encoding. A scalar is already one.
-  if (schemaInputNeedsConversion(inferType(e, _activeInferCtx))) {
-    return `pyreonSchemaValue(${emitSwiftExpr(e, indent)})`
-  }
-  return emitSwiftExpr(e, indent)
-}
-
-/**
- * The argument of a lowered `safeParse`. An object LITERAL is already the
- * dictionary the schema reads. Anything else — a variable, a signal read, a
- * call — holds a typed value (`Pet.safeParse(pet())`), which used to be
- * passed as-is and did not compile; `pyreonSchemaInput` converts it through
- * the value's own Codable encoding (and passes an existing dictionary
- * through untouched).
- */
-function emitSwiftSchemaInput(e: ExprIR, indent: number): string {
-  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) return emitSwiftDynamicValue(e, indent)
-  return `pyreonSchemaInput(${emitSwiftExpr(e, indent)})`
-}
-
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -5343,14 +4780,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'announce-call':
       // Imperative @pyreon/a11y announce → PyreonA11y (a VoiceOver announcement).
       return `PyreonA11y.announce(${emitSwiftExpr(e.message, indent)}, assertive: ${e.assertive})`
-    case 'schema-validate': {
-      // Standalone `@pyreon/validate` `s.object({ … }).safeParse(x)` →
-      // `PyreonZodSchema_<name>.safeParseResult(<x-as-dictionary>)`, which
-      // returns `PyreonParseResult<Self>` — a wrapping `.success` / `.data`
-      // member access composes over this. The argument is emitted as a
-      // dynamic `[String: Any]` dictionary (never a synthesized struct).
-      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitSwiftSchemaInput(e.arg, indent)})`
-    }
+    case 'ext-expr':
+      return lowerPluginExpr(e, 'swift', () => swiftEmitContext(indent))
     case 'json-stringify':
       // `JSON.stringify(x)` → the runtime's web-identical serializer. Not
       // `JSONEncoder`: the bytes leave the device (a request body, a cache key)

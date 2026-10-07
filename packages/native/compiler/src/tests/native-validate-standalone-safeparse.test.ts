@@ -16,7 +16,7 @@
 // runtime map the way the web `safeParse(unknown)` does.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const SCALAR = `import { computed } from '@pyreon/reactivity'

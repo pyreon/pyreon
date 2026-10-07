@@ -2,7 +2,7 @@
 // tests. Parallel ports to #1486's Zod recognizer.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Gap 4 follow-up — Valibot v1', () => {
   it('Swift: emits struct + binding from v.object()', () => {

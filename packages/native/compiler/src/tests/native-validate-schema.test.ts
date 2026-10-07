@@ -15,7 +15,7 @@
 // equivalent validator on both targets, so shared source stays shared.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SCHEMA = `import { s } from '@pyreon/validate'
 const userSchema = s.object({ name: s.string().min(2), age: s.number(), active: s.boolean() })

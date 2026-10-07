@@ -9,7 +9,7 @@
 // behaviour difference you would notice in a snapshot.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SCHEMA = (fields: string) => `import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'

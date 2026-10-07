@@ -271,6 +271,12 @@
         "dep": "@pyreon/query",
         "code": "prod-import-of-dev-dep",
         "reason": "Same shape as @pyreon/lathe's @pyreon/http entry. `f.import('@pyreon/query', 'useQuery')` is a string ARGUMENT naming what the generator emits into the consumer's files, and loom's lexical scan cannot tell a bare specifier string from an import — the correct trade for a scanner that reads declared truth. The dep is declared because the TESTS need it to resolve: `generated-typecheck.test.ts` runs the real TypeScript compiler over the emitted output for every client x validator pair, and the generated hooks import it. lib/ carries no import of it."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/validation",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Two separate things read as one import here. `@pyreon/validation/native-plugin` is a string the native verifier hands to a guarded dynamic `import()` to load the PROJECT'S OWN install of the plugin (resolved, never fetched, and a failure just means that library's lowering is absent) — the same arrangement as the @pyreon/http / @pyreon/query entries above — and `f.import('@pyreon/validation', 'zodSchema')` is a string ARGUMENT naming what the generator emits into the consumer's files. Loom's lexical scan cannot tell either from an import, which is the correct trade for a scanner that reads declared truth. The devDependency is real: the tests compile generated output through the real plugin. lib/ carries no static import of it."
       }
     ]
   }

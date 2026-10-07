@@ -18,5 +18,10 @@ export default defineNodeConfig({
   // toJsonSchema conversion coverage clears 96/91 on both platforms). The
   // residual gap is the interpreter failure arms redundant with the JIT path
   // (documented in scripts/check-coverage.ts).
+  // The native-compiler plugin (`src/native-plugin/`) is tooling that runs in Node, not library code. It has no
+  // unit tests in this package on purpose: its emit is verified by behaviour in the @pyreon/native-compiler suite
+  // (the golden corpus plus the native-validate / tier2-schema / form-schema specs), which owns the swiftc and
+  // kotlinc lanes — the same arrangement @pyreon/http and @pyreon/charts document.
+  coverageExclude: ['src/native-plugin.ts', 'src/native-plugin/**'],
   coverageThresholds: { statements: 97, branches: 94, functions: 98, lines: 97 },
 })

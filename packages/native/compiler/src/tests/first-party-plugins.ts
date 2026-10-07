@@ -18,11 +18,13 @@ import { flowStubs } from '../../../../fundamentals/flow/src/native-plugin/stubs
 import { httpPlugin } from '../../../../fundamentals/http/src/native-plugin/plugin'
 import { queryPlugin } from '../../../../fundamentals/query/src/native-plugin/plugin'
 import { queryStubs } from '../../../../fundamentals/query/src/native-plugin/stubs'
+import { validatePlugin } from '../../../../fundamentals/validate/src/native-plugin/plugin'
+import { validationPlugin } from '../../../../fundamentals/validation/src/native-plugin/plugin'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, queryPlugin, queryStubs }
+export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, queryPlugin, queryStubs, validatePlugin, validationPlugin }
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
-export const firstPartyCompiler = createCompiler({ discovered: [chartsPlugin, flowPlugin, httpPlugin, queryPlugin] })
+export const firstPartyCompiler = createCompiler({ discovered: [chartsPlugin, flowPlugin, httpPlugin, queryPlugin, validatePlugin, validationPlugin] })
 
 /** `transform` with the first-party plugins active. */
 export function transform(source: string, options: EmitOptions): TransformResult {

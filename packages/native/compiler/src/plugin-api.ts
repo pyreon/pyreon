@@ -48,6 +48,23 @@ export type {
   ParseContext,
 } from './call-lowering'
 export type { ElementLowering, RetagContext } from './element-lowering'
+export type {
+  ExprEmitter,
+  ExtExprIR,
+  ExtExprSpec,
+  ExtItemSpec,
+  FieldValidators,
+  ItemBindings,
+  MethodCallRecognizer,
+  MethodCallSite,
+  ModuleFinish,
+  ModuleFinishTarget,
+  ModuleItemEmitter,
+  ModuleParseContext,
+  StructRefinement,
+  StructRefinementTarget,
+  TopLevelRecognizer,
+} from './module-items'
 export type { ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
 export type { ParseRefinement, ParseRefinementTarget, PropsTypeContext, PropsTypeResolver } from './parse-extensions'
 export type {
@@ -88,5 +105,6 @@ export {
 } from './plugin-ast'
 export { forEachExpr } from './expr-walk'
 export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
-export { kotlinIdent, swiftIdent } from './identifier-safety'
+export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
+export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'
 export { kotlinStr, swiftStr } from './string-literals'

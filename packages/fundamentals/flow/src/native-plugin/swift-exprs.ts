@@ -557,3 +557,4 @@ export function lowerSwiftMarkerType(e: MemberExprIR): string | undefined {
         }
   return undefined
 }
+

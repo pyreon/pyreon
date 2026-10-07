@@ -5,7 +5,7 @@
 //   3. parse() dispatches on the discriminator value.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Gap 4 v3.3 — discriminated unions', () => {
   // ─────────────────── Swift ───────────────────

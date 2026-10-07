@@ -305,7 +305,7 @@ These three libraries do not lower independently: an `@pyreon/http` endpoint fee
 | --- | --- | --- |
 | `@pyreon/http` | the module scan (clients, endpoints), endpoint → request resolution (URL templating, query string, literal headers / json body, runtime `:param` via `PyreonURL`, response-schema evidence), the "http metadata declares nothing" skip, its `unlowered` entry | a **request source** |
 | `@pyreon/query` | `useQuery` (`query`), `useStream` (`stream`), `new QueryClient()` (`query-client`), `<QueryClientProvider>`, the stream-opener scan, their harnesses, typing, receivers, stubs | — |
-| `@pyreon/validate` / `validation` | not moved yet (the schema module item is a seam this group does not need; see "What is NOT moved") | — |
+| `@pyreon/validate` / `validation` | moved in Phase 3k (next section) | schema items |
 
 There is NO `requires` between `@pyreon/query` and `@pyreon/http`: a request source is optional (an app with `useQuery` and no endpoint has none), and a hard `requires` would make every `@pyreon/query` app load `@pyreon/http`. The facts cross through `ParseContext.requests`, which is simply empty when no source is loaded.
 
@@ -331,7 +331,47 @@ There is NO `requires` between `@pyreon/query` and `@pyreon/http`: a request sou
 ### What is NOT moved, and why
 
 - **`useFetch` / the `fetch` declaration** stays in the core: its owner is `@pyreon/hooks` (see "Activation decides ownership"), whose plugin is a separate phase. It now reads endpoints through `ParseContext.requests`, so it already has no `@pyreon/http` knowledge.
-- **`@pyreon/validate` / `@pyreon/validation`** (the schema lowering, `PyreonZodSchema_`, `withField`, `Schema.safeParse`, `refineStructFloatsFromResponseSchemas`) stays in the core. It needs a MODULE-ITEM seam this group did not: schema defs are first-class `ModuleIR` arrays (`zodSchemas`, `fieldMetas`) that `moduleTag`, `disambiguateValueTypeNames`, `useForm({ schema })` and the response-schema refinement all read. The design: an `ext` module item (`{ plugin, type, name, payload }`) emitted where the arrays emit today in plugin-declared type order, a `legacyKind`-style hash replacer, a `bindingNames` hook for the value/type rename, and a schema registry the form and the http response evidence read through `ParseContext`. Not started.
+
+## Module-level seams (Phase 3k — `@pyreon/validate` / `@pyreon/validation`)
+
+A schema is not a declaration inside a component. It is a FILE-SCOPE item that emits beside the structs and enums, before every component, and that other code reads BY NAME: a form's `schema: Pet`, an endpoint's `response: Pet`, `Pet.safeParse(x)`. Four small, library-agnostic seams carry that (`module-items.ts`, `plugin-api` types, one row each below, one toy-plugin user each in `tests/plugin-module-items.test.ts` that is NOT a schema). Every recognizer may DECLINE (`undefined`): the parser then continues as if the plugin were absent.
+
+| `CompilerPlugin` member | What it lowers | Core site |
+| --- | --- | --- |
+| `topLevel` + `items[type]` | a file-scope declaration (`const Pet = s.object({ … })`, `const email = withField(…)`): the recognizer returns `{ type, name, payload }`, the compiler stamps `plugin` and refuses a type with no emitter or a payload that is not JSON; the emitter returns one string per declaration on each target. The open `ExtModuleItem` sits in `ParseResult.moduleItems`; the first plugin to return an item owns the node | `tryPluginTopLevel` (`parse.ts`), `lowerPluginItem` |
+| `items[type].after` | where the item emits among the core's own module items: `'models'` or `'features'` (default) — the slots the two retired arrays (`fieldMetas`, `zodSchemas`) emitted in | `itemsInSlot` |
+| `items[type].legacyList` | the closed array an item REPLACED, so `moduleTag` hashes its payload where the array stood (`'fieldMetas'` \| `'zodSchemas'`); an item without one is hashed as an extra trailing element | `moduleTag` |
+| `items[type].bindings` (`names`, `reserved`, `rename`) | the file's one value/type namespace: which value bindings an item declares (a same-named `type` makes the value `Pet` → `PetValue`), every other name it takes, and how it applies the rename (it may add follow-on names, e.g. `Book_Author` after `Book`) | `disambiguateValueTypeNames` |
+| `items[type].fieldValidators` | per-field validation a form that names the item gets: `useForm({ schema: Pet })` reads `fields(item)` and the plugin's per-target validator body; `declaredBy` is the vocabulary the "no declaration by that name" warning uses, so the core names no library | `formFieldValidators` (both emitters) |
+| `methodCalls[method]` + `exprs[type]` | `<receiver>.<method>(…)` recognized by SHAPE, keyed by method name (the key `'*'` sees every method call after the ones keyed by its own name — how `@pyreon/validate` warns about ANY method on a schema binding). The verdict is an `ext-expr` spec, `undefined` (decline, the next plugin's recognizer sees it) or `null` (claimed and reported through `ctx.unsupported`; the parser substitutes the empty literal). The open `ext-expr` IR node is rendered per target, typed by `exprs[type].typing` (`type`, and `member` which decides EVERY property read on the node), renamed by `exprs[type].rename` and hashed as a retired kind by `legacyHash` | `tryPluginMethodCall`, `lowerPluginExpr`, `inferTypeValue` |
+| `refineStructs` | edit the file's structs from the items and from the decode sites other plugins recorded through `ParseContext.recordDecode` (a response schema deciding `Int` vs `Double`); runs after the core's own struct float refinements and BEFORE the inline-object ones that read the field types it settles | `parsePyreon` |
+| `finishModule` | a last pass over the finished item list (inline-synthesized items included); may edit payloads and report | `runModuleFinishers` |
+| `ModuleParseContext` `report` / `fileState` / `staticString` / `expr` / `unsupported` / `addItem` | what a module-level recognizer reads of the parser; `addItem` appends an item synthesized outside a declaration AFTER every declaration-level one | `moduleParseContextFor` |
+
+Traps the seams were built around, each now locked by a spec:
+
+- **A `legacyList` the hash does not have drops the item from `moduleTag` silently**, so the shape check rejects anything but the two real lanes.
+- **`reserved` must be in the namespace BEFORE the primary renames are chosen**, otherwise a primary `FooValue` can land on a nested name of the same spelling.
+- **A recognizer that does not unwrap `export const` sees nothing**: an `ExportNamedDeclaration` is a different top-level node. The toy's first cut had exactly this bug and its binding test passed anyway, because the expression half of the rename still matched — the assertion now requires the item's own struct and value binding to follow.
+
+### Ownership by activation (decided before the move)
+
+A plugin loads only when the app DECLARES its package (`pyreon.native.plugin` in the manifest) and a source file imports one of its `modules`. That decides who owns what, and rules out `requires` between the two schema packages: an app may declare only one of them, and `@pyreon/validate` depends on `@pyreon/validation` (so it is installed) without the app naming it, which discovery cannot see.
+
+| Package | Plugin | Activated by | Owns |
+| --- | --- | --- | --- |
+| `@pyreon/validation` | `@pyreon/validation` | `zodSchema` / `valibotSchema` / `arktypeSchema` | the three adapter recognizers, the Tier-2 decline for them and for `zodField` / `valibotField` / `arktypeField`, its `unlowered` advice, AND the shared schema model (`./native-plugin/{ir,recognize,schema,swift,kotlin,url-rule}.ts`): the walker for all four dialects, both emitters, the `schema` item emitter (hash lane, bindings, form validators) and the response-type evidence |
+| `@pyreon/validate` | `@pyreon/validate` | `s`, `withField` | the wrapper-less `s.object` / `s.discriminatedUnion` recognizer, `withField` metadata, `Pet.safeParse(x)` and the inline `s.object({…}).safeParse(x)` (an `ext-expr`), the `safeParse` post-pass, its `unlowered` advice |
+
+The shared model is exported from `@pyreon/validation/native-plugin`; `@pyreon/validate`'s plugin registers `createSchemaItem()` and `createSchemaStructRefinement()` under ITS OWN name. The compiler dispatches by `(plugin, type)`, so either package alone is self-sufficient and both together never collide. Facts cross the plugin boundary through the compiler, never by import: a form that names a schema reads `fieldValidators`, an endpoint's `response` reaches `refineStructs` through `ParseContext.recordDecode`.
+
+What this removed from the core: `ParseResult.fieldMetas` / `zodSchemas` (now `moduleItems`), the `schema-validate` `ExprIR` kind (now `ext-expr`), ~3,300 lines of recognizer and emitter, `url-rule.ts`, `schemaInputNeedsConversion`, the `validateSchema*` / `inlineSchema*` parse state, the two table entries and two `tier2` entries naming the packages, and `@pyreon/validate` (5) / `@pyreon/validation` (8) from the boundary baseline. `@pyreon/native-compiler/plugin-api` gained the pure spelling helpers the emitters share with plugins (`KOTLIN_INT`, `swiftCodingKeysLines`, `localBase`, `kotlinMember`).
+
+### Verification (Phase 3k)
+
+- **Golden:** 964 entries byte-identical, none updated. Before anything moved, 22 more fixtures (44 entries) were recorded from the parent compiler: 17 chosen from an lcov run, then 5 more after a BISECT of the move found four mechanisms no entry discriminated (the response-schema `Int`/`Double` refinement, the metadata item's slot and hash lane, the expression rename) plus a form's schema link under a rename. A green golden with a mechanism neutered means the corpus does not reach it, not that the mechanism is dead — bisect every moved mechanism against the corpus AND the specs. The lcov run: an lcov run over the corpus showed 78 + 20 + 3 + 16 unreached lines across the schema recognizers, emitters, form coupling, response refinement and the value/type rename; the new fixtures reach all but an unreachable discriminated-union guard and a `Map` arm of the namespace walker.
+- **Behaviour changes, by design:** the `useForm({ schema })` "no declaration" warning names its libraries from the loaded plugins (identical text when `@pyreon/validation` is loaded, a generic sentence otherwise); `reserved` names enter the namespace BEFORE a rename is chosen (a nested schema named `FooValue` can no longer be collided with by renaming `Foo`); the Tier-2 declines now require the call to be imported from the package (a user's own `zodField` no longer warns, an aliased import does).
+- **Not verified here:** swiftc / kotlinc compile of the emitted schema output (neither toolchain exists on this machine); the toolchain lanes run them. The emitted text is byte-identical to the parent's, and the schema emitters were moved, not rewritten.
 
 ### Verification notes
 

@@ -32,9 +32,8 @@ const MODULE_ARRAYS = [
   'moduleDecls',
   'stores',
   'models',
-  'fieldMetas',
   'features',
-  'zodSchemas',
+  'moduleItems',
   'helperFns',
   'styledComponents',
   'rocketstyleComponents',
@@ -201,6 +200,12 @@ export function createCompiler<Target extends string = never>(
       scanModule: plugin.scanModule,
       requestSources: plugin.requestSources,
       destructureCalls: plugin.destructureCalls,
+      topLevel: plugin.topLevel,
+      items: plugin.items,
+      methodCalls: plugin.methodCalls,
+      exprs: plugin.exprs,
+      refineStructs: plugin.refineStructs,
+      finishModule: plugin.finishModule,
       modules: plugin.modules,
       requires: plugin.requires,
       builtIn: plugin.builtIn,
@@ -300,3 +305,4 @@ export function createCompiler<Target extends string = never>(
     }
   }
 }
+

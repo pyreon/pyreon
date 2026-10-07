@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 

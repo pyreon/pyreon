@@ -2152,6 +2152,7 @@
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@sinclair/typebox": "^0.34.52",
@@ -2163,8 +2164,12 @@
         "zod": "^4.6.5",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/validation": {
       "name": "@pyreon/validation",
@@ -2174,6 +2179,7 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/store": "workspace:^",
@@ -2183,6 +2189,12 @@
         "valibot": "^1.5.0",
         "zod": "^4.6.5",
       },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/virtual": {
       "name": "@pyreon/virtual",

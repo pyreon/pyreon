@@ -8,7 +8,7 @@
 // typed validated result at network-decode time.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `
 import { zodSchema } from '@pyreon/validation'

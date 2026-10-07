@@ -22,6 +22,7 @@ import { createCallRegistry, type CallRegistry } from './call-lowering'
 import { createElementRegistry, type ElementRegistry } from './element-lowering'
 import type { CompilerPlugin } from './plugin'
 import { createExprRegistry, type ExprRegistry } from './expr-lowering'
+import { createItemRegistry, type ItemRegistry } from './module-items'
 import {
   createParseRefinements,
   createPropsTypeRegistry,
@@ -63,6 +64,8 @@ export interface CompilerRegistries {
   readonly exprs: ExprRegistry
   /** Per-file scanners, request sources and destructurable hooks. */
   readonly scan: ScanRegistry
+  /** File-scope item recognizers and emitters, method-call recognizers, `ext-expr` emitters, struct refinements and module finishers. */
+  readonly items: ItemRegistry
 }
 
 /**
@@ -109,6 +112,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     propsTypes: createPropsTypeRegistry(ordered),
     exprs,
     scan: createScanRegistry(ordered),
+    items: createItemRegistry(ordered),
   })
 }
 

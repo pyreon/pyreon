@@ -59,7 +59,7 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, modules, requires, builtIn } = plugin as Record<
+  const { services, elements, scopes, stubs, calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, requestSources, destructureCalls, topLevel, items, methodCalls, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
     string,
     unknown
   >
@@ -294,6 +294,44 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       const source = entry as { has?: unknown; resolve?: unknown } | null
       if (!source || typeof source !== 'object' || typeof source.has !== 'function' || typeof source.resolve !== 'function') {
         throw new Error(`[Pyreon] Plugin "${name}" request source needs has and resolve functions.`)
+      }
+    }
+  }
+  for (const [field, value] of [
+    ['topLevel', topLevel],
+    ['refineStructs', refineStructs],
+    ['finishModule', finishModule],
+  ] as const) {
+    if (value !== undefined && typeof value !== 'function') {
+      throw new Error(`[Pyreon] Plugin "${name}" ${field} must be a synchronous function.`)
+    }
+  }
+  for (const [field, value, what] of [
+    ['items', items, 'a swift and a kotlin function'],
+    ['exprs', exprs, 'a swift and a kotlin function'],
+  ] as const) {
+    if (value === undefined) continue
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`[Pyreon] Plugin "${name}" ${field} must be an object keyed by type.`)
+    }
+    for (const [type, emitter] of Object.entries(value)) {
+      const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyList?: unknown } | null
+      if (!entry || typeof entry !== 'object' || typeof entry.swift !== 'function' || typeof entry.kotlin !== 'function') {
+        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} needs ${what}.`)
+      }
+      // A lane the hash does not have would silently drop the item from `moduleTag`.
+      if (entry.legacyList !== undefined && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas') {
+        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "fieldMetas" or "zodSchemas".`)
+      }
+    }
+  }
+  if (methodCalls !== undefined) {
+    if (!methodCalls || typeof methodCalls !== 'object' || Array.isArray(methodCalls)) {
+      throw new Error(`[Pyreon] Plugin "${name}" methodCalls must be an object keyed by method name.`)
+    }
+    for (const [method, recognizer] of Object.entries(methodCalls)) {
+      if (typeof recognizer !== 'function') {
+        throw new Error(`[Pyreon] Plugin "${name}" methodCalls.${method} must be a synchronous function.`)
       }
     }
   }

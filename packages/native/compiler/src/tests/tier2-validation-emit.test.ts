@@ -6,7 +6,7 @@
 // level; constraints NOT enforced in v1 (shape only).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, validateSwiftWithStubs } from '../validate'
 
 const SRC = `

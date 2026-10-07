@@ -10,6 +10,14 @@ import type {
   ReceiverLowering,
 } from './expr-lowering'
 import type { ModuleScanner, RequestSource } from './module-scan'
+import type {
+  ExprEmitter,
+  MethodCallRecognizer,
+  ModuleFinish,
+  ModuleItemEmitter,
+  StructRefinement,
+  TopLevelRecognizer,
+} from './module-items'
 import type { ParseRefinement, PropsTypeResolver } from './parse-extensions'
 import type { ScopeProvider } from './scope-provider'
 import type { StubAugmentation } from './stub-augmentation'
@@ -229,6 +237,31 @@ export interface CompilerPlugin<Target extends string = string> {
    * `ParseContext.requests`. The first source whose `has` accepts the name resolves it.
    */
   readonly requestSources?: readonly RequestSource[] | undefined
+  /**
+   * Recognizes this plugin's FILE-SCOPE declarations (`const Pet = s.object({ … })`): called for each
+   * top-level node the core did not claim; the first plugin to return an item owns the node, `undefined`
+   * declines. Pair it with `items`. See `module-items.ts`.
+   */
+  readonly topLevel?: TopLevelRecognizer | undefined
+  /** How each file-scope item `type` a `topLevel` recognizer (or `addItem`) produces renders on each target. */
+  readonly items?: Readonly<Record<string, ModuleItemEmitter>> | undefined
+  /**
+   * Method calls `<receiver>.<method>(…)` this plugin recognizes by SHAPE, keyed by METHOD name
+   * (`safeParse`); the key `'*'` sees EVERY method call, after the recognizers keyed by its own name
+   * (for a plugin that must warn about any method on a binding it owns). Each recognizer returns an `ext-expr` spec, `undefined` to decline, or `null` to claim
+   * a call it reported as unsupported. Pair it with `exprs`.
+   */
+  readonly methodCalls?: Readonly<Record<string, MethodCallRecognizer>> | undefined
+  /** How each `ext-expr` type a `methodCalls` recognizer produces renders on each target and is typed. */
+  readonly exprs?: Readonly<Record<string, ExprEmitter>> | undefined
+  /**
+   * Edit the file's structs from the module items and from the decode sites other plugins recorded
+   * (`ParseContext.recordDecode`). Runs after the core's own struct float refinements, before the
+   * inline-object ones that read the field types it settles.
+   */
+  readonly refineStructs?: StructRefinement | undefined
+  /** A last pass over the finished item list (inline-synthesized items included), once per file. */
+  readonly finishModule?: ModuleFinish | undefined
   /** Hooks of this plugin whose result may be destructured (`const { data, isPending } = useQuery(…)`). */
   readonly destructureCalls?: readonly string[] | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */

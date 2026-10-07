@@ -234,6 +234,10 @@ These types are **owned by `@pyreon/validation`** (the gate has zero Pyreon deps
 
 Full docs: [pyreon.dev/docs/validation](https://pyreon.dev/docs/validation) (or `docs/src/content/docs/validation.md` in this repo).
 
+## Native (iOS / Android)
+
+The schema adapters' compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`: a top-level `zodSchema(z.object({…}))`, `valibotSchema(v.object({…}))` or `arktypeSchema(type({…}))` lowers to a native struct / data class with `parse`, `safeParse`, per-field constraint checks and the `validateField` a native form delegates to. The schema model and its emitters are shared with `@pyreon/validate`'s plugin (exported from `@pyreon/validation/native-plugin`). `--no-plugins` builds treat the package like any unclaimed library.
+
 ## License
 
 MIT

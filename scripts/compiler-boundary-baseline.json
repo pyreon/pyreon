@@ -37,8 +37,6 @@
       "@pyreon/ui-core": 2,
       "@pyreon/ui-primitives": 1,
       "@pyreon/unistyle": 1,
-      "@pyreon/validate": 5,
-      "@pyreon/validation": 8,
       "@pyreon/virtual": 1,
       "@pyreon/zero": 1,
       "@pyreon/zero-content": 1

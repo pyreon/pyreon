@@ -47,6 +47,11 @@
       "bun": "./src/json-schema.ts",
       "import": "./lib/json-schema.js",
       "types": "./lib/json-schema.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "publishConfig": {
@@ -65,6 +70,7 @@
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
@@ -76,9 +82,23 @@
     "zod": "^4.6.5"
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
   },
   "dependencies": {
     "@pyreon/validation": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/validate"
+      ]
+    }
   }
 }

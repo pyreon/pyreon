@@ -6,7 +6,7 @@
 // SAME idiomatic native emit the hand-written `.set(x().map(...))`
 // form produces (no IIFE, no closure-invocation noise).
 
-import { hashServiceDeclsAsLegacy } from './registry-lookup'
+import { hashServiceDeclsAsLegacy, itemLegacyList } from './registry-lookup'
 import type { AttrIR, ChildIR, DeclIR, ExprIR, ParseResult, StructIR, TypeIR } from './types'
 
 /**
@@ -380,6 +380,12 @@ export function synthStructName(n: number): string {
  * IR rather than the raw source text or the file path).
  */
 export function moduleTag(parsed: ParseResult): string {
+  // A plugin item whose emitter names a `legacyList` hashes as the entries of the closed array it replaced,
+  // at that array's position and with the payload as the array element, so no emitted name moves with the
+  // move. Any other plugin item is appended AFTER everything, and only when there is one.
+  const lane = (name: string): unknown[] =>
+    parsed.moduleItems.filter((item) => itemLegacyList(item) === name).map((item) => item.payload)
+  const foreign = parsed.moduleItems.filter((item) => itemLegacyList(item) === undefined)
   const key = JSON.stringify(
     [
       parsed.components,
@@ -388,13 +394,14 @@ export function moduleTag(parsed: ParseResult): string {
       parsed.moduleDecls,
       parsed.stores,
       parsed.models,
-      parsed.fieldMetas,
+      lane('fieldMetas'),
       parsed.features,
-      parsed.zodSchemas,
+      lane('zodSchemas'),
       parsed.helperFns,
       parsed.styledComponents,
       parsed.rocketstyleComponents,
       parsed.attrsComponents,
+      ...(foreign.length > 0 ? [foreign] : []),
     ],
     hashServiceDeclsAsLegacy,
   )
@@ -798,10 +805,8 @@ export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
     case 'toast-call':
     case 'announce-call':
       return exprReferencesIdent(expr.message, name)
-    case 'schema-validate':
-      // The schema is compile-time constant; only its validated ARG can
-      // reference a free identifier.
-      return exprReferencesIdent(expr.arg, name)
+    case 'ext-expr':
+      return expr.args.some((a) => exprReferencesIdent(a, name))
     case 'spread':
       return exprReferencesIdent(expr.argument, name)
     case 'jsx-element':
@@ -1031,12 +1036,14 @@ export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | 
       if (inner === null) return null
       return { ...expr, expr: inner }
     }
-    case 'schema-validate': {
-      // Only the validated ARG has a substitutable child; the schema is a
-      // synthesized compile-time constant.
-      const arg = substituteMatching(expr.arg, subst)
-      if (arg === null) return null
-      return { ...expr, arg }
+    case 'ext-expr': {
+      const args: ExprIR[] = []
+      for (const a of expr.args) {
+        const next = substituteMatching(a, subst)
+        if (next === null) return null
+        args.push(next)
+      }
+      return { ...expr, args }
     }
     case 'spread': {
       const argument = substituteMatching(expr.argument, subst)
@@ -1191,8 +1198,8 @@ function walkLowerParams(
     case 'toast-call':
     case 'announce-call':
       return { ...expr, message: rec(expr.message) }
-    case 'schema-validate':
-      return { ...expr, arg: rec(expr.arg) }
+    case 'ext-expr':
+      return { ...expr, args: expr.args.map(rec) }
     case 'spread':
       return { ...expr, argument: rec(expr.argument) }
     case 'jsx-element':
@@ -1558,32 +1565,4 @@ export function optionalSpreadWarning(name: string): string {
 export function isNumericLiteralOrNegation(x: ExprIR): boolean {
   if (x.kind === 'literal') return typeof x.value === 'number' || typeof x.value === 'string'
   return x.kind === 'unary' && (x.op === '-' || x.op === '+') && x.argument.kind === 'literal' && typeof x.argument.value === 'number'
-}
-
-/**
- * Does a value of type `t` need converting before a schema can read it?
- *
- * An emitted schema's `parse` reads plain values — a dictionary for an
- * object, native scalars for fields. A scalar already is one; a struct, an
- * inline object, or a collection that holds either is a typed value, and is
- * routed through the runtime's `pyreonSchemaValue` (Codable / @Serializable
- * → plain JSON values). An `unknown` type is NOT converted: the conversion
- * only compiles for an encodable value, and guessing would turn code that
- * compiles into code that does not.
- */
-export function schemaInputNeedsConversion(t: TypeIR): boolean {
-  switch (t.kind) {
-    case 'typeRef':
-    case 'object':
-      return true
-    case 'array':
-    case 'set':
-      return schemaInputNeedsConversion(t.element)
-    case 'map':
-      return schemaInputNeedsConversion(t.value)
-    case 'union':
-      return t.branches.some(schemaInputNeedsConversion)
-    default:
-      return false
-  }
 }

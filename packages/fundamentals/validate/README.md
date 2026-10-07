@@ -239,3 +239,7 @@ Every schema then runs on the interpreted pipeline — same results, no code gen
 - [`@pyreon/validation`](../validation/) — per-lib adapters for `@pyreon/form`
 - [`@pyreon/form`](../form/) — signal-based forms
 - [`@pyreon/i18n`](../i18n/) — translation provider
+
+## Native (iOS / Android)
+
+The `s` DSL's compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`: a top-level `s.object({…})` / `s.discriminatedUnion(…)` lowers to the same native struct `@pyreon/validation`'s adapters do, `withField(schema, meta)` to a metadata struct, and `Pet.safeParse(x)` / `s.object({…}).safeParse(x)` to a result whose `.success` / `.data` read like the web's. `--no-plugins` builds treat the package like any unclaimed library.

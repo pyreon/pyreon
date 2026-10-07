@@ -21,7 +21,7 @@
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findService, pluginCallReadType } from './registry-lookup'
+import { findService, pluginCallReadType, pluginExprMemberType, pluginExprType } from './registry-lookup'
 import { ERROR_OBJECT } from './services'
 
 export interface InferenceCtx {
@@ -1532,13 +1532,9 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     // The declared generics ARE the type — a SizedMap<K, V> behaves as a map
     // at every use site (`m.get(k)` yields V), so downstream inference reads
     // it exactly like the built-in.
-    // Standalone-validation: `s.object({ … }).safeParse(x)` yields a
-    // `PyreonParseResult<T>`, not a TypeIR the inferer models — but its fields
-    // (`.success`/`.data`) are typed in the `member` case above, and the value
-    // is rarely stored bare, so `unknown` here is sufficient and never a broken
-    // emit (a `const r = …safeParse(x)` becomes `let r: Any`, which compiles).
-    case 'schema-validate':
-      return { kind: 'unknown' }
+    // A plugin's own expression: typed by its owner (`ExprEmitter.typing.type`), `unknown` without one.
+    case 'ext-expr':
+      return pluginExprType(expr) ?? { kind: 'unknown' }
     case 'new-sized-map':
       return { kind: 'map', key: expr.keyType, value: expr.valueType }
     case 'new-collection': {
@@ -2026,13 +2022,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       ) {
         return { kind: 'number', float: true }
       }
-      // Standalone-validation: `s.object({ … }).safeParse(x).success` is a Bool
-      // (`.data` is the optional validated value → left unknown). Reading this
-      // off the `schema-validate` node keeps the wrapping `computed`'s type
-      // precise (`Bool`, not `Any`).
-      if (expr.object.kind === 'schema-validate') {
-        if (expr.property === 'success') return { kind: 'boolean' }
-        return { kind: 'unknown' }
+      // A member read on a plugin's own expression, typed by its owner (`ExprEmitter.typing.member`).
+      if (expr.object.kind === 'ext-expr') {
+        const typed = pluginExprMemberType(expr.object, expr.property)
+        if (typed !== undefined) return typed
       }
       // `m.size` on a Map/Set → number.
       if (expr.property === 'size') {
