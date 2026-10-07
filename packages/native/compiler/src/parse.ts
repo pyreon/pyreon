@@ -4,8 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
-import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
-import { GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
+import { forEachExpr } from './expr-walk'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
@@ -904,14 +903,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // initializer — additive (only flips number→float on fractional evidence).
   refineSignalNumberFloats(components, componentCtx)
 
-  // A chart formatter (`<Axis format={kg}>`, `<PlotChart format xFormat
-  // y2Format>`) is called with a Double on both targets, so the named function
-  // it points at must take one: `function kg(v: number)` otherwise lowers its
-  // parameter to Int and the chart slot `(Double) -> String` rejects it — on
-  // BOTH targets, with no warning. The slot is the evidence; runs before
-  // refineHelperReturns so the return is inferred over the widened parameter.
-  refineChartFormatterParams(components, ctx.helperFns)
-
+  // Plugin parse refinements (`CompilerPlugin.refineParse`) — e.g. the charts
+  // plugin types a chart formatter helper's parameter `Double`. They run HERE,
+  // before refineHelperReturns, because a helper's return type is inferred over
+  // its (possibly widened) parameter; a post-parse `transformIR` pass would see
+  // the return already inferred over the Int one.
+  for (const { refine } of activeRegistries().parseRefinements) refine({ components, helperFns: ctx.helperFns })
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
   // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
@@ -5678,79 +5675,6 @@ function refineFieldsFromObjectLiterals(
 }
 
 /**
- * Pre-order walk over every ExprIR node reachable from `e` (descending
- * into JSX attrs + children, arrow bodies, call args, object fields,
- * etc.). `visit` runs on each node before its children, so a nested
- * reduce inside a reducer body is still reached. Exhaustive over the
- * ExprIR union.
- */
-function forEachExpr(e: ExprIR, visit: (n: ExprIR) => void): void {
-  visit(e)
-  switch (e.kind) {
-    case 'literal':
-    case 'identifier':
-      return
-    case 'call':
-      forEachExpr(e.callee, visit)
-      for (const a of e.args) forEachExpr(a, visit)
-      return
-    case 'member':
-      forEachExpr(e.object, visit)
-      return
-    case 'index':
-      forEachExpr(e.object, visit)
-      forEachExpr(e.index, visit)
-      return
-    case 'binary':
-    case 'comparison':
-    case 'logical':
-      forEachExpr(e.left, visit)
-      forEachExpr(e.right, visit)
-      return
-    case 'unary':
-    case 'update':
-      forEachExpr(e.argument, visit)
-      return
-    case 'ternary':
-      forEachExpr(e.cond, visit)
-      forEachExpr(e.then, visit)
-      forEachExpr(e.otherwise, visit)
-      return
-    case 'arrow':
-      forEachExpr(e.body, visit)
-      return
-    case 'rx-call':
-      forEachExpr(e.source, visit)
-      for (const a of e.args) forEachExpr(a, visit)
-      return
-    case 'jsx-element':
-      for (const a of e.attrs) {
-        if (a.kind === 'attr') forEachExpr(a.value, visit)
-        else if (a.kind === 'event') forEachExpr(a.handler, visit)
-        else forEachExpr(a.argument, visit)
-      }
-      for (const ch of e.children) if (ch.kind === 'expr') forEachExpr(ch.expr, visit)
-      return
-    case 'jsx-fragment':
-      for (const ch of e.children) if (ch.kind === 'expr') forEachExpr(ch.expr, visit)
-      return
-    case 'array':
-      for (const el of e.elements) forEachExpr(el, visit)
-      return
-    case 'object':
-      for (const f of e.fields) forEachExpr(f.value, visit)
-      if (e.spreads) for (const s of e.spreads) forEachExpr(s, visit)
-      return
-    case 'paren':
-      forEachExpr(e.inner, visit)
-      return
-    case 'spread':
-      forEachExpr(e.argument, visit)
-      return
-  }
-}
-
-/**
  * Double-type follow-up — refine a `reduce` SEED literal to Double when
  * the reducer accumulates a Double column. JS `arr.reduce((s, m) => s +
  * m.growth, 0)` lowers to an Int `0` seed, but a Double accumulation needs
@@ -5907,27 +5831,6 @@ function isFractionalEvidence(e: ExprIR, ctx: InferenceCtx): boolean {
  * `{ kind:'number', float:true }` on fractional-literal evidence; integer
  * signals and arrays are never touched (zero regression).
  */
-/** The chart props whose value is called as `(Double) -> String`. */
-const CHART_FORMATTER_PROPS: ReadonlySet<string> = new Set(['format', 'xFormat', 'yFormat', 'y2Format'])
-
-function refineChartFormatterParams(components: ComponentIR[], helpers: Extract<DeclIR, { kind: 'function' }>[]): void {
-  const widen = (name: string, locals: DeclIR[]): void => {
-    const fn = locals.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === name) ?? helpers.find((h) => h.name === name)
-    if (fn === undefined || fn.params.length !== 1) return
-    const p = fn.params[0]!
-    if (p.type.kind === 'number' && p.type.float !== true) p.type = { kind: 'number', float: true }
-  }
-  for (const c of components) {
-    forEachExpr(c.returnExpr, (n) => {
-      if (n.kind !== 'jsx-element') return
-      if (!isChartHostTag(n.tag) && !GRAMMAR_CONFIG_TAGS.includes(n.tag) && n.tag !== 'Chart') return
-      for (const a of n.attrs) {
-        if (a.kind === 'attr' && CHART_FORMATTER_PROPS.has(a.name) && a.value.kind === 'identifier') widen(a.value.name, c.decls)
-      }
-    })
-  }
-}
-
 function refineSignalNumberFloats(
   components: ComponentIR[],
   componentCtx: (c: ComponentIR) => InferenceCtx,
@@ -7336,8 +7239,6 @@ function parseProps(
  */
 /** Type names that are REAL primitive types on both native targets. */
 const NATIVE_PRIMITIVE_TYPE_NAMES = new Set(['Double', 'Float', 'Int', 'Bool', 'String'])
-/** The generated chart engine's structs — declared by the runtime, so a helper typed against one (`(c: TooltipContent) => string`) resolves on the target. */
-const CHART_ENGINE_STRUCT_NAMES = new Set(CHART_ENGINE_STRUCTS.map((s) => s.name))
 
 function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   if (t.kind === 'typeRef') {
@@ -7346,7 +7247,7 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   }
   // Public @pyreon/flow custom-node props are imported rather than declared in
   // the consumer file. They have a closed structural contract, so resolve it
-  // here just like compiler-known chart engine structs instead of emitting a
+  // here just like plugin-declared runtime types instead of emitting a
   // zero-prop component whose body references unbound data/selection fields.
   if (t.kind === 'typeRef' && t.name === 'NodeComponentProps' && t.args.length <= 1) {
     const inline = t.args[0]
@@ -7399,7 +7300,7 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
     }
   }
   if (t.kind === 'typeRef' && t.args.length === 0) {
-    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || CHART_ENGINE_STRUCT_NAMES.has(t.name)) return t
+    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || activeRegistries().runtimeTypes.has(t.name)) return t
     // A locally-declared string-literal union lowers to a native enum, so a
     // parameter typed with it emits verbatim and compiles — the same reason
     // the native primitives above are exempt. Warning on it told the author to
@@ -7409,7 +7310,7 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
     // A typeRef named after a native primitive emits VERBATIM as that native
     // type — `type Double = number` is the documented cross-target alias
     // (tsc resolves the alias, PMTC reads the NAME). Warning here tells the
-    // author to fix working code, five times per file on the chart engine.
+    // author to fix working code, five times per file on a generated runtime engine.
     ctx.warnings.push(
       `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` or \`interface ${t.name} { … }\` declared in the SAME file (imports aren't followed, and neither are generic / \`extends\` interfaces). The emitted component would reference undeclared properties and fail the native build. Declare it locally or inline the annotation (\`props: { … }\`).`,
     )

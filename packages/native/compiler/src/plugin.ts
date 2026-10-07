@@ -1,6 +1,7 @@
 import type { CompilerRegistries } from './active-registries'
 import type { CallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
 import type { ElementLowering } from './element-lowering'
+import type { ParseRefinement } from './parse-extensions'
 import type { ServiceDescriptor } from './services'
 import type { ServiceRegistry } from './service-registry'
 import type { UnloweredSpec } from './unlowered-modules'
@@ -121,6 +122,23 @@ export interface CompilerPlugin<Target extends string = string> {
    * made WITHOUT loading the plugin.
    */
   readonly modules?: readonly string[] | undefined
+  /**
+   * Type names the plugin's RUNTIME declares (so a helper typed against one,
+   * `(c: TooltipContent) => string`, resolves on the target instead of being
+   * rejected as an unknown object type). Declaring the type itself in the
+   * emitted file is still the plugin's `prepareIR`. Two plugins declaring one
+   * name is a load-time error naming both.
+   */
+  readonly runtimeTypes?: readonly string[] | undefined
+  /**
+   * An IR→IR edit that must run DURING parse — after components and helper
+   * functions are collected, before helper return types are inferred over
+   * their parameters. Use it only for what a later `transformIR` would be too
+   * late for (e.g. widening a helper's parameter to `Double` so the return
+   * type is inferred over it). It receives the live, call-owned IR and
+   * mutates it in place; everything else belongs in `transformIR`.
+   */
+  readonly refineParse?: ParseRefinement | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
   readonly requires?: readonly string[] | undefined
   /** Marks a compiler-shipped plugin that a discovered plugin may replace by name. */

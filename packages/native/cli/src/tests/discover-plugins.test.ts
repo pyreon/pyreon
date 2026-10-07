@@ -198,6 +198,8 @@ describe('plugins and explain reports', () => {
     expect(lines).toContain('  @pyreon/charts')
     expect(lines).toContain('  useShare  @pyreon/hooks')
     expect(lines).toContain('  useBadge  badge')
+    expect(lines).toContain('  TooltipContent  @pyreon/charts')
+    expect(lines).toContain('parse refinements (1):')
     expect(lines).toContain('  badge  @acme/badge@1.2.3  services: useBadge')
   })
 

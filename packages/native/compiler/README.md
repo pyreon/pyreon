@@ -137,6 +137,14 @@ fields never break an older plugin:
   `compiler.registries.unlowered`; a module supplied by two plugins is a load-time
   error, and a plugin's entry wins over the compiler's own hand-maintained one. The
   `@pyreon/charts` entry is supplied by the built-in charts plugin.
+- `runtimeTypes` — type names the plugin's runtime declares (`['TooltipContent']`), so a
+  helper typed against one resolves instead of warning "can't be resolved". Merged into
+  `compiler.registries.runtimeTypes`; one name declared by two plugins is a load-time
+  error naming both. Declaring the type in the emitted file stays the plugin's `prepareIR`.
+- `refineParse` — `({ components, helperFns }) => void`: an IR edit that must land DURING
+  parse, before helper return types are inferred over their parameters (the charts plugin
+  widens a formatter helper's `number` parameter to `Double` this way). It mutates the
+  live, call-owned IR; anything that does not need that ordering belongs in `transformIR`.
 - `requires` — plugin names that must be loaded. A missing one or a cycle is a
   load-time error naming the plugins; passes run in `requires` order (input
   order otherwise).

@@ -49,6 +49,7 @@ export { parsePyreon } from './parse'
 export type { ParseOptions } from './parse'
 export type { ServiceDescriptor } from './services'
 export type * from './plugin'
+export type { ParseRefinement, ParseRefinementTarget } from './parse-extensions'
 export type * from './types'
 export {
   validateSwift,
