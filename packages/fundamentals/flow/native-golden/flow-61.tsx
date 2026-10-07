@@ -12,4 +12,3 @@
           })
           return <Text>{flow.zoom()}</Text>
         }
-      

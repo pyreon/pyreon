@@ -23,4 +23,3 @@
         })
         return <Flow instance={flow} edgeTypes={{ signal: SignalEdge }} />
       }
-    

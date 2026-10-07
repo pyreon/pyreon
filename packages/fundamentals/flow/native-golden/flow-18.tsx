@@ -7,8 +7,8 @@ export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
     edges: [{ id: 'e1', source: '1', target: '1' }],
-    
+
   })
-  
+
   return (<Stack><Button onPress={() => { flow.addEdge({ id: 'e2', source: '1', target: '1', waypoints: [{ x: 4, y: 5 }] }); flow.addEdgeWaypoint('e1', { x: 1, y: 2 }, -1); flow.updateEdgeWaypoint('e1', 0, { x: 3, y: 4 }); flow.removeEdgeWaypoint('e1', -1); flow.reconnectEdge('e1', { target: '2', targetHandle: 'in' }) }}>Edit</Button></Stack>)
 }

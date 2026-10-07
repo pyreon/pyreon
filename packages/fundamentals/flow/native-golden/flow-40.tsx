@@ -12,4 +12,3 @@
         })
         return <Flow instance={flow} connectionLine={SignalLine} />
       }
-    
