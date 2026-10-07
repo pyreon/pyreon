@@ -153,6 +153,11 @@ describe('EmitContext', () => {
     expr: () => '',
     exprAs: () => '',
     scope: () => createPluginScope(),
+    stringAttr: (_e, name, indent) => (name === 's' ? `s@${indent}` : undefined),
+    layoutModifiers: () => '.m()',
+    action: (_h, indent) => `act@${indent}`,
+    constExpr: (name) => (name === 'K' ? { kind: 'literal', value: 1 } : undefined),
+    colorScope: () => ({ mode: 'dark' }),
   }
 
   it('defaults indentation to the element and delegates to the backend', () => {
@@ -168,5 +173,18 @@ describe('EmitContext', () => {
     expect(ctx.ident('x')).toBe('_x')
     ctx.warn('w')
     expect(calls).toEqual(['emit:X@4', 'emit:X@6', 'warn:w'])
+  })
+
+  it('the members both targets share delegate with the context indentation as the default', () => {
+    const ctx = createEmitContext('kotlin', backend, 4)
+    expect(ctx.stringAttr(el, 's')).toBe('s@4')
+    expect(ctx.stringAttr(el, 's', 8)).toBe('s@8')
+    expect(ctx.stringAttr(el, 'none')).toBeUndefined()
+    expect(ctx.layoutModifiers(el)).toBe('.m()')
+    expect(ctx.action({ kind: 'identifier', name: 'h' })).toBe('act@4')
+    expect(ctx.action({ kind: 'identifier', name: 'h' }, 2)).toBe('act@2')
+    expect(ctx.constExpr('K')).toEqual({ kind: 'literal', value: 1 })
+    expect(ctx.constExpr('nope')).toBeUndefined()
+    expect(ctx.colorScope<{ mode: string }>()?.mode).toBe('dark')
   })
 })

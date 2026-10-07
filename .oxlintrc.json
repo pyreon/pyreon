@@ -230,6 +230,7 @@
       ],
       "rules": {
         "no-unused-vars": "off",
+        "no-shadow": "off",
         "import/no-duplicates": "off",
         "no-console": "off"
       }
