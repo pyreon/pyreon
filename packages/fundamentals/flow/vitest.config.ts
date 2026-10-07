@@ -26,7 +26,18 @@ export default defineNodeConfig({
   // branch surface (measured handles, floating endpoints, waypoints) is only
   // driven by the real-Chromium suites (edge-render/handle-anchor browser
   // tests + the app-showcase flow e2e); happy-dom has no layout.
-  coverageExclude: ['src/components/**', 'src/edge-geometry.ts'],
+  coverageExclude: [
+    'src/components/**',
+    'src/edge-geometry.ts',
+    // Package-owned compiler tooling runs in the native-compiler suite,
+    // which loads flowPlugin through tests/first-party-plugins.ts. Its
+    // native-flow-* specs, golden corpus and real-runtime SDK corpus verify
+    // Swift/Kotlin output with the actual plugin and toolchains. This
+    // happy-dom runtime suite does not execute that compiler code. Native
+    // emit is behaviour-gated there; it is not percentage-measured here.
+    'src/native-plugin.ts',
+    'src/native-plugin/**',
+  ],
   // --expose-gc lets the GC-observable memory ceilings (scale-memory.test.ts)
   // RUN rather than skip. Same harness as runtime-dom's retention locks.
   overrides: {

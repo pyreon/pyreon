@@ -9,6 +9,6 @@ export function C() {
     edges: [{ id: 'e1', source: '1', target: '1' }],
     panOnDrag: [0], reducedMotion: 'auto',
   })
-  
+
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }

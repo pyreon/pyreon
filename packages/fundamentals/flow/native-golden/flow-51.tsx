@@ -15,4 +15,3 @@
           collectEdgeMarkers(flow.edges(), DEFAULT_MARKER_END)
         }}>Markers</Button>
       }
-    

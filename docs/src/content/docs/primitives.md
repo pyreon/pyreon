@@ -780,6 +780,7 @@ page sends back.
 | `src` | bundled asset name, or an `http(s)` URL |
 | `data` | any JSON value, re-sent when it changes |
 | `onMessage` | `(message: string) => void` |
+| `domStorage` | `boolean`, default `true`; native only, literal value |
 
 ```tsx
 // @check
@@ -804,6 +805,12 @@ export function ChartHost() {
 - **iOS**: `PyreonWebView(…)` on `WKWebView`. **Android**: `PyreonWebView(…)`
   on Android's `WebView`. On both, `data` is JSON-encoded and pushed into the
   page without reloading it.
+- **DOM storage**: `localStorage` works in the hosted page by default. Android's
+  WebView ships with it disabled, so the host turns it on; pass
+  `domStorage={false}` to opt out (iOS uses a non-persistent data store, since
+  WebKit cannot switch Web Storage off). Storage is per origin; every page
+  loaded with inline `html` shares the app's `file:///android_asset/` origin on
+  Android, so give a page that needs isolated storage a `src`.
 - Inside the page, `connectWebHost()` from this package reads the data
   (`window.__pyreonData`, updated on each `pyreondata` event) and sends messages
   back. See the [multiplatform guide](/docs/multiplatform) for the full pattern.
