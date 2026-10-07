@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { queryPlugin } from './first-party-plugins'
+import { dndPlugin, queryPlugin, tablePlugin } from './first-party-plugins'
 import { SERVICES } from '../services'
 
 const SWIFT = readFileSync(join(resolve(import.meta.dirname, '..'), 'emit-swift.ts'), 'utf8')
@@ -94,9 +94,15 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
 
   it('the four kinds this audit found are present', () => {
     const declared = declaredSet()
-    for (const k of ['sortable', 'form', 'rate-limited', 'hotkey']) {
+    for (const k of ['form', 'rate-limited', 'hotkey']) {
       expect(declared.has(k), k).toBe(true)
     }
+  })
+
+  it('`sortable` and `table-state` (now plugin-owned) get the host from their decl lifecycle', () => {
+    // `sortable` was one of the four kinds this audit found missing: its `.onAppear` binding sat on a transparent conditional.
+    expect(dndPlugin.decls?.sortable?.lifecycle?.stableHost).toBe(true)
+    expect(tablePlugin.decls?.['table-state']?.lifecycle?.stableHost).toBe(true)
   })
 
   it('`fetch` is present, and `query` / `stream` (now plugin-owned) get the host from their decl lifecycle', () => {

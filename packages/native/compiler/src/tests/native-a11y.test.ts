@@ -9,13 +9,8 @@
 // web-only (they still warn, per-export). `announce` no longer warns.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `
 import { Text, Press } from '@pyreon/primitives'

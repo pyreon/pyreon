@@ -6,12 +6,14 @@ import type {
   FunctionLowering,
   IdentifierLowering,
   IntrinsicLowering,
+  RefModifierLowering,
   MemberReadLowering,
   ReceiverLowering,
 } from './expr-lowering'
 import type { ModuleScanner, RequestSource } from './module-scan'
 import type {
   ExprEmitter,
+  CallExprRecognizer,
   MethodCallRecognizer,
   ModuleFinish,
   ModuleItemEmitter,
@@ -173,6 +175,11 @@ export interface CompilerPlugin<Target extends string = string> {
    */
   readonly intrinsics?: readonly IntrinsicLowering[] | undefined
   /**
+   * A modifier appended to an element's layout chain from the value of its `ref` attribute (see
+   * {@link RefModifierLowering}): how a library's ref callbacks (`ref={s.itemRef(key)}`) lower on native.
+   */
+  readonly refModifiers?: RefModifierLowering | undefined
+  /**
    * A per-file pass each emitter runs after the file's components and module
    * constants are known and before any component is emitted. It may keep
    * file-scoped memory (`EmitContext.fileState`) and return extra components,
@@ -252,7 +259,14 @@ export interface CompilerPlugin<Target extends string = string> {
    * a call it reported as unsupported. Pair it with `exprs`.
    */
   readonly methodCalls?: Readonly<Record<string, MethodCallRecognizer>> | undefined
-  /** How each `ext-expr` type a `methodCalls` recognizer produces renders on each target and is typed. */
+  /**
+   * Recognizes a CALL by its callee, for a binding the plugin recorded when it scanned the file (`scanModule`) —
+   * `toast("x")` and `toast.success("x")` where `toast` is whatever local name the file imported it as. Returns an
+   * `ext-expr` spec, `undefined` to decline, or `null` to claim a call it reported as unsupported. Called for every
+   * call expression, so the first check must be cheap. Pair it with `exprs`.
+   */
+  readonly callExprs?: CallExprRecognizer | undefined
+  /** How each `ext-expr` type a `methodCalls` / `callExprs` recognizer produces renders on each target and is typed. */
   readonly exprs?: Readonly<Record<string, ExprEmitter>> | undefined
   /**
    * Edit the file's structs from the module items and from the decode sites other plugins recorded
@@ -264,6 +278,12 @@ export interface CompilerPlugin<Target extends string = string> {
   readonly finishModule?: ModuleFinish | undefined
   /** Hooks of this plugin whose result may be destructured (`const { data, isPending } = useQuery(…)`). */
   readonly destructureCalls?: readonly string[] | undefined
+  /**
+   * Calls of this plugin (a subset of `calls`) that lower ONLY inside a component body — the declaration becomes
+   * a `remember {}` / an `@State`, which has no meaning at file scope. A file-scope declaration of one gets a
+   * named warning saying the placement is wrong, instead of printing the call verbatim into the emit.
+   */
+  readonly componentOnlyCalls?: readonly string[] | undefined
   /** Names of other plugins that must be loaded; also orders the passes. */
   readonly requires?: readonly string[] | undefined
   /** Marks a compiler-shipped plugin that a discovered plugin may replace by name. */

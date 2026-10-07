@@ -8,7 +8,7 @@
 // children (a shape every container emit has to special-case, because Kotlin's
 // trailing-lambda form differs).
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 const lines = (src: string) => kotlin(src).code.split('\n').map((l) => l.trim())

@@ -24,15 +24,12 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { FLOW_KOTLIN_STUBS, FLOW_SWIFT_STUBS } from '../../../../fundamentals/flow/src/native-plugin/stubs'
-import { KOTLIN_CHART_VIEW_STUBS, SWIFT_CHART_VIEW_STUBS } from '../../../../fundamentals/charts/src/native-plugin/stubs'
+import { PLUGIN_EMITTER_DIRS, PLUGIN_STUBS } from './plugin-stub-text'
 
 const SRC = resolve(import.meta.dirname, '..')
 const REPO = resolve(SRC, '../../../..')
 // The charts plugin owns its emitters and its type-gate stubs: they live with the library, not the compiler.
 const CHARTS_PLUGIN = join(REPO, 'packages/fundamentals/charts/src/native-plugin')
-const FLOW_PLUGIN = join(REPO, 'packages/fundamentals/flow/src/native-plugin')
-
 /** Pyreon-owned runtime types. Anything else in a stub is an SDK mirror. */
 const OWNED = /^(Pyreon[A-Za-z0-9]*|Media3AudioEngine|AVFoundationAudioEngine|Android[A-Z][A-Za-z0-9]*|UIKit[A-Z][A-Za-z0-9]*|CoreBluetoothScanner|CoreMotionSource|AVFoundationRecordingEngine|AVSpeechSynth)$/
 
@@ -146,9 +143,11 @@ describe('every Pyreon type the emit names exists in the real runtime', () => {
   for (const f of ['hosts.ts', 'engine-structs.ts', 'swift-hosts.ts', 'swift-plot.ts', 'swift-support.ts', 'kotlin-hosts.ts', 'kotlin-plot.ts', 'kotlin-support.ts']) {
     EMITTERS.push(join(CHARTS_PLUGIN, f))
   }
-  // The flow plugin's lowering + per-target emitters (every file but the stubs and the generated host blob).
-  for (const f of readdirSync(FLOW_PLUGIN).filter((n) => n.endsWith('.ts') && n !== 'stubs.ts' && !n.endsWith('.generated.ts'))) {
-    EMITTERS.push(join(FLOW_PLUGIN, f))
+  // The library-owned plugins' lowering + per-target emitters (every file but the stubs and the generated host blob).
+  for (const dir of PLUGIN_EMITTER_DIRS) {
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.ts') && n !== 'stubs.ts' && !n.endsWith('.generated.ts'))) {
+      EMITTERS.push(join(dir, f))
+    }
   }
 
   it('every scanned emitter file exists (an unreadable path would silently narrow the scan)', () => {
@@ -158,10 +157,13 @@ describe('every Pyreon type the emit names exists in the real runtime', () => {
   const STUB_SOURCES: ReadonlyArray<readonly [string, () => string, '.swift' | '.kt']> = [
     ['swift-stubs.ts', () => readFileSync(join(SRC, 'swift-stubs.ts'), 'utf8'), '.swift'],
     ['kotlin-stubs.ts', () => readFileSync(join(SRC, 'kotlin-stubs.ts'), 'utf8'), '.kt'],
-    ["the charts plugin's Swift stubs", () => SWIFT_CHART_VIEW_STUBS, '.swift'],
-    ["the charts plugin's Kotlin stubs", () => KOTLIN_CHART_VIEW_STUBS, '.kt'],
-    ["the flow plugin's stubs (Swift)", () => FLOW_SWIFT_STUBS, '.swift'],
-    ["the flow plugin's stubs (Kotlin)", () => FLOW_KOTLIN_STUBS, '.kt'],
+    ...PLUGIN_STUBS.flatMap(
+      ({ label, swift, kotlin }) =>
+        [
+          [`the ${label} plugin's stubs (Swift)`, () => swift, '.swift'],
+          [`the ${label} plugin's stubs (Kotlin)`, () => kotlin, '.kt'],
+        ] as const,
+    ),
   ]
 
   it.each(STUB_SOURCES)(

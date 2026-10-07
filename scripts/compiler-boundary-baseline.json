@@ -1,47 +1,20 @@
 {
   "native-compiler": {
     "packages": {
-      "@pyreon/a11y": 2,
-      "@pyreon/atlas": 1,
-      "@pyreon/code": 1,
-      "@pyreon/config": 1,
-      "@pyreon/connector-document": 1,
       "@pyreon/coolgrid": 1,
-      "@pyreon/dnd": 1,
-      "@pyreon/document": 1,
-      "@pyreon/document-primitives": 1,
       "@pyreon/elements": 2,
       "@pyreon/feature": 1,
-      "@pyreon/head": 1,
       "@pyreon/kinetic": 1,
       "@pyreon/kinetic-presets": 1,
-      "@pyreon/lathe": 1,
-      "@pyreon/lint": 1,
-      "@pyreon/loom": 1,
-      "@pyreon/mcp": 1,
       "@pyreon/permissions": 2,
-      "@pyreon/rich-text": 1,
-      "@pyreon/runtime-dom": 1,
-      "@pyreon/runtime-server": 1,
       "@pyreon/rx": 2,
-      "@pyreon/server": 1,
       "@pyreon/sized-map": 1,
       "@pyreon/state-tree": 1,
       "@pyreon/storage": 1,
       "@pyreon/store": 1,
-      "@pyreon/sync": 1,
-      "@pyreon/table": 1,
-      "@pyreon/testing": 1,
-      "@pyreon/toast": 4,
-      "@pyreon/ui-components": 1,
-      "@pyreon/ui-core": 2,
-      "@pyreon/ui-primitives": 1,
-      "@pyreon/unistyle": 1,
-      "@pyreon/virtual": 1,
-      "@pyreon/zero": 1,
-      "@pyreon/zero-content": 1
+      "@pyreon/ui-core": 2
     },
-    "hooks": 113
+    "hooks": 109
   },
   "compiler": {
     "packages": {

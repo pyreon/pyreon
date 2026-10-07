@@ -12,7 +12,7 @@
 //     call cases
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('condition-position accessor-arrow unwrap', () => {
   const SHOW_ARROW = `

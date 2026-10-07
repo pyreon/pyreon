@@ -2246,12 +2246,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     case 'json-stringify':
       // `JSON.stringify(x)` serializes to a String on both targets.
       return { kind: 'string' }
-    case 'toast-call':
-      // An imperative toast is used as a statement, not a value; its native
-      // emit (PyreonToast.add) returns the id String but that's rarely bound.
-    case 'announce-call':
-      // An imperative announce is a void statement, not a value.
-      return { kind: 'unknown' }
     case 'comparison':
     case 'logical':
       // `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.

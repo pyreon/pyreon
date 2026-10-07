@@ -71,6 +71,12 @@ export interface ParseContext {
   hasDynamicKey(prop: AstNode | undefined): boolean
   /** The source text of a dynamic key, bracketed, for a warning (`[kind]`). */
   dynamicKeyText(prop: AstNode): string
+  /**
+   * Report that `prop`'s computed key is only known at runtime, so the entry cannot be read at compile
+   * time (the compiler's own wording, so every plugin names the limit the same way). `where` is the
+   * prefix, e.g. `createMachine declaration \`m\`: config`.
+   */
+  warnDynamicKey(prop: AstNode, where: string): void
   /** The statically-known string an argument denotes — a literal, or a module-scope `const` holding one — else `null`. */
   staticString(node: AstNode | null | undefined): string | null
   /** The statements of a function body (`{ … }`) parsed to IR, for a recognizer that carries a callback. */
@@ -135,6 +141,14 @@ export interface DeclLifecycle {
    * in declaration order before them. It exists so a moved lifecycle keeps the position it had.
    */
   readonly tailOrder?: number | undefined
+  /**
+   * Emit this declaration's lines where the compiler wires a state container to the component's own inputs,
+   * ordered by this number (then by declaration order): on SwiftUI after the hotkey modifiers and before the
+   * platform-service lifecycle, on Compose after the form wiring and before the timers. A container whose source
+   * and sinks are closures over the component's own state binds them there, because a property initializer cannot
+   * capture `self`. A declaration with neither `midOrder` nor `tailOrder` is emitted in declaration order, first.
+   */
+  readonly midOrder?: number | undefined
   /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
   swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
   /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */
@@ -159,9 +173,31 @@ export interface AsyncState {
   readonly error: string
 }
 
+/**
+ * What a declaration contributes to its component's generated SwiftUI `init()`. A `@State` property initializer cannot
+ * reference another property (a synced signal's initializer names the doc), so a container that must be built from
+ * its siblings is declared TYPED with no initializer and seeded here. The compiler writes the `init(…)` header (the
+ * component's props, as the memberwise init would take them) and their assignments, then every contribution in
+ * `order` (then declaration order), then the closing brace. Compose has no equivalent: its `remember {}` blocks run
+ * sequentially, so a declaration can name an earlier one directly.
+ */
+export interface DeclSwiftInit {
+  /** Where among the plugin declarations' init lines this one lands (lower first): a doc before the signals that name it. */
+  readonly order: number
+  /**
+   * Why the optional-slot initializers cannot coexist with the generated `init()` — the clause the "its optional render
+   * props are emitted as required" warning gives (`its synced state already needs a generated init() that seeds it, …`).
+   */
+  readonly optionalSlotReason: string
+  /** The init body lines for `decl` (unindented — the compiler indents them). */
+  lines(decl: ExtDecl, ctx: EmitContext): readonly string[]
+}
+
 export interface DeclEmitter {
   /** Lifecycle contributions of this declaration type. */
   readonly lifecycle?: DeclLifecycle | undefined
+  /** Lines this declaration seeds in the component's generated SwiftUI `init()` (see {@link DeclSwiftInit}). */
+  readonly swiftInit?: DeclSwiftInit | undefined
   /** How expressions over this declaration's container are typed. */
   readonly typing?: DeclTyping | undefined
   /**

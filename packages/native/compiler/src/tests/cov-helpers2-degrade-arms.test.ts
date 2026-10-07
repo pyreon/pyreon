@@ -10,7 +10,7 @@
 // did not crash".
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function app(decls: string, ret = '<Text>x</Text>'): string {
   return `import { Stack, Text, Button } from '@pyreon/primitives'

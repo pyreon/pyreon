@@ -23,5 +23,7 @@ export default defineNodeConfig({
   // `skip-link.browser.test.tsx` (getComputedStyle clip/reveal + real
   // keyboard-focus moves need a real browser), so it's excluded from the
   // node threshold for the same reason.
-  coverageExclude: ['src/visually-hidden.tsx', 'src/skip-link.tsx'],
+  // The native-compiler plugin (`src/native-plugin/`) is tooling that runs in Node, not library code. Its emit is verified
+  // by behaviour in the @pyreon/native-compiler suite (the golden corpus plus the a11y specs), which owns the swiftc and kotlinc lanes.
+  coverageExclude: ['src/visually-hidden.tsx', 'src/skip-link.tsx', 'src/native-plugin.ts', 'src/native-plugin/**'],
 })

@@ -59,6 +59,11 @@ export const COMPILERS: readonly CompilerSpec[] = [
     generated: [
       // @pyreon/hooks' own plugin, copied by scripts/gen-native-builtin-plugins.ts (freshness-gated).
       'built-in-services.generated.ts',
+      // The web-only package list: DERIVED from every package manifest's `multiplatform` declaration (tier
+      // 'web-only' and no `nativeFrontend`) by `check-multiplatform-tier --write-table`, which also gates that it
+      // stays in sync. It is data the compiler carries so a standalone `transform()` can name a web-only import, not
+      // lowering code, and the manifests (not this file) are the single place a package states its tier.
+      'web-only-packages.ts',
     ],
   },
   {

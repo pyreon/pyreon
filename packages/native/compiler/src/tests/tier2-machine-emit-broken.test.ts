@@ -20,13 +20,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURE = resolve(HERE, '..', 'fixtures', 'tier2-machine.tsx')
