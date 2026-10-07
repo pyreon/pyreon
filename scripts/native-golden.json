@@ -7580,6 +7580,46 @@
       "sha": "4c9b84d8858d67d8a154072e243073d6ea944ffe2837a343df921b3b2d20fd2d",
       "bytes": 497,
       "warnings": 0
+    },
+    "golden-fixture:form-plugin-bindings.tsx|swift": {
+      "sha": "af7d750d95c06fbfbc960ff898cc062a55b40e32c772a89a7749c96d6a7c13d5",
+      "bytes": 813,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-bindings.tsx|kotlin": {
+      "sha": "6da48879c9ea91a5609cd421c22e79efdf68d742c5bef7908d94e9f3377494be",
+      "bytes": 960,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-declines.tsx|swift": {
+      "sha": "1d920854f1be956965195f50a823db2420518ded6a87b8e0b0713199f590c70e",
+      "bytes": 244,
+      "warnings": 8
+    },
+    "golden-fixture:form-plugin-declines.tsx|kotlin": {
+      "sha": "168b3e4bf46dd80ac42e5c8a7516d9b3fb86d5f4c2111c431e9a285482691d86",
+      "bytes": 288,
+      "warnings": 8
+    },
+    "golden-fixture:form-plugin-field-array.tsx|swift": {
+      "sha": "af17054c6c85e44d70111be6affe385f26785f3480bf9474cc7b04f096a51702",
+      "bytes": 587,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-field-array.tsx|kotlin": {
+      "sha": "1ab9411d2453ea8fac07a78acf17c6cfd210c4734e356007d0b45adf1dbeb685",
+      "bytes": 738,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-schema-submit.tsx|swift": {
+      "sha": "3cf5015b85042082a79beb1ad67a0ca1f5546da4fb0db1ce68480bde13a0492e",
+      "bytes": 2585,
+      "warnings": 1
+    },
+    "golden-fixture:form-plugin-schema-submit.tsx|kotlin": {
+      "sha": "1754301da5c6a18633fc000a81e89c5e08e5723ef9a60e8f8cb4ef3d772296be",
+      "bytes": 2556,
+      "warnings": 1
     }
   }
 }
