@@ -180,4 +180,34 @@ describe('pluginsReport — discovery edge cases', () => {
     expect(lines).toContain('  @acme/web  rich')
     expect(lines.indexOf('  @acme/browser  rich')).toBeLessThan(lines.indexOf('  @acme/web  rich'))
   })
+
+  it('reports every module-item owner and method recognizer in stable order', async () => {
+    addPackage('@acme/zebra', `export default {
+      name: 'zebra', apiVersion: 1,
+      topLevel: () => undefined,
+      items: { node: { swift: () => [], kotlin: () => [] }, leaf: { swift: () => [], kotlin: () => [] } },
+      methodCalls: { zulu: () => undefined },
+      refineStructs: () => {}, finishModule: () => {},
+    }`)
+    addPackage('@acme/alpha', `export default {
+      name: 'alpha', apiVersion: 1,
+      items: { value: { swift: () => [], kotlin: () => [] } },
+      methodCalls: { alpha: () => undefined },
+    }`)
+    writeFileSync(join(app, 'package.json'), JSON.stringify({
+      name: 'app', dependencies: { '@acme/zebra': '1', '@acme/alpha': '1' },
+    }))
+    const { lines, exitCode } = await pluginsReport(app, false)
+    expect(exitCode).toBe(0)
+    expect(lines).toContain('module items (3):')
+    expect(lines).toContain('  alpha  value')
+    expect(lines).toContain('  zebra  node, leaf  topLevel')
+    expect(lines.indexOf('  alpha  value')).toBeLessThan(lines.indexOf('  zebra  node, leaf  topLevel'))
+    expect(lines).toContain('method-call recognizers (2):')
+    expect(lines).toContain('  .alpha()  alpha')
+    expect(lines).toContain('  .zulu()  zebra')
+    expect(lines.indexOf('  .alpha()  alpha')).toBeLessThan(lines.indexOf('  .zulu()  zebra'))
+    expect(lines.find((line) => line.includes('@acme/zebra'))).toContain('refineStructs  finishModule')
+    expect(lines.find((line) => line.includes('@acme/alpha'))).not.toContain('refineStructs')
+  })
 })
