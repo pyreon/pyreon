@@ -210,6 +210,20 @@ describe('mainWithPlugins discovery', () => {
 })
 
 describe('plugins and explain reports', () => {
+  it('warns by default when a package plugin fails and the compiler has a built-in copy', async () => {
+    addPackage('@pyreon/hooks', declares(), `throw new Error('stale package plugin')`)
+    setApp(['@pyreon/hooks'], `import { useShare } from '@pyreon/hooks'`)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await discoverPlugins(app, join(app, 'src'))).toEqual([])
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('stale package plugin'))
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('Using the compiler\'s built-in copy of "@pyreon/hooks"'))
+    const compiler = createCompiler()
+    const source = `import { useShare } from '@pyreon/hooks'
+export function A() { const share = useShare(); return <Text>x</Text> }`
+    expect(compiler.transform(source, { target: 'swift' }).code).toContain('PyreonShare()')
+    expect(compiler.transform(source, { target: 'kotlin' }).code).toContain('PyreonShare(shareCtx)')
+  })
+
   it('lists built-ins, the registry owners and discovered plugins', async () => {
     addPackage(
       '@acme/badge',

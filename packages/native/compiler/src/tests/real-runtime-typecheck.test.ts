@@ -23,7 +23,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+// An app's dependencies supply their native lowerings. This corpus covers the
+// whole ecosystem, so compile it with the same first-party plugins as the CLI.
+import { transform } from '../../../../../scripts/native-first-party-plugins'
 import { isSwiftUIAvailable } from '../validate'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
