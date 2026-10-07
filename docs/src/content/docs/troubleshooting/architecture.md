@@ -530,3 +530,9 @@ In `@pyreon/router`'s default `mode: 'hash'`, the route and its query live in th
 `createSyncServer({ port })` without `authorize` accepts every connection. It warns once per instance, in production too, because this is a live misconfiguration an operator must see. When a strict test assertion (`expect(warnSpy).not.toHaveBeenCalled()`) breaks on an unrelated warning, give the test a production config rather than weakening the assertion. Reference: `packages/fundamentals/sync/src/server.ts`; test `server-open-relay-warning.test.ts`.
 
 ---
+
+### Inferring a singleton member in the surrounding component scope
+
+A fractional store/model field was unknown to its computed/view/action body, leaving an `Int` return around a `Double` expression. Seed inference from the declaration’s own fields, carry cumulative computed/view types, and restore emitter context in `finally`. Refine default parameter types before return inference and coerce integer callers against the known signature. Validate with real Swift/Kotlin compilers; unchanged golden output can preserve invalid code. Reference: `native-compiler/src/tests/singleton-fractional-members.test.ts`.
+
+---
