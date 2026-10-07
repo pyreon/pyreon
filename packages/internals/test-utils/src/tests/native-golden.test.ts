@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   collectCorpus,
   compileCorpus,
@@ -41,6 +44,28 @@ describe('check-native-golden — the corpus', () => {
 
   it('never feeds the web entry-client bootstraps to PMTC', () => {
     expect(corpus.some((c) => c.key.endsWith('entry-client.tsx'))).toBe(false)
+  })
+
+  it('rejects duplicate keys instead of silently keeping the last compile result', () => {
+    expect(() => compileCorpus([
+      { key: 'fixture:shared', filename: 'first.tsx', source: 'export function A() { return <Text>first</Text> }' },
+      { key: 'fixture:shared', filename: 'second.tsx', source: 'export function B() { return <Text>second</Text> }' },
+    ])).toThrow(/Duplicate corpus key "fixture:shared".*first\.tsx.*second\.tsx/)
+  })
+
+  it('rejects a fixture copied into both compiler and package-owned directories', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pyreon-golden-duplicate-'))
+    try {
+      for (const path of ['packages/native/compiler/src/fixtures', 'examples']) mkdirSync(join(root, path), { recursive: true })
+      for (const path of ['packages/native/compiler/src/golden-fixtures', 'packages/fundamentals/charts/native-golden']) {
+        const dir = join(root, path)
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'shared.tsx'), 'export function A() { return <Text>x</Text> }')
+      }
+      expect(() => collectCorpus(root)).toThrow(/Duplicate corpus key "golden-fixture:shared\.tsx"/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('compiles deterministically (two compiles of one source agree)', () => {
