@@ -3868,6 +3868,17 @@ function liftInlineObjects(
  *   - a non-arrow const (`const APP = '1.0'` — a real module binding);
  *   - a multi-declarator const (`const a = …, b = …` — left as moduleDecls).
  */
+/** Unsupported value parameters must not be hidden by successful return inference. */
+function unsupportedHelperParams(fn: AnyNode, name: string, ctx: ParseCtx): boolean {
+  const unsupported = ((fn.params as AnyNode[] | undefined) ?? []).some((param) =>
+    param.type === 'ArrayPattern' || param.type === 'RestElement' ||
+    (param.type === 'AssignmentPattern' && param.left?.type !== 'Identifier'),
+  )
+  if (!unsupported) return false
+  ctx.warnings.push(`${name} is a top-level helper function with unsupported value parameters — array/rest parameters and defaulted destructures do not lower. Use plain typed value parameters or inline the logic. Skipped rather than mis-emitted.`)
+  return true
+}
+
 function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   let varDecl: AnyNode | null = null
   if (node.type === 'VariableDeclaration' && node.kind === 'const') {
@@ -3900,7 +3911,7 @@ function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   if (topLevelReturns.some((r) => r.expr !== undefined && returnContainsJsx(r.expr))) {
     return false
   }
-  ctx.helperFns.push(decl)
+  if (!unsupportedHelperParams(arrow, d.id.name as string, ctx)) ctx.helperFns.push(decl)
   return true
 }
 
@@ -4422,7 +4433,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
     //     Double return. A genuinely-un-inferable body is warned + dropped by
     //     `refineHelperReturns`.
-    ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+    if (!unsupportedHelperParams(fn, name, ctx)) ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
     // The deferred props warnings were about PARAMETERS, not props. An
     // unresolvable parameter type still reaches the native signature verbatim,
     // so it is re-named in helper terms rather than dropped.
