@@ -7620,6 +7620,36 @@
       "sha": "1754301da5c6a18633fc000a81e89c5e08e5723ef9a60e8f8cb4ef3d772296be",
       "bytes": 2556,
       "warnings": 1
+    },
+    "golden-fixture:form-plugin-array-mutators.tsx|swift": {
+      "sha": "34d9bd68834a8807b93cb524e08b195be194ec4983e677c70a2a49b2152d1461",
+      "bytes": 292,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-array-mutators.tsx|kotlin": {
+      "sha": "5fd1d9053751b34fc1132032afdb6fd46d825048e1ecac6383718394edc8a807",
+      "bytes": 370,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-partial-config.tsx|swift": {
+      "sha": "ed9adb758d855e34d4a9cddb4cf6008cb1d5d5c4ea14b08da613440ed325702a",
+      "bytes": 610,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-partial-config.tsx|kotlin": {
+      "sha": "f0bd1e508dcd54c9e1b7e3762bad5cf4329c26748575b1a21b5ec7e857ed417c",
+      "bytes": 613,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-destructure.tsx|swift": {
+      "sha": "7ae59eee5f580aaa86078ae1595b768f859f70c020ef43f71fc178f29ee93a20",
+      "bytes": 330,
+      "warnings": 0
+    },
+    "golden-fixture:form-plugin-destructure.tsx|kotlin": {
+      "sha": "a75375c33e77aa97dc2786fdac6e1389db903c777057c2d9c3b7fceaf248f9e2",
+      "bytes": 427,
+      "warnings": 0
     }
   }
 }
