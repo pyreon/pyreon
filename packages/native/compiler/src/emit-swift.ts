@@ -6875,7 +6875,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     }
   }
   // A scope-only provider element (a library's own, e.g. a chart theme provider): transparent wrapper, children under the scope.
-  const scopeProvider = findScopeProvider(tag, canAliasIntercept)
+  const scopeProvider = findScopeProvider(tag, canAliasIntercept, _aliasImports.get(tag)?.imported)
   if (scopeProvider?.transparent === true) {
     const prev = _colorScope
     _colorScope = scopeProvider.enter(e, { warn: pushEmitWarning, outer: prev ?? undefined }) ?? null
@@ -7680,7 +7680,7 @@ function forRowBodySwift(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR
  * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
  */
 function enterColorScope(e: Extract<ExprIR, { kind: 'jsx-element' }>, outer: object | null): object | null {
-  const provider = findScopeProvider(e.tag, canAliasIntercept)
+  const provider = findScopeProvider(e.tag, canAliasIntercept, _aliasImports.get(e.tag)?.imported)
   if (provider === undefined) return outer
   return provider.enter(e, { warn: pushEmitWarning, outer: outer ?? undefined }) ?? null
 }

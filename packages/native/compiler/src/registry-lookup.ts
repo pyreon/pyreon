@@ -70,8 +70,8 @@ export function isElementLoweringTag(name: string): boolean {
 }
 
 /** The colour-scope provider that claims `tag` (see {@link ElementClaimGuard}), or `undefined`. */
-export function findScopeProvider(tag: string, guard: ElementClaimGuard): ScopeProvider | undefined {
-  return activeRegistries().scopes.find(tag, guard)
+export function findScopeProvider(tag: string, guard: ElementClaimGuard, importedAs?: string): ScopeProvider | undefined {
+  return activeRegistries().scopes.find(tag, guard, importedAs)
 }
 
 /** True when `name` is a tag a registered lowering marks usable as a style base. */

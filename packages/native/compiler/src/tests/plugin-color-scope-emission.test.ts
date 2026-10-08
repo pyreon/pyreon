@@ -43,6 +43,7 @@ describe.each(['swift', 'kotlin'] as const)('custom provider scope on %s', (targ
         {
           module: '@acme/scope',
           tags: ['Outer', 'Inner'],
+          aliasable: true,
           emit: { swift: render, kotlin: render },
         },
         { module: '@acme/scope', tags: ['Probe'], emit: { swift: probe, kotlin: probe } },
@@ -74,4 +75,12 @@ describe.each(['swift', 'kotlin'] as const)('custom provider scope on %s', (targ
     )
     expect(visits).toEqual(['Outer', 'Bomb', 'Outer', 'Outer', 'Outer', 'none'])
   })
+  it('enters an aliased owner scope and leaves a foreign alias unclaimed', () => {
+    for (const from of ['@acme/scope', '@other/scope']) {
+      const visits: string[] = []
+      createCompiler({ plugins: [fixture(visits)] }).transform(`import { Outer as Alias } from '${from}'; import { Probe } from '@acme/scope'; export function App() { return <><Alias><Probe/></Alias><Probe/></> }`, { target })
+      expect(visits).toEqual(from === '@acme/scope' ? ['Alias', 'none'] : ['none', 'none'])
+    }
+  })
+
 })

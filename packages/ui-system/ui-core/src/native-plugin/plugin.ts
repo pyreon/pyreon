@@ -21,6 +21,7 @@ export const uiCorePlugin: CompilerPlugin = Object.freeze({
   elements: [
     {
       module: '@pyreon/ui-core',
+      aliasable: true,
       tags: ['PyreonUI', 'PyreonUIProvider'],
       emit: { swift: provider, kotlin: provider },
     },

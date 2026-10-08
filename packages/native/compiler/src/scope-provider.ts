@@ -57,7 +57,7 @@ export interface RegisteredScopeProvider {
 export interface ScopeRegistry {
   readonly entries: readonly RegisteredScopeProvider[]
   /** The provider that claims `tag` when `guard` accepts `(tag, module)`, or `undefined`. */
-  find(tag: string, guard: ElementClaimGuard): ScopeProvider | undefined
+  find(tag: string, guard: ElementClaimGuard, importedAs?: string): ScopeProvider | undefined
   /** True when some provider claims `name` (the parser then records where it was imported from). */
   hasTag(name: string): boolean
 }
@@ -92,9 +92,14 @@ export function createScopeRegistry(
   }
   return Object.freeze<ScopeRegistry>({
     entries,
-    find(tag, guard) {
+    find(tag, guard, importedAs) {
       for (const { provider } of entries) {
         if (provider.tags.includes(tag) && guard(tag, provider.module)) return provider
+      }
+      if (importedAs !== undefined && importedAs !== tag) {
+        for (const { provider } of entries) {
+          if (provider.tags.includes(importedAs) && guard(tag, provider.module, importedAs)) return provider
+        }
       }
       return undefined
     },

@@ -483,7 +483,7 @@ describe('package-owned UI core plugin', () => {
     const nm = join(app, 'node_modules', '@pyreon')
     mkdirSync(nm, { recursive: true })
     symlinkSync(ownerDir, join(nm, 'ui-core'), 'dir')
-    const source = `import { PyreonUI } from '@pyreon/ui-core'; export function Example() { return <PyreonUI mode="dark"><Text>provider</Text></PyreonUI> }`
+    const source = `import { PyreonUI as Provider } from '@pyreon/ui-core'; export function Example() { return <Provider mode="dark"><Text>provider</Text></Provider> }`
     setApp(['@pyreon/ui-core'], source)
     const found = await discoverPlugins(app, join(app, 'src'))
     expect(found.map(entry => entry.plugin.name)).toEqual(['@pyreon/ui-core'])

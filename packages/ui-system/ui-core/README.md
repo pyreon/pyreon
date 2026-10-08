@@ -198,3 +198,5 @@ const compiler = createCompiler({ discovered: [uiCorePlugin] })
 ```
 
 `PyreonUI` and `PyreonUIProvider` render their children as SwiftUI `Group` / Compose `Column`. Chart colour scopes keep their existing compile-time behaviour when the charts plugin is also loaded. The runtime entry does not import compiler tooling.
+
+Aliased native providers (`import { PyreonUI as Provider } …`) retain their colour scope, including a pinned chart mode. Foreign components with the same names are guarded by their import source.
