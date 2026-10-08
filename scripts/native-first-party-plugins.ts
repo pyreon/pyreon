@@ -1,3 +1,4 @@
+import { uiCorePlugin } from '../packages/ui-system/ui-core/src/native-plugin/plugin'
 /**
  * The first-party native-compiler plugins a repo script needs, the way the CLI
  * has them once an app's imports activate them.
@@ -94,6 +95,7 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   rxPlugin,
   featurePlugin,
   hooksPlugin,
+  uiCorePlugin,
   kineticPlugin,
   elementsPlugin,
   coolgridPlugin,

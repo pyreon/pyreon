@@ -10,7 +10,6 @@ import { kotlinStr } from './string-literals'
 import {
   bindServices,
   emitPluginDecl,
-  earlyLifecycleDecls,
   emitPluginRoot,
   pluginDeclFeatures,
   emitPreparations,
@@ -113,8 +112,19 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
-import { createKotlinEmitContext, type ComponentInfo, type KotlinEmitContext, type MemberEmitScope, type StructRegistry, type WebViewFacade } from './emit-context'
-import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
+import {
+  createKotlinEmitContext,
+  type ComponentInfo,
+  type KotlinEmitContext,
+  type MemberEmitScope,
+  type StructRegistry,
+  type WebViewFacade,
+} from './emit-context'
+import {
+  extractTextTypography,
+  kotlinTextTypographyArgs,
+  styleToNativeModifiers,
+} from './style-to-native'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -747,7 +757,15 @@ export function emitKotlin(
   // File-scope bindings, typed once: a component (or helper) reading
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
-  _kotlinExprInferCtx = buildInferenceCtx([], structs, [], undefined, _helperReturns, _moduleConstTypes, moduleItems)
+  _kotlinExprInferCtx = buildInferenceCtx(
+    [],
+    structs,
+    [],
+    undefined,
+    _helperReturns,
+    _moduleConstTypes,
+    moduleItems,
+  )
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -848,7 +866,8 @@ export function emitKotlin(
   for (const s of structs) if (!s.external) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
   // File-scope items declared before free helper functions.
-  for (const item of itemsInSlot(moduleItems, 'bindings')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
+  for (const item of itemsInSlot(moduleItems, 'bindings'))
+    parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Free helper functions are emitted between the two module-item groups.
   for (const h of helperFns) {
     const helperCtx: KotlinCtx = {
@@ -1298,10 +1317,6 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`  ${declText}`)
   }
   // Callback wiring after declarations are available, before component mount effects.
-  for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
-      lines.push(line === '' ? '' : `  ${line}`)
-  }
   for (const d of earlyLifecycleDecls(c.decls)) {
     for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
@@ -2926,7 +2941,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       )
       if (pluginLowered !== undefined) return pluginLowered
       // A call, or a chain, rooted at a binding a plugin's declaration created (`flow.nodes.set(x)`).
-      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent), isLocalModuleReceiver)
+      const rooted = lowerPluginReceiver(
+        e,
+        'kotlin',
+        _pluginScope,
+        () => kotlinEmitContext(indent),
+        isLocalModuleReceiver,
+      )
       if (rooted !== undefined) return rooted
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
@@ -2945,23 +2966,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       // Chart decimators consume `List<Double>`; TypeScript `number[]` can be
       // represented as `List<Int>` when its initializer is wholly integral.
-      if (
-        e.callee.kind === 'identifier' &&
-        (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') &&
-        e.args.length >= 2
-      ) {
-        const args = e.args.map((arg, i) =>
-          i === 1
-            ? `(${emitKotlinExpr(arg, indent)}).map { it.toDouble() }`
-            : emitKotlinExpr(arg, indent),
-        )
-        return `${kotlinIdent(e.callee.name)}(${args.join(', ')})`
-      }
-      // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
-      // PyreonFieldArray decl (and `value()` on a For-item param over its
-      // items) are web signal READS — on Kotlin they are properties, so the
-      // call parens must go or kotlinc fails with "expression 'items' of
-      // type 'SnapshotStateList' cannot be invoked as a function".
       if (
         e.callee.kind === 'identifier' &&
         (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') &&
@@ -3296,7 +3300,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return svc.kotlinState?.includes(e.callee.property) === true ? `${base}.value` : base
         }
       }
-      }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
       // NaN on failure; the `?:` default keeps a non-null Int/Double.
@@ -3342,8 +3345,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (target.kind === 'identifier' && _signalNames.has(target.name)) {
           const fn = e.args[0]!
           if (fn.kind === 'arrow' && fn.params.length === 1) {
-            const read: ExprIR =
-              target
+            const read: ExprIR = target
             const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
             if (substituted !== null) {
               const lhs = emitKotlinExpr(target, indent)
@@ -4035,7 +4037,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     }
     case 'member': {
       // Reads rooted at a plugin declaration's binding (`flow.config.zoom`), then reads a plugin recognises by shape.
-      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(0), isLocalModuleReceiver)
+      const rooted = lowerPluginReceiver(
+        e,
+        'kotlin',
+        _pluginScope,
+        () => kotlinEmitContext(0),
+        isLocalModuleReceiver,
+      )
       if (rooted !== undefined) return rooted
       const shaped = lowerPluginMemberRead(e, 'kotlin', () => kotlinEmitContext(0))
       if (shaped !== undefined) return shaped
@@ -4063,7 +4071,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // directions — the web shape emitted uncompilable native code with NO
       // warning, and the shape that did work natively (`form.values.email`)
       // is a type error on web. Unwrap a zero-arg call on the accessor so
-      }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct function parameters
       // in the Composable signature, so the user-source `props.title`
@@ -4749,11 +4756,27 @@ function kotlinMemberScope<T>(scope: MemberEmitScope, run: () => T): T {
   const savedReceiver = _activeMemberReceiverKotlin
   const savedContext = _activeKotlinCtx
   const decls = [...scope.declarations]
-  const inference = buildInferenceCtx(decls, [..._declaredStructs], [], undefined, _helperReturns, _moduleConstTypes, [...(savedInfer.moduleItems?.values() ?? [])], scope.receiver)
-  _signalNames = new Set(decls.flatMap((d) => d.kind === 'signal' || d.kind === 'computed' ? [d.name] : []))
-  _functionNames = new Set(decls.flatMap((d) => d.kind === 'function' ? [d.name] : []))
+  const inference = buildInferenceCtx(
+    decls,
+    [..._declaredStructs],
+    [],
+    undefined,
+    _helperReturns,
+    _moduleConstTypes,
+    [...(savedInfer.moduleItems?.values() ?? [])],
+    scope.receiver,
+  )
+  _signalNames = new Set(
+    decls.flatMap((d) => (d.kind === 'signal' || d.kind === 'computed' ? [d.name] : [])),
+  )
+  _functionNames = new Set(decls.flatMap((d) => (d.kind === 'function' ? [d.name] : [])))
   _kotlinExprInferCtx = inference
-  _helperParamTypesKotlin = new Map([...savedParams, ...decls.flatMap((d) => d.kind === 'function' ? [[d.name, d.params.map((p) => p.type)] as const] : [])])
+  _helperParamTypesKotlin = new Map([
+    ...savedParams,
+    ...decls.flatMap((d) =>
+      d.kind === 'function' ? [[d.name, d.params.map((p) => p.type)] as const] : [],
+    ),
+  ])
   _activePropsParamName = scope.receiver
   _activeMemberReceiverKotlin = scope.receiver
   _activeKotlinCtx = { componentName: scope.name, synthesizedDataClasses: [] }
@@ -4806,6 +4829,15 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       constExpr: (name) => _moduleConstExprsKotlin.get(name),
       argument: (value, type, at) => kotlinTypedArgument(value, type, at),
       colorScope: () => _colorScope ?? undefined,
+      withColorScope: (el, emit) => {
+        const outer = _colorScope
+        try {
+          _colorScope = enterColorScope(el, outer)
+          return emit()
+        } finally {
+          _colorScope = outer
+        }
+      },
       component: () => kotlinComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitKotlinChild,
@@ -4833,11 +4865,16 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
           seedHandlerLocals([...stmts], _kotlinExprInferCtx)
         }
         const control = options?.kotlin
-        const callbackCtx: KotlinCtx = control === undefined ? _activeKotlinCtx! : {
-          ..._activeKotlinCtx!,
-          ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
-          ...(control.discardReturnValue === undefined ? {} : { discardReturnValue: control.discardReturnValue }),
-        }
+        const callbackCtx: KotlinCtx =
+          control === undefined
+            ? _activeKotlinCtx!
+            : {
+                ..._activeKotlinCtx!,
+                ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
+                ...(control.discardReturnValue === undefined
+                  ? {}
+                  : { discardReturnValue: control.discardReturnValue }),
+              }
         try {
           return stmts.map((st) => emitKotlinStatement(st, at, callbackCtx))
         } finally {
@@ -4964,24 +5001,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     }
   }
 
-  // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
-  // compile-time-resolved; dark mode is a system read). Render children directly
-  // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
-  if (
-    (tag === 'PyreonUI' || tag === 'PyreonUIProvider') &&
-    canAliasIntercept(tag, '@pyreon/ui-core')
-  ) {
-    // A literal `mode` pins the colour mode for the charts below — see the Swift twin.
-    const prevScope = _colorScope
-    _colorScope = enterColorScope(e, prevScope)
-    try {
-      const p = ' '.repeat(indent + 2)
-      return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
-    } finally {
-      _colorScope = prevScope
-    }
-  }
-
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
   // synthetic `style` attr, then re-enter the dispatch; the inline-style
   // connector (emitKotlinLayoutModifier → styleToNativeModifiers) lowers it
@@ -5080,7 +5099,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     }
   }
   // A scope-only provider element (a library's own, e.g. a chart theme provider): transparent wrapper, children under the scope.
-  const scopeProvider = findScopeProvider(tag, canAliasIntercept)
+  const scopeProvider = findScopeProvider(tag, canAliasIntercept, _aliasImports.get(tag)?.imported)
   if (scopeProvider?.transparent === true) {
     const prev = _colorScope
     _colorScope =
@@ -5783,14 +5802,14 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
 /**
- * The colour scope a provider element (`<PyreonUI mode>`, `<ColorModeProvider mode>`) opens for its children:
+ * The colour scope a provider element (registered provider element) opens for its children:
  * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
  */
 function enterColorScope(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   outer: object | null,
 ): object | null {
-  const provider = findScopeProvider(e.tag, canAliasIntercept)
+  const provider = findScopeProvider(e.tag, canAliasIntercept, _aliasImports.get(e.tag)?.imported)
   if (provider === undefined) return outer
   return provider.enter(e, { warn: pushEmitWarning, outer: outer ?? undefined }) ?? null
 }
@@ -8450,7 +8469,11 @@ function escapeKotlinStringSegment(s: string): string {
  */
 let _pluginScope: PluginScope = createPluginScope()
 function isLocalModuleReceiver(name: string): boolean {
-  return _kotlinExprInferCtx.locals.has(name) || _kotlinExprInferCtx.props?.has(name) === true || name === _activePropsParamName
+  return (
+    _kotlinExprInferCtx.locals.has(name) ||
+    _kotlinExprInferCtx.props?.has(name) === true ||
+    name === _activePropsParamName
+  )
 }
 /** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
 let _moduleScope: PluginScope = _pluginScope

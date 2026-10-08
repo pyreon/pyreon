@@ -14,10 +14,34 @@ import {
   dynamicKeyText,
   unwrapTypeLayers,
 } from './plugin-ast'
-import { findPropsTypeResolver, findService, functionIrName, pluginItemFields, pluginItemScopes, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
+import {
+  findPropsTypeResolver,
+  findService,
+  functionIrName,
+  pluginItemFields,
+  pluginItemScopes,
+  findUnloweredModule,
+  hookClaimsSource,
+  isElementLoweringTag,
+  pluginExprReduce,
+} from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
-import { isJson, stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
-import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
+import {
+  isJson,
+  stampExtDecl,
+  type AstNode,
+  type DeclCallSite,
+  type DeclVerdict,
+  type ParseContext,
+} from './call-lowering'
+import {
+  stampExtExpr,
+  stampModuleItem,
+  type CallExprSite,
+  type ExtItemSpec,
+  type MethodCallSite,
+  type ModuleParseContext,
+} from './module-items'
 import type { JsxRewriteContext, ModuleScan } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -321,7 +345,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
-  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource))
+  ctx.warnings.push(
+    ...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource),
+  )
   // Pre-pass: module-scope string constants, so a hook that bakes a string can
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
@@ -361,7 +387,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
   // Pre-pass: map alias-tag local names to their import source, so the emit's
-  // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
+  // Registered element lowerings intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
   const aliasImports = collectAliasImports(ast.program.body as AnyNode[])
   // Pre-pass: parse the app's `defineTheme({ … })` so the styler + rocketstyle
@@ -505,7 +531,15 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // File-scope signatures must settle before component signal/struct inference consumes them.
   refinePluginItemMembers(moduleItems, structs, helperReturnSeed, moduleConsts)
   const componentCtx = (c: ComponentIR): InferenceCtx =>
-    buildInferenceCtx(c.decls, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts, moduleItems)
+    buildInferenceCtx(
+      c.decls,
+      structs,
+      c.props,
+      c.propsParamName,
+      helperReturnSeed,
+      moduleConsts,
+      moduleItems,
+    )
 
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
@@ -1353,7 +1387,6 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
  *  the guards in emit-swift/emit-kotlin. Tags claimed by a registered element
  *  lowering (`element-lowering.ts`) are tracked through the registry instead,
  *  so a plugin's tags get the same import guard with no edit here. */
-const ALIAS_TAG_NAMES = new Set(['PyreonUI', 'PyreonUIProvider'])
 
 /**
  * Collect each local name with its source package and original imported name.
@@ -1378,7 +1411,7 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
       if (
         typeof local === 'string' &&
         typeof imported === 'string' &&
-        (ALIAS_TAG_NAMES.has(imported) || isElementLoweringTag(imported))
+        isElementLoweringTag(imported)
       ) {
         map.set(local, { source: pkg, imported })
       }
@@ -2025,13 +2058,30 @@ function refinePluginItemMembers(
   helperReturnSeed: Map<string, TypeIR>,
   moduleConsts: Map<string, TypeIR>,
 ): void {
-  const defaultCtx = buildInferenceCtx([], structs, [], undefined, helperReturnSeed, moduleConsts, moduleItems)
+  const defaultCtx = buildInferenceCtx(
+    [],
+    structs,
+    [],
+    undefined,
+    helperReturnSeed,
+    moduleConsts,
+    moduleItems,
+  )
   for (const item of moduleItems) {
     for (const field of pluginItemFields(item)) refineNumberBindingFromEvidence(field, defaultCtx)
     for (const memberScope of pluginItemScopes(item)) {
       const declarations = [...memberScope.declarations]
       const functions = declarations.filter((decl) => decl.kind === 'function')
-      const scope = buildInferenceCtx(declarations, structs, [], undefined, helperReturnSeed, moduleConsts, moduleItems, memberScope.receiver)
+      const scope = buildInferenceCtx(
+        declarations,
+        structs,
+        [],
+        undefined,
+        helperReturnSeed,
+        moduleConsts,
+        moduleItems,
+        memberScope.receiver,
+      )
       refineFunctionDefaults(functions, scope)
       for (const fn of functions) {
         if (fn.returnType.kind !== 'number' && fn.returnType.kind !== 'unknown') continue
@@ -2881,7 +2931,13 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         )
         if (verdict !== undefined) {
           if (verdict !== null) {
-            const declaration = declFromSpec(entry.owner, `__pyreonStatement${decls.length}`, verdict, call, ctx)
+            const declaration = declFromSpec(
+              entry.owner,
+              `__pyreonStatement${decls.length}`,
+              verdict,
+              call,
+              ctx,
+            )
             if (declaration !== null) decls.push(declaration)
           }
           continue
@@ -3448,7 +3504,6 @@ function bodyReferencesPropsParam(body: AnyNode[], paramName: string): boolean {
 function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseContext {
   const facade: ParseContext = {
     declName,
-    functionDeclaration: (name, node) => tryFunctionDecl(name, node as AnyNode, ctx),
     initialType: (expression) => inferTypeFromInitial(expression),
     stringLiteralArg(index) {
       const arg = (call.arguments as AnyNode[] | undefined)?.[index]
@@ -3520,8 +3575,14 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
     functionDeclaration: (name, node) => {
-      if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression' && node.type !== 'FunctionDeclaration') {
-        throw new Error(`[Pyreon] functionDeclaration requires a function node; received ${node.type}.`)
+      if (
+        node.type !== 'ArrowFunctionExpression' &&
+        node.type !== 'FunctionExpression' &&
+        node.type !== 'FunctionDeclaration'
+      ) {
+        throw new Error(
+          `[Pyreon] functionDeclaration requires a function node; received ${node.type}.`,
+        )
       }
       return tryFunctionDecl(name, node as AnyNode, ctx)
     },
@@ -3677,8 +3738,15 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
       ctx.loweredImports.add(`${module}#${name}`)
     },
     aliasFactory: (name, alias, destructureDiagnostic) => {
-      if (!alias || typeof alias !== 'object' || typeof alias.kind !== 'string' || !isJson(alias, new Set())) throw new Error(`[Pyreon] Alias factory ${name} must use cloneable expression IR`)
-      if (ctx.aliasFactories.has(name)) throw new Error(`[Pyreon] Alias factory ${name} is already registered`)
+      if (
+        !alias ||
+        typeof alias !== 'object' ||
+        typeof alias.kind !== 'string' ||
+        !isJson(alias, new Set())
+      )
+        throw new Error(`[Pyreon] Alias factory ${name} must use cloneable expression IR`)
+      if (ctx.aliasFactories.has(name))
+        throw new Error(`[Pyreon] Alias factory ${name} is already registered`)
       ctx.aliasFactories.set(name, { alias: structuredClone(alias), destructureDiagnostic })
     },
     report: (message) => {
@@ -3720,8 +3788,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         return declFromSpec(entry.owner, `__pyreonPattern${node.start ?? 0}`, verdict, init, ctx)
     }
   }
-  const factory = init?.type === 'CallExpression' && init.callee?.type === 'Identifier'
-    ? ctx.aliasFactories.get(init.callee.name as string) : undefined
+  const factory =
+    init?.type === 'CallExpression' && init.callee?.type === 'Identifier'
+      ? ctx.aliasFactories.get(init.callee.name as string)
+      : undefined
   if (factory !== undefined) {
     if (node.id?.type === 'Identifier') {
       ctx.pluginAliases.set(node.id.name as string, structuredClone(factory.alias))
@@ -4035,7 +4105,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (afterEach.length > 0) decl.afterEach = afterEach
     return decl
   }
-  }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
   // containers with NO platform dependency: a signal plus a few mutators.
   // They needed no runtime, only a lowering, and without one the call
@@ -4096,7 +4165,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `@Environment(\.horizontalSizeClass)` and Compose derives it from
   // `LocalConfiguration.current.screenWidthDp`. Emit returns the same
   // `"compact" | "regular"` string the web hook uses.
-  }
   // Fallback — `const foo = <call>` binding an arbitrary call result that
   // none of the factory/hook branches above claimed: a signal/computed READ
   // (`const foo = o()`), a method-chain result (`const xs = arr.filter(p)`),
@@ -4182,13 +4250,32 @@ function withValueDeclType(
  * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
  * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
  */
-function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR | null {
+function declFromSpec(
+  owner: string,
+  name: string,
+  spec: DeclVerdict,
+  call: AnyNode,
+  ctx: ParseCtx,
+): DeclIR | null {
   if ('alias' in spec) {
-    if (!spec.alias || typeof spec.alias !== 'object' || typeof spec.alias.kind !== 'string' || !isJson(spec.alias, new Set())) throw new Error(`[Pyreon] plugin ${owner}: alias for ${name} must be cloneable expression IR.`)
+    if (
+      !spec.alias ||
+      typeof spec.alias !== 'object' ||
+      typeof spec.alias.kind !== 'string' ||
+      !isJson(spec.alias, new Set())
+    )
+      throw new Error(
+        `[Pyreon] plugin ${owner}: alias for ${name} must be cloneable expression IR.`,
+      )
     ctx.pluginAliases.set(name, structuredClone(spec.alias))
     return null
   }
-  if ('computed' in spec) return { kind: 'computed', name, expr: stampExtExpr(activeRegistries().items, owner, spec.computed) }
+  if ('computed' in spec)
+    return {
+      kind: 'computed',
+      name,
+      expr: stampExtExpr(activeRegistries().items, owner, spec.computed),
+    }
   if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
   const { initial: initialArg, persistKey } = spec.signal
   const initial: ExprIR = initialArg
@@ -4483,8 +4570,11 @@ function withoutPluginAliases<T>(bindings: readonly AnyNode[], ctx: ParseCtx, ru
     if (node.type === 'Identifier') ctx.pluginAliases.delete(node.name as string)
     else if (node.type === 'AssignmentPattern') hide(node.left as AnyNode)
     else if (node.type === 'RestElement') hide(node.argument as AnyNode)
-    else if (node.type === 'ArrayPattern') for (const element of node.elements as AnyNode[]) hide(element)
-    else if (node.type === 'ObjectPattern') for (const prop of node.properties as AnyNode[]) hide((prop.value ?? prop.argument) as AnyNode)
+    else if (node.type === 'ArrayPattern')
+      for (const element of node.elements as AnyNode[]) hide(element)
+    else if (node.type === 'ObjectPattern')
+      for (const prop of node.properties as AnyNode[])
+        hide((prop.value ?? prop.argument) as AnyNode)
   }
   for (const binding of bindings) hide(binding)
   try {
@@ -4499,7 +4589,9 @@ function tryFunctionDecl(
   arrow: AnyNode,
   ctx: ParseCtx,
 ): Extract<DeclIR, { kind: 'function' }> {
-  return withoutPluginAliases((arrow.params as AnyNode[] | undefined) ?? [], ctx, () => tryFunctionDeclBody(name, arrow, ctx))
+  return withoutPluginAliases((arrow.params as AnyNode[] | undefined) ?? [], ctx, () =>
+    tryFunctionDeclBody(name, arrow, ctx),
+  )
 }
 
 function tryFunctionDeclBody(
@@ -4631,7 +4723,9 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
   const bindings = ((block.body as AnyNode[] | undefined) ?? []).flatMap((stmt) =>
     stmt.type === 'VariableDeclaration'
       ? ((stmt.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
-      : stmt.type === 'FunctionDeclaration' ? [stmt.id as AnyNode] : [],
+      : stmt.type === 'FunctionDeclaration'
+        ? [stmt.id as AnyNode]
+        : [],
   )
   return withoutPluginAliases(bindings, ctx, () => parseStatementBlockBody(block, ctx))
 }
@@ -5045,10 +5139,16 @@ function astReassignsIdent(root: AnyNode, name: string): boolean {
 }
 
 function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
-  const head = node.type === 'ForStatement' ? node.init : node.type === 'ForOfStatement' ? node.left : undefined
-  const bindings = head?.type === 'VariableDeclaration'
-    ? ((head.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
-    : []
+  const head =
+    node.type === 'ForStatement'
+      ? node.init
+      : node.type === 'ForOfStatement'
+        ? node.left
+        : undefined
+  const bindings =
+    head?.type === 'VariableDeclaration'
+      ? ((head.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
+      : []
   return withoutPluginAliases(bindings, ctx, () => parseStatementBody(node, ctx))
 }
 
@@ -6062,7 +6162,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // its param types (`let f = { r in … }` is 'cannot infer type of
         // closure parameter'), so what the author wrote must survive to emit.
         const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
-        const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
+        const returnAnnot = returnAnnotNode
+          ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx)
+          : undefined
         const paramTypes = identParams.map((p) => {
           const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
           return annot ? parseTypeAnnotation(annot, ctx) : undefined
@@ -6084,12 +6186,28 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
                 ? body
                 : undefined
           if (seqBody !== undefined) {
-            const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
-              (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
-            )
-            return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' }, stmts }
+            const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map((x) => ({
+              kind: 'expr',
+              expr: parseExpr(x, ctx),
+            }))
+            return {
+              kind: 'arrow',
+              async: node.async === true,
+              params,
+              paramTypes,
+              returnAnnot,
+              body: { kind: 'literal', value: '' },
+              stmts,
+            }
           }
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(body, ctx) }
+          return {
+            kind: 'arrow',
+            async: node.async === true,
+            params,
+            paramTypes,
+            returnAnnot,
+            body: parseExpr(body, ctx),
+          }
         }
         // Block body. The common compact case — a single expression/return
         // statement (`() => { count.set(c() + 1) }`) — keeps the lean
@@ -6097,7 +6215,14 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // action emit already handles it; backward-compat).
         const stmts = body.body as AnyNode[]
         if (stmts.length === 0) {
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+          return {
+            kind: 'arrow',
+            async: node.async === true,
+            params,
+            paramTypes,
+            returnAnnot,
+            body: { kind: 'literal', value: '' },
+          }
         }
         // An ASSIGNMENT is a statement in the IR, not an expression, so
         // `() => { flow.config.pannable = false }` must keep the statement path
@@ -6105,16 +6230,34 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // rejects `AssignmentExpression`, and the handler emitted EMPTY on both
         // targets while the two-statement spelling of the same intent worked.
         const onlyIsAssignment =
-          stmts.length === 1 && stmts[0]!.type === 'ExpressionStatement' &&
-          (stmts[0]!.expression?.type === 'AssignmentExpression' || stmts[0]!.expression?.type === 'UpdateExpression')
+          stmts.length === 1 &&
+          stmts[0]!.type === 'ExpressionStatement' &&
+          (stmts[0]!.expression?.type === 'AssignmentExpression' ||
+            stmts[0]!.expression?.type === 'UpdateExpression')
         if (
-          stmts.length === 1 && !onlyIsAssignment &&
+          stmts.length === 1 &&
+          !onlyIsAssignment &&
           (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
         ) {
           const only = stmts[0]!
           const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-          if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
+          if (!inner)
+            return {
+              kind: 'arrow',
+              async: node.async === true,
+              params,
+              paramTypes,
+              returnAnnot,
+              body: { kind: 'literal', value: '' },
+            }
+          return {
+            kind: 'arrow',
+            async: node.async === true,
+            params,
+            paramTypes,
+            returnAnnot,
+            body: parseExpr(inner, ctx),
+          }
         }
         // MULTIPLE statements (or a single non-expr/return statement like an
         // `if`) — carry the FULL statement list. The pre-fix `.find()` kept

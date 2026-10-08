@@ -110,7 +110,7 @@ kotlin? }, styleBase? }`; `emit.kotlin` receives the `EmitContext` facade and
   `emit.swift` a `SwiftEmitContext`, which adds only the members with no Compose
   analogue: `handlerName`, `markColorSchemeUsed()` and the `hostState` slot. The
   string / layout / action / const / read-only colour-scope members
-  (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`) are on
+  (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`, `withColorScope(el, emit)`) are on
   the shared `EmitContext`). A target with no function falls through to the core, so
   a plugin may lower one target at a time. A `(module, tag)` pair claimed by two
   owners is a load-time error naming both. No lowering is built in: `@pyreon/elements`,
@@ -276,3 +276,5 @@ const output = compiler.transform(appSource, { target: 'swift' })
 `appSource` imports the libraries it uses. A bare compiler instance no longer lowers their APIs. Package plugins use generic module receivers, live member type evidence, alias factories and scoped function emission; store/model IR is owned by those packages.
 
 Form lowering is owned by `@pyreon/form/native-plugin`. Direct compiler users install that plugin; the native CLI discovers it from imports. Plugins can provide native field bindings with `DeclEmitter.valueBinding`, describe iteration rows with `iteration`, scope callback receivers/types with `EmitContext.withBindings`, and consume module-item validators with `fieldValidators`. These hooks keep library behavior out of the compiler's primitive emitters.
+
+Custom provider element emitters call `ctx.withColorScope(el, emit)` to render under a registered scope while retaining their own target-specific wrapper. Nested calls and thrown callbacks restore the enclosing scope. `@pyreon/ui-core/native-plugin` owns PyreonUI rendering; the compiler has no ui-core tag or package cases.

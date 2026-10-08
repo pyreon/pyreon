@@ -15,7 +15,6 @@ import {
   allServices,
   bindServices,
   emitPluginDecl,
-  earlyLifecycleDecls,
   emitPluginRoot,
   pluginDeclFeatures,
   emitPreparations,
@@ -131,8 +130,20 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
-import { createSwiftEmitContext, type ComponentInfo, type HostStateSlot, type MemberEmitScope, type StructRegistry, type SwiftEmitContext, type WebViewFacade } from './emit-context'
-import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
+import {
+  createSwiftEmitContext,
+  type ComponentInfo,
+  type HostStateSlot,
+  type MemberEmitScope,
+  type StructRegistry,
+  type SwiftEmitContext,
+  type WebViewFacade,
+} from './emit-context'
+import {
+  extractTextTypography,
+  styleToNativeModifiers,
+  swiftTextTypographyModifiers,
+} from './style-to-native'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -1149,13 +1160,29 @@ export function emitSwift(
   // File-scope bindings, typed once: a component (or helper) reading
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
-  _activeInferCtx = buildInferenceCtx([], structs, [], undefined, _helperReturns, _moduleConstTypes, moduleItems)
+  _activeInferCtx = buildInferenceCtx(
+    [],
+    structs,
+    [],
+    undefined,
+    _helperReturns,
+    _moduleConstTypes,
+    moduleItems,
+  )
   // BOTH contexts: Swift keeps two (`_activeInferCtx` for the type-gated call
   // lowerings, `_exprInferCtx` for the condition + optional lowerings), and
   // they alias only inside a component. A helper-only file has two distinct
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
-  _exprInferCtx = buildInferenceCtx([], structs, [], undefined, _helperReturns, _moduleConstTypes, moduleItems)
+  _exprInferCtx = buildInferenceCtx(
+    [],
+    structs,
+    [],
+    undefined,
+    _helperReturns,
+    _moduleConstTypes,
+    moduleItems,
+  )
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
   _needsSwiftNumString = false
@@ -1164,7 +1191,8 @@ export function emitSwift(
   for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   // File-scope items declared before free helper functions.
-  for (const item of itemsInSlot(moduleItems, 'bindings')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  for (const item of itemsInSlot(moduleItems, 'bindings'))
+    parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Free helper functions are emitted between the two module-item groups.
   for (const h of helperFns) parts.push(emitSwiftFunction(h, 'internal'))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
@@ -1914,10 +1942,6 @@ function emitSwiftComponent(c: ComponentIR): string {
     for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
-  for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
-      lines.push(line === '' ? '' : `      ${line}`)
-  }
   // onMount bodies → .onAppear on the stable host (sync statements; the
   // async-on-mount hook stays .task/useFetch). Multiple onMount calls emit
   // in source order.
@@ -2430,7 +2454,6 @@ function emitSwiftDecl(
   // env-dependent derivations. `useParams()` follows the same shape;
   // return types are per the runtime's signature ((String) -> Void
   // for navigate, [String: String] for params).
-  }
   // Phase B6: `const data = useLoaderData<User>()` → a COMPUTED
   // property reading the active router's loaderData entry for the
   // current path, type-cast to T?. MUST be computed (not stored let):
@@ -3881,7 +3904,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       )
       if (pluginLowered !== undefined) return pluginLowered
       // A call, or a chain, rooted at a binding a plugin's declaration created (`flow.nodes.set(x)`).
-      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(indent), isLocalModuleReceiver)
+      const rooted = lowerPluginReceiver(
+        e,
+        'swift',
+        _pluginScope,
+        () => swiftEmitContext(indent),
+        isLocalModuleReceiver,
+      )
       if (rooted !== undefined) return rooted
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypes.get(e.callee.name)
@@ -4279,7 +4308,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
-      }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
       // keeps the result a non-optional Int/Double (NaN has no native
@@ -4318,7 +4346,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return `(Double(${arg}) ?? 0)`
       }
-      }
       // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
       // `x = EXPR[list := <read of x>]` by IR-level param substitution,
       // producing the SAME idiomatic emit the hand-written
@@ -4338,8 +4365,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // The current-value read: for a local signal the bare name;
             // for a store field, the zero-arg read-call IR whose emit
             // re-enters the store-chain rewrite above.
-            const read: ExprIR =
-              target
+            const read: ExprIR = target
             const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
             if (substituted !== null) {
               const lhs = emitSwiftExpr(target, indent)
@@ -5176,7 +5202,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     }
     case 'member': {
       // Reads rooted at a plugin declaration's binding (`flow.config.zoom`), then reads a plugin recognises by shape.
-      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(0), isLocalModuleReceiver)
+      const rooted = lowerPluginReceiver(
+        e,
+        'swift',
+        _pluginScope,
+        () => swiftEmitContext(0),
+        isLocalModuleReceiver,
+      )
       if (rooted !== undefined) return rooted
       const shaped = lowerPluginMemberRead(e, 'swift', () => swiftEmitContext(0))
       if (shaped !== undefined) return shaped
@@ -5199,7 +5231,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (szT.kind === 'map' || szT.kind === 'set') {
           return `${emitSwiftExpr(e.object, indent)}.count`
         }
-      }
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct struct properties in
@@ -5977,16 +6008,34 @@ function swiftMemberScope<T>(scope: MemberEmitScope, run: () => T): T {
   const savedProps = _activePropsParamName
   const savedReceiver = _activeMemberReceiver
   const decls = [...scope.declarations]
-  const inference = buildInferenceCtx(decls, _structDefs, [], undefined, _helperReturns, _moduleConstTypes, [...(savedInfer.moduleItems?.values() ?? [])], scope.receiver)
-  _signalNames = new Set(decls.flatMap((d) => d.kind === 'signal' || d.kind === 'computed' ? [d.name] : []))
-  _functionNames = new Set(decls.flatMap((d) => d.kind === 'function' ? [d.name] : []))
+  const inference = buildInferenceCtx(
+    decls,
+    _structDefs,
+    [],
+    undefined,
+    _helperReturns,
+    _moduleConstTypes,
+    [...(savedInfer.moduleItems?.values() ?? [])],
+    scope.receiver,
+  )
+  _signalNames = new Set(
+    decls.flatMap((d) => (d.kind === 'signal' || d.kind === 'computed' ? [d.name] : [])),
+  )
+  _functionNames = new Set(decls.flatMap((d) => (d.kind === 'function' ? [d.name] : [])))
   _activeInferCtx = inference
   _exprInferCtx = inference
-  _helperParamTypes = new Map([...savedParams, ...decls.flatMap((d) => d.kind === 'function' ? [[d.name, d.params.map((p) => p.type)] as const] : [])])
+  _helperParamTypes = new Map([
+    ...savedParams,
+    ...decls.flatMap((d) =>
+      d.kind === 'function' ? [[d.name, d.params.map((p) => p.type)] as const] : [],
+    ),
+  ])
   _activePropsParamName = scope.receiver
   _activeMemberReceiver = scope.receiver
   try {
-    return scope.observable ? withObservableMembers([..._signalNames, ..._functionNames], run) : run()
+    return scope.observable
+      ? withObservableMembers([..._signalNames, ..._functionNames], run)
+      : run()
   } finally {
     _signalNames = savedSignals
     _functionNames = savedFunctions
@@ -6035,6 +6084,15 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       constExpr: (name) => _moduleConstExprs.get(name),
       argument: (value, type, at) => swiftTypedArgument(value, type, at),
       colorScope: () => _colorScope ?? undefined,
+      withColorScope: (el, emit) => {
+        const outer = _colorScope
+        try {
+          _colorScope = enterColorScope(el, outer)
+          return emit()
+        } finally {
+          _colorScope = outer
+        }
+      },
       markColorSchemeUsed: () => {
         _usesColorScheme = true
       },
@@ -6161,28 +6219,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     }
   }
 
-  // @pyreon/ui-core `<PyreonUI>` (+ its provider alias) is a TRANSPARENT wrapper
-  // on native: the theme is compile-time-resolved (theme-native parses the
-  // `defineTheme`), and dark mode is a system read (`useColorScheme` →
-  // @Environment(\.colorScheme)) — so the provider carries no runtime context.
-  // Render its children directly (mirror the jsx-fragment `Group {…}`).
-  if (
-    (tag === 'PyreonUI' || tag === 'PyreonUIProvider') &&
-    canAliasIntercept(tag, '@pyreon/ui-core')
-  ) {
-    // A literal `mode` pins the framework-wide colour mode for the charts below
-    // (web: PyreonUI provides `useColorMode`); a reactive one keeps the
-    // platform scheme, silently, as it always has here.
-    const prevScope = _colorScope
-    _colorScope = enterColorScope(e, prevScope)
-    try {
-      const p = ' '.repeat(indent + 2)
-      return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
-    } finally {
-      _colorScope = prevScope
-    }
-  }
-
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
   // as a synthetic `style` attr, then re-enter the dispatch. The whole
   // inline-style connector (emitSwiftLayoutModifiers → styleToNativeModifiers)
@@ -6285,7 +6321,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     }
   }
   // A scope-only provider element (a library's own, e.g. a chart theme provider): transparent wrapper, children under the scope.
-  const scopeProvider = findScopeProvider(tag, canAliasIntercept)
+  const scopeProvider = findScopeProvider(tag, canAliasIntercept, _aliasImports.get(tag)?.imported)
   if (scopeProvider?.transparent === true) {
     const prev = _colorScope
     _colorScope =
@@ -7071,14 +7107,14 @@ function forRowBodySwift(
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
 /**
- * The colour scope a provider element (`<PyreonUI mode>`, `<ColorModeProvider mode>`) opens for its children:
+ * The colour scope a provider element (registered provider element) opens for its children:
  * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
  */
 function enterColorScope(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   outer: object | null,
 ): object | null {
-  const provider = findScopeProvider(e.tag, canAliasIntercept)
+  const provider = findScopeProvider(e.tag, canAliasIntercept, _aliasImports.get(e.tag)?.imported)
   if (provider === undefined) return outer
   return provider.enter(e, { warn: pushEmitWarning, outer: outer ?? undefined }) ?? null
 }
@@ -10257,7 +10293,11 @@ function escapeSwiftStringSegment(s: string): string {
  */
 let _pluginScope: PluginScope = createPluginScope()
 function isLocalModuleReceiver(name: string): boolean {
-  return _activeInferCtx.locals.has(name) || _activeInferCtx.props?.has(name) === true || name === _activePropsParamName
+  return (
+    _activeInferCtx.locals.has(name) ||
+    _activeInferCtx.props?.has(name) === true ||
+    name === _activePropsParamName
+  )
 }
 /** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
 let _moduleScope: PluginScope = _pluginScope

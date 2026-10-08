@@ -614,23 +614,40 @@ describe('remaining package-owned hook plugins', () => {
   it('discovers built core, router, primitives, hooks and hotkeys entries on both targets', async () => {
     const nm = join(app, 'node_modules', '@pyreon')
     mkdirSync(nm, { recursive: true })
-    for (const [category, name] of [['core', 'core'], ['core', 'router'], ['core', 'primitives'], ['fundamentals', 'hooks'], ['fundamentals', 'hotkeys']]) {
+    for (const [category, name] of [
+      ['core', 'core'],
+      ['core', 'router'],
+      ['core', 'primitives'],
+      ['fundamentals', 'hooks'],
+      ['fundamentals', 'hotkeys'],
+    ]) {
       const dir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../', category!, name!)
       expect(readFileSync(join(dir, 'lib/native-plugin.js'), 'utf8').length).toBeGreaterThan(0)
       symlinkSync(dir, join(nm, name!), 'dir')
     }
     const source = `import { useColorMode } from '@pyreon/core'; import { useNavigate, useParams } from '@pyreon/router'; import { useNativeModule } from '@pyreon/primitives'; import { useCounter, useInterval } from '@pyreon/hooks'; import { useHotkey } from '@pyreon/hotkeys'; export function Example() { const mode = useColorMode(); const navigate = useNavigate(); const { id } = useParams(); const bridge = useNativeModule('ToyBridge'); const count = useCounter(0); useInterval(() => count.inc(), 20); useHotkey('mod+s', () => navigate('/save')); return <Text>{mode + id}</Text> }`
-    setApp(['@pyreon/core', '@pyreon/router', '@pyreon/primitives', '@pyreon/hooks', '@pyreon/hotkeys'], source)
+    setApp(
+      ['@pyreon/core', '@pyreon/router', '@pyreon/primitives', '@pyreon/hooks', '@pyreon/hotkeys'],
+      source,
+    )
     const found = await discoverPlugins(app, join(app, 'src'))
-    expect(found.map(entry => entry.plugin.name).sort()).toEqual(['@pyreon/core', '@pyreon/hooks', '@pyreon/hotkeys', '@pyreon/primitives', '@pyreon/router'])
-    const compiler = createCompiler({ discovered: found.map(entry => entry.plugin) })
+    expect(found.map((entry) => entry.plugin.name).sort()).toEqual([
+      '@pyreon/core',
+      '@pyreon/hooks',
+      '@pyreon/hotkeys',
+      '@pyreon/primitives',
+      '@pyreon/router',
+    ])
+    const compiler = createCompiler({ discovered: found.map((entry) => entry.plugin) })
     for (const target of ['swift', 'kotlin'] as const) {
       const r = compiler.transform(source, { target })
       expect(r.warnings).toEqual([])
       expect(r.code).toContain('ToyBridge(')
       expect(r.code).toContain(target === 'swift' ? '.task {' : 'LaunchedEffect(Unit)')
       expect(r.code).toContain(target === 'swift' ? '.keyboardShortcut' : '.onPreviewKeyEvent')
-      expect(r.code).toContain(target === 'swift' ? 'useNavigate(router: pyreonRouter)' : 'useNavigate()')
+      expect(r.code).toContain(
+        target === 'swift' ? 'useNavigate(router: pyreonRouter)' : 'useNavigate()',
+      )
       expect(r.code).not.toContain('useCounter(')
     }
   })
@@ -639,37 +656,54 @@ describe('remaining package-owned hook plugins', () => {
 // Load the actual shipped package entry, rather than a compiler-local copy.
 describe('package-owned singleton plugins', () => {
   for (const fixture of [
-    { owner: 'store', className: 'PyreonStore_example', source: `import { defineStore } from '@pyreon/store'
+    {
+      owner: 'store',
+      className: 'PyreonStore_example',
+      source: `import { defineStore } from '@pyreon/store'
       import { signal } from '@pyreon/reactivity'
       import { Text } from '@pyreon/primitives'
       const useExample = defineStore('example', () => { const amount = signal(0.5); return { amount } })
-      export function Example() { const api = useExample(); return <Text>{api.store.amount()}</Text> }` },
-    { owner: 'state-tree', className: 'PyreonModel_example', source: `import { model } from '@pyreon/state-tree'
+      export function Example() { const api = useExample(); return <Text>{api.store.amount()}</Text> }`,
+    },
+    {
+      owner: 'state-tree',
+      className: 'PyreonModel_example',
+      source: `import { model } from '@pyreon/state-tree'
       import { Text } from '@pyreon/primitives'
       const example = model({ state: { amount: 0.5 } }).views(self => ({ doubled: () => self.amount() * 2 })).create()
-      export function Example() { return <Text>{example.doubled()}</Text> }` },
+      export function Example() { return <Text>{example.doubled()}</Text> }`,
+    },
   ]) {
     it(`discovers the built ${fixture.owner} entry and emits both targets without a compiler fallback`, async () => {
-      const ownerDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../fundamentals', fixture.owner)
-      expect(readFileSync(join(ownerDir, 'lib', 'native-plugin.js'), 'utf8').length).toBeGreaterThan(1000)
+      const ownerDir = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../../../fundamentals',
+        fixture.owner,
+      )
+      expect(
+        readFileSync(join(ownerDir, 'lib', 'native-plugin.js'), 'utf8').length,
+      ).toBeGreaterThan(1000)
       const nm = join(app, 'node_modules', '@pyreon')
       mkdirSync(nm, { recursive: true })
       symlinkSync(ownerDir, join(nm, fixture.owner), 'dir')
       setApp([`@pyreon/${fixture.owner}`], fixture.source)
       const found = await discoverPlugins(app, join(app, 'src'))
-      expect(found.map(entry => entry.plugin.name)).toEqual([`@pyreon/${fixture.owner}`])
-      const compiler = createCompiler({ discovered: found.map(entry => entry.plugin) })
+      expect(found.map((entry) => entry.plugin.name)).toEqual([`@pyreon/${fixture.owner}`])
+      const compiler = createCompiler({ discovered: found.map((entry) => entry.plugin) })
       for (const target of ['swift', 'kotlin'] as const) {
         const bare = createCompiler().transform(fixture.source, { target })
         expect(bare.code).not.toContain(fixture.className)
         const result = compiler.transform(fixture.source, { target })
         expect(result.warnings).toEqual([])
-        expect(result.code).toContain(target === 'swift' ? `final class ${fixture.className}` : `object ${fixture.className}`)
-        expect(result.code).toContain(`${fixture.className}${target === 'swift' ? '.shared' : ''}.${fixture.owner === 'store' ? 'amount' : 'doubled'}`)
+        expect(result.code).toContain(
+          target === 'swift' ? `final class ${fixture.className}` : `object ${fixture.className}`,
+        )
+        expect(result.code).toContain(
+          `${fixture.className}${target === 'swift' ? '.shared' : ''}.${fixture.owner === 'store' ? 'amount' : 'doubled'}`,
+        )
       }
     })
   }
-})
 })
 
 describe('package-owned form plugin', () => {
@@ -712,6 +746,31 @@ describe('package-owned form plugin', () => {
       expect(result.code).toContain(
         target === 'swift' ? 'values["title"] ?? ""' : 'values["title"] ?: ""',
       )
+    }
+  })
+})
+
+describe('package-owned UI core plugin', () => {
+  it('discovers the built provider entry and lowers it on both targets', async () => {
+    const ownerDir = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../../ui-system/ui-core',
+    )
+    expect(readFileSync(join(ownerDir, 'lib/native-plugin.js'), 'utf8')).toContain('PyreonUI')
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    symlinkSync(ownerDir, join(nm, 'ui-core'), 'dir')
+    const source = `import { PyreonUI as Provider } from '@pyreon/ui-core'; export function Example() { return <Provider mode="dark"><Text>provider</Text></Provider> }`
+    setApp(['@pyreon/ui-core'], source)
+    const found = await discoverPlugins(app, join(app, 'src'))
+    expect(found.map((entry) => entry.plugin.name)).toEqual(['@pyreon/ui-core'])
+    const compiler = createCompiler({ discovered: found.map((entry) => entry.plugin) })
+    for (const target of ['swift', 'kotlin'] as const) {
+      const result = compiler.transform(source, { target })
+      expect(result.warnings).toEqual([])
+      expect(result.code).toContain(target === 'swift' ? 'Group {' : 'Column {')
+      expect(result.code).toContain('provider')
+      expect(result.code).not.toContain('PyreonUI(')
     }
   })
 })

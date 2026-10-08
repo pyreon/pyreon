@@ -51,6 +51,7 @@ describe.each([
   ['@pyreon/rx', 'fundamentals/rx', ['plugin.ts']],
   ['@pyreon/feature', 'fundamentals/feature', ['plugin.ts']],
   ['@pyreon/kinetic', 'ui-system/kinetic', ['plugin.ts']],
+  ['@pyreon/ui-core', 'ui-system/ui-core', ['plugin.ts']],
   ['@pyreon/elements', 'ui-system/elements', ['plugin.ts']],
   ['@pyreon/coolgrid', 'ui-system/coolgrid', ['plugin.ts']],
   [

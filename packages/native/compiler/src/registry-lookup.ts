@@ -33,8 +33,19 @@ import {
 } from './expr-lowering'
 import type { PluginScope } from './plugin-scope'
 import type { UnloweredModule } from './unlowered-modules'
-import type { EmitContext, KotlinEmitContext, SwiftEmitContext, MemberEmitScope } from './emit-context'
-import { emitExtExpr, emitModuleItem, findFieldValidators, fieldValidatorsAdvice, type ExtExprIR } from './module-items'
+import type {
+  EmitContext,
+  KotlinEmitContext,
+  SwiftEmitContext,
+  MemberEmitScope,
+} from './emit-context'
+import {
+  emitExtExpr,
+  emitModuleItem,
+  findFieldValidators,
+  fieldValidatorsAdvice,
+  type ExtExprIR,
+} from './module-items'
 import type { DeclIR, ExprIR, ExtDecl, ExtModuleItem, TypeIR } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
@@ -82,8 +93,9 @@ export function isElementLoweringTag(name: string): boolean {
 export function findScopeProvider(
   tag: string,
   guard: ElementClaimGuard,
+  importedAs?: string,
 ): ScopeProvider | undefined {
-  return activeRegistries().scopes.find(tag, guard)
+  return activeRegistries().scopes.find(tag, guard, importedAs)
 }
 
 /** True when `name` is a tag a registered lowering marks usable as a style base. */
@@ -196,7 +208,11 @@ export function extDeclLifecycle(d: ExtDecl): DeclLifecycle | undefined {
 }
 
 /** Type a read rooted at an item through its owning plugin. */
-export function pluginItemType(item: ExtModuleItem, expr: ExprIR, infer: (expr: ExprIR, scope?: MemberEmitScope) => TypeIR): TypeIR | undefined {
+export function pluginItemType(
+  item: ExtModuleItem,
+  expr: ExprIR,
+  infer: (expr: ExprIR, scope?: MemberEmitScope) => TypeIR,
+): TypeIR | undefined {
   return activeRegistries().items.emitter(item.plugin, item.type)?.typing?.type?.(item, expr, infer)
 }
 
@@ -206,7 +222,9 @@ export function pluginItemScopes(item: ExtModuleItem): readonly MemberEmitScope[
 }
 
 /** The actual field nodes owned by an item; refinement mutates them in place. */
-export function pluginItemFields(item: ExtModuleItem): readonly { name: string; type: TypeIR; initial: ExprIR }[] {
+export function pluginItemFields(
+  item: ExtModuleItem,
+): readonly { name: string; type: TypeIR; initial: ExprIR }[] {
   return activeRegistries().items.emitter(item.plugin, item.type)?.typing?.fields?.(item) ?? []
 }
 
@@ -319,9 +337,10 @@ export function lowerPluginReceiver(
   const item = root === undefined || isLocal?.(root) === true ? undefined : scope.itemByName(root)
   if (item !== undefined) {
     const receiver = activeRegistries().items.emitter(item.plugin, item.type)?.receivers
-    const lowered = target === 'swift'
-      ? receiver?.swift?.({ expr, receiver: item }, ctx() as SwiftEmitContext)
-      : receiver?.kotlin?.({ expr, receiver: item }, ctx() as KotlinEmitContext)
+    const lowered =
+      target === 'swift'
+        ? receiver?.swift?.({ expr, receiver: item }, ctx() as SwiftEmitContext)
+        : receiver?.kotlin?.({ expr, receiver: item }, ctx() as KotlinEmitContext)
     if (lowered !== undefined) return lowered
   }
   const found = findReceiverLowering(expr, scope)
@@ -737,7 +756,10 @@ export function itemLegacyList(item: ExtModuleItem): string | undefined {
 }
 
 /** The items that emit in `slot` (see `ModuleItemEmitter.after`), in file order. */
-export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'bindings' | 'models' | 'declarations' | 'data'): ExtModuleItem[] {
+export function itemsInSlot(
+  items: readonly ExtModuleItem[],
+  slot: 'bindings' | 'models' | 'declarations' | 'data',
+): ExtModuleItem[] {
   const registry = activeRegistries().items
   return items.filter(
     (item) => (registry.emitter(item.plugin, item.type)?.after ?? 'data') === slot,
@@ -778,15 +800,6 @@ export function pluginDeclFeatures(d: DeclIR): import('./call-lowering').DeclEmi
   return d.kind === 'ext' ? activeRegistries().calls.emitter(d.plugin, d.type) : undefined
 }
 
-/** Plugin lifecycle contributions before component mount effects, in stable order. */
-export function earlyLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
-  return decls
-    .filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.earlyOrder !== undefined)
-    .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.earlyOrder! }))
-    .sort((a, b) => a.order - b.order || a.i - b.i)
-    .map(({ d }) => d)
-}
-
 /** Compose package-owned root wrappers without sharing declaration state between components. */
 export function emitPluginRoot(
   decls: readonly DeclIR[],
@@ -809,7 +822,10 @@ export function emitPluginRoot(
     const next = wrapped
     wrapped = (at) => {
       const output = wrapper(group, context(at), next)
-      if (typeof output !== 'string') throw new Error(`[Pyreon] Plugin "${group[0]!.plugin}" root wrapper for "${group[0]!.type}" must return a string synchronously.`)
+      if (typeof output !== 'string')
+        throw new Error(
+          `[Pyreon] Plugin "${group[0]!.plugin}" root wrapper for "${group[0]!.type}" must return a string synchronously.`,
+        )
       return output
     }
   }

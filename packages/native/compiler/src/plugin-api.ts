@@ -28,7 +28,6 @@ export type * from './types'
 export type {
   ComponentInfo,
   EmitContext,
-  StatementEmitOptions,
   EmitBinding,
   EmitFieldValidators,
   EmitTarget,

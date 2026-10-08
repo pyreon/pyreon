@@ -5,7 +5,7 @@ import type { DeclEmitter } from '../call-lowering'
 import type { EmitContext } from '../emit-context'
 import type { ReceiverSite } from '../expr-lowering'
 import { createPluginScope } from '../plugin-scope'
-import type { ExprIR, ExtDecl } from '../types'
+import type { ExprIR, ExtDecl, ExtModuleItem } from '../types'
 
 const member = (name: string, property: string): ExprIR => ({
   kind: 'member',
@@ -342,5 +342,32 @@ describe('iteration declaration validation', () => {
         /decls.missing|payload that is not JSON/,
       )
     }
+  })
+})
+
+describe('module-item ownership across callback scopes', () => {
+  it('hides file items under plain and owned parameters and restores them after nested throws', () => {
+    const item: ExtModuleItem = { name: 'row', plugin: '@acme/box', type: 'module', payload: {} }
+    const scope = createPluginScope([], [item])
+    expect(scope.itemByName('row')).toBe(item)
+    scope.withBindings([{ name: 'row' }], () => {
+      expect(scope.itemByName('row')).toBeUndefined()
+      expect(() =>
+        scope.withBindings([{ name: 'row', declaration: scoped('row') }], () => {
+          expect(scope.itemByName('row')).toBeUndefined()
+          expect(scope.declByName('row')?.type).toBe('row')
+          throw new Error('toy callback failed')
+        }),
+      ).toThrow('toy callback failed')
+      expect(scope.itemByName('row')).toBeUndefined()
+      expect(scope.declByName('row')).toBeUndefined()
+    })
+    expect(scope.itemByName('row')).toBe(item)
+    expect(() =>
+      scope.withBindings([{ name: 'row' }], () => {
+        throw new Error('outer callback failed')
+      }),
+    ).toThrow('outer callback failed')
+    expect(scope.itemByName('row')).toBe(item)
   })
 })

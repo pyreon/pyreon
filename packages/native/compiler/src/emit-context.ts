@@ -30,6 +30,8 @@ export interface MemberEmitScope {
   readonly receiver?: string | undefined
   /** Use the target's observable-class member spelling (Swift Observation). */
   readonly observable?: boolean | undefined
+}
+
 /** A callback-local name, optionally typed and owned by a plugin receiver lowering. */
 export interface EmitBinding {
   readonly name: string
@@ -111,6 +113,9 @@ export interface EmitContextBackendExtras {
   fieldValidators(name: string): EmitFieldValidators | undefined
   /** The loaded providers' declaration advice. */
   fieldValidatorsAdvice(): string | undefined
+
+  /** Enter the registered colour scope around a plugin's custom element emit. */
+  withColorScope<T>(el: JsxElementIR, emit: () => T): T
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -207,11 +212,13 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
 
 /** Target control for a callback body; the owning plugin supplies its Kotlin lambda label. */
 export interface StatementEmitOptions {
-  readonly kotlin?: {
-    readonly returnLabel?: string | undefined
-    /** Evaluate a returned expression for side effects, then return Unit. */
-    readonly discardReturnValue?: boolean | undefined
-  } | undefined
+  readonly kotlin?:
+    | {
+        readonly returnLabel?: string | undefined
+        /** Evaluate a returned expression for side effects, then return Unit. */
+        readonly discardReturnValue?: boolean | undefined
+      }
+    | undefined
 }
 
 export interface EmitContext {
@@ -223,6 +230,14 @@ export interface EmitContext {
   argument(e: ExprIR, type: TypeIR | undefined, at?: number): string
   /** The target's spelling for a member of an observable class. */
   observableIdent(name: string): string
+
+  /**
+   * Emit a custom provider's children under its registered colour scope.
+   * Nested calls restore the enclosing scope on return and throw.
+   * @example
+   * ctx.withColorScope(el, () => el.children.map(child => ctx.child(child)))
+   */
+  withColorScope<T>(el: JsxElementIR, emit: () => T): T
   readonly target: EmitTarget
   /** Temporarily bind callback names and their receiver lowerings; restores on return and throw. A binding without a declaration hides an enclosing plugin receiver. */
   withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
@@ -259,7 +274,7 @@ export interface EmitContext {
   /**
    * The compile-time colour-mode scope enclosing the element, as the value its
    * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
-   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>`
+   * entered and left by provider element emitters
    * handling and by any plugin-declared scope provider (`CompilerPlugin.scopes`;
    * saved and restored in `finally`, so providers nest and a sibling inherits nothing). The facade does not know
    * the value's type; the plugin that reads it names it (`colorScope<T>()`).
@@ -398,9 +413,12 @@ export function createEmitContext(
   return {
     target,
     indent,
-    memberScope: (scope, run) => (backend.memberScope ?? (() => missing('memberScope')))(scope, run),
-    functionDeclaration: (decl) => (backend.functionDeclaration ?? (() => missing('functionDeclaration')))(decl),
-    observableIdent: (name) => (backend.observableIdent ?? (() => missing('observableIdent')))(name),
+    memberScope: (scope, run) =>
+      (backend.memberScope ?? (() => missing('memberScope')))(scope, run),
+    functionDeclaration: (decl) =>
+      (backend.functionDeclaration ?? (() => missing('functionDeclaration')))(decl),
+    observableIdent: (name) =>
+      (backend.observableIdent ?? (() => missing('observableIdent')))(name),
     withBindings: (bindings, emit) =>
       (backend.withBindings ?? (() => missing('withBindings')))(bindings, emit),
     fieldValidators: (name) =>
@@ -422,6 +440,8 @@ export function createEmitContext(
     action: (handler, at = indent) => backend.action(handler, at),
     constExpr: (name) => backend.constExpr(name),
     colorScope: <T extends object>() => backend.colorScope() as T | undefined,
+    withColorScope: (el, emit) =>
+      (backend.withColorScope ?? (() => missing('withColorScope')))(el, emit),
     decls: (plugin, type) => backend.scope().decls(plugin, type),
     state: (key, init) => backend.scope().state(key, init),
     deferred: (key, fallback) => backend.scope().deferred(key, fallback),

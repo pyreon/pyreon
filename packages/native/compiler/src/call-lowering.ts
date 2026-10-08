@@ -200,8 +200,6 @@ export type DeclCallRecognizer = (
  * optional; a declaration with neither is pure state.
  */
 export interface DeclLifecycle {
-  /** Before component timers/mount hooks, after declarations are available; ordered across plugins. */
-  readonly earlyOrder?: number | undefined
   /**
    * Swift attaches a mount-time modifier (`.task`) to its host view, and
    * SwiftUI ties that task to the host's IDENTITY. A body that is a transparent

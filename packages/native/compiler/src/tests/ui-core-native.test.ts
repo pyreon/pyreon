@@ -63,3 +63,11 @@ describe('ui-core-native — toolchain gates (real SDKs)', () => {
     },
   )
 })
+
+it.each(['swift', 'kotlin'] as const)('an aliased UI provider preserves its pinned chart mode on %s', target => {
+  const source = `import { PyreonUI as Provider } from '@pyreon/ui-core'; import { PieChart } from '@pyreon/charts'; const rows = [{ name: 'one', value: 1 }]; export function App() { return <Provider mode="dark"><PieChart data={rows} value={(d) => d.value} label={(d) => d.name} /></Provider> }`
+  const r = transform(source, { target })
+  expect(r.warnings).toEqual([])
+  expect(r.code).toContain(target === 'swift' ? 'Group {' : 'Column {')
+  expect(r.code).not.toContain(target === 'swift' ? 'pyreonColorScheme' : 'isSystemInDarkTheme')
+})
