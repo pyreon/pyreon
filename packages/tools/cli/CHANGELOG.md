@@ -1,5 +1,40 @@
 # @pyreon/cli
 
+## 0.53.0
+
+### Minor Changes
+
+- [#3797](https://github.com/pyreon/pyreon/pull/3797) [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/compiler`'s main entry is now TypeScript-free. Everything that parses with the TypeScript compiler API moved behind three new subpaths, so consumers that only need `transformJSX` (the Vite plugin's static graph, test harnesses, bundler integrations) no longer load `typescript`. **Breaking for direct importers — migrate the import path:**
+
+  - `@pyreon/compiler/analyze`: `detectReactPatterns`, `hasReactPatterns`, `migrateReactCode`, `diagnoseError`, `detectPyreonPatterns`, `hasPyreonPatterns`, `migratePyreonCode`, `AUTO_FIXABLE_PYREON_CODES`, `analyzeReactivity`, `formatReactivityLens`, `firesToCreationSiteFindings`, `mergeFireDataIntoFindings` (+ types)
+  - `@pyreon/compiler/audits`: `auditTestEnvironment`, `auditIslands`, `auditSsg`, `auditNative`, `detectNativePatterns`, `auditContent` and the content-audit helpers, their `format*` helpers, `generateContext` (+ types)
+  - `@pyreon/compiler/validate`: `analyzeValidate`, `emitSchemaSource`, `emitValidator`, `isEmittable` (+ types)
+
+  The main entry keeps `transformJSX`, `transformJSX_JS`, `rocketstyleCollapseKey`, `scanCollapsibleSites`, `TPL_HOLE_ATTR`, `transformDeferInline`, the Plain Mode functions, the fs-route convention and island naming. `@pyreon/compiler/diagnose`, `/plain` and `/fs-route-convention` are unchanged.
+
+  `transformClientDirectives` (`hydrate="…"` attribute lowering) is removed: nothing in the repo used it. `@pyreon/vite-plugin` now loads its validator rewriting, the islands doctor-lite and the `.pyreon/context.json` scanner lazily, only when those features run. `@pyreon/cli`, `@pyreon/mcp`, `@pyreon/lint` and `@pyreon/atlas` import from the new subpaths.
+
+### Patch Changes
+
+- [#3800](https://github.com/pyreon/pyreon/pull/3800) [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Return usage and gate names for `pyreon doctor --help` and `-h` before
+  validating options or running project audits. Help previously ran the full
+  audit, making a quick documentation command slow and CI checks unreliable.
+
+- [#3824](https://github.com/pyreon/pyreon/pull/3824) [`068310d`](https://github.com/pyreon/pyreon/commit/068310dd9bd78663945348f579a7f5fd082c6944) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Move the multiplatform (PMTC) project audit out of the web compiler and into the native one, and make the web-only package map exist exactly once.
+
+  **Breaking (`@pyreon/compiler`, 0.x minor):** `auditNative`, `detectNativePatterns` and the `Native*` types are no longer exported from `@pyreon/compiler/audits`. Import them from the new `@pyreon/native-compiler/audit` subpath instead. The web compiler no longer carries a second generated copy of the web-only package map; `@pyreon/native-compiler` owns it (`src/web-only-packages.ts`) and the parser's import warning and the audit both read that one set. The diagnose catalog gained an entry that names the new location when an importer hits the old one.
+
+  **`@pyreon/native-compiler`:** new `./audit` subpath exporting `auditNative` and `detectNativePatterns`. It is deliberately a separate, light entry: it needs only `oxc-parser` and the package map, so it does not pull the Swift/Kotlin emitters. It parses with oxc (what PMTC itself uses); a file oxc cannot parse is skipped, where the previous TypeScript-API parser recovered from syntax errors.
+
+  **`@pyreon/cli`:** `pyreon doctor` `native-audit` gate now loads the audit lazily from the optional peer `@pyreon/native-compiler`. When it is not installed the gate SKIPS with an install hint (never a crash, and its category is excluded from the score rather than counted as 100).
+
+  **`@pyreon/mcp`:** `validate` loads the native detector lazily from the optional peer. When absent, a snippet that imports `@pyreon/primitives` still gets the React and Pyreon checks, and the response says the native checks were skipped and how to install them.
+
+- Updated dependencies [[`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3), [`950303f`](https://github.com/pyreon/pyreon/commit/950303f0fa398fa96af02e4c22906e8aafaaf7e0), [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906), [`078f0f2`](https://github.com/pyreon/pyreon/commit/078f0f29d77f08f576ddd4360e0919ba47a983f5), [`a7753fb`](https://github.com/pyreon/pyreon/commit/a7753fbab0452c2cccfd13dbc034539d87908424), [`514054a`](https://github.com/pyreon/pyreon/commit/514054a2fa3c946dd57ec5b894ccaf057f7714e4), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`068310d`](https://github.com/pyreon/pyreon/commit/068310dd9bd78663945348f579a7f5fd082c6944), [`c253ae2`](https://github.com/pyreon/pyreon/commit/c253ae23978b06904768d171f3eb7e2b7114e273), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`87879d0`](https://github.com/pyreon/pyreon/commit/87879d0a04b5e221482693596cff0f7352c1e3ed), [`4b207a7`](https://github.com/pyreon/pyreon/commit/4b207a7c56938fc326b79dae1d381b7af53c8681), [`792e27e`](https://github.com/pyreon/pyreon/commit/792e27ef09c9b3dcc88c85a7ab6d969f60388848), [`0c95de5`](https://github.com/pyreon/pyreon/commit/0c95de5911873d56543a28acc0bb23e0ad5b299c), [`6df4450`](https://github.com/pyreon/pyreon/commit/6df4450bb57c834997796f8f37c59bae3e743d74), [`9fed8dc`](https://github.com/pyreon/pyreon/commit/9fed8dc5982d850bf09a0d0afa95b6d0fc7e8bae), [`1ce711d`](https://github.com/pyreon/pyreon/commit/1ce711d63e715110f614fcc423530eb13ceee43a), [`f7b64d9`](https://github.com/pyreon/pyreon/commit/f7b64d9164eb34d202e3d84b0c729a8d6918a359), [`3ec86b7`](https://github.com/pyreon/pyreon/commit/3ec86b7d4fce4c2c2c19ae233e5387d112b97a9a), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`09839d5`](https://github.com/pyreon/pyreon/commit/09839d56f631df1743319211cd2c821c2f259990), [`a110468`](https://github.com/pyreon/pyreon/commit/a1104680b3cf44b9d062ee4906b76a3ff09b2634), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`cf21221`](https://github.com/pyreon/pyreon/commit/cf21221e4249823a8fd04be8601168817045f6eb), [`0c95de5`](https://github.com/pyreon/pyreon/commit/0c95de5911873d56543a28acc0bb23e0ad5b299c), [`09839d5`](https://github.com/pyreon/pyreon/commit/09839d56f631df1743319211cd2c821c2f259990), [`ed1e29d`](https://github.com/pyreon/pyreon/commit/ed1e29d20c98d7c6ae2c062c10aa73174afa35c3), [`9b84418`](https://github.com/pyreon/pyreon/commit/9b844189403ed062150edff9999d2cae7838f430), [`3de1c68`](https://github.com/pyreon/pyreon/commit/3de1c68b460f1f83deb9988192dfa4000ffb25b0), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5)]:
+  - @pyreon/native-compiler@0.53.0
+  - @pyreon/compiler@0.53.0
+  - @pyreon/lint@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

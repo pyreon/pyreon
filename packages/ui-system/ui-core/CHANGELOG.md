@@ -1,5 +1,14 @@
 # @pyreon/ui-core
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/styler@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

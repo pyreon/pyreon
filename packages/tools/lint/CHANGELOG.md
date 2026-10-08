@@ -1,5 +1,25 @@
 # @pyreon/lint
 
+## 0.53.0
+
+### Minor Changes
+
+- [#3797](https://github.com/pyreon/pyreon/pull/3797) [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/compiler`'s main entry is now TypeScript-free. Everything that parses with the TypeScript compiler API moved behind three new subpaths, so consumers that only need `transformJSX` (the Vite plugin's static graph, test harnesses, bundler integrations) no longer load `typescript`. **Breaking for direct importers — migrate the import path:**
+
+  - `@pyreon/compiler/analyze`: `detectReactPatterns`, `hasReactPatterns`, `migrateReactCode`, `diagnoseError`, `detectPyreonPatterns`, `hasPyreonPatterns`, `migratePyreonCode`, `AUTO_FIXABLE_PYREON_CODES`, `analyzeReactivity`, `formatReactivityLens`, `firesToCreationSiteFindings`, `mergeFireDataIntoFindings` (+ types)
+  - `@pyreon/compiler/audits`: `auditTestEnvironment`, `auditIslands`, `auditSsg`, `auditNative`, `detectNativePatterns`, `auditContent` and the content-audit helpers, their `format*` helpers, `generateContext` (+ types)
+  - `@pyreon/compiler/validate`: `analyzeValidate`, `emitSchemaSource`, `emitValidator`, `isEmittable` (+ types)
+
+  The main entry keeps `transformJSX`, `transformJSX_JS`, `rocketstyleCollapseKey`, `scanCollapsibleSites`, `TPL_HOLE_ATTR`, `transformDeferInline`, the Plain Mode functions, the fs-route convention and island naming. `@pyreon/compiler/diagnose`, `/plain` and `/fs-route-convention` are unchanged.
+
+  `transformClientDirectives` (`hydrate="…"` attribute lowering) is removed: nothing in the repo used it. `@pyreon/vite-plugin` now loads its validator rewriting, the islands doctor-lite and the `.pyreon/context.json` scanner lazily, only when those features run. `@pyreon/cli`, `@pyreon/mcp`, `@pyreon/lint` and `@pyreon/atlas` import from the new subpaths.
+
+### Patch Changes
+
+- Updated dependencies [[`950303f`](https://github.com/pyreon/pyreon/commit/950303f0fa398fa96af02e4c22906e8aafaaf7e0), [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906), [`078f0f2`](https://github.com/pyreon/pyreon/commit/078f0f29d77f08f576ddd4360e0919ba47a983f5), [`a7753fb`](https://github.com/pyreon/pyreon/commit/a7753fbab0452c2cccfd13dbc034539d87908424), [`514054a`](https://github.com/pyreon/pyreon/commit/514054a2fa3c946dd57ec5b894ccaf057f7714e4), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`068310d`](https://github.com/pyreon/pyreon/commit/068310dd9bd78663945348f579a7f5fd082c6944), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5)]:
+  - @pyreon/compiler@0.53.0
+  - @pyreon/sized-map@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

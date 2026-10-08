@@ -1,5 +1,14 @@
 # @pyreon/primitives
 
+## 0.53.0
+
+### Patch Changes
+
+- [#3848](https://github.com/pyreon/pyreon/pull/3848) [`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Android `PyreonWebView` now enables `WebSettings.domStorageEnabled` by default, so `localStorage`/`sessionStorage` work in hosted pages (they threw a `TypeError` before; iOS WKWebView already had them). New `<WebView domStorage={false}>` opt-out (native only, literal value): Android leaves DOM storage disabled, iOS uses a non-persistent data store. Default emit is unchanged; a non-literal `domStorage` warns and keeps the default.
+- Updated dependencies []:
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

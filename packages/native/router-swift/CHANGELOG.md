@@ -1,5 +1,11 @@
 # @pyreon/native-router-swift
 
+## 0.53.0
+
+### Patch Changes
+
+- [#3790](https://github.com/pyreon/pyreon/pull/3790) [`320c0cd`](https://github.com/pyreon/pyreon/commit/320c0cda95ece1d9d0f20a3e8d5c134b63e43f11) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship the `Tests/` directory in the npm tarball. Both packages' `Package.swift` declare a `.testTarget`, but `files` omitted `Tests`, so SwiftPM aborted with `target 'PyreonRuntimeTests' has overlapping sources` and consumer Xcode package resolution failed ([#3787](https://github.com/pyreon/pyreon/issues/3787)). The published manifest is now valid as shipped; a new `check-native-tarballs` gate packs the real tarballs and runs `swift package describe` against them.
+
 ## 0.52.0
 
 ### Minor Changes
