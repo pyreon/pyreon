@@ -5158,6 +5158,15 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       action: emitKotlinAction,
       constExpr: (name) => _moduleConstExprsKotlin.get(name),
       colorScope: () => _colorScope ?? undefined,
+      withColorScope: (el, emit) => {
+        const outer = _colorScope
+        try {
+          _colorScope = enterColorScope(el, outer)
+          return emit()
+        } finally {
+          _colorScope = outer
+        }
+      },
       component: () => kotlinComponentInfo,
       isFunctionName: (name) => _functionNames.has(name),
       child: emitKotlinChild,
@@ -5272,21 +5281,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     if (emitLowered !== undefined) {
       warnUnreadKotlinAttrs(e)
       return emitLowered(e, kotlinEmitContext(indent))
-    }
-  }
-
-  // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
-  // compile-time-resolved; dark mode is a system read). Render children directly
-  // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
-  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
-    // A literal `mode` pins the colour mode for the charts below — see the Swift twin.
-    const prevScope = _colorScope
-    _colorScope = enterColorScope(e, prevScope)
-    try {
-      const p = ' '.repeat(indent + 2)
-      return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
-    } finally {
-      _colorScope = prevScope
     }
   }
 
@@ -6091,7 +6085,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
 /**
- * The colour scope a provider element (`<PyreonUI mode>`, `<ColorModeProvider mode>`) opens for its children:
+ * The colour scope a provider element (registered provider element) opens for its children:
  * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
  */
 function enterColorScope(e: Extract<ExprIR, { kind: 'jsx-element' }>, outer: object | null): object | null {

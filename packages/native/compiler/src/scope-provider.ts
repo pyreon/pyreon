@@ -41,8 +41,8 @@ export interface ScopeProvider {
   /**
    * The element exists ONLY to provide the scope: the core emits its children
    * under it, in a transparent wrapper, and nothing else. Leave it off for an
-   * element the core already emits itself (`<PyreonUI>`, `<ColorModeProvider>`),
-   * which only needs the scope entered.
+   * element with its own wrapper emitter (which calls `withColorScope`) or a
+   * canonical provider the core already emits.
    */
   readonly transparent?: boolean | undefined
 }

@@ -76,6 +76,8 @@ export interface WebViewFacade {
 
 /** The emitter state a plugin-facing context reads beyond the basics — what a real emitter supplies and a toy backend may omit. */
 export interface EmitContextBackendExtras {
+  /** Enter the registered colour scope around a plugin's custom element emit. */
+  withColorScope<T>(el: JsxElementIR, emit: () => T): T
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -166,6 +168,13 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
 }
 
 export interface EmitContext {
+  /**
+   * Emit a custom provider's children under its registered colour scope.
+   * Nested calls restore the enclosing scope on return and throw.
+   * @example
+   * ctx.withColorScope(el, () => el.children.map(child => ctx.child(child)))
+   */
+  withColorScope<T>(el: JsxElementIR, emit: () => T): T
   readonly target: EmitTarget
   /** Indentation (in spaces) of the element being emitted. */
   readonly indent: number
@@ -196,7 +205,7 @@ export interface EmitContext {
   /**
    * The compile-time colour-mode scope enclosing the element, as the value its
    * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
-   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>`
+   * entered and left by provider element emitters
    * handling and by any plugin-declared scope provider (`CompilerPlugin.scopes`;
    * saved and restored in `finally`, so providers nest and a sibling inherits nothing). The facade does not know
    * the value's type; the plugin that reads it names it (`colorScope<T>()`).
@@ -338,6 +347,7 @@ export function createEmitContext(
     action: (handler, at = indent) => backend.action(handler, at),
     constExpr: (name) => backend.constExpr(name),
     colorScope: <T extends object>() => backend.colorScope() as T | undefined,
+    withColorScope: (el, emit) => (backend.withColorScope ?? (() => missing('withColorScope')))(el, emit),
     decls: (plugin, type) => backend.scope().decls(plugin, type),
     state: (key, init) => backend.scope().state(key, init),
     deferred: (key, fallback) => backend.scope().deferred(key, fallback),

@@ -116,7 +116,7 @@ Function defaults contribute numeric type evidence before return inference. A fr
 2. **Library-agnostic seams.** Every new core seam is proven by a toy plugin in the compiler's own tests that is NOT the library that motivated it, and bisected (neuter the seam in the compiler; that spec, and only that spec, fails). A seam that only its first user exercises is a back door.
 3. **The boundary only shrinks.** `scripts/check-compiler-boundary.ts` counts library specifiers and hook-name literals in non-test compiler source against `scripts/compiler-boundary-baseline.json`. A number may go down (`--update` tightens it) and never up.
 
-Where the arc stands (native-compiler): **47 library specifiers across 39 packages and 113 hook-name literals before phase 3l; 16 / 12 / 109 after it; 4 / 3 / 86 now.** The four specifiers left are `@pyreon/store`, `@pyreon/state-tree` (the Tier-2 diagnostic table) and `@pyreon/ui-core` twice (the `PyreonUI` scope plumbing, which stays: see "What stays in the core"). The golden corpus grew from 536 entries (phase 3i) to 964, 1410 and now 1500, all byte-identical across every move.
+The remaining compiler library specifiers are the store/state-tree diagnostic cases. The ui-core provider move removes both ui-core specifiers. Its golden corpus includes 1,524 entries recorded on the parent, with unchanged code and warnings across the move.
 
 ## Ownership map
 
@@ -134,6 +134,7 @@ Every first-party plugin is a package's own file, discovered from its manifest (
 | `@pyreon/rx` | `rx.filter(src, p)` and the standalone source-first transforms as a core `computed` around an `ext-expr` (`declCalls`) |
 | `@pyreon/feature` | `defineFeature({ name, schema })` as a module item; the Tier-2 diagnostic through `tier2Calls` |
 | `@pyreon/kinetic` | factory-bound motion boxes (`kinetic('div').preset(…)`) through `rewriteElement` + `requestComponentDecls` |
+| `@pyreon/ui-core` | PyreonUI and PyreonUIProvider wrapper rendering through elements + withColorScope |
 | `@pyreon/elements`, `@pyreon/coolgrid` | `Element` (retagged to `Stack`), `Container` / `Row` / `Col` |
 
 `pyreon-native plugins` prints this table for an app (hook owners, call recognizers, element lowerings, module items, unlowered-module metadata); `pyreon-native explain <file>` attributes each lowered declaration to its owner.
@@ -298,6 +299,7 @@ A library's JSX elements reach native code through `element-lowering.ts`, not th
 | `layoutModifiers(el)` | `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` — the `.padding(…).background(…)` / `Modifier.padding(…)` tail for the element's own styling props | chart host tail, both targets |
 | `action(handler, at?)` | `emitSwiftAction` / `emitKotlinAction` — an event handler as a closure body | chart `onSelect`, both targets |
 | `constExpr(name)` | `_moduleConstExprs.get` / `_moduleConstExprsKotlin.get` — a module-level `const`'s initializer | chart `visualMap` / `dataZoom` / `toolbox` / adapter resolution, both targets |
+| `withColorScope(el, emit)` | enter a registered scope around custom element emission and restore it in `finally` | package-owned providers; `plugin-color-scope-emission.test.ts` |
 | `colorScope<T>()` | `_colorScope` (one per emitter) — the compile-time colour-mode scope enclosing the element, typed by the reader; READ-ONLY | chart theme / palette / entrance, both targets |
 | `decls(plugin, type)` | the emitters' per-file names sets (`_chartHandleNames`, `_chartHandleNamesKotlin`) and `isChartHandleDecl` (deleted) | the `<PlotChart handle>` host (both targets) asks whether a name is a chart handle |
 | `state(key, init)` | emitter module-level `let` / `Set` a plugin would otherwise need | toy plugin only (see below) |
@@ -532,7 +534,7 @@ These are not libraries, so their presence is correct, not a debt:
 
 - **The router.** `createRouter`, `useParams`, `useNavigate`, `useLoaderData`, `<RouterView>` and the canonical `Link` are PMTC's own navigation contract: `@pyreon/native-router-swift` / `-kotlin` are PMTC runtimes, and the emitted route dispatch (`matchPath` over a route table) is generated, not lowered from a library's implementation. A plugin could not own it without owning the app shell.
 - **The ui-system authoring API.** `styled(Prim)`, `rocketstyle()`, theme tokens and the 2-bucket size-class model are how PMTC styles the canonical primitives; the `styled` / `rocketstyle` frontends resolve at use-sites in the parser, and `useSizeClass` is read by the style emit.
-- **The colour-scope PLUMBING.** `<PyreonUI mode>` and `<ColorModeProvider mode>` pin the framework-wide colour mode; the core opens and closes the scope (saved and restored in `finally`) and emits the transparent wrapper, while the scope's VALUE comes from a plugin's `scopes` (the charts plugin supplies it). Moving the wrapper would only move the plumbing next to a value it does not own. These two specifiers are what keeps `@pyreon/ui-core` in the boundary baseline.
+- **Colour-scope plumbing.** The core saves and restores opaque registered scopes. A package owns its provider wrapper and calls `withColorScope(el, emit)` to enter the scope around its children. `@pyreon/ui-core/native-plugin` owns PyreonUI and PyreonUIProvider; charts retains the chart-theme scope value. Canonical ColorModeProvider remains a core primitive.
 - **`fetch` as a concept.** An async source driving `<Suspense>` / `<ErrorBoundary>` is the core's `asyncState` seam; what moved is the hook that declares one.
 
 ## Not moved yet (with the reason and the seam each needs)

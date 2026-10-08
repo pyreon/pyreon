@@ -10,8 +10,8 @@ const lowering = (emit: (el: JsxElementIR, ctx: SwiftEmitContext) => string): Co
   name: '@acme/toy',
   apiVersion: 1,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { swift: emit } }],
-  // The scope itself belongs to a plugin: the core opens it around `<PyreonUI mode>`'s children, the toy supplies the value.
-  scopes: [{ module: '@pyreon/ui-core', tags: ['PyreonUI'], enter: () => ({ pinned: true }) }],
+  // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
+  scopes: [{ module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) }],
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
@@ -96,11 +96,11 @@ describe('SwiftEmitContext members', () => {
     expect(used.code).toContain('@Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme')
   })
 
-  it('colorScope is the enclosing mode scope: set inside <PyreonUI mode>, restored for a sibling', () => {
+  it('colorScope is the enclosing mode scope: set inside <Mode>, restored for a sibling', () => {
     const out = compile(
       lowering((_el, ctx) => `Scope(${ctx.colorScope() === undefined ? 'none' : 'scoped'})`),
-      '<Toy /><PyreonUI mode="dark"><Toy /></PyreonUI><Toy />',
-      "import { PyreonUI } from '@pyreon/ui-core'",
+      '<Toy /><Mode><Toy /></Mode><Toy />',
+      "import { Mode } from '@acme/toy'",
     )
     expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual(['Scope(none)', 'Scope(scoped)', 'Scope(none)'])
   })

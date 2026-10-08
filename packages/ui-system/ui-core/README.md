@@ -185,3 +185,16 @@ Full docs: [pyreon.dev/docs/ui-core](https://pyreon.dev/docs/ui-core) (or `docs/
 ## License
 
 MIT
+
+### Native compiler plugin
+
+The native CLI discovers `@pyreon/ui-core/native-plugin` from the package manifest. Direct compiler callers load it explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import uiCorePlugin from '@pyreon/ui-core/native-plugin'
+
+const compiler = createCompiler({ discovered: [uiCorePlugin] })
+```
+
+`PyreonUI` and `PyreonUIProvider` render their children as SwiftUI `Group` / Compose `Column`. Chart colour scopes keep their existing compile-time behaviour when the charts plugin is also loaded. The runtime entry does not import compiler tooling.

@@ -6652,6 +6652,15 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       handlerName: resolveFunctionHandler,
       constExpr: (name) => _moduleConstExprs.get(name),
       colorScope: () => _colorScope ?? undefined,
+      withColorScope: (el, emit) => {
+        const outer = _colorScope
+        try {
+          _colorScope = enterColorScope(el, outer)
+          return emit()
+        } finally {
+          _colorScope = outer
+        }
+      },
       markColorSchemeUsed: () => {
         _usesColorScheme = true
       },
@@ -6761,25 +6770,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     if (emitLowered !== undefined) {
       warnUnreadSwiftAttrs(e)
       return emitLowered(e, swiftEmitContext(indent))
-    }
-  }
-
-  // @pyreon/ui-core `<PyreonUI>` (+ its provider alias) is a TRANSPARENT wrapper
-  // on native: the theme is compile-time-resolved (theme-native parses the
-  // `defineTheme`), and dark mode is a system read (`useColorScheme` →
-  // @Environment(\.colorScheme)) — so the provider carries no runtime context.
-  // Render its children directly (mirror the jsx-fragment `Group {…}`).
-  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
-    // A literal `mode` pins the framework-wide colour mode for the charts below
-    // (web: PyreonUI provides `useColorMode`); a reactive one keeps the
-    // platform scheme, silently, as it always has here.
-    const prevScope = _colorScope
-    _colorScope = enterColorScope(e, prevScope)
-    try {
-      const p = ' '.repeat(indent + 2)
-      return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
-    } finally {
-      _colorScope = prevScope
     }
   }
 
@@ -7686,7 +7676,7 @@ function forRowBodySwift(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR
 
 /** Push an emit warning once (the same site can be reached twice by re-entrant dispatch). */
 /**
- * The colour scope a provider element (`<PyreonUI mode>`, `<ColorModeProvider mode>`) opens for its children:
+ * The colour scope a provider element (registered provider element) opens for its children:
  * whatever the plugin that claims the tag returns, or the enclosing scope unchanged when none does.
  */
 function enterColorScope(e: Extract<ExprIR, { kind: 'jsx-element' }>, outer: object | null): object | null {

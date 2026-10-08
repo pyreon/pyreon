@@ -11,9 +11,10 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      '`<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read)',
+      '`<PyreonUI>` lowers through the package-owned native-plugin entry (theme is compile-time; dark mode is the system read)',
   },
   features: [
+    'Optional native-plugin tooling entry: PyreonUI and PyreonUIProvider lower to SwiftUI Group / Compose Column without adding a compiler dependency to the web runtime',
     'PyreonUI({ theme, mode, inversed }) — single provider replaces 3 separate providers',
     'mode="system" auto-detects OS preference via matchMedia and updates reactively',
     'useMode() returns Signal<"light" | "dark"> resolved against system preference + inversed',

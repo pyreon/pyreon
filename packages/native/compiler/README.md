@@ -105,7 +105,7 @@ fields never break an older plugin:
   `emit.swift` a `SwiftEmitContext`, which adds only the members with no Compose
   analogue: `handlerName`, `markColorSchemeUsed()` and the `hostState` slot. The
   string / layout / action / const / read-only colour-scope members
-  (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`) are on
+  (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`, `withColorScope(el, emit)`) are on
   the shared `EmitContext`). A target with no function falls through to the core, so
   a plugin may lower one target at a time. A `(module, tag)` pair claimed by two
   owners is a load-time error naming both. No lowering is built in: `@pyreon/elements`,
@@ -244,3 +244,5 @@ protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`,
 `package.json` → `pyreon.native.plugin` at the built entry (default export = the plugin) and
 list the import specifiers that activate it in `pyreon.native.modules`. `@pyreon/charts` is
 the reference (`packages/fundamentals/charts/src/native-plugin/`).
+
+Custom provider element emitters call `ctx.withColorScope(el, emit)` to render under a registered scope while retaining their own target-specific wrapper. Nested calls and thrown callbacks restore the enclosing scope. `@pyreon/ui-core/native-plugin` owns PyreonUI rendering; the compiler has no ui-core tag or package cases.

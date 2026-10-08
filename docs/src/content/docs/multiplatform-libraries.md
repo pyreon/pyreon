@@ -504,7 +504,7 @@ the machine-checked contract.
 | `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
 | `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>(&#123; maxEntries &#125;)` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
 | `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
-| `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
+| `@pyreon/ui-core` | `<PyreonUI>` lowers through the package-owned native-plugin entry (theme is compile-time; dark mode is the system read) |
 
 ### `service-backend` — one API, per-target runtime backends (10)
 

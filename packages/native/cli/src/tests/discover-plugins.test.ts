@@ -475,3 +475,25 @@ describe('the shipped bin', () => {
     expect(run('explain').status).toBe(1)
   })
 })
+
+describe('package-owned UI core plugin', () => {
+  it('discovers the built provider entry and lowers it on both targets', async () => {
+    const ownerDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../ui-system/ui-core')
+    expect(readFileSync(join(ownerDir, 'lib/native-plugin.js'), 'utf8')).toContain('PyreonUI')
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    symlinkSync(ownerDir, join(nm, 'ui-core'), 'dir')
+    const source = `import { PyreonUI } from '@pyreon/ui-core'; export function Example() { return <PyreonUI mode="dark"><Text>provider</Text></PyreonUI> }`
+    setApp(['@pyreon/ui-core'], source)
+    const found = await discoverPlugins(app, join(app, 'src'))
+    expect(found.map(entry => entry.plugin.name)).toEqual(['@pyreon/ui-core'])
+    const compiler = createCompiler({ discovered: found.map(entry => entry.plugin) })
+    for (const target of ['swift', 'kotlin'] as const) {
+      const result = compiler.transform(source, { target })
+      expect(result.warnings).toEqual([])
+      expect(result.code).toContain(target === 'swift' ? 'Group {' : 'Column {')
+      expect(result.code).toContain('provider')
+      expect(result.code).not.toContain('PyreonUI(')
+    }
+  })
+})

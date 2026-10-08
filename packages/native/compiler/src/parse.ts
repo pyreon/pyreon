@@ -380,7 +380,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
   // Pre-pass: map alias-tag local names to their import source, so the emit's
-  // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
+  // Registered element lowerings intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
   const aliasImports = collectAliasImports(ast.program.body as AnyNode[])
   // Pre-pass: parse the app's `defineTheme({ … })` so the styler + rocketstyle
@@ -1436,7 +1436,6 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
  *  the guards in emit-swift/emit-kotlin. Tags claimed by a registered element
  *  lowering (`element-lowering.ts`) are tracked through the registry instead,
  *  so a plugin's tags get the same import guard with no edit here. */
-const ALIAS_TAG_NAMES = new Set(['PyreonUI', 'PyreonUIProvider'])
 
 /**
  * Collect each local name with its source package and original imported name.
@@ -1458,7 +1457,7 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
-      if (typeof local === 'string' && typeof imported === 'string' && (ALIAS_TAG_NAMES.has(imported) || isElementLoweringTag(imported))) {
+      if (typeof local === 'string' && typeof imported === 'string' && isElementLoweringTag(imported)) {
         map.set(local, { source: pkg, imported })
       }
     }

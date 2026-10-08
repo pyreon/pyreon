@@ -3049,6 +3049,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
@@ -3058,8 +3059,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/unistyle": {
       "name": "@pyreon/unistyle",
