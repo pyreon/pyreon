@@ -126,6 +126,7 @@ export interface EmitContextBackendExtras {
     stmts: readonly StatementIR[],
     indent: number,
     locals?: ReadonlyMap<string, TypeIR>,
+    options?: StatementEmitOptions,
   ): string[]
 }
 
@@ -186,6 +187,15 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
   markColorSchemeUsed(): void
   /** `_hostStateDecls` + `_swiftHostStateSeq`. */
   hostState: HostStateSlot
+}
+
+/** Target control for a callback body; the owning plugin supplies its Kotlin lambda label. */
+export interface StatementEmitOptions {
+  readonly kotlin?: {
+    readonly returnLabel?: string | undefined
+    /** Evaluate a returned expression for side effects, then return Unit. */
+    readonly discardReturnValue?: boolean | undefined
+  } | undefined
 }
 
 export interface EmitContext {
@@ -292,12 +302,13 @@ export interface EmitContext {
    * A statement list (a callback body a recognizer carried in its payload) as target statements, one
    * string each. `locals` names parameters whose types the body's inference should know (`(ev) => …`
    * over a typed stream item); the Swift emitter seeds them (and the body's own `let`s), the Kotlin
-   * emitter infers handler locals itself and ignores them.
+   * emitter seeds the same callback locals and restores them on return or throw.
    */
   statements(
     stmts: readonly StatementIR[],
     indent: number,
     locals?: ReadonlyMap<string, TypeIR>,
+    options?: StatementEmitOptions,
   ): string[]
 }
 
@@ -408,8 +419,8 @@ export function createEmitContext(
     fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
     layoutModifiersFor: (el, handled) =>
       (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
-    statements: (stmts, at, locals) =>
-      (backend.statements ?? (() => missing('statements')))(stmts, at, locals),
+    statements: (stmts, at, locals, options) =>
+      (backend.statements ?? (() => missing('statements')))(stmts, at, locals, options),
   }
 }
 

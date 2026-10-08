@@ -1159,6 +1159,8 @@ interface KotlinCtx {
    * through nested `if`/`else` blocks via the ctx pass-through.
    */
   lambdaLabel?: string
+  /** A void callback evaluates returned values for side effects, then returns Unit. */
+  discardReturnValue?: boolean
   /**
    * Type-inference context for the active component (signals / computeds /
    * fetches / locals / stores). Used by `emitKotlinFunction` to INFER a
@@ -2403,6 +2405,13 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == null`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != null`
+  // JavaScript also coerces a non-optional string: only the empty string is falsy.
+  const negated = e.kind === 'unary' && e.op === '!'
+  const subject = negated ? e.argument : e
+  if (inferType(subject, _kotlinExprInferCtx).kind === 'string') {
+    const raw = `(${emit(subject)})`
+    return negated ? `${raw}.isEmpty()` : `${raw}.isNotEmpty()`
+  }
   return emit(e)
 }
 
@@ -2502,6 +2511,9 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const keyword = ctx.lambdaLabel ? `return@${ctx.lambdaLabel}` : 'return'
       const ex = s.expr
       if (ex === undefined) return keyword
+      if (ctx.discardReturnValue) {
+        return `${emitKotlinExpr(ex, indent)}\n${' '.repeat(indent)}${keyword}`
+      }
       // A returned object literal takes the enclosing function's declared struct;
       // a returned string LITERAL takes its declared ENUM. Mirror of the Swift
       // branch — kotlinc rejects the raw string with "return type mismatch:
@@ -5004,7 +5016,24 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       webView: kotlinWebViewFacade,
       fileState: (key, init) => _moduleScope.state(key, init),
       layoutModifiersFor: (el, handled) => emitKotlinLayoutModifier(el, handled),
-      statements: (stmts, at) => stmts.map((st) => emitKotlinStatement(st, at, _activeKotlinCtx!)),
+      statements: (stmts, at, locals, options) => {
+        const saved = _kotlinExprInferCtx.locals
+        if (locals !== undefined) {
+          _kotlinExprInferCtx.locals = new Map([...saved, ...locals])
+          seedHandlerLocals([...stmts], _kotlinExprInferCtx)
+        }
+        const control = options?.kotlin
+        const callbackCtx: KotlinCtx = control === undefined ? _activeKotlinCtx! : {
+          ..._activeKotlinCtx!,
+          ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
+          ...(control.discardReturnValue === undefined ? {} : { discardReturnValue: control.discardReturnValue }),
+        }
+        try {
+          return stmts.map((st) => emitKotlinStatement(st, at, callbackCtx))
+        } finally {
+          _kotlinExprInferCtx.locals = saved
+        }
+      },
       intArg: kotlinIntArg,
     },
     indent,

@@ -3393,6 +3393,13 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
+  // JavaScript also coerces a non-optional string: only the empty string is falsy.
+  const negated = e.kind === 'unary' && e.op === '!'
+  const subject = negated ? e.argument : e
+  if (inferType(subject, _exprInferCtx).kind === 'string') {
+    const raw = `(${emit(subject)})`
+    return negated ? `${raw}.isEmpty` : `!${raw}.isEmpty`
+  }
   return emit(e)
 }
 

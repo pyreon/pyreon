@@ -47,6 +47,7 @@ export type {
 } from './call-lowering'
 export type {
   EmitContext,
+  StatementEmitOptions,
   EmitTarget,
   EmitBinding,
   EmitFieldValidators,

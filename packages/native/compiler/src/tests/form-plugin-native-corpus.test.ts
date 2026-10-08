@@ -22,32 +22,25 @@ const sources = readdirSync(fixtures)
   }))
 
 describe.skipIf(!isSwiftcAvailable())('package-owned form corpus on swiftc', () => {
-  it(
-    'typechecks every parent-recorded form fixture with swiftc',
-    () => {
-      expect(sources).toHaveLength(7)
-      const code = sources.map(
-        ({ source, file }) => transform(source, { target: 'swift', filename: file }).code,
-      )
-      const result = validateSwiftFilesWithStubs(code)
-      expect(result.error ?? '').toBe('')
-      expect(result.ok).toBe(true)
-    },
-  )
-
+  it('typechecks every parent-recorded form fixture with swiftc', () => {
+    expect(sources).toHaveLength(7)
+    const code = sources.map(
+      ({ source, file }) => transform(source, { target: 'swift', filename: file }).code,
+    )
+    const result = validateSwiftFilesWithStubs(code)
+    expect(result.error ?? '').toBe('')
+    expect(result.ok).toBe(true)
+  })
 })
 
 describe.skipIf(!isKotlincAvailable())('package-owned form corpus on kotlinc', () => {
-  it(
-    'compiles every parent-recorded form fixture with kotlinc',
-    () => {
-      expect(sources).toHaveLength(7)
-      const code = sources.map(
-        ({ source, file }) => transform(source, { target: 'kotlin', filename: file }).code,
-      )
-      const result = validateKotlinFiles(code)
-      expect(result.error ?? '').toBe('')
-      expect(result.ok).toBe(true)
-    },
-  )
+  it('compiles every parent-recorded form fixture with kotlinc', () => {
+    expect(sources).toHaveLength(7)
+    const code = sources.map(
+      ({ source, file }) => transform(source, { target: 'kotlin', filename: file }).code,
+    )
+    const result = validateKotlinFiles(code)
+    expect(result.error ?? '').toBe('')
+    expect(result.ok).toBe(true)
+  })
 })

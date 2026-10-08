@@ -1,4 +1,4 @@
-import type { ExtDecl, EmitContext, DeclEmitter } from '@pyreon/native-compiler/plugin-api'
+import type { ExtDecl, EmitContext, DeclEmitter, TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { formOf, arrayOf, FORM_PLUGIN, VALUES_TYPE, ROW_TYPE } from './types'
 
 export function emitFormSwift(decl: ExtDecl, ctx: EmitContext): string {
@@ -15,8 +15,11 @@ export function emitFormSwift(decl: ExtDecl, ctx: EmitContext): string {
   // init dictionary; "" = valid, anything else is the error message.
   if (d.validators !== undefined && d.validators.length > 0) {
     const entries = d.validators
-      .map(
-        (v) => `${ctx.stringLiteral(v.key)}: { ${ctx.ident(v.param)} in ${ctx.expr(v.body, 0)} }`,
+      .map((v) =>
+        ctx.withBindings(
+          [{ name: v.param, type: { kind: 'string' } }],
+          () => `${ctx.stringLiteral(v.key)}: { ${ctx.ident(v.param)} in ${ctx.expr(v.body, 0)} }`,
+        ),
       )
       .join(', ')
     parts.push(`validators: [${entries}]`)
@@ -129,8 +132,18 @@ const submit = (decl: ExtDecl, ctx: EmitContext): readonly string[] => {
     payload: {},
   }
   const at = ctx.target === 'swift' ? 10 : 4
-  const body = ctx.withBindings([{ name: callback.param, declaration: binding }], () =>
-    ctx.statements(callback.body, at),
+  const type: TypeIR = {
+    kind: 'object',
+    fields: formOf(decl).initialValues.map(({ key }) => ({ name: key, type: { kind: 'string' } })),
+  }
+  const locals = new Map([[callback.param, type]])
+  const hasReturn = JSON.stringify(callback.body).includes('"kind":"return"')
+  const control =
+    ctx.target === 'kotlin' && hasReturn
+      ? { kotlin: { returnLabel: '__pyreonSubmit', discardReturnValue: true } }
+      : undefined
+  const body = ctx.withBindings([{ name: callback.param, declaration: binding, type }], () =>
+    ctx.statements(callback.body, at, locals, control),
   )
   return ctx.target === 'swift'
     ? [
@@ -141,7 +154,7 @@ const submit = (decl: ExtDecl, ctx: EmitContext): readonly string[] => {
         '}',
       ]
     : [
-        `${name}.onSubmit = { ${ctx.ident(callback.param)} ->`,
+        `${name}.onSubmit = ${hasReturn ? '__pyreonSubmit@ ' : ''}{ ${ctx.ident(callback.param)} ->`,
         ...(body.length === 0 ? [''] : body.map((line) => `  ${line}`)),
         '}',
       ]

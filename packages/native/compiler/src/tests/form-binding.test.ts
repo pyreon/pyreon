@@ -46,7 +46,7 @@ describe('form-binding — Swift', () => {
   it('init carries validators as closures + the onSubmit callback', () => {
     const out = transform(FORM_APP, { target: 'swift' }).code
     expect(out).toContain(
-      'validators: ["username": { v in (v.count < 3 ? "At least 3 characters" : "") }]',
+      'validators: ["username": { v in (v.utf16.count < 3 ? "At least 3 characters" : "") }]',
     )
     // onSubmit attaches via .onAppear, NOT the init — SwiftUI @State
     // property initializers run before `self` exists, so a callback
