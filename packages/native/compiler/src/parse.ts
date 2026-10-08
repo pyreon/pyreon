@@ -3535,7 +3535,7 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     expr: (node) => parseExpr(node as AnyNode, ctx),
     functionDeclaration: (name, node) => {
       if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression' && node.type !== 'FunctionDeclaration') {
-        throw new Error(`functionDeclaration requires a function node; received ${node.type}.`)
+        throw new Error(`[Pyreon] functionDeclaration requires a function node; received ${node.type}.`)
       }
       return tryFunctionDecl(name, node as AnyNode, ctx)
     },
@@ -3678,8 +3678,8 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
       ctx.loweredImports.add(`${module}#${name}`)
     },
     aliasFactory: (name, alias, destructureDiagnostic) => {
-      if (!alias || typeof alias !== 'object' || typeof alias.kind !== 'string' || !isJson(alias, new Set())) throw new Error(`Alias factory ${name} must use cloneable expression IR`)
-      if (ctx.aliasFactories.has(name)) throw new Error(`Alias factory ${name} is already registered`)
+      if (!alias || typeof alias !== 'object' || typeof alias.kind !== 'string' || !isJson(alias, new Set())) throw new Error(`[Pyreon] Alias factory ${name} must use cloneable expression IR`)
+      if (ctx.aliasFactories.has(name)) throw new Error(`[Pyreon] Alias factory ${name} is already registered`)
       ctx.aliasFactories.set(name, { alias: structuredClone(alias), destructureDiagnostic })
     },
     report: (message) => {
