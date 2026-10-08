@@ -1,5 +1,25 @@
 # @pyreon/example-atlas-workshop
 
+## 0.50.3
+
+### Patch Changes
+
+- Updated dependencies [[`549bb99`](https://github.com/pyreon/pyreon/commit/549bb99175da8bde0cbfc79000a9110da66d2f3a), [`d0c6ff6`](https://github.com/pyreon/pyreon/commit/d0c6ff6ae03d775d5f6f29a8f600304df007983a), [`3b9de45`](https://github.com/pyreon/pyreon/commit/3b9de4521783a96b272bd063b734480d858f6cae), [`f303205`](https://github.com/pyreon/pyreon/commit/f303205aacb1c9bd9dcdf3a5a76be5d56791a1f7), [`47e9966`](https://github.com/pyreon/pyreon/commit/47e996644022fa5c9328603e5f69d69347dbfdee), [`95af1cc`](https://github.com/pyreon/pyreon/commit/95af1cc5d12ae7b911e8989009871c3728b44138), [`28858d4`](https://github.com/pyreon/pyreon/commit/28858d43bbd93cebfe3554f353a6a08429731b96), [`94de126`](https://github.com/pyreon/pyreon/commit/94de1260f6a345d26ba3ab4a25a6195c521410f7), [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae)]:
+  - @pyreon/atlas@0.53.0
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/permissions@0.53.0
+  - @pyreon/elements@0.53.0
+  - @pyreon/zero@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/rocketstyle@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/head@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/runtime-server@0.53.0
+  - @pyreon/styler@0.53.0
+  - @pyreon/ui-core@0.53.0
+  - @pyreon/unistyle@0.53.0
+
 ## 0.50.2
 
 ### Patch Changes

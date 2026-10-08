@@ -1,5 +1,15 @@
 # @pyreon/router
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [[`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae)]:
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/sized-map@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

@@ -1,5 +1,21 @@
 # @pyreon/zero
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [[`950303f`](https://github.com/pyreon/pyreon/commit/950303f0fa398fa96af02e4c22906e8aafaaf7e0), [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906), [`078f0f2`](https://github.com/pyreon/pyreon/commit/078f0f29d77f08f576ddd4360e0919ba47a983f5), [`a7753fb`](https://github.com/pyreon/pyreon/commit/a7753fbab0452c2cccfd13dbc034539d87908424), [`514054a`](https://github.com/pyreon/pyreon/commit/514054a2fa3c946dd57ec5b894ccaf057f7714e4), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`068310d`](https://github.com/pyreon/pyreon/commit/068310dd9bd78663945348f579a7f5fd082c6944), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`3a99132`](https://github.com/pyreon/pyreon/commit/3a9913259128893d500874f47deae69687e5e9f5)]:
+  - @pyreon/compiler@0.53.0
+  - @pyreon/vite-plugin@0.53.0
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/sized-map@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/head@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/runtime-server@0.53.0
+  - @pyreon/server@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

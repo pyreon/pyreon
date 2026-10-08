@@ -1,5 +1,54 @@
 # @pyreon/atlas
 
+## 0.53.0
+
+### Minor Changes
+
+- [#3797](https://github.com/pyreon/pyreon/pull/3797) [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/compiler`'s main entry is now TypeScript-free. Everything that parses with the TypeScript compiler API moved behind three new subpaths, so consumers that only need `transformJSX` (the Vite plugin's static graph, test harnesses, bundler integrations) no longer load `typescript`. **Breaking for direct importers — migrate the import path:**
+
+  - `@pyreon/compiler/analyze`: `detectReactPatterns`, `hasReactPatterns`, `migrateReactCode`, `diagnoseError`, `detectPyreonPatterns`, `hasPyreonPatterns`, `migratePyreonCode`, `AUTO_FIXABLE_PYREON_CODES`, `analyzeReactivity`, `formatReactivityLens`, `firesToCreationSiteFindings`, `mergeFireDataIntoFindings` (+ types)
+  - `@pyreon/compiler/audits`: `auditTestEnvironment`, `auditIslands`, `auditSsg`, `auditNative`, `detectNativePatterns`, `auditContent` and the content-audit helpers, their `format*` helpers, `generateContext` (+ types)
+  - `@pyreon/compiler/validate`: `analyzeValidate`, `emitSchemaSource`, `emitValidator`, `isEmittable` (+ types)
+
+  The main entry keeps `transformJSX`, `transformJSX_JS`, `rocketstyleCollapseKey`, `scanCollapsibleSites`, `TPL_HOLE_ATTR`, `transformDeferInline`, the Plain Mode functions, the fs-route convention and island naming. `@pyreon/compiler/diagnose`, `/plain` and `/fs-route-convention` are unchanged.
+
+  `transformClientDirectives` (`hydrate="…"` attribute lowering) is removed: nothing in the repo used it. `@pyreon/vite-plugin` now loads its validator rewriting, the islands doctor-lite and the `.pyreon/context.json` scanner lazily, only when those features run. `@pyreon/cli`, `@pyreon/mcp`, `@pyreon/lint` and `@pyreon/atlas` import from the new subpaths.
+
+### Patch Changes
+
+- [#3852](https://github.com/pyreon/pyreon/pull/3852) [`549bb99`](https://github.com/pyreon/pyreon/commit/549bb99175da8bde0cbfc79000a9110da66d2f3a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `atlas verify-browser` now captures a scenario only once its preview holds still. A finite JavaScript canvas `requestAnimationFrame` animation was screenshotted one frame after the click-walk — mid-flight — because `animations: 'disabled'` does not stop it; the runner now waits until DOM, element geometry and canvas pixels are unchanged for `--settle-ms` (default 300; at most 100 for a preview with no canvas/video/image) bounded by `--settle-timeout` (default 5000). A preview that never settles (an endless loop) is not screenshotted and records no baseline: its snapshot check fails with a new `capture-unsettled` finding and the run exits non-zero. Fixes [#3837](https://github.com/pyreon/pyreon/issues/3837).
+
+- [#3792](https://github.com/pyreon/pyreon/pull/3792) [`d0c6ff6`](https://github.com/pyreon/pyreon/commit/d0c6ff6ae03d775d5f6f29a8f600304df007983a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `atlas scan` mounting components against a different module graph than the one the config was loaded into. When `atlas.config.*` declares an explicit `alias`, the scan rebuilds its module loader for the components but kept the config (wrapper, theme, authored scenarios, `projects`, presets) from the loader it had just closed — so every local module shared between config and components (a context a wrapper provides, say) existed twice and the configured provider never reached the components. The config is now re-loaded through the replacement loader.
+
+- [#3851](https://github.com/pyreon/pyreon/pull/3851) [`3b9de45`](https://github.com/pyreon/pyreon/commit/3b9de4521783a96b272bd063b734480d858f6cae) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `atlas dev` no longer loads a workspace-only `@pyreon/*` package (for example `@pyreon/store`, declared by a component package but not the root manifest) through both a raw and an optimized URL on a cold dependency cache. The Pyreon Vite plugin only excludes the packages the root manifest declares from the optimizer, so the first preview hit the singleton sentinel ("Multiple instances of @pyreon/store") and failed to load, while a warmed cache worked. The workbench now excludes and dedupes every `@pyreon/*` package any workspace package declares or links, derived from the workspace rather than a fixed list. Fixes [#3846](https://github.com/pyreon/pyreon/issues/3846).
+
+- [#3855](https://github.com/pyreon/pyreon/pull/3855) [`f303205`](https://github.com/pyreon/pyreon/commit/f303205aacb1c9bd9dcdf3a5a76be5d56791a1f7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `atlas verify-browser` no longer attributes a navigation that commits during the capture-settle wait to the NEXT scenario. A handler's queued `location.assign` can land after the click-walk returns on a loaded runner; the replaced-document check now runs after the settle wait (and the reloaded render is settled again), so `navigatedAway` names the scenario that actually left the workbench and never reports a second, phantom one.
+
+- [#3807](https://github.com/pyreon/pyreon/pull/3807) [`47e9966`](https://github.com/pyreon/pyreon/commit/47e996644022fa5c9328603e5f69d69347dbfdee) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR parity no longer reports `hydrated-dom-differs` when hydrated and client-mounted DOM differ only in attribute order. The comparison now serializes both trees with attributes in a canonical order (on detached clones); node, text, attribute-value (including `class`), child-order changes and renderer-reported mismatches still fail.
+
+- [#3834](https://github.com/pyreon/pyreon/pull/3834) [`95af1cc`](https://github.com/pyreon/pyreon/commit/95af1cc5d12ae7b911e8989009871c3728b44138) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scenario identity no longer depends on how the project was scanned ([#3823](https://github.com/pyreon/pyreon/issues/3823)). Same-named components in different directories were qualified from `source`, which is cwd-relative for `atlas scan` but absolute for the dev server `verify-browser` boots, so the Node and browser catalogs derived different scenario ids and no browser verdict merged (both scenarios silently landed in `notDriven`). Discovery now stamps a scan-root-relative POSIX `scanPath` and every qualifier is derived from it, so ids are identical across machines, checkouts, `--cwd` forms and Windows separators. Also loud now: a browser result matching no catalog scenario makes `verify-browser` exit non-zero (`unmatched` in the summary), and duplicate scenario ids fail the scan and the browser run. Only ids of same-named (colliding) components change — `src/one` becomes `one` — so baselines kept for those under the old ids need regenerating; the catalog version is unchanged (additive optional `scanPath` field).
+
+- [#3810](https://github.com/pyreon/pyreon/pull/3810) [`28858d4`](https://github.com/pyreon/pyreon/commit/28858d43bbd93cebfe3554f353a6a08429731b96) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `atlas verify-browser` now actually runs axe-core. Each scenario's live preview is audited in the page and the result is merged into the catalog's `a11y` verdict (violations fail it with `axe-violation` findings, axe's needs-a-human items surface as `axe-incomplete`, a run that cannot happen is a skip with its reason, never a pass; the scan's static name check is kept and re-runs replace prior axe findings). Previously the static a11y verifier told users to run `verify-browser` for axe coverage that the browser runner never performed. `--no-axe` opts out and `--axe-min-impact <level>` filters by impact; the CLI summary states whether axe ran. Violations do not change the exit code.
+
+- [#3826](https://github.com/pyreon/pyreon/pull/3826) [`94de126`](https://github.com/pyreon/pyreon/commit/94de1260f6a345d26ba3ab4a25a6195c521410f7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `atlas verify-browser` no longer aborts the whole catalog when a component's handler has a side effect that leaves the scenario document ([#3805](https://github.com/pyreon/pyreon/issues/3805)). A plain `<a href>` navigated the workbench away and killed the run with `Execution context was destroyed`. The click-walk now suppresses default actions in-page (anchor navigation, downloads, `mailto:`, form submit/reset, `form.submit()`, `window.open`, dialogs, `history.pushState`) while still running the handlers, and reports what it suppressed as an `interaction-side-effects-suppressed` finding. A navigation no guard can prevent (`location.assign`) is detected from outside: the scenario's coverage is a skip with a `navigated-away` finding naming the destination, the workbench is reloaded, axe and the snapshot still judge the un-interacted render, and the run continues. A crash in one scenario's measurement is isolated to that scenario.
+- Updated dependencies [[`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3), [`950303f`](https://github.com/pyreon/pyreon/commit/950303f0fa398fa96af02e4c22906e8aafaaf7e0), [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906), [`078f0f2`](https://github.com/pyreon/pyreon/commit/078f0f29d77f08f576ddd4360e0919ba47a983f5), [`a7753fb`](https://github.com/pyreon/pyreon/commit/a7753fbab0452c2cccfd13dbc034539d87908424), [`514054a`](https://github.com/pyreon/pyreon/commit/514054a2fa3c946dd57ec5b894ccaf057f7714e4), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`068310d`](https://github.com/pyreon/pyreon/commit/068310dd9bd78663945348f579a7f5fd082c6944), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`3a99132`](https://github.com/pyreon/pyreon/commit/3a9913259128893d500874f47deae69687e5e9f5)]:
+  - @pyreon/hooks@0.53.0
+  - @pyreon/compiler@0.53.0
+  - @pyreon/vite-plugin@0.53.0
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/permissions@0.53.0
+  - @pyreon/elements@0.53.0
+  - @pyreon/feature@0.53.0
+  - @pyreon/rocketstyle@0.53.0
+  - @pyreon/store@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/code@0.53.0
+  - @pyreon/config@0.53.0
+  - @pyreon/styler@0.53.0
+  - @pyreon/ui-core@0.53.0
+  - @pyreon/unistyle@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @pyreon/runtime-dom
 
+## 0.53.0
+
+### Patch Changes
+
+- [#3836](https://github.com/pyreon/pyreon/pull/3836) [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration now adopts an explicitly rendered whitespace-only text child (`<First />{' '}<span/>`) instead of skipping the server's space and inserting a duplicate (plus a `Hydration mismatch (text): expected TextNode, got 1` warning). The whitespace decision is made by the client VNode walk — a whitespace text vnode claims the whitespace node the cursor skipped behind it — never by the DOM alone, since explicit and formatting whitespace are the same bytes. The SSR↔hydration parity fuzzers now generate whitespace-only text children. Adds a diagnose-catalog entry for the mismatch shape.
+- Updated dependencies []:
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

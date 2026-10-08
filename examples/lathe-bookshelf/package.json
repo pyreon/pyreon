@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-lathe-bookshelf",
-  "version": "0.51.1",
+  "version": "0.51.2",
   "license": "MIT",
   "private": true,
   "type": "module",

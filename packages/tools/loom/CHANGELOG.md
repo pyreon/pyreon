@@ -1,5 +1,27 @@
 # @pyreon/loom
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [[`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3), [`d7408b7`](https://github.com/pyreon/pyreon/commit/d7408b7cf9cbb5c64be7490e97b27b3a0ae9b906), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`54d95ea`](https://github.com/pyreon/pyreon/commit/54d95ea5b6cf3d2840dcfc0b809fe0c6e45486c5), [`3a99132`](https://github.com/pyreon/pyreon/commit/3a9913259128893d500874f47deae69687e5e9f5)]:
+  - @pyreon/hooks@0.53.0
+  - @pyreon/vite-plugin@0.53.0
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/elements@0.53.0
+  - @pyreon/zero@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/rocketstyle@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/head@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/runtime-server@0.53.0
+  - @pyreon/server@0.53.0
+  - @pyreon/config@0.53.0
+  - @pyreon/styler@0.53.0
+  - @pyreon/ui-core@0.53.0
+  - @pyreon/unistyle@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes
