@@ -606,6 +606,31 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // the return already inferred over the Int one.
   for (const { refine } of activeRegistries().parseRefinements) refine({ components, helperFns: ctx.helperFns })
 
+  const defaultCtx = buildInferenceCtx([], [], structs, [], undefined, helperReturnSeed, moduleConsts)
+  refineFunctionDefaults(ctx.helperFns, defaultCtx)
+  for (const component of components) {
+    refineFunctionDefaults(component.decls.filter((decl) => decl.kind === 'function'), componentCtx(component))
+  }
+  for (const definition of [...stores, ...models]) {
+    for (const field of definition.fields) refineNumberBindingFromEvidence(field, defaultCtx)
+    const scope = buildInferenceCtx(definition.fields.map((field) => ({ kind: 'signal' as const, ...field })), [], structs, [], undefined, helperReturnSeed, moduleConsts)
+    refineFunctionDefaults(definition.methods ?? [], scope)
+    if ('hookName' in definition) {
+      for (const computed of definition.computeds ?? []) scope.computeds.set(computed.name, inferType(computed.expr, scope))
+    } else {
+      for (const view of definition.views ?? []) {
+        scope.signalReceiver = view.selfParam
+        scope.computeds.set(view.name, inferType(view.expr, scope))
+      }
+    }
+    for (const method of definition.methods ?? []) {
+      scope.signalReceiver = 'selfParam' in method && typeof method.selfParam === 'string' ? method.selfParam : undefined
+      if (method.returnType.kind !== 'number' && method.returnType.kind !== 'unknown') continue
+      const inferred = inferReturnType(method.params, method.body, scope)
+      if (inferred.kind !== 'unknown') method.returnType = inferred
+    }
+  }
+
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
   // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
   // `returnType: unknown`. Infer it from the body (params seeded), so the emit
@@ -2543,6 +2568,18 @@ function refineNumberBindingFromEvidence(d: { type: TypeIR; initial: ExprIR }, c
   }
 }
 
+/** Defaults carry the same fractional evidence as signal and module initializers. */
+function refineFunctionDefaults(functions: readonly Extract<DeclIR, { kind: 'function' }>[], ctx: InferenceCtx): void {
+  for (const fn of functions) {
+    for (const param of fn.params) {
+      if (param.defaultValue === undefined) continue
+      const binding = { type: param.type, initial: param.defaultValue }
+      refineNumberBindingFromEvidence(binding, ctx)
+      param.type = binding.type
+    }
+  }
+}
+
 function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
   // Walk through `ExportNamedDeclaration` to the type alias.
   let alias: AnyNode | null = null
@@ -3093,6 +3130,17 @@ function liftInlineObjects(
  *   - a non-arrow const (`const APP = '1.0'` — a real module binding);
  *   - a multi-declarator const (`const a = …, b = …` — left as moduleDecls).
  */
+/** Unsupported value parameters must not be hidden by successful return inference. */
+function unsupportedHelperParams(fn: AnyNode, name: string, ctx: ParseCtx): boolean {
+  const unsupported = ((fn.params as AnyNode[] | undefined) ?? []).some((param) =>
+    param.type === 'ArrayPattern' || param.type === 'RestElement' ||
+    (param.type === 'AssignmentPattern' && param.left?.type !== 'Identifier'),
+  )
+  if (!unsupported) return false
+  ctx.warnings.push(`${name} is a top-level helper function with unsupported value parameters — array/rest parameters and defaulted destructures do not lower. Use plain typed value parameters or inline the logic. Skipped rather than mis-emitted.`)
+  return true
+}
+
 function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   let varDecl: AnyNode | null = null
   if (node.type === 'VariableDeclaration' && node.kind === 'const') {
@@ -3125,7 +3173,7 @@ function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   if (topLevelReturns.some((r) => r.expr !== undefined && returnContainsJsx(r.expr))) {
     return false
   }
-  ctx.helperFns.push(decl)
+  if (!unsupportedHelperParams(arrow, d.id.name as string, ctx)) ctx.helperFns.push(decl)
   return true
 }
 
@@ -3647,7 +3695,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
     //     Double return. A genuinely-un-inferable body is warned + dropped by
     //     `refineHelperReturns`.
-    ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+    if (!unsupportedHelperParams(fn, name, ctx)) ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
     // The deferred props warnings were about PARAMETERS, not props. An
     // unresolvable parameter type still reaches the native signature verbatim,
     // so it is re-named in helper terms rather than dropped.
@@ -5421,8 +5469,9 @@ function tryFunctionDecl(
       const left = p.left as AnyNode
       const paramName = left.name as string
       const annot = left.typeAnnotation?.typeAnnotation as AnyNode | undefined
-      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
-      params.push({ name: paramName, type, defaultValue: parseExpr(p.right as AnyNode, ctx) })
+      const defaultValue = parseExpr(p.right as AnyNode, ctx)
+      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : inferTypeFromInitial(defaultValue)
+      params.push({ name: paramName, type, defaultValue })
     } else if (p?.type === 'ObjectPattern') {
       const synthName = `__p${synthParamIdx++}`
       const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
