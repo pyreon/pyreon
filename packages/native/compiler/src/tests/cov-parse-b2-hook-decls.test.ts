@@ -277,7 +277,7 @@ describe('parse.ts — useForm validators / onSubmit', () => {
   it('lowers an expression-body single-param validator', () => {
     const r = f(`{ initialValues: { a: '' }, validators: { a: (v) => v ? '' : 'req' } }`)
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('validators: ["a": { v in v ? "" : "req" }]')
+    expect(r.code).toContain('validators: ["a": { v in !(v).isEmpty ? "" : "req" }]')
   })
 
   it('warns + skips a BLOCK-body, multi-param, or non-arrow validator', () => {

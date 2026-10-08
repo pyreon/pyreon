@@ -1,3 +1,4 @@
+import formPlugin from '../../../../fundamentals/form/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { withRegistries } from '../active-registries'
 import { createCompiler } from '../compiler'
@@ -323,8 +324,7 @@ export function App() { return <Stack><Text>x</Text></Stack> }`,
   })
 
   it('fieldValidators: a form naming the item wires one validator per field, delegating to the plugin', () => {
-    const { code } = testNativePlugin(
-      unitsPlugin(),
+    const { code } = createCompiler({ plugins: [unitsPlugin(), formPlugin] }).transform(
       `import { defineUnit } from '@acme/units'
 import { useForm } from '@pyreon/form'
 ${HEAD}const Meters = defineUnit('m')
@@ -339,8 +339,7 @@ export function App() {
   })
 
   it("bindings: a form's `schema:` link follows the rename, so its validators resolve against the renamed item", () => {
-    const { code } = testNativePlugin(
-      unitsPlugin(),
+    const { code } = createCompiler({ plugins: [unitsPlugin(), formPlugin] }).transform(
       `import { defineUnit } from '@acme/units'
 import { useForm } from '@pyreon/form'
 ${HEAD}export const Meters = defineUnit('m')
