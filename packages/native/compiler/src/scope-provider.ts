@@ -68,7 +68,10 @@ export interface ScopeRegistry {
  * tag opens depend on plugin order — and names both owners.
  */
 export function createScopeRegistry(
-  plugins: readonly { readonly name: string; readonly scopes?: readonly ScopeProvider[] | undefined }[],
+  plugins: readonly {
+    readonly name: string
+    readonly scopes?: readonly ScopeProvider[] | undefined
+  }[],
 ): ScopeRegistry {
   const entries: RegisteredScopeProvider[] = []
   const claimed = new Map<string, string>()
@@ -98,7 +101,8 @@ export function createScopeRegistry(
       }
       if (importedAs !== undefined && importedAs !== tag) {
         for (const { provider } of entries) {
-          if (provider.tags.includes(importedAs) && guard(tag, provider.module, importedAs)) return provider
+          if (provider.tags.includes(importedAs) && guard(tag, provider.module, importedAs))
+            return provider
         }
       }
       return undefined

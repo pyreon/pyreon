@@ -78,9 +78,11 @@ describe.each(['swift', 'kotlin'] as const)('custom provider scope on %s', (targ
   it('enters an aliased owner scope and leaves a foreign alias unclaimed', () => {
     for (const from of ['@acme/scope', '@other/scope']) {
       const visits: string[] = []
-      createCompiler({ plugins: [fixture(visits)] }).transform(`import { Outer as Alias } from '${from}'; import { Probe } from '@acme/scope'; export function App() { return <><Alias><Probe/></Alias><Probe/></> }`, { target })
+      createCompiler({ plugins: [fixture(visits)] }).transform(
+        `import { Outer as Alias } from '${from}'; import { Probe } from '@acme/scope'; export function App() { return <><Alias><Probe/></Alias><Probe/></> }`,
+        { target },
+      )
       expect(visits).toEqual(from === '@acme/scope' ? ['Alias', 'none'] : ['none', 'none'])
     }
   })
-
 })

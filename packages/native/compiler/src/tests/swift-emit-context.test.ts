@@ -11,7 +11,9 @@ const lowering = (emit: (el: JsxElementIR, ctx: SwiftEmitContext) => string): Co
   apiVersion: 1,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { swift: emit } }],
   // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
-  scopes: [{ module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) }],
+  scopes: [
+    { module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) },
+  ],
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
@@ -44,14 +46,20 @@ describe('SwiftEmitContext members', () => {
 
   it('stringAttr returns a literal or an interpolation, undefined when absent', () => {
     const out = compile(
-      lowering((el, ctx) => `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`),
+      lowering(
+        (el, ctx) =>
+          `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`,
+      ),
       '<Toy a="lit" b={`x${n()}`} />',
     )
     expect(out.code).toContain('S("lit", "x\\(n)", undefined)')
   })
 
-  it('layoutModifiers lowers the element\'s own styling props', () => {
-    const out = compile(lowering((el, ctx) => `Box()${ctx.layoutModifiers(el)}`), '<Toy padding={4} />')
+  it("layoutModifiers lowers the element's own styling props", () => {
+    const out = compile(
+      lowering((el, ctx) => `Box()${ctx.layoutModifiers(el)}`),
+      '<Toy padding={4} />',
+    )
     expect(out.code).toMatch(/Box\(\)\s*\.padding\(/)
   })
 
@@ -84,7 +92,10 @@ describe('SwiftEmitContext members', () => {
   })
 
   it('markColorSchemeUsed makes the component declare the colour-scheme environment value', () => {
-    const plain = compile(lowering(() => 'EmptyView()'), '<Toy />')
+    const plain = compile(
+      lowering(() => 'EmptyView()'),
+      '<Toy />',
+    )
     expect(plain.code).not.toContain('pyreonColorScheme')
     const used = compile(
       lowering((_el, ctx) => {
@@ -93,7 +104,9 @@ describe('SwiftEmitContext members', () => {
       }),
       '<Toy />',
     )
-    expect(used.code).toContain('@Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme')
+    expect(used.code).toContain(
+      '@Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme',
+    )
   })
 
   it('colorScope is the enclosing mode scope: set inside <Mode>, restored for a sibling', () => {
@@ -102,7 +115,11 @@ describe('SwiftEmitContext members', () => {
       '<Toy /><Mode><Toy /></Mode><Toy />',
       "import { Mode } from '@acme/toy'",
     )
-    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual(['Scope(none)', 'Scope(scoped)', 'Scope(none)'])
+    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual([
+      'Scope(none)',
+      'Scope(scoped)',
+      'Scope(none)',
+    ])
   })
 
   it('hostState declares @State into the struct, lists what was declared, replaces a tail, and hands out fresh suffixes', () => {

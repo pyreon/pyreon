@@ -12,7 +12,9 @@ const lowering = (emit: (el: JsxElementIR, ctx: EmitContext) => string): Compile
   apiVersion: 1,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { kotlin: emit } }],
   // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
-  scopes: [{ module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) }],
+  scopes: [
+    { module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) },
+  ],
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
@@ -45,14 +47,20 @@ describe('EmitContext members both targets supply (Kotlin)', () => {
 
   it('stringAttr returns a literal or an interpolation, undefined when absent', () => {
     const out = compile(
-      lowering((el, ctx) => `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`),
+      lowering(
+        (el, ctx) =>
+          `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`,
+      ),
       '<Toy a="lit" b={`x${n()}`} />',
     )
     expect(out.code).toContain('S("lit", "x${n}", undefined)')
   })
 
   it("layoutModifiers lowers the element's own styling props", () => {
-    const out = compile(lowering((el, ctx) => `Box(modifier = ${ctx.layoutModifiers(el)})`), '<Toy padding={4} />')
+    const out = compile(
+      lowering((el, ctx) => `Box(modifier = ${ctx.layoutModifiers(el)})`),
+      '<Toy padding={4} />',
+    )
     expect(out.code).toMatch(/Box\(modifier = Modifier\.padding\(/)
   })
 
@@ -86,11 +94,20 @@ describe('EmitContext members both targets supply (Kotlin)', () => {
       '<Toy /><Mode><Toy /></Mode><Toy />',
       "import { Mode } from '@acme/toy'",
     )
-    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual(['Scope(none)', 'Scope(scoped)', 'Scope(none)'])
+    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual([
+      'Scope(none)',
+      'Scope(scoped)',
+      'Scope(none)',
+    ])
   })
 
   it('the claimed element passes the spread / unread-JSX-attribute checks before the plugin runs', () => {
-    const out = compile(lowering(() => 'Box {}'), '<Toy {...rest} />', '', 'const rest = { a: 1 }')
+    const out = compile(
+      lowering(() => 'Box {}'),
+      '<Toy {...rest} />',
+      '',
+      'const rest = { a: 1 }',
+    )
     expect(out.warnings.join('\n')).toContain('<Toy {...}> spread is not lowered to native')
   })
 })
