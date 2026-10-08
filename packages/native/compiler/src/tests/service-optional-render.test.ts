@@ -27,8 +27,8 @@
 // One fix in the SHARED inference serves both backends.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const app = (imp: string, decl: string, expr: string) =>
   `import { ${imp} } from '@pyreon/hooks'
@@ -40,7 +40,12 @@ const OPTIONAL_FIELDS: ReadonlyArray<readonly [string, string, string, string]> 
   ['geolocation latitude', 'useGeolocation', 'const geo = useGeolocation()', 'geo.latitude'],
   ['geolocation longitude', 'useGeolocation', 'const geo = useGeolocation()', 'geo.longitude'],
   ['geolocation accuracy', 'useGeolocation', 'const geo = useGeolocation()', 'geo.accuracy'],
-  ['websocket lastMessage', 'useWebSocket', 'const w = useWebSocket("wss://x.dev")', 'w.lastMessage'],
+  [
+    'websocket lastMessage',
+    'useWebSocket',
+    'const w = useWebSocket("wss://x.dev")',
+    'w.lastMessage',
+  ],
   ['payments purchasing', 'usePayments', 'const p = usePayments()', 'p.purchasing'],
   ['map selectedMarkerId', 'useMap', 'const m = useMap()', 'm.selectedMarkerId'],
 ]
@@ -50,8 +55,8 @@ describe('optional service fields render web-equivalently', () => {
     const src = app(imp, decl, expr)
 
     it(`${label}: Swift unwraps instead of printing Optional(…)`, () => {
-      const line = transform(src, { target: 'swift' }).code
-        .split('\n')
+      const line = transform(src, { target: 'swift' })
+        .code.split('\n')
         .find((l) => l.includes('Text('))
       expect(line, 'no Text line emitted').toBeTruthy()
       // The unwrap is the whole point; a raw `\(x)` is the bug.
@@ -60,8 +65,8 @@ describe('optional service fields render web-equivalently', () => {
     })
 
     it(`${label}: Kotlin substitutes "" for null`, () => {
-      const line = transform(src, { target: 'kotlin' }).code
-        .split('\n')
+      const line = transform(src, { target: 'kotlin' })
+        .code.split('\n')
         .find((l) => l.includes('Text('))
       expect(line, 'no Text line emitted').toBeTruthy()
       expect(line).toContain('?: ""')
@@ -84,8 +89,12 @@ describe('optional service fields render web-equivalently', () => {
     const src = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 export function C(){ const n = signal(0); return (<Stack><Text>{n()}</Text></Stack>) }`
-    const swift = transform(src, { target: 'swift' }).code.split('\n').find((l) => l.includes('Text('))
-    const kotlin = transform(src, { target: 'kotlin' }).code.split('\n').find((l) => l.includes('Text('))
+    const swift = transform(src, { target: 'swift' })
+      .code.split('\n')
+      .find((l) => l.includes('Text('))
+    const kotlin = transform(src, { target: 'kotlin' })
+      .code.split('\n')
+      .find((l) => l.includes('Text('))
     expect(swift).not.toContain('.map {')
     expect(kotlin).not.toContain('?: ""')
   })
@@ -94,7 +103,9 @@ export function C(){ const n = signal(0); return (<Stack><Text>{n()}</Text></Sta
     // `isTracking` is a plain Bool on PyreonGeolocation — only the fields in
     // the table are optional, and over-wrapping would be its own bug.
     const src = app('useGeolocation', 'const geo = useGeolocation()', 'geo.isTracking')
-    const swift = transform(src, { target: 'swift' }).code.split('\n').find((l) => l.includes('Text('))
+    const swift = transform(src, { target: 'swift' })
+      .code.split('\n')
+      .find((l) => l.includes('Text('))
     expect(swift).not.toContain('.map {')
   })
 })

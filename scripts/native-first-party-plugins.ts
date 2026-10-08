@@ -39,6 +39,10 @@ import { tableStubs } from '../packages/fundamentals/table/src/native-plugin/stu
 import { dndPlugin } from '../packages/fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../packages/fundamentals/dnd/src/native-plugin/stubs'
 import { kineticPlugin } from '../packages/ui-system/kinetic/src/native-plugin/plugin'
+import { storePlugin } from '../packages/fundamentals/store/src/native-plugin/plugin'
+import { storeStubs } from '../packages/fundamentals/store/src/native-plugin/stubs'
+import { stateTreePlugin } from '../packages/fundamentals/state-tree/src/native-plugin/plugin'
+import { modelStubs } from '../packages/fundamentals/state-tree/src/native-plugin/stubs'
 import hooksPlugin from '../packages/fundamentals/hooks/src/native-plugin'
 import { featurePlugin } from '../packages/fundamentals/feature/src/native-plugin/plugin'
 import { rxPlugin } from '../packages/fundamentals/rx/src/native-plugin/plugin'
@@ -61,6 +65,8 @@ import primitivesPlugin from '../packages/core/primitives/src/native-plugin'
 import hotkeysPlugin from '../packages/fundamentals/hotkeys/src/native-plugin'
 
 export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
+  stateTreePlugin,
+  storePlugin,
   hotkeysPlugin,
   corePlugin,
   routerPlugin,
@@ -93,6 +99,8 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
 /** The compile gates' options with every first-party plugin's stubs appended. */
 export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({
   augment: [
+    modelStubs,
+    storeStubs,
     hooksPlugin.stubs!,
     chartsStubs,
     flowStubs,

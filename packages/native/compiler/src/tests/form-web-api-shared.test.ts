@@ -86,9 +86,7 @@ describe('form accessors: the web CALL form is shared code', () => {
   // differently on a device.
   it('is BYTE-IDENTICAL to the legacy property form on both targets', () => {
     for (const target of ['swift', 'kotlin'] as const) {
-      expect(transform(WEB, { target }).code, target).toBe(
-        transform(NATIVE_ONLY, { target }).code,
-      )
+      expect(transform(WEB, { target }).code, target).toBe(transform(NATIVE_ONLY, { target }).code)
     }
   })
 

@@ -28,14 +28,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 const HEAD = `import { Stack, Text } from '@pyreon/primitives'
 import type { VNodeChild } from '@pyreon/core'
@@ -54,7 +48,9 @@ const DATA = `function UserData(props: { children: (data: User | undefined) => u
 
 describe('the receiving component', () => {
   it('Swift: a generic @ViewBuilder closure, invoked in the body', () => {
-    const { code, warnings } = swift(`${DATA}export function App() { return <UserData>{(u) => <Text>{u?.name ?? '-'}</Text>}</UserData> }`)
+    const { code, warnings } = swift(
+      `${DATA}export function App() { return <UserData>{(u) => <Text>{u?.name ?? '-'}</Text>}</UserData> }`,
+    )
     expect(warnings).toEqual([])
     expect(code).toContain('struct UserData<ChildrenContent: View>: View {')
     expect(code).toContain('@ViewBuilder let children: (User?) -> ChildrenContent')
@@ -63,7 +59,9 @@ describe('the receiving component', () => {
   })
 
   it('Kotlin: a @Composable lambda parameter, invoked in the body', () => {
-    const { code, warnings } = kotlin(`${DATA}export function App() { return <UserData>{(u) => <Text>{u?.name ?? '-'}</Text>}</UserData> }`)
+    const { code, warnings } = kotlin(
+      `${DATA}export function App() { return <UserData>{(u) => <Text>{u?.name ?? '-'}</Text>}</UserData> }`,
+    )
     expect(warnings).toEqual([])
     expect(code).toContain('fun UserData(children: @Composable (User?) -> Unit)')
     expect(code).toContain('  children(u)')
@@ -335,17 +333,25 @@ export function App() {
 `
 
 describe('the emit compiles', () => {
-  it.skipIf(!isSwiftcAvailable())('Swift: against the stubs', () => {
-    const r = validateSwiftWithStubs(swift(BROAD).code)
-    expect(r.ok, r.error ?? '').toBe(true)
-  }, 120_000)
+  it.skipIf(!isSwiftcAvailable())(
+    'Swift: against the stubs',
+    () => {
+      const r = validateSwiftWithStubs(swift(BROAD).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    },
+    120_000,
+  )
 
-  it.skipIf(!isKotlincAvailable())('Kotlin: on kotlinc', () => {
-    const { code, warnings } = kotlin(BROAD)
-    expect(warnings).toEqual([])
-    const r = validateKotlin(code)
-    expect(r.ok, r.error ?? '').toBe(true)
-  }, 300_000)
+  it.skipIf(!isKotlincAvailable())(
+    'Kotlin: on kotlinc',
+    () => {
+      const { code, warnings } = kotlin(BROAD)
+      expect(warnings).toEqual([])
+      const r = validateKotlin(code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    },
+    300_000,
+  )
 })
 
 /**
@@ -375,7 +381,12 @@ describe.runIf(isSwiftUIAvailable())('the emit compiles against the real SDK + r
         else if (p.endsWith('.swift')) out.push(p)
       }
     }
-    for (const r of ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']) {
+    for (const r of [
+      'packages/fundamentals',
+      'packages/core',
+      'packages/native/runtime-swift',
+      'packages/native/router-swift',
+    ]) {
       walk(join(REPO, r))
     }
     return out
@@ -398,17 +409,38 @@ describe.runIf(isSwiftUIAvailable())('the emit compiles against the real SDK + r
         writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
         return p
       })
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
+      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], {
+        encoding: 'utf8',
+      }).trim()
       try {
         execFileSync(
           'xcrun',
-          ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, ...sources],
+          [
+            '--sdk',
+            'iphonesimulator',
+            'swiftc',
+            '-typecheck',
+            '-target',
+            'arm64-apple-ios17.0-simulator',
+            '-sdk',
+            sdk,
+            ...files,
+            ...sources,
+          ],
           { encoding: 'utf8', stdio: 'pipe' },
         )
       } catch (err) {
         const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-        const out = [e.stderr, e.stdout].map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '').join('\n')
-        expect.fail(`swiftc -typecheck failed:\n${out.split('\n').filter((l) => l.includes('error:')).slice(0, 12).join('\n')}`)
+        const out = [e.stderr, e.stdout]
+          .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
+          .join('\n')
+        expect.fail(
+          `swiftc -typecheck failed:\n${out
+            .split('\n')
+            .filter((l) => l.includes('error:'))
+            .slice(0, 12)
+            .join('\n')}`,
+        )
       }
     } finally {
       rmSync(dir, { recursive: true, force: true })

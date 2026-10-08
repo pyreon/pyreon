@@ -31,6 +31,7 @@ export type {
   EmitTarget,
   HostStateSlot,
   KotlinEmitContext,
+  MemberEmitScope,
   StaticAttrValue,
   StatementEmitOptions,
   StructRegistry,
@@ -38,6 +39,7 @@ export type {
   WebViewFacade,
 } from './emit-context'
 export type {
+  AliasDeclSpec,
   AstNode,
   CallRecognizer,
   ComputedDeclSpec,
@@ -70,7 +72,10 @@ export type {
   ModuleFinish,
   ModuleFinishTarget,
   ModuleItemEmitter,
+  ModuleItemTyping,
   ModuleParseContext,
+  ModuleReceiverLowering,
+  ModuleReceiverSite,
   StructRefinement,
   StructRefinementTarget,
   TopLevelRecognizer,

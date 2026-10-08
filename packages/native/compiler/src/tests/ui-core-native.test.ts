@@ -48,12 +48,18 @@ describe('ui-core-native — PyreonUI transparent provider', () => {
 })
 
 describe('ui-core-native — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the full ui-system app root typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(APP).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the full ui-system app root compiles (real kotlinc)', () => {
-    const res = validateKotlin(kotlin(APP).code)
-    expect(res.ok, res.error).toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the full ui-system app root typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(APP).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the full ui-system app root compiles (real kotlinc)',
+    () => {
+      const res = validateKotlin(kotlin(APP).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
 })

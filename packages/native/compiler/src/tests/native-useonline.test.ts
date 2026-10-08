@@ -21,13 +21,8 @@
 // the "write one shared source" promise for every useOnline consumer.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // The web-idiomatic SHARED shape: read the accessor as `net()`, in both a
 // `<Show when>` condition and a text-interpolation ternary (the HooksDemo shape).

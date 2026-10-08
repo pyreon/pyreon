@@ -31,8 +31,6 @@ const MODULE_ARRAYS = [
   'enums',
   'structs',
   'moduleDecls',
-  'stores',
-  'models',
   'moduleItems',
   'helperFns',
   'styledComponents',
@@ -269,12 +267,12 @@ export function createCompiler<Target extends string = never>(
           const constants = buildModuleConstTypes(passModule.moduleDecls, passModule.structs, helpers)
           const inference = buildInferenceCtx(
             component?.decls ?? [],
-            passModule.stores,
             passModule.structs,
             component?.props ?? [],
             component?.propsParamName,
             helpers,
             constants,
+            passModule.moduleItems,
           )
           if (locals !== undefined) inference.locals = new Map([...inference.locals, ...locals])
           return inferType(expression, inference)

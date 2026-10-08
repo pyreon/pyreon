@@ -36,13 +36,8 @@ import {
   swiftObservableIdent,
   withObservableMembers,
 } from '../identifier-safety'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // ── word lists ──────────────────────────────────────────────────────────────
 
@@ -135,7 +130,10 @@ describe('reserved identifiers — helper policy', () => {
     expect(swiftObservableIdent('where')).toBe('where_')
     expect(swiftObservableIdent('count')).toBe('count')
     expect(swiftIdent('where')).toBe('`where`')
-    const inside = withObservableMembers(['where'], () => [swiftIdent('where'), swiftIdent('class')])
+    const inside = withObservableMembers(['where'], () => [
+      swiftIdent('where'),
+      swiftIdent('class'),
+    ])
     expect(inside).toEqual(['where_', '`class`']) // only the store's own members
     expect(swiftIdent('where')).toBe('`where`') // restored, not reset
     // Nesting composes and unwinds.
@@ -159,7 +157,9 @@ describe('reserved identifiers — helper policy', () => {
 
 function lineErrors(output: string, file: string): number[] {
   const out = new Set<number>()
-  for (const m of output.matchAll(new RegExp(`${file.replace(/[.]/g, '\\.')}:(\\d+):\\d+: error`, 'g'))) {
+  for (const m of output.matchAll(
+    new RegExp(`${file.replace(/[.]/g, '\\.')}:(\\d+):\\d+: error`, 'g'),
+  )) {
     out.add(Number(m[1]))
   }
   return [...out]
@@ -175,7 +175,10 @@ describe('reserved identifiers — keyword tables match the real toolchains', ()
       // parameter (`{ async in … }` parses `async` as an effect, not a name).
       writeFileSync(
         file,
-        SWIFT_CANDIDATES.map((w) => `struct S_${w} { var ${w}: Int = 0 }; func f_${w}() { let ${w} = 1; _ = ${w}; let _: (Int) -> Int = { ${w} in ${w} } }`).join('\n'),
+        SWIFT_CANDIDATES.map(
+          (w) =>
+            `struct S_${w} { var ${w}: Int = 0 }; func f_${w}() { let ${w} = 1; _ = ${w}; let _: (Int) -> Int = { ${w} in ${w} } }`,
+        ).join('\n'),
       )
       let out = ''
       try {
@@ -192,7 +195,10 @@ describe('reserved identifiers — keyword tables match the real toolchains', ()
       const esc = join(dir, 'esc.swift')
       writeFileSync(
         esc,
-        SWIFT_CANDIDATES.map((w) => `struct S_${w} { var ${swiftIdent(w)}: Int = 0 }; func f_${w}() { let ${swiftIdent(w)} = 1; _ = ${swiftIdent(w)}; let _: (Int) -> Int = { ${swiftIdent(w)} in ${swiftIdent(w)} } }`).join('\n'),
+        SWIFT_CANDIDATES.map(
+          (w) =>
+            `struct S_${w} { var ${swiftIdent(w)}: Int = 0 }; func f_${w}() { let ${swiftIdent(w)} = 1; _ = ${swiftIdent(w)}; let _: (Int) -> Int = { ${swiftIdent(w)} in ${swiftIdent(w)} } }`,
+        ).join('\n'),
       )
       expect(() => execFileSync('swiftc', ['-parse', esc], { stdio: 'pipe' })).not.toThrow()
     },
@@ -223,7 +229,8 @@ describe('reserved identifiers — keyword tables match the real toolchains', ()
 // ── 3. emit-shape matrix through the REAL toolchains ────────────────────────
 
 const lines = (ws: readonly string[], f: (w: string) => string, sep = '\n') => ws.map(f).join(sep)
-const texts = (ws: readonly string[], e: (w: string) => string) => ws.map((w) => `<Text>{${e(w)}}</Text>`).join('')
+const texts = (ws: readonly string[], e: (w: string) => string) =>
+  ws.map((w) => `<Text>{${e(w)}}</Text>`).join('')
 
 const ZOD_HEAD = `import { z } from 'zod'\nimport { zodSchema } from '@pyreon/validation'\n`
 
@@ -263,25 +270,58 @@ const SHAPES: Record<string, string> = {
   // String-literal unions become enum cases / entries.
   stringUnion: `type K = ${lines(FIELD_WORDS, (w) => `'${w}'`, ' | ')}\nexport function App() {\n  const k = signal<K>('where')\n  return <Text>{k()}</Text>\n}\n`,
   // `defineStore` / `model` become @Observable singletons on Swift.
-  store: `import { defineStore } from '@pyreon/store'\nconst useS = defineStore('s', () => {\n${lines(LOCAL_WORDS, (w) => `  const ${w} = signal(1)`)}\n  const total = computed(() => ${LOCAL_WORDS.slice(0, 3).map((w) => `${w}()`).join(' + ')})\n  const bump = () => { ${LOCAL_WORDS.slice(0, 3).map((w) => `${w}.set(${w}() + 1)`).join('; ')} }\n  return { ${LOCAL_WORDS.join(', ')}, total, bump }\n})\nexport function App() {\n  return <Stack>${texts(LOCAL_WORDS, (w) => `useS().store.${w}()`)}<Text>{useS().store.total()}</Text><Button onPress={() => { ${lines(LOCAL_WORDS, (w) => `useS().store.${w}.set(2)`, '; ')}; useS().store.bump() }}>go</Button></Stack>\n}\n`,
-  model: `import { model } from '@pyreon/state-tree'\nconst m = model({ state: { ${lines(LOCAL_WORDS, (w) => `${w}: 1`, ', ')} } })\n  .views((self) => ({ ${LOCAL_WORDS.slice(0, 5).map((w) => `v_${w}: () => self.${w}() + 1`).join(', ')} }))\n  .actions((self) => ({ ${LOCAL_WORDS.slice(0, 5).map((w) => `a_${w}: () => self.${w}.set(5)`).join(', ')}, bump: () => self.operator.set(self.operator() + 1) }))\n  .create()\nexport function App() {\n  return <Stack>${texts(LOCAL_WORDS, (w) => `m.${w}()`)}<Text>{m.v_${LOCAL_WORDS[0]}()}</Text><Button onPress={() => m.bump()}>go</Button></Stack>\n}\n`,
+  store: `import { defineStore } from '@pyreon/store'\nconst useS = defineStore('s', () => {\n${lines(LOCAL_WORDS, (w) => `  const ${w} = signal(1)`)}\n  const total = computed(() => ${LOCAL_WORDS.slice(
+    0,
+    3,
+  )
+    .map((w) => `${w}()`)
+    .join(' + ')})\n  const bump = () => { ${LOCAL_WORDS.slice(0, 3)
+    .map((w) => `${w}.set(${w}() + 1)`)
+    .join(
+      '; ',
+    )} }\n  return { ${LOCAL_WORDS.join(', ')}, total, bump }\n})\nexport function App() {\n  return <Stack>${texts(LOCAL_WORDS, (w) => `useS().store.${w}()`)}<Text>{useS().store.total()}</Text><Button onPress={() => { ${lines(LOCAL_WORDS, (w) => `useS().store.${w}.set(2)`, '; ')}; useS().store.bump() }}>go</Button></Stack>\n}\n`,
+  model: `import { model } from '@pyreon/state-tree'\nconst m = model({ state: { ${lines(LOCAL_WORDS, (w) => `${w}: 1`, ', ')} } })\n  .views((self) => ({ ${LOCAL_WORDS.slice(
+    0,
+    5,
+  )
+    .map((w) => `v_${w}: () => self.${w}() + 1`)
+    .join(', ')} }))\n  .actions((self) => ({ ${LOCAL_WORDS.slice(0, 5)
+    .map((w) => `a_${w}: () => self.${w}.set(5)`)
+    .join(
+      ', ',
+    )}, bump: () => self.operator.set(self.operator() + 1) }))\n  .create()\nexport function App() {\n  return <Stack>${texts(LOCAL_WORDS, (w) => `m.${w}()`)}<Text>{m.v_${LOCAL_WORDS[0]}()}</Text><Button onPress={() => m.bump()}>go</Button></Stack>\n}\n`,
 }
 
 function failure(v: { ok: boolean; error?: string }): string {
-  return v.ok ? '' : (v.error ?? '').split('\n').filter((l) => /error/.test(l)).slice(0, 3).join(' | ').replace(/\/[^\s|]*\//g, '')
+  return v.ok
+    ? ''
+    : (v.error ?? '')
+        .split('\n')
+        .filter((l) => /error/.test(l))
+        .slice(0, 3)
+        .join(' | ')
+        .replace(/\/[^\s|]*\//g, '')
 }
 
 describe('reserved identifiers — every emit shape compiles on the real toolchains', () => {
   for (const [name, src] of Object.entries(SHAPES)) {
-    it.skipIf(!isSwiftcAvailable())(`Swift (swiftc typecheck): ${name}`, () => {
-      const { code } = transform(src, { target: 'swift', filename: 'P.tsx' })
-      expect(failure(validateSwiftWithStubs(code))).toBe('')
-    }, 120_000)
+    it.skipIf(!isSwiftcAvailable())(
+      `Swift (swiftc typecheck): ${name}`,
+      () => {
+        const { code } = transform(src, { target: 'swift', filename: 'P.tsx' })
+        expect(failure(validateSwiftWithStubs(code))).toBe('')
+      },
+      120_000,
+    )
 
-    it.skipIf(!isKotlincAvailable())(`Kotlin (kotlinc): ${name}`, () => {
-      const { code } = transform(src, { target: 'kotlin', filename: 'P.tsx' })
-      expect(failure(validateKotlin(code))).toBe('')
-    }, 180_000)
+    it.skipIf(!isKotlincAvailable())(
+      `Kotlin (kotlinc): ${name}`,
+      () => {
+        const { code } = transform(src, { target: 'kotlin', filename: 'P.tsx' })
+        expect(failure(validateKotlin(code))).toBe('')
+      },
+      180_000,
+    )
   }
 })
 

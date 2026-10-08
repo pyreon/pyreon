@@ -22,8 +22,8 @@
 // did a real gap show up. A probe that fails is a hypothesis, not a finding.
 
 import { describe, expect, it } from 'vitest'
-import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const app = (body: string) =>
   `import { defineStore } from '@pyreon/store'

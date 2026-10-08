@@ -4,8 +4,7 @@
 // swiftc rejects ("expected '{' in class") and kotlinc rejects ("Expecting a
 // top level declaration"). Found writing the F3 flow device proof.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const src = `
   import { signal } from '@pyreon/reactivity'

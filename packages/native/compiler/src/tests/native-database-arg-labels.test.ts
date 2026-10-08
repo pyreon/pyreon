@@ -25,8 +25,8 @@
 // backends so the asymmetry stays deliberate rather than accidental.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isSwiftcAvailable, validateSwiftWithStubs } from '../validate'
+import { transform, validateSwiftWithStubs } from './first-party-plugins'
+import { isSwiftcAvailable } from '../validate'
 
 const SRC = `import { useDatabase } from '@pyreon/hooks'
 export function Ledger() {

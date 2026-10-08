@@ -91,11 +91,14 @@ export function C() {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())('a REGRESSED bare-constructor emit FAILS the stub typecheck', () => {
-    // Proves the stub is load-bearing, not decorative: this is the exact
-    // string the emit used to produce.
-    const regressed = kotlin(SRC).code.replace('PyreonDatabase(dbCtx)', 'PyreonDatabase()')
-    const res = validateKotlin(regressed)
-    expect(res.ok).toBe(false)
-  })
+  it.skipIf(!isKotlincAvailable())(
+    'a REGRESSED bare-constructor emit FAILS the stub typecheck',
+    () => {
+      // Proves the stub is load-bearing, not decorative: this is the exact
+      // string the emit used to produce.
+      const regressed = kotlin(SRC).code.replace('PyreonDatabase(dbCtx)', 'PyreonDatabase()')
+      const res = validateKotlin(regressed)
+      expect(res.ok).toBe(false)
+    },
+  )
 })

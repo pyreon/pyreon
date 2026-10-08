@@ -27,6 +27,11 @@
       "bun": "./src/devtools.ts",
       "import": "./lib/devtools.js",
       "types": "./lib/types/devtools.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -47,7 +52,8 @@
     "bench:mst": "NODE_ENV=production bun bench/state-tree-bench.ts"
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
   },
   "dependencies": {
     "@pyreon/validation": "workspace:^"
@@ -64,7 +70,8 @@
     "mobx": "^7.0.5",
     "mobx-state-tree": "^8.0.0",
     "valibot": "^1.5.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@pyreon/native-compiler": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
@@ -72,7 +79,16 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/state-tree"
+      ]
+    }
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
     }
   }
 }

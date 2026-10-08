@@ -32,8 +32,8 @@
 // `emit-kotlin.ts`.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const app = (body: string) => `import { useDatabase } from '@pyreon/primitives'
 import { Stack, Text } from '@pyreon/primitives'
@@ -43,7 +43,9 @@ export function C() {
   return <Stack><Text>{db.count('notes')}</Text></Stack>
 }`
 
-const WRITE = app(`const add = () => { db.insert('notes', { id: 'n1', fields: { at: 'x', who: 'me' } }) }`)
+const WRITE = app(
+  `const add = () => { db.insert('notes', { id: 'n1', fields: { at: 'x', who: 'me' } }) }`,
+)
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
@@ -123,7 +125,9 @@ export function C() {
         `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
       )
       expect(swift(flat).warnings ?? []).not.toEqual([])
-      expect((swift(flat).warnings ?? []).join(' ')).toMatch(/description.*amount|amount.*description/)
+      expect((swift(flat).warnings ?? []).join(' ')).toMatch(
+        /description.*amount|amount.*description/,
+      )
       expect((swift(flat).warnings ?? []).join(' ')).toContain('fields: { ... }')
       expect((kotlin(flat).warnings ?? []).join(' ')).toContain('PyreonRecord')
     })
@@ -139,7 +143,9 @@ export function C() {
     })
 
     it('the mistyped-key case above ALSO warns (extends the earlier spec)', () => {
-      const typo = app(`const add = () => { db.insert('notes', { id: 'n1', feilds: { at: 'x' } }) }`)
+      const typo = app(
+        `const add = () => { db.insert('notes', { id: 'n1', feilds: { at: 'x' } }) }`,
+      )
       expect(swift(typo).warnings ?? []).not.toEqual([])
     })
 
@@ -152,23 +158,29 @@ export function C() {
       expect(swift(empty).warnings ?? []).toEqual([])
     })
 
-    it.skipIf(!isSwiftcAvailable())('the flat-object emit does NOT compile — proves the warning is honest', () => {
-      const flat = app(
-        `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
-      )
-      const res = validateSwiftWithStubs(swift(flat).code)
-      expect(res.ok).toBe(false)
-      expect(res.error ?? '').toContain('PyreonRecord')
-    })
+    it.skipIf(!isSwiftcAvailable())(
+      'the flat-object emit does NOT compile — proves the warning is honest',
+      () => {
+        const flat = app(
+          `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
+        )
+        const res = validateSwiftWithStubs(swift(flat).code)
+        expect(res.ok).toBe(false)
+        expect(res.error ?? '').toContain('PyreonRecord')
+      },
+    )
 
-    it.skipIf(!isKotlincAvailable())('same on Kotlin — argument type mismatch, not a parse error', () => {
-      const flat = app(
-        `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
-      )
-      const res = validateKotlin(kotlin(flat).code)
-      expect(res.ok).toBe(false)
-      expect(res.error ?? '').toContain('PyreonRecord')
-    })
+    it.skipIf(!isKotlincAvailable())(
+      'same on Kotlin — argument type mismatch, not a parse error',
+      () => {
+        const flat = app(
+          `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
+        )
+        const res = validateKotlin(kotlin(flat).code)
+        expect(res.ok).toBe(false)
+        expect(res.error ?? '').toContain('PyreonRecord')
+      },
+    )
   })
 
   it('does NOT rewrite insert on a NON-database binding', () => {

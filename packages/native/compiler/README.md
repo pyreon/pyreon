@@ -171,7 +171,7 @@ fields never break an older plugin:
   diagnostic for a call the package does not lower, without claiming its name),
   `receivers`, `functions`, `identifiers`, `memberReads`, `intrinsics`, `refModifiers`,
   `prepareEmit`, `propsTypes`, `runtimeTypes`, `refineParse`, `scanModule`,
-  `requestSources`, `topLevel` + `items` (slots `models` / `declarations` / `data`),
+  `requestSources`, `topLevel` + `items` (slots `bindings` / `models` / `declarations` / `data`),
   `methodCalls` + `exprs`, `callExprs`, `refineStructs`, `finishModule`,
   `rewriteElement`, `destructureCalls`, `componentOnlyCalls`, `persistence` and
   `stubs`. `DeclEmitter.typing` types both the call read (`callRead`) and the
@@ -254,3 +254,18 @@ the reference (`packages/fundamentals/charts/src/native-plugin/`).
 A declaration can request shared environment reads through `usesColorScheme` and `usesSizeClass`. `lifecycleOnly` omits declaration text; `lifecycle.earlyOrder` orders setup contributions before ordinary lifecycle hooks, preserving declaration order within a priority. `legacyName: false` omits a synthetic binding from a previously nameless declaration's compatibility hash.
 
 `DeclEmitter.root` wraps the root once for all declarations of its owning type. Its `next(indent)` callback emits the previous wrapper or canonical root. Wrappers compose in first-declaration order and receive only declarations from the current component. `@pyreon/hotkeys` uses this to install Compose focus and keyboard handling without compiler-specific shortcut branches.
+
+### Store and state-tree plugins
+
+The owning packages supply singleton recognition, typed members, target emitters and runtime marker stubs. The native CLI discovers their `native-plugin` exports from the app's imports. For a direct compiler instance, load the same plugins explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import storePlugin from '@pyreon/store/native-plugin'
+import stateTreePlugin from '@pyreon/state-tree/native-plugin'
+
+const compiler = createCompiler({ discovered: [storePlugin, stateTreePlugin] })
+const output = compiler.transform(appSource, { target: 'swift' })
+```
+
+`appSource` imports the libraries it uses. A bare compiler instance no longer lowers their APIs. Package plugins use generic module receivers, live member type evidence, alias factories and scoped function emission; store/model IR is owned by those packages.
