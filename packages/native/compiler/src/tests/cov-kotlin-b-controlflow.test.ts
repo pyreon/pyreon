@@ -1,3 +1,4 @@
+import { transform } from './first-party-plugins'
 // Kotlin emit — `<For>` / `<Show>`, the walled tags, `<Transition>` timing,
 // and the handler-lowering shapes in `emitKotlinAction`.
 //
@@ -8,7 +9,6 @@
 // class these lock — see `<For by>` and `<Suspense fallback>`, both of which
 // warn BY NAME rather than falling back quietly.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 
@@ -82,17 +82,35 @@ export function App() {
 
   it('each tag names its OWN Compose limitation in the walled comment', () => {
     const code = kotlin(WALLED).code
-    expect(code).toContain('<Suspense> unsupported on Android — rendering children only (no async-render-suspend on Compose)')
-    expect(code).toContain('<ErrorBoundary> unsupported on Android — rendering children only (no render-time try/catch on Compose)')
-    expect(code).toContain('<KeepAlive> unsupported on Android — rendering children only (no native state-cache across unmount on Compose)')
+    expect(code).toContain(
+      '<Suspense> unsupported on Android — rendering children only (no async-render-suspend on Compose)',
+    )
+    expect(code).toContain(
+      '<ErrorBoundary> unsupported on Android — rendering children only (no render-time try/catch on Compose)',
+    )
+    expect(code).toContain(
+      '<KeepAlive> unsupported on Android — rendering children only (no native state-cache across unmount on Compose)',
+    )
     // Children still render — the wall drops the prop, never the content.
     for (const t of ['a', 'b', 'c', 'd', 'e', 'f']) expect(code).toContain(`Text(text = "${t}")`)
   })
 
   it('a NON-JSX fallback is declined by name before the wall', () => {
     const ws = kotlin(WALLED).warnings
-    expect(ws.some((w) => w.includes('<Suspense fallback={…}> on Kotlin target: only JSX-literal fallback is supported'))).toBe(true)
-    expect(ws.some((w) => w.includes('<ErrorBoundary fallback={…}> on Kotlin target: only JSX-literal fallback is supported'))).toBe(true)
+    expect(
+      ws.some((w) =>
+        w.includes(
+          '<Suspense fallback={…}> on Kotlin target: only JSX-literal fallback is supported',
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      ws.some((w) =>
+        w.includes(
+          '<ErrorBoundary fallback={…}> on Kotlin target: only JSX-literal fallback is supported',
+        ),
+      ),
+    ).toBe(true)
   })
 
   it('a dropped prop is listed with the per-tag consequence — and a tag with nothing droppable stays quiet', () => {
@@ -206,7 +224,9 @@ export function App() {
     expect(logical.some((w) => w.includes('right operand'))).toBe(true)
     // `tags?: string[]` infers to a UNION — the unmapped-method check has to
     // look through the null branch to see the array receiver.
-    expect(r.warnings.some((w) => w.startsWith('`.pop()` on an array has no lowering in PMTC'))).toBe(true)
+    expect(
+      r.warnings.some((w) => w.startsWith('`.pop()` on an array has no lowering in PMTC')),
+    ).toBe(true)
   })
 })
 
@@ -216,7 +236,8 @@ export function App() {
 // decline spec on its own.
 describe('the shapes that must NOT decline', () => {
   it('a JSX-literal fallback drives a real conditional on both walled tags', () => {
-    const r = kotlin(`import { Stack, Text, Suspense, ErrorBoundary, KeepAlive } from '@pyreon/primitives'
+    const r =
+      kotlin(`import { Stack, Text, Suspense, ErrorBoundary, KeepAlive } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 export function App() {
   const on = signal(true)

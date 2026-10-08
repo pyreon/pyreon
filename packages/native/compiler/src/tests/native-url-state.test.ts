@@ -16,13 +16,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const NATIVE = resolve(import.meta.dirname, '../../..')
 const RUNTIME_SWIFT = readFileSync(
@@ -34,7 +29,8 @@ const RUNTIME_KOTLIN = readFileSync(
   'utf8',
 )
 /** A top-level declaration of any url-state helper, in either language. */
-const HELPER_DECL = /^(?:public |private |internal )?(?:struct|class|func|fun) (?:PyreonUrlState\w*|pyreonUrlNumber)\b/m
+const HELPER_DECL =
+  /^(?:public |private |internal )?(?:struct|class|func|fun) (?:PyreonUrlState\w*|pyreonUrlNumber)\b/m
 
 const SRC = `import { useUrlState } from '@pyreon/url-state'
 import { Stack, Text } from '@pyreon/primitives'
@@ -157,9 +153,7 @@ describe('useUrlState typed defaults', () => {
   it('lowers number and boolean defaults without warning (Swift)', () => {
     const { code, warnings } = transform(TYPED_SRC, { target: 'swift' })
     expect(warnings).toHaveLength(0)
-    expect(code).toContain(
-      'PyreonUrlStateInt(router: pyreonRouter, key: "page", defaultValue: 1)',
-    )
+    expect(code).toContain('PyreonUrlStateInt(router: pyreonRouter, key: "page", defaultValue: 1)')
     expect(code).toContain(
       'PyreonUrlStateDouble(router: pyreonRouter, key: "zoom", defaultValue: 1.5)',
     )
@@ -183,7 +177,9 @@ describe('useUrlState typed defaults', () => {
   it('splits Int from Double on the default literal, not on the type name', () => {
     const swift = transform(TYPED_SRC, { target: 'swift' }).code
     expect(swift).toContain('PyreonUrlStateInt(router: pyreonRouter, key: "page", defaultValue: 1)')
-    expect(swift).toContain('PyreonUrlStateDouble(router: pyreonRouter, key: "zoom", defaultValue: 1.5)')
+    expect(swift).toContain(
+      'PyreonUrlStateDouble(router: pyreonRouter, key: "zoom", defaultValue: 1.5)',
+    )
   })
 
   // A negated literal parses as a unary WRAPPING the literal — the shape

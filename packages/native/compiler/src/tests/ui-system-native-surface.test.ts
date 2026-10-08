@@ -23,8 +23,8 @@
 //              it is asserted as a warning here rather than treated as a defect.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const COOLGRID = `import { Container, Row, Col } from '@pyreon/coolgrid'
 import { Text } from '@pyreon/primitives'

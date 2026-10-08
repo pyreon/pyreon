@@ -59,10 +59,45 @@ function assertElementLowering(plugin: string, value: unknown): void {
  * that is malformed fails with the SAME message in both places.
  */
 export function assertPluginExtensions(name: string, plugin: object): void {
-  const { services, elements, scopes, stubs, calls, declCalls, tier2Calls, decls, memberCalls, receivers, functions, memberReads, identifiers, intrinsics, refModifiers, prepareEmit, intrinsicAdvice, propsTypes, unlowered, runtimeTypes, refineParse, scanModule, rewriteElement, requestSources, destructureCalls, componentOnlyCalls, persistence, topLevel, items, methodCalls, callExprs, exprs, refineStructs, finishModule, modules, requires, builtIn } = plugin as Record<
-    string,
-    unknown
-  >
+  const {
+    services,
+    elements,
+    scopes,
+    stubs,
+    calls,
+    declCalls,
+    tier2Calls,
+    decls,
+    memberCalls,
+    receivers,
+    functions,
+    memberReads,
+    identifiers,
+    intrinsics,
+    refModifiers,
+    prepareEmit,
+    intrinsicAdvice,
+    propsTypes,
+    unlowered,
+    runtimeTypes,
+    refineParse,
+    scanModule,
+    rewriteElement,
+    requestSources,
+    destructureCalls,
+    componentOnlyCalls,
+    persistence,
+    topLevel,
+    items,
+    methodCalls,
+    callExprs,
+    exprs,
+    refineStructs,
+    finishModule,
+    modules,
+    requires,
+    builtIn,
+  } = plugin as Record<string, unknown>
   if (services !== undefined) {
     if (!services || typeof services !== 'object' || Array.isArray(services)) {
       throw new Error(`[Pyreon] Plugin "${name}" services must be an object keyed by hook name.`)
@@ -91,7 +126,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   if (scopes !== undefined) {
     if (!Array.isArray(scopes)) {
-      throw new Error(`[Pyreon] Plugin "${name}" scopes must be an array of colour-scope providers.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" scopes must be an array of colour-scope providers.`,
+      )
     }
     for (const entry of scopes as unknown[]) {
       const provider = entry as Record<string, unknown> | null
@@ -119,7 +156,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       (entry.swift !== undefined && typeof entry.swift !== 'function') ||
       (entry.kotlin !== undefined && typeof entry.kotlin !== 'function')
     ) {
-      throw new Error(`[Pyreon] Plugin "${name}" stubs must be an object with swift and/or kotlin functions.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" stubs must be an object with swift and/or kotlin functions.`,
+      )
     }
   }
   if (calls !== undefined) {
@@ -134,7 +173,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   if (decls !== undefined) {
     if (!decls || typeof decls !== 'object' || Array.isArray(decls)) {
-      throw new Error(`[Pyreon] Plugin "${name}" decls must be an object keyed by declaration type.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" decls must be an object keyed by declaration type.`,
+      )
     }
     for (const [type, emitter] of Object.entries(decls)) {
       const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyKind?: unknown } | null
@@ -149,6 +190,39 @@ export function assertPluginExtensions(name: string, plugin: object): void {
           `[Pyreon] Plugin "${name}" decl "${type}" needs swift and kotlin emitter functions.`,
         )
       }
+      const extensions = entry as typeof entry & {
+        iteration?: unknown
+        rename?: unknown
+        valueBinding?: unknown
+        lifecycle?: { earlyOrder?: unknown; midOrder?: unknown; tailOrder?: unknown }
+      }
+      for (const key of ['iteration', 'rename'] as const) {
+        if (extensions[key] !== undefined && typeof extensions[key] !== 'function')
+          throw new Error(`[Pyreon] Plugin "${name}" decl "${type}" ${key} must be a function.`)
+      }
+      if (extensions.valueBinding !== undefined) {
+        const binding = extensions.valueBinding as { swift?: unknown; kotlin?: unknown } | null
+        if (
+          !binding ||
+          typeof binding !== 'object' ||
+          typeof binding.swift !== 'function' ||
+          typeof binding.kotlin !== 'function'
+        )
+          throw new Error(
+            `[Pyreon] Plugin "${name}" decl "${type}" valueBinding needs swift and kotlin functions.`,
+          )
+      }
+      const early = extensions.lifecycle?.earlyOrder
+      if (
+        early !== undefined &&
+        (typeof early !== 'number' ||
+          !Number.isFinite(early) ||
+          extensions.lifecycle?.midOrder !== undefined ||
+          extensions.lifecycle?.tailOrder !== undefined)
+      )
+        throw new Error(
+          `[Pyreon] Plugin "${name}" decl "${type}" earlyOrder must be finite and cannot coexist with midOrder or tailOrder.`,
+        )
     }
   }
   if (calls !== undefined && Object.keys(calls as object).length > 0 && decls === undefined) {
@@ -158,7 +232,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   if (memberCalls !== undefined) {
     if (!memberCalls || typeof memberCalls !== 'object' || Array.isArray(memberCalls)) {
-      throw new Error(`[Pyreon] Plugin "${name}" memberCalls must be an object keyed by method name.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" memberCalls must be an object keyed by method name.`,
+      )
     }
     for (const [method, lowering] of Object.entries(memberCalls)) {
       const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
@@ -181,12 +257,20 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   if (receivers !== undefined) {
     if (!receivers || typeof receivers !== 'object' || Array.isArray(receivers)) {
-      throw new Error(`[Pyreon] Plugin "${name}" receivers must be an object keyed by declaration type.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" receivers must be an object keyed by declaration type.`,
+      )
     }
     for (const [type, lowering] of Object.entries(receivers)) {
       const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
-      if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
-        throw new Error(`[Pyreon] Plugin "${name}" receiver "${type}" needs a swift and/or kotlin lowering.`)
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        (entry.swift === undefined && entry.kotlin === undefined)
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" receiver "${type}" needs a swift and/or kotlin lowering.`,
+        )
       }
     }
     if (Object.keys(receivers as object).length > 0 && decls === undefined) {
@@ -201,8 +285,14 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     }
     for (const [key, lowering] of Object.entries(functions)) {
       const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
-      if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
-        throw new Error(`[Pyreon] Plugin "${name}" function "${key}" needs a swift and/or kotlin function.`)
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        (entry.swift === undefined && entry.kotlin === undefined)
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" function "${key}" needs a swift and/or kotlin function.`,
+        )
       }
     }
   }
@@ -212,14 +302,24 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     }
     for (const [key, lowering] of Object.entries(identifiers)) {
       const entry = lowering as { swift?: unknown; kotlin?: unknown } | null
-      if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
-        throw new Error(`[Pyreon] Plugin "${name}" identifier "${key}" needs a swift and/or kotlin function.`)
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        (entry.swift === undefined && entry.kotlin === undefined)
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" identifier "${key}" needs a swift and/or kotlin function.`,
+        )
       }
     }
   }
   if (memberReads !== undefined) {
     const entry = memberReads as { swift?: unknown; kotlin?: unknown } | null
-    if (!entry || typeof entry !== 'object' || (entry.swift === undefined && entry.kotlin === undefined)) {
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      (entry.swift === undefined && entry.kotlin === undefined)
+    ) {
       throw new Error(`[Pyreon] Plugin "${name}" memberReads needs a swift and/or kotlin function.`)
     }
   }
@@ -232,12 +332,16 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       (entry.swift !== undefined && typeof entry.swift !== 'function') ||
       (entry.kotlin !== undefined && typeof entry.kotlin !== 'function')
     ) {
-      throw new Error(`[Pyreon] Plugin "${name}" refModifiers must be an object with swift and/or kotlin functions.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" refModifiers must be an object with swift and/or kotlin functions.`,
+      )
     }
   }
   if (intrinsics !== undefined) {
     if (!Array.isArray(intrinsics)) {
-      throw new Error(`[Pyreon] Plugin "${name}" intrinsics must be an array of intrinsic lowerings.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" intrinsics must be an array of intrinsic lowerings.`,
+      )
     }
     for (const entry of intrinsics as unknown[]) {
       const lowering = entry as { tags?: unknown; applies?: unknown; emit?: unknown } | null
@@ -259,7 +363,10 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   if (prepareEmit !== undefined && typeof prepareEmit !== 'function') {
     throw new Error(`[Pyreon] Plugin "${name}" prepareEmit must be a synchronous function.`)
   }
-  if (intrinsicAdvice !== undefined && (typeof intrinsicAdvice !== 'string' || !intrinsicAdvice.trim())) {
+  if (
+    intrinsicAdvice !== undefined &&
+    (typeof intrinsicAdvice !== 'string' || !intrinsicAdvice.trim())
+  ) {
     throw new Error(`[Pyreon] Plugin "${name}" intrinsicAdvice must be a nonempty string.`)
   }
   if (propsTypes !== undefined) {
@@ -300,11 +407,18 @@ export function assertPluginExtensions(name: string, plugin: object): void {
   }
   if (requestSources !== undefined) {
     if (!Array.isArray(requestSources)) {
-      throw new Error(`[Pyreon] Plugin "${name}" requestSources must be an array of request sources.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" requestSources must be an array of request sources.`,
+      )
     }
     for (const entry of requestSources as unknown[]) {
       const source = entry as { has?: unknown; resolve?: unknown } | null
-      if (!source || typeof source !== 'object' || typeof source.has !== 'function' || typeof source.resolve !== 'function') {
+      if (
+        !source ||
+        typeof source !== 'object' ||
+        typeof source.has !== 'function' ||
+        typeof source.resolve !== 'function'
+      ) {
         throw new Error(`[Pyreon] Plugin "${name}" request source needs has and resolve functions.`)
       }
     }
@@ -328,32 +442,56 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     }
     for (const [type, emitter] of Object.entries(value)) {
       const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyList?: unknown } | null
-      if (!entry || typeof entry !== 'object' || typeof entry.swift !== 'function' || typeof entry.kotlin !== 'function') {
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.swift !== 'function' ||
+        typeof entry.kotlin !== 'function'
+      ) {
         throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} needs ${what}.`)
       }
       // A lane the hash does not have would silently drop the item from `moduleTag`.
-      if (entry.legacyList !== undefined && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas' && entry.legacyList !== 'features') {
-        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "fieldMetas", "zodSchemas" or "features".`)
+      if (
+        entry.legacyList !== undefined &&
+        entry.legacyList !== 'fieldMetas' &&
+        entry.legacyList !== 'zodSchemas' &&
+        entry.legacyList !== 'features'
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "fieldMetas", "zodSchemas" or "features".`,
+        )
       }
     }
   }
   if (methodCalls !== undefined) {
     if (!methodCalls || typeof methodCalls !== 'object' || Array.isArray(methodCalls)) {
-      throw new Error(`[Pyreon] Plugin "${name}" methodCalls must be an object keyed by method name.`)
+      throw new Error(
+        `[Pyreon] Plugin "${name}" methodCalls must be an object keyed by method name.`,
+      )
     }
     for (const [method, recognizer] of Object.entries(methodCalls)) {
       if (typeof recognizer !== 'function') {
-        throw new Error(`[Pyreon] Plugin "${name}" methodCalls.${method} must be a synchronous function.`)
+        throw new Error(
+          `[Pyreon] Plugin "${name}" methodCalls.${method} must be a synchronous function.`,
+        )
       }
     }
   }
   if (persistence !== undefined) {
     const backend = persistence as { swift?: unknown; kotlin?: unknown } | null
-    if (!backend || typeof backend !== 'object' || typeof backend.swift !== 'function' || typeof backend.kotlin !== 'function') {
+    if (
+      !backend ||
+      typeof backend !== 'object' ||
+      typeof backend.swift !== 'function' ||
+      typeof backend.kotlin !== 'function'
+    ) {
       throw new Error(`[Pyreon] Plugin "${name}" persistence needs swift and kotlin functions.`)
     }
   }
-  if (tier2Calls !== undefined && (!Array.isArray(tier2Calls) || tier2Calls.some((c) => typeof c !== 'string' || c === ''))) {
+  if (
+    tier2Calls !== undefined &&
+    (!Array.isArray(tier2Calls) || tier2Calls.some((c) => typeof c !== 'string' || c === ''))
+  ) {
     throw new Error(`[Pyreon] Plugin "${name}" tier2Calls must be an array of callee names.`)
   }
   if (declCalls !== undefined && typeof declCalls !== 'function') {

@@ -28,8 +28,14 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { transform as transformWithPlugins, validateKotlin as validateKotlinWithPlugins, validateSwiftWithStubs as validateWithPlugins } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import {
+  transform as transformWithPlugins,
+  validateKotlin as validateKotlinWithPlugins,
+  validateSwiftWithStubs as validateWithPlugins,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
@@ -70,15 +76,23 @@ describe('a file-scope const is a typed receiver', () => {
     }
   })
 
-  it.skipIf(!isSwiftcAvailable())('swiftc accepts the emit', () => {
-    const r = validateSwiftWithStubs(swift(SRC).code)
-    expect(r.ok, r.error).toBe(true)
-  }, 120_000)
+  it.skipIf(!isSwiftcAvailable())(
+    'swiftc accepts the emit',
+    () => {
+      const r = validateSwiftWithStubs(swift(SRC).code)
+      expect(r.ok, r.error).toBe(true)
+    },
+    120_000,
+  )
 
-  it.skipIf(!isKotlincAvailable())('kotlinc accepts the emit', () => {
-    const r = validateKotlin(kotlin(SRC).code)
-    expect(r.ok, r.error).toBe(true)
-  }, 120_000)
+  it.skipIf(!isKotlincAvailable())(
+    'kotlinc accepts the emit',
+    () => {
+      const r = validateKotlin(kotlin(SRC).code)
+      expect(r.ok, r.error).toBe(true)
+    },
+    120_000,
+  )
 })
 
 describe('scoping and the shapes that stay untyped', () => {

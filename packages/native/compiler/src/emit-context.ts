@@ -22,6 +22,19 @@ import type { ChildIR, ExprIR, ExtDecl, JsxElementIR, StatementIR, TypeIR } from
 
 export type EmitTarget = 'swift' | 'kotlin'
 
+/** A callback-local name, optionally typed and owned by a plugin receiver lowering. */
+export interface EmitBinding {
+  readonly name: string
+  readonly type?: TypeIR | undefined
+  readonly declaration?: ExtDecl | undefined
+}
+
+/** Validators offered by a loaded module item, rendered for the active target. */
+export interface EmitFieldValidators {
+  readonly fields: readonly string[]
+  body(field: string, value: string): string
+}
+
 /** A literal attribute value the compiler can read at compile time. */
 export type StaticAttrValue = string | number | boolean
 
@@ -76,6 +89,12 @@ export interface WebViewFacade {
 
 /** The emitter state a plugin-facing context reads beyond the basics — what a real emitter supplies and a toy backend may omit. */
 export interface EmitContextBackendExtras {
+  /** Emit a callback with temporary local type and receiver bindings. */
+  withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
+  /** Validators supplied by the named module item, or undefined. */
+  fieldValidators(name: string): EmitFieldValidators | undefined
+  /** The loaded providers' declaration advice. */
+  fieldValidatorsAdvice(): string | undefined
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -103,7 +122,11 @@ export interface EmitContextBackendExtras {
   /** `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` with `handled` props the caller already consumed. */
   layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
   /** `emitSwiftStatement` / `emitKotlinStatement` over a statement list, with `locals` typed for inference where the emitter keeps an inference context for handler locals. */
-  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
+  statements(
+    stmts: readonly StatementIR[],
+    indent: number,
+    locals?: ReadonlyMap<string, TypeIR>,
+  ): string[]
 }
 
 /** What a target emitter supplies; `createEmitContext` adds the pure helpers. */
@@ -167,6 +190,12 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
 
 export interface EmitContext {
   readonly target: EmitTarget
+  /** Temporarily bind callback names and their receiver lowerings; restores on return and throw. A binding without a declaration hides an enclosing plugin receiver. */
+  withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
+  /** Field validators offered by a loaded module item named name. */
+  fieldValidators(name: string): EmitFieldValidators | undefined
+  /** Declaration shapes the loaded validator providers advise. */
+  fieldValidatorsAdvice(): string | undefined
   /** Indentation (in spaces) of the element being emitted. */
   readonly indent: number
   /** Emit another element through the full dispatcher; `indent` defaults to this one's. */
@@ -265,7 +294,11 @@ export interface EmitContext {
    * over a typed stream item); the Swift emitter seeds them (and the body's own `let`s), the Kotlin
    * emitter infers handler locals itself and ignores them.
    */
-  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
+  statements(
+    stmts: readonly StatementIR[],
+    indent: number,
+    locals?: ReadonlyMap<string, TypeIR>,
+  ): string[]
 }
 
 /**
@@ -305,7 +338,10 @@ export interface KotlinEmitContext extends EmitContext {
   intArg(e: ExprIR, at?: number): string
 }
 
-export function createKotlinEmitContext(backend: KotlinEmitContextBackend, indent: number): KotlinEmitContext {
+export function createKotlinEmitContext(
+  backend: KotlinEmitContextBackend,
+  indent: number,
+): KotlinEmitContext {
   return {
     ...createEmitContext('kotlin', backend, indent),
     intArg: (e, at = indent) => backend.intArg(e, at),
@@ -314,7 +350,9 @@ export function createKotlinEmitContext(backend: KotlinEmitContextBackend, inden
 
 /** The member `name` of a context built without it: an error naming it (a real emitter supplies every one). */
 function missing(name: string): never {
-  throw new Error(`[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`)
+  throw new Error(
+    `[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`,
+  )
 }
 
 export function createEmitContext(
@@ -325,6 +363,12 @@ export function createEmitContext(
   return {
     target,
     indent,
+    withBindings: (bindings, emit) =>
+      (backend.withBindings ?? (() => missing('withBindings')))(bindings, emit),
+    fieldValidators: (name) =>
+      (backend.fieldValidators ?? (() => missing('fieldValidators')))(name),
+    fieldValidatorsAdvice: () =>
+      (backend.fieldValidatorsAdvice ?? (() => missing('fieldValidatorsAdvice')))(),
     emit: (el, at = indent) => backend.emit(el, at),
     pad: (n = indent) => ' '.repeat(n),
     staticAttr: (el, name) => backend.staticAttr(el, name),
@@ -362,12 +406,17 @@ export function createEmitContext(
       messageHandler: () => missing('webView'),
     },
     fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
-    layoutModifiersFor: (el, handled) => (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
-    statements: (stmts, at, locals) => (backend.statements ?? (() => missing('statements')))(stmts, at, locals),
+    layoutModifiersFor: (el, handled) =>
+      (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
+    statements: (stmts, at, locals) =>
+      (backend.statements ?? (() => missing('statements')))(stmts, at, locals),
   }
 }
 
-export function createSwiftEmitContext(backend: SwiftEmitContextBackend, indent: number): SwiftEmitContext {
+export function createSwiftEmitContext(
+  backend: SwiftEmitContextBackend,
+  indent: number,
+): SwiftEmitContext {
   return {
     ...createEmitContext('swift', backend, indent),
     handlerName: (handler) => backend.handlerName(handler),

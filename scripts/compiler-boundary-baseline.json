@@ -5,7 +5,7 @@
       "@pyreon/store": 1,
       "@pyreon/ui-core": 2
     },
-    "hooks": 66
+    "hooks": 60
   },
   "compiler": {
     "packages": {

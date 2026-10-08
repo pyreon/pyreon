@@ -114,7 +114,6 @@ export interface ExtModuleItem {
   payload: { [key: string]: ExtValue }
 }
 
-
 export type DeclIR =
   /**
    * Reactive signal declaration. The classic shape is `signal<T>(initial)`
@@ -214,51 +213,6 @@ export type DeclIR =
    * `useParams()` follows the same shape.
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
-  /**
-   * Phase 4.2 — form state via `useForm({ initialValues })` from
-   * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
-   * container:
-   *   Swift  → @State private var form = PyreonForm(initialValues: ["email": "a@b.com"])
-   *   Kotlin → val form = remember { PyreonForm(mapOf("email" to "a@b.com")) }
-   *
-   * `initialValues` carries the literal string-keyed defaults captured from
-   * the `{ initialValues: { email: 'a@b.com' } }` config. Only string-valued
-   * entries survive — the native `PyreonForm` surface is `[String: String]`,
-   * so non-string defaults are dropped (the field still exists at runtime,
-   * just unseeded). `onSubmit` / `validators` are web-only function logic and
-   * are intentionally ignored on native — submission flows through the
-   * container's `beginSubmit` / `endSubmit` API.
-   *
-   * Field reads (`form.values`, `form.errors`, `form.touched`,
-   * `form.isSubmitting`) map to the container's @Observable properties on
-   * Swift / Compose `MutableState` `.value` reads on Kotlin. `form.isValid`
-   * is a derived `Bool` getter — a plain read on both targets (no `.value`).
-   */
-  | {
-      kind: 'form'
-      name: string
-      initialValues: { key: string; value: string }[]
-      /**
-       * v2 (form-binding arc) — per-field sync validators from
-       * `useForm({ validators: { email: (v) => … } })`. Each arrow
-       * emits as a native closure in the PyreonForm init ("" = valid).
-       */
-      validators?: { key: string; param: string; body: ExprIR }[]
-      /** v2 — `onSubmit: (values) => …` callback (expression or block body). */
-      onSubmit?: { param: string; body: StatementIR[] }
-      /**
-       * `schema: SomeSchema` naming a top-level schema declaration a plugin lowers
-       * (a plugin module item that offers `fieldValidators`).
-       *
-       * The declaration already emits a struct / data class whose `parse()`
-       * enforces every captured constraint — but nothing connected it to the
-       * form, so `useForm({ schema })` dropped the option SILENTLY and
-       * `isValid` was true on native for input the web rejected. Found by the
-       * iOS device gate, which is the only thing that ran a schema-validated
-       * form. The emitters turn this into per-field validator entries.
-       */
-      schemaName?: string
-    }
   /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle
    * escape hatch ("call .start()/.connect() from an onMount"). Lowers to a
@@ -476,8 +430,12 @@ export type DeclIR =
    * snapshots the signal (non-reactive), matching web semantics. Non-call,
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
-  | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
-  | { kind: 'fieldArray'; name: string; initial: string[] }
+  | {
+      kind: 'value'
+      name: string
+      expr: ExprIR
+      /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR
+    }
   /**
    * Phase B6 (native readiness audit 2026-06, partial CRIT-4 closure).
    * `const data = useLoaderData<User>()` binding — reads the active
@@ -638,7 +596,7 @@ export type StatementIR =
        * `listOf()`. The annotation is the only place that element type exists.
        */
       declaredType?: TypeIR
-          /** an ARRAY-literal local later mutated via push/pop/shift/unshift/splice — Kotlin must emit mutableListOf */
+      /** an ARRAY-literal local later mutated via push/pop/shift/unshift/splice — Kotlin must emit mutableListOf */
       methodMutated?: boolean | undefined
     }
   /**

@@ -17,6 +17,8 @@ import type { CompilerPlugin } from '../packages/native/compiler/src/plugin'
 import type { ServiceDescriptor } from '../packages/native/compiler/src/services'
 import type { ValidateOptions } from '../packages/native/compiler/src/stub-augmentation'
 import type { EmitOptions, TransformResult } from '../packages/native/compiler/src/types'
+import { formPlugin } from '../packages/fundamentals/form/src/native-plugin/plugin'
+import { formStubs } from '../packages/fundamentals/form/src/native-plugin/stubs'
 import { chartsPlugin } from '../packages/fundamentals/charts/src/native-plugin/plugin'
 import { chartsStubs } from '../packages/fundamentals/charts/src/native-plugin/stubs'
 import { flowPlugin } from '../packages/fundamentals/flow/src/native-plugin/plugin'
@@ -54,10 +56,52 @@ import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, storagePlugin, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, kineticPlugin, elementsPlugin, coolgridPlugin])
+export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
+  formPlugin,
+  chartsPlugin,
+  flowPlugin,
+  httpPlugin,
+  machinePlugin,
+  queryPlugin,
+  validatePlugin,
+  validationPlugin,
+  i18nPlugin,
+  toastPlugin,
+  a11yPlugin,
+  tablePlugin,
+  dndPlugin,
+  syncPlugin,
+  permissionsPlugin,
+  urlStatePlugin,
+  storagePlugin,
+  sizedMapPlugin,
+  rxPlugin,
+  featurePlugin,
+  hooksPlugin,
+  kineticPlugin,
+  elementsPlugin,
+  coolgridPlugin,
+])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs, storageStubs, sizedMapStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({
+  augment: [
+    formStubs,
+    chartsStubs,
+    flowStubs,
+    machineStubs,
+    queryStubs,
+    i18nStubs,
+    toastStubs,
+    a11yStubs,
+    tableStubs,
+    dndStubs,
+    syncStubs,
+    permissionsStubs,
+    storageStubs,
+    sizedMapStubs,
+  ],
+})
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 
@@ -67,7 +111,9 @@ export function transform(source: string, options: EmitOptions): TransformResult
 }
 
 /** The `@pyreon/hooks` plain-service table as descriptors, in the plugin's own (meaningful) order. */
-export const HOOKS_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] = Object.entries(hooksPlugin.services).map(([hook, spec]) => ({
+export const HOOKS_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] = Object.entries(
+  hooksPlugin.services,
+).map(([hook, spec]) => ({
   ...spec,
   hook,
   legacyKind: (spec as { legacyKind?: string }).legacyKind ?? 'service',

@@ -21,13 +21,8 @@
 // exactly the class a string-match gate waves through (the M2.8 lesson).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // The canonical shape: pick, then branch on an EXPLICIT null comparison.
 // `uri === null` (not truthiness) is what lowers to `== nil` / `== null` — JS
