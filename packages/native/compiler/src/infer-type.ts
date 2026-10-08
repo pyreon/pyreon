@@ -113,6 +113,8 @@ export interface InferenceCtx {
    */
   props?: Map<string, TypeIR>
   propsParamName?: string | undefined
+  /** A declaration scope whose parameter exposes its own signal/computed members. */
+  signalReceiver?: string | undefined
   /**
    * FILE-SCOPE `const` / `let` name → type (`const NAMES = ['a', 'b']` above
    * the component). Looked up LAST for a bare identifier, so every narrower
@@ -1394,6 +1396,12 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'call': {
+      if (expr.args.length === 0 && expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' && expr.callee.object.name === ctx.signalReceiver &&
+        !ctx.locals.has(expr.callee.object.name)) {
+        const type = ctx.signals.get(expr.callee.property) ?? ctx.computeds.get(expr.callee.property)
+        if (type !== undefined) return type
+      }
 
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
@@ -1751,6 +1759,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'member': {
+      if (expr.object.kind === 'identifier' && expr.object.name === ctx.signalReceiver &&
+        !ctx.locals.has(expr.object.name)) {
+        const type = ctx.signals.get(expr.property) ?? ctx.computeds.get(expr.property)
+        if (type !== undefined) return type
+      }
       // EVERY Math constant is a Double on both targets (`PI` was the only
       // one inferred before `math-lowering.ts` taught the emitters the rest;
       // the others bound as `Any`/`let x: Any`).

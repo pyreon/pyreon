@@ -104,6 +104,8 @@ To add a service, add ONE entry to the `services` of `packages/fundamentals/hook
 
 `useFetch` is code-shaped (a URL, a request init, a decoded type), so it is not a descriptor: it lives in the same plugin as a `calls` + `decls` lowering (`native-plugin/fetch.ts`). What is still hand-written in the compiler, with the reason, is listed under "Not moved yet".
 
+Function defaults contribute numeric type evidence before return inference. A fractional default (`amount: number = 0.25`, including a module constant or a numeric array) requires `Double` storage. Calls to a known helper, store method or model action convert integer arguments to that storage type. Store computeds and model views/actions infer within the singleton's own fields; later model views can read earlier ones. Real `swiftc`/`kotlinc` regressions are in `singleton-fractional-members.test.ts`; golden equality alone does not establish that emitted code compiles.
+
 ## The rule: the compiler knows no library
 
 `@pyreon/native-compiler` knows its CONTRACT and nothing else. Contract means the surface PMTC exists to lower for every app: the canonical primitives, `signal` / `computed` / `effect` / `onMount`, the router (below), the ui-system authoring API (`styled`, `rocketstyle`, theme tokens), and the runtime packages it targets. Everything else is a library, and a library's lowering lives in the library's own package as a plugin. The test for any line in the compiler is: "if I deleted package X from the monorepo, would this line need editing?" If yes, the compiler is carrying X's knowledge.

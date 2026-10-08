@@ -276,7 +276,8 @@ describe('parse.ts — parseStatementBlock: multi-declarator split', () => {
 describe('parse.ts — parseArrowParams: parameter shapes', () => {
   it('a defaulted, destructured, array-pattern and rest param mix is skipped with a named warning', () => {
     const r = swift(`${PRIM}const f = (x = 0, { a }, [q], ...rest) => x + a\nexport function App(){ return <Text>{String(f)}</Text> }`)
-    expect(r.warnings.join('\n')).toContain('f is a top-level helper function whose return type couldn')
+    expect(r.warnings.join('\n')).toContain('f is a top-level helper function with unsupported value parameters')
+    expect(r.code).not.toContain('func f(')
   })
 
   it('an un-annotated defaulted param crosses with its default', () => {
