@@ -1715,24 +1715,6 @@ class ProvidableCompositionLocal<T>(val default: T) { val current: T get() = def
 fun <T> compositionLocalOf(f: () -> T): ProvidableCompositionLocal<T> = ProvidableCompositionLocal(f())
 infix fun <T> ProvidableCompositionLocal<T>.provides(v: T): Pair<ProvidableCompositionLocal<T>, T> = Pair(this, v)
 fun CompositionLocalProvider(vararg pairs: Pair<*, *>, content: @Composable () -> Unit) { content() }
-interface PyreonScheduler {
-  fun schedule(milliseconds: Long, work: () -> Unit): Int
-  fun cancel(token: Int)
-}
-class PyreonTaskScheduler : PyreonScheduler {
-  override fun schedule(milliseconds: Long, work: () -> Unit): Int = 0
-  override fun cancel(token: Int) {}
-}
-class PyreonDebounced<A>(delayMs: Long, scheduler: PyreonScheduler, action: (A) -> Unit) {
-  operator fun invoke(arg: A) {}
-  fun cancel() {}
-  fun flush() {}
-}
-class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -> Unit) {
-  operator fun invoke(arg: A) {}
-  fun cancel() {}
-}
-
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-kotlin's
 // PyreonNetworkStatus.kt surface the emit touches: the no-arg constructor
 // plus the isOnline MutableState<Boolean> field, read as net.isOnline.value.

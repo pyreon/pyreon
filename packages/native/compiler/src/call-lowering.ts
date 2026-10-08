@@ -43,6 +43,19 @@ export interface CallSite {
 export interface ParseContext {
   /** The binding the author wrote: `chart` in `const chart = createChartHandle()`. */
   readonly declName: string
+  /** Object pattern supplied to a pattern-position recognizer. */
+  readonly pattern?: AstNode | undefined
+  /** Parse a callback with the compiler's parameter/default/body builder.
+   * @example ctx.functionDeclaration('action', ctx.args[0]!)
+   */
+  functionDeclaration(
+    name: string,
+    node: AstNode,
+  ): Extract<import('./types').DeclIR, { kind: 'function' }>
+  /** Initial expression type before component inference is available.
+   * @example ctx.initialType(ctx.expr(ctx.args[0]!))
+   */
+  initialType(expression: ExprIR): TypeIR
   /** Argument `index` when it is a string LITERAL, else `undefined` (a name, a template, a call, absent). */
   stringLiteralArg(index: number): string | undefined
   /** Report a limitation to the author, attributed to the declaration (the message is prefixed `Declaration <name>:`). */
@@ -166,7 +179,10 @@ export interface DeclCallSite {
  * continues down its chain, `null` claims the declaration without declaring anything. Called for every call declaration once a
  * plugin registers one, so the first check must be cheap.
  */
-export type DeclCallRecognizer = (site: DeclCallSite, ctx: ParseContext) => DeclVerdict | undefined | null
+export type DeclCallRecognizer = (
+  site: DeclCallSite,
+  ctx: ParseContext,
+) => DeclVerdict | undefined | null
 
 /** Renders one declaration type on each target. */
 /**
@@ -174,6 +190,8 @@ export type DeclCallRecognizer = (site: DeclCallSite, ctx: ParseContext) => Decl
  * optional; a declaration with neither is pure state.
  */
 export interface DeclLifecycle {
+  /** Before component timers/mount hooks, after declarations are available; ordered across plugins. */
+  readonly earlyOrder?: number | undefined
   /**
    * Swift attaches a mount-time modifier (`.task`) to its host view, and
    * SwiftUI ties that task to the host's IDENTITY. A body that is a transparent
@@ -254,6 +272,31 @@ export interface DeclSwiftInit {
 }
 
 export interface DeclEmitter {
+  /** Wrap the component root once for this declaration type; next emits the previous wrapper at the requested indentation.
+   * @example root: { kotlin: (_decls, ctx, next) => next(ctx.indent) }
+   */
+  readonly root?:
+    | {
+        readonly swift?: (
+          decls: readonly ExtDecl[],
+          ctx: EmitContext,
+          next: (indent: number) => string,
+        ) => string
+        readonly kotlin?: (
+          decls: readonly ExtDecl[],
+          ctx: EmitContext,
+          next: (indent: number) => string,
+        ) => string
+      }
+    | undefined
+
+  /** A declaration that contributes only lifecycle statements has no stored-property text. */
+  readonly lifecycleOnly?: boolean | undefined
+  /** Shared environment reads used by canonical style and provider emission. */
+  readonly usesColorScheme?: boolean | undefined
+  readonly usesSizeClass?: boolean | undefined
+  /** Omit the synthetic binding from a previously nameless declaration's legacy hash. */
+  readonly legacyName?: boolean | undefined
   /**
    * The binding is CALLABLE (`q()` through Swift's `callAsFunction` / Kotlin's `operator invoke`): a zero-argument call
    * of it keeps its parentheses and a bare reference as an event handler is called, where an unknown identifier's
@@ -277,10 +320,12 @@ export interface DeclEmitter {
    * while ANY source is pending, and `<ErrorBoundary>` while ANY has failed. Read in declaration
    * order, after the core's own sources.
    */
-  readonly asyncState?: {
-    swift(decl: ExtDecl, ctx: EmitContext): AsyncState
-    kotlin(decl: ExtDecl, ctx: EmitContext): AsyncState
-  } | undefined
+  readonly asyncState?:
+    | {
+        swift(decl: ExtDecl, ctx: EmitContext): AsyncState
+        kotlin(decl: ExtDecl, ctx: EmitContext): AsyncState
+      }
+    | undefined
   /** One declaration line (or lines, joined with a newline). */
   swift(decl: ExtDecl, ctx: EmitContext): string
   /** One line, or several (joined with the same newline-and-indent a built-in multi-line declaration uses). */
@@ -330,6 +375,8 @@ export interface RegisteredCall {
 export interface CallRegistry {
   /** Hook name → recognizer + owner. */
   readonly calls: ReadonlyMap<string, RegisteredCall>
+  readonly statementCalls: ReadonlyMap<string, RegisteredCall>
+  readonly patternCalls: ReadonlyMap<string, RegisteredCall>
   /** Every claimed hook name. */
   readonly names: ReadonlySet<string>
   /** Declaration recognizers keyed by callee shape, in plugin order. */
@@ -348,6 +395,8 @@ type CallPlugin = {
   readonly name: string
   readonly modules?: readonly string[] | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  readonly statementCalls?: Readonly<Record<string, CallRecognizer>> | undefined
+  readonly patternCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly declCalls?: DeclCallRecognizer | undefined
   readonly tier2Calls?: readonly string[] | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
@@ -366,33 +415,44 @@ type CallPlugin = {
  */
 export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry {
   const calls = new Map<string, RegisteredCall>()
+  const statementCalls = new Map<string, RegisteredCall>()
+  const patternCalls = new Map<string, RegisteredCall>()
+  const owners = new Map<string, string>()
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
   const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
   const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
   const tier2Calls = new Map<string, string>()
   for (const plugin of plugins) {
-    if (plugin.declCalls !== undefined) declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
-    for (const callee of plugin.tier2Calls ?? []) if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
+    if (plugin.declCalls !== undefined)
+      declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
+    for (const callee of plugin.tier2Calls ?? [])
+      if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
     // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
     // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
     for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
-      const owners = memberCalls.get(method) ?? new Map<string, MemberCallLowering>()
-      owners.set(plugin.name, lowering)
-      memberCalls.set(method, owners)
+      const memberOwners = memberCalls.get(method) ?? new Map<string, MemberCallLowering>()
+      memberOwners.set(plugin.name, lowering)
+      memberCalls.set(method, memberOwners)
     }
-    for (const [hook, recognizer] of Object.entries(plugin.calls ?? {})) {
-      const existing = calls.get(hook)
-      if (existing !== undefined) {
-        throw new Error(
-          `[Pyreon] call "${hook}" is claimed by both "${existing.owner}" and "${plugin.name}". ` +
-            `A call has exactly one recognizer — remove one of the two plugins from this app.`,
-        )
+    for (const [entries, registry] of [
+      [plugin.calls, calls],
+      [plugin.statementCalls, statementCalls],
+      [plugin.patternCalls, patternCalls],
+    ] as const) {
+      for (const [hook, recognizer] of Object.entries(entries ?? {})) {
+        const existing = owners.get(hook)
+        if (existing !== undefined && existing !== plugin.name) {
+          throw new Error(
+            `[Pyreon] call "${hook}" is claimed by both "${existing}" and "${plugin.name}". A call has exactly one owner — remove one of the two plugins from this app.`,
+          )
+        }
+        owners.set(hook, plugin.name)
+        registry.set(hook, {
+          recognizer,
+          owner: plugin.name,
+          ...(plugin.modules !== undefined ? { modules: plugin.modules } : {}),
+        })
       }
-      calls.set(hook, {
-        recognizer,
-        owner: plugin.name,
-        ...(plugin.modules !== undefined ? { modules: plugin.modules } : {}),
-      })
     }
     if (plugin.decls !== undefined) {
       emitters.set(plugin.name, new Map(Object.entries(plugin.decls)))
@@ -400,7 +460,9 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   }
   return Object.freeze<CallRegistry>({
     calls,
-    names: new Set(calls.keys()),
+    statementCalls,
+    patternCalls,
+    names: new Set(owners.keys()),
     declCalls: Object.freeze(declCalls),
     tier2Calls,
     emitters,

@@ -344,3 +344,16 @@ Full docs: [pyreon.dev/docs/router](https://pyreon.dev/docs/router) (or `docs/sr
 ## License
 
 MIT
+
+### Native compiler plugin
+
+The native CLI discovers the package's tooling entry from `pyreon.native.plugin`. Direct compiler callers install it explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import routerPlugin from '@pyreon/router/native-plugin'
+
+const compiler = createCompiler({ plugins: [routerPlugin] })
+```
+
+The compiler peer is optional. The runtime entry does not load compiler tooling.

@@ -1,3 +1,4 @@
+import hotkeysPlugin from '../../../../fundamentals/hotkeys/src/native-plugin'
 // `LIFECYCLE_HOST_DECL_KINDS` (emit-swift.ts) decides whether a component body
 // is wrapped in a concrete `ZStack`. Getting it wrong is the device-found
 // SwiftUI class: a `.task` / `.onAppear` attached to a TRANSPARENT
@@ -15,7 +16,14 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { dndPlugin, hooksPlugin, queryPlugin, SERVICES, tablePlugin, transform } from './first-party-plugins'
+import {
+  dndPlugin,
+  hooksPlugin,
+  queryPlugin,
+  SERVICES,
+  tablePlugin,
+  transform,
+} from './first-party-plugins'
 
 const SWIFT = readFileSync(join(resolve(import.meta.dirname, '..'), 'emit-swift.ts'), 'utf8')
 
@@ -65,9 +73,10 @@ function derivedLifecycleKinds(): { emitting: Set<string>; scanned: number } {
 /** The set as the emitter declares it. Read from source so the test does not
  *  need the emitter to export a private const. */
 function declaredSet(): Set<string> {
-  const block = /const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR\['kind'\]> = new Set\(\[([\s\S]*?)\]\)/.exec(
-    SWIFT,
-  )
+  const block =
+    /const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR\['kind'\]> = new Set\(\[([\s\S]*?)\]\)/.exec(
+      SWIFT,
+    )
   expect(block, 'LIFECYCLE_HOST_DECL_KINDS not found in emit-swift.ts').not.toBeNull()
   return new Set([...block![1]!.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]!))
 }
@@ -75,7 +84,13 @@ function declaredSet(): Set<string> {
 describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () => {
   it('the scan finds decl blocks at all (an empty scan would pass vacuously)', () => {
     const { scanned } = derivedLifecycleKinds()
-    expect(scanned).toBeGreaterThan(8)
+    // Count the moved package declaration blocks alongside the remaining core blocks.
+    const owned = [
+      ...Object.values(hooksPlugin.decls),
+      ...Object.values(hotkeysPlugin.decls!),
+    ].filter((d) => d.lifecycle?.stableHost === true)
+    expect(scanned + owned.length).toBeGreaterThan(8)
+    expect(scanned).toBeGreaterThan(0)
   })
 
   it('every decl kind that emits a lifecycle modifier is in the set', () => {
@@ -85,14 +100,15 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
     // whose descriptor carries a `lifecycle` need the host, so it is not a
     // member of the kind set — it is covered by its own specs below.
     const missing = [...emitting].filter((k) => k !== 'service' && !declared.has(k)).sort()
-    expect(missing, 'these emit .task/.onAppear/.onDisappear but get no stable ZStack host').toEqual(
-      [],
-    )
+    expect(
+      missing,
+      'these emit .task/.onAppear/.onDisappear but get no stable ZStack host',
+    ).toEqual([])
   })
 
   it('the four kinds this audit found are present', () => {
     const declared = declaredSet()
-    for (const k of ['form', 'rate-limited', 'hotkey']) {
+    for (const k of ['form']) {
       expect(declared.has(k), k).toBe(true)
     }
   })
@@ -105,6 +121,8 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
 
   it('`fetch`, `query` and `stream` (all plugin-owned) get the host from their decl lifecycle', () => {
     expect(hooksPlugin.decls?.fetch?.lifecycle?.stableHost).toBe(true)
+    for (const type of ['rate-limited', 'tick', 'debounced-value'] as const)
+      expect(hooksPlugin.decls[type]?.lifecycle?.stableHost).toBe(true)
     // The original device-found pair: a `.task` on a transparent conditional restarts forever.
     expect(queryPlugin.decls?.query?.lifecycle?.stableHost).toBe(true)
     expect(queryPlugin.decls?.stream?.lifecycle?.stableHost).toBe(true)
@@ -113,7 +131,9 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
 
 describe('descriptor-backed services (services.ts `lifecycle`) get the stable host', () => {
   it('the host test consults the descriptor, not a kind list', () => {
-    expect(SWIFT).toMatch(/needsStableLifecycleHost = c\.decls\.some\(\s*\(d\) => LIFECYCLE_HOST_DECL_KINDS\.has\(d\.kind\) \|\| serviceLifecycle\(d\) !== undefined/)
+    expect(SWIFT).toMatch(
+      /needsStableLifecycleHost = c\.decls\.some\(\s*\(d\) =>\s*LIFECYCLE_HOST_DECL_KINDS\.has\(d\.kind\)\s*\|\|\s*serviceLifecycle\(d\) !== undefined/,
+    )
   })
 
   const host = (hook: string): string =>

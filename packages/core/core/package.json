@@ -2,16 +2,23 @@
   "name": "@pyreon/core",
   "version": "0.52.0",
   "description": "Core component model and lifecycle for Pyreon",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/core#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/core"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -37,15 +44,16 @@
       "bun": "./src/plain.ts",
       "import": "./lib/plain.js",
       "types": "./lib/types/plain.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -54,15 +62,27 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
-  },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/core"
+      ]
+    }
   }
 }

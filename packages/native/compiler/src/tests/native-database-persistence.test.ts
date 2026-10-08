@@ -22,8 +22,8 @@
 // guarantee, different spelling.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable } from '../validate'
 
 const SRC = `import { useDatabase } from '@pyreon/primitives'
 import { Stack, Text } from '@pyreon/primitives'

@@ -203,3 +203,7 @@ Full docs: [pyreon.dev/docs/hotkeys](https://pyreon.dev/docs/hotkeys) (or `docs/
 ## License
 
 MIT
+
+### Native compiler plugin
+
+The CLI discovers `@pyreon/hotkeys/native-plugin`. Direct compiler callers register its default export with `createCompiler({ plugins: [hotkeysPlugin] })`. The tooling peer is optional and never loaded by the runtime barrel. Static shortcuts bind native controls on SwiftUI and a focused key handler on Compose.

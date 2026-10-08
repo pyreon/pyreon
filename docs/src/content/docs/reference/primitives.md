@@ -19,6 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
 - 17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
 - One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere
 - Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target

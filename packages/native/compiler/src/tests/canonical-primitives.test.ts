@@ -18,7 +18,7 @@
 // primitives — migration happens in Phase E.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { transform, validateKotlin } from './first-party-plugins'
 
 // Shared minimal-component wrapper so tests focus on the JSX-body emit.
 function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
@@ -1886,7 +1886,7 @@ describe('Phase B — composition smoke', () => {
 // Kotlin job.
 // ============================================================================
 
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { isKotlincAvailable } from '../validate'
 
 const skipKotlincCondition =
   process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' ||

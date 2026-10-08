@@ -19,6 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Native compiler tooling: routerPlugin from @pyreon/router/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
 - Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation
 - createRouter() — factory with routes, guards, middleware, loaders, hash/history mode
 - RouterProvider / RouterView / RouterLink — context-based rendering components

@@ -76,6 +76,8 @@ export interface WebViewFacade {
 
 /** The emitter state a plugin-facing context reads beyond the basics — what a real emitter supplies and a toy backend may omit. */
 export interface EmitContextBackendExtras {
+  /** Emit one argument using the target's numeric and array coercion rules. */
+  argument(value: ExprIR, type: TypeIR | undefined, indent: number): string
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -85,7 +87,7 @@ export interface EmitContextBackendExtras {
   /** `emitSwiftGeneric` / `emitKotlinGeneric` — the element as an unclaimed component call, bypassing every lowering. */
   generic(el: JsxElementIR, indent: number): string
   /** `swiftType` / `kotlinType` — the target spelling of a type. */
-  typeText(type: TypeIR): string
+  typeText(type: TypeIR, options?: { synthesize?: boolean | undefined }): string
   /** The target type name of a typed container's element (a table row, a sortable item) — see {@link EmitContext.rowType}. */
   rowType(element: TypeIR): string
   /** The fields of a typed container's element — see {@link EmitContext.rowFields}. */
@@ -103,7 +105,12 @@ export interface EmitContextBackendExtras {
   /** `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` with `handled` props the caller already consumed. */
   layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
   /** `emitSwiftStatement` / `emitKotlinStatement` over a statement list, with `locals` typed for inference where the emitter keeps an inference context for handler locals. */
-  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
+  statements(
+    stmts: readonly StatementIR[],
+    indent: number,
+    locals?: ReadonlyMap<string, TypeIR>,
+    options?: StatementEmitOptions,
+  ): string[]
 }
 
 /** What a target emitter supplies; `createEmitContext` adds the pure helpers. */
@@ -165,7 +172,19 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
   hostState: HostStateSlot
 }
 
+/** Callback return control supplied by the owning plugin. */
+export interface StatementEmitOptions {
+  readonly kotlin?: {
+    readonly returnLabel?: string | undefined
+    readonly discardReturnValue?: boolean | undefined
+  } | undefined
+}
+
 export interface EmitContext {
+  /** Emit an argument against a known parameter type; indentation defaults to this context.
+   * @example ctx.argument(value, { kind: 'number', float: true })
+   */
+  argument(value: ExprIR, type: TypeIR | undefined, indent?: number): string
   readonly target: EmitTarget
   /** Indentation (in spaces) of the element being emitted. */
   readonly indent: number
@@ -233,7 +252,7 @@ export interface EmitContext {
    */
   generic(el: JsxElementIR, at?: number): string
   /** The target's spelling of `type`. */
-  typeText(type: TypeIR): string
+  typeText(type: TypeIR, options?: { synthesize?: boolean | undefined }): string
   /**
    * The target type name a typed container's ELEMENT spells to: a declared struct, the struct synthesized for an
    * inline object, or the scalar's own type — what a generic container (`PyreonTableState<Row>`) is instantiated
@@ -265,7 +284,12 @@ export interface EmitContext {
    * over a typed stream item); the Swift emitter seeds them (and the body's own `let`s), the Kotlin
    * emitter infers handler locals itself and ignores them.
    */
-  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
+  statements(
+    stmts: readonly StatementIR[],
+    indent: number,
+    locals?: ReadonlyMap<string, TypeIR>,
+    options?: StatementEmitOptions,
+  ): string[]
 }
 
 /**
@@ -305,7 +329,10 @@ export interface KotlinEmitContext extends EmitContext {
   intArg(e: ExprIR, at?: number): string
 }
 
-export function createKotlinEmitContext(backend: KotlinEmitContextBackend, indent: number): KotlinEmitContext {
+export function createKotlinEmitContext(
+  backend: KotlinEmitContextBackend,
+  indent: number,
+): KotlinEmitContext {
   return {
     ...createEmitContext('kotlin', backend, indent),
     intArg: (e, at = indent) => backend.intArg(e, at),
@@ -314,7 +341,9 @@ export function createKotlinEmitContext(backend: KotlinEmitContextBackend, inden
 
 /** The member `name` of a context built without it: an error naming it (a real emitter supplies every one). */
 function missing(name: string): never {
-  throw new Error(`[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`)
+  throw new Error(
+    `[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`,
+  )
 }
 
 export function createEmitContext(
@@ -333,6 +362,8 @@ export function createEmitContext(
     warn: (message) => backend.warn(message),
     expr: (e, at = indent) => backend.expr(e, at),
     exprAs: (type, e, at = indent) => backend.exprAs(type, e, at),
+    argument: (value, type, at = indent) =>
+      (backend.argument ?? (() => missing('argument')))(value, type, at),
     stringAttr: (el, name, at = indent) => backend.stringAttr(el, name, at),
     layoutModifiers: (el) => backend.layoutModifiers(el),
     action: (handler, at = indent) => backend.action(handler, at),
@@ -346,7 +377,7 @@ export function createEmitContext(
     isFunctionName: (name) => (backend.isFunctionName ?? (() => missing('isFunctionName')))(name),
     child: (child, at = indent) => (backend.child ?? (() => missing('child')))(child, at),
     generic: (el, at = indent) => (backend.generic ?? (() => missing('generic')))(el, at),
-    typeText: (type) => (backend.typeText ?? (() => missing('typeText')))(type),
+    typeText: (type, options) => (backend.typeText ?? (() => missing('typeText')))(type, options),
     rowType: (element) => (backend.rowType ?? (() => missing('rowType')))(element),
     rowFields: (element) => (backend.rowFields ?? (() => missing('rowFields')))(element),
     inferType: (e) => (backend.inferType ?? (() => missing('inferType')))(e),
@@ -362,12 +393,17 @@ export function createEmitContext(
       messageHandler: () => missing('webView'),
     },
     fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
-    layoutModifiersFor: (el, handled) => (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
-    statements: (stmts, at, locals) => (backend.statements ?? (() => missing('statements')))(stmts, at, locals),
+    layoutModifiersFor: (el, handled) =>
+      (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
+    statements: (stmts, at, locals, options) =>
+      (backend.statements ?? (() => missing('statements')))(stmts, at, locals, options),
   }
 }
 
-export function createSwiftEmitContext(backend: SwiftEmitContextBackend, indent: number): SwiftEmitContext {
+export function createSwiftEmitContext(
+  backend: SwiftEmitContextBackend,
+  indent: number,
+): SwiftEmitContext {
   return {
     ...createEmitContext('swift', backend, indent),
     handlerName: (handler) => backend.handlerName(handler),

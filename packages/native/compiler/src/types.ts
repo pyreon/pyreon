@@ -114,7 +114,6 @@ export interface ExtModuleItem {
   payload: { [key: string]: ExtValue }
 }
 
-
 export type DeclIR =
   /**
    * Reactive signal declaration. The classic shape is `signal<T>(initial)`
@@ -201,20 +200,6 @@ export type DeclIR =
       afterEach?: string[]
     }
   /**
-   * Router hook binding via `useNavigate()` or `useParams()` from
-   * `@pyreon/router`. Phase C4 maps these directly to the native
-   * runtimes' identically-named hooks:
-   *   Swift   →  let navigate = useNavigate(router: pyreonRouter)
-   *              (the View struct gains `@Environment(\.pyreonRouter)
-   *               private var pyreonRouter` automatically)
-   *   Kotlin  →  val navigate = useNavigate()
-   *              (Compose function reads LocalPyreonRouter.current
-   *               directly via CompositionLocal — no transform needed)
-   *
-   * `useParams()` follows the same shape.
-   */
-  | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
-  /**
    * Phase 4.2 — form state via `useForm({ initialValues })` from
    * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
    * container:
@@ -271,123 +256,6 @@ export type DeclIR =
    */
   | { kind: 'on-mount'; body: StatementIR[] }
   /**
-   * `useHotkey('mod+s', () => { … })` in a component body.
-   *
-   * Lowers to a real keyboard shortcut on both targets — SwiftUI binds it to a
-   * hidden zero-size Button (`.keyboardShortcut` attaches to a CONTROL, and the
-   * button's action IS the handler), Compose to a focused key handler on the
-   * component root. `combo.modifiers` keeps `mod` symbolic because it resolves
-   * differently per platform: Command on iOS, Ctrl on Android.
-   */
-  | { kind: 'hotkey'; combo: HotkeyComboIR; body: StatementIR[] }
-  /**
-   * Phase 3 — destructured router params via `const { id } = useParams()` (or
-   * `const { id: userId } = useParams<{ id: string }>()`). The web-idiomatic
-   * destructure shape; emits one local binding per field, each reading the
-   * active router's params map:
-   *   Swift  → private var id: String { useParams(router: pyreonRouter)["id"] ?? "" }
-   *   Kotlin → val id = useParams()["id"] ?: ""
-   *
-   * `params[]` carries `{ key, local }` pairs — `key` is the param name read
-   * from the map, `local` is the bound identifier (they differ only under
-   * `{ id: userId }` aliasing). Closes the documented-but-unimplemented gap
-   * where `const { id } = useParams()` referenced an undeclared `id`.
-   */
-  | { kind: 'params-destructure'; params: { key: string; local: string }[] }
-  /**
-   * `useToggle(initial)` / `useCounter(initial, { min, max })` from
-   * `@pyreon/hooks` — pure state containers with no platform dependency at
-   * all (a signal plus a few mutators). They needed no runtime; what they
-   * needed was a lowering, and without one the call emitted verbatim.
-   *
-   * `bounds` carries `useCounter`'s literal clamp, baked into every mutator
-   * at the use site so the native arithmetic clamps exactly as the web's
-   * does.
-   */
-  | {
-      kind: 'pure-state'
-      name: string
-      hook: 'useToggle' | 'useCounter'
-      /** Fractional seeds, bounds or mutations require Double storage. */
-      floating?: boolean | undefined
-      /** The state field's initial value. */
-      initial: boolean | number
-      /** useCounter's literal min/max, when given. */
-      bounds?: { min?: number; max?: number }
-    }
-  /**
-   * `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)`.
-   *
-   * Unlike `useDebouncedValue`, these return a CALLABLE carrying
-   * `.cancel()` / `.flush()`, so there is a handle a caller reaches — which
-   * is why they need the PyreonRateLimit runtime rather than a `.task(id:)`.
-   *
-   * Single-argument by design: the web hooks are variadic, but a variadic
-   * native port needs a boxed args tuple whose type the emit cannot know.
-   * More than one parameter declines by name rather than silently dropping
-   * the rest.
-   */
-  | {
-      kind: 'rate-limited'
-      name: string
-      mode: 'debounce' | 'throttle'
-      delayMs: number
-      /** The wrapped callback, emitted as the runtime's action closure. */
-      fn: Extract<DeclIR, { kind: 'function' }>
-    }
-  /**
-   * `useInterval(cb, ms)` / `useTimeout(cb, ms)` at STATEMENT position.
-   *
-   * Both are pure timing over a callback — no platform capability, just a
-   * clock both targets have. They lower to the idiom that already carries
-   * each target's auto-cancellation (`.task` on SwiftUI, `LaunchedEffect` on
-   * Compose), which is what reproduces the web hooks' `onUnmount` cleanup
-   * without a runtime or a stored handle.
-   */
-  | { kind: 'tick'; mode: 'interval' | 'timeout'; delayMs: number; body: StatementIR[] }
-  /**
-   * `useDebouncedValue(() => expr, ms)` — a trailing-edge mirror of a source,
-   * seeded immediately.
-   *
-   * Measured on the web before this emit was written: the value is available
-   * at once (no first-delay gap), updates land only once the source goes
-   * quiet, a burst collapses to the LAST value, and the timer RESTARTS on
-   * each change rather than firing on a fixed cadence.
-   *
-   * That last property is what makes the lowering exact rather than
-   * approximate: `.task(id:)` and `LaunchedEffect(key)` both cancel and
-   * restart when their key changes, which IS a restarting trailing-edge
-   * debounce. No runtime and no stored timer handle.
-   */
-  | { kind: 'debounced-value'; name: string; source: ExprIR; type: TypeIR; delayMs: number }
-  /**
-   * USER-DEFINED native module via
-   * `const bt = useNativeModule<T>('Bluetooth')` from
-   * `@pyreon/primitives` — the FFI escape hatch. Emits an instance of a
-   * class the APP provides, not a framework runtime container:
-   *   Swift  → @State private var bt = Bluetooth()
-   *   Kotlin → val btCtx = LocalContext.current
-   *            val bt = remember { Bluetooth(btCtx) }
-   *
-   * `moduleName` is the string literal at the call site — it is BOTH the
-   * web registry key (`defineNativeModule`) and the Swift/Kotlin class
-   * name, so a single identifier ties the three targets together. It is
-   * validated at parse time to be a plain identifier, since it is emitted
-   * verbatim as a type name.
-   *
-   * Member calls and property reads flow through UNCHANGED (the same
-   * pass-through every built-in imperative service uses), so the app's
-   * platform class defines the method surface and the platform compiler
-   * type-checks it. `await bt.connect(id)` composes with the async
-   * lowering, so async native modules work with no extra machinery.
-   *
-   * This is the ONE declaration kind whose emitted type the framework
-   * does not own — nothing can be stubbed or validated compiler-side; a
-   * missing or mismatched class is a normal `swiftc`/`kotlinc` error in
-   * the app's own build.
-   */
-  | { kind: 'native-module'; name: string; moduleName: string }
-  /**
    * A PLAIN service container (`useShare`, `useLinking`, `useHaptics`,
    * `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,
    * `useCamera`) — see `services.ts`. `hook` names the entry in `SERVICES`
@@ -404,41 +272,6 @@ export type DeclIR =
    * `(plugin, type)` to the owner's `DeclEmitter`. See {@link ExtDecl}.
    */
   | ExtDecl
-  /**
-   * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
-   * from `@pyreon/hooks`. Maps to platform-native "is dark mode
-   * active" reads — NO runtime port needed (both SwiftUI and Compose
-   * ship the primitive):
-   *
-   *   Swift  → @Environment(\.colorScheme) private var pyreonColorScheme
-   *            + private var ${name}: String { pyreonColorScheme == .dark ? "dark" : "light" }
-   *   Kotlin → val ${name} = if (isSystemInDarkTheme()) "dark" else "light"
-   *
-   * Returns the same `"light" | "dark"` string shape the web hook
-   * uses, so cross-platform code reading `scheme === 'dark'` works
-   * identically. `useColorScheme()` takes no arguments. The Swift
-   * shape uses a computed property because @Environment isn't
-   * readable at stored-let init time (same constraint the router
-   * hooks document).
-   */
-  | { kind: 'color-scheme'; name: string }
-  /**
-   * M2.2 — horizontal size-class read via `const sizeClass = useSizeClass()`
-   * from `@pyreon/hooks`. Maps to platform-native "is this an expanded
-   * (tablet / landscape / split) width" reads — NO runtime port needed
-   * (same shape as color-scheme):
-   *
-   *   Swift  → @Environment(\.horizontalSizeClass) private var pyreonSizeClass
-   *            + private var ${name}: String { pyreonSizeClass == .regular ? "regular" : "compact" }
-   *   Kotlin → val ${name} = if (LocalConfiguration.current.screenWidthDp >= 600) "regular" else "compact"
-   *
-   * Returns the same `"compact" | "regular"` string shape the web hook
-   * uses, so cross-platform code reading `sizeClass === 'regular'` works
-   * identically. `useSizeClass()` takes no arguments. The Swift shape
-   * uses a computed property because @Environment isn't readable at
-   * stored-let init time (same constraint color-scheme documents).
-   */
-  | { kind: 'size-class'; name: string }
   /**
    * Phase 5 (native data/services hook emit). Reactive-container hooks that
    * instantiate the @pyreon/native-runtime-{swift,kotlin} service containers
@@ -478,34 +311,13 @@ export type DeclIR =
    * snapshots the signal (non-reactive), matching web semantics. Non-call,
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
-  | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
+  | {
+      kind: 'value'
+      name: string
+      expr: ExprIR
+      /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR
+    }
   | { kind: 'fieldArray'; name: string; initial: string[] }
-  /**
-   * Phase B6 (native readiness audit 2026-06, partial CRIT-4 closure).
-   * `const data = useLoaderData<User>()` binding — reads the active
-   * router's loaderData entry for the current path, type-cast to T.
-   *
-   * Phase B6 ships READ-ONLY emit — the runtime container's
-   * `loaderData[currentPath]` IS read, but no auto-loader-runner
-   * fires the loader. Apps populate via `router.setLoaderData(...)`
-   * from native host code (Swift / Kotlin). True loader auto-emit
-   * (the compiler walking a route's `loader:` field and emitting a
-   * `task { … }` / `LaunchedEffect { … }` that calls setLoaderData
-   * automatically) remains future work — that needs route-loader
-   * coordination this PR doesn't attempt.
-   *
-   * Per-target emit:
-   *   Swift:  `let data: User? = useLoaderData(router: pyreonRouter)`
-   *   Kotlin: `val data = useLoaderData<User>()`
-   * (Kotlin's reified-generic helper reads LocalPyreonRouter.current
-   * internally; Swift's needs the @Environment(\.pyreonRouter)
-   * passed in explicitly because @Environment can't be read at
-   * stored-let-init time. Same constraint useParams documents.)
-   *
-   * The A3 diagnostic warning (PR #1235) softens to a HINT — emit
-   * now exists, but the auto-loader gap remains intentional.
-   */
-  | { kind: 'useLoaderData'; name: string; type: TypeIR }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
@@ -640,7 +452,7 @@ export type StatementIR =
        * `listOf()`. The annotation is the only place that element type exists.
        */
       declaredType?: TypeIR
-          /** an ARRAY-literal local later mutated via push/pop/shift/unshift/splice — Kotlin must emit mutableListOf */
+      /** an ARRAY-literal local later mutated via push/pop/shift/unshift/splice — Kotlin must emit mutableListOf */
       methodMutated?: boolean | undefined
     }
   /**
@@ -1307,11 +1119,3 @@ export interface TransformResult {
  * the platform decides (Command on iOS, Ctrl on Android), and only the emitter
  * knows which platform it is.
  */
-export type HotkeyModifier = 'mod' | 'control' | 'shift' | 'alt' | 'meta'
-
-export interface HotkeyComboIR {
-  /** Normalised, lower-cased base key (`'s'`, `'escape'`, `'arrowup'`, `','`). */
-  key: string
-  /** Sorted, so two spellings of one combo emit identically. */
-  modifiers: HotkeyModifier[]
-}

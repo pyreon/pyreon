@@ -9,7 +9,7 @@
 // / predicate, not just that something was emitted.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Kotlin: useToggle / useCounter member surface', () => {
   const SRC = (body: string, opts = `{ min: 0, max: 10 }`) =>

@@ -8,21 +8,42 @@ import { describe, expect, it } from 'vitest'
 // compiler core back inside the plugin — the dependency this directory exists to
 // remove — and silently re-couple it to emitter internals.
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
-const FORBIDDEN = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]\.\.\/(?:emit-swift|emit-kotlin|parse)(?:\.[jt]s)?['"]/
+const FORBIDDEN =
+  /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]\.\.\/(?:emit-swift|emit-kotlin|parse)(?:\.[jt]s)?['"]/
 
 // A plugin may keep its emitters in a subdirectory, so the scan walks the whole tree.
 function walk(dir: string, prefix = ''): string[] {
   return readdirSync(dir).flatMap((name) => {
     const rel = prefix === '' ? name : `${prefix}/${name}`
-    return statSync(join(dir, name)).isDirectory() ? walk(join(dir, name), rel) : name.endsWith('.ts') ? [rel] : []
+    return statSync(join(dir, name)).isDirectory()
+      ? walk(join(dir, name), rel)
+      : name.endsWith('.ts')
+        ? [rel]
+        : []
   })
 }
 
 describe.each([
-  ['@pyreon/charts', 'fundamentals/charts', ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts']],
-  ['@pyreon/flow', 'fundamentals/flow', ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts']],
-  ['@pyreon/validation', 'fundamentals/validation', ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts']],
-  ['@pyreon/validate', 'fundamentals/validate', ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts']],
+  [
+    '@pyreon/charts',
+    'fundamentals/charts',
+    ['plugin.ts', 'hosts.ts', 'swift-hosts.ts', 'kotlin-hosts.ts', 'stubs.ts', 'facade.ts'],
+  ],
+  [
+    '@pyreon/flow',
+    'fundamentals/flow',
+    ['plugin.ts', 'swift.ts', 'kotlin.ts', 'recognize.ts', 'stubs.ts', 'facade.ts'],
+  ],
+  [
+    '@pyreon/validation',
+    'fundamentals/validation',
+    ['plugin.ts', 'recognize.ts', 'schema.ts', 'swift.ts', 'kotlin.ts', 'ir.ts', 'url-rule.ts'],
+  ],
+  [
+    '@pyreon/validate',
+    'fundamentals/validate',
+    ['plugin.ts', 'recognize.ts', 'scan.ts', 'exprs.ts', 'ast.ts', 'facts.ts'],
+  ],
   ['@pyreon/permissions', 'fundamentals/permissions', ['plugin.ts', 'stubs.ts']],
   ['@pyreon/url-state', 'fundamentals/url-state', ['plugin.ts']],
   ['@pyreon/storage', 'fundamentals/storage', ['plugin.ts', 'stubs.ts']],
@@ -32,6 +53,22 @@ describe.each([
   ['@pyreon/kinetic', 'ui-system/kinetic', ['plugin.ts']],
   ['@pyreon/elements', 'ui-system/elements', ['plugin.ts']],
   ['@pyreon/coolgrid', 'ui-system/coolgrid', ['plugin.ts']],
+  [
+    '@pyreon/hotkeys',
+    'fundamentals/hotkeys',
+    ['plugin.ts', 'combo.ts', 'recognize.ts', 'targets.ts'],
+  ],
+  [
+    '@pyreon/hooks',
+    'fundamentals/hooks',
+    [
+      'stateful-emit.ts',
+      'stateful-recognize.ts',
+      'stateful-stubs.ts',
+      'timers.ts',
+      'environment.ts',
+    ],
+  ],
 ] as const)('package-owned plugin boundary (%s)', (_pkg, dirName, expected) => {
   const CHARTS_PLUGIN = join(SRC, `../../../${dirName}/src/native-plugin`)
   const COMPILER_SPECIFIER = /['"]@pyreon\/native-compiler(?:\/([^'"]*))?['"]/
@@ -42,12 +79,33 @@ describe.each([
     expect(charts).toEqual(expect.arrayContaining([...expected]))
   })
 
-  it.each(charts)('%s reaches the compiler only through @pyreon/native-compiler/plugin-api', (file) => {
-    const lines = readFileSync(join(CHARTS_PLUGIN, file), 'utf8').split('\n')
-    for (const line of lines) {
-      const m = COMPILER_SPECIFIER.exec(line)
-      if (m !== null) expect(m[1], `${file}: ${line}`).toBe('plugin-api')
-      expect(COMPILER_RELATIVE.test(line), `${file} reaches into the compiler's sources: ${line}`).toBe(false)
-    }
+  it.each(charts)(
+    '%s reaches the compiler only through @pyreon/native-compiler/plugin-api',
+    (file) => {
+      const lines = readFileSync(join(CHARTS_PLUGIN, file), 'utf8').split('\n')
+      for (const line of lines) {
+        const m = COMPILER_SPECIFIER.exec(line)
+        if (m !== null) expect(m[1], `${file}: ${line}`).toBe('plugin-api')
+        expect(
+          COMPILER_RELATIVE.test(line),
+          `${file} reaches into the compiler's sources: ${line}`,
+        ).toBe(false)
+      }
+    },
+  )
+})
+
+describe.each(['core', 'router', 'primitives'])('root tooling boundary (%s)', (packageName) => {
+  const packageRoot = join(SRC, '../../../core', packageName)
+  it('ships a separate plugin entry that imports only the public compiler facade', () => {
+    const source = readFileSync(join(packageRoot, 'src/native-plugin.ts'), 'utf8')
+    expect(source).toContain('@pyreon/native-compiler/plugin-api')
+    for (const match of source.matchAll(/['"]@pyreon\/native-compiler(?:\/([^'"]*))?['"]/g))
+      expect(match[1]).toBe('plugin-api')
+    expect(source).not.toMatch(/(?:\.\.\/)+native\/compiler\//)
+    expect(readFileSync(join(packageRoot, 'src/index.ts'), 'utf8')).not.toContain('native-plugin')
+    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
+    expect(manifest.pyreon.native.plugin).toBe('./lib/native-plugin.js')
+    expect(manifest.peerDependenciesMeta['@pyreon/native-compiler'].optional).toBe(true)
   })
 })

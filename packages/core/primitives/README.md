@@ -141,3 +141,16 @@ bun run test:browser    # real-Chromium browser smoke
 ## License
 
 MIT — see [LICENSE](../../../LICENSE) at repo root.
+
+### Native compiler plugin
+
+The native CLI discovers the package's tooling entry from `pyreon.native.plugin`. Direct compiler callers install it explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import primitivesPlugin from '@pyreon/primitives/native-plugin'
+
+const compiler = createCompiler({ plugins: [primitivesPlugin] })
+```
+
+The compiler peer is optional. The runtime entry does not load compiler tooling.

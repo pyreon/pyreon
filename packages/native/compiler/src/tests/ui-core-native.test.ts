@@ -8,8 +8,8 @@
 // provider + defineTheme + Element layout + rocketstyle components — lower.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })

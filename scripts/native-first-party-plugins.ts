@@ -54,10 +54,61 @@ import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, storagePlugin, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, kineticPlugin, elementsPlugin, coolgridPlugin])
+import corePlugin from '../packages/core/core/src/native-plugin'
+import routerPlugin from '../packages/core/router/src/native-plugin'
+import primitivesPlugin from '../packages/core/primitives/src/native-plugin'
+
+import hotkeysPlugin from '../packages/fundamentals/hotkeys/src/native-plugin'
+
+export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
+  hotkeysPlugin,
+  corePlugin,
+  routerPlugin,
+  primitivesPlugin,
+  chartsPlugin,
+  flowPlugin,
+  httpPlugin,
+  machinePlugin,
+  queryPlugin,
+  validatePlugin,
+  validationPlugin,
+  i18nPlugin,
+  toastPlugin,
+  a11yPlugin,
+  tablePlugin,
+  dndPlugin,
+  syncPlugin,
+  permissionsPlugin,
+  urlStatePlugin,
+  storagePlugin,
+  sizedMapPlugin,
+  rxPlugin,
+  featurePlugin,
+  hooksPlugin,
+  kineticPlugin,
+  elementsPlugin,
+  coolgridPlugin,
+])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs, storageStubs, sizedMapStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({
+  augment: [
+    hooksPlugin.stubs!,
+    chartsStubs,
+    flowStubs,
+    machineStubs,
+    queryStubs,
+    i18nStubs,
+    toastStubs,
+    a11yStubs,
+    tableStubs,
+    dndStubs,
+    syncStubs,
+    permissionsStubs,
+    storageStubs,
+    sizedMapStubs,
+  ],
+})
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 
@@ -67,7 +118,9 @@ export function transform(source: string, options: EmitOptions): TransformResult
 }
 
 /** The `@pyreon/hooks` plain-service table as descriptors, in the plugin's own (meaningful) order. */
-export const HOOKS_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] = Object.entries(hooksPlugin.services).map(([hook, spec]) => ({
+export const HOOKS_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] = Object.entries(
+  hooksPlugin.services,
+).map(([hook, spec]) => ({
   ...spec,
   hook,
   legacyKind: (spec as { legacyKind?: string }).legacyKind ?? 'service',

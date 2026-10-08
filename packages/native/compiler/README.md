@@ -244,3 +244,13 @@ protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`,
 `package.json` → `pyreon.native.plugin` at the built entry (default export = the plugin) and
 list the import specifiers that activate it in `pyreon.native.modules`. `@pyreon/charts` is
 the reference (`packages/fundamentals/charts/src/native-plugin/`).
+
+### Statement and pattern calls
+
+`statementCalls` handles bare setup calls and `patternCalls` handles calls bound to a destructuring pattern (`ctx.pattern`). Both use the declaration recognizer contract: return a declaration to accept, `null` to drop after reporting a diagnostic, or `undefined` to continue normal parsing. Claims honor the owning plugin's module imports and aliases. A symbol has one owner across all call positions.
+
+`ctx.functionDeclaration` parses callback parameters and bodies; `ctx.initialType` supplies initial expression types. In a compiler pass, `ctx.inferType(module, expression, component, locals)` includes module helpers, constants, component fields and local overrides. Emission uses `ctx.argument(value, expectedType)` for backend numeric conversions. `ctx.typeText(type, { synthesize: false })` spells an opaque target type without creating anonymous Kotlin classes.
+
+A declaration can request shared environment reads through `usesColorScheme` and `usesSizeClass`. `lifecycleOnly` omits declaration text; `lifecycle.earlyOrder` orders setup contributions before ordinary lifecycle hooks, preserving declaration order within a priority. `legacyName: false` omits a synthetic binding from a previously nameless declaration's compatibility hash.
+
+`DeclEmitter.root` wraps the root once for all declarations of its owning type. Its `next(indent)` callback emits the previous wrapper or canonical root. Wrappers compose in first-declaration order and receive only declarations from the current component. `@pyreon/hotkeys` uses this to install Compose focus and keyboard handling without compiler-specific shortcut branches.

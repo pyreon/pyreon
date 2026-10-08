@@ -20,7 +20,7 @@
 // This spec locks the EMIT SHAPE + is the bisect target.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('M2.2 — useSizeClass() native emit', () => {
   describe('Swift', () => {

@@ -1,5 +1,10 @@
 import type { CompilerRegistries } from './active-registries'
-import type { CallRecognizer, DeclCallRecognizer, DeclEmitter, MemberCallLowering } from './call-lowering'
+import type {
+  CallRecognizer,
+  DeclCallRecognizer,
+  DeclEmitter,
+  MemberCallLowering,
+} from './call-lowering'
 import type { ElementLowering } from './element-lowering'
 import type {
   EmitPreparation,
@@ -65,6 +70,15 @@ export type CompilerOptions<Target extends string = TargetLanguage> = Omit<
 }
 
 export interface CompilerContext {
+  /** Infer against the pass's own module, including refined helpers and optional local bindings.
+   * @example ctx.inferType(module, expression, module.components[0])
+   */
+  inferType(
+    module: CompilerModule,
+    expression: import('./types').ExprIR,
+    component?: import('./types').ComponentIR,
+    locals?: ReadonlyMap<string, import('./types').TypeIR>,
+  ): import('./types').TypeIR
   readonly source: string
   readonly options: Readonly<CompilerOptions<string>>
   /** Reports a warning attributed to the active plugin or backend. */
@@ -126,6 +140,10 @@ export interface CompilerPlugin<Target extends string = string> {
    * is imported from `@pyreon/*` or from one of `modules`. Two owners for one
    * name is a load-time error. Pair it with `decls`.
    */
+  /** Component-body calls at statement position; receive the same parser facade as declarations. */
+  readonly statementCalls?: Readonly<Record<string, CallRecognizer>> | undefined
+  /** Calls bound through an object pattern; ParseContext.pattern contains the written binding. */
+  readonly patternCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
   /**
    * A declaration recognizer keyed by the SHAPE of the callee, not a name (see `DeclCallRecognizer`): `const active = rx.filter(todos, p)`

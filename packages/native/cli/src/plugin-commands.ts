@@ -91,7 +91,17 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
     const types = [...(compiler.registries.calls.emitters.get(owner)?.keys() ?? [])]
     lines.push(`  ${hook}  ${owner}  decls: ${types.length > 0 ? types.join(', ') : '-'}`)
   }
-  const memberCalls = [...compiler.registries.calls.memberCalls].sort(([a], [b]) => a.localeCompare(b))
+  for (const [label, registry] of [
+    ['statement', compiler.registries.calls.statementCalls],
+    ['pattern', compiler.registries.calls.patternCalls],
+  ] as const) {
+    lines.push(`${label} call recognizers (${registry.size}):`)
+    for (const [hook, { owner }] of [...registry].sort(([a], [b]) => a.localeCompare(b)))
+      lines.push(`  ${hook}  ${owner}`)
+  }
+  const memberCalls = [...compiler.registries.calls.memberCalls].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )
   lines.push(`member-call lowerings (${memberCalls.length}):`)
   for (const [method, owners] of memberCalls) {
     lines.push(`  .${method}()  ${[...owners.keys()].join(', ')}`)
@@ -107,9 +117,13 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
     lines.push(`  ${type}  ${owner}`)
   }
   const items = compiler.registries.items
-  lines.push(`module items (${items.emitters.size === 0 ? 0 : [...items.emitters.values()].reduce((n, m) => n + m.size, 0)}):`)
+  lines.push(
+    `module items (${items.emitters.size === 0 ? 0 : [...items.emitters.values()].reduce((n, m) => n + m.size, 0)}):`,
+  )
   for (const [owner, types] of [...items.emitters].sort(([a], [b]) => a.localeCompare(b))) {
-    lines.push(`  ${owner}  ${[...types.keys()].join(', ')}${items.topLevel.some((t) => t.owner === owner) ? '  topLevel' : ''}`)
+    lines.push(
+      `  ${owner}  ${[...types.keys()].join(', ')}${items.topLevel.some((t) => t.owner === owner) ? '  topLevel' : ''}`,
+    )
   }
   const methodCalls = [...items.methodCalls].sort(([a], [b]) => a.localeCompare(b))
   lines.push(`method-call recognizers (${methodCalls.length}):`)
@@ -124,7 +138,11 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   lines.push(`discovered plugins (${discovered.length}):`)
   for (const found of discovered) {
     const services = Object.keys(found.plugin.services ?? {})
-    const callNames = Object.keys(found.plugin.calls ?? {})
+    const callNames = [
+      ...Object.keys(found.plugin.calls ?? {}),
+      ...Object.keys(found.plugin.statementCalls ?? {}),
+      ...Object.keys(found.plugin.patternCalls ?? {}),
+    ]
     const memberNames = Object.keys(found.plugin.memberCalls ?? {})
     const unloweredNames = Object.keys(found.plugin.unlowered ?? {})
     const runtimeTypeNames = found.plugin.runtimeTypes ?? []
@@ -137,7 +155,8 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
   let exitCode = 0
   if (verify) {
     const findings = discovered.flatMap((d) => verifyDiscovered(appDir, d).map((f) => ({ d, f })))
-    if (findings.length === 0) lines.push('verify: every service type is declared in its package sources')
+    if (findings.length === 0)
+      lines.push('verify: every service type is declared in its package sources')
     for (const { d, f } of findings) {
       lines.push(`verify: ${d.package} [${f.target}] ${f.message}`)
     }
@@ -190,7 +209,8 @@ function importedTags(source: string): Map<string, Set<string>> {
             for (const part of source.slice(i + 1, nextClose).split(',')) {
               // `Row as R` -> Row; an inline `type Row` modifier is skipped.
               const words = part.trim().split(/\s+/)
-              const name = words[0] === 'type' && words.length > 1 && words[1] !== 'as' ? words[1] : words[0]
+              const name =
+                words[0] === 'type' && words.length > 1 && words[1] !== 'as' ? words[1] : words[0]
               if (name) tags.add(name)
             }
             imported.set(specifier, tags)
@@ -226,7 +246,8 @@ export function explainReport(
   const decls: { name: string; hook: string }[] = []
   const pluginDecls: { name: string; plugin: string; type: string; payload: string }[] = []
   try {
-    for (const component of parsePyreon(source, filename, { registries: compiler.registries }).components) {
+    for (const component of parsePyreon(source, filename, { registries: compiler.registries })
+      .components) {
       for (const decl of component.decls) {
         if (decl.kind === 'service') decls.push({ name: decl.name, hook: decl.hook })
         if (decl.kind === 'ext') {
@@ -285,18 +306,25 @@ export function explainReport(
   const imports = importedTags(source)
   for (const { lowering, owner } of compiler.registries.elements.entries) {
     const used = lowering.tags.filter(
-      (tag) => imports.get(lowering.module)?.has(tag) === true && new RegExp(`<${tag}[\\s/>]`).test(source),
+      (tag) =>
+        imports.get(lowering.module)?.has(tag) === true &&
+        new RegExp(`<${tag}[\\s/>]`).test(source),
     )
     if (used.length > 0) {
-      lines.push(`  <${used.join('>, <')}> from ${lowering.module}  [element lowering, owner: ${owner}]`)
+      lines.push(
+        `  <${used.join('>, <')}> from ${lowering.module}  [element lowering, owner: ${owner}]`,
+      )
     }
   }
   const called = new Set([...source.matchAll(HOOK_CALL)].map((m) => m[1]!))
   for (const hook of [...called].sort()) {
     if (compiler.services.has(hook) && !lowered.has(hook)) {
-      lines.push(`  ${hook}() is registered but was not lowered as a service declaration in this file`)
+      lines.push(
+        `  ${hook}() is registered but was not lowered as a service declaration in this file`,
+      )
     }
   }
-  if (lines.length === 1) lines.push('  no service hooks, call recognizers or element lowerings found')
+  if (lines.length === 1)
+    lines.push('  no service hooks, call recognizers or element lowerings found')
   return { lines, exitCode: 0 }
 }

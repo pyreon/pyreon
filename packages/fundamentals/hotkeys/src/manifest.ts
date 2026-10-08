@@ -3,8 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/hotkeys',
   title: 'Keyboard Shortcuts',
-  tagline:
-    'Keyboard shortcut management — scope-aware, modifier keys, conflict detection',
+  tagline: 'Keyboard shortcut management — scope-aware, modifier keys, conflict detection',
   description:
     'Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, comma-separated lists (`ctrl+s, mod+p`), sequential combos (`g t`, Gmail/vim-style), keyup bindings, `once` / `ignoreRepeat`, reference-counted scope activation, element-scoped targets, selective input filtering, shifted-symbol shortcuts (`?` fires on Shift+/), pressed-key introspection, programmatic `trigger`, and conflict detection. Dispatch is KEY-BUCKETED — a keystroke touches only the entries bound to that exact key, so the miss path (every non-shortcut keypress) is one Map lookup regardless of how many hotkeys are registered. Component-scoped hooks auto-unregister on unmount; ONE shared listener per (target, event-type) backs every shortcut. SSR-safe.',
   category: 'universal',
@@ -56,8 +55,9 @@ disableScope('editor')                   // programmatically disable a scope
 // Override with:
 useHotkey('escape', () => closeModal(), { enableOnInputs: true })`,
   features: [
+    'Native compiler tooling: hotkeysPlugin from @pyreon/hotkeys/native-plugin owns static shortcut recognition, SwiftUI control binding and Compose focus/key handlers; the CLI discovers it automatically',
     'useHotkey(shortcut, handler, options?) — component-scoped, auto-unregisters on unmount',
-    'useHotkeyScope(scope) — activate a scope for a component\'s lifetime (reference-counted)',
+    "useHotkeyScope(scope) — activate a scope for a component's lifetime (reference-counted)",
     'mod alias — Command on Mac, Ctrl elsewhere',
     'Sequential combos — `g t` fires on g-then-t within 1s (Gmail/vim-style)',
     'Shifted-symbol shortcuts — `?` fires on the real Shift+/ keystroke',
@@ -80,7 +80,7 @@ useHotkey('escape', () => closeModal(), { enableOnInputs: true })`,
       signature:
         '(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void',
       summary:
-        'Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: `mod+s`, `ctrl+shift+p`, `escape`, etc. `mod` is Command on Mac, Ctrl elsewhere. By default, shortcuts don\'t fire when focused on form elements (input, textarea, select) — override with `enableOnInputs: true`. Supports `scope` option for context-aware activation and `description` for introspection.',
+        "Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: `mod+s`, `ctrl+shift+p`, `escape`, etc. `mod` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with `enableOnInputs: true`. Supports `scope` option for context-aware activation and `description` for introspection.",
       example: `useHotkey('mod+s', (e) => {
   e.preventDefault()
   save()
@@ -180,7 +180,7 @@ const isModalActive = () => active().has('modal')`,
       signature:
         'getRegisteredHotkeys() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>',
       summary:
-        "Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitted when the registration set none). Built for a help dialog / keyboard-shortcut cheat-sheet. Pairs with `getHotkeyConflicts` for a settings-panel audit.",
+        'Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitted when the registration set none). Built for a help dialog / keyboard-shortcut cheat-sheet. Pairs with `getHotkeyConflicts` for a settings-panel audit.',
       example: `registerHotkey('mod+k', openPalette, { description: 'Command palette' })
 getRegisteredHotkeys()
 // → [{ shortcut: 'mod+k', scope: 'global', description: 'Command palette' }]`,
@@ -203,8 +203,7 @@ trigger('ctrl+z', { scope: 'editor' }) // fire an inactive scope's binding expli
     {
       name: 'getPressedKeys / isKeyPressed',
       kind: 'function',
-      signature:
-        'getPressedKeys(): Signal<Set<string>>; isKeyPressed(key: string): boolean',
+      signature: 'getPressedKeys(): Signal<Set<string>>; isKeyPressed(key: string): boolean',
       summary:
         "Live held-key introspection. `getPressedKeys()` returns a reactive signal of the currently-held keys (lower-cased `event.key` values) — tracking listeners attach LAZILY on first call, so the package adds zero overhead until you use it; the set clears on window blur (a key released outside the page never delivers its keyup). `isKeyPressed('ctrl')` is the non-reactive point read (aliases resolve: `ctrl`→`control`, `space`→`' '`). SSR-safe (always empty on the server).",
       example: `const pressed = getPressedKeys()
@@ -248,7 +247,7 @@ formatCombo(combo) // → 'Ctrl+K' (or '⌘+K' on Mac)`,
     },
     {
       label: 'Shifted symbols',
-      note: 'Bind a single symbol directly (`?`, `!`, `+`) — it fires on the real shifted keystroke that produces it (`?` on Shift+/). Don\'t write `shift+?`; the symbol already implies shift.',
+      note: "Bind a single symbol directly (`?`, `!`, `+`) — it fires on the real shifted keystroke that produces it (`?` on Shift+/). Don't write `shift+?`; the symbol already implies shift.",
     },
     {
       label: 'SSR-safe',

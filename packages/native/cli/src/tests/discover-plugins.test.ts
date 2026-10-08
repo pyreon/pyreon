@@ -475,3 +475,29 @@ describe('the shipped bin', () => {
     expect(run('explain').status).toBe(1)
   })
 })
+
+describe('remaining package-owned hook plugins', () => {
+  it('discovers built core, router, primitives, hooks and hotkeys entries on both targets', async () => {
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    for (const [category, name] of [['core', 'core'], ['core', 'router'], ['core', 'primitives'], ['fundamentals', 'hooks'], ['fundamentals', 'hotkeys']]) {
+      const dir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../', category!, name!)
+      expect(readFileSync(join(dir, 'lib/native-plugin.js'), 'utf8').length).toBeGreaterThan(0)
+      symlinkSync(dir, join(nm, name!), 'dir')
+    }
+    const source = `import { useColorMode } from '@pyreon/core'; import { useNavigate, useParams } from '@pyreon/router'; import { useNativeModule } from '@pyreon/primitives'; import { useCounter, useInterval } from '@pyreon/hooks'; import { useHotkey } from '@pyreon/hotkeys'; export function Example() { const mode = useColorMode(); const navigate = useNavigate(); const { id } = useParams(); const bridge = useNativeModule('ToyBridge'); const count = useCounter(0); useInterval(() => count.inc(), 20); useHotkey('mod+s', () => navigate('/save')); return <Text>{mode + id}</Text> }`
+    setApp(['@pyreon/core', '@pyreon/router', '@pyreon/primitives', '@pyreon/hooks', '@pyreon/hotkeys'], source)
+    const found = await discoverPlugins(app, join(app, 'src'))
+    expect(found.map(entry => entry.plugin.name).sort()).toEqual(['@pyreon/core', '@pyreon/hooks', '@pyreon/hotkeys', '@pyreon/primitives', '@pyreon/router'])
+    const compiler = createCompiler({ discovered: found.map(entry => entry.plugin) })
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = compiler.transform(source, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('ToyBridge(')
+      expect(r.code).toContain(target === 'swift' ? '.task {' : 'LaunchedEffect(Unit)')
+      expect(r.code).toContain(target === 'swift' ? '.keyboardShortcut' : '.onPreviewKeyEvent')
+      expect(r.code).toContain(target === 'swift' ? 'useNavigate(router: pyreonRouter)' : 'useNavigate()')
+      expect(r.code).not.toContain('useCounter(')
+    }
+  })
+})

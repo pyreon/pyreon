@@ -12,8 +12,8 @@
 // `LocalConfiguration`, so ANY useSizeClass Kotlin emit failed kotlinc.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const PANEL = `import { Stack, Text } from '@pyreon/primitives'
 const Panel = rocketstyle()({ name: 'Panel', component: Stack })

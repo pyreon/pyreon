@@ -21,7 +21,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'service-backend',
     rationale:
-      'the L2 service-hook layer: every hook in PMTC\'s NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences',
+      "the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences",
   },
   longExample: `import {
   // State
@@ -100,6 +100,7 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
+    'Native compiler tooling: hooksPlugin from @pyreon/hooks/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
     '65 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
@@ -115,7 +116,8 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
     {
       name: 'useSecureStorage',
       kind: 'hook',
-      signature: '() => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }',
+      signature:
+        '() => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }',
       summary:
         'The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets. On the SERVER it is INERT: reads return null, `write` returns false, nothing is stored. A module-scoped map is the right scope for a browser (one process, one user) and the wrong one for SSR (one process, everyone) — a secret written during a server render would otherwise be readable by every later request.',
       example: `const secrets = useSecureStorage()
@@ -131,9 +133,13 @@ const signOut = () => secrets.remove('auth-token')`,
         'Expecting web secrets to survive a reload — the web store is deliberately in-memory (no OS secret store exists); persist web sessions via httpOnly cookies / your auth provider',
         'Wrapping `read()` in a signal and rendering it as live UI — the store is imperative; fetch at the auth boundary, keep UI state in ordinary signals',
         'Expecting `remove()` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics',
-        'Writing a secret during SSR and expecting to read it back — the server arm is inert (`write` returns false) precisely so one request cannot read another\'s secret. Server-side secrets belong in the request context or the environment, not in a Keychain mirror',
+        "Writing a secret during SSR and expecting to read it back — the server arm is inert (`write` returns false) precisely so one request cannot read another's secret. Server-side secrets belong in the request context or the environment, not in a Keychain mirror",
       ],
-      seeAlso: ['useStorage (in @pyreon/storage — for NON-secret app state)', 'useDatabase', 'useFetch'],
+      seeAlso: [
+        'useStorage (in @pyreon/storage — for NON-secret app state)',
+        'useDatabase',
+        'useFetch',
+      ],
     },
     {
       name: 'useControllableState',
@@ -163,7 +169,7 @@ const signOut = () => secrets.remove('auth-token')`,
       signature:
         '<K extends keyof WindowEventMap>(event: K, handler: (e: WindowEventMap[K]) => void, options?: boolean | AddEventListenerOptions, target?: () => EventTarget | null) => void',
       summary:
-        'Register a DOM event listener with automatic cleanup on unmount. Signature is `(event, handler, options?, target?)` — event FIRST, and `target` is the optional last argument, a getter resolved ONCE at setup (defaults to `window`). Use this instead of raw `addEventListener` in primitives — never `addEventListener` / `removeEventListener` directly in component code (the cleanup is the hook\'s whole job). SSR-safe: no-ops on the server.',
+        "Register a DOM event listener with automatic cleanup on unmount. Signature is `(event, handler, options?, target?)` — event FIRST, and `target` is the optional last argument, a getter resolved ONCE at setup (defaults to `window`). Use this instead of raw `addEventListener` in primitives — never `addEventListener` / `removeEventListener` directly in component code (the cleanup is the hook's whole job). SSR-safe: no-ops on the server.",
       example: `useEventListener('resize', () => layoutSig.set(measure()))
 useEventListener('keydown', (e) => {
   if (e.key === 'Escape') setOpen(false)
@@ -219,7 +225,13 @@ useFocusTrap(() => modalRef())`,
         'Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only contains focus within the container',
         'Arming two stacked traps with the default lifetime-`active` — the stack then follows MOUNT order, not open order, so the wrong trap can own focus; tie each trap to its open state (`active: () => isOpen()`)',
       ],
-      seeAlso: ['useFocusReturn', 'useInertOthers', 'useScrollLock', 'useDialog', 'useClickOutside'],
+      seeAlso: [
+        'useFocusReturn',
+        'useInertOthers',
+        'useScrollLock',
+        'useDialog',
+        'useClickOutside',
+      ],
     },
     {
       name: 'useInertOthers',
@@ -227,7 +239,7 @@ useFocusTrap(() => modalRef())`,
       signature:
         '(getEl: () => HTMLElement | null, options?: { active?: boolean | (() => boolean) } | boolean | (() => boolean)) => void',
       summary:
-        "Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level's sibling subtrees, from the element up to `document.body`. `aria-modal=\"true\"` only TELLS assistive tech the background is inert; this makes it TRUE: the background becomes unfocusable, unclickable, and hidden from the accessibility tree for screen readers AND sighted keyboard users. Cleanup restores EXACTLY the prior state (an element that was already `inert` stays inert), and stacked overlays share a per-element refcount so an inner overlay's cleanup never un-inerts what the outer still needs. Application follows `getEl()` reactively — pass a signal-backed getter and it applies on mount, releases on unmount (ref → null), re-applies on identity change; `active` additionally arms/disarms without unmounting. `script`/`style`/`template`/`link`/`meta` and live regions (`[aria-live]`, `[data-live-announcer]`) are skipped so screen-reader announcements keep working while the overlay is open. Siblings mounted AFTER application (a toast portaled to body) are not retroactively inert-ed. SSR-safe, self-cleaning.",
+        'Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level\'s sibling subtrees, from the element up to `document.body`. `aria-modal="true"` only TELLS assistive tech the background is inert; this makes it TRUE: the background becomes unfocusable, unclickable, and hidden from the accessibility tree for screen readers AND sighted keyboard users. Cleanup restores EXACTLY the prior state (an element that was already `inert` stays inert), and stacked overlays share a per-element refcount so an inner overlay\'s cleanup never un-inerts what the outer still needs. Application follows `getEl()` reactively — pass a signal-backed getter and it applies on mount, releases on unmount (ref → null), re-applies on identity change; `active` additionally arms/disarms without unmounting. `script`/`style`/`template`/`link`/`meta` and live regions (`[aria-live]`, `[data-live-announcer]`) are skipped so screen-reader announcements keep working while the overlay is open. Siblings mounted AFTER application (a toast portaled to body) are not retroactively inert-ed. SSR-safe, self-cleaning.',
       example: `const dialogRef = signal<HTMLElement | null>(null)
 
 // The dialog renders only while open, so the ref IS the lifecycle:
@@ -276,7 +288,7 @@ useFocusTrap(() => dialogRef())            // focus is trapped while the dialog 
       kind: 'hook',
       signature: '<T>(source: Signal<T> | (() => T), delayMs: number) => Signal<T>',
       summary:
-        'Returns a debounced signal that only updates after `delayMs` of source-signal idle. Use for search-as-you-type, filter inputs, anywhere downstream effects shouldn\'t fire on every keystroke. The PAIR — `useDebouncedCallback` — debounces a function call instead of a value.',
+        "Returns a debounced signal that only updates after `delayMs` of source-signal idle. Use for search-as-you-type, filter inputs, anywhere downstream effects shouldn't fire on every keystroke. The PAIR — `useDebouncedCallback` — debounces a function call instead of a value.",
       example: `const search = signal('')
 const debouncedSearch = useDebouncedValue(search, 300)
 effect(() => fetchResults(debouncedSearch()))`,
@@ -288,7 +300,8 @@ effect(() => fetchResults(debouncedSearch()))`,
     {
       name: 'useFetch',
       kind: 'hook',
-      signature: '<T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }',
+      signature:
+        '<T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }',
       summary:
         'Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compiles to native `PyreonFetch<T>` containers on iOS (URLSession `.task {}`) and Android (`LaunchedEffect` + kotlinx-serialization) via PMTC, while this runs on web. Fires once at component setup (client only — SSR renders the not-yet-loaded state); each `refetch()` aborts the previous in-flight request so a slow stale response can never clobber a fresh one; unmount aborts too. Deliberately thinner than `@pyreon/query`: no cache, no dedup, no retries.',
       example: `type Quote = { id: number; text: string }
@@ -307,7 +320,8 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
     {
       name: 'useClipboard',
       kind: 'hook',
-      signature: '(options?: { timeout?: number }) => { copy: (text: string) => Promise<boolean>; copied: () => boolean; text: () => string }',
+      signature:
+        '(options?: { timeout?: number }) => { copy: (text: string) => Promise<boolean>; copied: () => boolean; text: () => string }',
       summary:
         '`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (default 2000). `copy` resolves `true` on success / `false` on failure (never throws). `text()` is the last successfully-copied string. Use the `copied` signal to flash a "Copied!" UI cue without manual timer management.',
       example: `const { copy, copied } = useClipboard()
@@ -320,7 +334,8 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
     {
       name: 'useDialog',
       kind: 'hook',
-      signature: '(options?: { onClose?: () => void }) => { open: () => boolean; show: () => void; showModal: () => void; close: () => void; toggle: () => void; ref: (el: HTMLDialogElement | null) => void }',
+      signature:
+        '(options?: { onClose?: () => void }) => { open: () => boolean; show: () => void; showModal: () => void; close: () => void; toggle: () => void; ref: (el: HTMLDialogElement | null) => void }',
       summary:
         'Native `<dialog>` element wrapper. `open` is the reactive OPEN-STATE signal (call it to read: `dialog.open()`); `show()` opens non-modal, `showModal()` opens with backdrop + focus, `close()` closes, `toggle()` flips. Wires the native `close` event so `open` stays in sync (and fires `options.onClose`) when the user presses Escape.',
       example: `const dialog = useDialog()
@@ -405,7 +420,7 @@ useIsomorphicLayoutEffect(() => {
       example: `const { count, inc, dec, reset } = useCounter(0, { min: 0, max: 10 })
 <button onClick={() => dec()}>-</button><span>{count}</span><button onClick={() => inc()}>+</button>`,
       mistakes: [
-        'Calling the exposed `count` signal\'s `.set()` directly to bypass clamping — use `set()` / `inc()` / `dec()` so `min`/`max` are enforced',
+        "Calling the exposed `count` signal's `.set()` directly to bypass clamping — use `set()` / `inc()` / `dec()` so `min`/`max` are enforced",
       ],
       seeAlso: ['useToggle', 'useControllableState'],
     },
@@ -449,8 +464,10 @@ effect(() => { if (idle()) showAwayBanner() })`,
     {
       name: 'useToggle',
       kind: 'hook',
-      signature: 'useToggle(initial?: boolean) => { value: () => boolean; toggle: () => void; setTrue: () => void; setFalse: () => void }',
-      summary: 'Boolean signal with named controls. Returns an OBJECT (not a tuple): `value` is a signal accessor, plus `toggle` / `setTrue` / `setFalse` mutators. For a numeric counter use `useCounter`.',
+      signature:
+        'useToggle(initial?: boolean) => { value: () => boolean; toggle: () => void; setTrue: () => void; setFalse: () => void }',
+      summary:
+        'Boolean signal with named controls. Returns an OBJECT (not a tuple): `value` is a signal accessor, plus `toggle` / `setTrue` / `setFalse` mutators. For a numeric counter use `useCounter`.',
       example: `const menu = useToggle()
 <button onClick={menu.toggle}>Menu</button>
 <Show when={() => menu.value()}>…</Show>`,
@@ -463,8 +480,10 @@ effect(() => { if (idle()) showAwayBanner() })`,
     {
       name: 'useHover',
       kind: 'hook',
-      signature: 'useHover() => { hovered: () => boolean; props: { onMouseEnter: () => void; onMouseLeave: () => void } }',
-      summary: 'Track hover state. Returns a `hovered` signal accessor plus `props` you SPREAD onto the target element — the hook does not auto-attach any listener.',
+      signature:
+        'useHover() => { hovered: () => boolean; props: { onMouseEnter: () => void; onMouseLeave: () => void } }',
+      summary:
+        'Track hover state. Returns a `hovered` signal accessor plus `props` you SPREAD onto the target element — the hook does not auto-attach any listener.',
       example: `const h = useHover()
 <div {...h.props}>{() => h.hovered() ? 'Hovering' : 'Idle'}</div>`,
       mistakes: [
@@ -476,8 +495,10 @@ effect(() => { if (idle()) showAwayBanner() })`,
     {
       name: 'useFocus',
       kind: 'hook',
-      signature: 'useFocus() => { focused: () => boolean; props: { onFocus: () => void; onBlur: () => void } }',
-      summary: 'Track focus state. Returns a `focused` signal accessor plus `props` (onFocus/onBlur) to SPREAD onto the element — no auto-attach.',
+      signature:
+        'useFocus() => { focused: () => boolean; props: { onFocus: () => void; onBlur: () => void } }',
+      summary:
+        'Track focus state. Returns a `focused` signal accessor plus `props` (onFocus/onBlur) to SPREAD onto the element — no auto-attach.',
       example: `const f = useFocus()
 <input {...f.props} />`,
       mistakes: [
@@ -489,7 +510,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
       name: 'useMediaQuery',
       kind: 'hook',
       signature: 'useMediaQuery(query: string) => () => boolean',
-      summary: 'Reactive `matchMedia`. Returns a `matches` signal accessor; subscribes to the media query on mount and updates on change (listener auto-removed on unmount).',
+      summary:
+        'Reactive `matchMedia`. Returns a `matches` signal accessor; subscribes to the media query on mount and updates on change (listener auto-removed on unmount).',
       example: `const isWide = useMediaQuery('(min-width: 768px)')
 <Show when={() => isWide()}><Sidebar /></Show>`,
       mistakes: [
@@ -502,7 +524,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
       name: 'useColorScheme',
       kind: 'hook',
       signature: "useColorScheme() => () => 'light' | 'dark'",
-      summary: "Reactive OS color-scheme accessor — `computed` over `(prefers-color-scheme: dark)` (wraps `useMediaQuery`). Returns `'dark'` / `'light'`.",
+      summary:
+        "Reactive OS color-scheme accessor — `computed` over `(prefers-color-scheme: dark)` (wraps `useMediaQuery`). Returns `'dark'` / `'light'`.",
       example: `const scheme = useColorScheme()
 <body data-theme={() => scheme()} />`,
       mistakes: [
@@ -516,7 +539,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
       name: 'useSizeClass',
       kind: 'hook',
       signature: "useSizeClass() => () => 'compact' | 'regular'",
-      summary: "Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`, narrow → `'compact'` (the SwiftUI/Android size-class analog for shared multi-platform code).",
+      summary:
+        "Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`, narrow → `'compact'` (the SwiftUI/Android size-class analog for shared multi-platform code).",
       example: `const size = useSizeClass()
 <Show when={() => size() === 'regular'}><TwoColumn /></Show>`,
       mistakes: [
@@ -529,7 +553,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
       name: 'useReducedMotion',
       kind: 'hook',
       signature: 'useReducedMotion() => () => boolean',
-      summary: "Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility.",
+      summary:
+        'Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility.',
       example: `const reduced = useReducedMotion()
 <Transition enter={() => reduced() ? '' : 'fade-in'}>…</Transition>`,
       mistakes: [
@@ -542,7 +567,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
       name: 'useOnline',
       kind: 'hook',
       signature: 'useOnline() => () => boolean',
-      summary: 'Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offline` window events. SSR-safe (guards on `isClient`); listeners auto-removed via `onCleanup`.',
+      summary:
+        'Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offline` window events. SSR-safe (guards on `isClient`); listeners auto-removed via `onCleanup`.',
       example: `const online = useOnline()
 <Show when={() => !online()}><OfflineBanner /></Show>`,
       mistakes: [
@@ -555,7 +581,7 @@ effect(() => { if (idle()) showAwayBanner() })`,
       name: 'useDeviceInfo',
       kind: 'hook',
       signature:
-        'useDeviceInfo() => { platform: () => \'web\' | \'ios\' | \'android\'; model: () => string; osVersion: () => string; isTouch: () => boolean; screen: () => { width: number; height: number; scale: number } }',
+        "useDeviceInfo() => { platform: () => 'web' | 'ios' | 'android'; model: () => string; osVersion: () => string; isTouch: () => boolean; screen: () => { width: number; height: number; scale: number } }",
       summary:
         'Describe the device — platform branching, real screen geometry, device context for analytics. `platform` needs no runtime on native: it is a COMPILE-TIME constant per target. `model` and `osVersion` are real on iOS/Android and deliberately EMPTY STRINGS on the web, because the browser cannot answer them reliably (navigator.platform is deprecated, UA Client Hints are Chromium-only, and UA parsing rots as browsers change their strings) — and these are the fields that end up in analytics and support tickets, where a plausible wrong answer costs more than a missing one. `screen` reads through on every access rather than caching, so a fold, rotation or Stage Manager resize is reflected instead of silently reporting the old geometry.',
       example: `const device = useDeviceInfo()
@@ -573,7 +599,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
     {
       name: 'useSafeArea',
       kind: 'hook',
-      signature: 'useSafeArea() => () => { top: number; right: number; bottom: number; left: number }',
+      signature:
+        'useSafeArea() => () => { top: number; right: number; bottom: number; left: number }',
       summary:
         'The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. The one device fact a multiplatform app cannot work around at the app level: without it content draws under the notch, or every screen pads by a hard-coded guess that is wrong on the next device. Returns ONE accessor rather than four because the values move together on rotation and separate accessors invite a torn read. Sources: `env(safe-area-inset-*)` read off an inert probe element on the web (CSS environment variables are not exposed to script any other way — needs `viewport-fit=cover`, and reports zeros without it, which is correct rather than broken), `safeAreaInsets` on iOS, `WindowInsets` on Android.',
       example: `const safe = useSafeArea()
@@ -621,7 +648,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
     {
       name: 'useScreenOrientation',
       kind: 'hook',
-      signature: "useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }",
+      signature:
+        "useScreenOrientation() => { type: () => 'portrait' | 'landscape'; angle: () => number }",
       summary:
         'Which way the display is oriented. READ-ONLY by design: locking does not cross — `screen.orientation.lock()` is Chromium-only and fullscreen-gated on the web, and on iOS orientation is an app-level declaration (`supportedInterfaceOrientations`) rather than something a view can request. A `lock()` that silently no-ops on two of three targets is worse than a surface that states what it covers. `type` is normalised to the part that is true everywhere; the primary/secondary distinction the web exposes lives in `angle` (0 / 90 / 180 / 270), so nothing is lost.',
       example: `const o = useScreenOrientation()
@@ -636,9 +664,10 @@ effect(() => { if (idle()) showAwayBanner() })`,
     {
       name: 'useCamera',
       kind: 'hook',
-      signature: 'useCamera() => { capture: () => Promise<string | null>; isAvailable: () => boolean }',
+      signature:
+        'useCamera() => { capture: () => Promise<string | null>; isAvailable: () => boolean }',
       summary:
-        "Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIImagePickerController on iOS, an image-capture intent on Android. Mirrors `useImagePicker` exactly, since the two differ only in which system flow they open: `capture()` resolves a URI or `null`, and NEVER rejects — a cancel and an unavailable camera are the same outcome to a caller (no photo). Because the system UI owns the permission prompt, there is no permission plumbing to get subtly different per platform. A CUSTOM in-app viewfinder is deliberately out of scope: an AVCaptureSession layer, a CameraX PreviewView and a `<video>` element are not one thing wearing three hats — reach for `useNativeModule` there, the same escape hatch `useBluetooth` names for GATT.",
+        'Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIImagePickerController on iOS, an image-capture intent on Android. Mirrors `useImagePicker` exactly, since the two differ only in which system flow they open: `capture()` resolves a URI or `null`, and NEVER rejects — a cancel and an unavailable camera are the same outcome to a caller (no photo). Because the system UI owns the permission prompt, there is no permission plumbing to get subtly different per platform. A CUSTOM in-app viewfinder is deliberately out of scope: an AVCaptureSession layer, a CameraX PreviewView and a `<video>` element are not one thing wearing three hats — reach for `useNativeModule` there, the same escape hatch `useBluetooth` names for GATT.',
       example: `const cam = useCamera()
 const shoot = async () => {
   const uri = await cam.capture()
@@ -674,9 +703,10 @@ const done = async () => {
     {
       name: 'useWakeLock',
       kind: 'hook',
-      signature: 'useWakeLock() => { active: () => boolean; supported: () => boolean; request: () => Promise<boolean>; release: () => Promise<void> }',
+      signature:
+        'useWakeLock() => { active: () => boolean; supported: () => boolean; request: () => Promise<boolean>; release: () => Promise<void> }',
       summary:
-        'Keep the screen awake — video, navigation, recipe steps. Lowers to `isIdleTimerDisabled` on iOS and `FLAG_KEEP_SCREEN_ON` on Android. The WEB arm carries a normalization the native ones do not need: a `WakeLockSentinel` is released by the browser whenever the document hides and is NOT reacquired, while the native flag survives backgrounding — so the hook listens for the sentinel\'s `release` event and re-acquires on `visibilitychange` unless the caller explicitly released. Without both halves the same call leaves the screen sleeping on web and lit on native.',
+        "Keep the screen awake — video, navigation, recipe steps. Lowers to `isIdleTimerDisabled` on iOS and `FLAG_KEEP_SCREEN_ON` on Android. The WEB arm carries a normalization the native ones do not need: a `WakeLockSentinel` is released by the browser whenever the document hides and is NOT reacquired, while the native flag survives backgrounding — so the hook listens for the sentinel's `release` event and re-acquires on `visibilitychange` unless the caller explicitly released. Without both halves the same call leaves the screen sleeping on web and lit on native.",
       example: `const wake = useWakeLock()
 onMount(() => { void wake.request() })
 <Show when={() => wake.active()}><Badge>Screen stays on</Badge></Show>`,
@@ -691,7 +721,8 @@ onMount(() => { void wake.request() })
     {
       name: 'useBluetooth',
       kind: 'hook',
-      signature: 'useBluetooth() => { available: () => boolean; scanning: () => boolean; devices: () => BluetoothDevice[]; error: () => string; scan: () => void; stopScan: () => void }',
+      signature:
+        'useBluetooth() => { available: () => boolean; scanning: () => boolean; devices: () => BluetoothDevice[]; error: () => string; scan: () => void; stopScan: () => void }',
       summary:
         'Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. GATT (connect / read / write a characteristic) is deliberately out of scope: it is where the three platforms stop resembling each other, and a surface that only half-crosses is worse than one that states what it covers. `devices` is FIRST-SEEN order deduped by id, asserted on every target rather than inherited from whatever the platform hands back.',
       example: `const bt = useBluetooth()
@@ -709,8 +740,10 @@ onMount(() => { void wake.request() })
     {
       name: 'useIntersection',
       kind: 'hook',
-      signature: 'useIntersection(getEl: () => HTMLElement | null, options?: IntersectionObserverInit) => () => IntersectionObserverEntry | null',
-      summary: 'IntersectionObserver as a signal. On mount reads `getEl()` once and (if non-null) observes it, writing the latest entry into a signal it returns. Auto-disconnects on unmount. Returns `null` until the observer first fires.',
+      signature:
+        'useIntersection(getEl: () => HTMLElement | null, options?: IntersectionObserverInit) => () => IntersectionObserverEntry | null',
+      summary:
+        'IntersectionObserver as a signal. On mount reads `getEl()` once and (if non-null) observes it, writing the latest entry into a signal it returns. Auto-disconnects on unmount. Returns `null` until the observer first fires.',
       example: `let el!: HTMLElement
 const entry = useIntersection(() => el)
 <div ref={(e) => (el = e)}>{() => entry()?.isIntersecting ? 'visible' : 'hidden'}</div>`,
@@ -724,7 +757,8 @@ const entry = useIntersection(() => el)
       name: 'usePrevious',
       kind: 'hook',
       signature: 'usePrevious<T>(getter: () => T) => () => T | undefined',
-      summary: 'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once).',
+      summary:
+        'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once).',
       example: `const count = signal(0)
 const prev = usePrevious(() => count())
 // after count.set(5): prev() === 0`,
@@ -738,7 +772,8 @@ const prev = usePrevious(() => count())
       name: 'useWindowResize',
       kind: 'hook',
       signature: 'useWindowResize(debounceMs?: number) => () => { width: number; height: number }',
-      summary: 'Reactive window size accessor (default debounce 200ms). Seeded from `window.innerWidth/Height` (or `{0,0}` on the server); a debounced `resize` listener updates it (listener + pending timer cleaned up on unmount).',
+      summary:
+        'Reactive window size accessor (default debounce 200ms). Seeded from `window.innerWidth/Height` (or `{0,0}` on the server); a debounced `resize` listener updates it (listener + pending timer cleaned up on unmount).',
       example: `const size = useWindowResize()
 <div>{() => size().width + '×' + size().height}</div>`,
       mistakes: [
@@ -750,8 +785,10 @@ const prev = usePrevious(() => count())
     {
       name: 'useInterval',
       kind: 'hook',
-      signature: 'useInterval(callback: () => void, delay: number | null | (() => number | null)) => void',
-      summary: 'Declarative `setInterval`. A number sets a fixed interval, `null` PAUSES, and a getter `() => number | null` makes the delay REACTIVE (an effect restarts/pauses the timer when the returned value changes). Auto-cleared on unmount. Returns nothing.',
+      signature:
+        'useInterval(callback: () => void, delay: number | null | (() => number | null)) => void',
+      summary:
+        'Declarative `setInterval`. A number sets a fixed interval, `null` PAUSES, and a getter `() => number | null` makes the delay REACTIVE (an effect restarts/pauses the timer when the returned value changes). Auto-cleared on unmount. Returns nothing.',
       example: `const paused = signal(false)
 useInterval(() => tick(), () => paused() ? null : 1000)`,
       mistakes: [
@@ -764,8 +801,10 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
     {
       name: 'useTimeout',
       kind: 'hook',
-      signature: 'useTimeout(callback: () => void, delay: number | null) => { reset: () => void; clear: () => void }',
-      summary: 'Declarative `setTimeout` that STARTS immediately at setup (fires once after `delay`ms unless `delay` is `null`). Returns `reset` (restart with the original delay) / `clear` (stop). Auto-cleared on unmount.',
+      signature:
+        'useTimeout(callback: () => void, delay: number | null) => { reset: () => void; clear: () => void }',
+      summary:
+        'Declarative `setTimeout` that STARTS immediately at setup (fires once after `delay`ms unless `delay` is `null`). Returns `reset` (restart with the original delay) / `clear` (stop). Auto-cleared on unmount.',
       example: `const t = useTimeout(() => hideToast(), 3000)
 <div onMouseEnter={t.clear} onMouseLeave={t.reset}>…</div>`,
       mistakes: [
@@ -777,8 +816,10 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
     {
       name: 'useDebouncedCallback',
       kind: 'hook',
-      signature: 'useDebouncedCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void; flush: () => void }',
-      summary: 'Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus `.cancel()` (drop the pending call) and `.flush()` (invoke now with the last args). Pending timer auto-cancelled on unmount.',
+      signature:
+        'useDebouncedCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void; flush: () => void }',
+      summary:
+        'Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus `.cancel()` (drop the pending call) and `.flush()` (invoke now with the last args). Pending timer auto-cancelled on unmount.',
       example: `const onSearch = useDebouncedCallback((q: string) => fetchResults(q), 300)
 <input onInput={(e) => onSearch(e.target.value)} />`,
       mistakes: [
@@ -790,8 +831,10 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
     {
       name: 'useThrottledCallback',
       kind: 'hook',
-      signature: 'useThrottledCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void }',
-      summary: 'Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel()` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag).',
+      signature:
+        'useThrottledCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void }',
+      summary:
+        'Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel()` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag).',
       example: `const onScroll = useThrottledCallback(() => updateParallax(), 16)`,
       mistakes: [
         'Same "latest callback" caveat as `useDebouncedCallback` — the callback is captured once; read reactive values inside it.',
@@ -803,7 +846,8 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
       name: 'useLatest',
       kind: 'hook',
       signature: 'useLatest<T>(value: T) => { readonly current: T }',
-      summary: 'Wraps `value` in a mutable `{ current }` ref object. Does NOT auto-update — it captures once (Pyreon bodies run once); the caller must update `.current` manually or pass a reactive getter as the value.',
+      summary:
+        'Wraps `value` in a mutable `{ current }` ref object. Does NOT auto-update — it captures once (Pyreon bodies run once); the caller must update `.current` manually or pass a reactive getter as the value.',
       example: `const latest = useLatest(props.onSave)
 // later, in a stale-closure-prone callback: latest.current?.()`,
       mistakes: [
@@ -814,8 +858,10 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
     {
       name: 'useKeyboard',
       kind: 'hook',
-      signature: "useKeyboard(key: string, handler: (event: KeyboardEvent) => void, options?: { event?: 'keydown' | 'keyup'; target?: EventTarget }) => void",
-      summary: 'Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`.',
+      signature:
+        "useKeyboard(key: string, handler: (event: KeyboardEvent) => void, options?: { event?: 'keydown' | 'keyup'; target?: EventTarget }) => void",
+      summary:
+        'Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`.',
       example: `useKeyboard('Escape', () => closeModal())`,
       mistakes: [
         'Expecting modifier handling — it matches `event.key` EXACTLY (no Cmd/Ctrl/Shift logic); use `@pyreon/hotkeys` for chords.',
@@ -827,11 +873,12 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
       name: 'useScrollLock',
       kind: 'hook',
       signature: 'useScrollLock() => { lock: () => void; unlock: () => void }',
-      summary: 'Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). Uses a MODULE-LEVEL reference count so concurrent locks (nested modals) compose — the saved overflow restores only when the last lock releases. SSR-safe (both no-op on the server); an unmount while still locked auto-unlocks.',
+      summary:
+        'Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). Uses a MODULE-LEVEL reference count so concurrent locks (nested modals) compose — the saved overflow restores only when the last lock releases. SSR-safe (both no-op on the server); an unmount while still locked auto-unlocks.',
       example: `const { lock, unlock } = useScrollLock()
 onMount(() => { lock(); return unlock })`,
       mistakes: [
-        'Expecting one instance to NEST — a per-instance `isLocked` guard makes repeat `lock()`/`unlock()` calls no-ops, so one instance holds at most ONE refcount unit (an extra `unlock()` can never release another component\'s lock); use a separate `useScrollLock()` per independently-lifecycled lock.',
+        "Expecting one instance to NEST — a per-instance `isLocked` guard makes repeat `lock()`/`unlock()` calls no-ops, so one instance holds at most ONE refcount unit (an extra `unlock()` can never release another component's lock); use a separate `useScrollLock()` per independently-lifecycled lock.",
         'Setting `body { overflow }` yourself while a lock is active — the hook restores the value captured at the 0→1 transition, clobbering your change on release.',
       ],
       seeAlso: ['useDialog', 'useClickOutside'],
@@ -839,8 +886,10 @@ onMount(() => { lock(); return unlock })`,
     {
       name: 'useHaptics',
       kind: 'hook',
-      signature: "useHaptics() => { impact: (style?: 'light' | 'medium' | 'heavy' | 'soft' | 'rigid') => void; notification: (type: 'success' | 'warning' | 'error') => void; selection: () => void }",
-      summary: 'Imperative haptic feedback. Fire-and-forget methods that call `navigator.vibrate` on web (mapped patterns) and lower to native `PyreonHaptics` under PMTC. `impact` defaults to `medium`.',
+      signature:
+        "useHaptics() => { impact: (style?: 'light' | 'medium' | 'heavy' | 'soft' | 'rigid') => void; notification: (type: 'success' | 'warning' | 'error') => void; selection: () => void }",
+      summary:
+        'Imperative haptic feedback. Fire-and-forget methods that call `navigator.vibrate` on web (mapped patterns) and lower to native `PyreonHaptics` under PMTC. `impact` defaults to `medium`.',
       example: `const haptics = useHaptics()
 <button onClick={() => { haptics.impact('light'); submit() }}>Pay</button>`,
       mistakes: [
@@ -851,8 +900,10 @@ onMount(() => { lock(); return unlock })`,
     {
       name: 'useShare',
       kind: 'hook',
-      signature: 'useShare() => { text: (text: string) => void; url: (url: string) => void; textUrl: (text: string, url: string) => void; canShare: () => boolean }',
-      summary: 'Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). `canShare()` feature-detects `navigator.share`; the share methods no-op where it is unavailable.',
+      signature:
+        'useShare() => { text: (text: string) => void; url: (url: string) => void; textUrl: (text: string, url: string) => void; canShare: () => boolean }',
+      summary:
+        'Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). `canShare()` feature-detects `navigator.share`; the share methods no-op where it is unavailable.',
       example: `const share = useShare()
 <Show when={() => share.canShare()}>
   <button onClick={() => share.url(location.href)}>Share</button>
@@ -866,7 +917,8 @@ onMount(() => { lock(); return unlock })`,
       name: 'useLinking',
       kind: 'hook',
       signature: 'useLinking() => { openUrl: (url: string) => void }',
-      summary: 'Imperative external-link opener. `openUrl` calls `window.open(url, "_blank", "noopener,noreferrer")` on web and lowers to native `PyreonLinking` under PMTC. SSR-safe.',
+      summary:
+        'Imperative external-link opener. `openUrl` calls `window.open(url, "_blank", "noopener,noreferrer")` on web and lowers to native `PyreonLinking` under PMTC. SSR-safe.',
       example: `const { openUrl } = useLinking()
 <button onClick={() => openUrl('https://pyreon.dev')}>Docs</button>`,
       mistakes: [
@@ -877,8 +929,10 @@ onMount(() => { lock(); return unlock })`,
     {
       name: 'useNotifications',
       kind: 'hook',
-      signature: 'useNotifications() => { requestPermission: () => void; notify: (title: string, body: string) => void }',
-      summary: 'Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). `notify` auto-requests permission on first use; `requestPermission` prompts ahead of time.',
+      signature:
+        'useNotifications() => { requestPermission: () => void; notify: (title: string, body: string) => void }',
+      summary:
+        'Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). `notify` auto-requests permission on first use; `requestPermission` prompts ahead of time.',
       example: `const notifications = useNotifications()
 onMount(() => notifications.requestPermission())
 notifications.notify('Done', 'Your export is ready')`,
@@ -891,9 +945,10 @@ notifications.notify('Done', 'Your export is ready')`,
     {
       name: 'useFilePicker',
       kind: 'hook',
-      signature: 'useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
+      signature:
+        'useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
       summary:
-        "Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up).",
+        'Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up).',
       example: `const files = useFilePicker()
 const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
 
@@ -914,7 +969,8 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
     {
       name: 'useImagePicker',
       kind: 'hook',
-      signature: 'useImagePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
+      signature:
+        'useImagePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
       summary:
         "Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia`), a hidden file input (web). The SECOND async-result hook (after `useBiometrics`): `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request.",
       example: `const picker = useImagePicker()
@@ -937,7 +993,8 @@ const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
     {
       name: 'useBiometrics',
       kind: 'hook',
-      signature: 'useBiometrics() => { authenticate: (reason: string) => Promise<boolean>; isAvailable: () => boolean }',
+      signature:
+        'useBiometrics() => { authenticate: (reason: string) => Promise<boolean>; isAvailable: () => boolean }',
       summary:
         'A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on the web. The FIRST @pyreon/hooks service with an ASYNC RESULT: `authenticate(reason)` returns a `Promise<boolean>` you `await`. Under PMTC this lowers to the native biometric APIs, and the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. WEB v1: a real assertion is a WebAuthn ceremony (needs a server-issued challenge + a registered credential), so the web `authenticate` resolves `false` and `isAvailable` feature-detects `window.PublicKeyCredential` — native is the primary target.',
       example: `const bio = useBiometrics()
@@ -960,7 +1017,7 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
       signature:
         '(options?: { enableHighAccuracy?: boolean; timeout?: number; maximumAge?: number }) => { latitude: number | null; longitude: number | null; accuracy: number | null; error: string | null; isTracking: boolean; start(): void; stop(): void }',
       summary:
-        'Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively to `PyreonGeolocation`. Returned fields are GETTERS over signals (not plain values, so a component body reading `geo.latitude` re-reads on every access, matching the native `@Observable`/`mutableStateOf` container), and field NAMES mirror the native container exactly so one shared `.tsx` reads the same members on all three targets. `start()` begins `navigator.geolocation.watchPosition`; `stop()` clears it and also runs automatically on unmount. HONEST PLATFORM GAP: `start()` compiles on web and iOS only — Kotlin\'s native container needs a host closure argument (no default location transport), so `geo.start()` does not compile on Android; the reactive READS (`latitude`/`longitude`/`accuracy`) are shared on all three, only starting the watch is not.',
+        "Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively to `PyreonGeolocation`. Returned fields are GETTERS over signals (not plain values, so a component body reading `geo.latitude` re-reads on every access, matching the native `@Observable`/`mutableStateOf` container), and field NAMES mirror the native container exactly so one shared `.tsx` reads the same members on all three targets. `start()` begins `navigator.geolocation.watchPosition`; `stop()` clears it and also runs automatically on unmount. HONEST PLATFORM GAP: `start()` compiles on web and iOS only — Kotlin's native container needs a host closure argument (no default location transport), so `geo.start()` does not compile on Android; the reactive READS (`latitude`/`longitude`/`accuracy`) are shared on all three, only starting the watch is not.",
       example: `const geo = useGeolocation({ enableHighAccuracy: true })
 <Stack>
   <span>{geo.latitude ?? 'no fix yet'}</span>
@@ -1099,7 +1156,7 @@ const open = db.find('notes', 'done', 'false')`,
       signature:
         '() => { lastCrash: string; hadCrash: boolean; recordError(message): void; breadcrumb(message): void; clear(): void; start(): void }',
       summary:
-        'The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). Captures via `window.onerror` + `unhandledrejection`, persists to `localStorage` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session\'s report on `start()`. `start()` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in `onMount`) — or skip it entirely if you only use `recordError` for manual capture. `breadcrumb(message)` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via `setCrashTransport`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and `start()` no-ops without `window`.',
+        "The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). Captures via `window.onerror` + `unhandledrejection`, persists to `localStorage` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session's report on `start()`. `start()` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in `onMount`) — or skip it entirely if you only use `recordError` for manual capture. `breadcrumb(message)` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via `setCrashTransport`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and `start()` no-ops without `window`.",
       example: `const crash = useCrashReporter()
 onMount(() => crash.start())
 <Show when={() => crash.hadCrash}>
@@ -1153,7 +1210,7 @@ crash.recordError(String(err))`,
     },
     {
       label: 'Hooks return signals, not plain values',
-      note: 'Every hook returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values. Read by calling: `size().width`, `bp().md`, `online()`. This is the cost of fine-grained reactivity but the reward is composition: hooks chain into `effect` / `computed` directly without re-bridging into Pyreon\'s reactivity graph.',
+      note: "Every hook returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values. Read by calling: `size().width`, `bp().md`, `online()`. This is the cost of fine-grained reactivity but the reward is composition: hooks chain into `effect` / `computed` directly without re-bridging into Pyreon's reactivity graph.",
     },
     {
       label: 'SSR-safe by construction',

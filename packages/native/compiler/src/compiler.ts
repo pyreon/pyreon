@@ -1,3 +1,4 @@
+import { inferType, buildInferenceCtx, buildModuleConstTypes } from './infer-type'
 import { createRegistries, withRegistries } from './active-registries'
 import { kotlinBackend, swiftBackend } from './backends'
 import { BUILT_IN_PLUGINS } from './built-in-plugins'
@@ -16,7 +17,7 @@ import {
 } from './plugin'
 import { assertPluginExtensions, assertPluginShape } from './plugin-shape'
 import { orderPlugins, selectDiscovered } from './service-registry'
-import type { TargetLanguage, TransformResult } from './types'
+import type { TargetLanguage, TransformResult, ExprIR, ComponentIR, TypeIR } from './types'
 
 export { BUILT_IN_PLUGINS }
 
@@ -183,6 +184,8 @@ export function createCompiler<Target extends string = never>(
       scopes: plugin.scopes,
       stubs: plugin.stubs,
       calls: plugin.calls,
+      statementCalls: plugin.statementCalls,
+      patternCalls: plugin.patternCalls,
       declCalls: plugin.declCalls,
       tier2Calls: plugin.tier2Calls,
       decls: plugin.decls,
@@ -256,6 +259,26 @@ export function createCompiler<Target extends string = never>(
         source,
         options: resolvedOptions,
         services,
+        inferType(
+          passModule: CompilerModule,
+          expression: ExprIR,
+          component?: ComponentIR,
+          locals?: ReadonlyMap<string, TypeIR>,
+        ) {
+          const helpers = new Map(passModule.helperFns.map((fn) => [fn.name, fn.returnType]))
+          const constants = buildModuleConstTypes(passModule.moduleDecls, passModule.structs, helpers)
+          const inference = buildInferenceCtx(
+            component?.decls ?? [],
+            passModule.stores,
+            passModule.structs,
+            component?.props ?? [],
+            component?.propsParamName,
+            helpers,
+            constants,
+          )
+          if (locals !== undefined) inference.locals = new Map([...inference.locals, ...locals])
+          return inferType(expression, inference)
+        },
         warn(message: string) {
           if (typeof message !== 'string') throw new Error('[Pyreon] Warnings must be strings.')
           warnings.push(`[Pyreon] ${owner}: ${message}`)
@@ -298,9 +321,7 @@ export function createCompiler<Target extends string = never>(
           !Array.isArray(result.warnings) ||
           result.warnings.some((warning) => typeof warning !== 'string')
         ) {
-          throw new Error(
-            '[Pyreon] Return { code: string, warnings: string[] } from the backend.',
-          )
+          throw new Error('[Pyreon] Return { code: string, warnings: string[] } from the backend.')
         }
         return result
       }),
@@ -311,4 +332,3 @@ export function createCompiler<Target extends string = never>(
     }
   }
 }
-

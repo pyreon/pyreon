@@ -32,6 +32,7 @@ export type {
   HostStateSlot,
   KotlinEmitContext,
   StaticAttrValue,
+  StatementEmitOptions,
   StructRegistry,
   SwiftEmitContext,
   WebViewFacade,

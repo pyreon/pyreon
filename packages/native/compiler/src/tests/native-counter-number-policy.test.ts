@@ -1,5 +1,4 @@
-import { transform } from '../index'
-import { validateSwiftWithStubs, validateKotlin } from './first-party-plugins'
+import { transform, validateSwiftWithStubs, validateKotlin } from './first-party-plugins'
 
 const fixtures = [
   {
