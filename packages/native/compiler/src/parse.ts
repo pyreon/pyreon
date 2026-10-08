@@ -1118,23 +1118,10 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
 }
 
 /**
- * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
- * package and called as `useX()` falls through to the generic
- * `const x = <call>` emit, which reproduces the call VERBATIM — and there is no
- * `useToggle` (or `useElementSize`) in the Swift or Kotlin
- * runtime, so the result is native code that cannot compile.
- *
- * That was silent. An un-lowered hook call emitted verbatim with ZERO
- * warnings, and the first sign of trouble was `cannot find … in scope` from
- * a device build — or
- * nothing at all, for an app nobody type-checked. 38 of the 52 hooks
- * `@pyreon/hooks` and `@pyreon/form` export behave this way.
- *
- * Listing the lowered set here (rather than leaving it implicit in the
- * if-chains below) is what makes the complement nameable. A drift test asserts
- * every entry is genuinely handled, so this cannot rot into a lie.
+ * Loaded plugins declare the supported hook set. Calls outside that set receive
+ * a diagnostic instead of silently reproducing an unresolved native function.
+ * The compile gate accounts for every registered hook across all call positions.
  */
-const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set()
 
 // Derived once per registry (keyed on the registry itself, so the entry dies with
 // the compiler instance that owns it).
@@ -1142,8 +1129,8 @@ const LOWERED_HOOKS = new WeakMap<object, ReadonlySet<string>>()
 
 /**
  * The hooks the parser lowers for `registries` (default: the active ones): the
- * hand-written set above plus every registered service hook and plugin-recognized
- * call, so a plugin's lowering never trips the "no native lowering" warning.
+ * registered services, declaration/statement/pattern calls and function lowerings,
+ * so a plugin's lowering never trips the "no native lowering" warning.
  */
 export function nativeLoweredHooks(
   registries: CompilerRegistries = activeRegistries(),
@@ -1155,7 +1142,6 @@ export function nativeLoweredHooks(
       ...registries.serviceTables.hooks,
       ...registries.calls.names,
       ...registries.exprs.functions.keys(),
-      ...NATIVE_LOWERED_STATIC_HOOKS,
     ])
     LOWERED_HOOKS.set(key, set)
   }
