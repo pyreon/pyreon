@@ -2150,6 +2150,15 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind !== 'form' || d.onSubmit === undefined) continue
     const name = swiftIdent(d.name)
     _formSubmitParamsSwift.push(d.onSubmit.param)
+    const savedSubmitLocals = _exprInferCtx.locals
+    const savedSubmitActive = _activeInferCtx.locals
+    const submitType: TypeIR = {
+      kind: 'object',
+      fields: d.initialValues.map(({ key }) => ({ name: key, type: { kind: 'string' } })),
+    }
+    _exprInferCtx.locals = new Map([...savedSubmitLocals, [d.onSubmit.param, submitType]])
+    seedHandlerLocals(d.onSubmit.body, _exprInferCtx)
+    _activeInferCtx.locals = _exprInferCtx.locals
     let bodyLines: string
     try {
       bodyLines = d.onSubmit.body
@@ -2157,6 +2166,8 @@ function emitSwiftComponent(c: ComponentIR): string {
         .join('\n')
     } finally {
       _formSubmitParamsSwift.pop()
+      _exprInferCtx.locals = savedSubmitLocals
+      _activeInferCtx.locals = savedSubmitActive
     }
     lines.push(`      .onAppear {`)
     lines.push(`        ${name}.onSubmit = { ${swiftIdent(d.onSubmit.param)} in`)
@@ -2813,8 +2824,20 @@ function emitSwiftDecl(
     if (d.validators !== undefined && d.validators.length > 0) {
       const entries = d.validators
         .map(
-          (v) =>
-            `${swiftStr(v.key)}: { ${swiftIdent(v.param)} in ${emitSwiftExpr(v.body, 0)} }`,
+          (v) => {
+          const savedLocals = _exprInferCtx.locals
+          const savedActive = _activeInferCtx.locals
+          const locals = new Map(savedLocals)
+          locals.set(v.param, { kind: 'string' })
+          _exprInferCtx.locals = locals
+          _activeInferCtx.locals = locals
+          try {
+            return `${swiftStr(v.key)}: { ${swiftIdent(v.param)} in ${emitSwiftExpr(v.body, 0)} }`
+          } finally {
+            _exprInferCtx.locals = savedLocals
+            _activeInferCtx.locals = savedActive
+          }
+        },
         )
         .join(', ')
       parts.push(`validators: [${entries}]`)
@@ -3521,6 +3544,13 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
+  // JavaScript also coerces a non-optional string: only the empty string is falsy.
+  const negated = e.kind === 'unary' && e.op === '!'
+  const subject = negated ? e.argument : e
+  if (inferType(subject, _exprInferCtx).kind === 'string') {
+    const raw = `(${emit(subject)})`
+    return negated ? `${raw}.isEmpty` : `!${raw}.isEmpty`
+  }
   return emit(e)
 }
 

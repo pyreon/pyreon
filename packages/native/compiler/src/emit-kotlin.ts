@@ -1176,6 +1176,8 @@ interface KotlinCtx {
    * through nested `if`/`else` blocks via the ctx pass-through.
    */
   lambdaLabel?: string
+  /** A void callback evaluates returned values for side effects, then returns Unit. */
+  discardReturnValue?: boolean
   /**
    * Type-inference context for the active component (signals / computeds /
    * fetches / locals / stores). Used by `emitKotlinFunction` to INFER a
@@ -1472,15 +1474,28 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind !== 'form' || d.onSubmit === undefined) continue
     const name = kotlinIdent(d.name)
     _formSubmitParamsKotlin.push(d.onSubmit.param)
+    const savedSubmitLocals = _kotlinExprInferCtx.locals
+    const submitType: TypeIR = {
+      kind: 'object',
+      fields: d.initialValues.map(({ key }) => ({ name: key, type: { kind: 'string' } })),
+    }
+    _kotlinExprInferCtx.locals = new Map([...savedSubmitLocals, [d.onSubmit.param, submitType]])
+    seedHandlerLocals(d.onSubmit.body, _kotlinExprInferCtx)
     let bodyLines: string
     try {
+      const hasReturn = JSON.stringify(d.onSubmit.body).includes('"kind":"return"')
+      const callbackCtx: KotlinCtx = hasReturn
+        ? { ...ctx, lambdaLabel: '__pyreonSubmit', discardReturnValue: true }
+        : ctx
       bodyLines = d.onSubmit.body
-        .map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`)
+        .map((st) => `    ${emitKotlinStatement(st, 4, callbackCtx)}`)
         .join('\n')
     } finally {
       _formSubmitParamsKotlin.pop()
+      _kotlinExprInferCtx.locals = savedSubmitLocals
     }
-    lines.push(`  ${name}.onSubmit = { ${kotlinIdent(d.onSubmit.param)} ->`)
+    const label = JSON.stringify(d.onSubmit.body).includes('"kind":"return"') ? '__pyreonSubmit@ ' : ''
+    lines.push(`  ${name}.onSubmit = ${label}{ ${kotlinIdent(d.onSubmit.param)} ->`)
     lines.push(bodyLines)
     lines.push(`  }`)
   }
@@ -2519,6 +2534,13 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == null`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != null`
+  // JavaScript also coerces a non-optional string: only the empty string is falsy.
+  const negated = e.kind === 'unary' && e.op === '!'
+  const subject = negated ? e.argument : e
+  if (inferType(subject, _kotlinExprInferCtx).kind === 'string') {
+    const raw = `(${emit(subject)})`
+    return negated ? `${raw}.isEmpty()` : `${raw}.isNotEmpty()`
+  }
   return emit(e)
 }
 
@@ -2617,6 +2639,9 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const keyword = ctx.lambdaLabel ? `return@${ctx.lambdaLabel}` : 'return'
       const ex = s.expr
       if (ex === undefined) return keyword
+      if (ctx.discardReturnValue) {
+        return `${emitKotlinExpr(ex, indent)}\n${' '.repeat(indent)}${keyword}`
+      }
       // A returned object literal takes the enclosing function's declared struct;
       // a returned string LITERAL takes its declared ENUM. Mirror of the Swift
       // branch — kotlinc rejects the raw string with "return type mismatch:
