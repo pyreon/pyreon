@@ -1,4 +1,5 @@
 import hotkeysPlugin from '../../../../fundamentals/hotkeys/src/native-plugin'
+import formPlugin from '../../../../fundamentals/form/src/native-plugin'
 // `LIFECYCLE_HOST_DECL_KINDS` (emit-swift.ts) decides whether a component body
 // is wrapped in a concrete `ZStack`. Getting it wrong is the device-found
 // SwiftUI class: a `.task` / `.onAppear` attached to a TRANSPARENT
@@ -108,7 +109,8 @@ describe('LIFECYCLE_HOST_DECL_KINDS covers every lifecycle-emitting decl', () =>
 
   it('the four kinds this audit found are present', () => {
     const declared = declaredSet()
-    for (const k of ['form']) {
+    expect(formPlugin.decls?.form?.lifecycle?.stableHost).toBe(true)
+    for (const k of ['on-mount']) {
       expect(declared.has(k), k).toBe(true)
     }
   })

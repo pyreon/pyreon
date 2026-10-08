@@ -26,8 +26,10 @@ import {
   lowerPluginFunction,
   lowerPluginIdentifier,
   lowerPluginExpr,
-  formFieldValidators,
-  formSchemaAdvice,
+  moduleFieldValidators,
+  pluginValueBinding,
+  pluginIterationBinding,
+  moduleFieldValidatorsAdvice,
   itemsInSlot,
   lowerPluginItem,
   lowerPluginIntrinsic,
@@ -36,6 +38,7 @@ import {
   isHeadLifecycleDecl,
   swiftInitDecls,
   midLifecycleDecls,
+  earlyLifecycleDecls,
   lowerPluginReceiver,
   lowerPluginRefModifiers,
   pluginAsyncState,
@@ -543,49 +546,8 @@ let _signalNames: Set<string> = new Set()
  * component can never rewrite a same-named value in another.
  */
 let _serviceBindings: Map<string, ServiceDescriptor> = new Map()
-/**
- * Native service methods whose Swift signature LABELS its arguments while the shared TS surface is positional, keyed by decl
- * kind. Labels cover EVERY argument position, `null` meaning unlabelled. (The containers `@pyreon/hooks` owns —
- * `PyreonDatabase`, `PyreonMapState`, `PyreonSecureStorage` — apply their labels through their own plugin's receivers.)
- */
-const SWIFT_SERVICE_ARG_LABELS: Record<string, Record<string, readonly (string | null)[]>> = {
-  fieldArray: {
-    // move(from:to:) is the one labelled method; the rest are unlabelled
-    // positionals mirroring the web surface.
-    move: ['from', 'to'],
-  },
-}
-
-/** Service decl name -> service kind, for the label table above. */
-let _serviceKindByNameSwift: Map<string, string> = new Map()
-// Field-array accessor unwrap: `tags.items()` / `tags.length()` are signal
-// CALLS on web but plain PROPERTIES on PyreonFieldArray — track the decl
-// names so the member-call emit strips the parens. `_fieldArrayItemParams`
-// tracks the CURRENT `<For each={fa.items()}>` render params (a stack —
-// nested Fors) so `item.value()` unwraps to `item.value` inside the body.
-let _fieldArrayNamesSwift: Set<string> = new Set()
-let _fieldArrayItemParamsSwift: string[] = []
-/** Per-component: form decl names — drives the dict-member subscript
- *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
- *  Field binding emit. */
-let _formNamesSwift: Set<string> = new Set()
-// The file's plugin-owned module items — what `useForm({ schema })` resolves its per-field validators against.
+/** Plugin-owned module items available to facade consumers and inference. */
 let _moduleItems: ExtModuleItem[] = []
-/**
- * The onSubmit param name currently in scope, if any — a STACK so a nested
- * form emit can't clobber the outer one.
- *
- * The runtimes hand `onSubmit` a string-keyed dictionary (`[String: String]`
- * / `Map<String, String>`), but the TS author writes `values.username`, which
- * is correct TypeScript against `initialValues: { username: '' }` and is
- * exactly what `form.values().username` already lowers to a subscript. Without
- * the same rewrite HERE, the natural shape emitted `values.username` verbatim
- * and compiled on NEITHER target ("value of type '[String : String]' has no
- * member 'username'" / "Unresolved reference 'username'"). It stayed hidden
- * because every gated app named the param `_values` and never read a field
- * off it — an unused parameter is an unexercised contract.
- */
-let _formSubmitParamsSwift: string[] = []
 /**
  * The component's ASYNC SOURCES in declaration order — every plugin
  * declaration that declares an `asyncState` (`useFetch`, `useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
@@ -1448,7 +1410,7 @@ let _activePropsParamName: string | undefined
  * Kotlin needs no equivalent — its harness is a `LaunchedEffect(Unit)` SIBLING
  * node keyed on a stable `Unit`, which recomposition does not cancel.
  */
-const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set(['form', 'on-mount'])
+const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set(['on-mount'])
 
 /**
  * Push a named warning when a `&&` / `||` operand is provably not a Bool.
@@ -1567,8 +1529,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   // G1: track every signal name so TextField's pattern-detection can
   // recognise binding-eligible identifiers.
   _signalNames = new Set()
-  _fieldArrayNamesSwift = new Set()
-  _fieldArrayItemParamsSwift = []
   // G2 (related correctness): track every function decl name so the
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
@@ -1577,9 +1537,6 @@ function emitSwiftComponent(c: ComponentIR): string {
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _serviceBindings = bindServices(c.decls)
-  _serviceKindByNameSwift = new Map()
-  _formNamesSwift = new Set()
-  _formSubmitParamsSwift = []
   _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
@@ -1625,11 +1582,6 @@ function emitSwiftComponent(c: ComponentIR): string {
       _functionNames.add(d.name)
       if (d.params.length === 0) _zeroArgFnNames.add(d.name)
     }
-    if (d.kind === 'fieldArray') _fieldArrayNamesSwift.add(d.name)
-    if (SWIFT_SERVICE_ARG_LABELS[d.kind] !== undefined && 'name' in d) {
-      _serviceKindByNameSwift.set(d.name as string, d.kind)
-    }
-    if (d.kind === 'form') _formNamesSwift.add(d.name)
     // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
     if (pluginAsyncState(d, 'swift', swiftEmitContext(0)) !== undefined) _asyncDeclsSwift.push(d)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
@@ -1962,32 +1914,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
-  for (const d of c.decls) {
-    if (d.kind !== 'form' || d.onSubmit === undefined) continue
-    const name = swiftIdent(d.name)
-    _formSubmitParamsSwift.push(d.onSubmit.param)
-    const savedSubmitLocals = _exprInferCtx.locals
-    const savedSubmitActive = _activeInferCtx.locals
-    const submitType: TypeIR = {
-      kind: 'object',
-      fields: d.initialValues.map(({ key }) => ({ name: key, type: { kind: 'string' } })),
-    }
-    _exprInferCtx.locals = new Map([...savedSubmitLocals, [d.onSubmit.param, submitType]])
-    seedHandlerLocals(d.onSubmit.body, _exprInferCtx)
-    _activeInferCtx.locals = _exprInferCtx.locals
-    let bodyLines: string
-    try {
-      bodyLines = d.onSubmit.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
-    } finally {
-      _formSubmitParamsSwift.pop()
-      _exprInferCtx.locals = savedSubmitLocals
-      _activeInferCtx.locals = savedSubmitActive
-    }
-    lines.push(`      .onAppear {`)
-    lines.push(`        ${name}.onSubmit = { ${swiftIdent(d.onSubmit.param)} in`)
-    lines.push(bodyLines)
-    lines.push(`        }`)
-    lines.push(`      }`)
+  for (const d of earlyLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+      lines.push(line === '' ? '' : `      ${line}`)
   }
   // onMount bodies → .onAppear on the stable host (sync statements; the
   // async-on-mount hook stays .task/useFetch). Multiple onMount calls emit
@@ -2501,83 +2430,6 @@ function emitSwiftDecl(
   // env-dependent derivations. `useParams()` follows the same shape;
   // return types are per the runtime's signature ((String) -> Void
   // for navigate, [String: String] for params).
-  // Phase 4.2: `const form = useForm({ initialValues })` → an @State
-  // PyreonForm container seeded with the literal string defaults. Unlike
-  // useFetch there is NO mount-time harness — a form is pure reactive state;
-  // its fields (`values`/`errors`/`isSubmitting`/`isValid`) are read as
-  // @Observable properties directly.
-  if (d.kind === 'form') {
-    const parts: string[] = []
-    if (d.initialValues.length) {
-      parts.push(
-        `initialValues: [${d.initialValues
-          .map((p) => `${swiftStr(p.key)}: ${swiftStr(p.value)}`)
-          .join(', ')}]`,
-      )
-    }
-    // v2 (form-binding arc) — validators emit as Swift closures in the
-    // init dictionary; "" = valid, anything else is the error message.
-    if (d.validators !== undefined && d.validators.length > 0) {
-      const entries = d.validators
-        .map((v) => {
-          const savedLocals = _exprInferCtx.locals
-          const savedActive = _activeInferCtx.locals
-          const locals = new Map(savedLocals)
-          locals.set(v.param, { kind: 'string' })
-          _exprInferCtx.locals = locals
-          _activeInferCtx.locals = locals
-          try {
-            return `${swiftStr(v.key)}: { ${swiftIdent(v.param)} in ${emitSwiftExpr(v.body, 0)} }`
-          } finally {
-            _exprInferCtx.locals = savedLocals
-            _activeInferCtx.locals = savedActive
-          }
-        })
-        .join(', ')
-      parts.push(`validators: [${entries}]`)
-    }
-    // `schema: SomeSchema` — synthesize a validator per STRING field, each
-    // delegating to the schema's own `validateField`. One source of truth for
-    // what a constraint means, and it makes the option do on native what it
-    // does on the web instead of being dropped in silence.
-    //
-    // Explicit `validators` win: they are per-field and more specific, so a
-    // field carrying both keeps the hand-written one.
-    if (d.schemaName !== undefined) {
-      const provided = formFieldValidators(_moduleItems, d.schemaName)
-      const fields = provided?.fields
-      if (fields === undefined) {
-        _emitWarnings.push(
-          `useForm({ schema: ${d.schemaName} }): no top-level ${formSchemaAdvice() ?? 'schema'} declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
-        )
-      } else {
-        const explicit = new Set((d.validators ?? []).map((v) => v.key))
-        const entries = fields
-          .filter((f) => !explicit.has(f))
-          .map(
-            (f) => `${swiftStr(f)}: { v in ${provided!.validators.swift(provided!.item, f, 'v')} }`,
-          )
-        if (entries.length > 0) {
-          const existing = parts.findIndex((p) => p.startsWith('validators: ['))
-          if (existing >= 0) {
-            parts[existing] = `${parts[existing]!.slice(0, -1)}, ${entries.join(', ')}]`
-          } else {
-            parts.push(`validators: [${entries.join(', ')}]`)
-          }
-        }
-      }
-    }
-    // onSubmit is NOT an init argument on Swift: @State property
-    // initializers run before `self` exists, and the callback's body
-    // almost always captures instance members (`navigate`, store
-    // writes). It attaches via `.onAppear { form.onSubmit = { … } }`
-    // on the component body instead — see the post-body loop in
-    // emitSwiftComponent (mirrors the useFetch `.task` harness).
-    return `@State private var ${swiftIdent(d.name)} = PyreonForm(${parts.join(', ')})`
-  }
-  if (d.kind === 'fieldArray') {
-    const init = d.initial.length === 0 ? '' : `[${d.initial.map((v) => swiftStr(v)).join(', ')}]`
-    return `@State private var ${swiftIdent(d.name)} = PyreonFieldArray(${init})`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a COMPUTED
   // property reading the active router's loaderData entry for the
@@ -2700,7 +2552,10 @@ function withSwiftLocals<T>(
     _exprInferCtx.locals.set(name, t)
   }
   try {
-    return fn()
+    return _pluginScope.withBindings(
+      bindings.map(([name]) => ({ name })),
+      fn,
+    )
   } finally {
     for (const s of saved.reverse()) {
       if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
@@ -4424,19 +4279,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
-      // PyreonForm PROPERTY reads: web `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
-      // the native `PyreonForm` exposes them as stored Bool properties. Without
-      // this the web-correct spelling emitted `form.isValid()`, which swiftc
-      // rejects with "cannot call value of non-function type 'Bool'". Same
-      // inversion `useOnline()` and `useAppState()` already carry.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _formNamesSwift.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['isValid', 'isSubmitting'].includes(e.callee.property)
-      ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
@@ -4476,50 +4318,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return `(Double(${arg}) ?? 0)`
       }
-      // Native-service argument labels, for services whose Swift signature
-      // labels its arguments while the shared TS surface is positional. Same
-      // defect the argument-label rewrites fix, generalised past the one
-      // service it was first found on — `map.moveTo(37.3, -122.0)` emitted
-      // positionally and failed swiftc with "missing argument labels
-      // 'latitude:longitude:'". Kotlin needs no equivalent: named arguments
-      // are optional there.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        typeof e.callee.property === 'string'
-      ) {
-        // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
-        // PyreonFieldArray decl (and `value()` on a For-item param over its
-        // items) are web signal READS — native they are stored/computed
-        // PROPERTIES, so the call parens must go or swiftc fails with
-        // "cannot call value of non-function type".
-        if (e.args.length === 0) {
-          const recv = e.callee.object.name
-          if (
-            _fieldArrayNamesSwift.has(recv) &&
-            (e.callee.property === 'items' || e.callee.property === 'length')
-          ) {
-            return `${swiftIdent(recv)}.${e.callee.property}`
-          }
-          if (_fieldArrayItemParamsSwift.includes(recv) && e.callee.property === 'value') {
-            return `${swiftIdent(recv)}.value`
-          }
-        }
-        const kind = _serviceKindByNameSwift.get(e.callee.object.name)
-        const labels =
-          kind === undefined ? undefined : SWIFT_SERVICE_ARG_LABELS[kind]?.[e.callee.property]
-        // `<=`, not `===`: a defaulted trailing parameter (moveTo's `zoom`)
-        // makes several arities legal. MORE arguments than labels falls
-        // through to the generic emit, so a genuinely wrong call still
-        // surfaces as a compiler error rather than being papered over.
-        if (labels !== undefined && e.args.length <= labels.length) {
-          const labelled = e.args.map((a, i) => {
-            const src = emitSwiftExpr(a, indent)
-            const label = labels[i]
-            return label === null || label === undefined ? src : `${label}: ${src}`
-          })
-          return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
-        }
       }
       // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
       // `x = EXPR[list := <read of x>]` by IR-level param substitution,
@@ -5402,40 +5200,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `${emitSwiftExpr(e.object, indent)}.count`
         }
       }
-      // v2 (form-binding arc) — per-field dict access on a form
-      // container: `form.values.email` is ILLEGAL member access on a
-      // Swift dictionary; rewrite to the subscript with the
-      // type-appropriate default (`values`/`errors` are String dicts,
-      // `touched` is Bool).
-      // The WEB API is a CALL: `@pyreon/form` types `values: () => TValues`,
-      // so idiomatic shared source reads `form.values().email`. Only the
-      // PROPERTY form was lowered, which made a form non-shared in BOTH
-      // directions — the web shape emitted uncompilable native code with NO
-      // warning, and the shape that did work natively (`form.values.email`)
-      // is a type error on web. Unwrap a zero-arg call on the accessor so
-      // both lower identically. Additive: the property form is untouched.
-      // A field read off the onSubmit VALUES param — `values.username` →
-      // `values["username"] ?? ""`. Same shape (and same default) as the
-      // `form.values.email` rewrite below; the difference is only that the
-      // dictionary arrives as a closure parameter rather than a container
-      // property. See `_formSubmitParamsSwift`.
-      if (e.object.kind === 'identifier' && _formSubmitParamsSwift.includes(e.object.name)) {
-        return `(${swiftIdent(e.object.name)}[${swiftStr(e.property)}] ?? "")`
-      }
-      const _formAccessorObj =
-        e.object.kind === 'call' && e.object.args.length === 0 && e.object.callee.kind === 'member'
-          ? e.object.callee
-          : e.object
-      if (
-        _formAccessorObj.kind === 'member' &&
-        _formAccessorObj.object.kind === 'identifier' &&
-        _formNamesSwift.has(_formAccessorObj.object.name) &&
-        (_formAccessorObj.property === 'values' ||
-          _formAccessorObj.property === 'errors' ||
-          _formAccessorObj.property === 'touched')
-      ) {
-        const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
-        return `(${swiftIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}[${swiftStr(e.property)}] ?? ${dflt})`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct struct properties in
@@ -5835,68 +5599,74 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `{ let __v = ${arg}; ${arg} ${step}; return __v }()`
     }
     case 'arrow': {
-      // Swift closure: `{ params in body }`. A BLOCK body carries `stmts` —
-      // reading only `e.body` (the block-body SENTINEL `""`) silently DROPPED
-      // the whole body on the PLAIN 1-param path (the indexed path fixed
-      // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
-      // true })` exposed the plain-path sibling).
-      // Typed form when EVERY param carries an annotation — Swift's
-      // parenthesized closure params are all-or-nothing, and a standalone
-      // `let f = { r in … }` cannot infer its param types at all.
-      const standaloneClosure = _typedClosureLet
-      _typedClosureLet = false
-      const swiftClosureParams = (): string => {
-        const types = e.paramTypes
-        if (
-          standaloneClosure &&
-          e.params.length > 0 &&
-          types !== undefined &&
-          types.length === e.params.length &&
-          types.every((t) => t !== undefined && t.kind !== 'unknown')
-        ) {
-          return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
-        }
-        return e.params.map(swiftIdent).join(', ')
-      }
-      if (e.stmts !== undefined && e.stmts.length > 0) {
-        const pad = ' '.repeat(indent + 2)
-        const inlined = inlineValueConstsInStmts(e.stmts)
-        // Bind ANNOTATED closure params into both ctxs — the body's
-        // type-gated lowerings otherwise see them as unknown (`pts.count`
-        // in the charts reveal closure could not coerce against a Double).
-        const paramBind: Array<[string, boolean, TypeIR | undefined, boolean, TypeIR | undefined]> =
-          []
-        if (e.paramTypes !== undefined) {
-          e.params.forEach((pn, pi) => {
-            const pt = e.paramTypes![pi]
-            if (pt === undefined || pt.kind === 'unknown') return
-            paramBind.push([
-              pn,
-              _exprInferCtx.locals.has(pn),
-              _exprInferCtx.locals.get(pn),
-              _activeInferCtx.locals.has(pn),
-              _activeInferCtx.locals.get(pn),
-            ])
-            _exprInferCtx.locals.set(pn, pt)
-            _activeInferCtx.locals.set(pn, pt)
-          })
-        }
-        const saved = seedHandlerLocals(inlined, _exprInferCtx)
-        const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
-        const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
-        _exprInferCtx.locals = saved
-        _activeInferCtx.locals = savedAct8
-        for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
-          if (hadE) _exprInferCtx.locals.set(pn, prevE!)
-          else _exprInferCtx.locals.delete(pn)
-          if (hadA) _activeInferCtx.locals.set(pn, prevA!)
-          else _activeInferCtx.locals.delete(pn)
-        }
-        const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
-        return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
-      }
-      if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
-      return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
+      return _pluginScope.withBindings(
+        e.params.map((name) => ({ name })),
+        () => {
+          // Swift closure: `{ params in body }`. A BLOCK body carries `stmts` —
+          // reading only `e.body` (the block-body SENTINEL `""`) silently DROPPED
+          // the whole body on the PLAIN 1-param path (the indexed path fixed
+          // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
+          // true })` exposed the plain-path sibling).
+          // Typed form when EVERY param carries an annotation — Swift's
+          // parenthesized closure params are all-or-nothing, and a standalone
+          // `let f = { r in … }` cannot infer its param types at all.
+          const standaloneClosure = _typedClosureLet
+          _typedClosureLet = false
+          const swiftClosureParams = (): string => {
+            const types = e.paramTypes
+            if (
+              standaloneClosure &&
+              e.params.length > 0 &&
+              types !== undefined &&
+              types.length === e.params.length &&
+              types.every((t) => t !== undefined && t.kind !== 'unknown')
+            ) {
+              return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
+            }
+            return e.params.map(swiftIdent).join(', ')
+          }
+          if (e.stmts !== undefined && e.stmts.length > 0) {
+            const pad = ' '.repeat(indent + 2)
+            const inlined = inlineValueConstsInStmts(e.stmts)
+            // Bind ANNOTATED closure params into both ctxs — the body's
+            // type-gated lowerings otherwise see them as unknown (`pts.count`
+            // in the charts reveal closure could not coerce against a Double).
+            const paramBind: Array<
+              [string, boolean, TypeIR | undefined, boolean, TypeIR | undefined]
+            > = []
+            if (e.paramTypes !== undefined) {
+              e.params.forEach((pn, pi) => {
+                const pt = e.paramTypes![pi]
+                if (pt === undefined || pt.kind === 'unknown') return
+                paramBind.push([
+                  pn,
+                  _exprInferCtx.locals.has(pn),
+                  _exprInferCtx.locals.get(pn),
+                  _activeInferCtx.locals.has(pn),
+                  _activeInferCtx.locals.get(pn),
+                ])
+                _exprInferCtx.locals.set(pn, pt)
+                _activeInferCtx.locals.set(pn, pt)
+              })
+            }
+            const saved = seedHandlerLocals(inlined, _exprInferCtx)
+            const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
+            const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
+            _exprInferCtx.locals = saved
+            _activeInferCtx.locals = savedAct8
+            for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
+              if (hadE) _exprInferCtx.locals.set(pn, prevE!)
+              else _exprInferCtx.locals.delete(pn)
+              if (hadA) _activeInferCtx.locals.set(pn, prevA!)
+              else _activeInferCtx.locals.delete(pn)
+            }
+            const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
+            return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
+          }
+          if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
+          return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
+        },
+      )
     }
     case 'new-collection': {
       // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
@@ -6241,6 +6011,23 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       expr: emitSwiftExpr,
       exprAs: (type, e, at) => withExpectedType(type, () => emitSwiftExpr(e, at)),
       scope: () => _pluginScope,
+      withBindings: (bindings, emit) =>
+        withSwiftLocals(
+          bindings.map(
+            (binding) => [binding.name, binding.type ?? ({ kind: 'unknown' } as TypeIR)] as const,
+          ),
+          () => _pluginScope.withBindings(bindings, emit),
+        ),
+      fieldValidators: (name) => {
+        const provided = moduleFieldValidators(_moduleItems, name)
+        return provided === undefined
+          ? undefined
+          : {
+              fields: provided.fields,
+              body: (field, value) => provided.validators.swift(provided.item, field, value),
+            }
+      },
+      fieldValidatorsAdvice: moduleFieldValidatorsAdvice,
       stringAttr: readStringAttrExpr,
       layoutModifiers: (el) => emitSwiftLayoutModifiers(el),
       action: emitSwiftAction,
@@ -6281,10 +6068,12 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
           seedHandlerLocals([...stmts], _exprInferCtx)
           seedHandlerLocals([...stmts], _activeInferCtx)
         }
-        const out = stmts.map((st) => emitSwiftStatement(st, at))
-        _exprInferCtx.locals = savedA
-        _activeInferCtx.locals = savedB
-        return out
+        try {
+          return stmts.map((st) => emitSwiftStatement(st, at))
+        } finally {
+          _exprInferCtx.locals = savedA
+          _activeInferCtx.locals = savedB
+        }
       },
       inlineConsts: inlineValueConsts,
     },
@@ -7222,20 +7011,6 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   const param = (renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>).params[0] ?? 'item'
   const body = (renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>).body
   const pad = ' '.repeat(indent + 2)
-  // Field-array items source → the render param's `value()` reads unwrap to
-  // `.value` inside this body (a stack, so nested Fors restore correctly).
-  const isFieldArrayItems =
-    each !== undefined &&
-    ((each.value.kind === 'call' &&
-      each.value.callee.kind === 'member' &&
-      each.value.callee.object.kind === 'identifier' &&
-      _fieldArrayNamesSwift.has(each.value.callee.object.name) &&
-      each.value.callee.property === 'items') ||
-      (each.value.kind === 'member' &&
-        each.value.object.kind === 'identifier' &&
-        _fieldArrayNamesSwift.has(each.value.object.name) &&
-        each.value.property === 'items'))
-  if (isFieldArrayItems) _fieldArrayItemParamsSwift.push(param)
   // Seed the ROW param with the element type for the body emit. Without it
   // every type-dependent lowering inside a `<For>` body saw the row as
   // `unknown` — the load-bearing case being `.length`, where an unknown
@@ -7250,14 +7025,22 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (rowElem !== undefined) _activeInferCtx.locals.set(param, rowElem)
   let bodyText: string
   try {
-    bodyText = forRowBodySwift(renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>, body, indent)
+    bodyText = _pluginScope.withBindings(
+      [
+        pluginIterationBinding(
+          each ? unwrapAccessorArrow(each.value) : undefined,
+          param,
+          _pluginScope,
+        ),
+      ],
+      () => forRowBodySwift(renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>, body, indent),
+    )
   } finally {
     if (rowElem !== undefined) {
       if (hadRow) _activeInferCtx.locals.set(param, prevRow!)
       else _activeInferCtx.locals.delete(param)
     }
   }
-  if (isFieldArrayItems) _fieldArrayItemParamsSwift.pop()
   return `ForEach(${items}, id: \\.${idPath}) { ${swiftIdent(param)} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
 }
 
@@ -9216,37 +8999,10 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   )
   const placeholder = swiftFieldPlaceholder(e)
 
-  // v2 (form-binding arc) — `value={form.values.email}` binds through
-  // the runtime's `binding(_:)` helper (a SwiftUI Binding<String> whose
-  // setter routes through setValue → re-validation). The user's
-  // `onChangeText` is SUBSUMED by the binding (same as the signal
-  // shape's `$sig` projection below) — the canonical handler is
-  // exactly `(v) => form.setFieldValue('email', v)`.
-  // Accept the WEB CALL form too (`form.values().email`) — `@pyreon/form`
-  // types `values: () => TValues`, so that is what shared source looks like.
-  // Normalising here keeps the specialized binding emit (which routes the
-  // setter through setValue → re-validation); without it the call form fell
-  // through to the generic path and emitted an unbuildable field.
-  const _fieldValue =
-    valueAttr !== undefined &&
-    valueAttr.value.kind === 'member' &&
-    valueAttr.value.object.kind === 'call' &&
-    valueAttr.value.object.args.length === 0 &&
-    valueAttr.value.object.callee.kind === 'member'
-      ? { ...valueAttr.value, object: valueAttr.value.object.callee }
-      : valueAttr?.value
-  let bindingExpr: string | undefined
-  if (
-    _fieldValue !== undefined &&
-    _fieldValue.kind === 'member' &&
-    _fieldValue.object.kind === 'member' &&
-    _fieldValue.object.property === 'values' &&
-    _fieldValue.object.object.kind === 'identifier' &&
-    _formNamesSwift.has(_fieldValue.object.object.name)
-  ) {
-    const formName = swiftIdent(_fieldValue.object.object.name)
-    bindingExpr = `${formName}.binding(${swiftStr(_fieldValue.property)})`
-  }
+  const bindingExpr =
+    valueAttr === undefined
+      ? undefined
+      : pluginValueBinding(valueAttr.value, 'swift', _pluginScope, () => swiftEmitContext(indent))
 
   // `value` MUST name a signal in scope (canonical contract) OR a form
   // dict field (above). Anything else falls through to the generic emit

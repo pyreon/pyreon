@@ -199,6 +199,39 @@ export function assertPluginExtensions(name: string, plugin: object): void {
           `[Pyreon] Plugin "${name}" decl "${type}" needs swift and kotlin emitter functions.`,
         )
       }
+      const extensions = entry as typeof entry & {
+        iteration?: unknown
+        rename?: unknown
+        valueBinding?: unknown
+        lifecycle?: { earlyOrder?: unknown; midOrder?: unknown; tailOrder?: unknown }
+      }
+      for (const key of ['iteration', 'rename'] as const) {
+        if (extensions[key] !== undefined && typeof extensions[key] !== 'function')
+          throw new Error(`[Pyreon] Plugin "${name}" decl "${type}" ${key} must be a function.`)
+      }
+      if (extensions.valueBinding !== undefined) {
+        const binding = extensions.valueBinding as { swift?: unknown; kotlin?: unknown } | null
+        if (
+          !binding ||
+          typeof binding !== 'object' ||
+          typeof binding.swift !== 'function' ||
+          typeof binding.kotlin !== 'function'
+        )
+          throw new Error(
+            `[Pyreon] Plugin "${name}" decl "${type}" valueBinding needs swift and kotlin functions.`,
+          )
+      }
+      const early = extensions.lifecycle?.earlyOrder
+      if (
+        early !== undefined &&
+        (typeof early !== 'number' ||
+          !Number.isFinite(early) ||
+          extensions.lifecycle?.midOrder !== undefined ||
+          extensions.lifecycle?.tailOrder !== undefined)
+      )
+        throw new Error(
+          `[Pyreon] Plugin "${name}" decl "${type}" earlyOrder must be finite and cannot coexist with midOrder or tailOrder.`,
+        )
     }
   }
   if (

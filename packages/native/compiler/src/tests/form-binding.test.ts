@@ -1,3 +1,4 @@
+import { transform } from './first-party-plugins'
 // Form-binding arc (v2) — useForm with validators + onSubmit, runtime
 // Field bindings, per-field dict subscripts, web-parity API flow
 // (production-gaps arc, 2026-06-10).
@@ -14,7 +15,6 @@
 // emitSwiftField / emitKotlinField.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 
 const FORM_APP = `
   import { useForm } from '@pyreon/form'

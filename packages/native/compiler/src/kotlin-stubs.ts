@@ -1298,58 +1298,6 @@ fun <I, O> rememberLauncherForActivityResult(
   onResult: (O) -> Unit,
 ): ActivityResultLauncher<I> = ActivityResultLauncher()
 
-// PyreonForm — mirror of @pyreon/native-runtime-kotlin's PyreonForm.kt
-// v2 surface (form-binding arc): MutableState maps + validators +
-// onSubmit + the web-parity setFieldValue / submit / handleSubmit.
-// Added with the form fixture — before it, NO useForm shape was
-// kotlinc-validated (same gap class the permissions stub closed).
-class PyreonForm(
-  initialValues: Map<String, String> = emptyMap(),
-  private val validators: Map<String, (String) -> String> = emptyMap(),
-  // \`var\`, mirroring the real PyreonForm: the emit assigns onSubmit AFTER
-  // the decl so a handler referencing the form itself is not a
-  // self-reference in its own initializer. A \`val\` here would reject the
-  // emit the runtime accepts — a stub stricter than reality.
-  var onSubmit: ((Map<String, String>) -> Unit)? = null,
-) {
-  val values: MutableState<Map<String, String>> = mutableStateOf(initialValues)
-  val errors: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
-  val touched: MutableState<Map<String, Boolean>> = mutableStateOf(emptyMap())
-  val isSubmitting: MutableState<Boolean> = mutableStateOf(false)
-  val isValid: Boolean get() = errors.value.isEmpty()
-  fun setValue(name: String, value: String) {
-    values.value = values.value + (name to value)
-    if (errors.value.containsKey(name)) validateField(name)
-  }
-  fun setFieldValue(name: String, value: String) = setValue(name, value)
-  fun setError(name: String, message: String?) {
-    errors.value = if (message == null) errors.value - name else errors.value + (name to message)
-  }
-  fun setTouched(name: String, isTouched: Boolean = true) {
-    touched.value = touched.value + (name to isTouched)
-  }
-  fun validateField(name: String): Boolean {
-    val v = validators[name] ?: return true
-    val message = v(values.value[name] ?: "")
-    errors.value = if (message.isEmpty()) errors.value - name else errors.value + (name to message)
-    return message.isEmpty()
-  }
-  fun validateAll(): Boolean {
-    var ok = true
-    for (name in validators.keys) { if (!validateField(name)) ok = false }
-    return ok
-  }
-  fun submit() {
-    if (!validateAll()) return
-    isSubmitting.value = true
-    onSubmit?.invoke(values.value)
-    isSubmitting.value = false
-  }
-  fun handleSubmit() = submit()
-  fun beginSubmit() { isSubmitting.value = true }
-  fun endSubmit() { isSubmitting.value = false }
-}
-
 // PyreonRouter + RouterProvider — the router INSTANCE surface PMTC
 // emits when source code uses \`createRouter({ routes })\` +
 // \`<RouterProvider router={router}>\`:
@@ -1845,23 +1793,6 @@ class PyreonSecureStorage(backend: PyreonSecureBackend) {
   fun read(key: String): String? = null
   fun remove(key: String): Boolean = true
   fun contains(key: String): Boolean = false
-}
-
-// PyreonFieldArray — dynamic form lists, mirrored exactly (items/length are
-// properties; a paren-keeping emit must fail).
-data class PyreonFieldArrayItem(val key: Long, val value: String)
-class PyreonFieldArray(initial: List<String> = emptyList()) {
-  val items: List<PyreonFieldArrayItem> = emptyList()
-  val length: Long get() = 0L
-  fun append(value: String) {}
-  fun prepend(value: String) {}
-  fun insert(index: Long, value: String) {}
-  fun remove(index: Long) {}
-  fun update(index: Long, value: String) {}
-  fun move(from: Long, to: Long) {}
-  fun swap(indexA: Long, indexB: Long) {}
-  fun replace(values: List<String>) {}
-  fun values(): List<String> = emptyList()
 }
 
 class PyreonPushNotification(

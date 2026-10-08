@@ -1,3 +1,4 @@
+import { transform } from './first-party-plugins'
 // Branch-coverage matrices for the Swift EXPRESSION emit arms that the
 // existing suites reach only incidentally: truthiness negation by inferred
 // type, string `.length`, bitwise parenthesisation, `++`/`--`, the optional-
@@ -9,7 +10,6 @@
 // is why each type is asserted against its own spelling here.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 
 function sw(decls: string, ret = '<Text>x</Text>'): string {
   return transform(
@@ -99,7 +99,10 @@ describe('binary — bitwise parenthesisation vs plain arithmetic', () => {
 
 describe('update expressions — ++ and --', () => {
   it('`x++` and `x--` each emit their own step inside the value-returning IIFE', () => {
-    const out = sw(`  const go = () => { let i = 0; const a = i++; const c = i--; }`, '<Text>y</Text>')
+    const out = sw(
+      `  const go = () => { let i = 0; const a = i++; const c = i--; }`,
+      '<Text>y</Text>',
+    )
     expect(out).toContain('+= 1')
     expect(out).toContain('-= 1')
   })

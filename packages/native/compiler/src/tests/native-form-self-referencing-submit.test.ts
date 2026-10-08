@@ -1,3 +1,4 @@
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 // A form `onSubmit` that references the FORM ITSELF — the "clear the field
 // after submit" idiom, the most common reason a submit handler exists:
 //
@@ -18,8 +19,8 @@
 // than the real surface rejects correct code).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SELF_REF = `
 import { Stack, Text, Field, Button } from '@pyreon/primitives'
@@ -45,7 +46,9 @@ describe('form onSubmit referencing the form itself', () => {
   it('Kotlin: onSubmit is assigned POST-decl, never a constructor argument', () => {
     const r = transform(SELF_REF, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val form = remember { PyreonForm(initialValues = mapOf("note" to "")) }')
+    expect(r.code).toContain(
+      'val form = remember { PyreonForm(initialValues = mapOf("note" to "")) }',
+    )
     expect(r.code).toContain('form.onSubmit = { values ->')
     // The constructor route must be GONE — keeping both paths would let a
     // self-referencing handler take the one that cannot compile.
@@ -77,7 +80,9 @@ describe('form onSubmit referencing the form itself', () => {
     const src = SELF_REF.replace(/    onSubmit: \(values\) => \{[\s\S]*?\},\n/, '')
     const r = transform(src, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val form = remember { PyreonForm(initialValues = mapOf("note" to "")) }')
+    expect(r.code).toContain(
+      'val form = remember { PyreonForm(initialValues = mapOf("note" to "")) }',
+    )
     expect(r.code).not.toContain('form.onSubmit =')
   })
 })

@@ -3,6 +3,8 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 export default defineNodeConfig({
   category: 'fundamentals',
   environment: 'happy-dom',
+  // Native tooling is covered by the compiler's golden, plugin, and real-toolchain suites.
+  coverageExclude: ['src/native-plugin.ts', 'src/native-plugin/**'],
   // Branches re-baselined 99 → 97 (measured 97.01 at the 2026-07 coverage-gate
   // restoration): the residual ~11 uncovered branches in use-form.ts are
   // defensive arms (AbortError races, `fieldRunValidation` missing for a field

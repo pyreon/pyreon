@@ -26,7 +26,7 @@
 // SCOPE. This stub covers the 2 shipped example apps + ALL 37 compiler fixtures
 // (canonical primitives, common SwiftUI modifiers, i18n/machine/permissions/link/
 // webview, plus the router-hook surface — PyreonRouter / EnvironmentValues.pyreonRouter
-// / useNavigate / useParams — and PyreonForm, added in M-gate.1d; the two SMALL
+// / useNavigate / useParams; the two SMALL
 // @Observable fixtures tier2-store / tier2-state-tree, added in M-gate.1e via the
 // package-owned marker-protocol augmentations + the
 // `import Observation` guarantee `validateSwiftWithStubs` adds when the emit uses
@@ -922,46 +922,6 @@ public struct PyreonWebView: View {
   public typealias Body = Never
 }
 
-// ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
-// The emit does @State private var form = PyreonForm(initialValues:validators:)
-// then form.binding("x") / form.errors["x"] / form.submit() / form.isSubmitting,
-// and sets form.onSubmit from .onAppear (a @State initializer can't capture a
-// callback needing self). A reference type, so the onSubmit assignment mutates in
-// place. validators is [String: (String) -> String] so the { v in ... } closure
-// param infers String -- a loose Any would MASK the emit's real closure typing.
-public final class PyreonForm {
-  public init(
-    initialValues: [String: String] = [:],
-    validators: [String: (String) -> String] = [:],
-    onSubmit: (([String: String]) -> Void)? = nil
-  ) {}
-  // Mirrors packages/fundamentals/form/native/swift/PyreonForm.swift.
-  // values / touched / setFieldValue / setValue / validateField / validateAll
-  // / isValid / reset were MISSING here, so a form shape the REAL runtime
-  // accepts failed this gate — the subset-stub-manufactures-failures half of
-  // the stub-fidelity rule (the superset half is the one that masks). Found
-  // when the onSubmit values-param rewrite's regression test compiled against
-  // the real toolchains but not against the stub.
-  public private(set) var values: [String: String] = [:]
-  public private(set) var errors: [String: String] = [:]
-  public private(set) var touched: [String: Bool] = [:]
-  public private(set) var isSubmitting: Bool = false
-  public var onSubmit: (([String: String]) -> Void)?
-  public func setValue(_ name: String, _ value: String) {}
-  public func setFieldValue(_ name: String, _ value: String) {}
-  public func binding(_ name: String) -> Binding<String> { Binding(get: { "" }, set: { _ in }) }
-  public func validateField(_ name: String) -> Bool { true }
-  public func validateAll() -> Bool { true }
-  public func submit() {}
-  public func handleSubmit() {}
-  public func setError(_ name: String, _ message: String?) {}
-  public func setTouched(_ name: String, _ isTouched: Bool = true) {}
-  public var isValid: Bool { true }
-  public func beginSubmit() {}
-  public func endSubmit() {}
-  public func reset() {}
-}
-
 // ---- PyreonRouter (the router-swift module surface the emit imports) ----
 // router-hooks emit: @Environment(\\.pyreonRouter) var pyreonRouter: PyreonRouter?
 // + useNavigate(router:) -> (String) -> Void + useParams(router:) ->
@@ -1266,28 +1226,6 @@ public final class PyreonSecureStorage {
   @discardableResult public func remove(key: String) -> Bool { false }
   public func contains(key: String) -> Bool { false }
 }
-// PyreonFieldArray — dynamic form lists. Mirrors runtime-swift exactly:
-// items/length are PROPERTIES (an emit that keeps the web's call parens
-// must fail here), move is the one labelled method.
-public struct PyreonFieldArrayItem {
-  public let key: Int
-  public var value: String
-}
-public final class PyreonFieldArray {
-  public init(_ initial: [String] = []) {}
-  public var items: [PyreonFieldArrayItem] { [] }
-  public var length: Int { 0 }
-  public func append(_ value: String) {}
-  public func prepend(_ value: String) {}
-  public func insert(_ index: Int, _ value: String) {}
-  public func remove(_ index: Int) {}
-  public func update(_ index: Int, _ value: String) {}
-  public func move(from: Int, to: Int) {}
-  public func swap(_ indexA: Int, _ indexB: Int) {}
-  public func replace(_ values: [String]) {}
-  public func values() -> [String] { [] }
-}
-
 // ---- Additional SwiftUI surface (fonts / images / scroll / spacing) ----
 public struct Font {
   public static let largeTitle = Font(), title = Font(), title2 = Font(), title3 = Font()

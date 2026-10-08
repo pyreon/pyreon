@@ -95,6 +95,11 @@ export interface ParseContext {
   staticString(node: AstNode | null | undefined): string | null
   /** The statements of a function body (`{ … }`) parsed to IR, for a recognizer that carries a callback. */
   statements(block: AstNode): StatementIR[]
+  /** Parse a callback through the same function builder as module and component helpers. */
+  functionDeclaration(
+    name: string,
+    node: AstNode,
+  ): Extract<import('./types').DeclIR, { kind: 'function' }>
   /** The first generic type argument of ANOTHER call node (`openEventStream<T>(…)`), `{ kind: 'unknown' }` when none was written. */
   typeArgOf(call: AstNode): TypeIR
   /** Plugin-owned memory for THIS file (see {@link ModuleScan.fileState}); namespace the key with the plugin name. */
@@ -220,6 +225,8 @@ export interface DeclLifecycle {
    * capture `self`. A declaration with neither `midOrder` nor `tailOrder` is emitted in declaration order, first.
    */
   readonly midOrder?: number | undefined
+  /** Before component timers/mount hooks, after declarations are available; ordered across plugins. */
+  readonly earlyOrder?: number | undefined
   /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
   swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
   /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */
@@ -276,6 +283,16 @@ export interface DeclSwiftInit {
   lines(decl: ExtDecl, ctx: EmitContext): readonly string[]
 }
 
+/** A container-owned expression used as a native field binding. */
+export interface DeclValueBinding {
+  swift(value: ExprIR, decl: ExtDecl, ctx: EmitContext): string | undefined
+  kotlin(
+    value: ExprIR,
+    decl: ExtDecl,
+    ctx: EmitContext,
+  ): { readonly value: string; readonly onChange: string } | undefined
+}
+
 export interface DeclEmitter {
   /** Wrap the component root once for this declaration type; next emits the previous wrapper at the requested indentation.
    * @example root: { kotlin: (_decls, ctx, next) => next(ctx.indent) }
@@ -302,6 +319,13 @@ export interface DeclEmitter {
   readonly usesSizeClass?: boolean | undefined
   /** Omit the synthetic binding from a previously nameless declaration's legacy hash. */
   readonly legacyName?: boolean | undefined
+  /** Rename module-value links in this declaration's payload when the file's value/type namespace is separated. */
+  rename?(decl: ExtDecl, renames: ReadonlyMap<string, string>): void
+  /** A field value rooted at this declaration. Return undefined to keep the normal controlled-field path. */
+  readonly valueBinding?: DeclValueBinding | undefined
+  /** Describe a For row over this container's source expression. The core supplies the plugin and row name. */
+  iteration?(source: ExprIR, decl: ExtDecl): ExtDeclSpec | undefined
+
   /**
    * The binding is CALLABLE (`q()` through Swift's `callAsFunction` / Kotlin's `operator invoke`): a zero-argument call
    * of it keeps its parentheses and a bare reference as an event handler is called, where an unknown identifier's

@@ -45,7 +45,14 @@ export type {
   ParseContext,
   RegisteredCall,
 } from './call-lowering'
-export type { EmitContext, EmitTarget, StaticAttrValue } from './emit-context'
+export type {
+  EmitContext,
+  StatementEmitOptions,
+  EmitTarget,
+  EmitBinding,
+  EmitFieldValidators,
+  StaticAttrValue,
+} from './emit-context'
 export { createItemRegistry } from './module-items'
 export type {
   ExprEmitter,
@@ -58,7 +65,11 @@ export type {
 } from './module-items'
 export type { UnloweredModule, UnloweredSpec } from './unlowered-modules'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
-export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } from './signal-persistence'
+export type {
+  KotlinPersistedSignal,
+  PersistedSignalSite,
+  SignalPersistence,
+} from './signal-persistence'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export { verifyServiceTypes, swiftTypeOf, kotlinNamesOf } from './plugin-verify'
 export type { PluginSources, ServiceTypeFinding } from './plugin-verify'

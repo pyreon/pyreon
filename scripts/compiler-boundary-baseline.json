@@ -3,7 +3,7 @@
     "packages": {
       "@pyreon/ui-core": 2
     },
-    "hooks": 6
+    "hooks": 0
   },
   "compiler": {
     "packages": {

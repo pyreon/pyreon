@@ -1100,7 +1100,7 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
  * if-chains below) is what makes the complement nameable. A drift test asserts
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
-const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set(['useFieldArray', 'useForm'])
+const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set()
 
 // Derived once per registry (keyed on the registry itself, so the entry dies with
 // the compiler instance that owns it).
@@ -2880,10 +2880,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           parseContextFor(name, call, ctx),
         )
         if (verdict !== undefined) {
-          if (verdict !== null)
-            decls.push(
-              declFromSpec(entry.owner, `__pyreonStatement${decls.length}`, verdict, call, ctx),
-            )
+          if (verdict !== null) {
+            const declaration = declFromSpec(entry.owner, `__pyreonStatement${decls.length}`, verdict, call, ctx)
+            if (declaration !== null) decls.push(declaration)
+          }
           continue
         }
       }
@@ -3486,6 +3486,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     statements: (block) => parseStatementBlock(block as AnyNode, ctx),
+    functionDeclaration: (name, node) => tryFunctionDecl(name, node as AnyNode, ctx),
     typeArgOf: (other) => parseGenericTypeArg(other as AnyNode, ctx),
     fileState: <T>(key: string, init: () => T): T => {
       if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
@@ -3756,7 +3757,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // Service descriptors that declare `destructure` (services.ts).
     ...activeRegistries().serviceTables.destructureHooks,
     ...activeRegistries().scan.destructureCalls,
-    'useForm',
   ])
   if (
     node.id?.type === 'ObjectPattern' &&
@@ -4035,72 +4035,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (afterEach.length > 0) decl.afterEach = afterEach
     return decl
   }
-
-  // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
-  // arg is optional; when present we capture the string-keyed literal
-  // `initialValues` to seed the native PyreonForm container. `onSubmit` /
-  // `validators` are web-only function logic — ignored on native (submission
-  // flows through the container's begin/endSubmit API). Always succeeds
-  // (no bail): a bare `useForm()` or an unrecognised config shape yields an
-  // empty `initialValues`, and the emit produces a default-constructed form.
-  if (calleeName === 'useForm') {
-    const cfg = init.arguments?.[0] as AnyNode | undefined
-    const decl: Extract<DeclIR, { kind: 'form' }> = {
-      kind: 'form',
-      name,
-      initialValues: tryExtractFormInitialValues(cfg, {
-        ctx,
-        where: `useForm \`${name}\`: initialValues`,
-      }),
-    }
-    // v2 (form-binding arc) — validators + onSubmit. Conservative:
-    // unparseable members are skipped with a warning (the form still
-    // works; that validator just doesn't run natively).
-    if (cfg?.type === 'ObjectExpression') {
-      for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
-        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        if (hasDynamicKey(prop)) {
-          warnDynamicKey(prop, `useForm \`${name}\`: config`, ctx)
-          continue
-        }
-        const key = staticPropKey(prop)
-        // `schema: SomeSchema` — an identifier naming a top-level schema
-        // declaration. Captured here; the emitters resolve it against the
-        // module's plugin items and synthesize validators from its constraints.
-        if (key === 'schema' && prop.value?.type === 'Identifier') {
-          decl.schemaName = prop.value.name as string
-        }
-        if (key === 'validators' && prop.value?.type === 'ObjectExpression') {
-          const validators: { key: string; param: string; body: ExprIR }[] = []
-          for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {
-            if (v?.type !== 'Property' && v?.type !== 'ObjectProperty') continue
-            const fieldName = staticPropKey(v)
-            const fn = v.value as AnyNode | undefined
-            if (
-              fieldName === undefined ||
-              fn?.type !== 'ArrowFunctionExpression' ||
-              (fn.params as AnyNode[] | undefined)?.length !== 1 ||
-              fn.body?.type === 'BlockStatement'
-            ) {
-              ctx.warnings.push(
-                `useForm \`${name}\`: validator \`${fieldName ?? dynamicKeyText(v, ctx)}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
-              )
-              continue
-            }
-            const param = ((fn.params as AnyNode[])[0] as AnyNode | undefined)?.name as
-              | string
-              | undefined
-            if (param === undefined) continue
-            validators.push({ key: fieldName, param, body: parseExpr(fn.body, ctx) })
-          }
-          if (validators.length > 0) decl.validators = validators
-        } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
-          const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
-          decl.onSubmit = { param: fn.params[0]?.name ?? 'values', body: fn.body }
-        }
-      }
-    }
-    return decl
   }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
   // containers with NO platform dependency: a signal plus a few mutators.
@@ -4162,36 +4096,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `@Environment(\.horizontalSizeClass)` and Compose derives it from
   // `LocalConfiguration.current.screenWidthDp`. Emit returns the same
   // `"compact" | "regular"` string the web hook uses.
-  // `useFieldArray(['a', 'b'])` — the dynamic form-list container
-  // (PyreonFieldArray on both targets, mirroring the web @pyreon/form
-  // surface). The initial must be an array of string literals (or absent)
-  // so it can be baked into the constructor — same literal rule as
-  // useWebSocket's URL.
-  if (calleeName === 'useFieldArray') {
-    const arg = init.arguments?.[0]
-    const initial: string[] = []
-    if (arg !== undefined) {
-      if (arg.type !== 'ArrayExpression') {
-        ctx.warnings.push(
-          `Declaration ${name}: useFieldArray initial must be an array literal of strings (or omitted); got ${arg.type}.`,
-        )
-        return null
-      }
-      for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
-        if (
-          (el?.type === 'Literal' || el?.type === 'StringLiteral') &&
-          typeof el.value === 'string'
-        ) {
-          initial.push(el.value as string)
-        } else {
-          ctx.warnings.push(
-            `Declaration ${name}: useFieldArray initial elements must be string literals; got ${el?.type ?? 'nothing'}.`,
-          )
-          return null
-        }
-      }
-    }
-    return { kind: 'fieldArray', name, initial }
   }
   // Fallback — `const foo = <call>` binding an arbitrary call result that
   // none of the factory/hook branches above claimed: a signal/computed READ
@@ -4342,44 +4246,6 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   return spec === undefined || spec === null
     ? null
     : declFromSpec(recognized.owner, name, spec, init, ctx)
-}
-
-/**
- * Phase 4.2 — pull the literal `initialValues` map out of a
- * `useForm({ initialValues: { email: 'a@b.com' } })` config. Returns the
- * string-keyed string-literal pairs; everything else (missing config,
- * non-object `initialValues`, non-string entries) is silently dropped so
- * the caller always gets a (possibly empty) array — `useForm` never bails.
- */
-function tryExtractFormInitialValues(
-  arg: AnyNode | undefined,
-  /** Names a computed key (the one shape that is NOT a deliberate drop). */
-  report?: { ctx: ParseCtx; where: string },
-): { key: string; value: string }[] {
-  if (!arg || arg.type !== 'ObjectExpression') return []
-  const props = arg.properties as AnyNode[] | undefined
-  if (!props) return []
-  const ivProp = props.find((p) => p?.type === 'Property' && staticPropKey(p) === 'initialValues')
-  if (!ivProp || ivProp.value?.type !== 'ObjectExpression') return []
-  const out: { key: string; value: string }[] = []
-  for (const p of (ivProp.value.properties as AnyNode[] | undefined) ?? []) {
-    if (p?.type !== 'Property') continue
-    if (hasDynamicKey(p)) {
-      if (report) warnDynamicKey(p, report.where, report.ctx)
-      continue
-    }
-    // Object keys are Identifiers (`email:`) or string literals (`'email':`).
-    const key = staticPropKey(p)
-    const v = p.value
-    if (
-      key !== undefined &&
-      (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
-      typeof v.value === 'string'
-    ) {
-      out.push({ key, value: v.value })
-    }
-  }
-  return out
 }
 
 /**
@@ -6692,7 +6558,6 @@ function warnIfHookInsideRenderCallback(
     ...activeRegistries().calls.names,
     'signal',
     'computed',
-    'useForm',
   ])
   for (const child of children) {
     if (child?.type !== 'JSXExpressionContainer') continue

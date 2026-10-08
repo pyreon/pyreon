@@ -1,3 +1,4 @@
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 // `form.isValid()` is a FUNCTION on the web and a Bool PROPERTY on native.
 //
 // `@pyreon/form`'s web API exposes `isValid` / `isSubmitting` as accessors, so
@@ -13,13 +14,8 @@
 // before, so the divergence had never been emitted.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `import { useForm } from '@pyreon/form'
 import { Stack, Text } from '@pyreon/primitives'

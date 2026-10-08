@@ -17,6 +17,8 @@ import type { CompilerPlugin } from '../packages/native/compiler/src/plugin'
 import type { ServiceDescriptor } from '../packages/native/compiler/src/services'
 import type { ValidateOptions } from '../packages/native/compiler/src/stub-augmentation'
 import type { EmitOptions, TransformResult } from '../packages/native/compiler/src/types'
+import { formPlugin } from '../packages/fundamentals/form/src/native-plugin/plugin'
+import { formStubs } from '../packages/fundamentals/form/src/native-plugin/stubs'
 import { chartsPlugin } from '../packages/fundamentals/charts/src/native-plugin/plugin'
 import { chartsStubs } from '../packages/fundamentals/charts/src/native-plugin/stubs'
 import { flowPlugin } from '../packages/fundamentals/flow/src/native-plugin/plugin'
@@ -65,6 +67,7 @@ import primitivesPlugin from '../packages/core/primitives/src/native-plugin'
 import hotkeysPlugin from '../packages/fundamentals/hotkeys/src/native-plugin'
 
 export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
+  formPlugin,
   stateTreePlugin,
   storePlugin,
   hotkeysPlugin,
@@ -102,6 +105,7 @@ export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({
     modelStubs,
     storeStubs,
     hooksPlugin.stubs!,
+    formStubs,
     chartsStubs,
     flowStubs,
     machineStubs,

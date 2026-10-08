@@ -16,6 +16,7 @@ import type { SignalPersistence } from './signal-persistence'
 import type { ServiceDescriptor } from './services'
 import {
   emitExtDecl,
+  stampExtDecl,
   lowerMemberCall,
   type AsyncState,
   type DeclLifecycle,
@@ -387,6 +388,48 @@ export function lowerPluginAssignValue(
     : found.lowering.kotlin?.assignValue?.(site, ctx() as KotlinEmitContext)
 }
 
+/** Render a field binding only through the plugin that owns its root declaration. */
+export function pluginValueBinding(
+  value: ExprIR,
+  target: 'swift',
+  scope: PluginScope,
+  ctx: () => EmitContext,
+): string | undefined
+export function pluginValueBinding(
+  value: ExprIR,
+  target: 'kotlin',
+  scope: PluginScope,
+  ctx: () => EmitContext,
+): { readonly value: string; readonly onChange: string } | undefined
+export function pluginValueBinding(
+  value: ExprIR,
+  target: Target,
+  scope: PluginScope,
+  ctx: () => EmitContext,
+): string | { readonly value: string; readonly onChange: string } | undefined {
+  const root = rootReceiverName(value)
+  const decl = root === undefined ? undefined : scope.declByName(root)
+  if (decl === undefined) return undefined
+  const binding = activeRegistries().calls.emitter(decl.plugin, decl.type)?.valueBinding
+  return target === 'swift'
+    ? binding?.swift(value, decl, ctx())
+    : binding?.kotlin(value, decl, ctx())
+}
+
+/** A For row's scoped receiver declaration, supplied by the owner of the source container. */
+export function pluginIterationBinding(
+  source: ExprIR | undefined,
+  name: string,
+  scope: PluginScope,
+): { readonly name: string; readonly declaration?: ExtDecl | undefined } {
+  const root = source === undefined ? undefined : rootReceiverName(source)
+  const decl = root === undefined ? undefined : scope.declByName(root)
+  if (source === undefined || decl === undefined) return { name }
+  const spec = activeRegistries().calls.emitter(decl.plugin, decl.type)?.iteration?.(source, decl)
+  if (spec === undefined) return { name }
+  return { name, declaration: stampExtDecl(activeRegistries().calls, decl.plugin, name, spec) }
+}
+
 /** Lower a plain `name(args)` call through the plugin that claims `name`, or `undefined`. */
 export function lowerPluginFunction(
   name: string,
@@ -563,6 +606,15 @@ export function midLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
     .map((entry) => entry.d)
 }
 
+/** Lifecycle declarations before component timers, sorted by declared order then source order. */
+export function earlyLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
+  return decls
+    .filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.earlyOrder !== undefined)
+    .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.earlyOrder! }))
+    .sort((a, b) => a.order - b.order || a.i - b.i)
+    .map(({ d }) => d)
+}
+
 /** The ext declarations of `decls` that seed the generated SwiftUI `init()`, in init order (`order`, then declaration order). */
 export function swiftInitDecls(
   decls: readonly DeclIR[],
@@ -712,12 +764,12 @@ export function lowerPluginItem(
 }
 
 /** The per-field validators a plugin item named `name` offers a form (`useForm({ schema: name })`). */
-export function formFieldValidators(items: readonly ExtModuleItem[], name: string) {
+export function moduleFieldValidators(items: readonly ExtModuleItem[], name: string) {
   return findFieldValidators(activeRegistries().items, items, name)
 }
 
 /** What the "no declaration by that name" warning says declares a validating item, from every loaded plugin. */
-export function formSchemaAdvice(): string | undefined {
+export function moduleFieldValidatorsAdvice(): string | undefined {
   return fieldValidatorsAdvice(activeRegistries().items)
 }
 

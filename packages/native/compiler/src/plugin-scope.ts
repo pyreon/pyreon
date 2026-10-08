@@ -19,6 +19,11 @@ export interface PluginScope {
   declByName(name: string): ExtDecl | undefined
   /** A file-scope item bound to `name`, unless this component declares the same name. */
   itemByName(name: string): ExtModuleItem | undefined
+  /** Temporarily bind or hide names while emitting a callback; restore every name in finally. */
+  withBindings<T>(
+    bindings: readonly { readonly name: string; readonly declaration?: ExtDecl | undefined }[],
+    emit: () => T,
+  ): T
   /** The ext declarations of `(plugin, type)` in the component being emitted, frozen. */
   decls(plugin: string, type: string): readonly ExtDecl[]
   /** A value that lives for the component being emitted: `init` runs on first use of `key`. */
@@ -76,7 +81,7 @@ interface Deferred {
  * there is no component text to substitute into, so `deferred` refuses).
  */
 export function createPluginScope(decls?: readonly DeclIR[], items: readonly ExtModuleItem[] = []): PluginScope {
-  const byName = new Map<string, ExtDecl>()
+  const byName = new Map<string, ExtDecl | undefined>()
   const shadowed = new Set((decls ?? []).flatMap((d) => 'name' in d ? [d.name] : []))
   const moduleItems = new Map(items.filter((item) => !shadowed.has(item.name)).map((item) => [item.name, item]))
   const ext: ExtDecl[] = []
@@ -90,7 +95,30 @@ export function createPluginScope(decls?: readonly DeclIR[], items: readonly Ext
   const inComponent = decls !== undefined
   return {
     declByName: (name) => byName.get(name),
-    itemByName: (name) => moduleItems.get(name),
+    itemByName: (name) => byName.has(name) ? undefined : moduleItems.get(name),
+    withBindings(bindings, emit) {
+      const saved = bindings.map(({ name }) => ({
+        name,
+        had: byName.has(name),
+        value: byName.get(name),
+      }))
+      try {
+        for (const binding of bindings) {
+          if (binding.declaration !== undefined && binding.declaration.name !== binding.name) {
+            throw new Error(
+              `[Pyreon] scoped declaration ${binding.declaration.name} must match binding ${binding.name}.`,
+            )
+          }
+          byName.set(binding.name, binding.declaration)
+        }
+        return emit()
+      } finally {
+        for (const entry of saved.reverse()) {
+          if (entry.had) byName.set(entry.name, entry.value)
+          else byName.delete(entry.name)
+        }
+      }
+    },
     decls: (plugin, type) =>
       Object.freeze(ext.filter((d) => d.plugin === plugin && d.type === type)),
     state<T>(key: string, init: () => T): T {

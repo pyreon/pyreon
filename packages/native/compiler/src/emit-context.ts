@@ -30,6 +30,17 @@ export interface MemberEmitScope {
   readonly receiver?: string | undefined
   /** Use the target's observable-class member spelling (Swift Observation). */
   readonly observable?: boolean | undefined
+/** A callback-local name, optionally typed and owned by a plugin receiver lowering. */
+export interface EmitBinding {
+  readonly name: string
+  readonly type?: TypeIR | undefined
+  readonly declaration?: ExtDecl | undefined
+}
+
+/** Validators offered by a loaded module item, rendered for the active target. */
+export interface EmitFieldValidators {
+  readonly fields: readonly string[]
+  body(field: string, value: string): string
 }
 
 /** A literal attribute value the compiler can read at compile time. */
@@ -94,6 +105,12 @@ export interface EmitContextBackendExtras {
   argument(e: ExprIR, type: TypeIR | undefined, indent: number): string
   /** A member accessed from outside a target-observable class. */
   observableIdent(name: string): string
+  /** Emit a callback with temporary local type and receiver bindings. */
+  withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
+  /** Validators supplied by the named module item, or undefined. */
+  fieldValidators(name: string): EmitFieldValidators | undefined
+  /** The loaded providers' declaration advice. */
+  fieldValidatorsAdvice(): string | undefined
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -188,10 +205,11 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
   hostState: HostStateSlot
 }
 
-/** Callback return control supplied by the owning plugin. */
+/** Target control for a callback body; the owning plugin supplies its Kotlin lambda label. */
 export interface StatementEmitOptions {
   readonly kotlin?: {
     readonly returnLabel?: string | undefined
+    /** Evaluate a returned expression for side effects, then return Unit. */
     readonly discardReturnValue?: boolean | undefined
   } | undefined
 }
@@ -206,6 +224,12 @@ export interface EmitContext {
   /** The target's spelling for a member of an observable class. */
   observableIdent(name: string): string
   readonly target: EmitTarget
+  /** Temporarily bind callback names and their receiver lowerings; restores on return and throw. A binding without a declaration hides an enclosing plugin receiver. */
+  withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
+  /** Field validators offered by a loaded module item named name. */
+  fieldValidators(name: string): EmitFieldValidators | undefined
+  /** Declaration shapes the loaded validator providers advise. */
+  fieldValidatorsAdvice(): string | undefined
   /** Indentation (in spaces) of the element being emitted. */
   readonly indent: number
   /** Emit another element through the full dispatcher; `indent` defaults to this one's. */
@@ -302,7 +326,7 @@ export interface EmitContext {
    * A statement list (a callback body a recognizer carried in its payload) as target statements, one
    * string each. `locals` names parameters whose types the body's inference should know (`(ev) => …`
    * over a typed stream item); the Swift emitter seeds them (and the body's own `let`s), the Kotlin
-   * emitter infers handler locals itself and ignores them.
+   * emitter seeds the same callback locals and restores them on return or throw.
    */
   statements(
     stmts: readonly StatementIR[],
@@ -377,6 +401,12 @@ export function createEmitContext(
     memberScope: (scope, run) => (backend.memberScope ?? (() => missing('memberScope')))(scope, run),
     functionDeclaration: (decl) => (backend.functionDeclaration ?? (() => missing('functionDeclaration')))(decl),
     observableIdent: (name) => (backend.observableIdent ?? (() => missing('observableIdent')))(name),
+    withBindings: (bindings, emit) =>
+      (backend.withBindings ?? (() => missing('withBindings')))(bindings, emit),
+    fieldValidators: (name) =>
+      (backend.fieldValidators ?? (() => missing('fieldValidators')))(name),
+    fieldValidatorsAdvice: () =>
+      (backend.fieldValidatorsAdvice ?? (() => missing('fieldValidatorsAdvice')))(),
     emit: (el, at = indent) => backend.emit(el, at),
     pad: (n = indent) => ' '.repeat(n),
     staticAttr: (el, name) => backend.staticAttr(el, name),

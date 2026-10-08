@@ -21,8 +21,10 @@ import {
   lowerPluginFunction,
   lowerPluginIdentifier,
   lowerPluginExpr,
-  formFieldValidators,
-  formSchemaAdvice,
+  moduleFieldValidators,
+  pluginValueBinding,
+  pluginIterationBinding,
+  moduleFieldValidatorsAdvice,
   itemsInSlot,
   lowerPluginItem,
   lowerPluginIntrinsic,
@@ -30,6 +32,7 @@ import {
   lowerPluginMemberRead,
   isHeadLifecycleDecl,
   midLifecycleDecls,
+  earlyLifecycleDecls,
   lowerPluginReceiver,
   lowerPluginRefModifiers,
   pluginAsyncState,
@@ -533,26 +536,8 @@ function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
 }
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
-/**
- * Phase 4.2: every `useForm` decl name in scope. Member reads of a form
- * decl's reactive fields (`form.values` / `errors` / `touched` /
- * `isSubmitting`) emit with a trailing `.value` (Compose `MutableState`).
- * `form.isValid` is EXCLUDED — it's a derived `Boolean` getter on the
- * Kotlin PyreonForm, not a MutableState, so it reads plainly. Swift exposes
- * all of them as @Observable properties, so it needs no rewrite.
- */
-let _formNames: Set<string> = new Set()
-// The file's plugin-owned module items — what `useForm({ schema })` resolves its per-field validators against.
+/** Plugin-owned module items available to facade consumers and inference. */
 let _moduleItems: ExtModuleItem[] = []
-/**
- * The onSubmit param name currently in scope — mirror of
- * `_formSubmitParamsSwift`. `PyreonForm`'s onSubmit receives a
- * `Map<String, String>`, so a field read on the param must lower to a map
- * lookup exactly as `form.values().username` already does. See the Swift
- * twin for the full rationale (the bug hid behind an unused `_values` param
- * in every gated app).
- */
-let _formSubmitParamsKotlin: string[] = []
 /**
  * The component's ASYNC SOURCES in declaration order — its `useFetch` containers plus every plugin
  * declaration that declares an `asyncState` (`useQuery`). `<Suspense>` / `<ErrorBoundary>` OR over them.
@@ -1163,8 +1148,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
-  _formNames = new Set()
-  _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = bindServices(c.decls)
   _asyncDeclsKotlin = []
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
@@ -1216,8 +1199,6 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'ext' && pluginDeclIsCallable(d)) _functionNames.add(d.name)
     // A plugin declaration that is an async source (`useFetch`, `useQuery`) joins the Suspense / ErrorBoundary set, in declaration order.
     if (pluginAsyncState(d, 'kotlin', kotlinEmitContext(0)) !== undefined) _asyncDeclsKotlin.push(d)
-    // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
-    if (d.kind === 'form') _formNames.add(d.name)
   }
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
@@ -1255,8 +1236,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   // `declTexts` so it can be emitted later inside the function body
   // (after the signature line).
   // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
-  _fieldArrayNamesKotlin = new Set()
-  _fieldArrayItemParamsKotlin = []
   const declTexts = c.decls
     .filter((d) => d.kind !== 'on-mount' && pluginDeclFeatures(d)?.lifecycleOnly !== true)
     .map((d) => emitKotlinDecl(d, ctx))
@@ -1318,46 +1297,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
   }
-  // Form onSubmit is assigned AFTER the decl, never passed as a constructor
-  // argument — the mirror of what Swift does from `.onAppear`, and for the
-  // same reason. The most common authoring shape references the form ITSELF
-  // ("clear the field after submit":
-  // `onSubmit: (values) => form.setFieldValue('x', '')`), and inside
-  // `remember { PyreonForm(onSubmit = { … form … }) }` that body is a
-  // self-reference in the form's own initializer, which Kotlin rejects
-  // ("unresolved reference 'form'"). So the idiom did not compile on Android
-  // at all while working on iOS — a "one source, three targets" break the
-  // auth-rehydration arc found and recorded rather than fixed.
-  for (const d of c.decls) {
-    if (d.kind !== 'form' || d.onSubmit === undefined) continue
-    const name = kotlinIdent(d.name)
-    _formSubmitParamsKotlin.push(d.onSubmit.param)
-    const savedSubmitLocals = _kotlinExprInferCtx.locals
-    const submitType: TypeIR = {
-      kind: 'object',
-      fields: d.initialValues.map(({ key }) => ({ name: key, type: { kind: 'string' } })),
-    }
-    _kotlinExprInferCtx.locals = new Map([...savedSubmitLocals, [d.onSubmit.param, submitType]])
-    seedHandlerLocals(d.onSubmit.body, _kotlinExprInferCtx)
-    let bodyLines: string
-    try {
-      const hasReturn = JSON.stringify(d.onSubmit.body).includes('"kind":"return"')
-      const callbackCtx: KotlinCtx = hasReturn
-        ? { ...ctx, lambdaLabel: '__pyreonSubmit', discardReturnValue: true }
-        : ctx
-      bodyLines = d.onSubmit.body
-        .map((st) => `    ${emitKotlinStatement(st, 4, callbackCtx)}`)
-        .join('\n')
-    } finally {
-      _formSubmitParamsKotlin.pop()
-      _kotlinExprInferCtx.locals = savedSubmitLocals
-    }
-    const label = JSON.stringify(d.onSubmit.body).includes('"kind":"return"')
-      ? '__pyreonSubmit@ '
-      : ''
-    lines.push(`  ${name}.onSubmit = ${label}{ ${kotlinIdent(d.onSubmit.param)} ->`)
-    lines.push(bodyLines)
-    lines.push(`  }`)
+  // Callback wiring after declarations are available, before component mount effects.
+  for (const d of earlyLifecycleDecls(c.decls)) {
+    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+      lines.push(line === '' ? '' : `  ${line}`)
   }
   for (const d of earlyLifecycleDecls(c.decls)) {
     for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
@@ -1433,8 +1376,6 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
-  _formNames = new Set()
-  _formSubmitParamsKotlin = []
   _serviceBindingsKotlin = new Map()
   _asyncDeclsKotlin = []
   _routerRoutes = new Map()
@@ -1467,13 +1408,6 @@ function emitKotlinDataClass(synth: {
   const ser = synth.fields.some((f) => typeContainsFunction(f.type)) ? '' : '@Serializable\n'
   return `${ser}data class ${synth.name}(${params})`
 }
-
-// Field-array accessor unwrap — mirror of _fieldArrayNamesSwift: web signal
-// CALLS (`tags.items()`, `item.value()`) are PROPERTIES on the Kotlin
-// PyreonFieldArray, so the call emit strips the parens. Item params are a
-// stack (nested Fors restore correctly).
-let _fieldArrayNamesKotlin: Set<string> = new Set()
-let _fieldArrayItemParamsKotlin: string[] = []
 
 /** The row struct's Kotlin type name — a named typeRef, or the synthesized
  *  struct whose fields match an inline object (matching what the data list
@@ -1604,76 +1538,6 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     }
     inner.push('  }')
     return `val ${kotlinIdent(d.name)} = remember { ${inner.join('\n  ')} }`
-  }
-  // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
-  // PyreonForm seeded with the literal defaults. No harness (pure state).
-  if (d.kind === 'form') {
-    const parts: string[] = []
-    if (d.initialValues.length) {
-      parts.push(
-        `initialValues = mapOf(${d.initialValues
-          .map((p) => `${kotlinStr(p.key)} to ${kotlinStr(p.value)}`)
-          .join(', ')})`,
-      )
-    }
-    // v2 (form-binding arc) — validators as Kotlin lambdas; "" = valid.
-    if (d.validators !== undefined && d.validators.length > 0) {
-      const entries = d.validators
-        .map((v) => {
-          // The lambda's parameter is declared `String`, so a `.length` in the
-          // body is Kotlin's Int and must widen like any other string length
-          // — bind the type for the body's inference, then release it.
-          const prior = _kotlinExprInferCtx.locals.get(v.param)
-          _kotlinExprInferCtx.locals.set(v.param, { kind: 'string' })
-          try {
-            return `${kotlinStr(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`
-          } finally {
-            if (prior === undefined) _kotlinExprInferCtx.locals.delete(v.param)
-            else _kotlinExprInferCtx.locals.set(v.param, prior)
-          }
-        })
-        .join(', ')
-      parts.push(`validators = mapOf(${entries})`)
-    }
-    // `schema: SomeSchema` — mirror of the Swift wiring: one validator per
-    // STRING field, delegating to the schema's own `validateField`. Explicit
-    // `validators` win, being per-field and more specific.
-    if (d.schemaName !== undefined) {
-      const provided = formFieldValidators(_moduleItems, d.schemaName)
-      const fields = provided?.fields
-      if (fields === undefined) {
-        _emitWarnings.push(
-          `useForm({ schema: ${d.schemaName} }): no top-level ${formSchemaAdvice() ?? 'schema'} declaration by that name is visible in this file, so NO native validators are synthesized and the form will accept input the web rejects. Declare the schema at module scope in the same file.`,
-        )
-      } else {
-        const explicit = new Set((d.validators ?? []).map((v) => v.key))
-        const entries = fields
-          .filter((f) => !explicit.has(f))
-          .map(
-            (f) =>
-              `${kotlinStr(f)} to { v: String -> ${provided!.validators.kotlin(provided!.item, f, 'v')} }`,
-          )
-        if (entries.length > 0) {
-          const existing = parts.findIndex((p) => p.startsWith('validators = mapOf('))
-          if (existing >= 0) {
-            parts[existing] = `${parts[existing]!.slice(0, -1)}, ${entries.join(', ')})`
-          } else {
-            parts.push(`validators = mapOf(${entries.join(', ')})`)
-          }
-        }
-      }
-    }
-    // onSubmit is deliberately NOT a constructor arg here — it is assigned
-    // post-decl in the composable body (see the emit loop after declTexts).
-    // Keeping both paths would let a self-referencing handler take the
-    // constructor route and fail to compile again.
-    return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${parts.join(', ')}) }`
-  }
-  if (d.kind === 'fieldArray') {
-    _fieldArrayNamesKotlin.add(d.name)
-    const init =
-      d.initial.length === 0 ? '' : `listOf(${d.initial.map((v) => kotlinStr(v)).join(', ')})`
-    return `val ${kotlinIdent(d.name)} = remember { PyreonFieldArray(${init}) }`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a `val` that calls
   // the runtime helper. The reified-generic `useLoaderData<T>()` reads
@@ -1818,7 +1682,10 @@ function withKotlinLocals<T>(
   }))
   for (const [name, t] of bindings) if (t !== undefined) _kotlinExprInferCtx.locals.set(name, t)
   try {
-    return fn()
+    return _pluginScope.withBindings(
+      bindings.map(([name]) => ({ name })),
+      fn,
+    )
   } finally {
     for (const sv of saved.reverse()) {
       if (sv.had) _kotlinExprInferCtx.locals.set(sv.name, sv.prev!)
@@ -3096,21 +2963,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // call parens must go or kotlinc fails with "expression 'items' of
       // type 'SnapshotStateList' cannot be invoked as a function".
       if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        typeof e.callee.property === 'string'
+        e.callee.kind === 'identifier' &&
+        (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') &&
+        e.args.length >= 2
       ) {
-        const recv = e.callee.object.name
-        if (
-          _fieldArrayNamesKotlin.has(recv) &&
-          (e.callee.property === 'items' || e.callee.property === 'length')
-        ) {
-          return `${kotlinIdent(recv)}.${e.callee.property}`
-        }
-        if (_fieldArrayItemParamsKotlin.includes(recv) && e.callee.property === 'value') {
-          return `${kotlinIdent(recv)}.value`
-        }
+        const args = e.args.map((arg, i) =>
+          i === 1
+            ? `(${emitKotlinExpr(arg, indent)}).map { it.toDouble() }`
+            : emitKotlinExpr(arg, indent),
+        )
+        return `${kotlinIdent(e.callee.name)}(${args.join(', ')})`
       }
       // `Object.keys(<object-typed expr>)` → `listOf("a","b")` of the
       // struct field names (statically known). Recurse into the rewritten
@@ -3434,19 +3296,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return svc.kotlinState?.includes(e.callee.property) === true ? `${base}.value` : base
         }
       }
-      // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,
-      // the native PyreonForm exposes them as Boolean properties. Mirror of the
-      // Swift branch; without it the web-correct spelling emitted
-      // `form.isValid()`, which kotlinc rejects with "expression 'isValid' of
-      // type 'Boolean' cannot be invoked as a function".
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _formNames.has(e.callee.object.name) &&
-        e.args.length === 0 &&
-        ['isValid', 'isSubmitting'].includes(e.callee.property)
-      ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
@@ -4214,28 +4063,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // directions — the web shape emitted uncompilable native code with NO
       // warning, and the shape that did work natively (`form.values.email`)
       // is a type error on web. Unwrap a zero-arg call on the accessor so
-      // both lower identically. Additive: the property form is untouched.
-      const _formAccessorObj =
-        e.object.kind === 'call' && e.object.args.length === 0 && e.object.callee.kind === 'member'
-          ? e.object.callee
-          : e.object
-      // A field read off the onSubmit VALUES param — `values.username` →
-      // `values["username"] ?: ""`. Same shape and default as the
-      // `form.values().username` rewrite just below; the dictionary simply
-      // arrives as a lambda parameter instead of a container property.
-      if (e.object.kind === 'identifier' && _formSubmitParamsKotlin.includes(e.object.name)) {
-        return `(${kotlinIdent(e.object.name)}[${kotlinStr(e.property)}] ?: "")`
-      }
-      if (
-        _formAccessorObj.kind === 'member' &&
-        _formAccessorObj.object.kind === 'identifier' &&
-        _formNames.has(_formAccessorObj.object.name) &&
-        (_formAccessorObj.property === 'values' ||
-          _formAccessorObj.property === 'errors' ||
-          _formAccessorObj.property === 'touched')
-      ) {
-        const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
-        return `(${kotlinIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}.value[${kotlinStr(e.property)}] ?: ${dflt})`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct function parameters
@@ -4247,18 +4074,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.name === _activePropsParamName
       ) {
         return kotlinIdent(e.property)
-      }
-      // Phase 4.2: a useForm decl's MutableState fields read through `.value`.
-      // `isValid` is a derived Boolean getter (not MutableState) → plain read.
-      if (
-        e.object.kind === 'identifier' &&
-        _formNames.has(e.object.name) &&
-        (e.property === 'values' ||
-          e.property === 'errors' ||
-          e.property === 'touched' ||
-          e.property === 'isSubmitting')
-      ) {
-        return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
       // Phase 5: native data/services hooks. Each container's reactive fields
       // are Compose `MutableState` (read `.value`); Bool getters
@@ -4541,96 +4356,101 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       //      incremented. Every new Todo got id=2 forever.
       return `${emitKotlinExpr(e.argument, indent)}${e.op}`
     case 'arrow': {
-      // Typed per-param when annotations survive parse — Kotlin allows
-      // `{ r: Rect -> … }` per param, and a standalone lambda cannot infer.
-      const standaloneLambda = _typedLambdaLet
-      _typedLambdaLet = false
-      const ktLambdaParams = (): string => {
-        const types = e.paramTypes
-        if (
-          standaloneLambda &&
-          types !== undefined &&
-          types.length === e.params.length &&
-          types.every((t) => t !== undefined && t.kind !== 'unknown')
-        ) {
-          return e.params
-            .map((n, i2) => `${kotlinIdent(n)}: ${kotlinType(types[i2]!, undefined, n)}`)
-            .join(', ')
-        }
-        return e.params.map((n) => kotlinIdent(n)).join(', ')
-      }
-      // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
-      // (the sentinel `""` silently dropped multi-statement 1-param
-      // callbacks). Kotlin lambdas return the LAST expression; explicit
-      // `return` inside a lambda needs a label — emitKotlinStatement's
-      // return handling covers the shapes the statement parser produces.
-      if (e.stmts !== undefined && e.stmts.length > 0) {
-        // A body containing RETURN statements needs Kotlin's labeled-return
-        // form (`return@filter`), and the generic arrow emit can't know its
-        // enclosing method label (only call sites can — the indexed path
-        // threads it via emitKotlinIndexedBody). Return-free bodies are
-        // safe: a Kotlin lambda yields its LAST expression. Return-bearing
-        // bodies get a NAMED warning (previously a SILENT sentinel drop) —
-        // the labeled-callback call-site wiring is the tracked follow-up.
-        const hasReturn = JSON.stringify(e.stmts).includes('"kind":"return"')
-        if (hasReturn) {
-          // An ANONYMOUS FUNCTION allows plain `return` (a lambda needs a
-          // call-site label). When every param carries an annotation and the
-          // return type is declared, emit `fun(p: T): R { ... }` — the
-          // returned-formatter factory shape the charts engine ships.
-          const types = e.paramTypes
-          const allTyped =
-            types !== undefined &&
-            types.length === e.params.length &&
-            types.every((t) => t !== undefined && t.kind !== 'unknown')
-          if (allTyped && e.returnAnnot !== undefined && e.returnAnnot.kind !== 'unknown') {
-            const pad2 = ' '.repeat(indent + 2)
-            const savedAF = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
-            const pbind: Array<[string, boolean, TypeIR | undefined]> = []
-            e.params.forEach((pn, pi) => {
-              const pt = types![pi]!
-              pbind.push([
-                pn,
-                _kotlinExprInferCtx.locals.has(pn),
-                _kotlinExprInferCtx.locals.get(pn),
-              ])
-              _kotlinExprInferCtx.locals.set(pn, pt)
-            })
-            const fnCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-            const lines = e.stmts
-              .map((st) => `${pad2}${emitKotlinStatement(st, indent + 2, fnCtx)}`)
-              .join('\n')
-            for (const [pn, had, prev] of pbind.reverse()) {
-              if (had) _kotlinExprInferCtx.locals.set(pn, prev!)
-              else _kotlinExprInferCtx.locals.delete(pn)
+      return _pluginScope.withBindings(
+        e.params.map((name) => ({ name })),
+        () => {
+          // Typed per-param when annotations survive parse — Kotlin allows
+          // `{ r: Rect -> … }` per param, and a standalone lambda cannot infer.
+          const standaloneLambda = _typedLambdaLet
+          _typedLambdaLet = false
+          const ktLambdaParams = (): string => {
+            const types = e.paramTypes
+            if (
+              standaloneLambda &&
+              types !== undefined &&
+              types.length === e.params.length &&
+              types.every((t) => t !== undefined && t.kind !== 'unknown')
+            ) {
+              return e.params
+                .map((n, i2) => `${kotlinIdent(n)}: ${kotlinType(types[i2]!, undefined, n)}`)
+                .join(', ')
             }
-            _kotlinExprInferCtx.locals = savedAF
-            const sig = e.params
-              .map((pn, pi) => `${kotlinIdent(pn)}: ${kotlinType(types![pi]!, undefined, pn)}`)
-              .join(', ')
-            return `fun(${sig}): ${kotlinType(e.returnAnnot)} {\n${lines}\n${' '.repeat(indent)}}`
+            return e.params.map((n) => kotlinIdent(n)).join(', ')
           }
-          _emitWarnings.push(
-            `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; annotate every param AND the return type for the anonymous-function form, or restructure as an expression body.`,
-          )
-          return `{ ${ktLambdaParams()} -> Unit }`
-        }
-        const pad = ' '.repeat(indent + 2)
-        const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
-        const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-        const lines = e.stmts
-          .map((st) => pad + emitKotlinStatement(st, indent + 2, stmtCtx))
-          .join('\n')
-        _kotlinExprInferCtx.locals = saved
-        const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
-        return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
-      }
-      if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
-      // ktLambdaParams, not the raw names — the single-EXPRESSION branch
-      // bypassed the typed standalone form entirely (a let-bound
-      // `(n: Double) => expr` emitted `{ n -> }`, which kotlinc rejects
-      // with "an explicit type is required on a value parameter").
-      return `{ ${ktLambdaParams()} -> ${emitKotlinExpr(e.body, indent)} }`
+          // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
+          // (the sentinel `""` silently dropped multi-statement 1-param
+          // callbacks). Kotlin lambdas return the LAST expression; explicit
+          // `return` inside a lambda needs a label — emitKotlinStatement's
+          // return handling covers the shapes the statement parser produces.
+          if (e.stmts !== undefined && e.stmts.length > 0) {
+            // A body containing RETURN statements needs Kotlin's labeled-return
+            // form (`return@filter`), and the generic arrow emit can't know its
+            // enclosing method label (only call sites can — the indexed path
+            // threads it via emitKotlinIndexedBody). Return-free bodies are
+            // safe: a Kotlin lambda yields its LAST expression. Return-bearing
+            // bodies get a NAMED warning (previously a SILENT sentinel drop) —
+            // the labeled-callback call-site wiring is the tracked follow-up.
+            const hasReturn = JSON.stringify(e.stmts).includes('"kind":"return"')
+            if (hasReturn) {
+              // An ANONYMOUS FUNCTION allows plain `return` (a lambda needs a
+              // call-site label). When every param carries an annotation and the
+              // return type is declared, emit `fun(p: T): R { ... }` — the
+              // returned-formatter factory shape the charts engine ships.
+              const types = e.paramTypes
+              const allTyped =
+                types !== undefined &&
+                types.length === e.params.length &&
+                types.every((t) => t !== undefined && t.kind !== 'unknown')
+              if (allTyped && e.returnAnnot !== undefined && e.returnAnnot.kind !== 'unknown') {
+                const pad2 = ' '.repeat(indent + 2)
+                const savedAF = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
+                const pbind: Array<[string, boolean, TypeIR | undefined]> = []
+                e.params.forEach((pn, pi) => {
+                  const pt = types![pi]!
+                  pbind.push([
+                    pn,
+                    _kotlinExprInferCtx.locals.has(pn),
+                    _kotlinExprInferCtx.locals.get(pn),
+                  ])
+                  _kotlinExprInferCtx.locals.set(pn, pt)
+                })
+                const fnCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+                const lines = e.stmts
+                  .map((st) => `${pad2}${emitKotlinStatement(st, indent + 2, fnCtx)}`)
+                  .join('\n')
+                for (const [pn, had, prev] of pbind.reverse()) {
+                  if (had) _kotlinExprInferCtx.locals.set(pn, prev!)
+                  else _kotlinExprInferCtx.locals.delete(pn)
+                }
+                _kotlinExprInferCtx.locals = savedAF
+                const sig = e.params
+                  .map((pn, pi) => `${kotlinIdent(pn)}: ${kotlinType(types![pi]!, undefined, pn)}`)
+                  .join(', ')
+                return `fun(${sig}): ${kotlinType(e.returnAnnot)} {\n${lines}\n${' '.repeat(indent)}}`
+              }
+              _emitWarnings.push(
+                `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; annotate every param AND the return type for the anonymous-function form, or restructure as an expression body.`,
+              )
+              return `{ ${ktLambdaParams()} -> Unit }`
+            }
+            const pad = ' '.repeat(indent + 2)
+            const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
+            const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+            const lines = e.stmts
+              .map((st) => pad + emitKotlinStatement(st, indent + 2, stmtCtx))
+              .join('\n')
+            _kotlinExprInferCtx.locals = saved
+            const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
+            return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
+          }
+          if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
+          // ktLambdaParams, not the raw names — the single-EXPRESSION branch
+          // bypassed the typed standalone form entirely (a let-bound
+          // `(n: Double) => expr` emitted `{ n -> }`, which kotlinc rejects
+          // with "an explicit type is required on a value parameter").
+          return `{ ${ktLambdaParams()} -> ${emitKotlinExpr(e.body, indent)} }`
+        },
+      )
     }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
@@ -4963,6 +4783,23 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       expr: emitKotlinExpr,
       exprAs: (type, e, at) => withExpectedTypeKotlin(type, () => emitKotlinExpr(e, at)),
       scope: () => _pluginScope,
+      withBindings: (bindings, emit) =>
+        withKotlinLocals(
+          bindings.map(
+            (binding) => [binding.name, binding.type ?? ({ kind: 'unknown' } as TypeIR)] as const,
+          ),
+          () => _pluginScope.withBindings(bindings, emit),
+        ),
+      fieldValidators: (name) => {
+        const provided = moduleFieldValidators(_moduleItems, name)
+        return provided === undefined
+          ? undefined
+          : {
+              fields: provided.fields,
+              body: (field, value) => provided.validators.kotlin(provided.item, field, value),
+            }
+      },
+      fieldValidatorsAdvice: moduleFieldValidatorsAdvice,
       stringAttr: readStringAttrExprKotlin,
       layoutModifiers: (el) => emitKotlinLayoutModifier(el),
       action: emitKotlinAction,
@@ -5908,20 +5745,6 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const pad = ' '.repeat(indent + 4)
   const close = ' '.repeat(indent + 2)
   const outerClose = ' '.repeat(indent)
-  // Field-array items source → the render param's `value()` reads unwrap
-  // to `.value` inside this body (stack — nested Fors restore correctly).
-  const isFieldArrayItems =
-    each !== undefined &&
-    ((each.value.kind === 'call' &&
-      each.value.callee.kind === 'member' &&
-      each.value.callee.object.kind === 'identifier' &&
-      _fieldArrayNamesKotlin.has(each.value.callee.object.name) &&
-      each.value.callee.property === 'items') ||
-      (each.value.kind === 'member' &&
-        each.value.object.kind === 'identifier' &&
-        _fieldArrayNamesKotlin.has(each.value.object.name) &&
-        each.value.property === 'items'))
-  if (isFieldArrayItems) _fieldArrayItemParamsKotlin.push(param)
   // Seed the ROW param with the element type — the Swift twin carries the
   // rationale (an unknown row type silently mis-lowers `.length` there).
   // Kotlin's own emit is unaffected today, but the two inference ctxs must
@@ -5933,14 +5756,22 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (rowElem !== undefined) _kotlinExprInferCtx.locals.set(param, rowElem)
   let bodyText: string
   try {
-    bodyText = forRowBodyKotlin(arrow, body, indent)
+    bodyText = _pluginScope.withBindings(
+      [
+        pluginIterationBinding(
+          each ? unwrapAccessorArrow(each.value) : undefined,
+          param,
+          _pluginScope,
+        ),
+      ],
+      () => forRowBodyKotlin(arrow, body, indent),
+    )
   } finally {
     if (rowElem !== undefined) {
       if (hadRow) _kotlinExprInferCtx.locals.set(param, prevRow!)
       else _kotlinExprInferCtx.locals.delete(param)
     }
   }
-  if (isFieldArrayItems) _fieldArrayItemParamsKotlin.pop()
   return (
     `LazyColumn {\n` +
     `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${kotlinIdent(param)} ->\n` +
@@ -7762,39 +7593,10 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // making the bare `<Field value={sig}/>` shape fall through to
   // `emitKotlinGeneric` and emit a literal `Field(value = sig)` — no
   // such Compose composable, so the generated code was unbuildable.
-  // v2 (form-binding arc) — `value={form.values.email}` binds through
-  // the container: value reads the map, onValueChange routes through
-  // setValue (→ re-validation). The user's `onChangeText` is SUBSUMED
-  // (mirror of the Swift binding(_:) emit).
-  // Accept the WEB CALL form too (`form.values().email`) — `@pyreon/form`
-  // types `values: () => TValues`, so that is what shared source looks like.
-  // Normalising here keeps the specialized binding emit (which routes the
-  // setter through setValue → re-validation); without it the call form fell
-  // through to the generic path and emitted an unbuildable field.
-  const _fieldValue =
-    valueAttr !== undefined &&
-    valueAttr.value.kind === 'member' &&
-    valueAttr.value.object.kind === 'call' &&
-    valueAttr.value.object.args.length === 0 &&
-    valueAttr.value.object.callee.kind === 'member'
-      ? { ...valueAttr.value, object: valueAttr.value.object.callee }
-      : valueAttr?.value
-  let formBinding: { value: string; onChange: string } | undefined
-  if (
-    _fieldValue !== undefined &&
-    _fieldValue.kind === 'member' &&
-    _fieldValue.object.kind === 'member' &&
-    _fieldValue.object.property === 'values' &&
-    _fieldValue.object.object.kind === 'identifier' &&
-    _formNames.has(_fieldValue.object.object.name)
-  ) {
-    const formName = kotlinIdent(_fieldValue.object.object.name)
-    const field = kotlinStr(_fieldValue.property)
-    formBinding = {
-      value: `${formName}.values.value[${field}] ?: ""`,
-      onChange: `{ ${formName}.setValue(${field}, it) }`,
-    }
-  }
+  const formBinding =
+    valueAttr === undefined
+      ? undefined
+      : pluginValueBinding(valueAttr.value, 'kotlin', _pluginScope, () => kotlinEmitContext(indent))
 
   const isBareSignal =
     valueAttr !== undefined &&
