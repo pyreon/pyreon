@@ -28,7 +28,7 @@
 // webview, plus the router-hook surface — PyreonRouter / EnvironmentValues.pyreonRouter
 // / useNavigate / useParams — and PyreonForm, added in M-gate.1d; the two SMALL
 // @Observable fixtures tier2-store / tier2-state-tree, added in M-gate.1e via the
-// PyreonStoreProtocol / PyreonModelProtocol marker protocols below + the
+// package-owned marker-protocol augmentations + the
 // `import Observation` guarantee `validateSwiftWithStubs` adds when the emit uses
 // `@Observable`). M-gate.1f closed the last two — the LARGE @Observable showcase
 // apps (showcase-finance / showcase-tasks) — by adding the service tier
@@ -843,13 +843,6 @@ public struct PyreonImagePicker { public init() {}; public func pick() async -> 
 // M3.8 document picker. Same async optional-String surface as the image picker
 // (nil = cancelled) — an emit that drops the optionality fails here.
 public struct PyreonFilePicker { public init() {}; public func pick() async -> String? { nil }; public func isAvailable() -> Bool { true } }
-// Marker protocols the @Observable store/model emit conforms to — mirror
-// runtime-swift's PyreonStore.swift / PyreonModel.swift EXACTLY (empty,
-// AnyObject-bound so a final class can conform). The @Observable macro (from the
-// Observation module, guaranteed imported by validateSwiftWithStubs when the
-// emit uses it) drives runtime reactivity; these only satisfy conformance.
-public protocol PyreonStoreProtocol: AnyObject {}
-public protocol PyreonModelProtocol: AnyObject {}
 // AppStorage - SwiftUI's own wrapper, which a persisted signal (\`useStorage\`) emits for SCALAR
 // values (a struct value routes to the library's own PyreonAppStorage instead). Stripped
 // along with \`import SwiftUI\`, so without this the whole scalar path was

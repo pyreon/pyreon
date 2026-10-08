@@ -7,8 +7,8 @@
 // by its text, or a silent bail (no struct at all).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const AK = `import { arktypeSchema } from '@pyreon/validation'
 declare const type: any
@@ -29,7 +29,10 @@ const schemaNames = (code: string): string[] =>
 
 describe('parse.ts — arktypeSchema recognizer', () => {
   it('lowers a three-scalar type() shape to a struct (the positive control)', () => {
-    const r = swift(AK + `export const userSchema = arktypeSchema(type({ name: 'string', age: 'number', active: 'boolean' }))`)
+    const r = swift(
+      AK +
+        `export const userSchema = arktypeSchema(type({ name: 'string', age: 'number', active: 'boolean' }))`,
+    )
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
     expect(r.code).toContain('var age: Int = 0')
@@ -41,7 +44,8 @@ describe('parse.ts — arktypeSchema recognizer', () => {
     const one = swift(AK + `const a = arktypeSchema(type({ n: 'string' }))`)
     expect(schemaNames(one.code)).toEqual(['PyreonZodSchema_a'])
     const two = swift(
-      AK + `const a = arktypeSchema(type({ n: 'string' })), b = arktypeSchema(type({ m: 'string' }))`,
+      AK +
+        `const a = arktypeSchema(type({ n: 'string' })), b = arktypeSchema(type({ m: 'string' }))`,
     )
     expect(schemaNames(two.code)).toEqual([])
   })
@@ -59,7 +63,9 @@ describe('parse.ts — arktypeSchema recognizer', () => {
   })
 
   it('bails when the inner callee is an identifier OTHER than `type`', () => {
-    const r = swift(AK + `declare const other: any\nconst a = arktypeSchema(other({ n: 'string' }))`)
+    const r = swift(
+      AK + `declare const other: any\nconst a = arktypeSchema(other({ n: 'string' }))`,
+    )
     expect(schemaNames(r.code)).toEqual([])
   })
 
@@ -72,7 +78,9 @@ describe('parse.ts — arktypeSchema recognizer', () => {
   })
 
   it('skips a SpreadElement property and keeps the literal siblings', () => {
-    const r = swift(AK + `declare const base: any\nconst a = arktypeSchema(type({ ...base, n: 'string' }))`)
+    const r = swift(
+      AK + `declare const base: any\nconst a = arktypeSchema(type({ ...base, n: 'string' }))`,
+    )
     expect(r.code).toContain('var n: String = ""')
     expect(r.code.match(/var \w+: /g)).toEqual(['var n: '])
   })
@@ -83,13 +91,20 @@ describe('parse.ts — arktypeSchema recognizer', () => {
   })
 
   it('names a key that is only known at runtime (a template literal WITH a substitution)', () => {
-    const r = swift(AK + 'declare const b: string\nconst a = arktypeSchema(type({ [`x${b}`]: \'string\', n: \'string\' }))')
+    const r = swift(
+      AK +
+        "declare const b: string\nconst a = arktypeSchema(type({ [`x${b}`]: 'string', n: 'string' }))",
+    )
     expect(r.code.match(/var \w+: /g)).toEqual(['var n: '])
-    expect(r.warnings).toEqual([expect.stringContaining('the computed key `[`x${b}`]` is only known at runtime')])
+    expect(r.warnings).toEqual([
+      expect.stringContaining('the computed key `[`x${b}`]` is only known at runtime'),
+    ])
   })
 
   it('warns + drops a field whose value is not a string literal', () => {
-    const r = swift(AK + `declare const q: any\nconst a = arktypeSchema(type({ n: q.string(), m: 'string' }))`)
+    const r = swift(
+      AK + `declare const q: any\nconst a = arktypeSchema(type({ n: q.string(), m: 'string' }))`,
+    )
     expect(r.warnings.join('\n')).toContain(
       "field `n` is not a string-literal type — v1 supports 'string' | 'number' | 'boolean' literals",
     )
@@ -119,7 +134,9 @@ describe('parse.ts — arktypeSchema recognizer', () => {
 
 describe('parse.ts — namespaced (zod/valibot) walker: declaration shape', () => {
   it('bails on a MULTI-declarator statement', () => {
-    const r = swift(Z + `const a = zodSchema(z.object({n:z.string()})), b = zodSchema(z.object({m:z.string()}))`)
+    const r = swift(
+      Z + `const a = zodSchema(z.object({n:z.string()})), b = zodSchema(z.object({m:z.string()}))`,
+    )
     expect(schemaNames(r.code)).toEqual([])
   })
 
@@ -166,7 +183,9 @@ describe('parse.ts — namespaced (zod/valibot) walker: declaration shape', () =
     const r = swift(
       `import { s } from '@pyreon/validate'\ndeclare const sh: any\nexport const userSchema = s.object(sh)\nexport function App(){ return <Text>x</Text> }`,
     )
-    expect(r.warnings.join('\n')).toContain('s declaration `userSchema`: s.object() argument must be a literal shape')
+    expect(r.warnings.join('\n')).toContain(
+      's declaration `userSchema`: s.object() argument must be a literal shape',
+    )
   })
 
   it('bails with "no recognized fields" on an empty shape', () => {
@@ -178,7 +197,9 @@ describe('parse.ts — namespaced (zod/valibot) walker: declaration shape', () =
 
 describe('parse.ts — namespaced walker: field shapes', () => {
   it('skips a SpreadElement property', () => {
-    const r = swift(Z + `declare const base: any\nconst a = zodSchema(z.object({ ...base, n: z.string() }))`)
+    const r = swift(
+      Z + `declare const base: any\nconst a = zodSchema(z.object({ ...base, n: z.string() }))`,
+    )
     expect(r.code.match(/var \w+: /g)).toEqual(['var n: '])
   })
 
@@ -188,7 +209,10 @@ describe('parse.ts — namespaced walker: field shapes', () => {
   })
 
   it('names (and skips) a key that is only known at runtime', () => {
-    const r = swift(Z + 'declare const b: string\nconst a = zodSchema(z.object({ [`x${b}`]: z.string(), n: z.string() }))')
+    const r = swift(
+      Z +
+        'declare const b: string\nconst a = zodSchema(z.object({ [`x${b}`]: z.string(), n: z.string() }))',
+    )
     expect(r.code.match(/var \w+: /g)).toEqual(['var n: '])
     expect(r.warnings.join('\n')).toContain('the computed key `[`x${b}`]` is only known at runtime')
   })
@@ -215,13 +239,17 @@ describe('parse.ts — namespaced walker: field shapes', () => {
   })
 
   it('warns + drops a field whose base callee is a DIFFERENT namespace', () => {
-    const r = swift(Z + `declare const w: any\nconst a = zodSchema(z.object({ n: w.string(), m: z.string() }))`)
+    const r = swift(
+      Z + `declare const w: any\nconst a = zodSchema(z.object({ n: w.string(), m: z.string() }))`,
+    )
     expect(r.warnings.join('\n')).toContain('field `n` has unsupported shape')
     expect(r.code.match(/var \w+: /g)).toEqual(['var m: '])
   })
 
   it('carries .optional() onto a number and a boolean field', () => {
-    const r = swift(Z + `const a = zodSchema(z.object({ n: z.number().optional(), b: z.boolean().optional() }))`)
+    const r = swift(
+      Z + `const a = zodSchema(z.object({ n: z.number().optional(), b: z.boolean().optional() }))`,
+    )
     expect(r.code).toContain('var n: Int? = nil')
     expect(r.code).toContain('var b: Bool? = nil')
   })
@@ -236,7 +264,9 @@ describe('parse.ts — namespaced walker: field shapes', () => {
   it('defaults a z.literal() with no argument (and an optional one) to string', () => {
     const none = swift(Z + `const a = zodSchema(z.object({ k: z.literal(), m: z.string() }))`)
     expect(none.code).toContain('var k: String = ""')
-    const opt = swift(Z + `const a = zodSchema(z.object({ k: z.literal('x').optional(), m: z.string() }))`)
+    const opt = swift(
+      Z + `const a = zodSchema(z.object({ k: z.literal('x').optional(), m: z.string() }))`,
+    )
     expect(opt.code).toContain('var k: String? = nil')
   })
 
@@ -252,12 +282,17 @@ describe('parse.ts — nested z.object() fields', () => {
     const r = swift(Z + `const a = zodSchema(z.object({ addr: z.object({ city: z.string() }) }))`)
     expect(schemaNames(r.code)).toEqual(['PyreonZodSchema_a_Addr', 'PyreonZodSchema_a'])
     expect(r.code).toContain('var addr: PyreonZodSchema_a_Addr = PyreonZodSchema_a_Addr()')
-    const opt = swift(Z + `const a = zodSchema(z.object({ addr: z.object({ city: z.string() }).optional() }))`)
+    const opt = swift(
+      Z + `const a = zodSchema(z.object({ addr: z.object({ city: z.string() }).optional() }))`,
+    )
     expect(opt.code).toContain('var addr: PyreonZodSchema_a_Addr? = nil')
   })
 
   it('warns + drops a nested object whose shape is not a literal', () => {
-    const r = swift(Z + `declare const sh: any\nconst a = zodSchema(z.object({ addr: z.object(sh), m: z.string() }))`)
+    const r = swift(
+      Z +
+        `declare const sh: any\nconst a = zodSchema(z.object({ addr: z.object(sh), m: z.string() }))`,
+    )
     expect(r.warnings.join('\n')).toContain(
       'field `addr` is a nested z.object() but its shape isn’t a literal'.replace('’', "'"),
     )
@@ -272,7 +307,9 @@ describe('parse.ts — z.array() element paths', () => {
   })
 
   it('synthesizes an _Item aux struct for z.array(z.object({…}))', () => {
-    const r = swift(Z + `const a = zodSchema(z.object({ t: z.array(z.object({ q: z.string() })) }))`)
+    const r = swift(
+      Z + `const a = zodSchema(z.object({ t: z.array(z.object({ q: z.string() })) }))`,
+    )
     expect(schemaNames(r.code)).toEqual(['PyreonZodSchema_a_T_Item', 'PyreonZodSchema_a'])
     expect(r.code).toContain('var t: [PyreonZodSchema_a_T_Item] = []')
   })
@@ -290,7 +327,10 @@ describe('parse.ts — z.array() element paths', () => {
   })
 
   it('drops an element whose base namespace differs', () => {
-    const r = swift(Z + `declare const w: any\nconst a = zodSchema(z.object({ t: z.array(w.string()), m: z.string() }))`)
+    const r = swift(
+      Z +
+        `declare const w: any\nconst a = zodSchema(z.object({ t: z.array(w.string()), m: z.string() }))`,
+    )
     expect(r.warnings.join('\n')).toContain(dropped)
   })
 
@@ -300,17 +340,25 @@ describe('parse.ts — z.array() element paths', () => {
   })
 
   it('drops an object-element candidate whose callee is not a MemberExpression', () => {
-    const r = swift(Z + `declare const f: any\nconst a = zodSchema(z.object({ t: z.array(f()), m: z.string() }))`)
+    const r = swift(
+      Z + `declare const f: any\nconst a = zodSchema(z.object({ t: z.array(f()), m: z.string() }))`,
+    )
     expect(r.warnings.join('\n')).toContain(dropped)
   })
 
   it('drops an object-element candidate reached through a COMPUTED member', () => {
-    const r = swift(Z + `const a = zodSchema(z.object({ t: z.array(z['object']({ q: z.string() })), m: z.string() }))`)
+    const r = swift(
+      Z +
+        `const a = zodSchema(z.object({ t: z.array(z['object']({ q: z.string() })), m: z.string() }))`,
+    )
     expect(r.warnings.join('\n')).toContain(dropped)
   })
 
   it('drops an object-element candidate under a different namespace', () => {
-    const r = swift(Z + `declare const w: any\nconst a = zodSchema(z.object({ t: z.array(w.object({ q: z.string() })), m: z.string() }))`)
+    const r = swift(
+      Z +
+        `declare const w: any\nconst a = zodSchema(z.object({ t: z.array(w.object({ q: z.string() })), m: z.string() }))`,
+    )
     expect(r.warnings.join('\n')).toContain(dropped)
   })
 })
@@ -328,7 +376,9 @@ describe('parse.ts — z.array() ELEMENT constraint chain (extractTypeAndConstra
     const ok = swift(Z + `const a = zodSchema(z.object({ t: z.array(z.string().regex(/^a+$/)) }))`)
     expect(ok.warnings).toEqual([])
     expect(ok.code).toContain('rule: "regex (element)"')
-    const bad = swift(Z + `const a = zodSchema(z.object({ t: z.array(z.string().regex(/(?<x>a)/)) }))`)
+    const bad = swift(
+      Z + `const a = zodSchema(z.object({ t: z.array(z.string().regex(/(?<x>a)/)) }))`,
+    )
     expect(bad.warnings.join('\n')).toContain('schema element .regex()')
     expect(bad.code).toContain('var t: [String] = []')
     expect(bad.code).not.toContain('rule: "regex (element)"')
@@ -338,7 +388,9 @@ describe('parse.ts — z.array() ELEMENT constraint chain (extractTypeAndConstra
     const num = swift(Z + `const a = zodSchema(z.object({ t: z.array(z.string().min(2).max(6)) }))`)
     expect(num.code).toContain('rule: "min length 2 (element)"')
     expect(num.code).toContain('rule: "max length 6 (element)"')
-    const str = swift(Z + `const a = zodSchema(z.object({ t: z.array(z.string().min('x').max('y')) }))`)
+    const str = swift(
+      Z + `const a = zodSchema(z.object({ t: z.array(z.string().min('x').max('y')) }))`,
+    )
     expect(str.code).toContain('var t: [String] = []')
     expect(str.code).not.toContain('rule: "min length')
     expect(str.code).not.toContain('rule: "max length')
@@ -350,7 +402,9 @@ describe('parse.ts — z.discriminatedUnion()', () => {
 
   it('lowers two z.object() variants to an enum + one aux struct each', () => {
     const r = swift(
-      DU(`'kind', [z.object({ kind: z.literal('a'), x: z.string() }), z.object({ kind: z.literal('b'), y: z.number() })]`),
+      DU(
+        `'kind', [z.object({ kind: z.literal('a'), x: z.string() }), z.object({ kind: z.literal('b'), y: z.number() })]`,
+      ),
     )
     expect(schemaNames(r.code)).toEqual([
       'PyreonZodSchema_a_A',
@@ -373,7 +427,9 @@ describe('parse.ts — z.discriminatedUnion()', () => {
   })
 
   it('drops when the variants argument is not an array literal', () => {
-    const r = swift(Z + `declare const vs: any\nconst a = zodSchema(z.discriminatedUnion('kind', vs))`)
+    const r = swift(
+      Z + `declare const vs: any\nconst a = zodSchema(z.discriminatedUnion('kind', vs))`,
+    )
     expect(r.warnings.join('\n')).toContain('second arg must be a literal array')
     noEnum(r.code)
   })
@@ -385,7 +441,9 @@ describe('parse.ts — z.discriminatedUnion()', () => {
   })
 
   it('drops a variant that is not a call expression', () => {
-    const r = swift(Z + `declare const vv: any\nconst a = zodSchema(z.discriminatedUnion('kind', [vv]))`)
+    const r = swift(
+      Z + `declare const vv: any\nconst a = zodSchema(z.discriminatedUnion('kind', [vv]))`,
+    )
     expect(r.warnings.join('\n')).toContain('variant 0 is not a z.object() call')
     noEnum(r.code)
   })
@@ -393,15 +451,23 @@ describe('parse.ts — z.discriminatedUnion()', () => {
   const noLit = "variant 0 doesn't expose z.literal()"
 
   it('drops a variant whose callee is not a MemberExpression', () => {
-    const r = swift(Z + `declare const foo: any\nconst a = zodSchema(z.discriminatedUnion('kind', [foo()]))`)
+    const r = swift(
+      Z + `declare const foo: any\nconst a = zodSchema(z.discriminatedUnion('kind', [foo()]))`,
+    )
     expect(r.warnings.join('\n')).toContain(noLit)
     noEnum(r.code)
   })
 
   it('drops a variant under a different namespace, and one reached through a non-Identifier object', () => {
-    const w = swift(Z + `declare const w: any\nconst a = zodSchema(z.discriminatedUnion('kind', [w.object({ kind: z.literal('a') })]))`)
+    const w = swift(
+      Z +
+        `declare const w: any\nconst a = zodSchema(z.discriminatedUnion('kind', [w.object({ kind: z.literal('a') })]))`,
+    )
     expect(w.warnings.join('\n')).toContain(noLit)
-    const deep = swift(Z + `declare const q: any\nconst a = zodSchema(z.discriminatedUnion('kind', [q.x.object({ kind: z.literal('a') })]))`)
+    const deep = swift(
+      Z +
+        `declare const q: any\nconst a = zodSchema(z.discriminatedUnion('kind', [q.x.object({ kind: z.literal('a') })]))`,
+    )
     expect(deep.warnings.join('\n')).toContain(noLit)
   })
 
@@ -413,7 +479,10 @@ describe('parse.ts — z.discriminatedUnion()', () => {
   })
 
   it('drops a variant whose object shape is not a literal', () => {
-    const r = swift(Z + `declare const sh: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object(sh)]))`)
+    const r = swift(
+      Z +
+        `declare const sh: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object(sh)]))`,
+    )
     expect(r.warnings.join('\n')).toContain(noLit)
   })
 
@@ -428,11 +497,20 @@ describe('parse.ts — z.discriminatedUnion()', () => {
   })
 
   it('drops a discriminator value that is not a `<prefix>.literal()` member call', () => {
-    const notMember = swift(Z + `declare const foo: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: foo() })]))`)
+    const notMember = swift(
+      Z +
+        `declare const foo: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: foo() })]))`,
+    )
     expect(notMember.warnings.join('\n')).toContain(noLit)
-    const deep = swift(Z + `declare const q: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: q.x.literal('a') })]))`)
+    const deep = swift(
+      Z +
+        `declare const q: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: q.x.literal('a') })]))`,
+    )
     expect(deep.warnings.join('\n')).toContain(noLit)
-    const wrongNs = swift(Z + `declare const w: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: w.literal('a') })]))`)
+    const wrongNs = swift(
+      Z +
+        `declare const w: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ kind: w.literal('a') })]))`,
+    )
     expect(wrongNs.warnings.join('\n')).toContain(noLit)
     const computed = swift(DU(`'kind', [z.object({ kind: z['literal']('a') })]`))
     expect(computed.warnings.join('\n')).toContain(noLit)
@@ -453,24 +531,25 @@ describe('parse.ts — z.discriminatedUnion()', () => {
   })
 
   it('skips a SpreadElement inside a variant shape while locating the discriminator', () => {
-    const r = swift(Z + `declare const base: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ ...base, kind: z.literal('a') })]))`)
+    const r = swift(
+      Z +
+        `declare const base: any\nconst a = zodSchema(z.discriminatedUnion('kind', [z.object({ ...base, kind: z.literal('a') })]))`,
+    )
     expect(r.code).toContain('case a(PyreonZodSchema_a_A)')
   })
 
-  it.fails(
-    'KNOWN BUG: an EMPTY discriminator literal emits a nameless enum case — reject an empty `capitalizeFirst` result in parseDiscriminatedUnion (parse.ts:4402)',
-    () => {
-      const r = swift(DU(`'kind', [z.object({ kind: z.literal(''), x: z.string() })]`))
-      // Today: `case (PyreonZodSchema_a_)` — not a legal Swift enum case.
-      expect(r.code).not.toMatch(/case \(/)
-    },
-  )
+  it.fails('KNOWN BUG: an EMPTY discriminator literal emits a nameless enum case — reject an empty `capitalizeFirst` result in parseDiscriminatedUnion (parse.ts:4402)', () => {
+    const r = swift(DU(`'kind', [z.object({ kind: z.literal(''), x: z.string() })]`))
+    // Today: `case (PyreonZodSchema_a_)` — not a legal Swift enum case.
+    expect(r.code).not.toMatch(/case \(/)
+  })
 })
 
 describe('parse.ts — valibot recognizer shares the namespaced walker', () => {
   it('lowers v.object() and drops an unsupported v.X()', () => {
     const r = kotlin(
-      VB + `export const itemSchema = valibotSchema(v.object({ id: v.string(), bad: v.date() }), safeParse)`,
+      VB +
+        `export const itemSchema = valibotSchema(v.object({ id: v.string(), bad: v.date() }), safeParse)`,
     )
     expect(r.code).toContain('data class PyreonZodSchema_itemSchema(')
     expect(r.code).toContain('var id: String = "",')
@@ -483,14 +562,18 @@ describe('parse.ts — `@pyreon/validate` wrapper-less form', () => {
 import { s } from '@pyreon/validate'
 `
   it('lowers the wrapper-less s.object() declaration', () => {
-    const r = swift(V + `export const userSchema = s.object({ name: s.string() })\nexport function App(){ return <Text>x</Text> }`)
+    const r = swift(
+      V +
+        `export const userSchema = s.object({ name: s.string() })\nexport function App(){ return <Text>x</Text> }`,
+    )
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
   })
 
   it('synthesizes a ZERO-field struct for an inline `s.object({}).safeParse()` chain', () => {
     const r = swift(
-      V + `export function App() {
+      V +
+        `export function App() {
   const ok = computed(() => s.object({}).safeParse({ n: 1 }).success)
   return <Text>{String(ok())}</Text>
 }`,
@@ -498,12 +581,15 @@ import { s } from '@pyreon/validate'
     // The walker bails (no fields) and the inline path falls back to the
     // zero-field struct rather than emitting a verbatim `s.object(...)`.
     expect(r.code).toMatch(/struct PyreonZodSchema_Inline0: Codable \{\n\n/)
-    expect(r.code).toContain('PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success')
+    expect(r.code).toContain(
+      'PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success',
+    )
   })
 
   it('lowers `.safeParse()` with NO argument to an empty native dictionary', () => {
     const r = swift(
-      V + `export function App() {
+      V +
+        `export function App() {
   const ok = computed(() => s.object({ n: s.number() }).safeParse().success)
   return <Text>{String(ok())}</Text>
 }`,
@@ -513,7 +599,8 @@ import { s } from '@pyreon/validate'
 
   it('DEDUPS two byte-identical inline shapes onto one synthesized struct', () => {
     const r = swift(
-      V + `export function App() {
+      V +
+        `export function App() {
   const a = computed(() => s.object({ n: s.number() }).safeParse({ n: 1 }).success)
   const b = computed(() => s.object({ n: s.number() }).safeParse({ n: 2 }).success)
   return <Text>{String(a() && b())}</Text>
@@ -534,7 +621,8 @@ import { s } from '@pyreon/validate'
     // init`) then rejected it every time. Fixed by handing the object call
     // straight through as `init` when schemaFn is null.
     const r = swift(
-      V + `export const userSchema = s.object({ addr: s.object({ city: s.string() }) })\nexport function App(){ return <Text>x</Text> }`,
+      V +
+        `export const userSchema = s.object({ addr: s.object({ city: s.string() }) })\nexport function App(){ return <Text>x</Text> }`,
     )
     expect(r.code).toContain('struct PyreonZodSchema_userSchema_Addr: Codable {')
     expect(r.code).toContain('var city: String = ""')
@@ -542,7 +630,8 @@ import { s } from '@pyreon/validate'
 
   it('does NOT warn about a dropped nested-object shape now that it lowers', () => {
     const r = swift(
-      V + `export const userSchema = s.object({ addr: s.object({ city: s.string() }) })\nexport function App(){ return <Text>x</Text> }`,
+      V +
+        `export const userSchema = s.object({ addr: s.object({ city: s.string() }) })\nexport function App(){ return <Text>x</Text> }`,
     )
     expect(r.warnings.join('\n')).not.toContain('is a nested s.object() but its shape')
   })
@@ -555,7 +644,8 @@ describe('parse.ts — the recognized schema shapes compile on both targets', ()
   const SHAPES: [string, string][] = [
     [
       'arktype scalars',
-      AK + `export const userSchema = arktypeSchema(type({ name: 'string', age: 'number', active: 'boolean' }))`,
+      AK +
+        `export const userSchema = arktypeSchema(type({ name: 'string', age: 'number', active: 'boolean' }))`,
     ],
     [
       'nested object + typed array + optional',

@@ -279,3 +279,9 @@ Full docs: [pyreon.dev/docs/state-tree](https://pyreon.dev/docs/state-tree) (or 
 ## License
 
 MIT
+
+### Native compiler plugin
+
+The package owns its model recognition, member typing and Swift/Kotlin singleton emission. The native CLI discovers `@pyreon/state-tree/native-plugin` through the package manifest when your app imports `@pyreon/state-tree`. Direct compiler users must load the package plugin; the bare compiler has no built-in model lowering.
+
+The native scope retains the existing limitations: unsupported setup/factory shapes report diagnostics, and native state lives on the generated singleton. The plugin subpath is optional compiler tooling and is separate from the runtime entry.

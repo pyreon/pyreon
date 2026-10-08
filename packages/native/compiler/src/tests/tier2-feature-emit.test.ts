@@ -14,13 +14,8 @@
 // longer produces `PyreonFeatureSchema_Todo`.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `
 import { defineFeature } from '@pyreon/feature'
@@ -203,7 +198,6 @@ describe.runIf(isSwiftcAvailable())('@pyreon/feature — Swift compiles', () => 
     const r = await validateSwiftWithStubs(transform(USED_SRC, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
-
 })
 
 describe.runIf(isKotlincAvailable())('@pyreon/feature — Kotlin compiles', () => {
@@ -211,7 +205,6 @@ describe.runIf(isKotlincAvailable())('@pyreon/feature — Kotlin compiles', () =
     const r = await validateKotlin(transform(USED_SRC, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
-
 })
 
 describe('@pyreon/feature — a same-named type is DISAMBIGUATED, not shipped broken', () => {
@@ -219,7 +212,11 @@ describe('@pyreon/feature — a same-named type is DISAMBIGUATED, not shipped br
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(COLLIDE_SRC, { target })
       expect(out.warnings ?? []).toEqual([])
-      expect(out.code).toContain(target === 'swift' ? 'let TodoValue = PyreonFeature_TodoValue.self' : 'val TodoValue = PyreonFeature_TodoValue')
+      expect(out.code).toContain(
+        target === 'swift'
+          ? 'let TodoValue = PyreonFeature_TodoValue.self'
+          : 'val TodoValue = PyreonFeature_TodoValue',
+      )
       expect(out.code).toContain('TodoValue.name')
     }
   })

@@ -22,8 +22,8 @@
 // guarantee, different spelling.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable } from '../validate'
 
 const SRC = `import { useDatabase } from '@pyreon/primitives'
 import { Stack, Text } from '@pyreon/primitives'
@@ -91,11 +91,14 @@ export function C() {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())('a REGRESSED bare-constructor emit FAILS the stub typecheck', () => {
-    // Proves the stub is load-bearing, not decorative: this is the exact
-    // string the emit used to produce.
-    const regressed = kotlin(SRC).code.replace('PyreonDatabase(dbCtx)', 'PyreonDatabase()')
-    const res = validateKotlin(regressed)
-    expect(res.ok).toBe(false)
-  })
+  it.skipIf(!isKotlincAvailable())(
+    'a REGRESSED bare-constructor emit FAILS the stub typecheck',
+    () => {
+      // Proves the stub is load-bearing, not decorative: this is the exact
+      // string the emit used to produce.
+      const regressed = kotlin(SRC).code.replace('PyreonDatabase(dbCtx)', 'PyreonDatabase()')
+      const res = validateKotlin(regressed)
+      expect(res.ok).toBe(false)
+    },
+  )
 })

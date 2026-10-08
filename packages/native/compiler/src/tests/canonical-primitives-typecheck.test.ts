@@ -19,8 +19,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { CANONICAL_PRIMITIVES } from '../canonical-primitives'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /** One minimal, REALISTIC usage per primitive — props included, because a
  *  bare tag can lower while its documented props are dropped. */

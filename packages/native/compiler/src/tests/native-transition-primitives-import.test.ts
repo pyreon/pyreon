@@ -17,13 +17,8 @@
 // move a single byte of an emit that four other test files already prove.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 /** The shape a real multiplatform app writes: ONE import for everything. */
 const fromPrimitives = `import { Stack, Text, Transition } from '@pyreon/primitives'
@@ -88,9 +83,7 @@ describe('<Transition> imported from @pyreon/primitives', () => {
   // would be describing a shape real apps no longer produce.
   it('emits BYTE-IDENTICALLY to the un-imported tag on both targets', () => {
     for (const target of ['swift', 'kotlin'] as const) {
-      expect(transform(fromPrimitives, { target }).code).toBe(
-        transform(bareTag, { target }).code,
-      )
+      expect(transform(fromPrimitives, { target }).code).toBe(transform(bareTag, { target }).code)
     }
   })
 

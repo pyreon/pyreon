@@ -19,14 +19,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
 
@@ -77,21 +71,31 @@ export function App() {
   return <Text>{ok() ? 'y' : 'n'}</Text>
 }`
     const { code } = transform(src, { target: 'swift' })
-    expect(code).toContain('PyreonZodSchema_Pet.safeParseResult(["name": "x"] as [String: Any]).success')
+    expect(code).toContain(
+      'PyreonZodSchema_Pet.safeParseResult(["name": "x"] as [String: Any]).success',
+    )
     expect(code).not.toContain('pyreonSchema')
   })
 
-  it.skipIf(!isSwiftcAvailable())('Swift compiles against the stubs', () => {
-    const r = validateSwiftWithStubs(transform(TYPED, { target: 'swift' }).code)
-    expect(r.error ?? '').toBe('')
-    expect(r.ok).toBe(true)
-  }, 300_000)
+  it.skipIf(!isSwiftcAvailable())(
+    'Swift compiles against the stubs',
+    () => {
+      const r = validateSwiftWithStubs(transform(TYPED, { target: 'swift' }).code)
+      expect(r.error ?? '').toBe('')
+      expect(r.ok).toBe(true)
+    },
+    300_000,
+  )
 
-  it.skipIf(!isKotlincAvailable())('Kotlin compiles on kotlinc', () => {
-    const r = validateKotlin(transform(TYPED, { target: 'kotlin' }).code)
-    expect(r.error ?? '').toBe('')
-    expect(r.ok).toBe(true)
-  }, 300_000)
+  it.skipIf(!isKotlincAvailable())(
+    'Kotlin compiles on kotlinc',
+    () => {
+      const r = validateKotlin(transform(TYPED, { target: 'kotlin' }).code)
+      expect(r.error ?? '').toBe('')
+      expect(r.ok).toBe(true)
+    },
+    300_000,
+  )
 })
 
 /** The brace-matched declaration starting at each match of `head`. */
@@ -126,7 +130,12 @@ function runtimeSwiftSources(): string[] {
       else if (p.endsWith('.swift')) out.push(p)
     }
   }
-  for (const r of ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']) {
+  for (const r of [
+    'packages/fundamentals',
+    'packages/core',
+    'packages/native/runtime-swift',
+    'packages/native/router-swift',
+  ]) {
     walk(join(REPO, r))
   }
   return out
@@ -134,8 +143,14 @@ function runtimeSwiftSources(): string[] {
 
 function failWith(err: unknown, what: string): never {
   const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-  const out = [e.stderr, e.stdout].map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '').join('\n')
-  const errors = out.split('\n').filter((l) => l.includes('error:')).slice(0, 12).join('\n')
+  const out = [e.stderr, e.stdout]
+    .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
+    .join('\n')
+  const errors = out
+    .split('\n')
+    .filter((l) => l.includes('error:'))
+    .slice(0, 12)
+    .join('\n')
   expect.fail(`${what}:\n${errors || out.slice(0, 2000)}`)
 }
 
@@ -146,12 +161,31 @@ describe.runIf(isSwiftUIAvailable())('typed safeParse against the REAL runtime (
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-typed-safeparse-'))
     try {
       const file = join(dir, 'TypedSafeParse.swift')
-      writeFileSync(file, `import SwiftUI\nimport Foundation\n${transform(TYPED, { target: 'swift' }).code}`, 'utf8')
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
+      writeFileSync(
+        file,
+        `import SwiftUI\nimport Foundation\n${transform(TYPED, { target: 'swift' }).code}`,
+        'utf8',
+      )
+      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], {
+        encoding: 'utf8',
+      }).trim()
       try {
         execFileSync(
           'xcrun',
-          ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-module-cache-path', join(dir, 'mc'), '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, file, ...sources],
+          [
+            '--sdk',
+            'iphonesimulator',
+            'swiftc',
+            '-typecheck',
+            '-module-cache-path',
+            join(dir, 'mc'),
+            '-target',
+            'arm64-apple-ios17.0-simulator',
+            '-sdk',
+            sdk,
+            file,
+            ...sources,
+          ],
           { encoding: 'utf8', stdio: 'pipe' },
         )
       } catch (err) {
@@ -192,7 +226,15 @@ print("nestedRaw=\\(PyreonZodSchema_Pet.safeParseResult(["name": "Mo", "age": 1,
       try {
         execFileSync(
           'swiftc',
-          ['-module-cache-path', join(dir, 'mc'), '-o', bin, join(REPO, 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSchema.swift'), join(dir, 'Schemas.swift'), join(dir, 'main.swift')],
+          [
+            '-module-cache-path',
+            join(dir, 'mc'),
+            '-o',
+            bin,
+            join(REPO, 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSchema.swift'),
+            join(dir, 'Schemas.swift'),
+            join(dir, 'main.swift'),
+          ],
           { encoding: 'utf8', stdio: 'pipe' },
         )
       } catch (err) {
@@ -214,7 +256,10 @@ print("nestedRaw=\\(PyreonZodSchema_Pet.safeParseResult(["name": "Mo", "age": 1,
 
 // The run test builds from this path; a moved file must fail loudly, not skip.
 it('the runtime schema file exists where the run test builds it from', () => {
-  expect(readFileSync(join(REPO, 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSchema.swift'), 'utf8')).toContain(
-    'public func pyreonSchemaInput',
-  )
+  expect(
+    readFileSync(
+      join(REPO, 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSchema.swift'),
+      'utf8',
+    ),
+  ).toContain('public func pyreonSchemaInput')
 })

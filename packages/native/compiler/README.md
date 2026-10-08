@@ -171,7 +171,7 @@ fields never break an older plugin:
   diagnostic for a call the package does not lower, without claiming its name),
   `receivers`, `functions`, `identifiers`, `memberReads`, `intrinsics`, `refModifiers`,
   `prepareEmit`, `propsTypes`, `runtimeTypes`, `refineParse`, `scanModule`,
-  `requestSources`, `topLevel` + `items` (slots `models` / `declarations` / `data`),
+  `requestSources`, `topLevel` + `items` (slots `bindings` / `models` / `declarations` / `data`),
   `methodCalls` + `exprs`, `callExprs`, `refineStructs`, `finishModule`,
   `rewriteElement`, `destructureCalls`, `componentOnlyCalls`, `persistence` and
   `stubs`. `DeclEmitter.typing` types both the call read (`callRead`) and the
@@ -244,3 +244,18 @@ protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`,
 `package.json` → `pyreon.native.plugin` at the built entry (default export = the plugin) and
 list the import specifiers that activate it in `pyreon.native.modules`. `@pyreon/charts` is
 the reference (`packages/fundamentals/charts/src/native-plugin/`).
+
+### Store and state-tree plugins
+
+The owning packages supply singleton recognition, typed members, target emitters and runtime marker stubs. The native CLI discovers their `native-plugin` exports from the app's imports. For a direct compiler instance, load the same plugins explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import storePlugin from '@pyreon/store/native-plugin'
+import stateTreePlugin from '@pyreon/state-tree/native-plugin'
+
+const compiler = createCompiler({ discovered: [storePlugin, stateTreePlugin] })
+const output = compiler.transform(appSource, { target: 'swift' })
+```
+
+`appSource` imports the libraries it uses. A bare compiler instance no longer lowers their APIs. Package plugins use generic module receivers, live member type evidence, alias factories and scoped function emission; store/model IR is owned by those packages.

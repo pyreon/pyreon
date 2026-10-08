@@ -14,9 +14,9 @@ import {
   dynamicKeyText,
   unwrapTypeLayers,
 } from './plugin-ast'
-import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
+import { findPropsTypeResolver, findService, functionIrName, pluginItemFields, pluginItemScopes, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
-import { stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
+import { isJson, stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
 import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { JsxRewriteContext, ModuleScan } from './module-scan'
 import { parseSync } from 'oxc-parser'
@@ -32,14 +32,12 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  ModelDefnIR,
   ModuleDeclIR,
   ParseResult,
   RocketstyleComponentIR,
   RouteIR,
   JsxElementIR,
   StatementIR,
-  StoreDefnIR,
   StructIR,
   AttrsComponentIR,
   StyledComponentIR,
@@ -89,13 +87,6 @@ interface ParseCtx {
    */
   stringConsts: Map<string, string>
   /**
-   * Names of `defineStore` hook bindings (`const useApp = defineStore(...)`
-   * → `useApp`), collected in a pre-pass so component bodies parsed
-   * earlier in the file still see stores declared later. Used to LOWER the
-   * store-aliasing shape `const app = useApp()` to the inline form.
-   */
-  storeHookNames: Set<string>
-  /**
    * Locally-declared object-shape type aliases (`type CardProps = { … }`),
    * name → parsed object TypeIR, collected in a pre-pass so a component's
    * NAMED props annotation (`function Card(props: CardProps)`) resolves
@@ -132,19 +123,9 @@ interface ParseCtx {
    * teaching that check to chase aliases.
    */
   fnTypeAliases: Map<string, TypeIR>
-  /**
-   * Per-component store ALIASES: local binding name → store hook name,
-   * populated from `const app = useApp()` declarations in the CURRENT
-   * component body and CLEARED before each top-level node is parsed (so a
-   * `const app = …` in one component can't leak to another). `parseExpr`'s
-   * Identifier case substitutes an aliased name with a `<hook>()` call, so
-   * `app.store.x` lowers to exactly the same IR as the inline
-   * `useApp().store.x` — the emit needs no changes. Only names recorded
-   * here (i.e. genuine `const <id> = <storeHook>()` shapes, which produced
-   * an unbound `Unresolved reference` before) are ever substituted, so a
-   * bug here cannot affect any previously-compiling code.
-   */
-  storeAliases: Map<string, string>
+  /** Plugin aliases live within one component and are hidden by narrower bindings. */
+  pluginAliases: Map<string, ExprIR>
+  aliasFactories: Map<string, { alias: ExprIR; destructureDiagnostic?: string | undefined }>
   /**
    * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
    * only fixes a component's type argument. It compiles to the component
@@ -163,7 +144,7 @@ interface ParseCtx {
    * container name. Populated from `const { data, isPending } =
    * useFetch(url)` (lowered to a synthetic `const __pyHookN = useFetch(url)`
    * + one alias per destructured key) and CLEARED before each top-level node
-   * is parsed (component-scoped, like `storeAliases`). `parseExpr`'s
+   * is parsed (component-scoped, like `pluginAliases`). `parseExpr`'s
    * Identifier case rewrites an aliased local to a `member` access
    * (`__pyHookN.data`), so `data()` / `isPending` lower to exactly the same
    * IR as the supported single-binding shape `q.data()` / `q.isPending` —
@@ -291,12 +272,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const ctx: ParseCtx = {
     warnings: [],
     source,
-    storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     liftedPropsStructs: new Map(),
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
-    storeAliases: new Map(),
+    pluginAliases: new Map(),
+    aliasFactories: new Map(),
     typedComponentAliases: new Map(),
     componentDeclRequests: new Map(),
     hookFieldAliases: new Map(),
@@ -337,13 +318,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
   ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource))
-  // Pre-pass: collect every `const <name> = defineStore(...)` hook name
-  // BEFORE parsing component bodies, so the store-aliasing diagnostic
-  // (`const app = useApp()`) fires regardless of declaration order (a
-  // component can appear above the store it reads). Name-only + side-
-  // effect-free (no warnings) — full validation stays in
-  // tryStoreDefnFromTopLevel during the main pass.
-  collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
   // Pre-pass: module-scope string constants, so a hook that bakes a string can
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
@@ -396,8 +370,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
   const moduleDecls: ModuleDeclIR[] = []
-  const stores: StoreDefnIR[] = []
-  const models: ModelDefnIR[] = []
   const moduleItems: ExtModuleItem[] = []
   const styledComponents: StyledComponentIR[] = []
   const rocketstyleComponents: RocketstyleComponentIR[] = []
@@ -405,10 +377,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   structs.push(...collectLiftedPropsStructs(ast.program.body as AnyNode[], declaredTypeNames, ctx))
 
   for (const node of ast.program.body as AnyNode[]) {
-    // Store aliases are component-scoped — reset before each top-level
-    // node so `const app = useApp()` in one component never substitutes
-    // for an unrelated `app` in another (or in a store setup body).
-    ctx.storeAliases.clear()
+    // Alias bindings belong to the current top-level scope.
+    ctx.pluginAliases.clear()
     // Hook-field aliases (`const { data } = useFetch()`) are likewise
     // component-scoped — reset before each top-level node, and reset the
     // synthetic-name counter so names stay short + deterministic per component.
@@ -439,32 +409,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // itself on generics/extends/empty — see tryStructFromInterface).
     const stIface = tryStructFromInterface(node, ctx)
     if (stIface) structs.push(...liftInlineObjects(stIface, declaredTypeNames, ctx))
-    // Gap 4 Strategy-B v1: `const useFoo = defineStore("foo", () => ...)`
-    // detected at top-level scope and extracted as a StoreDefnIR.
-    // The setup body's signal decls become fields on the emitted
-    // singleton class. Tracked separately from moduleDecls because
-    // the emit shape (class declaration at file scope, vs `var`/`let`
-    // binding) is different.
-    const sd = tryStoreDefnFromTopLevel(node, ctx)
-    if (sd) {
-      stores.push(sd)
-      // Don't fall through to tryModuleDeclsFromTopLevel — the
-      // defineStore call would otherwise also be parsed as a bare
-      // module-level binding with an unresolved initializer.
-      continue
-    }
-    // Gap 4 follow-up v2 — state-tree model. `const counter =
-    // model({ state: { ... } }).create()` extracted as ModelDefnIR.
-    // Emits a PyreonModel_<id> class at module scope + @State /
-    // remember binding inside the consuming component.
-    const md = tryModelDefnFromTopLevel(node, ctx)
-    if (md) {
-      models.push(md)
-      continue
-    }
-    // A file-scope declaration a plugin recognizes (`CompilerPlugin.topLevel`): the first plugin to
-    // return an item owns the node. Placed with the core's own module-level recognizers, ahead of the
-    // catch-alls below that would reproduce an unclaimed declaration verbatim.
     const claimedItem = tryPluginTopLevel(node, ctx)
     if (claimedItem) {
       moduleItems.push(claimedItem)
@@ -551,8 +495,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const moduleConstsNow = (): Map<string, TypeIR> =>
     buildModuleConstTypes(moduleDecls, structs, helperReturnSeed)
   let moduleConsts = moduleConstsNow()
+  // File-scope signatures must settle before component signal/struct inference consumes them.
+  refinePluginItemMembers(moduleItems, structs, helperReturnSeed, moduleConsts)
   const componentCtx = (c: ComponentIR): InferenceCtx =>
-    buildInferenceCtx(c.decls, stores, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts)
+    buildInferenceCtx(c.decls, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts, moduleItems)
 
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
@@ -606,31 +552,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // the return already inferred over the Int one.
   for (const { refine } of activeRegistries().parseRefinements) refine({ components, helperFns: ctx.helperFns })
 
-  const defaultCtx = buildInferenceCtx([], [], structs, [], undefined, helperReturnSeed, moduleConsts)
+  const defaultCtx = buildInferenceCtx([], structs, [], undefined, helperReturnSeed, moduleConsts)
   refineFunctionDefaults(ctx.helperFns, defaultCtx)
+  refinePluginItemMembers(moduleItems, structs, helperReturnSeed, moduleConsts)
   for (const component of components) {
     refineFunctionDefaults(component.decls.filter((decl) => decl.kind === 'function'), componentCtx(component))
   }
-  for (const definition of [...stores, ...models]) {
-    for (const field of definition.fields) refineNumberBindingFromEvidence(field, defaultCtx)
-    const scope = buildInferenceCtx(definition.fields.map((field) => ({ kind: 'signal' as const, ...field })), [], structs, [], undefined, helperReturnSeed, moduleConsts)
-    refineFunctionDefaults(definition.methods ?? [], scope)
-    if ('hookName' in definition) {
-      for (const computed of definition.computeds ?? []) scope.computeds.set(computed.name, inferType(computed.expr, scope))
-    } else {
-      for (const view of definition.views ?? []) {
-        scope.signalReceiver = view.selfParam
-        scope.computeds.set(view.name, inferType(view.expr, scope))
-      }
-    }
-    for (const method of definition.methods ?? []) {
-      scope.signalReceiver = 'selfParam' in method && typeof method.selfParam === 'string' ? method.selfParam : undefined
-      if (method.returnType.kind !== 'number' && method.returnType.kind !== 'unknown') continue
-      const inferred = inferReturnType(method.params, method.body, scope)
-      if (inferred.kind !== 'unknown') method.returnType = inferred
-    }
-  }
-
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
   // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
   // `returnType: unknown`. Infer it from the body (params seeded), so the emit
@@ -652,8 +579,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     enums,
     structs,
     moduleDecls,
-    stores,
-    models,
     moduleItems,
     styledComponents,
     rocketstyleComponents,
@@ -1034,28 +959,6 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
  *   - non-union type aliases (`type Foo = string`)
  *   - non-string union members (`type Mixed = 1 | 'a'`)
  *   - generic type-parameter aliases (`type Box<T> = ...`)
- */
-/**
- * Gap 4 Strategy-B v1 — detect `const useFoo = defineStore("foo", () => { ... })`
- * at top-level scope and extract a StoreDefnIR.
- *
- * Bounded scope:
- *   - Setup body: ONLY `const X = signal(...)` declarations
- *   - Returned object: ONLY shorthand keys naming local signals
- *
- * Any other shape (computed in body, function in body, expression
- * keys in return, non-object return) falls through to null — the
- * top-level binding is then parsed as a regular moduleDecl (which
- * will currently emit a warning since the defineStore call isn't
- * recognized as a regular signal/etc; the silent-drop diagnostic
- * from #1444 covers that).
- */
-/**
- * Side-effect-free pre-scan: collect the binding name of every top-level
- * `const <name> = defineStore(...)` into `out`. Mirrors the detection in
- * `tryStoreDefnFromTopLevel` but extracts ONLY the name (no validation,
- * no warnings — those run in the main pass). Lets the store-aliasing
- * diagnostic resolve hook names independent of declaration order.
  */
 /**
  * Warn (once per package) on top-level imports of a web-only `@pyreon/*`
@@ -1518,486 +1421,7 @@ function staticStringArg(node: AnyNode | null | undefined, ctx: ParseCtx): strin
   return null
 }
 
-function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
-  for (const node of body) {
-    const varDecl =
-      node.type === 'VariableDeclaration'
-        ? node
-        : node.type === 'ExportNamedDeclaration' &&
-            node.declaration?.type === 'VariableDeclaration'
-          ? node.declaration
-          : null
-    if (!varDecl || varDecl.kind !== 'const') continue
-    for (const decl of (varDecl.declarations as AnyNode[]) ?? []) {
-      if (
-        decl?.id?.type === 'Identifier' &&
-        decl.init?.type === 'CallExpression' &&
-        decl.init.callee?.type === 'Identifier' &&
-        (decl.init.callee.name as string) === 'defineStore'
-      ) {
-        out.add(decl.id.name as string)
-      }
-    }
-  }
-}
-
-function tryStoreDefnFromTopLevel(
-  node: AnyNode,
-  ctx: ParseCtx,
-): StoreDefnIR | null {
-  // Walk through ExportNamedDeclaration to the VariableDeclaration.
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') {
-    varDecl = node
-  } else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  }
-  if (!varDecl) return null
-
-  // Expect a single `const X = ...` declarator.
-  if (varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (!decl) return null
-  if (decl.id?.type !== 'Identifier') return null
-  const hookName = decl.id.name as string
-
-  // Init must be a CallExpression to the bare identifier `defineStore`.
-  const init = decl.init
-  if (init?.type !== 'CallExpression') return null
-  if (init.callee?.type !== 'Identifier') return null
-  if ((init.callee.name as string) !== 'defineStore') return null
-
-  // Arg 1: string literal id.
-  const args = (init.arguments as AnyNode[]) ?? []
-  if (args.length < 2) return null
-  const idArg = args[0]
-  // A module-scope `const` resolves — a store id named once and shared with
-  // whatever else keys off it is ordinary, and just as known at build time.
-  // The id names the emitted singleton (`PyreonStore_<id>`), so every
-  // character that is not an identifier character becomes `_`: a kebab-case
-  // id like `'native-flow-probe'` — the ordinary web spelling — otherwise
-  // emitted `PyreonStore_native-flow-probe`, which neither compiler parses.
-  const rawStoreId = staticStringArg(idArg, ctx)
-  const storeId = rawStoreId === null ? null : rawStoreId.replace(/[^A-Za-z0-9_]/g, '_')
-  if (storeId === null) {
-    ctx.warnings.push(
-      `defineStore declaration \`${hookName}\`: the id must be statically known — an inline string, or a module-scope \`const\` holding one. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Arg 2: arrow function with a block body returning an object literal.
-  const setup = args[1]
-  if (
-    setup?.type !== 'ArrowFunctionExpression' &&
-    setup?.type !== 'FunctionExpression'
-  ) {
-    ctx.warnings.push(
-      `defineStore \`${hookName}\`: setup argument must be a function expression. Falling back to silent-drop.`,
-    )
-    return null
-  }
-  // The concise-object arrow body `() => ({ ... })` parses as a
-  // ParenthesizedExpression, NOT an ObjectExpression — and those parens are
-  // MANDATORY syntax (`() => { ... }` would be a block). So the
-  // `body?.type === 'ObjectExpression'` branch below could never be reached,
-  // and the warning written for exactly that case was dead from the moment it
-  // was written. The shape fell through to the silent `else { return null }`
-  // and emitted UNCOMPILABLE passthrough: `private let useApp =
-  // defineStore("app", { ((n: signal(1))) })`, referencing `defineStore` and
-  // `signal` — neither of which exists in Swift. Zero warnings, both targets.
-  //
-  // Unwrap first so the branch is reachable. `while`, not `if`: `(( ... ))` is
-  // legal and nests.
-  let body = setup.body as AnyNode
-  while (body?.type === 'ParenthesizedExpression') {
-    body = body.expression as AnyNode
-  }
-  // Two shapes: BlockStatement with return, or expression body (`() => ({...})`)
-  let returnObj: AnyNode | undefined
-  const signalDecls: { name: string; type: TypeIR; initial: ExprIR }[] = []
-  const computedDecls: { name: string; expr: ExprIR }[] = []
-  const methodDecls: Extract<DeclIR, { kind: 'function' }>[] = []
-
-  if (body?.type === 'BlockStatement') {
-    const stmts = (body.body as AnyNode[]) ?? []
-    let returnFound = false
-    for (const stmt of stmts) {
-      if (stmt.type === 'VariableDeclaration' && stmt.kind === 'const') {
-        // v2 — setup-body decls: `const X = signal(...)` (state),
-        // `const X = computed(() => expr)` (derived), `const X =
-        // (args) => …` (method). Anything else bails the whole store
-        // loudly (the v1 silent-ish fallback emitted UNCOMPILABLE
-        // passthrough — `private let useApp = defineStore(...)`).
-        for (const d of (stmt.declarations as AnyNode[]) ?? []) {
-          if (d.id?.type !== 'Identifier') continue
-          const name = d.id.name as string
-          const declInit = d.init as AnyNode | undefined
-          if (declInit?.type === 'ArrowFunctionExpression') {
-            methodDecls.push(tryFunctionDecl(name, declInit, ctx))
-            continue
-          }
-          if (declInit?.type !== 'CallExpression') continue
-          const calleeName = declInit.callee?.name as string | undefined
-          if (calleeName === 'computed') {
-            const arg = (declInit.arguments as AnyNode[] | undefined)?.[0]
-            if (
-              arg?.type !== 'ArrowFunctionExpression' ||
-              arg.body?.type === 'BlockStatement'
-            ) {
-              // Block-body computeds in stores are a v3 follow-up —
-              // bail LOUDLY (whole-store) rather than drop one decl.
-              ctx.warnings.push(
-                `defineStore \`${hookName}\`: computed \`${name}\` must be an expression-body arrow (\`computed(() => expr)\`) in v2. Falling back to silent-drop.`,
-              )
-              return null
-            }
-            computedDecls.push({ name, expr: parseExpr(arg.body, ctx) })
-            continue
-          }
-          if (calleeName !== 'signal') continue
-          // Pull the initial value + type generic if present.
-          const sigArgs = (declInit.arguments as AnyNode[]) ?? []
-          const initialNode = sigArgs[0]
-          const initial: ExprIR = initialNode
-            ? parseExpr(initialNode, ctx)
-            : { kind: 'literal', value: 0 }
-          // Infer type from generic OR initial value. `parseGenericTypeArg`
-          // returns `{kind:'unknown'}` (not undefined) when no generic is
-          // present, so we check for the unknown sentinel + fall back.
-          const generic = parseGenericTypeArg(declInit, ctx)
-          const inferredType: TypeIR =
-            generic.kind === 'unknown' ? inferTypeFromInitial(initial) : generic
-          signalDecls.push({ name, type: inferredType, initial })
-        }
-      } else if (stmt.type === 'ReturnStatement') {
-        returnObj = stmt.argument as AnyNode | undefined
-        returnFound = true
-        break
-      } else {
-        // Unsupported statement in setup body — bail with warning.
-        ctx.warnings.push(
-          `defineStore \`${hookName}\`: v2 supports ONLY \`const X = signal(...)\` / \`const X = computed(() => …)\` / \`const X = (args) => …\` decls in the setup body; saw \`${stmt.type}\`. Falling back to silent-drop.`,
-        )
-        return null
-      }
-    }
-    if (!returnFound || !returnObj) {
-      ctx.warnings.push(
-        `defineStore \`${hookName}\`: setup function must return an object literal of signals.`,
-      )
-      return null
-    }
-  } else if (body?.type === 'ObjectExpression') {
-    // Arrow body shape: `() => ({ ... })` — no signal decls possible
-    // (no statements); only object literal whose values are inline
-    // signal calls. Out of v1 scope — declare via the block-body form.
-    ctx.warnings.push(
-      `defineStore \`${hookName}\`: v1 requires the block-body form \`() => { const x = signal(...); return { x } }\`, not the expression-body form. Falling back to silent-drop.`,
-    )
-    return null
-  } else {
-    return null
-  }
-
-  // Unwrap optional parentheses on the return object.
-  let unwrapped = returnObj
-  while (unwrapped?.type === 'ParenthesizedExpression') {
-    unwrapped = unwrapped.expression as AnyNode
-  }
-  if (unwrapped?.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `defineStore \`${hookName}\`: setup must return an object literal.`,
-    )
-    return null
-  }
-
-  // Validate the returned keys all match declared setup decls
-  // (signals, computeds, or methods).
-  // Shorthand-only: `return { count, name }` — same identifier on both sides.
-  const declaredNames = new Set([
-    ...signalDecls.map((s) => s.name),
-    ...computedDecls.map((c) => c.name),
-    ...methodDecls.map((m) => m.name),
-  ])
-  for (const prop of (unwrapped.properties as AnyNode[]) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (prop.shorthand !== true) {
-      ctx.warnings.push(
-        `defineStore \`${hookName}\`: only shorthand keys are supported in the returned object (\`return { x, y }\`, not \`return { x: x }\`).`,
-      )
-      return null
-    }
-    if (prop.key?.type !== 'Identifier') continue
-    const k = prop.key.name as string
-    if (!declaredNames.has(k)) {
-      ctx.warnings.push(
-        `defineStore \`${hookName}\`: returned key \`${k}\` doesn't match any setup-body decl.`,
-      )
-      return null
-    }
-  }
-  // v2: ALL setup decls land on the singleton (not just returned ones)
-  // — a method may write a non-returned signal, and a computed may read
-  // one; filtering to the exported subset (the v1 behavior) silently
-  // broke those bodies.
-  const result: StoreDefnIR = { hookName, storeId, fields: signalDecls }
-  if (computedDecls.length > 0) result.computeds = computedDecls
-  if (methodDecls.length > 0) result.methods = methodDecls
-  return result
-}
-
-/**
- * Gap 4 follow-up v2 — `@pyreon/state-tree` `model({ state }).create()`
- * top-level recognizer. Extracts the literal initial state into a
- * `ModelDefnIR` so the emit pipeline can produce a per-model class
- * AT MODULE SCOPE plus a `@State` / `remember` binding.
- *
- * Shape (v2):
- *   const counter = model({
- *     state: { count: 0, label: 'counter' },
- *   }).create()
- *
- * Deferred:
- *   - actions / views
- *   - `.create(initialOverride)`
- *   - `.asHook(id)`
- *   - non-literal state values (computed defaults)
- *   - two-step shape `const Counter = model({...}); const c = Counter.create()`
- *
- * Bails (returns null + warning) when the chain doesn't match the
- * v2 shape — silent-drop falls through to the tier2 diagnostic.
- */
-function tryModelDefnFromTopLevel(
-  node: AnyNode,
-  ctx: ParseCtx,
-): ModelDefnIR | null {
-  // ExportNamedDeclaration → VariableDeclaration → VariableDeclarator
-  let varDecl: AnyNode | null = null
-  if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  } else if (node.type === 'VariableDeclaration') {
-    varDecl = node
-  }
-  if (!varDecl) return null
-  const declarators = varDecl.declarations as AnyNode[]
-  if (declarators.length !== 1) return null
-  const declarator = declarators[0]
-  if (!declarator) return null
-  if (declarator.id?.type !== 'Identifier') return null
-  const instanceName = declarator.id.name as string
-
-  // RHS must be a CallExpression whose callee is `<chain>.create`.
-  const init = declarator.init as AnyNode | undefined
-  if (init?.type !== 'CallExpression') return null
-  const createCallee = init.callee as AnyNode | undefined
-  if (createCallee?.type !== 'MemberExpression') return null
-  if (createCallee.property?.type !== 'Identifier') return null
-  if ((createCallee.property.name as string) !== 'create') return null
-
-  // Walk the builder chain back to the `model({...})` root, collecting the
-  // `.views(f)` / `.actions(f)` blocks on the way. The chain is the
-  // CANONICAL web shape — a model with no `.actions()` cannot mutate its
-  // own state, so a recognizer that only matched the bare
-  // `model({state}).create()` form matched the one shape a real model
-  // never has, and every chained model fell through to a verbatim emit
-  // (`model((state: __Obj0(count: 0))).actions(…)` — none of which exists
-  // on either target) with no diagnostic at all.
-  const chainBlocks: { kind: 'views' | 'actions'; arg: AnyNode | undefined }[] = []
-  let cursor = createCallee.object as AnyNode | undefined
-  while (
-    cursor?.type === 'CallExpression' &&
-    cursor.callee?.type === 'MemberExpression' &&
-    cursor.callee.property?.type === 'Identifier'
-  ) {
-    const blockName = cursor.callee.property.name as string
-    if (blockName !== 'views' && blockName !== 'actions') {
-      ctx.warnings.push(
-        `model declaration \`${instanceName}\`: builder step \`.${blockName}()\` is not supported natively (only \`.views()\` and \`.actions()\` lower). Falling back to silent-drop.`,
-      )
-      return null
-    }
-    chainBlocks.push({
-      kind: blockName,
-      arg: (cursor.arguments as AnyNode[] | undefined)?.[0],
-    })
-    cursor = cursor.callee.object as AnyNode | undefined
-  }
-  // The chain was collected outward-in; restore source order so a later
-  // block's `self` sees the earlier one's members (the web's cumulative
-  // visibility rule).
-  chainBlocks.reverse()
-
-  // Root of the chain must be the bare `model({...})` call.
-  const modelCall = cursor
-  if (modelCall?.type !== 'CallExpression') return null
-  if (modelCall.callee?.type !== 'Identifier') return null
-  if ((modelCall.callee.name as string) !== 'model') return null
-
-  const configArg = (modelCall.arguments as AnyNode[] | undefined)?.[0]
-  if (!configArg || configArg.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `model declaration \`${instanceName}\`: model() config argument is not an object literal — v2 emit needs the literal { state: { ... } } shape. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Locate the `state: { ... }` property.
-  let stateNode: AnyNode | undefined
-  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(prop)) {
-      warnDynamicKey(prop, `model declaration \`${instanceName}\`: model() config`, ctx)
-      return null
-    }
-    const keyName = staticPropKey(prop)
-    if (keyName === 'state') {
-      stateNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    }
-    // `actions`, `views` keys deliberately ignored in v2.
-  }
-
-  if (!stateNode || stateNode.type !== 'ObjectExpression') {
-    ctx.warnings.push(
-      `model declaration \`${instanceName}\`: \`state\` field is missing or not an object literal — required by v2 emit. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // Extract literal state fields { name, type, initial }.
-  const fields: ModelDefnIR['fields'] = []
-  for (const entry of (stateNode.properties as AnyNode[] | undefined) ?? []) {
-    if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-    if (hasDynamicKey(entry)) {
-      warnDynamicKey(entry, `model declaration \`${instanceName}\`: state`, ctx)
-      continue
-    }
-    const fieldName = staticPropKey(entry)
-    if (!fieldName) continue
-    const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
-    if (eVal?.type !== 'Literal') {
-      ctx.warnings.push(
-        `model declaration \`${instanceName}\`: state field \`${fieldName}\` is not a literal value — v2 emit only supports string / number / boolean literals. Silently dropping this field.`,
-      )
-      continue
-    }
-    const v = eVal.value
-    if (
-      typeof v !== 'string' &&
-      typeof v !== 'number' &&
-      typeof v !== 'boolean'
-    ) {
-      ctx.warnings.push(
-        `model declaration \`${instanceName}\`: state field \`${fieldName}\` is not a string / number / boolean literal. Silently dropping.`,
-      )
-      continue
-    }
-    // Type comes from the SEED, via the same inference the store uses —
-    // so `{ total: 2.5 }` is a Double rather than an Int the seed cannot
-    // fit. (Encoding the seed as a raw literal + a three-value type tag
-    // is what forced the old `Int` default.)
-    const initial = parseExpr(eVal, ctx)
-    fields.push({ name: fieldName, type: inferTypeFromInitial(initial), initial })
-  }
-
-  if (fields.length === 0) {
-    ctx.warnings.push(
-      `model declaration \`${instanceName}\`: no recognizable state fields. Falling back to silent-drop.`,
-    )
-    return null
-  }
-
-  // `.views()` / `.actions()` blocks. Both take `(self) => ({ … })`; the
-  // difference is only what the members become on the emitted singleton
-  // (computed properties vs methods), which mirrors how `defineStore`
-  // already lowers its `computed(...)` decls vs its arrow decls.
-  const views: NonNullable<ModelDefnIR['views']> = []
-  const methods: NonNullable<ModelDefnIR['methods']> = []
-  for (const block of chainBlocks) {
-    const factory = unwrapTypeLayers(block.arg)
-    if (
-      factory?.type !== 'ArrowFunctionExpression' &&
-      factory?.type !== 'FunctionExpression'
-    ) {
-      ctx.warnings.push(
-        `model declaration \`${instanceName}\`: \`.${block.kind}()\` argument must be a \`(self) => ({ … })\` factory. Falling back to silent-drop.`,
-      )
-      return null
-    }
-    const selfParamNode = (factory.params as AnyNode[] | undefined)?.[0]
-    if (selfParamNode && selfParamNode.type !== 'Identifier') {
-      // Destructuring `self` ({ count }) would snapshot the members at
-      // factory time on web too — refuse rather than emit something whose
-      // reactivity silently differs from the web's.
-      ctx.warnings.push(
-        `model declaration \`${instanceName}\`: \`.${block.kind}((self) => …)\` must bind \`self\` as a plain parameter, not a destructure. Falling back to silent-drop.`,
-      )
-      return null
-    }
-    const selfParam = selfParamNode ? (selfParamNode.name as string) : 'self'
-    let factoryBody = factory.body as AnyNode | undefined
-    while (factoryBody?.type === 'ParenthesizedExpression') {
-      factoryBody = factoryBody.expression as AnyNode
-    }
-    if (factoryBody?.type !== 'ObjectExpression') {
-      ctx.warnings.push(
-        `model declaration \`${instanceName}\`: \`.${block.kind}()\` must return an object literal directly (\`(self) => ({ … })\`). Falling back to silent-drop.`,
-      )
-      return null
-    }
-    for (const member of (factoryBody.properties as AnyNode[] | undefined) ?? []) {
-      if (member?.type !== 'Property' && member?.type !== 'ObjectProperty') continue
-      if (hasDynamicKey(member)) {
-        warnDynamicKey(member, `model declaration \`${instanceName}\`: \`.${block.kind}()\` member`, ctx)
-        return null
-      }
-      const memberName = staticPropKey(member)
-      if (!memberName) continue
-      const mVal = unwrapTypeLayers(member.value as AnyNode | undefined)
-      if (
-        mVal?.type !== 'ArrowFunctionExpression' &&
-        mVal?.type !== 'FunctionExpression'
-      ) {
-        ctx.warnings.push(
-          `model declaration \`${instanceName}\`: \`.${block.kind}()\` member \`${memberName}\` must be a function. Falling back to silent-drop.`,
-        )
-        return null
-      }
-      if (block.kind === 'views') {
-        // A view is a zero-arg reader (`doubled: () => self.count() * 2`).
-        // Its EXPRESSION becomes the computed property's body.
-        let viewBody = mVal.body as AnyNode | undefined
-        while (viewBody?.type === 'ParenthesizedExpression') {
-          viewBody = viewBody.expression as AnyNode
-        }
-        if (!viewBody || viewBody.type === 'BlockStatement') {
-          ctx.warnings.push(
-            `model declaration \`${instanceName}\`: view \`${memberName}\` must be an expression-body arrow (\`() => expr\`). Falling back to silent-drop.`,
-          )
-          return null
-        }
-        views.push({ name: memberName, expr: parseExpr(viewBody, ctx), selfParam })
-        continue
-      }
-      methods.push({ ...tryFunctionDecl(memberName, mVal, ctx), selfParam })
-    }
-  }
-
-  const result: ModelDefnIR = { instanceName, modelId: instanceName, fields }
-  if (views.length > 0) result.views = views
-  if (methods.length > 0) result.methods = methods
-  return result
-}
-
-/** Tiny initial-value type inference for store signals.
+/** Tiny initial-value type inference for signal seeds.
  *  Matches the inference contract `tryDeclFromVarDeclarator` uses
  *  for component-scope signals. */
 function inferTypeFromInitial(initial: ExprIR): TypeIR {
@@ -2237,7 +1661,7 @@ function refineStructFloatsFromInitializers(
       refine(d.type, d.initial, ctx)
     }
   }
-  const moduleCtx = buildInferenceCtx([], [], structs, [], undefined, undefined, moduleConsts)
+  const moduleCtx = buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts)
   // The MODULE-level spelling of the same evidence — `const BARS: B[] = [{ l: 0.5 }]`
   // beside `interface B { l: number }` is how fixture data is written in
   // nearly every doc and example; the signal-only pass left `l` an Int and
@@ -2536,7 +1960,7 @@ function refineModuleDeclFloats(
   helperReturns: Map<string, TypeIR>,
 ): void {
   const seen = new Map<string, TypeIR>()
-  const ctx = buildInferenceCtx([], [], structs, [], undefined, helperReturns, seen)
+  const ctx = buildInferenceCtx([], structs, [], undefined, helperReturns, seen)
   for (const md of moduleDecls) {
     refineNumberBindingFromEvidence(md, ctx)
     const t = moduleConstType(md, ctx)
@@ -2563,6 +1987,29 @@ function refineNumberBindingFromEvidence(d: { type: TypeIR; initial: ExprIR }, c
     for (const el of d.initial.elements) {
       if (el.kind === 'literal' && typeof el.value === 'number' && Number.isInteger(el.value)) {
         el.float = true
+      }
+    }
+  }
+}
+
+function refinePluginItemMembers(
+  moduleItems: readonly ExtModuleItem[],
+  structs: StructIR[],
+  helperReturnSeed: Map<string, TypeIR>,
+  moduleConsts: Map<string, TypeIR>,
+): void {
+  const defaultCtx = buildInferenceCtx([], structs, [], undefined, helperReturnSeed, moduleConsts, moduleItems)
+  for (const item of moduleItems) {
+    for (const field of pluginItemFields(item)) refineNumberBindingFromEvidence(field, defaultCtx)
+    for (const memberScope of pluginItemScopes(item)) {
+      const declarations = [...memberScope.declarations]
+      const functions = declarations.filter((decl) => decl.kind === 'function')
+      const scope = buildInferenceCtx(declarations, structs, [], undefined, helperReturnSeed, moduleConsts, moduleItems, memberScope.receiver)
+      refineFunctionDefaults(functions, scope)
+      for (const fn of functions) {
+        if (fn.returnType.kind !== 'number' && fn.returnType.kind !== 'unknown') continue
+        const inferred = inferReturnType(fn.params, fn.body, scope)
+        if (inferred.kind !== 'unknown') fn.returnType = inferred
       }
     }
   }
@@ -2908,7 +2355,6 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
   const scratch: ParseCtx = {
     warnings: [],
     source: ctx.source,
-    storeHookNames: new Set(),
     // Shared, not copied: this scratch ctx exists only to keep the alias pass's
     // warnings from double-firing, and the consts are read-only lookup either way.
     stringConsts: ctx.stringConsts,
@@ -2917,7 +2363,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // Shared, not copied — the pre-pass POPULATES this for the main ctx.
     enumTypeNames: ctx.enumTypeNames,
     fnTypeAliases: new Map(),
-    storeAliases: new Map(),
+    pluginAliases: new Map(),
+    aliasFactories: new Map(),
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
     // here rather than sharing the parent's.
@@ -3783,7 +3230,7 @@ function refineHelperReturns(
   // signals/computeds (a pure helper reads only its own params and the file's
   // top-level bindings — `x * RATE` must see RATE, or it types Int and the
   // emitted signature rejects its own Double body).
-  const ctx = buildInferenceCtx([], [], structs, [], undefined, undefined, moduleConsts)
+  const ctx = buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts)
   for (let i = helperFns.length - 1; i >= 0; i--) {
     const h = helperFns[i]!
     // Infer from the body when the return is UNKNOWN (no annotation), OR when
@@ -4086,6 +3533,13 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     },
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
+    functionDeclaration: (name, node) => {
+      if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression' && node.type !== 'FunctionDeclaration') {
+        throw new Error(`functionDeclaration requires a function node; received ${node.type}.`)
+      }
+      return tryFunctionDecl(name, node as AnyNode, ctx)
+    },
+    initialType: (initial) => inferTypeFromInitial(initial),
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     typeArgs: (node) =>
       (((node as AnyNode).typeArguments?.params ?? (node as AnyNode).typeParameters?.params ?? []) as AnyNode[]).map((t) =>
@@ -4223,6 +3677,11 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
     lowered: (module, name) => {
       ctx.loweredImports.add(`${module}#${name}`)
     },
+    aliasFactory: (name, alias, destructureDiagnostic) => {
+      if (!alias || typeof alias !== 'object' || typeof alias.kind !== 'string' || !isJson(alias, new Set())) throw new Error(`Alias factory ${name} must use cloneable expression IR`)
+      if (ctx.aliasFactories.has(name)) throw new Error(`Alias factory ${name} is already registered`)
+      ctx.aliasFactories.set(name, { alias: structuredClone(alias), destructureDiagnostic })
+    },
     report: (message) => {
       ctx.warnings.push(message)
     },
@@ -4242,12 +3701,24 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
+  const factory = init?.type === 'CallExpression' && init.callee?.type === 'Identifier'
+    ? ctx.aliasFactories.get(init.callee.name as string) : undefined
+  if (factory !== undefined) {
+    if (node.id?.type === 'Identifier') {
+      ctx.pluginAliases.set(node.id.name as string, structuredClone(factory.alias))
+      return null
+    }
+    if (node.id?.type === 'ObjectPattern' && factory.destructureDiagnostic !== undefined) {
+      ctx.warnings.push(factory.destructureDiagnostic)
+      return null
+    }
+  }
   // Hook-result destructure LOWERING — the most idiomatic native data gap.
   // `const { data, isPending } = useFetch(url)` lowers to a synthetic
   // single-binding container `const __pyHookN = useFetch(url)` (parsed via
   // the SAME single-binding path, by recursion) + one field alias per
   // destructured key, so each local rewrites to `__pyHookN.<key>` at its use
-  // sites (parseExpr's Identifier case, mirroring `storeAliases`). The emit
+  // sites (parseExpr's Identifier case, mirroring `pluginAliases`). The emit
   // is BYTE-IDENTICAL to the supported single-binding shape, and the user
   // keeps the call form — accessor fields (`data()`) vs plain (`isPending`) —
   // because the alias is a transparent `container.field` member, not an
@@ -4322,74 +3793,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
-  // Store-aliasing LOWERING — `const app = useApp()` (binding a
-  // `defineStore` hook result to a local) is now SUPPORTED on native by
-  // recording the alias (`app` → `useApp`) and substituting it back to a
-  // `useApp()` call at every use site in `parseExpr` (Identifier case).
-  // So `app.store.x` lowers to exactly the same IR as the inline
-  // `useApp().store.x` — emit unchanged. The decl itself produces nothing
-  // (the alias is the binding); return null so no DeclIR is emitted for
-  // it. `useApp` is matched against the pre-scanned `storeHookNames` so
-  // this fires regardless of declaration order. Safe by construction:
-  // only `const <id> = <storeHook>()` shapes (which produced an unbound
-  // `Unresolved reference` BEFORE this lowering) ever record an alias, so
-  // no previously-compiling code can change behavior; inline
-  // `useApp().store.x` has no var binding so it's untouched, and the
-  // top-level store DEFINITION is `continue`d before reaching here.
-  if (
-    node.id?.type === 'Identifier' &&
-    init?.type === 'CallExpression' &&
-    init.callee?.type === 'Identifier' &&
-    typeof init.callee.name === 'string' &&
-    ctx.storeHookNames.has(init.callee.name as string)
-  ) {
-    ctx.storeAliases.set(node.id.name as string, init.callee.name as string)
-    return null
-  }
-  // DESTRUCTURING the api (`const { store } = useApp()`) is valid web code —
-  // `defineStore` returns `() => StoreApi<T>` and `store` is a real property —
-  // but it lowered to nothing, so `store.x` emitted an unbound `store` and
-  // failed BOTH targets with no diagnostic. The identifier-alias lowering above
-  // only fires for `const app = useApp()`; an ObjectPattern falls through.
-  //
-  // Warned rather than lowered: the alias map is identifier -> hook name, and a
-  // destructured `store` aliases `useApp().store` — a member path, not a call —
-  // so supporting it means a second alias kind threaded through parseExpr. The
-  // three other shapes all work, so pointing at them costs the author one line.
-  if (
-    node.id?.type === 'ObjectPattern' &&
-    init?.type === 'CallExpression' &&
-    init.callee?.type === 'Identifier' &&
-    typeof init.callee.name === 'string' &&
-    ctx.storeHookNames.has(init.callee.name as string)
-  ) {
-    const hook = init.callee.name as string
-    ctx.warnings.push(
-      `Destructuring a store api (\`const { … } = ${hook}()\`) is NOT lowered on native — the destructured names emit unbound and the build fails on both targets with "cannot find 'store' in scope". Bind the api instead: \`const api = ${hook}(); api.store.x\` (or read it inline, \`${hook}().store.x\`). Both lower to the same native singleton.`,
-    )
-    return null
-  }
   // A constructor a plugin claims (`new QueryClient()` from `@pyreon/query`): `CompilerPlugin.calls`
   // recognizers also see `new Name(…)` with `construct` set.
   const constructed = tryPluginConstruct(node, ctx)
   if (constructed) return constructed
 
-  // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
-  // the remaining 2 callees (`defineStore`, `model`). `createI18n` and `createMachine` are NOT in the
-  // list because their libraries' plugins lower them.
+  // A plugin reports calls it claims but cannot lower at this declaration position.
   if (init?.type === 'CallExpression') {
     const calleeName = init.callee?.name as string | undefined
-    const tier2StrategyB: Record<string, string> = {
-      defineStore: '@pyreon/store',
-      // `@pyreon/state-tree`'s public export is `model`, not
-      // `createModel`. Earlier audit doc + diagnostic used the wrong
-      // name → silent-drop never fired against real user code. Fixed
-      // in Gap 4 follow-up (state-tree foundation PR).
-      model: '@pyreon/state-tree',
-    }
-    const tier2Owner = calleeName ? activeRegistries().calls.tier2Calls.get(calleeName) : undefined
-    if (calleeName && (calleeName in tier2StrategyB || tier2Owner !== undefined)) {
-      const pkg = tier2Owner ?? tier2StrategyB[calleeName]
+    const pkg = calleeName ? activeRegistries().calls.tier2Calls.get(calleeName) : undefined
+    if (calleeName && pkg !== undefined) {
       const bindingName =
         node.id?.type === 'Identifier'
           ? (node.id.name as string)
@@ -5096,7 +4509,12 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
  * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
  * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
  */
-function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR {
+function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR | null {
+  if ('alias' in spec) {
+    if (!spec.alias || typeof spec.alias !== 'object' || typeof spec.alias.kind !== 'string' || !isJson(spec.alias, new Set())) throw new Error(`[Pyreon] plugin ${owner}: alias for ${name} must be cloneable expression IR.`)
+    ctx.pluginAliases.set(name, structuredClone(spec.alias))
+    return null
+  }
   if ('computed' in spec) return { kind: 'computed', name, expr: stampExtExpr(activeRegistries().items, owner, spec.computed) }
   if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
   const { initial: initialArg, persistKey } = spec.signal
@@ -5420,7 +4838,34 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
  *   - BlockStatement: multi-statement → StatementIR[] verbatim
  *   - Expression body: wraps in `[{ kind: 'return', expr }]`
  */
+function withoutPluginAliases<T>(bindings: readonly AnyNode[], ctx: ParseCtx, run: () => T): T {
+  const saved = ctx.pluginAliases
+  ctx.pluginAliases = new Map(saved)
+  const hide = (node: AnyNode | undefined): void => {
+    if (!node) return
+    if (node.type === 'Identifier') ctx.pluginAliases.delete(node.name as string)
+    else if (node.type === 'AssignmentPattern') hide(node.left as AnyNode)
+    else if (node.type === 'RestElement') hide(node.argument as AnyNode)
+    else if (node.type === 'ArrayPattern') for (const element of node.elements as AnyNode[]) hide(element)
+    else if (node.type === 'ObjectPattern') for (const prop of node.properties as AnyNode[]) hide((prop.value ?? prop.argument) as AnyNode)
+  }
+  for (const binding of bindings) hide(binding)
+  try {
+    return run()
+  } finally {
+    ctx.pluginAliases = saved
+  }
+}
+
 function tryFunctionDecl(
+  name: string,
+  arrow: AnyNode,
+  ctx: ParseCtx,
+): Extract<DeclIR, { kind: 'function' }> {
+  return withoutPluginAliases((arrow.params as AnyNode[] | undefined) ?? [], ctx, () => tryFunctionDeclBody(name, arrow, ctx))
+}
+
+function tryFunctionDeclBody(
   name: string,
   arrow: AnyNode,
   ctx: ParseCtx,
@@ -5544,6 +4989,15 @@ function tryFunctionDecl(
  * statement types warn + drop.
  */
 function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
+  const bindings = ((block.body as AnyNode[] | undefined) ?? []).flatMap((stmt) =>
+    stmt.type === 'VariableDeclaration'
+      ? ((stmt.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
+      : stmt.type === 'FunctionDeclaration' ? [stmt.id as AnyNode] : [],
+  )
+  return withoutPluginAliases(bindings, ctx, () => parseStatementBlockBody(block, ctx))
+}
+
+function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
   const out: StatementIR[] = []
   for (const stmt of (block.body as AnyNode[] | undefined) ?? []) {
     // Multi-declarator (`const a = 1, b = 2`) → split into N single-decl
@@ -5935,6 +5389,14 @@ function astReassignsIdent(root: AnyNode, name: string): boolean {
 }
 
 function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
+  const head = node.type === 'ForStatement' ? node.init : node.type === 'ForOfStatement' ? node.left : undefined
+  const bindings = head?.type === 'VariableDeclaration'
+    ? ((head.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
+    : []
+  return withoutPluginAliases(bindings, ctx, () => parseStatementBody(node, ctx))
+}
+
+function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
   switch (node.type) {
     case 'VariableDeclaration': {
       // Only single-decl `const`/`let`/`var` for now — multi-declarator
@@ -6664,21 +6126,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // `undefined` is a separate TypeIR kind, handled in the type
       // emitters.)
       if (node.name === 'undefined') return { kind: 'literal', value: null }
-      // Store-aliasing lowering: a name bound via `const app = useApp()`
-      // substitutes back to a `useApp()` call, so `app.store.x` produces
-      // the same IR as the inline `useApp().store.x` (emit unchanged).
-      // Only names recorded in storeAliases (genuine store-hook bindings)
-      // substitute — every other identifier is untouched.
-      {
-        const aliasedHook = ctx.storeAliases.get(node.name as string)
-        if (aliasedHook !== undefined) {
-          return {
-            kind: 'call',
-            callee: { kind: 'identifier', name: aliasedHook },
-            args: [],
-          }
-        }
-      }
+      const pluginAlias = ctx.pluginAliases.get(node.name as string)
+      if (pluginAlias !== undefined) return structuredClone(pluginAlias)
       // Hook-field-alias lowering: a name bound via `const { data } =
       // useFetch(url)` rewrites to a `container.field` member access
       // (`__pyHookN.data`), so `data()` / `isPending` lower to the same IR
@@ -6932,95 +6381,98 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       return { kind: 'update', op, argument: parseExpr(node.argument, ctx) }
     }
     case 'ArrowFunctionExpression': {
-      // A DESTRUCTURED callback param (`.map(([k, v]) => k)` /
-      // `.map(({ id }) => id)`) has no lowering — the filter below keeps
-      // only identifier params, so pre-fix the body referenced UNBOUND
-      // names (`pairs.map({ k })` — uncompilable) with no warning. Warn
-      // loudly; the fix is a plain param + member/index reads.
-      for (const p of node.params as AnyNode[]) {
-        if (p.type === 'ArrayPattern' || p.type === 'ObjectPattern') {
-          ctx.warnings.push(
-            `[${locOf(node, ctx)}] A destructured callback parameter (\`([a, b]) =>\` / \`({ a }) =>\`) is not supported in native (PMTC) — take a plain parameter and read fields/indices (\`(pair) => pair.a\`).`,
-          )
+      return withoutPluginAliases((node.params as AnyNode[] | undefined) ?? [], ctx, () => {
+        // A DESTRUCTURED callback param (`.map(([k, v]) => k)` /
+        // `.map(({ id }) => id)`) has no lowering — the filter below keeps
+        // only identifier params, so pre-fix the body referenced UNBOUND
+        // names (`pairs.map({ k })` — uncompilable) with no warning. Warn
+        // loudly; the fix is a plain param + member/index reads.
+        for (const p of node.params as AnyNode[]) {
+          if (p.type === 'ArrayPattern' || p.type === 'ObjectPattern') {
+            ctx.warnings.push(
+              `[${locOf(node, ctx)}] A destructured callback parameter (\`([a, b]) =>\` / \`({ a }) =>\`) is not supported in native (PMTC) — take a plain parameter and read fields/indices (\`(pair) => pair.a\`).`,
+            )
+          }
         }
-      }
-      const identParams = (node.params as AnyNode[]).filter((p) => p.type === 'Identifier')
-      const params = identParams.map((p) => p.name as string)
-      // Annotations, index-aligned. A standalone Swift closure cannot infer
-      // its param types (`let f = { r in … }` is 'cannot infer type of
-      // closure parameter'), so what the author wrote must survive to emit.
-      const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
-      const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
-      const paramTypes = identParams.map((p) => {
-        const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
-        return annot ? parseTypeAnnotation(annot, ctx) : undefined
+        const identParams = (node.params as AnyNode[]).filter((p) => p.type === 'Identifier')
+        const params = identParams.map((p) => p.name as string)
+        // Annotations, index-aligned. A standalone Swift closure cannot infer
+        // its param types (`let f = { r in … }` is 'cannot infer type of
+        // closure parameter'), so what the author wrote must survive to emit.
+        const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
+        const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
+        const paramTypes = identParams.map((p) => {
+          const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+          return annot ? parseTypeAnnotation(annot, ctx) : undefined
+        })
+        const body = node.body
+        const isExpressionBody = body.type !== 'BlockStatement'
+        if (isExpressionBody) {
+          // Comma-operator arrow body — `() => (a.set(1), b.set(2))`, the
+          // compact multi-write handler idiom. A SequenceExpression has no
+          // native VALUE lowering, but in an ARROW BODY the value is
+          // discarded — lower each sub-expression to its own STATEMENT
+          // (pre-fix this warned + emitted a `("")` junk body, dropping
+          // BOTH writes). Value-position sequences still warn.
+          const seqBody =
+            body.type === 'ParenthesizedExpression' &&
+            (body.expression as AnyNode | undefined)?.type === 'SequenceExpression'
+              ? (body.expression as AnyNode)
+              : body.type === 'SequenceExpression'
+                ? body
+                : undefined
+          if (seqBody !== undefined) {
+            const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
+              (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
+            )
+            return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' }, stmts }
+          }
+          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(body, ctx) }
+        }
+        // Block body. The common compact case — a single expression/return
+        // statement (`() => { count.set(c() + 1) }`) — keeps the lean
+        // single-expr `body` shape (every downstream accessor / `.update` /
+        // action emit already handles it; backward-compat).
+        const stmts = body.body as AnyNode[]
+        if (stmts.length === 0) {
+          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+        }
+        // An ASSIGNMENT is a statement in the IR, not an expression, so
+        // `() => { flow.config.pannable = false }` must keep the statement path
+        // — collapsed to an expression body it reached `parseExpr`, which
+        // rejects `AssignmentExpression`, and the handler emitted EMPTY on both
+        // targets while the two-statement spelling of the same intent worked.
+        const onlyIsAssignment =
+          stmts.length === 1 && stmts[0]!.type === 'ExpressionStatement' &&
+          (stmts[0]!.expression?.type === 'AssignmentExpression' || stmts[0]!.expression?.type === 'UpdateExpression')
+        if (
+          stmts.length === 1 && !onlyIsAssignment &&
+          (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
+        ) {
+          const only = stmts[0]!
+          const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
+          if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
+        }
+        // MULTIPLE statements (or a single non-expr/return statement like an
+        // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
+        // only the first matching statement and silently dropped the rest — a
+        // HIGH "1 code, all platforms" bug: `onPress={() => { a.set(1);
+        // b.set(2) }}` lost the `b` update on both targets. `body` is a
+        // sentinel; `emitSwiftAction` / `emitKotlinAction` read `stmts`.
+        const blockStmts = parseStatementBlock(body, ctx)
+        return {
+          kind: 'arrow',
+          async: node.async === true,
+          params,
+          paramTypes,
+          returnAnnot,
+          body: { kind: 'literal', value: '' },
+          stmts: blockStmts,
+        }
       })
-      const body = node.body
-      const isExpressionBody = body.type !== 'BlockStatement'
-      if (isExpressionBody) {
-        // Comma-operator arrow body — `() => (a.set(1), b.set(2))`, the
-        // compact multi-write handler idiom. A SequenceExpression has no
-        // native VALUE lowering, but in an ARROW BODY the value is
-        // discarded — lower each sub-expression to its own STATEMENT
-        // (pre-fix this warned + emitted a `("")` junk body, dropping
-        // BOTH writes). Value-position sequences still warn.
-        const seqBody =
-          body.type === 'ParenthesizedExpression' &&
-          (body.expression as AnyNode | undefined)?.type === 'SequenceExpression'
-            ? (body.expression as AnyNode)
-            : body.type === 'SequenceExpression'
-              ? body
-              : undefined
-        if (seqBody !== undefined) {
-          const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
-            (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
-          )
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' }, stmts }
-        }
-        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(body, ctx) }
-      }
-      // Block body. The common compact case — a single expression/return
-      // statement (`() => { count.set(c() + 1) }`) — keeps the lean
-      // single-expr `body` shape (every downstream accessor / `.update` /
-      // action emit already handles it; backward-compat).
-      const stmts = body.body as AnyNode[]
-      if (stmts.length === 0) {
-        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
-      }
-      // An ASSIGNMENT is a statement in the IR, not an expression, so
-      // `() => { flow.config.pannable = false }` must keep the statement path
-      // — collapsed to an expression body it reached `parseExpr`, which
-      // rejects `AssignmentExpression`, and the handler emitted EMPTY on both
-      // targets while the two-statement spelling of the same intent worked.
-      const onlyIsAssignment =
-        stmts.length === 1 && stmts[0]!.type === 'ExpressionStatement' &&
-        (stmts[0]!.expression?.type === 'AssignmentExpression' || stmts[0]!.expression?.type === 'UpdateExpression')
-      if (
-        stmts.length === 1 && !onlyIsAssignment &&
-        (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
-      ) {
-        const only = stmts[0]!
-        const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-        if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
-        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
-      }
-      // MULTIPLE statements (or a single non-expr/return statement like an
-      // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
-      // only the first matching statement and silently dropped the rest — a
-      // HIGH "1 code, all platforms" bug: `onPress={() => { a.set(1);
-      // b.set(2) }}` lost the `b` update on both targets. `body` is a
-      // sentinel; `emitSwiftAction` / `emitKotlinAction` read `stmts`.
-      const blockStmts = parseStatementBlock(body, ctx)
-      return {
-        kind: 'arrow',
-        async: node.async === true,
-        params,
-        paramTypes,
-        returnAnnot,
-        body: { kind: 'literal', value: '' },
-        stmts: blockStmts,
-      }
     }
+
     case 'ArrayExpression': {
       // A sparse array literal (`[1, , 2]`) is valid TS — oxc represents the
       // hole as a `null` entry, not an AST node — but every downstream reader

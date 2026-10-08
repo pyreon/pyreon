@@ -120,7 +120,7 @@ import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { clampExpr, pureStateBindings } from './pure-state'
 import type { AttrsComponentIR } from './attrs-native'
-import { createSwiftEmitContext, type ComponentInfo, type HostStateSlot, type StructRegistry, type SwiftEmitContext, type WebViewFacade } from './emit-context'
+import { createSwiftEmitContext, type ComponentInfo, type HostStateSlot, type MemberEmitScope, type StructRegistry, type SwiftEmitContext, type WebViewFacade } from './emit-context'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -186,10 +186,8 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
-  StoreDefnIR,
   StructIR,
   TypeIR,
   ExtModuleItem,
@@ -1006,8 +1004,6 @@ export function emitSwift(
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
-  stores: StoreDefnIR[] = [],
-  models: ModelDefnIR[] = [],
   moduleItems: ExtModuleItem[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
@@ -1064,7 +1060,7 @@ export function emitSwift(
   }
   _moduleConstExprs = new Map()
   // Per module: a declaration from a previous file must not make this file's `x.dispatch(...)` lower.
-  _pluginScope = createPluginScope()
+  _pluginScope = createPluginScope(undefined, moduleItems)
   _moduleScope = _pluginScope
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
@@ -1138,9 +1134,7 @@ export function emitSwift(
   }
   // Gap 4 v1: track store-hook names → store id so the use-site chain
   // rewriter (`<hook>().store.<X>`) can map to the right singleton class.
-  _storeHooks = new Map(stores.map((s) => [s.hookName, s.storeId]))
   // Full store defs for per-component inference (field types).
-  _storeDefs = stores
   // Declared structs for per-component inference (typed object-array
   // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
   _structDefs = structs
@@ -1155,33 +1149,13 @@ export function emitSwift(
   // File-scope bindings, typed once: a component (or helper) reading
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
-  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
+  _activeInferCtx = buildInferenceCtx([], structs, [], undefined, _helperReturns, _moduleConstTypes, moduleItems)
   // BOTH contexts: Swift keeps two (`_activeInferCtx` for the type-gated call
   // lowerings, `_exprInferCtx` for the condition + optional lowerings), and
   // they alias only inside a component. A helper-only file has two distinct
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
-  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
-  // v2 — per-hook method registry for the chain-call rewrite.
-  _storeMethods = new Map(
-    stores.map((st) => [st.hookName, new Map((st.methods ?? []).map((m) => [m.name, m]))]),
-  )
-  // Gap 4 v2 follow-up: track model instance names → modelId so use-site
-  // member access (`<instance>.<field>`) emits as PyreonModel_<id>.shared.<field>.
-  _modelInstances = new Map(models.map((m) => [m.instanceName, m.modelId]))
-  _pureStateSwift = new Map()
-  // State fields + views are READ (`counter.count()` on web, since a state
-  // field is a signal); actions are CALLED. The two registries are what let
-  // the call-site rewrite tell them apart.
-  _modelReadNames = new Map(
-    models.map((m) => [
-      m.instanceName,
-      new Set([...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name)]),
-    ]),
-  )
-  _modelMethods = new Map(
-    models.map((m) => [m.instanceName, new Map((m.methods ?? []).map((mm) => [mm.name, mm]))]),
-  )
+  _exprInferCtx = buildInferenceCtx([], structs, [], undefined, _helperReturns, _moduleConstTypes, moduleItems)
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
   _needsSwiftNumString = false
@@ -1189,17 +1163,10 @@ export function emitSwift(
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
-  // Gap 4 v1: emit per-store @Observable singleton class BEFORE
-  // components so call sites can reference the type.
-  for (const s of stores) parts.push(emitSwiftStore(s))
-  // Shape A: emit top-level pure-logic HELPER functions at file scope (free
-  // `func`s), AFTER stores + BEFORE components so both store methods and
-  // component bodies can call them. Reuses the same `emitSwiftFunction` store
-  // methods use ('internal' visibility → Swift's default, no `private`).
+  // File-scope items declared before free helper functions.
+  for (const item of itemsInSlot(moduleItems, 'bindings')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  // Free helper functions are emitted between the two module-item groups.
   for (const h of helperFns) parts.push(emitSwiftFunction(h, 'internal'))
-  // Gap 4 v2 follow-up: emit per-model singleton class BEFORE components
-  // so `<instance>.<field>` use sites resolve to PyreonModel_<id>.shared.
-  for (const m of models) parts.push(emitSwiftModel(m))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
   for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
   // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
@@ -1256,15 +1223,9 @@ export function emitSwift(
   _aliasImports = new Map()
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
-  _storeHooks = new Map()
-  _storeDefs = []
   _structDefs = []
-  _storeMethods = new Map()
-  _modelInstances = new Map()
   _pureStateSwift = new Map()
   _serviceBindings = new Map()
-  _modelReadNames = new Map()
-  _modelMethods = new Map()
   _needsSwiftKeepAliveWrapper = false
   _needsSwiftNumString = false
   const warnings = [..._emitWarnings]
@@ -1272,19 +1233,12 @@ export function emitSwift(
   return { code: parts.join('\n\n'), warnings }
 }
 
-/** Map of useStoreName → storeId (e.g. `useCounter` → `"counter"`). */
-let _storeHooks: Map<string, string> = new Map()
-/** Per-hook store METHOD names — chain calls keep parens + args. */
-let _storeMethods: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
-/** Full store definitions — feeds per-component inference ctx (field types). */
-let _storeDefs: StoreDefnIR[] = []
 /** Declared module structs — feeds per-component inference ctx so member
  * access on a typed object-array element (`t.id` where `t: Todo`) resolves
  * the field type instead of degrading to `Any`. Set at the emit entrypoint. */
 let _structDefs: StructIR[] = []
 
 /** Map of model instance name → modelId (e.g. `counter` → `"counter"`). */
-let _modelInstances: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
 let _pureStateSwift: ReturnType<typeof pureStateBindings> = new Map()
 /**
@@ -1319,212 +1273,7 @@ let _siblingSignalSeeds: Map<string, ExprIR> = new Map()
  * for the member-expression rewrite) so the signal-READ rewrite below can
  * never fire on an ordinary component whose prop happens to share a name
  * with one of its signals. */
-let _activeModelSelfParam: string | undefined
-/** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
-let _modelReadNames: Map<string, Set<string>> = new Map()
-/** Per-instance model ACTION names — calls keep their parens + args. */
-let _modelMethods: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
-
-/**
- * Emit a per-store @Observable singleton class:
- *
- *   @available(iOS 17.0, macOS 14.0, *)
- *   @Observable
- *   final class PyreonStore_counter: PyreonStoreProtocol {
- *       static let shared = PyreonStore_counter()
- *       var count: Int = 0
- *       private init() {}
- *   }
- *
- * The PMTC consumer accesses fields via `PyreonStore_counter.shared.count`
- * (rewritten from `useCounter().store.count`). The PyreonStoreProtocol
- * marker comes from PyreonStore.swift.
- */
-function emitSwiftStore(s: StoreDefnIR): string {
-  // `@Observable` rejects backticked property names — see identifier-safety.
-  return withObservableMembers(
-    [...s.fields.map((f) => f.name), ...(s.computeds ?? []).map((c) => c.name), ...(s.methods ?? []).map((m) => m.name)],
-    () => emitSwiftStoreBody(s),
-  )
-}
-
-function emitSwiftStoreBody(s: StoreDefnIR): string {
-  const lines: string[] = []
-  lines.push(`@available(iOS 17.0, macOS 14.0, *)`)
-  lines.push(`@Observable`)
-  lines.push(`final class PyreonStore_${s.storeId}: PyreonStoreProtocol {`)
-  lines.push(`    static let shared = PyreonStore_${s.storeId}()`)
-  for (const f of s.fields) {
-    const t = swiftType(f.type)
-    const init = emitSwiftExpr(f.initial, 4)
-    lines.push(`    var ${swiftIdent(f.name)}: ${t} = ${init}`)
-  }
-  // v2 — computeds + methods live on the singleton. Their bodies read
-  // the store's OWN signals (`tasks()` in source → the `tasks`
-  // property here), so the signal-read / .set machinery must see the
-  // store's decls instead of the surrounding component's: save the
-  // module-state name sets, swap in the store's, restore after.
-  const hasMembers = (s.computeds?.length ?? 0) > 0 || (s.methods?.length ?? 0) > 0
-  if (hasMembers) {
-    const prevSignals = _signalNames
-    const prevFunctions = _functionNames
-    const prevInfer = _activeInferCtx
-    const prevExprInfer = _exprInferCtx
-    const prevParams = _helperParamTypes
-    _signalNames = new Set([
-      ...s.fields.map((f) => f.name),
-      ...(s.computeds ?? []).map((c) => c.name),
-    ])
-    _functionNames = new Set((s.methods ?? []).map((m) => m.name))
-    // Computed return types infer from the store's own fields (treated
-    // as signals) — same machinery component computeds use.
-    const storeCtx = buildInferenceCtx(
-      s.fields.map((f) => ({
-        kind: 'signal' as const,
-        name: f.name,
-        type: f.type,
-        initial: f.initial,
-      })),
-      [],
-      _structDefs,
-      [],
-      undefined,
-      undefined,
-      _moduleConstTypes,
-    )
-    _activeInferCtx = storeCtx
-    _exprInferCtx = storeCtx
-    _helperParamTypes = new Map([...prevParams, ...(s.methods ?? []).map((method) => [method.name, method.params.map((param) => param.type)] as const)])
-    try {
-      for (const c of s.computeds ?? []) {
-        const t = inferType(c.expr, storeCtx)
-        const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
-        lines.push(`    var ${swiftIdent(c.name)}: ${anno} { ${emitSwiftExpr(c.expr, 4)} }`)
-        // Later computeds may read earlier ones.
-        storeCtx.computeds.set(c.name, t)
-        _signalNames.add(c.name)
-      }
-      for (const m of s.methods ?? []) {
-        // Internal (not private) — components call these through the
-        // chain rewrite (`useX().store.M(...)` →
-        // `PyreonStore_id.shared.M(...)`).
-        lines.push(`    ${emitSwiftFunction(m, 'internal')}`)
-      }
-    } finally {
-      _signalNames = prevSignals
-      _functionNames = prevFunctions
-      _activeInferCtx = prevInfer
-      _exprInferCtx = prevExprInfer
-      _helperParamTypes = prevParams
-    }
-  }
-  lines.push(`    private init() {}`)
-  lines.push(`}`)
-  return lines.join('\n')
-}
-
-/**
- * Gap 4 follow-up v2 — emit a per-model @Observable singleton class
- * for `const X = model({ state: { ... } }).create()`. Mirror of
- * `emitSwiftStore` for state-tree's instance-shaped surface.
- *
- *   @available(iOS 17.0, macOS 14.0, *)
- *   @Observable
- *   final class PyreonModel_counter: PyreonModelProtocol {
- *       static let shared = PyreonModel_counter()
- *       var count: Int = 0
- *       var label: String = "counter"
- *       private init() {}
- *   }
- *
- * Use-site rewriting (`counter.field` → `PyreonModel_counter.shared.field`)
- * happens at expression-emit time via `_modelInstances`.
- */
-function emitSwiftModel(m: ModelDefnIR): string {
-  return withObservableMembers(
-    [...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name), ...(m.methods ?? []).map((mm) => mm.name)],
-    () => emitSwiftModelBody(m),
-  )
-}
-
-function emitSwiftModelBody(m: ModelDefnIR): string {
-  const lines: string[] = []
-  lines.push(`@available(iOS 17.0, macOS 14.0, *)`)
-  lines.push(`@Observable`)
-  lines.push(`final class PyreonModel_${m.modelId}: PyreonModelProtocol {`)
-  lines.push(`    static let shared = PyreonModel_${m.modelId}()`)
-  for (const f of m.fields) {
-    lines.push(`    var ${swiftIdent(f.name)}: ${swiftType(f.type)} = ${emitSwiftExpr(f.initial, 4)}`)
-  }
-  // Views + actions live on the singleton, exactly as a store's computeds
-  // + methods do. Their bodies address state through the factory's `self`
-  // param (`self.count()`), which is the same rewrite the props param
-  // already gets — so `_activePropsParamName` carries it rather than a
-  // second, parallel mechanism.
-  const hasMembers = (m.views?.length ?? 0) > 0 || (m.methods?.length ?? 0) > 0
-  if (hasMembers) {
-    const prevSignals = _signalNames
-    const prevFunctions = _functionNames
-    const prevInfer = _activeInferCtx
-    const prevExprInfer = _exprInferCtx
-    const prevParams = _helperParamTypes
-    const prevPropsParam = _activePropsParamName
-    const prevModelSelf = _activeModelSelfParam
-    _signalNames = new Set([
-      ...m.fields.map((f) => f.name),
-      ...(m.views ?? []).map((v) => v.name),
-    ])
-    _functionNames = new Set((m.methods ?? []).map((mm) => mm.name))
-    const modelCtx = buildInferenceCtx(
-      m.fields.map((f) => ({
-        kind: 'signal' as const,
-        name: f.name,
-        type: f.type,
-        initial: f.initial,
-      })),
-      [],
-      _structDefs,
-      [],
-      undefined,
-      undefined,
-      _moduleConstTypes,
-    )
-    _activeInferCtx = modelCtx
-    _exprInferCtx = modelCtx
-    _helperParamTypes = new Map([...prevParams, ...(m.methods ?? []).map((method) => [method.name, method.params.map((param) => param.type)] as const)])
-    try {
-      for (const v of m.views ?? []) {
-        _activePropsParamName = v.selfParam
-        _activeModelSelfParam = v.selfParam
-        modelCtx.signalReceiver = v.selfParam
-        const t = inferType(v.expr, modelCtx)
-        const anno = t.kind === 'unknown' ? 'Any' : swiftType(t)
-        lines.push(`    var ${swiftIdent(v.name)}: ${anno} { ${emitSwiftExpr(v.expr, 4)} }`)
-        // A later view may read an earlier one (the web's cumulative `self`).
-        modelCtx.computeds.set(v.name, t)
-        _signalNames.add(v.name)
-      }
-      for (const mm of m.methods ?? []) {
-        _activePropsParamName = mm.selfParam
-        _activeModelSelfParam = mm.selfParam
-        modelCtx.signalReceiver = mm.selfParam
-        lines.push(`    ${emitSwiftFunction(mm, 'internal')}`)
-      }
-    } finally {
-      _signalNames = prevSignals
-      _functionNames = prevFunctions
-      _activeInferCtx = prevInfer
-      _exprInferCtx = prevExprInfer
-      _helperParamTypes = prevParams
-      _activePropsParamName = prevPropsParam
-      _activeModelSelfParam = prevModelSelf
-    }
-  }
-  lines.push(`    private init() {}`)
-  lines.push(`}`)
-  return lines.join('\n')
-}
-
+let _activeMemberReceiver: string | undefined
 /**
  * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
  * value backing lets Swift convert between the string literal source
@@ -1707,7 +1456,7 @@ function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
 function emitSwiftComponent(c: ComponentIR): string {
   // A fresh plugin scope per component; the outer one is restored at the end (and a file start installs a new module scope).
   const outerPluginScope = _pluginScope
-  _pluginScope = createPluginScope(c.decls)
+  _pluginScope = createPluginScope(c.decls, _moduleItems)
   // Local binding names may repeat in unrelated components. Seed the kind,
   // bounds and reset value together, and release them with this component.
   _pureStateSwift = pureStateBindings(c.decls)
@@ -1718,18 +1467,18 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Write-site float widening BEFORE the ctx build — a signal whose writes
   // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
   // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
-  widenFloatSignals(c, _storeDefs, _structDefs, _moduleConstTypes)
+  widenFloatSignals(c, _structDefs, _moduleConstTypes, _moduleItems)
   // Shape A: pass file-scope helper return types so the computeds pre-inference
   // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
   // build would be too late — the computed type is already cached).
   const inferCtx = buildInferenceCtx(
     c.decls,
-    _storeDefs,
     _structDefs,
     c.props,
     c.propsParamName,
     _helperReturns,
     _moduleConstTypes,
+    _moduleItems,
   )
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
@@ -4336,7 +4085,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const pluginLowered = lowerPluginMemberCall(e, 'swift', _pluginScope, () => swiftEmitContext(indent))
       if (pluginLowered !== undefined) return pluginLowered
       // A call, or a chain, rooted at a binding a plugin's declaration created (`flow.nodes.set(x)`).
-      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(indent))
+      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(indent), isLocalModuleReceiver)
       if (rooted !== undefined) return rooted
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypes.get(e.callee.name)
@@ -4692,45 +4441,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         )
         return `Boolean(${arg})`
       }
-      // Inside a model view/action body, `self.count()` is a signal READ of
-      // the model's OWN state — emit the stored property bare, exactly as a
-      // store method body's `tasks()` does.
+      // A member-scope receiver exposes signal reads as stored properties.
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
-        _activeModelSelfParam !== undefined &&
-        e.callee.object.name === _activeModelSelfParam &&
+        _activeMemberReceiver !== undefined &&
+        e.callee.object.name === _activeMemberReceiver &&
         e.args.length === 0 &&
         _signalNames.has(e.callee.property)
       ) {
         return swiftIdent(e.callee.property)
-      }
-      // state-tree model member call — `counter.count()` (a state field is
-      // a SIGNAL on web, so the read is a call) drops its parens onto the
-      // singleton's stored property, while `counter.inc()` (an action)
-      // keeps them. Before this, only the paren-less `counter.count` form
-      // emitted — the form that is WRONG on web, which left the package
-      // 1:1-INVERTED: web-correct source failed to compile, and
-      // native-compiling source read the accessor rather than the value.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _modelInstances.has(e.callee.object.name)
-      ) {
-        const instance = e.callee.object.name
-        const modelId = _modelInstances.get(instance)!
-        const member = swiftObservableIdent(e.callee.property)
-        if (
-          e.args.length === 0 &&
-          _modelReadNames.get(instance)?.has(e.callee.property) === true
-        ) {
-          return `PyreonModel_${modelId}.shared.${member}`
-        }
-        if (_modelMethods.get(instance)?.has(e.callee.property) === true) {
-          const params = _modelMethods.get(instance)!.get(e.callee.property)!.params
-          const args = e.args.map((a, i) => swiftTypedArgument(a, params[i]?.type, indent)).join(', ')
-          return `PyreonModel_${modelId}.shared.${member}(${args})`
-        }
       }
       // Service accessor reads (services.ts `accessorReads`). On the web these
       // members are ACCESSORS (`bt.scanning()`, `cb.copied()`, and the hook's
@@ -4824,25 +4544,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return `(Double(${arg}) ?? 0)`
       }
-      // Store METHOD call — `useX().store.M(args…)` rewrites to
-      // `PyreonStore_id.shared.M(args…)`. Must run BEFORE the zero-arg
-      // read rewrite below: a zero-arg method call (`clear()`) would
-      // otherwise emit as a property read (`.shared.clear` — missing
-      // parens). `_storeMethods` is the per-hook method registry
-      // built in the emitSwift pre-pass.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.property === 'store' &&
-        e.callee.object.object.kind === 'call' &&
-        e.callee.object.object.callee.kind === 'identifier' &&
-        _storeMethods.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
-      ) {
-        const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
-        const params = _storeMethods.get(e.callee.object.object.callee.name)!.get(e.callee.property)!.params
-        const args = e.args.map((a, i) => swiftTypedArgument(a, params[i]?.type, indent)).join(', ')
-        return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}(${args})`
-      }
       // Native-service argument labels, for services whose Swift signature
       // labels its arguments while the shared TS surface is positional. Same
       // defect the argument-label rewrites fix, generalised past the one
@@ -4893,41 +4594,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
         }
       }
-      // Gap 4 v1: signal-style read on a store field — drop the parens.
-      // Shape: call(member(<field>, member(store, call(<hook>, []))), [])
-      // Detect this BEFORE the .set rewrite below (which would
-      // misinterpret `useFoo().store.X.set(v)` as a member.set call).
-      if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.property === 'store' &&
-        e.callee.object.object.kind === 'call' &&
-        e.callee.object.object.callee.kind === 'identifier' &&
-        e.callee.object.object.args.length === 0 &&
-        _storeHooks.has(e.callee.object.object.callee.name)
-      ) {
-        const storeId = _storeHooks.get(e.callee.object.object.callee.name)!
-        return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.callee.property)}`
-      }
-      // Gap 4 v1: write to a store field — `useFoo().store.X.set(v)`
-      // rewrites to `PyreonStore_foo.shared.X = v` (Swift @Observable
-      // properties are vars).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 'set' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.object.kind === 'member' &&
-        e.callee.object.object.property === 'store' &&
-        e.callee.object.object.object.kind === 'call' &&
-        e.callee.object.object.object.callee.kind === 'identifier' &&
-        _storeHooks.has(e.callee.object.object.object.callee.name)
-      ) {
-        const storeId = _storeHooks.get(e.callee.object.object.object.callee.name)!
-        const field = swiftObservableIdent(e.callee.object.property)
-        const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
-        return `PyreonStore_${storeId}.shared.${field} = ${value}`
-      }
       // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
       // `x = EXPR[list := <read of x>]` by IR-level param substitution,
       // producing the SAME idiomatic emit the hand-written
@@ -4941,32 +4607,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // so swiftc names the site loudly.
       if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
         const target = e.callee.object
-        let storeLhs: string | undefined
-        let isUpdateTarget = target.kind === 'identifier' && _signalNames.has(target.name)
-        if (
-          !isUpdateTarget &&
-          target.kind === 'member' &&
-          target.object.kind === 'member' &&
-          target.object.property === 'store' &&
-          target.object.object.kind === 'call' &&
-          target.object.object.callee.kind === 'identifier' &&
-          _storeHooks.has(target.object.object.callee.name)
-        ) {
-          isUpdateTarget = true
-          const storeId = _storeHooks.get(target.object.object.callee.name)!
-          storeLhs = `PyreonStore_${storeId}.shared.${swiftObservableIdent(target.property)}`
-        }
-        if (isUpdateTarget) {
+        if (target.kind === 'identifier' && _signalNames.has(target.name)) {
           const fn = e.args[0]!
           if (fn.kind === 'arrow' && fn.params.length === 1) {
             // The current-value read: for a local signal the bare name;
             // for a store field, the zero-arg read-call IR whose emit
             // re-enters the store-chain rewrite above.
             const read: ExprIR =
-              storeLhs === undefined ? target : { kind: 'call', callee: target, args: [] }
+              target
             const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
             if (substituted !== null) {
-              const lhs = storeLhs ?? emitSwiftExpr(target, indent)
+              const lhs = emitSwiftExpr(target, indent)
               return `${lhs} = ${emitSwiftExpr(substituted, indent)}`
             }
           }
@@ -5786,7 +5437,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     }
     case 'member': {
       // Reads rooted at a plugin declaration's binding (`flow.config.zoom`), then reads a plugin recognises by shape.
-      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(0))
+      const rooted = lowerPluginReceiver(e, 'swift', _pluginScope, () => swiftEmitContext(0), isLocalModuleReceiver)
       if (rooted !== undefined) return rooted
       const shaped = lowerPluginMemberRead(e, 'swift', () => swiftEmitContext(0))
       if (shaped !== undefined) return shaped
@@ -5848,39 +5499,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
         return `(${swiftIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}[${swiftStr(e.property)}] ?? ${dflt})`
-      }
-      // Gap 4 v1: rewrite the store-hook chain `<useFoo>().store.X`
-      // → `PyreonStore_foo.shared.X`.
-      //
-      // The chain parses bottom-up as:
-      //   member(.X, member(.store, call(identifier(useFoo), [])))
-      //
-      // Recognise the immediately-inner `.store` + call shape and
-      // hop two levels in one rewrite. This is the multi-step member-
-      // access chain rewriting infrastructure the audit identified as
-      // the missing PMTC primitive — once present, the same shape
-      // extends to createModel + defineFeature.
-      if (
-        e.object.kind === 'member' &&
-        e.object.property === 'store' &&
-        e.object.object.kind === 'call' &&
-        e.object.object.callee.kind === 'identifier' &&
-        e.object.object.args.length === 0 &&
-        _storeHooks.has(e.object.object.callee.name)
-      ) {
-        const storeId = _storeHooks.get(e.object.object.callee.name)!
-        return `PyreonStore_${storeId}.shared.${swiftObservableIdent(e.property)}`
-      }
-      // Gap 4 v2 follow-up: rewrite `<instance>.<field>` for top-level
-      // state-tree model instances. `const counter = model({...}).create()`
-      // produces a singleton PyreonModel_counter; user reads `counter.label`
-      // emit as `PyreonModel_counter.shared.label`.
-      if (
-        e.object.kind === 'identifier' &&
-        _modelInstances.has(e.object.name)
-      ) {
-        const modelId = _modelInstances.get(e.object.name)!
-        return `PyreonModel_${modelId}.shared.${swiftObservableIdent(e.property)}`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct struct properties in
@@ -6633,6 +6251,36 @@ function warnUnreadSwiftAttrs(e: Extract<ExprIR, { kind: 'jsx-element' }>): void
 }
 
 /** The facade element lowerings emit through — closes over this emitter's state. */
+function swiftMemberScope<T>(scope: MemberEmitScope, run: () => T): T {
+  const savedSignals = _signalNames
+  const savedFunctions = _functionNames
+  const savedInfer = _activeInferCtx
+  const savedExprInfer = _exprInferCtx
+  const savedParams = _helperParamTypes
+  const savedProps = _activePropsParamName
+  const savedReceiver = _activeMemberReceiver
+  const decls = [...scope.declarations]
+  const inference = buildInferenceCtx(decls, _structDefs, [], undefined, _helperReturns, _moduleConstTypes, [...(savedInfer.moduleItems?.values() ?? [])], scope.receiver)
+  _signalNames = new Set(decls.flatMap((d) => d.kind === 'signal' || d.kind === 'computed' ? [d.name] : []))
+  _functionNames = new Set(decls.flatMap((d) => d.kind === 'function' ? [d.name] : []))
+  _activeInferCtx = inference
+  _exprInferCtx = inference
+  _helperParamTypes = new Map([...savedParams, ...decls.flatMap((d) => d.kind === 'function' ? [[d.name, d.params.map((p) => p.type)] as const] : [])])
+  _activePropsParamName = scope.receiver
+  _activeMemberReceiver = scope.receiver
+  try {
+    return scope.observable ? withObservableMembers([..._signalNames, ..._functionNames], run) : run()
+  } finally {
+    _signalNames = savedSignals
+    _functionNames = savedFunctions
+    _activeInferCtx = savedInfer
+    _exprInferCtx = savedExprInfer
+    _helperParamTypes = savedParams
+    _activePropsParamName = savedProps
+    _activeMemberReceiver = savedReceiver
+  }
+}
+
 function swiftEmitContext(indent: number): SwiftEmitContext {
   return createSwiftEmitContext(
     {
@@ -6671,6 +6319,10 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       webView: swiftWebViewFacade,
       fileState: (key, init) => _moduleScope.state(key, init),
       layoutModifiersFor: (el, handled) => emitSwiftLayoutModifiers(el, handled),
+      memberScope: swiftMemberScope,
+      argument: swiftTypedArgument,
+      observableIdent: swiftObservableIdent,
+      functionDeclaration: (decl) => emitSwiftFunction(decl, 'internal', _activeInferCtx),
       statements: (stmts, at, locals) => {
         // The parameter is typed for inference, and the body's own `let`s are seeded on top; the
         // restore below drops both layers.
@@ -10969,6 +10621,9 @@ function escapeSwiftStringSegment(s: string): string {
  * `plugin-scope.ts`.
  */
 let _pluginScope: PluginScope = createPluginScope()
+function isLocalModuleReceiver(name: string): boolean {
+  return _activeInferCtx.locals.has(name) || _activeInferCtx.props?.has(name) === true || name === _activePropsParamName
+}
 /** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
 let _moduleScope: PluginScope = _pluginScope
 

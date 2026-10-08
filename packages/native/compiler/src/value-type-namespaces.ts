@@ -115,8 +115,6 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
   // The value side of the IR — everything but the type declarations.
   const valueRoots: unknown[] = [
     result.components,
-    result.stores,
-    result.models,
     result.helperFns,
     result.styledComponents,
     result.rocketstyleComponents,

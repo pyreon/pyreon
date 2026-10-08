@@ -19,13 +19,8 @@
 // check) keep the old emit and warn LOUDLY — the warning-free silence was
 // the actual bug.
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftTypecheck,
-} from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const app = (body: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
@@ -39,10 +34,9 @@ const warningsOf = (r: { warnings?: unknown[] }): string[] =>
 
 describe('signal seeded from sibling signal reads', () => {
   it('Swift: substitutes the sibling read with its construction-time seed', () => {
-    const r = transform(
-      app(`  const count = signal(5)\n  const derived = signal(count() * 2)`),
-      { target: 'swift' },
-    )
+    const r = transform(app(`  const count = signal(5)\n  const derived = signal(count() * 2)`), {
+      target: 'swift',
+    })
     expect(r.code).toContain('@State private var derived: Int = (5) * 2')
     expect(r.code).not.toMatch(/var derived[^=]*= count/)
     expect(warningsOf(r).filter((m) => m.includes('sibling'))).toHaveLength(0)
@@ -89,10 +83,9 @@ describe('signal seeded from sibling signal reads', () => {
   })
 
   it('Kotlin: emit is unchanged — remember lines share one function scope', () => {
-    const r = transform(
-      app(`  const count = signal(5)\n  const derived = signal(count() * 2)`),
-      { target: 'kotlin' },
-    )
+    const r = transform(app(`  const count = signal(5)\n  const derived = signal(count() * 2)`), {
+      target: 'kotlin',
+    })
     expect(r.code).toContain('var derived by remember { mutableStateOf(count * 2L) }')
     expect(warningsOf(r).filter((m) => m.includes('sibling'))).toHaveLength(0)
   })

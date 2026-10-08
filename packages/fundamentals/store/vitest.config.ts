@@ -3,6 +3,8 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 export default defineNodeConfig({
   category: 'fundamentals',
   environment: 'happy-dom',
+  // Native tooling is verified by the compiler's golden and real-toolchain suites.
+  coverageExclude: ['src/native-plugin.ts', 'src/native-plugin/**'],
   // The store's ENTIRE implementation lives in src/index.ts — without this
   // flag the default `src/**/index.ts` coverage exclude (meant for re-export
   // barrels) measured only registry/hydration/devtools (~42 statements) and

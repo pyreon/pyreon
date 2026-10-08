@@ -30,8 +30,6 @@ const MODULE_ARRAYS = [
   'enums',
   'structs',
   'moduleDecls',
-  'stores',
-  'models',
   'moduleItems',
   'helperFns',
   'styledComponents',

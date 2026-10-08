@@ -18,9 +18,12 @@
 // a compile-level assertion can only ever confirm the code agrees with itself).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { coolgridToStack, isCoolgridTag } from '../../../../ui-system/coolgrid/src/native-plugin/plugin'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import {
+  coolgridToStack,
+  isCoolgridTag,
+} from '../../../../ui-system/coolgrid/src/native-plugin/plugin'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
@@ -74,8 +77,12 @@ describe('coolgrid-native — Container / Row / Col', () => {
 import { Text } from '@pyreon/elements'
 export function App() { return (<Container><Row><Col size={8}><Text>Main</Text></Col><Col size={4}><Text>Side</Text></Col></Row></Container>) }`
     // Swift: iOS 17 grid-column primitive, span/12 of the container.
-    expect(swift(src).code).toContain('.containerRelativeFrame(.horizontal, count: 12, span: 8, spacing: 0)')
-    expect(swift(src).code).toContain('.containerRelativeFrame(.horizontal, count: 12, span: 4, spacing: 0)')
+    expect(swift(src).code).toContain(
+      '.containerRelativeFrame(.horizontal, count: 12, span: 8, spacing: 0)',
+    )
+    expect(swift(src).code).toContain(
+      '.containerRelativeFrame(.horizontal, count: 12, span: 4, spacing: 0)',
+    )
     // Compose: RowScope weight — an exact 8:4 division of the row.
     expect(kotlin(src).code).toContain('Modifier.weight(8f)')
     expect(kotlin(src).code).toContain('Modifier.weight(4f)')
@@ -113,27 +120,41 @@ export function App() { return (<Container><Row><Col size={{ xs: 12, md: 6 }}><T
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((row as any).tag).toBe('Stack')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((row as any).attrs.some((a: any) => a.name === 'direction' && a.value.value === 'row')).toBe(true)
+    expect(
+      (row as any).attrs.some((a: any) => a.name === 'direction' && a.value.value === 'row'),
+    ).toBe(true)
   })
 })
 
 describe('coolgrid-native — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the grid typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(GRID).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the grid compiles (real kotlinc)', () => {
-    const res = validateKotlin(kotlin(GRID).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the FRACTIONAL grid typechecks — containerRelativeFrame resolves (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(GRID_FRACTIONAL).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the FRACTIONAL grid compiles — RowScope weight resolves (real kotlinc)', () => {
-    const res = validateKotlin(kotlin(GRID_FRACTIONAL).code)
-    expect(res.ok, res.error).toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the grid typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(GRID).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the grid compiles (real kotlinc)',
+    () => {
+      const res = validateKotlin(kotlin(GRID).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the FRACTIONAL grid typechecks — containerRelativeFrame resolves (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(GRID_FRACTIONAL).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the FRACTIONAL grid compiles — RowScope weight resolves (real kotlinc)',
+    () => {
+      const res = validateKotlin(kotlin(GRID_FRACTIONAL).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
 })
 
 describe('Col test identifiers ride the SIZED node', () => {
@@ -158,6 +179,8 @@ export function App() {
 
   it('Swift: identifier and span already share one node', () => {
     const out = transform(SRC, { target: 'swift' }).code
-    expect(out).toContain('.accessibilityIdentifier("c3").containerRelativeFrame(.horizontal, count: 12, span: 3, spacing: 0)')
+    expect(out).toContain(
+      '.accessibilityIdentifier("c3").containerRelativeFrame(.horizontal, count: 12, span: 3, spacing: 0)',
+    )
   })
 })

@@ -19,8 +19,8 @@
 // it warns + drops.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isSwiftcAvailable, isKotlincAvailable, validateSwift } from '../validate'
 
 const wrap = (body: string) =>
   `import { Stack, Text } from '@pyreon/primitives'\ninterface User { id: string; name: string }\nfunction App() {\n${body}\n}`
@@ -133,7 +133,9 @@ describe('Phase 5 — native data/services hook emit', () => {
   return (<Stack><Text>hi</Text></Stack>)`),
       { target: 'swift' },
     )
-    expect(r.warnings.some((w) => w.includes('useWebSocket url argument must be a string literal'))).toBe(true)
+    expect(
+      r.warnings.some((w) => w.includes('useWebSocket url argument must be a string literal')),
+    ).toBe(true)
     expect(r.code).not.toContain('PyreonWebSocket()')
   })
 
@@ -270,7 +272,9 @@ export function TagsDemo() {
   return (<Stack><Text>hi</Text></Stack>)`),
       { target: 'swift' },
     )
-    expect(r.warnings.some((w) => w.includes('useFieldArray initial must be an array literal'))).toBe(true)
+    expect(
+      r.warnings.some((w) => w.includes('useFieldArray initial must be an array literal')),
+    ).toBe(true)
     expect(r.code).not.toContain('PyreonFieldArray')
   })
 

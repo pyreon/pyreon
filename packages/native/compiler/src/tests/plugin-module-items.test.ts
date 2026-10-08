@@ -428,8 +428,6 @@ describe('module-item registry, hash lane and shape', () => {
     enums: [],
     structs: [],
     moduleDecls: [],
-    stores: [],
-    models: [],
     moduleItems: [],
     helperFns: [],
     styledComponents: [],
@@ -467,6 +465,19 @@ describe('module-item registry, hash lane and shape', () => {
     expect(tag(withLane(undefined))).toBe(legacyKey([], [], [[item]]))
   })
 
+  for (const [lane, slot] of [['stores', 4], ['models', 5]] as const) {
+    it(`keeps the former ${lane} payload in its recorded hash position`, () => {
+      const payload = { binding: 'Example', initial: 3 }
+      const item = { plugin: '@acme/units', type: 'unit', name: 'Example', payload }
+      const compiler = createCompiler({ plugins: [unitsPlugin({ items: { unit: {
+        ...unitsPlugin().items!.unit!, legacyList: lane,
+      } } })] })
+      const legacy: unknown[] = Array.from({ length: 13 }, () => [])
+      legacy[slot] = [payload]
+      expect(withRegistries(compiler.registries, () => moduleTag(parsed({ moduleItems: [item] })))).toBe(fnv(JSON.stringify(legacy)))
+    })
+  }
+
   it('a module with no plugin items hashes as the empty 13-slot array', () => {
     const compiler = createCompiler({ plugins: [unitsPlugin()] })
     expect(withRegistries(compiler.registries, () => moduleTag(parsed({})))).toBe(legacyKey([], []))
@@ -476,7 +487,8 @@ describe('module-item registry, hash lane and shape', () => {
     const bad = (extra: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 1, ...extra })
     expect(bad({ topLevel: 'x' })).toThrow('topLevel must be a synchronous function')
     expect(bad({ items: { unit: { swift: () => [] } } })).toThrow('items.unit needs a swift and a kotlin function')
-    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], legacyList: 'nope' } } })).toThrow('legacyList must be "fieldMetas", "zodSchemas" or "features"')
+    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], legacyList: 'nope' } } })).toThrow('legacyList must be "models", "stores", "fieldMetas", "zodSchemas" or "features"')
+    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], after: 'missing' } } })).toThrow('items.unit.after must name a supported module emission slot')
     expect(bad({ exprs: { e: { kotlin: () => '' } } })).toThrow('exprs.e needs a swift and a kotlin function')
     expect(bad({ methodCalls: { convert: 1 } })).toThrow('methodCalls.convert must be a synchronous function')
     expect(bad({ refineStructs: 1 })).toThrow('refineStructs must be a synchronous function')

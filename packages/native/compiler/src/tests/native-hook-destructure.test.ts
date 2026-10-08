@@ -16,8 +16,8 @@
 // lowering can only make destructure work where single-binding already works.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isSwiftcAvailable, isKotlincAvailable, validateSwift } from '../validate'
 
 const fetchApp = (binding: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
@@ -29,9 +29,12 @@ function App() {
 
 describe('PR1 — hook-result destructure lowering', () => {
   it('Swift: useFetch destructure emits the single-binding container + field reads', () => {
-    const out = transform(fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`), {
-      target: 'swift',
-    }).code
+    const out = transform(
+      fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`),
+      {
+        target: 'swift',
+      },
+    ).code
     expect(out).toContain('@State private var __pyHook0 = PyreonFetch<Quote>()')
     expect(out).toContain('__pyHook0.isPending')
     expect(out).toContain('__pyHook0.error')
@@ -43,9 +46,12 @@ describe('PR1 — hook-result destructure lowering', () => {
   })
 
   it('Kotlin: useFetch destructure emits remember container + .value field reads', () => {
-    const out = transform(fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`), {
-      target: 'kotlin',
-    }).code
+    const out = transform(
+      fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`),
+      {
+        target: 'kotlin',
+      },
+    ).code
     expect(out).toContain('val __pyHook0 = remember { PyreonFetch<Quote>() }')
     expect(out).toContain('__pyHook0.isPending.value')
     expect(out).toContain('__pyHook0.error.value')
@@ -55,9 +61,12 @@ describe('PR1 — hook-result destructure lowering', () => {
 
   it('destructure emit is byte-identical to single-binding (modulo binding name)', () => {
     for (const target of ['swift', 'kotlin'] as const) {
-      const destr = transform(fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`), {
-        target,
-      }).code
+      const destr = transform(
+        fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`),
+        {
+          target,
+        },
+      ).code
       const single = transform(
         `import { Stack, Text } from '@pyreon/primitives'
 type Quote = { text: string }
@@ -132,17 +141,23 @@ function App() {
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: destructured useFetch typechecks via swiftc', () => {
-    const out = transform(fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`), {
-      target: 'swift',
-    }).code
+    const out = transform(
+      fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`),
+      {
+        target: 'swift',
+      },
+    ).code
     const res = validateSwift(out)
     expect(res.ok, res.error ?? '').toBe(true)
   })
 
   it.skipIf(!isKotlincAvailable())('Kotlin: destructured useFetch typechecks via kotlinc', () => {
-    const out = transform(fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`), {
-      target: 'kotlin',
-    }).code
+    const out = transform(
+      fetchApp(`const { data, isPending, error } = useFetch<Quote>('https://api/q')`),
+      {
+        target: 'kotlin',
+      },
+    ).code
     const res = validateKotlin(out)
     expect(res.ok, res.error ?? '').toBe(true)
   })

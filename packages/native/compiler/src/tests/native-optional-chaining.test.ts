@@ -25,8 +25,8 @@
 //  - Swift: `swiftc -parse` (the harness rung — parse-only) + emit-shape.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isSwiftcAvailable, isKotlincAvailable, validateSwift } from '../validate'
 
 const app = (body: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
