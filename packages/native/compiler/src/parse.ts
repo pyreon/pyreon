@@ -1,3 +1,4 @@
+import { refinePureStateNumbers } from './pure-state'
 // Parse Pyreon JSX source → ComponentIR[] by walking the oxc AST.
 //
 // Scope is intentionally minimal for Phase 0: only the shapes the seven
@@ -639,6 +640,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
+  for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
+  for (const component of components) refinePureStateNumbers(component, componentCtx(component))
 
   // Items plugins synthesized outside a declaration, then each plugin's last pass over the whole list.
   moduleItems.push(...ctx.lateModuleItems)

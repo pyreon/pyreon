@@ -1651,6 +1651,16 @@
       "bytes": 393,
       "warnings": 1
     },
+    "golden-fixture:counter-number-policy.tsx|swift": {
+      "sha": "a88184926db1e46b6a3440bce95fc1ca8845e9a322ed46725d5d69f76cdeaed5",
+      "bytes": 818,
+      "warnings": 0
+    },
+    "golden-fixture:counter-number-policy.tsx|kotlin": {
+      "sha": "7fe1f5424be2d875699b321d7051ff96f1035e0709bf9929b05c708146f5236e",
+      "bytes": 931,
+      "warnings": 0
+    },
     "golden-fixture:dnd-01.tsx|swift": {
       "sha": "dcf746be9632779e6b84e4eb9fd27f440279d709b0e956035704fa7d4404cfbe",
       "bytes": 454,

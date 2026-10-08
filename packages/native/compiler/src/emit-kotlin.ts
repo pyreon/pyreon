@@ -98,7 +98,7 @@ import {
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
-import { clampExpr, pureStateBindings } from './pure-state'
+import { clampExpr, pureStateBindings, kotlinCounterLiteral } from './pure-state'
 import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
 import { KOTLIN_INT } from './spelling'
@@ -1919,7 +1919,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // the mutators rewritten at their use sites.
   if (d.kind === 'pure-state') {
     // A counter is a TS integer — Long on Kotlin (see KOTLIN_INT).
-    const init = typeof d.initial === 'number' && Number.isInteger(d.initial) ? `${d.initial}L` : String(d.initial)
+    const init = kotlinCounterLiteral(d.initial, d.floating)
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${init}) }`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
@@ -3641,8 +3641,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const info = _pureStateKotlin.get(binding)!
         const field = kotlinIdent(binding)
         const m = e.callee.property
-        const arg = e.args.length > 0 ? emitKotlinExpr(e.args[0]!, indent) : undefined
-        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf', 'L')
+        const arg = e.args.length > 0 ? kotlinTypedArgument(e.args[0]!, info.floating === true ? { kind: 'number', float: true } : undefined, indent) : undefined
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf', info.floating === true ? '.0' : 'L')
         if (info.hook === 'useToggle') {
           if (m === 'value') return field
           if (m === 'toggle') return `${field} = !${field}`
@@ -3650,10 +3650,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (m === 'setFalse') return `${field} = false`
         } else {
           if (m === 'count') return field
-          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1L'}`)}`
-          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1L'}`)}`
-          if (m === 'set') return `${field} = ${clamp(arg ?? '0L')}`
-          if (m === 'reset') return `${field} = ${clamp(((n: number | boolean) => (typeof n === 'number' && Number.isInteger(n) ? `${n}L` : String(n)))(info.initial))}`
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? (info.floating === true ? '1.0' : '1L')}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? (info.floating === true ? '1.0' : '1L')}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? (info.floating === true ? '0.0' : '0L'))}`
+          if (m === 'reset') return `${field} = ${clamp(kotlinCounterLiteral(info.initial, info.floating))}`
         }
       }
       // `form.isValid()` / `form.isSubmitting()` — the WEB API is an accessor,

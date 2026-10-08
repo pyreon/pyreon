@@ -2961,7 +2961,7 @@ function emitSwiftDecl(
   // rewritten at their use sites (see the call case), so there is no runtime
   // and no wrapper type.
   if (d.kind === 'pure-state') {
-    const t = d.hook === 'useToggle' ? 'Bool' : 'Int'
+    const t = d.hook === 'useToggle' ? 'Bool' : d.floating === true ? 'Double' : 'Int'
     return `@State private var ${swiftIdent(d.name)}: ${t} = ${String(d.initial)}`
   }
   // FFI: `const bt = useNativeModule<T>('Bluetooth')` → an @State
@@ -4790,7 +4790,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const info = _pureStateSwift.get(binding)!
         const field = swiftIdent(binding)
         const m = e.callee.property
-        const arg = e.args.length > 0 ? emitSwiftExpr(e.args[0]!, indent) : undefined
+        const arg = e.args.length > 0 ? swiftTypedArgument(e.args[0]!, info.floating === true ? { kind: 'number', float: true } : undefined, indent) : undefined
         const clamp = (x: string): string => clampExpr(x, info.bounds, 'min', 'max')
         if (info.hook === 'useToggle') {
           if (m === 'value') return field

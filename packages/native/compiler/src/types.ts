@@ -308,6 +308,8 @@ export type DeclIR =
       kind: 'pure-state'
       name: string
       hook: 'useToggle' | 'useCounter'
+      /** Fractional seeds, bounds or mutations require Double storage. */
+      floating?: boolean | undefined
       /** The state field's initial value. */
       initial: boolean | number
       /** useCounter's literal min/max, when given. */
