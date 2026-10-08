@@ -14,43 +14,15 @@ import {
   dynamicKeyText,
   unwrapTypeLayers,
 } from './plugin-ast'
-import {
-  findPropsTypeResolver,
-  findService,
-  functionIrName,
-  findUnloweredModule,
-  hookClaimsSource,
-  isElementLoweringTag,
-  pluginExprReduce,
-} from './registry-lookup'
+import { findPropsTypeResolver, findService, functionIrName, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
 import type { UnloweredModule } from './unlowered-modules'
-import {
-  stampExtDecl,
-  type AstNode,
-  type DeclCallSite,
-  type DeclVerdict,
-  type ParseContext,
-} from './call-lowering'
-import {
-  stampExtExpr,
-  stampModuleItem,
-  type CallExprSite,
-  type ExtItemSpec,
-  type MethodCallSite,
-  type ModuleParseContext,
-} from './module-items'
+import { stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
+import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
 import type { JsxRewriteContext, ModuleScan } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
-  typeIsOptional,
-  buildInferenceCtx,
-  buildModuleConstTypes,
-  inferReturnType,
-  inferType,
-  moduleConstType,
-  type InferenceCtx,
-} from './infer-type'
+  typeIsOptional, buildInferenceCtx, buildModuleConstTypes, inferReturnType, inferType, moduleConstType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
 import { canonicalizeHookBindings } from './hook-binding'
 import type {
@@ -87,7 +59,8 @@ import {
   resolveThemeToken,
   type ThemeTable,
 } from './theme-native'
-import { typeShapeKey, lowerRouteParams } from './expr-utils'
+import {
+  typeShapeKey, lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -240,6 +213,7 @@ interface ParseCtx {
   lateModuleItems: ExtModuleItem[]
 }
 
+
 /**
  * Nesting depth while parsing an object literal's field VALUES. Used only to
  * keep the empty-`{}` diagnostic on the shape it describes — a `{}` that
@@ -362,9 +336,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
-  ctx.warnings.push(
-    ...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource),
-  )
+  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
@@ -382,10 +354,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue
     for (const declarator of (declaration.declarations as AnyNode[] | undefined) ?? []) {
       if (declarator.id?.type === 'Identifier' && declarator.init) {
-        ctx.moduleStaticExprs.set(
-          declarator.id.name as string,
-          unwrapTypeLayers(declarator.init as AnyNode),
-        )
+        ctx.moduleStaticExprs.set(declarator.id.name as string, unwrapTypeLayers(declarator.init as AnyNode))
       }
     }
   }
@@ -583,15 +552,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     buildModuleConstTypes(moduleDecls, structs, helperReturnSeed)
   let moduleConsts = moduleConstsNow()
   const componentCtx = (c: ComponentIR): InferenceCtx =>
-    buildInferenceCtx(
-      c.decls,
-      stores,
-      structs,
-      c.props,
-      c.propsParamName,
-      helperReturnSeed,
-      moduleConsts,
-    )
+    buildInferenceCtx(c.decls, stores, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts)
 
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
@@ -643,8 +604,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // before refineHelperReturns, because a helper's return type is inferred over
   // its (possibly widened) parameter; a post-parse `transformIR` pass would see
   // the return already inferred over the Int one.
-  for (const { refine } of activeRegistries().parseRefinements)
-    refine({ components, helperFns: ctx.helperFns })
+  for (const { refine } of activeRegistries().parseRefinements) refine({ components, helperFns: ctx.helperFns })
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
   // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
@@ -697,9 +657,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
 function isThemeDefinitionNode(node: AnyNode): boolean {
   const decl = node?.type === 'ExportNamedDeclaration' ? node.declaration : node
   if (!decl || decl.type !== 'VariableDeclaration') return false
-  return ((decl.declarations as AnyNode[]) ?? []).some(
-    (d) => parseThemeDefinition(d?.init) !== null,
-  )
+  return ((decl.declarations as AnyNode[]) ?? []).some((d) => parseThemeDefinition(d?.init) !== null)
 }
 
 function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
@@ -760,10 +718,7 @@ function tryRocketstyleDefnFromTopLevel(
 function tryAttrsDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): AttrsComponentIR | null {
   let varDecl: AnyNode | null = null
   if (node.type === 'VariableDeclaration') varDecl = node
-  else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
+  else if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
     varDecl = node.declaration
   }
   if (!varDecl || varDecl.kind !== 'const') return null
@@ -890,10 +845,8 @@ function cssTemplateToStyleObject(
     }
     if (colonPart === -1) continue
     const propRaw = (
-      decl
-        .slice(0, colonPart)
-        .map((p) => (p.t === 'text' ? p.v : ''))
-        .join('') + (decl[colonPart] as { t: 'text'; v: string }).v.slice(0, colonAt)
+      decl.slice(0, colonPart).map((p) => (p.t === 'text' ? p.v : '')).join('') +
+      (decl[colonPart] as { t: 'text'; v: string }).v.slice(0, colonAt)
     ).trim()
     if (!propRaw || !/^[-a-zA-Z][-a-zA-Z0-9]*$/.test(propRaw)) continue
     const name = kebabToCamel(propRaw)
@@ -907,10 +860,7 @@ function cssTemplateToStyleObject(
     const textBlank = valueParts.every((p) => p.t !== 'text' || p.v.trim() === '')
 
     if (exprs.length === 0) {
-      const valueRaw = valueParts
-        .map((p) => (p.t === 'text' ? p.v : ''))
-        .join('')
-        .trim()
+      const valueRaw = valueParts.map((p) => (p.t === 'text' ? p.v : '')).join('').trim()
       if (!valueRaw) continue
       const num = /^[+-]?\d+(?:\.\d+)?$/.test(valueRaw) ? Number(valueRaw) : null
       fields.push({ name, value: { kind: 'literal', value: num !== null ? num : valueRaw } })
@@ -981,7 +931,10 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
 function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[] | null {
   // Walk through `ExportNamedDeclaration` → `VariableDeclaration`.
   let varDecl: AnyNode | null = null
-  if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
     varDecl = node.declaration
   } else if (node.type === 'VariableDeclaration') {
     varDecl = node
@@ -1109,9 +1062,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // which then told the user to "consume on native via the `<WebView>` bridge
     // subpath", i.e. to do the thing they had just done. A warning that fires
     // on its own recommended fix trains people to ignore it.
-    const subpath = src.startsWith('@pyreon/')
-      ? src.slice('@pyreon/'.length).split('/')[1]
-      : undefined
+    const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
     const isWebviewBridgeImport = subpath === 'webview'
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
@@ -1128,7 +1079,9 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
       // generated from the manifest so it cannot drift from the tier table.
       const why = WEB_ONLY_PACKAGES.get(pkg)
       const reason =
-        why !== undefined && why !== '' ? why : 'it renders via the DOM / a browser-only library'
+        why !== undefined && why !== ''
+          ? why
+          : 'it renders via the DOM / a browser-only library'
       // Native-equivalent FIRST, WebView second: the escape hatch is the
       // right answer for a genuine rendering engine, but it is the WRONG
       // first suggestion for most of this set, and it used to be the only
@@ -1144,6 +1097,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     }
   }
 }
+
 
 /**
  * Push the shared named warning for a computed non-literal key in a config
@@ -1168,8 +1122,7 @@ function collectTypedComponentAliases(body: AnyNode[], ctx: ParseCtx): void {
     for (const d of topLevelDeclarators(node)) {
       const name = d.id?.name as string | undefined
       const target = instantiatedComponent(d.init as AnyNode | undefined, ctx)
-      if (typeof name === 'string' && target !== undefined)
-        ctx.typedComponentAliases.set(name, target)
+      if (typeof name === 'string' && target !== undefined) ctx.typedComponentAliases.set(name, target)
     }
   }
 }
@@ -1211,15 +1164,12 @@ const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
   'useParams',
   // Pure state — no platform dependency, so no runtime; see the
   // `pure-state` DeclIR.
-  'useToggle',
-  'useCounter',
+  'useToggle', 'useCounter',
   'useSizeClass',
   'useDebouncedValue',
-  'useDebouncedCallback',
-  'useThrottledCallback',
+  'useDebouncedCallback', 'useThrottledCallback',
   // Pure timing over a callback — lowered at STATEMENT position.
-  'useInterval',
-  'useTimeout',
+  'useInterval', 'useTimeout',
 ])
 
 // Derived once per registry (keyed on the registry itself, so the entry dies with
@@ -1270,10 +1220,7 @@ export function nativeLoweredHooks(
 const UNLOWERED_CONTROL_FLOW: ReadonlyMap<string, string> = new Map([
   ['Switch', 'use nested `<Show>` / a ternary — an if/else chain lowers, a Switch view does not'],
   ['Match', 'only meaningful inside `<Switch>`, which does not lower'],
-  [
-    'Dynamic',
-    'a runtime-chosen component has no SwiftUI/Compose analogue — branch explicitly with `<Show>`',
-  ],
+  ['Dynamic', 'a runtime-chosen component has no SwiftUI/Compose analogue — branch explicitly with `<Show>`'],
   ['Portal', 'native uses sheets/dialogs, a different model — use `<Modal>`'],
   ['Index', 'use `<For each={…} by={…}>`, which lowers to ForEach/LazyColumn'],
 ])
@@ -1388,9 +1335,7 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       : src
     const isWebviewBridge =
       src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
-    const entry =
-      findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ??
-      findUnloweredModule(srcRoot, UNLOWERED_PYREON_MODULES)
+    const entry = findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(srcRoot, UNLOWERED_PYREON_MODULES)
     if (entry === undefined || isWebviewBridge) continue
     // A type-only import (`import type { X }` or the per-specifier `import {
     // type X }`) is TS-erased before this code ever runs — it names no
@@ -1412,8 +1357,7 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       if (entry.supported?.has(imported)) continue
       // An import a plugin's scan marked as consumed by lowering (`createHttp({ schema })`'s schema
       // name, a stream opener used only as a `useStream` source): nothing of it reaches the emit.
-      if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`))
-        continue
+      if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`)) continue
       // A component the emitters DROP with their own named warning at the use site
       // (a web-only one): nothing reaches Swift/Kotlin, so "reproduced verbatim …
       // the native build fails" would be false.
@@ -1454,10 +1398,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       const advSrcRoot = src.startsWith('@pyreon/')
         ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
         : src
-      const moduleAdvice = (
-        findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ??
-        findUnloweredModule(advSrcRoot, UNLOWERED_PYREON_MODULES)
-      )?.advice
+      const moduleAdvice = (findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(advSrcRoot, UNLOWERED_PYREON_MODULES))?.advice
       ctx.warnings.push(
         `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
           moduleAdvice
@@ -1495,11 +1436,7 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
-      if (
-        typeof local === 'string' &&
-        typeof imported === 'string' &&
-        (ALIAS_TAG_NAMES.has(imported) || isElementLoweringTag(imported))
-      ) {
+      if (typeof local === 'string' && typeof imported === 'string' && (ALIAS_TAG_NAMES.has(imported) || isElementLoweringTag(imported))) {
         map.set(local, { source: pkg, imported })
       }
     }
@@ -1564,7 +1501,8 @@ function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
     const varDecl =
       node.type === 'VariableDeclaration'
         ? node
-        : node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+        : node.type === 'ExportNamedDeclaration' &&
+            node.declaration?.type === 'VariableDeclaration'
           ? node.declaration
           : null
     if (!varDecl || varDecl.kind !== 'const') continue
@@ -1581,7 +1519,10 @@ function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
   }
 }
 
-function tryStoreDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StoreDefnIR | null {
+function tryStoreDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): StoreDefnIR | null {
   // Walk through ExportNamedDeclaration to the VariableDeclaration.
   let varDecl: AnyNode | null = null
   if (node.type === 'VariableDeclaration') {
@@ -1630,7 +1571,10 @@ function tryStoreDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StoreDefnIR | n
 
   // Arg 2: arrow function with a block body returning an object literal.
   const setup = args[1]
-  if (setup?.type !== 'ArrowFunctionExpression' && setup?.type !== 'FunctionExpression') {
+  if (
+    setup?.type !== 'ArrowFunctionExpression' &&
+    setup?.type !== 'FunctionExpression'
+  ) {
     ctx.warnings.push(
       `defineStore \`${hookName}\`: setup argument must be a function expression. Falling back to silent-drop.`,
     )
@@ -1680,7 +1624,10 @@ function tryStoreDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StoreDefnIR | n
           const calleeName = declInit.callee?.name as string | undefined
           if (calleeName === 'computed') {
             const arg = (declInit.arguments as AnyNode[] | undefined)?.[0]
-            if (arg?.type !== 'ArrowFunctionExpression' || arg.body?.type === 'BlockStatement') {
+            if (
+              arg?.type !== 'ArrowFunctionExpression' ||
+              arg.body?.type === 'BlockStatement'
+            ) {
               // Block-body computeds in stores are a v3 follow-up —
               // bail LOUDLY (whole-store) rather than drop one decl.
               ctx.warnings.push(
@@ -1742,7 +1689,9 @@ function tryStoreDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StoreDefnIR | n
     unwrapped = unwrapped.expression as AnyNode
   }
   if (unwrapped?.type !== 'ObjectExpression') {
-    ctx.warnings.push(`defineStore \`${hookName}\`: setup must return an object literal.`)
+    ctx.warnings.push(
+      `defineStore \`${hookName}\`: setup must return an object literal.`,
+    )
     return null
   }
 
@@ -1802,10 +1751,16 @@ function tryStoreDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StoreDefnIR | n
  * Bails (returns null + warning) when the chain doesn't match the
  * v2 shape — silent-drop falls through to the tier2 diagnostic.
  */
-function tryModelDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): ModelDefnIR | null {
+function tryModelDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): ModelDefnIR | null {
   // ExportNamedDeclaration → VariableDeclaration → VariableDeclarator
   let varDecl: AnyNode | null = null
-  if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
     varDecl = node.declaration
   } else if (node.type === 'VariableDeclaration') {
     varDecl = node
@@ -1913,7 +1868,11 @@ function tryModelDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): ModelDefnIR | n
       continue
     }
     const v = eVal.value
-    if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+    if (
+      typeof v !== 'string' &&
+      typeof v !== 'number' &&
+      typeof v !== 'boolean'
+    ) {
       ctx.warnings.push(
         `model declaration \`${instanceName}\`: state field \`${fieldName}\` is not a string / number / boolean literal. Silently dropping.`,
       )
@@ -1942,7 +1901,10 @@ function tryModelDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): ModelDefnIR | n
   const methods: NonNullable<ModelDefnIR['methods']> = []
   for (const block of chainBlocks) {
     const factory = unwrapTypeLayers(block.arg)
-    if (factory?.type !== 'ArrowFunctionExpression' && factory?.type !== 'FunctionExpression') {
+    if (
+      factory?.type !== 'ArrowFunctionExpression' &&
+      factory?.type !== 'FunctionExpression'
+    ) {
       ctx.warnings.push(
         `model declaration \`${instanceName}\`: \`.${block.kind}()\` argument must be a \`(self) => ({ … })\` factory. Falling back to silent-drop.`,
       )
@@ -1972,17 +1934,16 @@ function tryModelDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): ModelDefnIR | n
     for (const member of (factoryBody.properties as AnyNode[] | undefined) ?? []) {
       if (member?.type !== 'Property' && member?.type !== 'ObjectProperty') continue
       if (hasDynamicKey(member)) {
-        warnDynamicKey(
-          member,
-          `model declaration \`${instanceName}\`: \`.${block.kind}()\` member`,
-          ctx,
-        )
+        warnDynamicKey(member, `model declaration \`${instanceName}\`: \`.${block.kind}()\` member`, ctx)
         return null
       }
       const memberName = staticPropKey(member)
       if (!memberName) continue
       const mVal = unwrapTypeLayers(member.value as AnyNode | undefined)
-      if (mVal?.type !== 'ArrowFunctionExpression' && mVal?.type !== 'FunctionExpression') {
+      if (
+        mVal?.type !== 'ArrowFunctionExpression' &&
+        mVal?.type !== 'FunctionExpression'
+      ) {
         ctx.warnings.push(
           `model declaration \`${instanceName}\`: \`.${block.kind}()\` member \`${memberName}\` must be a function. Falling back to silent-drop.`,
         )
@@ -2037,7 +1998,9 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (typeof initial.value === 'number') {
       // A non-integer literal (`12.5`) is fractional → Double; an
       // integer literal stays Int (PMTC's ergonomic default).
-      return Number.isInteger(initial.value) ? { kind: 'number' } : { kind: 'number', float: true }
+      return Number.isInteger(initial.value)
+        ? { kind: 'number' }
+        : { kind: 'number', float: true }
     }
     if (typeof initial.value === 'string') return { kind: 'string' }
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
@@ -2106,11 +2069,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
           const flagInts = (e: ExprIR): void => {
             if (e.kind === 'array') {
               for (const x of e.elements) flagInts(x)
-            } else if (
-              e.kind === 'literal' &&
-              typeof e.value === 'number' &&
-              Number.isInteger(e.value)
-            ) {
+            } else if (e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value)) {
               e.float = true
             }
           }
@@ -2137,8 +2096,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
       return { kind: 'set', element: initial.elementType }
     }
     // `new Set(seedArr)` — recover the element type from the seed array.
-    const seedT =
-      initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
+    const seedT = initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
     if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
     return { kind: 'unknown' }
   }
@@ -2172,7 +2130,9 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
  * supported; array-field / nested objects stay `Any` (unchanged, no
  * regression) pending the Kotlin emit-ordering follow-up.
  */
-function inferFlatObjectType(obj: Extract<ExprIR, { kind: 'object' }>): TypeIR | null {
+function inferFlatObjectType(
+  obj: Extract<ExprIR, { kind: 'object' }>,
+): TypeIR | null {
   if ((obj.spreads?.length ?? 0) > 0 || obj.fields.length === 0) return null
   const fields: { name: string; type: TypeIR }[] = []
   for (const f of obj.fields) {
@@ -2540,8 +2500,7 @@ function seedSignalTypeFromNumberBinding(
   if (e.kind === 'unary' && (e.op === '-' || e.op === '+')) e = e.argument
   if (e.kind !== 'identifier') return
   const t = inferType(e, ctx)
-  if (t.kind === 'number')
-    d.type = t.float === true ? { kind: 'number', float: true } : { kind: 'number' }
+  if (t.kind === 'number') d.type = t.float === true ? { kind: 'number', float: true } : { kind: 'number' }
 }
 
 /**
@@ -2568,10 +2527,7 @@ function refineModuleDeclFloats(
 }
 
 /** Flip a `number` / `number[]` annotation to Double on fractional evidence in its initializer. */
-function refineNumberBindingFromEvidence(
-  d: { type: TypeIR; initial: ExprIR },
-  ctx: InferenceCtx,
-): void {
+function refineNumberBindingFromEvidence(d: { type: TypeIR; initial: ExprIR }, ctx: InferenceCtx): void {
   // Scalar `signal<number>(12.5)` / `const x: number = RATE * 2`.
   if (d.type.kind === 'number' && d.type.float !== true && isFractionalEvidence(d.initial, ctx)) {
     d.type = { kind: 'number', float: true }
@@ -3039,36 +2995,22 @@ function liftedStructKey(t: Extract<TypeIR, { kind: 'object' }>): string {
  * declared struct by its field names, both resolve to it. Nested inline objects
  * are lifted the same way a declared interface's are.
  */
-function collectLiftedPropsStructs(
-  body: AnyNode[],
-  declared: Set<string>,
-  ctx: ParseCtx,
-): StructIR[] {
+function collectLiftedPropsStructs(body: AnyNode[], declared: Set<string>, ctx: ParseCtx): StructIR[] {
   const out: StructIR[] = []
   const propsTypes = activeRegistries().propsTypes
   if (propsTypes.size === 0) return out
   for (const top of body) {
-    const node =
-      top?.type === 'ExportNamedDeclaration' || top?.type === 'ExportDefaultDeclaration'
-        ? top.declaration
-        : top
+    const node = top?.type === 'ExportNamedDeclaration' || top?.type === 'ExportDefaultDeclaration' ? top.declaration : top
     const fns: { name: string; fn: AnyNode }[] = []
-    if (node?.type === 'FunctionDeclaration' && node.id?.name)
-      fns.push({ name: node.id.name as string, fn: node })
+    if (node?.type === 'FunctionDeclaration' && node.id?.name) fns.push({ name: node.id.name as string, fn: node })
     if (node?.type === 'VariableDeclaration') {
       for (const d of (node.declarations as AnyNode[]) ?? []) {
         const init = d?.init
-        if (
-          d?.id?.type === 'Identifier' &&
-          (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression')
-        )
-          fns.push({ name: d.id.name as string, fn: init })
+        if (d?.id?.type === 'Identifier' && (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression')) fns.push({ name: d.id.name as string, fn: init })
       }
     }
     for (const { name, fn } of fns) {
-      const annot = (fn.params as AnyNode[] | undefined)?.[0]?.typeAnnotation?.typeAnnotation as
-        | AnyNode
-        | undefined
+      const annot = (fn.params as AnyNode[] | undefined)?.[0]?.typeAnnotation?.typeAnnotation as AnyNode | undefined
       if (!annot) continue
       const t = parseTypeAnnotation(annot, ctx)
       const lift = t.kind === 'typeRef' ? propsTypes.get(t.name)?.resolver.liftInlineArg : undefined
@@ -3134,7 +3076,11 @@ function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): Expr
 }
 
 /** Declare a struct's lifted inline object types ahead of it, and report collisions. */
-function liftInlineObjects(st: StructIR, declared: ReadonlySet<string>, ctx: ParseCtx): StructIR[] {
+function liftInlineObjects(
+  st: StructIR,
+  declared: ReadonlySet<string>,
+  ctx: ParseCtx,
+): StructIR[] {
   const { struct, lifted, warnings } = liftInlineObjectStructs(st, declared)
   ctx.warnings.push(...warnings)
   return [...lifted, struct]
@@ -3360,10 +3306,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     if (stmt.type === 'VariableDeclaration') {
       for (const declarator of stmt.declarations as AnyNode[]) {
         if (stmt.kind === 'const' && declarator.id?.type === 'Identifier' && declarator.init) {
-          ctx.staticExprs?.set(
-            declarator.id.name as string,
-            unwrapTypeLayers(declarator.init as AnyNode),
-          )
+          ctx.staticExprs?.set(declarator.id.name as string, unwrapTypeLayers(declarator.init as AnyNode))
         }
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
         if (decl) decls.push(decl)
@@ -3442,7 +3385,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           ctx.warnings.push(
             `Component ${name}: useHotkey() needs a statically-known shortcut — an inline string, or a module-scope \`const\` holding one. A computed one cannot be baked into a native key binding, so the hotkey is DROPPED on iOS/Android.`,
           )
-        } else if (cb?.type !== 'ArrowFunctionExpression' && cb?.type !== 'FunctionExpression') {
+        } else if (
+          cb?.type !== 'ArrowFunctionExpression' &&
+          cb?.type !== 'FunctionExpression'
+        ) {
           ctx.warnings.push(
             `Component ${name}: useHotkey('${shortcutValue}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
           )
@@ -3481,7 +3427,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         const mode = call.callee.name === 'useInterval' ? 'interval' : 'timeout'
         const cb = call.arguments?.[0] as AnyNode | undefined
         const delayNode = unwrapTypeLayers(call.arguments?.[1] as AnyNode | undefined)
-        if (cb?.type !== 'ArrowFunctionExpression' && cb?.type !== 'FunctionExpression') {
+        if (
+          cb?.type !== 'ArrowFunctionExpression' &&
+          cb?.type !== 'FunctionExpression'
+        ) {
           ctx.warnings.push(
             `Component ${name}: ${call.callee.name}() needs an inline callback to lower natively — this one is not, so it was DROPPED and will not run on device.`,
           )
@@ -3515,7 +3464,8 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // and is silently dropped, exactly as before this walker existed:
         // warning on it was an over-eager regression (rx-full's 20 `void`
         // refs). Only genuine calls warn.
-        const callee = call.callee?.type === 'Identifier' ? `${call.callee.name}(...)` : 'a call'
+        const callee =
+          call.callee?.type === 'Identifier' ? `${call.callee.name}(...)` : 'a call'
         // DEFERRED like the control-flow arm below: a pure-logic HELPER's body
         // legitimately contains bare calls (`out.push(x)`), and the helper
         // carve-out re-parses the whole body via tryFunctionDecl — warning
@@ -3524,7 +3474,9 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         droppedStmtWarnings.push(
           `Component ${name}: a bare component-body statement (${callee}) is not lowered natively and was DROPPED — only declarations, onMount(fn), and the return JSX run on native. Move side effects into onMount or a handler.`,
         )
-      } else if (call?.type === 'AssignmentExpression' || call?.type === 'UpdateExpression') {
+      } else if (
+        call?.type === 'AssignmentExpression' ||        call?.type === 'UpdateExpression'
+      ) {
         // A top-level REASSIGNMENT (`a = 5`, `a += 2`, `a++`) has a real
         // mutating effect, but the component body emits only declarations +
         // the return JSX — components run ONCE, and threading a setup-time
@@ -3653,8 +3605,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const hasNonViewReturnAnnotation = annoText !== '' && !VIEW_RETURN_TYPES.test(annoText.trim())
   const returnsNothing =
     !hasNonViewReturnAnnotation &&
-    returnExpr.kind === 'literal' &&
-    (returnExpr.value === null || returnExpr.value === undefined)
+    returnExpr.kind === 'literal' && (returnExpr.value === null || returnExpr.value === undefined)
   // camelCase is the third condition, and it is what keeps a RENDER-PROP
   // component out of the helper path. Such a component takes `children` and
   // returns `props.children(data)` — a value, not JSX, and not nullish — so the
@@ -3670,18 +3621,14 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const first = name.charAt(0)
   const isCamelCase = first === first.toLowerCase() && first !== first.toUpperCase()
   const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
-  if (
-    (hasValueParams || hasNonViewReturnAnnotation) &&
-    isCamelCase &&
-    !returnContainsJsx(returnExpr) &&
-    !returnsNothing
-  ) {
+  if ((hasValueParams || hasNonViewReturnAnnotation) && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep
     // it a NAMED warning (the #2090 behavior for the shape helper-emission
     // doesn't yet cover).
-    const isGeneric = ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    const isGeneric =
+      ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
     if (isGeneric) {
       ctx.warnings.push(
         `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
@@ -3911,8 +3858,7 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
     if (resolved !== undefined) return resolved
   }
   if (t.kind === 'typeRef' && t.args.length === 0) {
-    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || activeRegistries().runtimeTypes.has(t.name))
-      return t
+    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || activeRegistries().runtimeTypes.has(t.name)) return t
     // A locally-declared string-literal union lowers to a native enum, so a
     // parameter typed with it emits verbatim and compiles — the same reason
     // the native primitives above are exempt. Warning on it told the author to
@@ -4033,14 +3979,14 @@ function bodyReferencesPropsParam(body: AnyNode[], paramName: string): boolean {
   return false
 }
 
+
 /** The facade a plugin's `CallRecognizer` reads the call through; each member delegates to parser state. */
 function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseContext {
   const facade: ParseContext = {
     declName,
     stringLiteralArg(index) {
       const arg = (call.arguments as AnyNode[] | undefined)?.[index]
-      return (arg?.type === 'Literal' || arg?.type === 'StringLiteral') &&
-        typeof arg.value === 'string'
+      return (arg?.type === 'Literal' || arg?.type === 'StringLiteral') && typeof arg.value === 'string'
         ? arg.value
         : undefined
     },
@@ -4059,8 +4005,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
       while (expr?.type === 'Identifier' && !seen.has(expr.name as string)) {
         const bindingName = expr.name as string
         seen.add(bindingName)
-        const resolved =
-          ctx.staticExprs?.get(bindingName) ?? ctx.moduleStaticExprs?.get(bindingName)
+        const resolved = ctx.staticExprs?.get(bindingName) ?? ctx.moduleStaticExprs?.get(bindingName)
         if (!resolved) break
         expr = resolved
       }
@@ -4108,11 +4053,9 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     expr: (node) => parseExpr(node as AnyNode, ctx),
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     typeArgs: (node) =>
-      (
-        ((node as AnyNode).typeArguments?.params ??
-          (node as AnyNode).typeParameters?.params ??
-          []) as AnyNode[]
-      ).map((t) => parseTypeAnnotation(t, ctx)),
+      (((node as AnyNode).typeArguments?.params ?? (node as AnyNode).typeParameters?.params ?? []) as AnyNode[]).map((t) =>
+        parseTypeAnnotation(t, ctx),
+      ),
     loc: (node) => locOf(node as AnyNode, ctx),
     unsupported: (node, what, hint) => {
       unsupportedExpr(ctx, node as AnyNode, what, hint)
@@ -4140,9 +4083,7 @@ function runPluginHook<T>(owner: string, hook: string, run: () => T): T {
 function tryPluginTopLevel(node: AnyNode, ctx: ParseCtx): ExtModuleItem | undefined {
   const registry = activeRegistries().items
   for (const { owner, recognize } of registry.topLevel) {
-    const spec = runPluginHook(owner, 'topLevel', () =>
-      recognize(node as AstNode, moduleParseContextFor(ctx, owner)),
-    )
+    const spec = runPluginHook(owner, 'topLevel', () => recognize(node as AstNode, moduleParseContextFor(ctx, owner)))
     if (spec !== undefined) return stampModuleItem(registry, owner, spec)
   }
   return undefined
@@ -4160,8 +4101,7 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
   if (callee.property?.type !== 'Identifier') return undefined
   const method = callee.property.name as string
   const keyed = registry.methodCalls.get(method)
-  const recognizers =
-    keyed === undefined ? registry.anyMethodCalls : [...keyed, ...registry.anyMethodCalls]
+  const recognizers = keyed === undefined ? registry.anyMethodCalls : [...keyed, ...registry.anyMethodCalls]
   if (recognizers.length === 0) return undefined
   const site: MethodCallSite = {
     node: node as AstNode,
@@ -4170,13 +4110,9 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
     args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
   for (const { owner, recognize } of recognizers) {
-    const verdict = runPluginHook(owner, `methodCalls.${method}`, () =>
-      recognize(site, moduleParseContextFor(ctx, owner)),
-    )
+    const verdict = runPluginHook(owner, `methodCalls.${method}`, () => recognize(site, moduleParseContextFor(ctx, owner)))
     if (verdict === undefined) continue
-    return verdict === null
-      ? { kind: 'literal', value: '' }
-      : stampExtExpr(registry, owner, verdict)
+    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
   }
   return undefined
 }
@@ -4195,13 +4131,9 @@ function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
     ...(node.type === 'NewExpression' ? { construct: true } : {}),
   }
   for (const { owner, recognize } of registry.callExprs) {
-    const verdict = runPluginHook(owner, 'callExprs', () =>
-      recognize(site, moduleParseContextFor(ctx, owner)),
-    )
+    const verdict = runPluginHook(owner, 'callExprs', () => recognize(site, moduleParseContextFor(ctx, owner)))
     if (verdict === undefined) continue
-    return verdict === null
-      ? { kind: 'literal', value: '' }
-      : stampExtExpr(registry, owner, verdict)
+    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
   }
   return undefined
 }
@@ -4424,7 +4356,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (calleeName && (calleeName in tier2StrategyB || tier2Owner !== undefined)) {
       const pkg = tier2Owner ?? tier2StrategyB[calleeName]
       const bindingName =
-        node.id?.type === 'Identifier' ? (node.id.name as string) : '(destructured)'
+        node.id?.type === 'Identifier'
+          ? (node.id.name as string)
+          : '(destructured)'
       ctx.warnings.push(
         `${calleeName}() declared (${pkg}, binding: \`${bindingName}\`) — Tier-2 package on native: parser ` +
           `recognition + runtime port not yet shipped. Setup function will not run on iOS/Android; downstream ` +
@@ -4517,7 +4451,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         continue
       }
       const key = staticPropKey(prop)
-      const local = prop.value?.type === 'Identifier' ? (prop.value.name as string) : key
+      const local =
+        prop.value?.type === 'Identifier' ? (prop.value.name as string) : key
       if (key !== undefined && local !== undefined) params.push({ key, local })
     }
     return params.length > 0 ? { kind: 'params-destructure', params } : null
@@ -4649,7 +4584,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'signal') {
     const generic = parseGenericTypeArg(init, ctx)
     const initialArg = init.arguments?.[0]
-    const initial: ExprIR = initialArg ? parseExpr(initialArg, ctx) : { kind: 'literal', value: 0 }
+    const initial: ExprIR = initialArg
+      ? parseExpr(initialArg, ctx)
+      : { kind: 'literal', value: 0 }
     // Un-annotated `signal('')` / `signal(0)` / `signal(false)` infers
     // its type from the initial literal — same contract the store-setup
     // path applies (and what inferTypeFromInitial's own docstring
@@ -4795,11 +4732,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
         const key = staticPropKey(prop)
         const val = unwrapTypeLayers(prop.value as AnyNode | undefined)
-        if (
-          (key !== 'min' && key !== 'max') ||
-          val?.type !== 'Literal' ||
-          typeof val.value !== 'number'
-        ) {
+        if ((key !== 'min' && key !== 'max') || val?.type !== 'Literal' || typeof val.value !== 'number') {
           ctx.warnings.push(
             `useCounter() \`${name}\`: option \`${key ?? (hasDynamicKey(prop) ? dynamicKeyText(prop, ctx) : '?')}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
           )
@@ -4886,8 +4819,9 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // declaration is dropped rather than mis-emitted.
   if (calleeName === 'useNativeModule') {
     const arg = init.arguments?.[0] as AnyNode | undefined
-    const moduleName =
-      arg?.type === 'Literal' || arg?.type === 'StringLiteral' ? (arg.value as unknown) : undefined
+    const moduleName = arg?.type === 'Literal' || arg?.type === 'StringLiteral'
+      ? (arg.value as unknown)
+      : undefined
     if (typeof moduleName !== 'string' || moduleName.length === 0) {
       ctx.warnings.push(
         `useNativeModule \`${name}\`: the module name must be a non-empty STRING LITERAL at the call site (e.g. useNativeModule<T>('Bluetooth')) — it is emitted verbatim as the Swift/Kotlin class name and PMTC resolves one file at a time, so an imported or computed name has no value here. Declaration skipped on native.`,
@@ -4923,8 +4857,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // A call a PLUGIN recognizes (`CompilerPlugin.calls`) — e.g. `createChartHandle()`
   // from `@pyreon/charts`. Sits where the hand-written by-name branches did, so a
   // recognizer that declines (`undefined`) falls through to everything below.
-  const recognized =
-    calleeName === undefined ? undefined : activeRegistries().calls.calls.get(calleeName)
+  const recognized = calleeName === undefined ? undefined : activeRegistries().calls.calls.get(calleeName)
   if (recognized !== undefined && calleeName !== undefined) {
     const spec = recognized.recognizer(
       { callee: calleeName, argCount: init.arguments?.length ?? 0 },
@@ -4975,14 +4908,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * optional field omitted — no struct at all (a tuple). Absent annotation,
  * absent field: the decl is byte-identical to before.
  */
-function withValueDeclType(
-  d: Extract<DeclIR, { kind: 'value' }>,
-  node: AnyNode,
-  ctx: ParseCtx,
-): DeclIR {
-  const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
-    | AnyNode
-    | undefined
+function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode, ctx: ParseCtx): DeclIR {
+  const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as AnyNode | undefined
   return ann ? { ...d, type: parseTypeAnnotation(ann, ctx) } : d
 }
 
@@ -5030,6 +4957,7 @@ function withValueDeclType(
  * the original silent-drop — strictly better than `main`.
  */
 
+
 /**
  * A recognizer's verdict as a declaration: a plain SIGNAL (`{ signal }`, built here with the core's own rules so a
  * library's signal reads, writes, infers and synthesizes structs exactly like `signal()`), else the plugin's own `ext`
@@ -5039,24 +4967,11 @@ function withValueDeclType(
  * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
  * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
  */
-function declFromSpec(
-  owner: string,
-  name: string,
-  spec: DeclVerdict,
-  call: AnyNode,
-  ctx: ParseCtx,
-): DeclIR {
-  if ('computed' in spec)
-    return {
-      kind: 'computed',
-      name,
-      expr: stampExtExpr(activeRegistries().items, owner, spec.computed),
-    }
+function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR {
+  if ('computed' in spec) return { kind: 'computed', name, expr: stampExtExpr(activeRegistries().items, owner, spec.computed) }
   if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
   const { initial: initialArg, persistKey } = spec.signal
-  const initial: ExprIR = initialArg
-    ? parseExpr(initialArg as AnyNode, ctx)
-    : { kind: 'literal', value: 0 }
+  const initial: ExprIR = initialArg ? parseExpr(initialArg as AnyNode, ctx) : { kind: 'literal', value: 0 }
   const hasGeneric = ((call.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
   const type = hasGeneric ? parseGenericTypeArg(call, ctx) : inferTypeFromInitial(initial)
   return persistKey === undefined
@@ -5076,9 +4991,7 @@ function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR |
     args: ((init.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
   for (const { owner, recognize } of declCalls) {
-    const verdict = runPluginHook(owner, 'declCalls', () =>
-      recognize(site, parseContextFor(name, init, ctx)),
-    )
+    const verdict = runPluginHook(owner, 'declCalls', () => recognize(site, parseContextFor(name, init, ctx)))
     if (verdict === undefined) continue
     return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
   }
@@ -5092,12 +5005,7 @@ function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR |
  */
 function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
-  if (
-    init?.type !== 'NewExpression' ||
-    init.callee?.type !== 'Identifier' ||
-    node.id?.type !== 'Identifier'
-  )
-    return null
+  if (init?.type !== 'NewExpression' || init.callee?.type !== 'Identifier' || node.id?.type !== 'Identifier') return null
   const calleeName = init.callee.name as string
   const recognized = activeRegistries().calls.calls.get(calleeName)
   if (recognized === undefined) return null
@@ -5228,7 +5136,10 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
       const key = staticPropKey(p)
       if (key === 'path') {
         const v = p.value
-        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
+        if (
+          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
+          typeof v.value === 'string'
+        ) {
           path = v.value
         }
       } else if (key === 'component') {
@@ -5238,7 +5149,10 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
         // redirects / `throw redirect()` are a later arc; they leave
         // `redirect` undefined here so the route still needs a component.
         const v = p.value
-        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
+        if (
+          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
+          typeof v.value === 'string'
+        ) {
           redirect = v.value
         }
       } else if (key === 'beforeEnter') {
@@ -5468,10 +5382,7 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     // there is no combined-declarator form on either target). Re-parse each
     // declarator through the single-decl path so every binding shape it
     // already supports (incl. value inference) carries over verbatim.
-    if (
-      stmt.type === 'VariableDeclaration' &&
-      ((stmt.declarations as AnyNode[])?.length ?? 0) > 1
-    ) {
+    if (stmt.type === 'VariableDeclaration' && ((stmt.declarations as AnyNode[])?.length ?? 0) > 1) {
       // Each declarator re-enters THIS block walker (not bare parseStatement),
       // so a destructured declarator (`const n = 1, { b } = o`) takes the same
       // expansion / warning a lone `const { b } = o` does. Routed through
@@ -5656,25 +5567,11 @@ function markMethodMutatedLocals(stmts: StatementIR[]): void {
     for (const st of list) {
       if (st.kind === 'let' || st.kind === 'expr') scanExpr(st.expr)
       if (st.kind === 'return' && st.expr) scanExpr(st.expr)
-      if (st.kind === 'assign') {
-        scanExpr(st.target)
-        scanExpr(st.value)
-      }
-      if (st.kind === 'if') {
-        scanExpr(st.cond)
-        walk(st.then)
-        if (st.elseBody) walk(st.elseBody)
-      }
-      if (st.kind === 'while' || st.kind === 'do-while') {
-        scanExpr(st.cond)
-        walk(st.body)
-      }
-      if (st.kind === 'for-range') {
-        walk(st.body)
-      }
-      if (st.kind === 'for-of') {
-        walk(st.body)
-      }
+      if (st.kind === 'assign') { scanExpr(st.target); scanExpr(st.value) }
+      if (st.kind === 'if') { scanExpr(st.cond); walk(st.then); if (st.elseBody) walk(st.elseBody) }
+      if (st.kind === 'while' || st.kind === 'do-while') { scanExpr(st.cond); walk(st.body) }
+      if (st.kind === 'for-range') { walk(st.body) }
+      if (st.kind === 'for-of') { walk(st.body) }
     }
   }
   walk(stmts)
@@ -6341,9 +6238,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // "Unknown type annotation" warning.) `keyof` / `unique` have no native
       // form and stay warned — by name, so the fix is nameable.
       if (node.operator === 'readonly') return parseTypeAnnotation(node.typeAnnotation, ctx)
-      ctx.warnings.push(
-        `\`${node.operator}\` types have no native form in PMTC — spell the concrete type (a string-literal union for \`keyof\`).`,
-      )
+      ctx.warnings.push(`\`${node.operator}\` types have no native form in PMTC — spell the concrete type (a string-literal union for \`keyof\`).`)
       return { kind: 'unknown' }
     }
     case 'TSTupleType':
@@ -6361,11 +6256,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         // `{ [K]: string }` — the member name is the runtime VALUE of `K`, so
         // it has no static field name. Pre-fix it was read as a field named
         // `K`. Named, never silently renamed (same class as object literals).
-        if (
-          m.type === 'TSPropertySignature' &&
-          m.computed === true &&
-          m.key?.type === 'Identifier'
-        ) {
+        if (m.type === 'TSPropertySignature' && m.computed === true && m.key?.type === 'Identifier') {
           ctx.warnings.push(
             `Computed type-literal members (\`{ [${m.key.name as string}]: … }\`) aren't supported in native (PMTC) — a struct/data-class needs static field names. Spell the field name literally.`,
           )
@@ -6482,7 +6373,9 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // emitter drops names at emit time.
       const params = ((node.params as AnyNode[]) ?? []).map((p) => {
         const annotation = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
-        const type: TypeIR = annotation ? parseTypeAnnotation(annotation, ctx) : { kind: 'unknown' }
+        const type: TypeIR = annotation
+          ? parseTypeAnnotation(annotation, ctx)
+          : { kind: 'unknown' }
         // Omit `name` when absent — `exactOptionalPropertyTypes` disallows
         // `name: undefined` for an optional property.
         const paramName: string | undefined =
@@ -6685,10 +6578,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (calleeCall !== undefined) return calleeCall
       // A claimed library function keeps the callee spelling its plugin asked for (`FunctionLowering.irName`).
       const parsedCallee = parseExpr(node.callee, ctx)
-      const irName =
-        parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined
-      const callee =
-        irName === undefined ? parsedCallee : { kind: 'identifier' as const, name: irName }
+      const irName = parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined
+      const callee = irName === undefined ? parsedCallee : { kind: 'identifier' as const, name: irName }
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))
       // `node.optional` is set for the `f?.()` link of an optional chain
       // (oxc wraps the chain in a ChainExpression; each call carries its own
@@ -6890,9 +6781,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // its param types (`let f = { r in … }` is 'cannot infer type of
       // closure parameter'), so what the author wrote must survive to emit.
       const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
-      const returnAnnot = returnAnnotNode
-        ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx)
-        : undefined
+      const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
       const paramTypes = identParams.map((p) => {
         const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
         return annot ? parseTypeAnnotation(annot, ctx) : undefined
@@ -6943,14 +6832,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // action emit already handles it; backward-compat).
       const stmts = body.body as AnyNode[]
       if (stmts.length === 0) {
-        return {
-          kind: 'arrow',
-          async: node.async === true,
-          params,
-          paramTypes,
-          returnAnnot,
-          body: { kind: 'literal', value: '' },
-        }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
       }
       // An ASSIGNMENT is a statement in the IR, not an expression, so
       // `() => { flow.config.pannable = false }` must keep the statement path
@@ -6958,34 +6840,16 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // rejects `AssignmentExpression`, and the handler emitted EMPTY on both
       // targets while the two-statement spelling of the same intent worked.
       const onlyIsAssignment =
-        stmts.length === 1 &&
-        stmts[0]!.type === 'ExpressionStatement' &&
-        (stmts[0]!.expression?.type === 'AssignmentExpression' ||
-          stmts[0]!.expression?.type === 'UpdateExpression')
+        stmts.length === 1 && stmts[0]!.type === 'ExpressionStatement' &&
+        (stmts[0]!.expression?.type === 'AssignmentExpression' || stmts[0]!.expression?.type === 'UpdateExpression')
       if (
-        stmts.length === 1 &&
-        !onlyIsAssignment &&
+        stmts.length === 1 && !onlyIsAssignment &&
         (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
       ) {
         const only = stmts[0]!
         const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-        if (!inner)
-          return {
-            kind: 'arrow',
-            async: node.async === true,
-            params,
-            paramTypes,
-            returnAnnot,
-            body: { kind: 'literal', value: '' },
-          }
-        return {
-          kind: 'arrow',
-          async: node.async === true,
-          params,
-          paramTypes,
-          returnAnnot,
-          body: parseExpr(inner, ctx),
-        }
+        if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
       }
       // MULTIPLE statements (or a single non-expr/return statement like an
       // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
@@ -7114,7 +6978,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           'An EMPTY object literal `{}` has no native lowering — it emits `()` (Void on Swift), so the value is not an object on either target. Give the literal its fields (`{ name: "" }`), or model the state as separate signals.',
         )
       }
-      return spreads.length > 0 ? { kind: 'object', fields, spreads } : { kind: 'object', fields }
+      return spreads.length > 0
+        ? { kind: 'object', fields, spreads }
+        : { kind: 'object', fields }
     }
     case 'ParenthesizedExpression': {
       // Parens around JSX in source (`return (<X>...)`) are syntactic
@@ -7200,9 +7066,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const constructed = tryPluginCallExpr(node, ctx)
       if (constructed !== undefined) return constructed
       const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
-      const typeArgs = (node.typeArguments?.params ??
-        node.typeParameters?.params ??
-        []) as AnyNode[]
+      const typeArgs = (node.typeArguments?.params ?? node.typeParameters?.params ?? []) as AnyNode[]
       // v1 scope: only SCALAR (number/string/boolean) element/key/value types
       // lower to native collections. A non-scalar element (`Set<{x:number}>`, a
       // `typeRef`, a nested array/union) has no `Hashable`/native-key guarantee
@@ -7390,10 +7254,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
       },
       requestComponentDecls: (key, requested) => {
         if (ctx.componentDeclRequests.has(key)) return
-        ctx.componentDeclRequests.set(key, {
-          head: [...(requested.head ?? [])],
-          tail: [...(requested.tail ?? [])],
-        })
+        ctx.componentDeclRequests.set(key, { head: [...(requested.head ?? [])], tail: [...(requested.tail ?? [])] })
       },
     }
     for (const { owner, rewrite } of elementRewriters) {
@@ -7472,10 +7333,11 @@ function warnIfHookInsideRenderCallback(
  * (lives in the emit context). Tracked as a separate follow-up.
  */
 function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx): void {
-  const hasAttr = (name: string): boolean => attrs.some((a) => a.kind === 'attr' && a.name === name)
+  const hasAttr = (name: string): boolean =>
+    attrs.some((a) => a.kind === 'attr' && a.name === name)
   if (tag === 'Icon' && !hasAttr('name')) {
     ctx.warnings.push(
-      '<Icon> requires a `name` prop (e.g. `<Icon name="star"/>`). Without it the emit falls through to generic and produces an unbuildable `Icon(…)` literal on both Swift and Kotlin.',
+      "<Icon> requires a `name` prop (e.g. `<Icon name=\"star\"/>`). Without it the emit falls through to generic and produces an unbuildable `Icon(…)` literal on both Swift and Kotlin.",
     )
   } else if (tag === 'Image' && !hasAttr('src')) {
     ctx.warnings.push(
@@ -7524,9 +7386,9 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
   // UNKNOWN literal value silently falls back to the default
   // alignment. Warn for the 4 most common typo shapes.
   if (tag === 'Stack' || tag === 'Inline' || tag === 'Layer') {
-    const alignAttr = attrs.find((a) => a.kind === 'attr' && a.name === 'align') as
-      | Extract<AttrIR, { kind: 'attr' }>
-      | undefined
+    const alignAttr = attrs.find(
+      (a) => a.kind === 'attr' && a.name === 'align',
+    ) as Extract<AttrIR, { kind: 'attr' }> | undefined
     if (alignAttr && alignAttr.value.kind === 'literal') {
       const v = alignAttr.value.value
       if (typeof v === 'string') {

@@ -21,8 +21,8 @@ const sources = readdirSync(fixtures)
     ),
   }))
 
-describe('package-owned form corpus on real toolchains', () => {
-  it.skipIf(!isSwiftcAvailable())(
+describe.skipIf(!isSwiftcAvailable())('package-owned form corpus on swiftc', () => {
+  it(
     'typechecks every parent-recorded form fixture with swiftc',
     () => {
       expect(sources).toHaveLength(7)
@@ -30,12 +30,15 @@ describe('package-owned form corpus on real toolchains', () => {
         ({ source, file }) => transform(source, { target: 'swift', filename: file }).code,
       )
       const result = validateSwiftFilesWithStubs(code)
-      expect(result.errors.join('\n')).toBe('')
+      expect(result.error ?? '').toBe('')
       expect(result.ok).toBe(true)
     },
   )
 
-  it.skipIf(!isKotlincAvailable())(
+})
+
+describe.skipIf(!isKotlincAvailable())('package-owned form corpus on kotlinc', () => {
+  it(
     'compiles every parent-recorded form fixture with kotlinc',
     () => {
       expect(sources).toHaveLength(7)
@@ -43,7 +46,7 @@ describe('package-owned form corpus on real toolchains', () => {
         ({ source, file }) => transform(source, { target: 'kotlin', filename: file }).code,
       )
       const result = validateKotlinFiles(code)
-      expect(result.errors.join('\n')).toBe('')
+      expect(result.error ?? '').toBe('')
       expect(result.ok).toBe(true)
     },
   )

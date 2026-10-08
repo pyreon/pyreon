@@ -34,13 +34,7 @@ import {
 import type { PluginScope } from './plugin-scope'
 import type { UnloweredModule } from './unlowered-modules'
 import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
-import {
-  emitExtExpr,
-  emitModuleItem,
-  findFieldValidators,
-  fieldValidatorsAdvice,
-  type ExtExprIR,
-} from './module-items'
+import { emitExtExpr, emitModuleItem, findFieldValidators, fieldValidatorsAdvice, type ExtExprIR } from './module-items'
 import type { DeclIR, ExprIR, ExtDecl, ExtModuleItem, TypeIR } from './types'
 
 /** The descriptor registered for `hook`, or `undefined`. */
@@ -83,10 +77,7 @@ export function isElementLoweringTag(name: string): boolean {
 }
 
 /** The colour-scope provider that claims `tag` (see {@link ElementClaimGuard}), or `undefined`. */
-export function findScopeProvider(
-  tag: string,
-  guard: ElementClaimGuard,
-): ScopeProvider | undefined {
+export function findScopeProvider(tag: string, guard: ElementClaimGuard): ScopeProvider | undefined {
   return activeRegistries().scopes.find(tag, guard)
 }
 
@@ -218,9 +209,7 @@ export function findReceiverLowering(
  * claimed name, or the `irName` the parser rewrote it to — with the claimed
  * name, or `undefined`.
  */
-export function findFunctionLowering(
-  name: string,
-): { readonly lowering: FunctionLowering; readonly claimed: string } | undefined {
+export function findFunctionLowering(name: string): { readonly lowering: FunctionLowering; readonly claimed: string } | undefined {
   const exprs = activeRegistries().exprs
   const claimed = exprs.functions.has(name) ? name : exprs.functionsByIrName.get(name)
   if (claimed === undefined) return undefined
@@ -247,16 +236,11 @@ export function memberReadLowerings(): readonly MemberReadLowering[] {
 export function findIntrinsicLowerings(tag: string): readonly IntrinsicLowering[] {
   const exprs = activeRegistries().exprs
   if (!exprs.intrinsicTags.has(tag)) return []
-  return exprs.intrinsics
-    .filter((entry) => entry.lowering.tags.includes(tag))
-    .map((entry) => entry.lowering)
+  return exprs.intrinsics.filter((entry) => entry.lowering.tags.includes(tag)).map((entry) => entry.lowering)
 }
 
 /** Every plugin's per-file preparation, in plugin order. */
-export function emitPreparations(): readonly {
-  readonly owner: string
-  readonly prepare: EmitPreparation
-}[] {
+export function emitPreparations(): readonly { readonly owner: string; readonly prepare: EmitPreparation }[] {
   return activeRegistries().exprs.preparations
 }
 
@@ -312,34 +296,19 @@ export function lowerPluginReceiver(
  * the receiver spells it (`Double(x)`), or `undefined` to keep the emitter's own.
  */
 export function lowerPluginAssignValue(
-  assign: {
-    readonly target: ExprIR
-    readonly op: string
-    readonly value: ExprIR
-    readonly emitted: string
-  },
+  assign: { readonly target: ExprIR; readonly op: string; readonly value: ExprIR; readonly emitted: string },
   target: 'swift',
   scope: PluginScope,
   ctx: () => SwiftEmitContext,
 ): string | undefined
 export function lowerPluginAssignValue(
-  assign: {
-    readonly target: ExprIR
-    readonly op: string
-    readonly value: ExprIR
-    readonly emitted: string
-  },
+  assign: { readonly target: ExprIR; readonly op: string; readonly value: ExprIR; readonly emitted: string },
   target: 'kotlin',
   scope: PluginScope,
   ctx: () => KotlinEmitContext,
 ): string | undefined
 export function lowerPluginAssignValue(
-  assign: {
-    readonly target: ExprIR
-    readonly op: string
-    readonly value: ExprIR
-    readonly emitted: string
-  },
+  assign: { readonly target: ExprIR; readonly op: string; readonly value: ExprIR; readonly emitted: string },
   target: Target,
   scope: PluginScope,
   ctx: () => SwiftEmitContext | KotlinEmitContext,
@@ -347,13 +316,7 @@ export function lowerPluginAssignValue(
   if (assign.target.kind !== 'member') return undefined
   const found = findReceiverLowering(assign.target, scope)
   if (found === undefined) return undefined
-  const site = {
-    target: assign.target,
-    op: assign.op,
-    value: assign.value,
-    emitted: assign.emitted,
-    receiver: found.receiver,
-  }
+  const site = { target: assign.target, op: assign.op, value: assign.value, emitted: assign.emitted, receiver: found.receiver }
   return target === 'swift'
     ? found.lowering.swift?.assignValue?.(site, ctx() as SwiftEmitContext)
     : found.lowering.kotlin?.assignValue?.(site, ctx() as KotlinEmitContext)
@@ -544,11 +507,7 @@ export function lowerPluginIntrinsic(
 }
 
 /** The Swift modifier lines / Compose effect lines the `ext` declaration `d` contributes to its component's lifecycle. */
-export function pluginLifecycleLines(
-  d: ExtDecl,
-  target: Target,
-  ctx: EmitContext,
-): readonly string[] {
+export function pluginLifecycleLines(d: ExtDecl, target: Target, ctx: EmitContext): readonly string[] {
   const lifecycle = extDeclLifecycle(d)
   if (lifecycle === undefined) return []
   return (target === 'swift' ? lifecycle.swift?.(d, ctx) : lifecycle.kotlin?.(d, ctx)) ?? []
@@ -556,9 +515,7 @@ export function pluginLifecycleLines(
 
 /** The ext declarations of `decls` whose lifecycle is a TAIL one, in emit order (`tailOrder`, then declaration order). */
 export function tailLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
-  const tail = decls.filter(
-    (d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.tailOrder !== undefined,
-  )
+  const tail = decls.filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.tailOrder !== undefined)
   // Stable sort: equal orders keep declaration order.
   return tail
     .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.tailOrder! }))
@@ -568,9 +525,7 @@ export function tailLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
 
 /** The ext declarations of `decls` whose lifecycle is a MID one, in emit order (`midOrder`, then declaration order). */
 export function midLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
-  const mid = decls.filter(
-    (d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.midOrder !== undefined,
-  )
+  const mid = decls.filter((d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.midOrder !== undefined)
   return mid
     .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.midOrder! }))
     .sort((a, b) => a.order - b.order || a.i - b.i)
@@ -587,18 +542,14 @@ export function earlyLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
 }
 
 /** The ext declarations of `decls` that seed the generated SwiftUI `init()`, in init order (`order`, then declaration order). */
-export function swiftInitDecls(
-  decls: readonly DeclIR[],
-): { readonly decl: ExtDecl; readonly init: DeclSwiftInit }[] {
+export function swiftInitDecls(decls: readonly DeclIR[]): { readonly decl: ExtDecl; readonly init: DeclSwiftInit }[] {
   const out: { decl: ExtDecl; init: DeclSwiftInit; index: number }[] = []
   decls.forEach((d, index) => {
     if (d.kind !== 'ext') return
     const init = activeRegistries().calls.emitter(d.plugin, d.type)?.swiftInit
     if (init !== undefined) out.push({ decl: d, init, index })
   })
-  return out
-    .sort((a, b) => a.init.order - b.init.order || a.index - b.index)
-    .map(({ decl, init }) => ({ decl, init }))
+  return out.sort((a, b) => a.init.order - b.init.order || a.index - b.index).map(({ decl, init }) => ({ decl, init }))
 }
 
 /** True when `d` is an `ext` declaration that emits its lifecycle in declaration order (before the compiler's own modifiers). */
@@ -628,11 +579,7 @@ export function pluginMemberReadType(d: ExtDecl, property: string): TypeIR | und
 }
 
 /** The async state (pending / failed conditions) of an `ext` declaration that is an async source, else `undefined`. */
-export function pluginAsyncState(
-  d: DeclIR,
-  target: Target,
-  ctx: EmitContext,
-): AsyncState | undefined {
+export function pluginAsyncState(d: DeclIR, target: Target, ctx: EmitContext): AsyncState | undefined {
   if (d.kind !== 'ext') return undefined
   const emitter = activeRegistries().calls.emitter(d.plugin, d.type)?.asyncState
   if (emitter === undefined) return undefined
@@ -671,9 +618,7 @@ export function pluginExprType(e: ExtExprIR, infer: (e: ExprIR) => TypeIR): Type
 }
 
 /** The reduction an `ext-expr` is (source, reducer, seed), by its owner's account, or `undefined`. */
-export function pluginExprReduce(
-  e: ExtExprIR,
-): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined {
+export function pluginExprReduce(e: ExtExprIR): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined {
   return activeRegistries().items.exprEmitter(e.plugin, e.type)?.reduce?.(e)
 }
 
@@ -689,11 +634,7 @@ export function pluginExprMemberType(e: ExtExprIR, property: string): TypeIR | u
 
 /** Render an `ext-expr` on `target` through its owner's emitter. */
 export function lowerPluginExpr(e: ExtExprIR, target: 'swift', ctx: () => SwiftEmitContext): string
-export function lowerPluginExpr(
-  e: ExtExprIR,
-  target: 'kotlin',
-  ctx: () => KotlinEmitContext,
-): string
+export function lowerPluginExpr(e: ExtExprIR, target: 'kotlin', ctx: () => KotlinEmitContext): string
 export function lowerPluginExpr(
   e: ExtExprIR,
   target: Target,
@@ -708,27 +649,14 @@ export function itemLegacyList(item: ExtModuleItem): string | undefined {
 }
 
 /** The items that emit in `slot` (see `ModuleItemEmitter.after`), in file order. */
-export function itemsInSlot(
-  items: readonly ExtModuleItem[],
-  slot: 'models' | 'declarations' | 'data',
-): ExtModuleItem[] {
+export function itemsInSlot(items: readonly ExtModuleItem[], slot: 'models' | 'declarations' | 'data'): ExtModuleItem[] {
   const registry = activeRegistries().items
-  return items.filter(
-    (item) => (registry.emitter(item.plugin, item.type)?.after ?? 'data') === slot,
-  )
+  return items.filter((item) => (registry.emitter(item.plugin, item.type)?.after ?? 'data') === slot)
 }
 
 /** Render a file-scope item on `target` through its owner's emitter: one string per declaration. */
-export function lowerPluginItem(
-  item: ExtModuleItem,
-  target: 'swift',
-  ctx: () => SwiftEmitContext,
-): readonly string[]
-export function lowerPluginItem(
-  item: ExtModuleItem,
-  target: 'kotlin',
-  ctx: () => KotlinEmitContext,
-): readonly string[]
+export function lowerPluginItem(item: ExtModuleItem, target: 'swift', ctx: () => SwiftEmitContext): readonly string[]
+export function lowerPluginItem(item: ExtModuleItem, target: 'kotlin', ctx: () => KotlinEmitContext): readonly string[]
 export function lowerPluginItem(
   item: ExtModuleItem,
   target: Target,
