@@ -4811,6 +4811,16 @@
       "bytes": 778,
       "warnings": 0
     },
+    "golden-fixture:rate-callback-returns.tsx|swift": {
+      "sha": "904eca595114ddf7d1f936b2b0e2957097f9ba0ff31df48625a7c897b2ee5986",
+      "bytes": 552,
+      "warnings": 0
+    },
+    "golden-fixture:rate-callback-returns.tsx|kotlin": {
+      "sha": "67b34b274833a8a5857a5ed6df8ab113262e9cf647b6692f2149af55ccc615f2",
+      "bytes": 608,
+      "warnings": 0
+    },
     "golden-fixture:rx-01.tsx|swift": {
       "sha": "15c5598c54d9c16402acbefb88ff425bb2db910d18bb786a646c24f61bb0d795",
       "bytes": 178,

@@ -1741,8 +1741,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const p0 = d.fn.params[0]
     const argType = p0 === undefined ? 'Unit' : kotlinType(p0.type)
     const argName = p0 === undefined ? '_' : kotlinIdent(p0.name)
-    const body = d.fn.body.map((st) => emitKotlinStatement(st, 4, ctx)).join('; ')
-    return `val ${kotlinIdent(d.name)} = remember { ${cls}<${argType}>(${d.delayMs}L, PyreonTaskScheduler()) { ${argName} -> ${body} } }`
+    const hasReturn = JSON.stringify(d.fn.body).includes('"kind":"return"')
+    const callbackCtx: KotlinCtx = hasReturn ? { ...ctx, lambdaLabel: '__pyreonRateAction', discardReturnValue: true } : ctx
+    const body = d.fn.body.map((st) => emitKotlinStatement(st, 4, callbackCtx)).join('; ')
+    return `val ${kotlinIdent(d.name)} = remember { ${cls}<${argType}>(${d.delayMs}L, PyreonTaskScheduler()) ${hasReturn ? '__pyreonRateAction@ ' : ''}{ ${argName} -> ${body} } }`
   }
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
