@@ -27,7 +27,11 @@ detection. Migration guides:
 OpenAPI 3.0 and 3.1, and Swagger 2.0 (up-converted in process). A spec split
 across files is bundled from its `$ref`s. A file that is not a spec at all is
 refused before anything is written. `@pyreon/native-compiler` is an optional peer (it
-verifies `target: 'multiplatform'` output); `@faker-js/faker` is needed only for
+verifies `target: 'multiplatform'` output). Native verification also loads the
+optional `@pyreon/http`, `@pyreon/query`, `@pyreon/validate` and
+`@pyreon/validation` compiler plugins from the consuming project's installed
+packages. Their plugin code stays external to Lathe's bundle, so building Lathe
+does not depend on those packages' build order. `@faker-js/faker` is needed only for
 the `faker` plugin, `zod` only for `validator: 'zod'`.
 
 ## What makes it different
