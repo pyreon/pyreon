@@ -4096,7 +4096,9 @@ function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR |
     args: ((init.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
   for (const { owner, recognize } of recognizers) {
-    const verdict = runPluginHook(owner, hook, () => recognize(site, parseContextFor(name, init, ctx)))
+    const verdict = runPluginHook(owner, hook, () =>
+      recognize(site, parseContextFor(name, init, ctx)),
+    )
     if (verdict === undefined) continue
     return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
   }

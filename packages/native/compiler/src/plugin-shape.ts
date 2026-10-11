@@ -204,7 +204,8 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     for (const [type, emitter] of Object.entries(decls)) {
       const features = emitter as Record<string, unknown> | null
       for (const feature of ['lifecycleOnly', 'usesColorScheme', 'usesSizeClass', 'legacyName']) {
-        if (features?.[feature] !== undefined && typeof features[feature] !== 'boolean') throw new Error(`[Pyreon] Plugin "${name}" decl "${type}" ${feature} must be a boolean.`)
+        if (features?.[feature] !== undefined && typeof features[feature] !== 'boolean')
+          throw new Error(`[Pyreon] Plugin "${name}" decl "${type}" ${feature} must be a boolean.`)
       }
       if (features?.root !== undefined) {
         const root = features.root as Record<string, unknown> | null
@@ -543,7 +544,10 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       }
       if (field === 'items' && entry.receivers !== undefined) {
         const itemReceivers = entry.receivers as { swift?: unknown; kotlin?: unknown } | null
-        if (!itemReceivers || typeof itemReceivers !== 'object' || Array.isArray(itemReceivers) ||
+        if (
+          !itemReceivers ||
+          typeof itemReceivers !== 'object' ||
+          Array.isArray(itemReceivers) ||
           (itemReceivers.swift !== undefined && typeof itemReceivers.swift !== 'function') ||
           (itemReceivers.kotlin !== undefined && typeof itemReceivers.kotlin !== 'function')
         ) {
@@ -554,7 +558,10 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       }
       if (field === 'items' && entry.typing !== undefined) {
         const typing = entry.typing as { fields?: unknown; scopes?: unknown; type?: unknown } | null
-        if (!typing || typeof typing !== 'object' || Array.isArray(typing) ||
+        if (
+          !typing ||
+          typeof typing !== 'object' ||
+          Array.isArray(typing) ||
           (typing.fields !== undefined && typeof typing.fields !== 'function') ||
           (typing.scopes !== undefined && typeof typing.scopes !== 'function') ||
           (typing.type !== undefined && typeof typing.type !== 'function')

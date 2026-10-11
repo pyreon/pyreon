@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin, type ExprEmitter } from '../index'
+import { reactivityPlugin } from '../../../../core/reactivity/src/native-plugin'
 
 // A plugin may claim a CONSTRUCTION (`new Box<K, V>(…)`) by the name it recorded from its import: the recognizer sees
 // `construct`, the type arguments (`ModuleParseContext.typeArgs`) and a location for its message (`loc`), and its
@@ -135,6 +136,7 @@ describe('constructor hook compatibility', () => {
   it('never invokes constructor recognizers for ordinary call declarations', () => {
     const compiler = createCompiler({
       plugins: [
+        reactivityPlugin,
         {
           ...toy(false),
           declConstructs() {

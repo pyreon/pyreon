@@ -432,7 +432,10 @@ export interface CallRegistry {
   /** Declaration recognizers keyed by callee shape, in plugin order. */
   readonly declCalls: readonly { readonly owner: string; readonly recognize: DeclCallRecognizer }[]
   /** Constructor recognizers, explicitly opted in and isolated from call-only hooks. */
-  readonly declConstructs: readonly { readonly owner: string; readonly recognize: DeclConstructRecognizer }[]
+  readonly declConstructs: readonly {
+    readonly owner: string
+    readonly recognize: DeclConstructRecognizer
+  }[]
   /** Callee name → the plugin that declared it `tier2Calls` (a call it ships no lowering for; see `CompilerPlugin.tier2Calls`). */
   readonly tier2Calls: ReadonlyMap<string, string>
   /** Plugin name → declaration type → emitter. */
@@ -521,7 +524,9 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
           )
         }
         if (intrinsicCalls.has(hook)) {
-          throw new Error(`[Pyreon] Plugin "${plugin.name}" cannot claim "${hook}" as both an intrinsic and a declaration call.`)
+          throw new Error(
+            `[Pyreon] Plugin "${plugin.name}" cannot claim "${hook}" as both an intrinsic and a declaration call.`,
+          )
         }
         owners.set(hook, plugin.name)
         registry.set(hook, {
