@@ -46,7 +46,7 @@ function fixture(grouped: boolean, hasTest = true) {
 import { appendFileSync } from 'node:fs'
 import { SMOKE_SKIPPED_MARKER } from './smoke-marker'
 appendFileSync(process.env.FIXTURE_CALLS!, 'verified\\n')
-console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : SMOKE_SKIPPED_MARKER)
+console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : process.env.FIXTURE_CHILD_SKIP === '0' ? 'ran smoke' : SMOKE_SKIPPED_MARKER)
 `,
   )
   const pkg = 'packages/fundamentals/fixture'
@@ -64,13 +64,17 @@ console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : SMOKE
   )
   write(`${pkg}/native/kotlin/com/pyreon/runtime/PyreonFixture.kt`, 'class PyreonFixture')
   if (hasTest) write(`${pkg}/native/tests/PyreonFixtureTest.kt`, 'fun main() {}')
-  write('bin/kotlinc', '#!/bin/sh\nprintf "fixture kotlinc\\n"\n', 0o755)
-  write('bin/java', '#!/bin/sh\nexit 1\n', 0o755)
+  write(
+    'bin/kotlinc',
+    '#!/bin/sh\nprintf "fixture kotlinc\\n"\nexit "${FIXTURE_COMPILER_EXIT:-0}"\n',
+    0o755,
+  )
+  write('bin/java', '#!/bin/sh\nexit "${FIXTURE_JAVA_EXIT:-1}"\n', 0o755)
   symlinkSync(bun, join(root, 'bin/bun'))
   const cache = join(root, 'cache')
   const calls = join(root, 'calls')
-  const run = (strict: boolean) =>
-    spawnSync(bun, [join(root, 'scripts/check-native-cosource.ts')], {
+  const run = (strict: boolean, extra: Record<string, string> = {}) => {
+    const result = spawnSync(bun, [join(root, 'scripts/check-native-cosource.ts')], {
       cwd: root,
       encoding: 'utf8',
       env: {
@@ -80,14 +84,56 @@ console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : SMOKE
         PYREON_VALIDATE_CACHE_DIR: cache,
         PYREON_VALIDATE_NO_CACHE: '0',
         FIXTURE_CALLS: calls,
+        ...extra,
       },
       timeout: 10_000,
     })
+    if (result.status === null) {
+      throw new Error(
+        JSON.stringify({
+          signal: result.signal,
+          error: result.error?.message,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        }),
+      )
+    }
+    return result
+  }
   return { root, cache, run, calls: () => (existsSync(calls) ? readFileSync(calls, 'utf8') : '') }
 }
 
 for (const grouped of [false, true]) {
   describe(grouped ? 'per-service Kotlin cache' : 'whole-directory Kotlin cache', () => {
+    it('never caches a child skip under a key claiming Java could run', () => {
+      const f = fixture(grouped)
+      try {
+        const skipped = f.run(false, { FIXTURE_JAVA_EXIT: '0' })
+        expect(skipped.status, skipped.stderr).toBe(0)
+        expect(skipped.stdout).toContain('smoke SKIPPED')
+        const ran = f.run(true, { FIXTURE_JAVA_EXIT: '0', FIXTURE_CHILD_SKIP: '0' })
+        expect(ran.status, ran.stderr).toBe(0)
+        expect(f.calls()).toBe('verified\nverified\n')
+        expect(f.run(true, { FIXTURE_JAVA_EXIT: '0', FIXTURE_CHILD_SKIP: '0' }).status).toBe(0)
+        expect(f.calls()).toBe('verified\nverified\n')
+      } finally {
+        rmSync(f.root, { recursive: true, force: true })
+      }
+    })
+
+    it('fails before cache acceptance when the installed compiler probe fails', () => {
+      const f = fixture(grouped, false)
+      try {
+        expect(f.run(true).status).toBe(0)
+        const broken = f.run(true, { FIXTURE_COMPILER_EXIT: '1' })
+        expect(broken.status, broken.stdout).toBe(1)
+        expect(broken.stderr).toContain('kotlinc -version')
+        expect(f.calls()).toBe('verified\n')
+      } finally {
+        rmSync(f.root, { recursive: true, force: true })
+      }
+    })
+
     it('rejects a warm compile-only success in strict mode before accepting the cache', () => {
       const f = fixture(grouped)
       try {

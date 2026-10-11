@@ -214,6 +214,10 @@ const bytesOf = (files: readonly string[]): string =>
   files.map((f) => `${f.slice(ROOT.length)}\0${readOr(f)}`).join('\0')
 const toolVersion = (bin: string, flag: string): string => {
   const p = spawnSync(bin, [flag], { encoding: 'utf8' })
+  if (p.status !== 0) {
+    console.error(`[check-native-cosource] ${bin} ${flag} failed:\n${p.stderr ?? ''}${p.error?.message ?? ''}`)
+    process.exit(1)
+  }
   return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
 }
 const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
@@ -245,7 +249,9 @@ const javaRuns = (() => {
 const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
 
 const swiftcVersion = swiftc ? toolVersion('swiftc', '--version') : ''
-const kotlinHarness = readOr(verifyKotlin)
+// Runner semantics also determine whether an exit-0 child actually ran its
+// smoke. Invalidate older records that could mislabel a child skip as a run.
+const kotlinHarness = [readOr(verifyKotlin), readOr(join(ROOT, 'scripts/check-native-cosource.ts'))].join('\0')
 const swiftHarness = readOr(join(ROOT, 'scripts', 'swift-cosource-smoke.ts'))
 let cacheHits = 0
 /** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
@@ -253,7 +259,7 @@ function cachedKotlin(
   key: string,
   label: string,
   hasTest: boolean,
-  compute: () => boolean,
+  compute: () => boolean | 'skipped',
 ): boolean {
   // Environment requirements precede cache acceptance. A non-strict run can
   // cache a typecheck-only verdict with smokeRuns=false; the same broken JDK
@@ -272,8 +278,11 @@ function cachedKotlin(
     )
     return true
   }
-  const ok = compute()
-  if (ok) writeVerdict(key, { ok: true })
+  const outcome = compute()
+  const ok = outcome !== false
+  // A child can lose Java after our probe; its skip must not populate the
+  // stronger smokeRuns=true key. Known compile-only results remain reusable.
+  if (ok && (outcome !== 'skipped' || !javaRuns)) writeVerdict(key, { ok: true })
   return ok
 }
 
@@ -395,7 +404,7 @@ for (const pkg of pkgs) {
               `  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))` +
                 (skipped ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
             )
-            return true
+            return skipped ? 'skipped' : true
           })
           if (!ok) failures++
         }
@@ -442,7 +451,7 @@ for (const pkg of pkgs) {
           `  ✓ ${pkg.name} [kotlin]` +
             kotlinOutcomeLabel({ hasTest: Boolean(test), smokeSkipped: skipped }),
         )
-        return true
+        return skipped ? 'skipped' : true
       })
       if (!ok) failures++
     }
