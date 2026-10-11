@@ -4,13 +4,17 @@
 //   Swift   → `todos.filter(p)`, `Array(todos.prefix(n))`, `todos.reduce(seed, f)`, …
 //   Kotlin  → `todos.filter(p)`, `todos.take(n)`, `todos.fold(seed, f)`, …
 //
-// Two call forms lower, both resolved through the IMPORT and never the bare name: the namespace (`rx.filter`, the object
-// literally named `rx`) and the standalone transforms (`filter(src, p)` — an alias such as `filter as keep` is the export, a
+// Namespace and standalone calls lower recursively, resolved through their lexical IMPORT (including aliases). A
+// standalone transform (`filter(src, p)` — an alias such as `filter as keep` is the export, a
 // same-named import from elsewhere is not). `pipe` does not lower (measured: each stage would emit as an
 // immediately-applied closure that loses its parameter type and fails to compile on both targets).
 
 import {
   type CompilerPlugin,
+  type CallExprRecognizer,
+  type ExtExprSpec,
+  type ModuleParseContext,
+  type ModuleScan,
   type DeclCallRecognizer,
   type ExprEmitter,
   type ExprIR,
@@ -50,79 +54,150 @@ const RX_V1_METHODS: ReadonlySet<string> = new Set([
   'average',
 ])
 
+const METHODS_WITH_ARGUMENT = new Set([
+  'filter',
+  'map',
+  'take',
+  'skip',
+  'takeWhile',
+  'dropWhile',
+  'find',
+  'some',
+  'every',
+])
+
 const methodOf = (e: ExtExprIR): string => (e.payload as { method: string }).method
 
-/** The local names imported from `@pyreon/rx`, mapped to their ORIGINAL export name. The `rx` namespace has its own recognizer. */
+type ImportState = {
+  imports: Map<string, string>
+  reported: WeakSet<object>
+  reference?: ModuleScan['isImportedReference'] | undefined
+}
+const emptyImports = (): ImportState => ({ imports: new Map(), reported: new WeakSet() })
+
+/** Keep the lexical query with this file's imported export names; no state survives the transform. */
 const scanRx: ModuleScanner = (scan) => {
-  const imported = scan.fileState(IMPORTED_KEY, () => new Map<string, string>())
+  if (typeof scan.isImportedReference !== 'function') {
+    throw new Error(
+      '[Pyreon] The rx native plugin requires lexical import recognition. Upgrade @pyreon/native-compiler together with @pyreon/rx.',
+    )
+  }
+  const state = scan.fileState(IMPORTED_KEY, emptyImports)
+  state.reference = scan.isImportedReference
   for (const node of scan.body as readonly AnyNode[]) {
     if (node.type !== 'ImportDeclaration' || node.source?.value !== RX_PLUGIN_NAME) continue
     for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type !== 'ImportSpecifier') continue
-      const exported = spec.imported?.name as string | undefined
+      const exported = spec.type === 'ImportNamespaceSpecifier' ? '*' : spec.imported?.name
       const local = spec.local?.name as string | undefined
-      if (exported && local && exported !== 'rx') imported.set(local, exported)
+      if (exported && local) state.imports.set(local, exported)
     }
   }
 }
 
-const recognizeRx: DeclCallRecognizer = (site, ctx) => {
-  const callee = site.callee as AnyNode
+type RecognitionContext = Pick<ModuleParseContext, 'fileState' | 'expr'> & {
+  report(message: string): void
+}
+
+/** Match the original identifier reference, so a local shadow never becomes a package transform. */
+function recognizeCall(
+  callee: AnyNode,
+  args: readonly AnyNode[],
+  ctx: RecognitionContext,
+  expression = false,
+): ExtExprSpec | null | undefined {
+  const state = ctx.fileState(IMPORTED_KEY, emptyImports)
+  if (!state.reference || state.imports.size === 0) return undefined
   let methodName: string | undefined
   let namespaceForm = false
   if (callee?.type === 'MemberExpression') {
     const obj = callee.object as AnyNode | undefined
-    if (obj?.type !== 'Identifier' || obj.name !== 'rx') return undefined
+    if (obj?.type !== 'Identifier') return undefined
+    const imported = state.imports.get(obj.name)
+    if ((imported !== 'rx' && imported !== '*') || !state.reference(obj, RX_PLUGIN_NAME, imported))
+      return undefined
     const prop = callee.property as AnyNode | undefined
-    // Any member read of `rx` is claimed, written as a method name or not (`rx['filter'](…)`, `rx[m](…)`): `rx` is not a native
-    // symbol, so letting such a binding fall through would emit uncompilable `let r = rx["filter"](…)`.
-    if (prop?.type !== 'Identifier') return null
+    if (callee.computed || prop?.type !== 'Identifier') return null
     methodName = prop.name as string | undefined
     namespaceForm = true
   } else if (callee?.type === 'Identifier') {
-    // STANDALONE form, resolved through the IMPORT — never the bare name.
-    methodName = ctx.fileState(IMPORTED_KEY, () => new Map<string, string>()).get(callee.name as string)
-    if (methodName === undefined) return undefined
+    methodName = state.imports.get(callee.name as string)
+    if (!methodName || !state.reference(callee, RX_PLUGIN_NAME, methodName)) return undefined
   } else {
     return undefined
   }
   if (!methodName) return namespaceForm ? null : undefined
-  // A reported limitation on the NAMESPACE form is a claim (`rx` is not a native symbol, so binding it as a value would emit
-  // uncompilable `let r = rx.method(...)`); the standalone form declines and the rest of the chain handles the binding.
   const refuse = namespaceForm ? null : undefined
+  // Curried-looking calls such as pipe(xs, map(fn)) are outside the source-first API. Leave their syntax to the
+  // unsupported outer call rather than inventing a collection operation with a missing predicate/count.
+  const required = methodName === 'reduce' ? 3 : METHODS_WITH_ARGUMENT.has(methodName) ? 2 : 1
+  if (expression && RX_V1_METHODS.has(methodName) && args.length < required) return undefined
+  const report = (message: string) => {
+    if (state.reported.has(callee)) return
+    state.reported.add(callee)
+    ctx.report(message)
+  }
   if (methodName === 'pipe') {
-    ctx.warn(
+    report(
       'pipe() has no native lowering — each stage would emit as an immediately-applied closure, which loses its parameter type and fails to compile on both targets. Chain the standalone transforms instead (const a = filter(src, p); const b = map(a, f)), which do lower, or keep the call behind a `<Web>` escape hatch.',
     )
     return refuse
   }
-  const args = site.args
   const sourceArg = args[0]
   if (!sourceArg) {
-    ctx.warn(`rx.${methodName} requires a signal source as its first argument.`)
+    report(`rx.${methodName} requires a signal source as its first argument.`)
     return refuse
   }
   if (!RX_V1_METHODS.has(methodName)) {
-    ctx.warn(
+    report(
       `rx.${methodName} is not yet lowered to native (v1 covers ${[...RX_V1_METHODS].join(' / ')}; remaining methods need Strategy B runtime ports — see docs/src/content/docs/multiplatform-libraries.md).`,
     )
     return refuse
   }
-  // The source signal becomes `signalName()`, the no-arg read the per-target emit lowers to the unwrapped state binding; the
-  // remaining arguments (predicate, count, initial value) pass through verbatim.
-  const sourceCall: ExprIR = { kind: 'call', callee: ctx.expr(sourceArg), args: [] }
-  return { computed: { type: EXPR_TYPE, payload: { method: methodName }, args: [sourceCall, ...args.slice(1).map((a) => ctx.expr(a))] } }
+  // A nested transform already denotes its native collection value. Other sources are accessors and need a read.
+  const source = ctx.expr(sourceArg)
+  const value: ExprIR = isRxExpr(source) ? source : { kind: 'call', callee: source, args: [] }
+  return {
+    type: EXPR_TYPE,
+    payload: { method: methodName },
+    args: [value, ...args.slice(1).map((arg) => ctx.expr(arg))],
+  }
+}
+
+function isRxExpr(expr: ExprIR): expr is ExtExprIR {
+  return expr.kind === 'ext-expr' && expr.plugin === RX_PLUGIN_NAME && expr.type === EXPR_TYPE
+}
+
+const recognizeRx: DeclCallRecognizer = (site, ctx) => {
+  const result = recognizeCall(site.callee, site.args, { ...ctx, report: ctx.warn })
+  return result ? { computed: result } : result
+}
+
+const recognizeRxExpression: CallExprRecognizer = (site, ctx) => {
+  if (site.construct) return undefined
+  // The JS transform returns an accessor; native rx IR is its value. Consume an immediate accessor read exactly once.
+  const callee = site.callee as AnyNode
+  if (callee.type === 'CallExpression' && site.args.length === 0) {
+    const result = recognizeCall(callee.callee, callee.arguments, ctx, true)
+    if (result !== undefined) return result
+  }
+  return recognizeCall(callee, site.args, ctx, true)
 }
 
 const rxExpr: ExprEmitter = {
   // The node was a closed `rx-call` expression kind before it moved here; the struct names the compiler derives from an
   // expression's shape hash it under that name, so emitted names did not move.
-  legacyHash: (e) => ({ kind: EXPR_TYPE, method: methodOf(e), source: e.args[0], args: e.args.slice(1) }),
+  legacyHash: (e) => ({
+    kind: EXPR_TYPE,
+    method: methodOf(e),
+    source: e.args[0],
+    args: e.args.slice(1),
+  }),
   typing: {
     // Type the computed so it gets a useful return-type annotation. Mirrors the per-method dispatch in the emitters.
     type(e, infer): TypeIR {
       const sourceType = infer(e.args[0] as ExprIR)
-      const elementType: TypeIR = sourceType.kind === 'array' ? sourceType.element : { kind: 'unknown' }
+      const elementType: TypeIR =
+        sourceType.kind === 'array' ? sourceType.element : { kind: 'unknown' }
       switch (methodOf(e)) {
         // Transforms preserving the source's element type.
         case 'filter':
@@ -172,7 +247,8 @@ const rxExpr: ExprEmitter = {
       : undefined,
   swift(e, ctx) {
     const src = ctx.expr(e.args[0] as ExprIR)
-    const arg = (i: number): string => (e.args[i + 1] === undefined ? '' : ctx.expr(e.args[i + 1] as ExprIR))
+    const arg = (i: number): string =>
+      e.args[i + 1] === undefined ? '' : ctx.expr(e.args[i + 1] as ExprIR)
     switch (methodOf(e)) {
       case 'filter':
         return `${src}.filter(${arg(0)})`
@@ -237,8 +313,10 @@ const rxExpr: ExprEmitter = {
   },
   kotlin(e, ctx) {
     const src = ctx.expr(e.args[0] as ExprIR)
-    const arg = (i: number): string => (e.args[i + 1] === undefined ? '' : ctx.expr(e.args[i + 1] as ExprIR))
-    const intArg = (i: number): string => (e.args[i + 1] === undefined ? '' : ctx.intArg(e.args[i + 1] as ExprIR))
+    const arg = (i: number): string =>
+      e.args[i + 1] === undefined ? '' : ctx.expr(e.args[i + 1] as ExprIR)
+    const intArg = (i: number): string =>
+      e.args[i + 1] === undefined ? '' : ctx.intArg(e.args[i + 1] as ExprIR)
     switch (methodOf(e)) {
       case 'filter':
         return `${src}.filter(${arg(0)})`
@@ -301,6 +379,7 @@ export const rxPlugin: CompilerPlugin = Object.freeze({
   modules: Object.freeze([RX_PLUGIN_NAME]),
   scanModule: scanRx,
   declCalls: recognizeRx,
+  callExprs: recognizeRxExpression,
   exprs: Object.freeze({ [EXPR_TYPE]: rxExpr }),
   unlowered: Object.freeze({
     [RX_PLUGIN_NAME]: Object.freeze({

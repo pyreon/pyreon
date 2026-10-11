@@ -5422,13 +5422,13 @@
       "warnings": 5
     },
     "golden-fixture:rx-48.tsx|swift": {
-      "sha": "909f217146fc20792f98043c1cbd8af6985ca1abf267dab695c1559baa3c6777",
-      "bytes": 2136,
+      "sha": "3ccddf64c8f8171ea990998b6a49c08650c980473b2976138fb9a4554f330398",
+      "bytes": 2133,
       "warnings": 0
     },
     "golden-fixture:rx-48.tsx|kotlin": {
-      "sha": "17adad62833b8e15f5c5a1f2a8a9fee3d0511c5e55af30e493ce12e6176732b5",
-      "bytes": 2445,
+      "sha": "23c923055b36196b295860ec4db871a972e50cd66647ae8885b280f1161c856c",
+      "bytes": 2442,
       "warnings": 0
     },
     "golden-fixture:sized-map-01.tsx|swift": {
