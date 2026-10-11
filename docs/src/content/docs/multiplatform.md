@@ -1609,9 +1609,27 @@ own tooling. Same `.tsx`, two debugging surfaces.
 
 ## Verifiable today (compile contract)
 
+Native changes automatically select checks in `native-validate.yml` and
+`native-device.yml`. The shared path classifier selects the affected example
+apps; detection failures run the full set. The `native-device` label forces all
+device lanes for other PRs, and nightly and manual device runs also cover every
+lane.
+
 - **Web**: `@pyreon/runtime-dom` renders any Pyreon JSX. Full ecosystem available.
-- **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -parse` in the `native-validate` CI). The **opt-in** `native-device` workflow additionally runs `xcodegen` + `xcodebuild` to compile the full example app on a real Xcode/Simulator SDK, then `xcodebuild test` boots the iPhone 15 Simulator + runs `PyreonTodoMVCUITests` to assert `accessibilityIdentifier("todo-app")` renders within 30s.
-- **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs`). The same opt-in `native-device` workflow runs `gradle assembleDebug` against the real Android toolchain, then boots a Pixel-6 emulator (API 33, google_apis, x86_64, via `reactivecircus/android-emulator-runner`) + runs `gradle connectedCheck` which executes `TodoAppInstrumentedTest`'s `composeRule.onNodeWithTag("todo-app").assertIsDisplayed()`.
+- **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated`
+  emits Swift. Compiler validation includes syntax checks on Linux and
+  `swiftc -typecheck` against the real SwiftUI SDK on macOS. Device CI builds the
+  selected example apps with `xcodegen` and `xcodebuild`, then runs their UI
+  suites on an available iPhone Simulator resolved from the runner image. The
+  workflow also tests the Swift runtime packages and archives a device-SDK build.
+  Each executed UI suite retains its `.xcresult` bundle for inspecting failures
+  and retries.
+- **Android**: `pyreon-native build --target=android --source=./src --out=./generated`
+  emits Kotlin. Compiler validation typechecks fixtures with `kotlinc` and
+  Compose stubs. Device CI builds the selected example apps with the real
+  Android toolchain and runs `gradle connectedCheck` on an emulator. TodoMVC is
+  exercised in both debug and minified release configurations; the other app
+  suites cover the counter, finance, router and Tasks examples.
 
 ### TodoMVC reference walkthrough (locally verified, June 2026)
 
@@ -1687,5 +1705,5 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
 - Web runtime: `packages/core/primitives/src/web/` — all 17 canonical primitives plus `Transition`, `TransitionGroup`, `WebView` and the escape hatches
 - Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo-ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
-- Real-device build gate: `.github/workflows/native-device.yml` (opt-in via the `native-device` label / dispatch)
+- Native validation gates: `.github/workflows/native-validate.yml` (compiler fixtures and real-SDK Swift typechecks) and `.github/workflows/native-device.yml` (example builds and Simulator/emulator tests); selected automatically for relevant PRs, with nightly and manual runs. The `native-device` label forces every device lane.
 - `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model
