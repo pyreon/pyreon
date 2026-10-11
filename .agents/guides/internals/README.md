@@ -43,6 +43,8 @@ Expression slices use lexical signal scopes: parameters and named function/class
 - **`<For>` item params are values, not props.** `row.id` bakes to a one-time `_setChild`; `row.label()` keeps `_bindText`.
 - **Component children.** Props-backed stable references emit a `() => expr` accessor; plain stable references (no signal, no props root) emit bare.
 
+Signal auto-calling preserves callable references through parentheses, type layers and optional chains: `count?.set(count + 1)` and `count[method](count + 1)` must call the signal API, while the argument and computed key still read signal values. Both call visitors share this rule; type annotations such as `typeof count` are never value reads. The compiled signal-call tests mount and click output from both backends.
+
 ### Rocketstyle collapse (`pyreon({ collapse: true })`)
 
 Opt-in and build-only. A rocketstyle call site with literal props becomes one `_rsCollapse(html, lightClass, darkClass, isDark)` clone plus an idempotent `injectRules`; a nested Vite SSR resolver renders the real component in light and dark to capture them.
@@ -156,5 +158,3 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 - `data-pyreon-html`: accept any server children (no string comparison); `_setHtml` (`applyDangerousHtml`) skips its first write to a marked element (the `h()` path marks in `hydrateElement`). A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.
 
 Expression rewrites that share AST offsets must compose against the original source: collect prop substitutions and signal auto-calls before emitting either. A later pass must not slice original source using the length of an already-expanded expression. Static hoist declarations include their own semicolon so a following JSX statement cannot continue the initializer.
-
-Signal auto-calling preserves callable references through parentheses, type layers and optional chains: `count?.set(count + 1)` and `count[method](count + 1)` must call the signal API, while the argument and computed key still read signal values. Both call visitors share this rule; type annotations such as `typeof count` are never value reads. The compiled signal-call tests mount and click output from both backends.
