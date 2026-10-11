@@ -8,7 +8,7 @@ import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '../index'
-import { applyProp } from '../props'
+import { applyProp, makeEventBinder } from '../props'
 
 let _origNodeEnv: string | undefined
 
@@ -126,5 +126,52 @@ describe('props.ts production-mode gates', () => {
     const el = document.createElement('div')
     applyProp(el, 'innerHTML', '<strong>safe</strong>')
     expect(el.innerHTML).toContain('safe')
+  })
+})
+
+
+describe('specialized event bindings in production', () => {
+  it.each([{ prop: 'onClick', event: 'click' }, { prop: 'onMyevent', event: 'myevent' }])(
+    '$prop fires and cleans up without development counters', ({ prop, event }) => {
+      const root = container()
+      const unmount = mount(h('button', null, 'Action'), root)
+      const button = root.querySelector('button')!
+      const handler = vi.fn()
+      const globals = globalThis as { __pyreon_count__?: ((name: string) => void) | undefined }
+      const previous = globals.__pyreon_count__
+      const counter = vi.fn()
+      globals.__pyreon_count__ = counter
+      const cleanup = makeEventBinder(prop)!(button, handler)
+      try {
+        button.dispatchEvent(new Event(event, { bubbles: true }))
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(counter).not.toHaveBeenCalled()
+        cleanup?.()
+        button.dispatchEvent(new Event(event, { bubbles: true }))
+        expect(handler).toHaveBeenCalledTimes(1)
+      } finally {
+        cleanup?.()
+        globals.__pyreon_count__ = previous
+        unmount()
+        root.remove()
+      }
+    },
+  )
+
+  it('blocks executable handler attributes without development warnings', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const root = container()
+    const unmount = mount(h('button', { onclick: 'this.dataset.executed = "yes"' }, 'Action'), root)
+    try {
+      const button = root.querySelector('button')!
+      expect(button.hasAttribute('onclick')).toBe(false)
+      button.click()
+      expect(button.dataset.executed).toBeUndefined()
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      root.remove()
+      warn.mockRestore()
+    }
   })
 })
