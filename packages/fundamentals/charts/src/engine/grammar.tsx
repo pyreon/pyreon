@@ -30,7 +30,7 @@
 // beside a cartesian one is reported and the family wins.
 
 import { For, Fragment, Show, h, makeReactiveProps, _rp as reactiveProp } from '@pyreon/core'
-import type { VNode, VNodeChild } from '@pyreon/core'
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
 import { computed, signal, untrack } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 import { plotCore } from './Chart'
@@ -446,9 +446,11 @@ function flatChildren(children: VNodeChild): VNode[] {
     // `<Show when>` around a mark: read the condition here (tracked by the
     // resolving computed) and descend; a fragment is transparent.
     if (v.type === Show) {
-      const when = propsOf(v).when
+      const props = propsOf(v)
+      const when = props.when
       const on = typeof when === 'function' ? (when as () => unknown)() : when
-      if (on) for (const x of v.children) walk(x)
+      if (on) walk((props.children ?? v.children) as VNodeChild)
+      else walk(props.fallback as VNodeChild)
       return
     }
     if (v.type === Fragment) {
@@ -854,6 +856,11 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   // data change repaints the host in place and only a family flip (a `<Show>`
   // around the family mark) remounts.
   const hostKind = computed<FamilyHost | 'plot'>(() => resolved().family?.host ?? 'plot')
+  // Host props are installed once. A different set of family channels needs
+  // fresh getters, but changing their values must preserve the mounted canvas.
+  const familyKeys = computed(() => Object.keys(resolved().family?.props ?? {}).sort(), {
+    equals: (a, b) => a.length === b.length && a.every((key, i) => key === b[i]),
+  })
   // The interaction features the children asked for, read at call time so a
   // `<Zoom>` added later (a `<Show>` around it) is picked up.
   const features: PlotFeatures = {
@@ -864,9 +871,14 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       return resolved().features.toolbox
     },
   }
-  const GrammarPlot = (p: PlotChartProps<T>): VNode | null => {
-    const host = untrack(() => resolved().plotHost)
-    return host === undefined ? null : host(p, features)
+  const GrammarPlot = (p: PlotChartProps<T>): VNodeChild => {
+    // An initially hidden mark has no plot host yet. Track host identity so
+    // revealing it mounts the canvas, while data/mark updates stay in place.
+    const plotHost = computed(() => resolved().plotHost)
+    return () => {
+      const host = plotHost()
+      return host === undefined ? null : h((hostProps: PlotChartProps<T>) => host(hostProps, features), p as PlotChartProps<T> & Props)
+    }
   }
   const read = (key: string): unknown => (props as unknown as Record<string, unknown>)[key]
   const familyNode = (kind: FamilyHost): VNode => {
@@ -923,7 +935,9 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   if (props.facet !== undefined) return facetGrid(props, readRows, plotProps, GrammarPlot)
   return () => {
     const kind = hostKind()
-    return kind === 'plot' ? h(GrammarPlot as unknown as (p: Record<string, unknown>) => VNode, plotProps) : familyNode(kind)
+    if (kind === 'plot') return h(GrammarPlot as unknown as (p: Record<string, unknown>) => VNode, plotProps)
+    familyKeys()
+    return untrack(() => familyNode(kind))
   }
 }
 
@@ -936,7 +950,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
  * compared. A new value adds a panel; panels whose value persists keep
  * their identity across data changes (each reads its rows through a signal).
  */
-function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<string, unknown>, host: (p: PlotChartProps<T>) => VNode | null): VNodeChild {
+function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<string, unknown>, host: (p: PlotChartProps<T>) => VNodeChild): VNodeChild {
   const facetOf = channel<T, string>(props.facet!)
   const panelRows = new Map<string, Signal<T[]>>()
   /**
