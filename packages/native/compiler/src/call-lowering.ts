@@ -141,8 +141,13 @@ export interface ComputedDeclSpec {
   readonly computed: ExtExprSpec
 }
 
+/** A setup binding whose reads substitute a plugin-supplied expression without emitting a declaration. */
+export interface AliasDeclSpec {
+  readonly alias: ExprIR
+}
+
 /** Every verdict a declaration recognizer may give, besides declining (`undefined`) or claiming without declaring (`null`). */
-export type DeclVerdict = ExtDeclSpec | SignalDeclSpec | ComputedDeclSpec
+export type DeclVerdict = ExtDeclSpec | SignalDeclSpec | ComputedDeclSpec | AliasDeclSpec
 
 /**
  * Returns the declaration, `undefined` to DECLINE (the parser falls through to the rest of its chain, as if

@@ -327,13 +327,33 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       throw new Error(`[Pyreon] Plugin "${name}" ${field} must be an object keyed by type.`)
     }
     for (const [type, emitter] of Object.entries(value)) {
-      const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyList?: unknown } | null
+      const entry = emitter as { swift?: unknown; kotlin?: unknown; after?: unknown; legacyList?: unknown; receivers?: unknown; typing?: unknown } | null
       if (!entry || typeof entry !== 'object' || typeof entry.swift !== 'function' || typeof entry.kotlin !== 'function') {
         throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} needs ${what}.`)
       }
+      if (field === 'items' && entry.after !== undefined && !['bindings', 'models', 'declarations', 'data'].includes(entry.after as string)) {
+        throw new Error(`[Pyreon] Plugin "${name}" items.${type}.after must name a supported module emission slot.`)
+      }
       // A lane the hash does not have would silently drop the item from `moduleTag`.
-      if (entry.legacyList !== undefined && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas' && entry.legacyList !== 'features') {
-        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "fieldMetas", "zodSchemas" or "features".`)
+      if (entry.legacyList !== undefined && entry.legacyList !== 'models' && entry.legacyList !== 'stores' && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas' && entry.legacyList !== 'features') {
+        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "models", "stores", "fieldMetas", "zodSchemas" or "features".`)
+      }
+      if (field === 'items' && entry.receivers !== undefined) {
+        const itemReceivers = entry.receivers as { swift?: unknown; kotlin?: unknown } | null
+        if (!itemReceivers || typeof itemReceivers !== 'object' || Array.isArray(itemReceivers) ||
+          (itemReceivers.swift !== undefined && typeof itemReceivers.swift !== 'function') ||
+          (itemReceivers.kotlin !== undefined && typeof itemReceivers.kotlin !== 'function')) {
+          throw new Error(`[Pyreon] Plugin "${name}" items.${type}.receivers must be an object with swift/kotlin functions.`)
+        }
+      }
+      if (field === 'items' && entry.typing !== undefined) {
+        const typing = entry.typing as { fields?: unknown; scopes?: unknown; type?: unknown } | null
+        if (!typing || typeof typing !== 'object' || Array.isArray(typing) ||
+          (typing.fields !== undefined && typeof typing.fields !== 'function') ||
+          (typing.scopes !== undefined && typeof typing.scopes !== 'function') ||
+          (typing.type !== undefined && typeof typing.type !== 'function')) {
+          throw new Error(`[Pyreon] Plugin "${name}" items.${type}.typing must be an object with fields/scopes/type functions.`)
+        }
       }
     }
   }

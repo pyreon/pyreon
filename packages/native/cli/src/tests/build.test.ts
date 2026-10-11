@@ -18,14 +18,12 @@ import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createCompiler } from '@pyreon/native-compiler'
-import { httpPlugin } from '../../../../fundamentals/http/src/native-plugin/plugin'
-import { queryPlugin } from '../../../../fundamentals/query/src/native-plugin/plugin'
-import hooksPlugin from '../../../../fundamentals/hooks/src/native-plugin'
+import { FIRST_PARTY_PLUGINS } from '../../../../../scripts/native-first-party-plugins'
 import { build, conditionalKotlinImports, findTsxFiles, isWebOnlyEntry } from '../build'
 
-// The libraries own their native lowering (a plugin in their own package); the compiler's fixtures use
-// `@pyreon/query`, so the tests that compile them load the plugin the way `pyreon-native` discovers it.
-const FIRST_PARTY = createCompiler({ discovered: [httpPlugin, queryPlugin, hooksPlugin] })
+// The libraries own their native lowering. Use the same first-party catalog as
+// the compiler fixture gates so every relocated owner is installed explicitly.
+const FIRST_PARTY = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 const { transform } = FIRST_PARTY
 
 const HERE = dirname(fileURLToPath(import.meta.url))

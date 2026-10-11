@@ -1104,93 +1104,6 @@ export interface ModuleDeclIR {
   initial: ExprIR
 }
 
-/**
- * Gap 4 Strategy-B port v1 — `defineStore("id", () => { ... return {...} })`
- * from `@pyreon/store`. Captured as a top-level singleton class
- * emitted at file scope (sibling of enums / structs).
- *
- * v1 scope: setup body contains ONLY `const X = signal(...)` decls;
- * returned object is a shorthand-keys-only literal naming local
- * signals. The PMTC parser walks the setup body, extracts the signal
- * fields, and emits a per-store class with @Observable properties
- * (Swift) / `var by mutableStateOf` (Kotlin) and a static `shared`
- * accessor. Use sites `<hookName>().store.<field>` are parsed as a
- * chain pattern and rewritten to `PyreonStore_<id>.shared.<field>`
- * in emit.
- *
- * Multi-step member-access chain rewriting at the parser level
- * (`tryDeclFromCallExpression` looking for `<id>().store.<X>` shape)
- * is the structural infrastructure this port adds — once present,
- * createModel + defineFeature composites build on it.
- */
-export interface StoreDefnIR {
-  /** Top-level binding name (e.g. `useCounter`). */
-  hookName: string
-  /** Store id from `defineStore("X", ...)`. Used to derive emitted class name. */
-  storeId: string
-  /**
-   * Signal fields extracted from the setup body. v2: ALL signal decls
-   * (not just returned ones) — a method may write a non-returned
-   * signal, so every decl must exist on the singleton. Non-returned
-   * fields are reachable through the emitted class but not part of
-   * the documented `.store` surface (a small, deliberate divergence
-   * from the web's closure semantics).
-   */
-  fields: { name: string; type: TypeIR; initial: ExprIR }[]
-  /**
-   * v2 — `const X = computed(() => expr)` decls in the setup body.
-   * Swift: computed property on the singleton (`var X: T { expr }`);
-   * Kotlin: `val X get() = expr` (re-evaluates on access; reads of
-   * mutableStateOf fields keep it Compose-reactive).
-   */
-  computeds?: { name: string; expr: ExprIR }[]
-  /**
-   * v2 — `const X = (args) => …` arrow decls in the setup body.
-   * Emitted as methods on the singleton; use-site chain calls
-   * (`useX().store.M(args)`) rewrite to `PyreonStore_id.shared.M(args)`
-   * / `PyreonStore_id.M(args)`.
-   */
-  methods?: Extract<DeclIR, { kind: 'function' }>[]
-}
-
-/**
- * Gap 4 follow-up v2 — @pyreon/state-tree model defined via the
- * `const X = model({ state: { ... literal ... } }) [.views(f)] [.actions(f)]
- * .create()` chain. PMTC emits a per-model PyreonModel_<id> singleton at
- * module scope; use sites rewrite onto it.
- *
- * v3 scope: literal state values, plus `.views()` / `.actions()` chain
- * blocks (the canonical web shape — a model with no actions cannot mutate,
- * so v2's state-only support could not express a useful model).
- * `.asHook()`, `.create(initialOverride)`, getSnapshot / onPatch and
- * nested field-models remain deferred follow-ups.
- */
-export interface ModelDefnIR {
-  /** User-side instance binding name (e.g. `counter`). */
-  instanceName: string
-  /** Suffix used to derive the emitted class name (PyreonModel_<id>). */
-  modelId: string
-  /**
-   * State fields extracted from the literal `state: { ... }` config.
-   * Typed as `TypeIR`/`ExprIR` (not raw literals) so the store's proven
-   * inference + emit machinery applies unchanged — which is also what
-   * makes a fractional seed (`{ total: 0.5 }`) emit `Double` instead of
-   * an `Int` that cannot hold it.
-   */
-  fields: { name: string; type: TypeIR; initial: ExprIR }[]
-  /**
-   * `.views((self) => ({ name: () => expr }))` — derived values. Emitted
-   * as computed properties on the singleton (Swift `var X: T { expr }`,
-   * Kotlin `val X get() = expr`), mirroring `StoreDefnIR.computeds`.
-   */
-  views?: { name: string; expr: ExprIR; selfParam: string }[]
-  /**
-   * `.actions((self) => ({ name: (args) => … }))` — mutators. Emitted as
-   * methods on the singleton, mirroring `StoreDefnIR.methods`.
-   */
-  methods?: (Extract<DeclIR, { kind: 'function' }> & { selfParam: string })[]
-}
-
 export interface ParseResult {
   /** Decoded static import specifiers, collected from the parser's AST. */
   imports: string[]
@@ -1201,15 +1114,6 @@ export interface ParseResult {
   structs: StructIR[]
   /** Module-level mutable / immutable bindings emitted at file scope. */
   moduleDecls: ModuleDeclIR[]
-  /** Gap 4 v1: top-level defineStore declarations. */
-  stores: StoreDefnIR[]
-  /**
-   * Gap 4 follow-up: state-tree model declarations from
-   * `const X = model({...}).create()`. Each one emits a
-   * per-model class at module scope + a `@State` binding inside
-   * the consuming component body.
-   */
-  models: ModelDefnIR[]
   /**
    * File-scope items plugins own (see {@link ExtModuleItem}): declarations a plugin's `topLevel` recognizer
    * claimed, then the ones its expression recognizers synthesized. Emitted in plugin-declared slots beside the
@@ -1224,7 +1128,7 @@ export interface ParseResult {
    * the component View structs so components + store methods can call them).
    * A GENERIC helper (`function first<T>(…)`) is NOT collected here — the IR
    * has no generic-parameter representation, so it stays a NAMED warning (see
-   * `tryComponentFromTopLevel`). Distinct from `StoreDefnIR.methods` (same
+   * `tryComponentFromTopLevel`). Distinct from function members (same
    * `DeclIR{kind:'function'}` shape, but those emit as CLASS methods on the
    * store singleton, these emit free at file scope).
    */

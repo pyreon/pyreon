@@ -41,6 +41,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { runSwiftSmoke } from './swift-cosource-smoke'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -213,6 +214,10 @@ const bytesOf = (files: readonly string[]): string =>
   files.map((f) => `${f.slice(ROOT.length)}\0${readOr(f)}`).join('\0')
 const toolVersion = (bin: string, flag: string): string => {
   const p = spawnSync(bin, [flag], { encoding: 'utf8' })
+  if (p.status !== 0) {
+    console.error(`[check-native-cosource] ${bin} ${flag} failed:\n${p.stderr ?? ''}${p.error?.message ?? ''}`)
+    process.exit(1)
+  }
   return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
 }
 const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
@@ -232,29 +237,51 @@ const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
  * macOS ships a `/usr/bin/java` stub that satisfies `command -v` and then fails
  * with an install prompt, so the probe has to EXECUTE it, not just find it.
  */
-const javaRuns = (() => {
-  try {
-    return spawnSync('java', ['-version'], { encoding: 'utf8' }).status === 0
-  } catch {
-    return false
-  }
-})()
+const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
+const javaRuns = javaProbe.status === 0
+// kotlinc may use JAVA_HOME; the PATH java that executes the smoke is a
+// separate runtime and its version must also determine the verdict key.
+const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
 
 /** A skipped smoke is a broken runner under the same flag the toolchains use. */
 const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
 
 const swiftcVersion = swiftc ? toolVersion('swiftc', '--version') : ''
-const kotlinHarness = readOr(verifyKotlin)
+// Runner semantics also determine whether an exit-0 child actually ran its
+// smoke. Invalidate older records that could mislabel a child skip as a run.
+const kotlinHarness = [readOr(verifyKotlin), readOr(join(ROOT, 'scripts/check-native-cosource.ts'))].join('\0')
+const kotlinSmokeHarness = `${kotlinHarness}\0java\0${javaVersion}`
+const swiftHarness = readOr(join(ROOT, 'scripts', 'swift-cosource-smoke.ts'))
 let cacheHits = 0
 /** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
-function cached(key: string, label: string, compute: () => boolean): boolean {
+function cachedKotlin(
+  key: string,
+  label: string,
+  hasTest: boolean,
+  compute: () => boolean | 'skipped',
+): boolean {
+  // Environment requirements precede cache acceptance. A non-strict run can
+  // cache a typecheck-only verdict with smokeRuns=false; the same broken JDK
+  // environment must not turn that weaker verdict into a strict success.
+  if (hasTest && !javaRuns && requireNativeValidate) {
+    console.error(
+      `  ✗ ${label}: the behaviour test cannot run — no working JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.`,
+    )
+    return false
+  }
   if (readVerdict(key)?.ok === true) {
     cacheHits++
-    console.log(`  ✓ ${label} (cached verdict)`)
+    console.log(
+      `  ✓ ${label} (cached verdict)` +
+        (hasTest && !javaRuns ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
+    )
     return true
   }
-  const ok = compute()
-  if (ok) writeVerdict(key, { ok: true })
+  const outcome = compute()
+  const ok = outcome !== false
+  // A child can lose Java after our probe; its skip must not populate the
+  // stronger smokeRuns=true key. Known compile-only results remain reusable.
+  if (ok && (outcome !== 'skipped' || !javaRuns)) writeVerdict(key, { ok: true })
   return ok
 }
 
@@ -262,7 +289,12 @@ for (const pkg of pkgs) {
   // --- Kotlin ---
   if (pkg.kotlinDir) {
     if (!kotlinc) {
-      console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
+      if (requireNativeValidate) {
+        failures++
+        console.error(`  ✗ ${pkg.name} [kotlin]: kotlinc absent, and PYREON_REQUIRE_NATIVE_VALIDATE=1.`)
+      } else {
+        console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
+      }
     } else if (pkg.kotlinServices) {
       // PER-SERVICE-GROUP: a package whose Kotlin runtime is SEVERAL independent
       // services, each needing a DIFFERENT stub bundle (two `package
@@ -343,7 +375,7 @@ for (const pkg of pkgs) {
           const testFile = run.extra.find((e) => e.startsWith('--test='))?.slice('--test='.length)
           const key = verdictKey({
             compilerVersion: kotlincVersion,
-            harness: kotlinHarness,
+            harness: typecheckOnly ? kotlinHarness : kotlinSmokeHarness,
             source: bytesOf(abs),
             test: testFile ? bytesOf([testFile]) : '',
             typecheckOnly,
@@ -352,7 +384,7 @@ for (const pkg of pkgs) {
             // caches an "ok" that every later run (JDK or not) reuses.
             smokeRuns: typecheckOnly ? false : javaRuns,
           })
-          const ok = cached(key, `${pkg.name} [kotlin ${svc} · ${run.label}]`, () => {
+          const ok = cachedKotlin(key, `${pkg.name} [kotlin ${svc} · ${run.label}]`, !typecheckOnly, () => {
             const r = spawnSync('bun', args, { encoding: 'utf8' })
             if (r.status !== 0) {
               console.error(
@@ -371,7 +403,7 @@ for (const pkg of pkgs) {
               `  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))` +
                 (skipped ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
             )
-            return true
+            return skipped ? 'skipped' : true
           })
           if (!ok) failures++
         }
@@ -390,7 +422,7 @@ for (const pkg of pkgs) {
       else args.push('--typecheck-only')
       const key = verdictKey({
         compilerVersion: kotlincVersion,
-        harness: kotlinHarness,
+        harness: test ? kotlinSmokeHarness : kotlinHarness,
         source: bytesOf(ktFiles),
         test: test ? bytesOf([test]) : '',
         typecheckOnly: !test,
@@ -398,7 +430,7 @@ for (const pkg of pkgs) {
         // behaviour pass must not share a cache key.
         smokeRuns: test ? javaRuns : false,
       })
-      const ok = cached(key, `${pkg.name} [kotlin]`, () => {
+      const ok = cachedKotlin(key, `${pkg.name} [kotlin]`, Boolean(test), () => {
         const r = spawnSync('bun', args, { encoding: 'utf8' })
         if (r.status !== 0) {
           console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
@@ -418,7 +450,7 @@ for (const pkg of pkgs) {
           `  ✓ ${pkg.name} [kotlin]` +
             kotlinOutcomeLabel({ hasTest: Boolean(test), smokeSkipped: skipped }),
         )
-        return true
+        return skipped ? 'skipped' : true
       })
       if (!ok) failures++
     }
@@ -437,7 +469,7 @@ for (const pkg of pkgs) {
       const swiftKey = verdictKey({
         kind: 'swift-cosource',
         compilerVersion: swiftcVersion,
-        harness: '',
+        harness: swiftHarness,
         source: bytesOf(srcFiles),
         test: bytesOf(testFiles),
         typecheckOnly: testFiles.length === 0,
@@ -446,27 +478,15 @@ for (const pkg of pkgs) {
         cacheHits++
         console.log(`  ✓ ${pkg.name} [swift] (cached verdict)`)
       } else if (testFiles.length > 0) {
-        const bin = join('/tmp', `pyreon-cosource-${pkg.name.replace(/[^a-z0-9]/gi, '_')}`)
-        // `-parse-as-library`: the test file provides `@main` (top-level
-        // statements are illegal when compiling multiple files); the source
-        // files are plain library types.
-        const compile = spawnSync(
-          'swiftc',
-          ['-parse-as-library', ...srcFiles, ...testFiles, '-o', bin],
-          { encoding: 'utf8' },
-        )
-        if (compile.status !== 0) {
+        const result = runSwiftSmoke(srcFiles, testFiles)
+        if (result.status !== 0) {
           failures++
-          console.error(`  ✗ ${pkg.name} [swift] compile:\n${compile.stderr}`)
+          console.error(
+            `  ✗ ${pkg.name} [swift] ${result.phase}:\n${result.stdout ?? ''}\n${result.stderr ?? ''}${result.error?.message ?? ''}`,
+          )
         } else {
-          const run = spawnSync(bin, [], { encoding: 'utf8' })
-          if (run.status !== 0) {
-            failures++
-            console.error(`  ✗ ${pkg.name} [swift] test run:\n${run.stdout}\n${run.stderr}`)
-          } else {
-            console.log(`  ✓ ${pkg.name} [swift] (compiled + ran tests)`)
-            writeVerdict(swiftKey, { ok: true })
-          }
+          console.log(`  ✓ ${pkg.name} [swift] (compiled + ran tests)`)
+          writeVerdict(swiftKey, { ok: true })
         }
       } else {
         const r = spawnSync('swiftc', ['-typecheck', ...srcFiles], { encoding: 'utf8' })
