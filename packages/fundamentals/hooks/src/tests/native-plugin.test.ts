@@ -1,17 +1,17 @@
 import nativePlugin from '../native-plugin'
 
-// `@pyreon/hooks` owns its native lowering as data. The compiler keeps a
-// generated copy and `scripts/check-native-plugin-types.ts` proves every
-// Swift/Kotlin type named here is declared; these specs pin the contract a
-// consumer (and the generator) relies on, so a malformed entry fails here with
+// `@pyreon/hooks` owns its native lowering as data, registered through its plugin.
+// `scripts/check-native-plugin-types.ts` proves every Swift/Kotlin type named
+// here is declared; these specs pin the contract consumers rely on,
+// so a malformed entry fails here with
 // the hook named instead of surfacing as a broken emit on a device.
 
 const entries = Object.entries(nativePlugin.services)
 
 describe('@pyreon/hooks native plugin', () => {
-  it('identifies itself as the plugin for @pyreon/hooks, so a discovered copy replaces the built-in', () => {
+  it('identifies itself as the API 2 owner for @pyreon/hooks', () => {
     expect(nativePlugin.name).toBe('@pyreon/hooks')
-    expect(nativePlugin.apiVersion).toBe(1)
+    expect(nativePlugin.apiVersion).toBe(2)
     expect(nativePlugin.modules).toEqual(['@pyreon/hooks'])
   })
 
