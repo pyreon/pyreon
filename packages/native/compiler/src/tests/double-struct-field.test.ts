@@ -7,8 +7,7 @@
 // additive: integer-valued fields stay Int.
 
 import { describe, expect, it } from 'vitest'
-import { parsePyreon } from '../parse'
-import { transform } from '../index'
+import { transform, parsePyreon } from './first-party-plugins'
 
 const SRC = `import { Stack, Inline, Text, For } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'

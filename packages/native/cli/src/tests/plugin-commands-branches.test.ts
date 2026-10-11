@@ -11,7 +11,7 @@ import { explainReport, pluginsReport } from '../plugin-commands'
 
 const HOOKS = {
   name: '@pyreon/hooks',
-  apiVersion: 1 as const,
+  apiVersion: 2 as const,
   modules: ['@pyreon/hooks'],
   services: {
     useShare: { legacyKind: 'share', swift: 'PyreonShare()', kotlin: ['val {id}Ctx = LocalContext.current', 'val {id} = remember { PyreonShare({id}Ctx) }'] },
@@ -131,7 +131,7 @@ describe('pluginsReport — discovery edge cases', () => {
   })
 
   it('lists a versionless, serviceless plugin with a dash', async () => {
-    addPackage('@acme/plain', `export default { name: 'plain', apiVersion: 1 }`)
+    addPackage('@acme/plain', `export default { name: 'plain', apiVersion: 2 }`)
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
     const row = lines.find((l) => l.includes('@acme/plain'))!
@@ -140,7 +140,7 @@ describe('pluginsReport — discovery edge cases', () => {
   })
 
   it('shows the version when the package has one', async () => {
-    addPackage('@acme/versioned', `export default { name: 'versioned', apiVersion: 1 }`, { version: '2.3.4' })
+    addPackage('@acme/versioned', `export default { name: 'versioned', apiVersion: 2 }`, { version: '2.3.4' })
     const { lines } = await pluginsReport(app, false)
     expect(lines.find((l) => l.includes('@acme/versioned'))).toContain('@acme/versioned@2.3.4')
   })
@@ -150,7 +150,7 @@ describe('pluginsReport — discovery edge cases', () => {
       '@acme/rich',
       `export default {
         name: 'rich',
-        apiVersion: 1,
+        apiVersion: 2,
         services: { useRich: { swift: 'Rich()', kotlin: ['val {id} = Rich()'] } },
         elements: [{ module: '@acme/ui', tags: ['Banner', 'Badge'], emit: { swift: () => 'B()', kotlin: () => 'B()' } }],
         calls: { createZulu: () => ({ type: 'rich' }), createAlpha: () => ({ type: 'rich' }) },
@@ -183,7 +183,7 @@ describe('pluginsReport — discovery edge cases', () => {
 
   it('reports every module-item owner and method recognizer in stable order', async () => {
     addPackage('@acme/zebra', `export default {
-      name: 'zebra', apiVersion: 1,
+      name: 'zebra', apiVersion: 2,
       topLevel: () => undefined,
       items: { node: { swift: () => [], kotlin: () => [] }, leaf: { swift: () => [], kotlin: () => [] } },
       methodCalls: { zulu: () => undefined },
@@ -191,7 +191,7 @@ describe('pluginsReport — discovery edge cases', () => {
       refineParse: () => {}, refineStructs: () => {}, finishModule: () => {},
     }`)
     addPackage('@acme/alpha', `export default {
-      name: 'alpha', apiVersion: 1,
+      name: 'alpha', apiVersion: 2,
       items: { value: { swift: () => [], kotlin: () => [] } },
       methodCalls: { alpha: () => undefined },
       runtimeTypes: ['AlphaRuntime'],

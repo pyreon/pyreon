@@ -30,7 +30,6 @@
 // ============================================================================
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   type AttrIR,
   type CompilerPlugin,
   type ElementLowering,
@@ -190,6 +189,6 @@ export const coolgridLowering: ElementLowering = Object.freeze({
 /** The `@pyreon/coolgrid` native plugin — discovered from the package manifest when a source imports it. */
 export const coolgridPlugin: CompilerPlugin = Object.freeze({
   name: coolgridLowering.module,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   elements: Object.freeze([coolgridLowering]),
 })

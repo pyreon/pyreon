@@ -200,3 +200,16 @@ The platform-service hooks (`useShare`, `useOnline`, `useGeolocation`, … — 2
 ## License
 
 MIT
+
+### Native compiler plugin
+
+The native CLI discovers the package's tooling entry from `pyreon.native.plugin`. Direct compiler callers install it explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import hooksPlugin from '@pyreon/hooks/native-plugin'
+
+const compiler = createCompiler({ plugins: [hooksPlugin] })
+```
+
+The compiler peer is optional. The runtime entry does not load compiler tooling.

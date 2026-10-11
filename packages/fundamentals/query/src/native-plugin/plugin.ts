@@ -1,5 +1,4 @@
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   type CompilerPlugin,
   type DeclEmitter,
   type ElementLowering,
@@ -155,7 +154,7 @@ const queryElements: readonly ElementLowering[] = [
  */
 export const queryPlugin: CompilerPlugin = {
   name: QUERY_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/query'],
   scanModule: scanQuery,
   calls: {

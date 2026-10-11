@@ -13,7 +13,7 @@ function makePlugin(): CompilerPlugin {
     return `Native_${receiver.name}.value`
   }
   return {
-    name: '@acme/module-receiver', apiVersion: 1, modules: ['@acme/module-receiver'],
+    name: '@acme/module-receiver', apiVersion: 2, modules: ['@acme/module-receiver'],
     topLevel(node) {
       const n = node as { declarations?: { id?: { name?: string }; init?: { callee?: { name?: string } } }[] }
       const decl = n.declarations?.[0]
@@ -70,8 +70,7 @@ describe('module item receivers', () => {
     it(`types derived values from the module item's owner on ${target}`, () => {
       const compiler = createCompiler({ discovered: [makePlugin()] })
       const result = compiler.transform(`${HEAD}
-        import { computed } from '@pyreon/reactivity'
-        export function App() {
+               export function App() {
           const scaled = computed(() => Units.value() * 2)
           return <Text>{scaled()}</Text>
         }`, { target })
@@ -116,8 +115,7 @@ describe('module item receivers', () => {
   it.skipIf(!isSwiftcAvailable())('the emitted module receiver and derived value typecheck with swiftc', () => {
     const compiler = createCompiler({ discovered: [makePlugin()] })
     const result = compiler.transform(`${HEAD}
-      import { computed } from '@pyreon/reactivity'
-      export function App() { const scaled = computed(() => Units.value() * 2); return <Text>{scaled()}</Text> }`, { target: 'swift' })
+           export function App() { const scaled = computed(() => Units.value() * 2); return <Text>{scaled()}</Text> }`, { target: 'swift' })
     const validation = validateSwiftWithStubs(result.code)
     expect(validation.ok, validation.error).toBe(true)
     expect(validation.skipped).not.toBe(true)
@@ -126,8 +124,7 @@ describe('module item receivers', () => {
   it.skipIf(!isKotlincAvailable())('the emitted module receiver and derived value typecheck with kotlinc', () => {
     const compiler = createCompiler({ discovered: [makePlugin()] })
     const result = compiler.transform(`${HEAD}
-      import { computed } from '@pyreon/reactivity'
-      export function App() { const scaled = computed(() => Units.value() * 2); return <Text>{scaled()}</Text> }`, { target: 'kotlin' })
+           export function App() { const scaled = computed(() => Units.value() * 2); return <Text>{scaled()}</Text> }`, { target: 'kotlin' })
     const validation = validateKotlin(result.code)
     expect(validation.ok, validation.error).toBe(true)
     expect(validation.skipped).not.toBe(true)

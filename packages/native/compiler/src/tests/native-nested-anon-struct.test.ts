@@ -11,7 +11,7 @@
 // (`swiftc`) + the Compose stubs (`kotlinc`).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const P = '@pyreon/primitives'

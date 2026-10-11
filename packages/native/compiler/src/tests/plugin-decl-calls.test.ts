@@ -1,3 +1,4 @@
+import reactivityPlugin from '../../../../core/reactivity/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin, type ExprEmitter, type ExprIR } from '../index'
 import { forEachExpr } from '../expr-walk'
@@ -27,7 +28,7 @@ const expr = (withReduce: boolean): ExprEmitter => ({
 
 const toy = (withReduce = true): CompilerPlugin => ({
   name: '@acme/seq',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/seq'],
   scanModule: (scan) => {
     const names = scan.fileState('@acme/seq:names', () => new Map<string, string>())
@@ -65,7 +66,7 @@ export function App() {
   return (<Stack><Text>{String(firstTwo().length + own + total())}</Text></Stack>)
 }`
 
-const run = (target: 'swift' | 'kotlin', plugin: CompilerPlugin) => createCompiler({ plugins: [plugin] }).transform(SRC, { target })
+const run = (target: 'swift' | 'kotlin', plugin: CompilerPlugin) => createCompiler({ plugins: [reactivityPlugin, plugin] }).transform(SRC, { target })
 
 describe('declCalls', () => {
   it('declares a computed around the plugin expression, resolving the callee through the import', () => {

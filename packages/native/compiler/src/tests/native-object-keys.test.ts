@@ -26,7 +26,7 @@
 // invalid `Object.keys(...)` → the swiftc-typecheck + kotlinc gates fail.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { emptyInferenceCtx, rewriteObjectKeys } from '../infer-type'
 import type { ExprIR } from '../types'
 import {

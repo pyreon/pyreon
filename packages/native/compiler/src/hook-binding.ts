@@ -125,13 +125,13 @@ function walk(node: unknown, parent: AnyNode | undefined, key: string, visit: (n
 
 /**
  * Does `source` legitimately provide `hook`? A package-owned plugin declares
- * the specifiers it serves (`modules`), so its hooks are claimed from there as
- * well as from `@pyreon/*`. Absent, only `@pyreon/*` counts — unchanged.
+ * the specifiers it serves (`modules`). When a registry supplies claims it is
+ * authoritative; the standalone helper retains its namespace-only default.
  */
 export type HookSourceClaim = (hook: string, source: string) => boolean
 
 const isFrameworkSource = (source: string, hook: string, claims?: HookSourceClaim): boolean =>
-  source.startsWith('@pyreon/') || claims?.(hook, source) === true
+  claims?.(hook, source) ?? source.startsWith('@pyreon/')
 
 /** The suffix a non-framework `useX` is renamed with so name-keyed recognizers stop seeing it. */
 export const NOT_FRAMEWORK_SUFFIX = '_'

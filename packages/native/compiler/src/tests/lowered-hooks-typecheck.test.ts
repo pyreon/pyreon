@@ -35,16 +35,19 @@
 // iOS. Device evidence covers the path the example takes, not the API surface.
 
 import { describe, expect, it } from 'vitest'
-import { hooksPlugin, transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { withRegistries } from '../active-registries'
 import { createCompiler } from '../compiler'
 import { FIRST_PARTY_PLUGINS } from '../../../../../scripts/native-first-party-plugins'
 import { nativeLoweredHooks } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
-// The allowlist as a compiler with `@pyreon/hooks` loaded sees it: the platform-service hooks are that plugin's, and every other
-// library's claims are checked against its own plugin below.
-const NATIVE_LOWERED_HOOKS = withRegistries(createCompiler({ plugins: [hooksPlugin] }).registries, () => nativeLoweredHooks())
+// Use the compiler's registry with every owning plugin installed. This includes
+// declaration, statement and pattern call positions; non-hook helpers are separate contracts.
+const NATIVE_LOWERED_HOOKS = withRegistries(
+  createCompiler({ plugins: FIRST_PARTY_PLUGINS }).registries,
+  () => new Set([...nativeLoweredHooks()].filter((name) => name.startsWith('use'))),
+)
 
 /** One minimal, REALISTIC call per hook — the shape an author would write. */
 const USAGES: ReadonlyArray<readonly [string, string, string]> = [
@@ -54,13 +57,21 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useClipboard', '@pyreon/hooks', 'const c = useClipboard()'],
   ['useColorScheme', '@pyreon/hooks', 'const c = useColorScheme()'],
   ['useColorMode', '@pyreon/core', 'const c = useColorMode()'],
-  ['useCrashReporter', '@pyreon/hooks', 'const crash = useCrashReporter(); const go = () => { crash.recordError("x") }'],
+  [
+    'useCrashReporter',
+    '@pyreon/hooks',
+    'const crash = useCrashReporter(); const go = () => { crash.recordError("x") }',
+  ],
   ['useDatabase', '@pyreon/hooks', 'const db = useDatabase()'],
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
   ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],
   ['useFlow', '@pyreon/flow', 'const flow = useFlow<Resp>({ nodes: [], edges: [] })'],
-  ['useFieldArray', '@pyreon/form', "const tags = useFieldArray(['a']); const add = () => { tags.append('b') }"],
+  [
+    'useFieldArray',
+    '@pyreon/form',
+    "const tags = useFieldArray(['a']); const add = () => { tags.append('b') }",
+  ],
   ['useGeolocation', '@pyreon/hooks', 'const g = useGeolocation()'],
   ['useHaptics', '@pyreon/hooks', 'const h = useHaptics()'],
   // A statement, not a binding: useHotkey returns nothing and registers a
@@ -70,11 +81,19 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useLinking', '@pyreon/hooks', 'const l = useLinking()'],
   ['useMap', '@pyreon/hooks', 'const m = useMap()'],
   ['useNavigate', '@pyreon/router', 'const nav = useNavigate()'],
-  ['useSecureStorage', '@pyreon/hooks', "const vault = useSecureStorage(); const save = () => { vault.write('auth', 'tok') }"],
+  [
+    'useSecureStorage',
+    '@pyreon/hooks',
+    "const vault = useSecureStorage(); const save = () => { vault.write('auth', 'tok') }",
+  ],
   ['useNotifications', '@pyreon/hooks', 'const n = useNotifications()'],
   ['useOnline', '@pyreon/hooks', 'const o = useOnline()'],
   ['useParams', '@pyreon/router', 'const { id } = useParams()'],
-  ['useUrlState', '@pyreon/url-state', "const q = useUrlState('q', 'all'); const go = () => { q.set('b') }"],
+  [
+    'useUrlState',
+    '@pyreon/url-state',
+    "const q = useUrlState('q', 'all'); const go = () => { q.set('b') }",
+  ],
   ['usePayments', '@pyreon/hooks', 'const p = usePayments()'],
   // Seeded deliberately. A grant-less `usePermissions()` lowers to an EMPTY
   // native set in which every check denies, and now says so — so it is no
@@ -191,7 +210,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
 const EXCLUDED: ReadonlyMap<string, string> = new Map([
   [
     'useNativeModule',
-    'the FFI escape hatch: it emits a reference to the USER\'s own native class ' +
+    "the FFI escape hatch: it emits a reference to the USER's own native class " +
       '(`useNativeModule("X")` -> `X()`), which by construction cannot exist in a ' +
       'stub. Failing here is correct behaviour, not a defect.',
   ],
@@ -199,10 +218,7 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
     'useStream',
     'needs module-scope companions this one-hook template cannot express (a `createHttp` client, an endpoint, the `@pyreon/http/stream` opener) — type-checked on both targets, against the stubs AND the real runtime source, in native-use-stream.test.ts.',
   ],
-  [
-    'useLoaderData',
-    'already warns — a documented, disclosed gap rather than a silent one.',
-  ],
+  ['useLoaderData', 'already warns — a documented, disclosed gap rather than a silent one.'],
 ])
 
 const app = (name: string, mod: string, decl: string) =>
@@ -225,11 +241,9 @@ describe('every hook claimed to lower natively type-checks on both targets', () 
   it('claims coverage for nothing outside the allowlist', () => {
     // The inverse guard — a stale entry here would inflate the apparent
     // coverage of a hook the compiler no longer claims to lower.
-    // A hook a discovered plugin claims (`useFlow`) is not in the core allowlist by design; the
-    // plugin's own `calls` is its authority, asserted here so the exemption cannot go stale.
-    const pluginOwned = (n: string) => FIRST_PARTY_PLUGINS.some((plugin) => Object.hasOwn(plugin.calls ?? {}, n))
+    // Claims come from the same complete registry as real application transforms.
     const stale = [...USAGES.map(([n]) => n), ...EXCLUDED.keys()].filter(
-      (n) => !NATIVE_LOWERED_HOOKS.has(n) && !pluginOwned(n),
+      (n) => !NATIVE_LOWERED_HOOKS.has(n),
     )
     expect(stale, `no longer in the allowlist: ${stale.join(', ')}`).toEqual([])
   })
@@ -293,33 +307,42 @@ describe('every hook claimed to lower natively type-checks on both targets', () 
   // written loosely ("does usePermissions emit?"), so they assert the thing
   // that was actually wrong: the no-arg call, and the scalar storage path.
   describe('stub fidelity', () => {
-    it.skipIf(!isSwiftcAvailable())('PyreonPermissions() with NO argument type-checks on Swift', () => {
-      // The real init defaults its parameter; the stub used to require one.
-      const res = validateSwiftWithStubs(
-        transform(app('usePermissions', '@pyreon/hooks', 'const p = usePermissions()'), {
-          target: 'swift',
-        }).code,
-      )
-      expect(res.ok, res.error ?? '').toBe(true)
-    })
+    it.skipIf(!isSwiftcAvailable())(
+      'PyreonPermissions() with NO argument type-checks on Swift',
+      () => {
+        // The real init defaults its parameter; the stub used to require one.
+        const res = validateSwiftWithStubs(
+          transform(app('usePermissions', '@pyreon/hooks', 'const p = usePermissions()'), {
+            target: 'swift',
+          }).code,
+        )
+        expect(res.ok, res.error ?? '').toBe(true)
+      },
+    )
 
-    it.skipIf(!isKotlincAvailable())('PyreonPermissions() with NO argument type-checks on Kotlin', () => {
-      const res = validateKotlin(
-        transform(app('usePermissions', '@pyreon/hooks', 'const p = usePermissions()'), {
-          target: 'kotlin',
-        }).code,
-      )
-      expect(res.ok, res.error ?? '').toBe(true)
-    })
+    it.skipIf(!isKotlincAvailable())(
+      'PyreonPermissions() with NO argument type-checks on Kotlin',
+      () => {
+        const res = validateKotlin(
+          transform(app('usePermissions', '@pyreon/hooks', 'const p = usePermissions()'), {
+            target: 'kotlin',
+          }).code,
+        )
+        expect(res.ok, res.error ?? '').toBe(true)
+      },
+    )
 
-    it.skipIf(!isSwiftcAvailable())('the SCALAR useStorage path is gated, not just the struct one', () => {
-      // Scalars lower to SwiftUI's @AppStorage (previously unstubbed);
-      // structs lower to PyreonAppStorage (always stubbed).
-      for (const decl of ['const s = useStorage("k", "")', 'const n = useStorage("k", 0)']) {
-        const code = transform(app('useStorage', '@pyreon/hooks', decl), { target: 'swift' }).code
-        expect(code, decl).toContain('@AppStorage')
-        expect(validateSwiftWithStubs(code).ok, decl).toBe(true)
-      }
-    })
+    it.skipIf(!isSwiftcAvailable())(
+      'the SCALAR useStorage path is gated, not just the struct one',
+      () => {
+        // Scalars lower to SwiftUI's @AppStorage (previously unstubbed);
+        // structs lower to PyreonAppStorage (always stubbed).
+        for (const decl of ['const s = useStorage("k", "")', 'const n = useStorage("k", 0)']) {
+          const code = transform(app('useStorage', '@pyreon/hooks', decl), { target: 'swift' }).code
+          expect(code, decl).toContain('@AppStorage')
+          expect(validateSwiftWithStubs(code).ok, decl).toBe(true)
+        }
+      },
+    )
   })
 })

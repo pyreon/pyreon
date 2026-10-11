@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets',
+      'L0 of the shared-code model: the package plugin maps signal/computed to native state; PyreonReactivity runtime ports ship on both targets, while bare effect statements require a supported lifecycle hook',
   },
   longExample: `import { signal, computed, effect, batch, onCleanup, createStore, watch, untrack } from "@pyreon/reactivity"
 
@@ -52,6 +52,7 @@ effect(() => {
   const other = untrack(() => otherSignal())  // won't re-run when otherSignal changes
 })`,
   features: [
+    'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     'signal<T>() — callable function with .set(), .update(), .trigger()',
     'computed<T>() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`',
     'effect() / renderEffect() — side-effects with auto-tracking',
@@ -120,7 +121,7 @@ items.trigger()           // force subscribers to re-run`,
 if (isServer) return // bail on the server
 window.addEventListener('resize', onResize)`,
       mistakes: [
-        'Rolling your own `const isBrowser = typeof window !== \'undefined\'` instead — `typeof window` misreports Deno / polyfilled Node; import `isServer` / `isClient`',
+        "Rolling your own `const isBrowser = typeof window !== 'undefined'` instead — `typeof window` misreports Deno / polyfilled Node; import `isServer` / `isClient`",
         'Reaching for `isClient` to gate DOM access inside a component — prefer `onMount` / `effect`, which never run during SSR',
         'Putting heavy server-only code behind `isServer` in a client-imported module — it still ships to the client bundle; use a `/server` subpath export instead',
       ],
@@ -131,11 +132,11 @@ window.addEventListener('resize', onResize)`,
       kind: 'constant',
       signature: 'const isClient: boolean',
       summary:
-        'Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== \'undefined\'`). A plain constant evaluated once at module load. Use it for small environment guards; for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).',
+        "Inverse of `isServer` — `true` on a browser main thread where a DOM is available (`typeof document !== 'undefined'`). A plain constant evaluated once at module load. Use it for small environment guards; for DOM access inside a component prefer `onMount` / `effect` (which never run during SSR).",
       example: `import { isClient } from '@pyreon/reactivity'
 const initial = isClient ? navigator.onLine : true`,
       mistakes: [
-        'Rolling your own `const isBrowser = typeof window !== \'undefined\'` instead — import `isClient`',
+        "Rolling your own `const isBrowser = typeof window !== 'undefined'` instead — import `isClient`",
         'Using `isClient` to defer DOM work that belongs in `onMount` / `effect`',
       ],
       seeAlso: ['isServer'],
@@ -227,9 +228,12 @@ effect(() => {
           description: 'DOM-update body — auto-tracks the signals it reads; lighter than `effect` (no cleanup-return).',
         },
       ],
-      returns: { type: '() => void', description: 'A dispose function — call it to stop the effect.' },
+      returns: {
+        type: '() => void',
+        description: 'A dispose function — call it to stop the effect.',
+      },
       summary:
-        'DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectScope` integration. Used internally by `_bind` / `_tpl` for compiled-template DOM updates. **Prefer `effect()` for general use**; reach for `renderEffect()` only when you\'re hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an `Effect` object — different shape from `effect()`).',
+        "DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectScope` integration. Used internally by `_bind` / `_tpl` for compiled-template DOM updates. **Prefer `effect()` for general use**; reach for `renderEffect()` only when you're hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an `Effect` object — different shape from `effect()`).",
       example: `// Inside a custom DOM helper that updates a text node:
 const node = document.createTextNode('')
 const dispose = renderEffect(() => {
@@ -256,7 +260,10 @@ const dispose = renderEffect(() => {
           description: 'Body whose signal writes are coalesced — subscribers run once at the end, not per write.',
         },
       ],
-      returns: { type: 'void', description: 'Nothing — runs `fn` synchronously and flushes a single update pass.' },
+      returns: {
+        type: 'void',
+        description: 'Nothing — runs `fn` synchronously and flushes a single update pass.',
+      },
       summary:
         'Group multiple signal writes so subscribers fire only once — after the batch completes. Uses pointer swap (zero allocation). Essential when updating 3+ signals that downstream effects read together; without batch, each `.set()` triggers an independent notification pass.',
       example: `const a = signal(1)
@@ -281,7 +288,7 @@ batch(() => {
         description: 'Resolves after the current batch of reactive updates has flushed — await it to read post-update DOM/state.',
       },
       summary:
-        'Returns a promise that resolves after the next microtask. Use to await pending reactive updates — every signal write that happens before `nextTick()` is fully flushed (effects ran, computeds settled, DOM patched) by the time the promise resolves. Equivalent to Vue\'s `nextTick`. Useful in tests and in code that needs to read the post-update DOM state.',
+        "Returns a promise that resolves after the next microtask. Use to await pending reactive updates — every signal write that happens before `nextTick()` is fully flushed (effects ran, computeds settled, DOM patched) by the time the promise resolves. Equivalent to Vue's `nextTick`. Useful in tests and in code that needs to read the post-update DOM state.",
       example: `count.set(5)
 // Effects haven't run yet (sync writes are queued)
 await nextTick()
@@ -289,7 +296,7 @@ await nextTick()
 expect(node.textContent).toBe('5')`,
       mistakes: [
         'Awaiting `nextTick()` inside a `batch()` callback — pointless; the batch flushes when the callback returns, not when the microtask drains. Move the await outside `batch()`',
-        'Using `nextTick()` to defer work — it doesn\'t schedule anything; it just resolves on the next microtask. Use `setTimeout` / `requestAnimationFrame` for actual deferral',
+        "Using `nextTick()` to defer work — it doesn't schedule anything; it just resolves on the next microtask. Use `setTimeout` / `requestAnimationFrame` for actual deferral",
       ],
       seeAlso: ['batch'],
     },
@@ -304,7 +311,10 @@ expect(node.textContent).toBe('5')`,
           description: 'Cleanup callback — runs when its owner re-runs (effects) or is torn down (effect dispose, component unmount, scope stop).',
         },
       ],
-      returns: { type: 'void', description: 'Nothing — registers the cleanup with the current owner.' },
+      returns: {
+        type: 'void',
+        description: 'Nothing — registers the cleanup with the current owner.',
+      },
       summary:
         'Register a cleanup with the CURRENT OWNER. Inside an `effect()` run it runs before the next re-run and on dispose (same as returning a function from the effect). In a component body (setup) it runs when that component unmounts. Inside `onMount` or `EffectScope.runInScope()` it runs when the owning scope stops. `renderEffect()` does NOT collect cleanups itself, so one registered there goes to the enclosing owner. With no owner at all (plain module code) the call is a no-op.',
       example: `// 1. Inside an effect — runs before each re-run and on dispose
@@ -322,7 +332,7 @@ function Clock() {
   return () => new Date(now()).toLocaleTimeString()
 }`,
       mistakes: [
-        'Expecting a cleanup registered inside `renderEffect()` to run on that render effect\'s re-runs — `renderEffect` has no collector; the cleanup goes to the enclosing owner (usually the component) and runs on unmount',
+        "Expecting a cleanup registered inside `renderEffect()` to run on that render effect's re-runs — `renderEffect` has no collector; the cleanup goes to the enclosing owner (usually the component) and runs on unmount",
         'Calling `onCleanup` in plain module code with no owner — there is nothing to attach it to, so it never runs',
         'Assuming a component-body `onCleanup` runs when a parent `<For>`/`<Show>` re-renders — it belongs to the component and runs only when that component unmounts',
         'Registering the same teardown with both `onCleanup` and a returned cleanup in one effect — both run, so the teardown happens twice',
@@ -334,7 +344,11 @@ function Clock() {
       kind: 'function',
       signature: '<T>(source: () => T, callback: (next: T, prev: T) => void, options?: WatchOptions) => () => void',
       params: [
-        { name: 'source', type: '() => T', description: 'Tracked source — its return value is watched for changes.' },
+        {
+          name: 'source',
+          type: '() => T',
+          description: 'Tracked source — its return value is watched for changes.',
+        },
         {
           name: 'callback',
           type: '(next: T, prev: T) => void',
@@ -347,7 +361,10 @@ function Clock() {
           description: 'Optional watch behavior (e.g. running the callback once immediately on setup).',
         },
       ],
-      returns: { type: '() => void', description: 'A dispose function — call it to stop watching.' },
+      returns: {
+        type: '() => void',
+        description: 'A dispose function — call it to stop watching.',
+      },
       summary:
         'Explicit reactive watcher — tracks `source` and fires `callback` when it changes. Unlike `effect()`, the callback receives both `next` and `prev` values and does NOT auto-track signals read inside the callback body. `source` is evaluated at setup time to establish tracking; reading browser globals there still fires SSR lint rules. Returns a dispose function.',
       example: `watch(() => count(), (next, prev) => {
@@ -377,7 +394,7 @@ function Clock() {
           'An O(1) membership selector — `isSelected(key)` is true only for the matching key; only the entering/leaving items re-run on change, not the whole list.',
       },
       summary:
-        'Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-selected values\' subscribers are affected. Unlike a plain `() => source() === value` (which re-evaluates for every row in a list), this only triggers TWO subscribers per source change (deselected + newly selected) regardless of list size. Critical for keyed-list selection patterns.',
+        "Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-selected values' subscribers are affected. Unlike a plain `() => source() === value` (which re-evaluates for every row in a list), this only triggers TWO subscribers per source change (deselected + newly selected) regardless of list size. Critical for keyed-list selection patterns.",
       example: `const selectedId = signal<string | null>(null)
 const isSelected = createSelector(() => selectedId())
 
@@ -389,8 +406,8 @@ const isSelected = createSelector(() => selectedId())
 )}</For>`,
       mistakes: [
         'Using a plain `() => source() === value` in lists — every row subscribes to source; selecting a row notifies ALL N rows (O(N))',
-        'Calling `isSelected` outside a reactive scope — returns the current value but doesn\'t subscribe',
-        'Using `createSelector` for non-equality predicates — it\'s purpose-built for `===` matching; for ranges or filters, use `computed()`',
+        "Calling `isSelected` outside a reactive scope — returns the current value but doesn't subscribe",
+        "Using `createSelector` for non-equality predicates — it's purpose-built for `===` matching; for ranges or filters, use `computed()`",
       ],
       seeAlso: ['signal', 'computed'],
     },
@@ -399,7 +416,7 @@ const isSelected = createSelector(() => selectedId())
       kind: 'function',
       signature: '<T>(value: T) => Cell<T>',
       summary:
-        'Lightweight reactive primitive — class-based alternative to `signal()`. **1 object allocation vs `signal()`\'s ~6 closures**, single-listener fast path (no Set allocated when ≤1 subscriber), methods on prototype shared across instances. **NOT callable as a getter** — does not integrate with effect dependency tracking. Use when you need reactive state but plan to subscribe directly via `.subscribe()` / `.listen()`, NOT via `effect()`. Ideal for keyed-list row labels where the subscription lifetime equals the row\'s lifetime.',
+        "Lightweight reactive primitive — class-based alternative to `signal()`. **1 object allocation vs `signal()`'s ~6 closures**, single-listener fast path (no Set allocated when ≤1 subscriber), methods on prototype shared across instances. **NOT callable as a getter** — does not integrate with effect dependency tracking. Use when you need reactive state but plan to subscribe directly via `.subscribe()` / `.listen()`, NOT via `effect()`. Ideal for keyed-list row labels where the subscription lifetime equals the row's lifetime.",
       example: `import { cell } from '@pyreon/reactivity'
 
 // Create a cell:
@@ -419,8 +436,8 @@ const dispose = label.subscribe(() => console.log(label.peek()))
 label.listen(() => console.log('changed'))`,
       mistakes: [
         'Using `label()` to read — Cells are NOT callable. Use `label.peek()` to read',
-        'Reading `label.peek()` inside `effect()` and expecting tracked re-runs — Cells don\'t integrate with effect tracking. Use `signal()` if you need automatic dependency tracking',
-        'Using `cell()` for ALL reactive state — only switch from `signal()` when you\'ve measured allocation pressure (1000+ instances) AND you don\'t need effect-based subscriptions',
+        "Reading `label.peek()` inside `effect()` and expecting tracked re-runs — Cells don't integrate with effect tracking. Use `signal()` if you need automatic dependency tracking",
+        "Using `cell()` for ALL reactive state — only switch from `signal()` when you've measured allocation pressure (1000+ instances) AND you don't need effect-based subscriptions",
       ],
       seeAlso: ['signal'],
     },
@@ -440,7 +457,7 @@ store.todos.push({ text: 'Build app', done: false })  // array methods work`,
         'Replacing the entire store object — `store = { ... }` replaces the variable, not the proxy. Mutate properties instead: `store.filter = "active"`',
         'Destructuring store properties at setup — `const { filter } = store` captures the value once, losing reactivity. Read `store.filter` inside reactive scopes',
         'Using `createStore` for simple scalar state — use `signal()` for primitives; `createStore` adds proxy overhead that only pays off for nested objects',
-        'Expecting fine-grained reactivity inside Map/Set/Date/RegExp/Promise — these are returned raw because Proxy can\'t intercept methods that rely on internal slots. Mutating the raw instance (`store.users.set(...)`) does NOT notify subscribers. Replace the whole field (`store.users = new Map(store.users)`) to trigger reactivity',
+        "Expecting fine-grained reactivity inside Map/Set/Date/RegExp/Promise — these are returned raw because Proxy can't intercept methods that rely on internal slots. Mutating the raw instance (`store.users.set(...)`) does NOT notify subscribers. Replace the whole field (`store.users = new Map(store.users)`) to trigger reactivity",
       ],
       seeAlso: ['signal'],
     },
@@ -491,7 +508,7 @@ reconcile(
       mistakes: [
         'Passing a non-store as `target` — `reconcile` requires a `createStore` proxy; for plain objects, just assign',
         'Expecting reconciliation by key for arrays — arrays are reconciled BY INDEX. For keyed list reconciliation, use a Map keyed by id and reconcile each entry by key, OR replace the array reference (which `<For>` reconciles via `by`)',
-        'Using `reconcile` inside an effect — it triggers writes; you\'d cycle. Call it outside reactive scopes (e.g. in a query callback or event handler)',
+        "Using `reconcile` inside an effect — it triggers writes; you'd cycle. Call it outside reactive scopes (e.g. in a query callback or event handler)",
       ],
       seeAlso: ['createStore', 'signal'],
     },
@@ -507,7 +524,7 @@ isStore(a)  // true
 isStore(b)  // false
 isStore(null)  // false (null-safe)`,
       mistakes: [
-        'Using `isStore` to detect ANY proxy — it\'s specific to Pyreon\'s store proxies. Other proxies return `false`',
+        "Using `isStore` to detect ANY proxy — it's specific to Pyreon's store proxies. Other proxies return `false`",
         'Calling on `null` / `undefined` and expecting a throw — null-safe; returns `false`',
       ],
       seeAlso: ['createStore', 'reconcile'],
@@ -525,7 +542,7 @@ store.user.name = 'Bob'          // does NOT trigger any effect (nested mutation
 store.count = 5                  // triggers count effect
 store.user = { name: 'Bob' }     // triggers user effect (reference replacement)`,
       mistakes: [
-        'Expecting nested mutations to trigger effects — they don\'t. Use `createStore` if you need deep reactivity, or replace the top-level reference (`store.user = { ...store.user, name: \'Bob\' }`)',
+        "Expecting nested mutations to trigger effects — they don't. Use `createStore` if you need deep reactivity, or replace the top-level reference (`store.user = { ...store.user, name: 'Bob' }`)",
         'Mixing shallow + deep on the same raw object — `createStore(raw)` and `shallowReactive({ wrapper: raw })` produce DIFFERENT proxies (separate caches). Pick one shape per data flow',
       ],
       seeAlso: ['createStore', 'markRaw'],
@@ -535,7 +552,7 @@ store.user = { name: 'Bob' }     // triggers user effect (reference replacement)
       kind: 'function',
       signature: '<T extends object>(value: T) => T',
       summary:
-        'Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn\'t be deeply proxied (Vue 3 parity). Marking is one-way: there\'s no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn\'t unwrap an existing proxy.',
+        "Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn't be deeply proxied (Vue 3 parity). Marking is one-way: there's no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn't unwrap an existing proxy.",
       example: `import { markRaw, createStore } from '@pyreon/reactivity'
 
 class Editor { someMethod() {} }
@@ -544,7 +561,7 @@ const store = createStore({ editor: ed })
 store.editor === ed                 // true — raw reference preserved
 store.editor.someMethod()           // works — class methods see real receiver`,
       mistakes: [
-        'Marking an object AFTER it\'s been wrapped — the existing proxy is unaffected. Mark before the object enters any store',
+        "Marking an object AFTER it's been wrapped — the existing proxy is unaffected. Mark before the object enters any store",
         'Expecting `markRaw(obj)` to return a different object — it mutates `obj` and returns the SAME reference (with the marker symbol attached)',
         'Using markRaw on plain data objects to "skip" deep wrap — for that, use `shallowReactive`. markRaw is for class instances and externally-managed shapes',
       ],
@@ -555,7 +572,7 @@ store.editor.someMethod()           // works — class methods see real receiver
       kind: 'function',
       signature: '(fn: () => T) => T',
       summary:
-        'Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked`. Use inside effects when you need to read a signal\'s current value as a one-shot snapshot without the effect re-running when that signal changes.',
+        "Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked`. Use inside effects when you need to read a signal's current value as a one-shot snapshot without the effect re-running when that signal changes.",
       example: `effect(() => {
   const current = count()        // tracked — effect re-runs on count change
   const other = untrack(() => otherSignal())  // NOT tracked — just reads the current value
@@ -570,7 +587,7 @@ store.editor.someMethod()           // works — class methods see real receiver
       kind: 'function',
       signature: '() => EffectScope',
       summary:
-        'Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and disposes them all at once via `scope.stop()`. `@pyreon/core`\'s `mountReactive` uses this internally for component lifetime management. **Always use a scope for effects created outside a component\'s setup phase** (e.g. in event handlers, route loaders, or async-await chains) — without one, effects leak for the lifetime of the program.',
+        "Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and disposes them all at once via `scope.stop()`. `@pyreon/core`'s `mountReactive` uses this internally for component lifetime management. **Always use a scope for effects created outside a component's setup phase** (e.g. in event handlers, route loaders, or async-await chains) — without one, effects leak for the lifetime of the program.",
       example: `import { effectScope, signal, effect } from '@pyreon/reactivity'
 
 const scope = effectScope()
@@ -670,7 +687,7 @@ count.set(5)   // logs: count: 0 → 5
 dispose()      // remove listener`,
       mistakes: [
         'Leaving `onSignalUpdate` registered in production — fires on EVERY signal write, even hot-path internal ones. Always dispose when done',
-        'Throwing inside the listener — corrupts the signal\'s notification flow (the listener fires after `_v` is updated but before subscribers are notified). Wrap your handler in try/catch',
+        "Throwing inside the listener — corrupts the signal's notification flow (the listener fires after `_v` is updated but before subscribers are notified). Wrap your handler in try/catch",
         'Expecting the event to capture writes that occur via batch flushes — the event fires per `set()` call, regardless of batch state',
       ],
       seeAlso: ['inspectSignal', 'why'],
@@ -817,7 +834,7 @@ console.log(formatGraphDescription(describeReactiveGraph()))
 // Insights: orphan-signal  nothing depends on \`shippingFlat\``,
       mistakes: [
         'Running it in production — the reactive registry is tree-shaken when `NODE_ENV === "production"`, so the graph (and description) is empty.',
-        "Treating an `orphan-signal` insight as always a bug — a signal read only outside a tracking scope (an event handler) legitimately has no graph dependents; it flags the SHAPE, you confirm intent.",
+        'Treating an `orphan-signal` insight as always a bug — a signal read only outside a tracking scope (an event handler) legitimately has no graph dependents; it flags the SHAPE, you confirm intent.',
         'Expecting it to describe a component from SOURCE without running — it reads the LIVE graph (`getReactiveGraph()`), so the reactive nodes must have been created + subscribed first.',
       ],
       seeAlso: ['getReactiveGraph', 'getUpdateCause', 'activateReactiveDevtools'],
@@ -843,7 +860,7 @@ console.log(formatUpdateCause(getUpdateCause(effectId)))
       mistakes: [
         'Trusting the chain across UNRELATED rapid interactions — reconstruction is exact for one synchronous cascade; interactions within the ~16ms cluster window can blur. `rootReached: false` means older fires aged out of the ring buffer.',
         'Calling it in production — the reactive registry is tree-shaken when `NODE_ENV === "production"`, so `getUpdateCause` returns null (nothing tracked).',
-        'Expecting timeline order to be causal order — it is NOT (a lazy computed recomputes during its subscriber\'s read). `getUpdateCause` uses the dependency graph as the causal structure on purpose.',
+        "Expecting timeline order to be causal order — it is NOT (a lazy computed recomputes during its subscriber's read). `getUpdateCause` uses the dependency graph as the causal structure on purpose.",
       ],
       seeAlso: ['getReactiveGraph', 'activateReactiveDevtools', 'getReactiveTrace'],
     },
@@ -851,7 +868,8 @@ console.log(formatUpdateCause(getUpdateCause(effectId)))
       name: 'wrapSignal',
       kind: 'function',
       signature: '<T>(base: Signal<T>, options: WrapSignalOptions<T>) => Signal<T>',
-      summary: 'Create a signal facade over a base signal with custom write behavior. The canonical way to build a signal whose write runs a side effect (persistence, validation, patch emission). Reads and the internal `_v` field are delegated to `base`, so the facade satisfies the full signal contract the compiler\'s fast paths depend on — a facade that exposes `.direct()` but forgets `_v` (or vice-versa) silently binds to `undefined` and renders empty. `wrapSignal` forwards both by construction, making hand-rolled facades structurally impossible to get wrong.',
+      summary:
+        "Create a signal facade over a base signal with custom write behavior. The canonical way to build a signal whose write runs a side effect (persistence, validation, patch emission). Reads and the internal `_v` field are delegated to `base`, so the facade satisfies the full signal contract the compiler's fast paths depend on — a facade that exposes `.direct()` but forgets `_v` (or vice-versa) silently binds to `undefined` and renders empty. `wrapSignal` forwards both by construction, making hand-rolled facades structurally impossible to get wrong.",
       example: `const base = signal(0)
 const wrapped = wrapSignal(base, {
   set: (v) => {
@@ -862,10 +880,10 @@ const wrapped = wrapSignal(base, {
 wrapped.set(5)  // writes through custom logic
 console.log(wrapped())  // 5 (reads from base)`,
       mistakes: [
-        'Forgetting to call `base.set(value)` inside the custom `set` handler — the signal\'s internal `_v` never updates, so reads stall at the old value and compiled fast paths see stale data.',
-        'Hand-rolling a facade that exposes `.direct()` but not the `_v` property — the compiler\'s `_bindText` fast path reads `source._v` directly to skip the function call; without it, text bindings render empty even though `()` works.',
+        "Forgetting to call `base.set(value)` inside the custom `set` handler — the signal's internal `_v` never updates, so reads stall at the old value and compiled fast paths see stale data.",
+        "Hand-rolling a facade that exposes `.direct()` but not the `_v` property — the compiler's `_bindText` fast path reads `source._v` directly to skip the function call; without it, text bindings render empty even though `()` works.",
         'Capturing the `base` signal reference in closure and forgetting to return the facade itself — callers that track per-instance subscription identity (e.g. `.remove()` on shared state) break because every call returns the same identity.',
-        'Using `wrapSignal` to add tracking to a signal that\'s written from multiple code paths without coordinating in the custom `set` handler — the side effect runs on EVERY write, including batch-deferred ones; if other code writes directly to `base` it bypasses the facade.',
+        "Using `wrapSignal` to add tracking to a signal that's written from multiple code paths without coordinating in the custom `set` handler — the side effect runs on EVERY write, including batch-deferred ones; if other code writes directly to `base` it bypasses the facade.",
         'Expecting the custom `update` option to be optional AND have a default — if not provided, it defaults to `set(fn(base.peek()))`, which may not match your intent if `set` has expensive side effects (it will run for every update, even pure derive ops).',
       ],
       seeAlso: ['signal', 'effect', 'computed'],
@@ -873,8 +891,10 @@ console.log(wrapped())  // 5 (reads from base)`,
     {
       name: 'WrapSignalOptions',
       kind: 'type',
-      signature: 'interface WrapSignalOptions<T> { set: (value: T) => void; update?: (fn: (current: T) => T) => void }',
-      summary: 'Configuration object for `wrapSignal()`. The `set` handler runs in place of the base signal\'s `.set()`; call through to `base.set(value)` when the value should actually update. The optional `update` handler defaults to `set(fn(peek()))` — override it if you need custom batch or coalescing behavior that `.set()` alone doesn\'t express.',
+      signature:
+        'interface WrapSignalOptions<T> { set: (value: T) => void; update?: (fn: (current: T) => T) => void }',
+      summary:
+        "Configuration object for `wrapSignal()`. The `set` handler runs in place of the base signal's `.set()`; call through to `base.set(value)` when the value should actually update. The optional `update` handler defaults to `set(fn(peek()))` — override it if you need custom batch or coalescing behavior that `.set()` alone doesn't express.",
       example: `const store = createStore({ count: 0 })
 const countSig = signal(store.count)
 const wrapped = wrapSignal(countSig, {
@@ -888,8 +908,8 @@ const wrapped = wrapSignal(countSig, {
   },
 })`,
       mistakes: [
-        '`set` handler not calling through to `base.set()` — the wrapped signal\'s value never updates internally, all reads stall.',
-        'Providing `update` that doesn\'t eventually call `set` — reads won\'t reflect the update unless `set` is involved in the chain.',
+        "`set` handler not calling through to `base.set()` — the wrapped signal's value never updates internally, all reads stall.",
+        "Providing `update` that doesn't eventually call `set` — reads won't reflect the update unless `set` is involved in the chain.",
         'Expecting the default `update` to coalesce rapid-fire calls — it calls `set()` directly, so if `set` has side effects (persist, emit), they fire on every update call without coalescing.',
         'Using the same `options` object for multiple `wrapSignal()` calls on different bases — the `set` and `update` closures capture the wrong `base` reference if reused.',
       ],
@@ -919,7 +939,7 @@ console.log(formatReactiveCoverage(report))`,
       kind: 'function',
       signature: '() => ReactiveCoverageReport',
       summary:
-        "Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }`. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active.",
+        'Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }`. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active.',
       example: `const report = takeReactiveCoverage()
 console.log(report.percent, 'covered') // e.g. 42.9
 for (const e of report.uncoveredEntries) console.log(e.reason, e.name, e.loc)`,
@@ -943,7 +963,7 @@ console.log(formatReactiveCoverage(report, { showCovered: true, limit: 20 }))`,
       kind: 'type',
       signature: 'type SignalValue<S> = S extends () => infer T ? T : never',
       summary:
-        "Unwrap the VALUE type of a `Signal<T>`, `Computed<T>`, `ReadonlySignal<T>`, or any zero-arg accessor — `SignalValue<typeof count>` is `number` for `const count = signal(0)`. Derive, don't annotate twice: when a function's parameter should be \"whatever that signal holds\", derive it from the signal instead of repeating the value type. Type-only export — zero runtime bytes.",
+        'Unwrap the VALUE type of a `Signal<T>`, `Computed<T>`, `ReadonlySignal<T>`, or any zero-arg accessor — `SignalValue<typeof count>` is `number` for `const count = signal(0)`. Derive, don\'t annotate twice: when a function\'s parameter should be "whatever that signal holds", derive it from the signal instead of repeating the value type. Type-only export — zero runtime bytes.',
       example: `const user = signal({ id: 1, name: 'Ada' })
 type User = SignalValue<typeof user> // { id: number; name: string }
 
@@ -1008,7 +1028,7 @@ type C = AccessorReturn<MaybeAccessor<boolean>>  // boolean`,
       kind: 'function',
       signature: '(pkg: string, version: string, location: string) => void',
       summary:
-        'Fail-loud detection of duplicate framework instances. Every `@pyreon/*` package with module-level state calls this once at the TOP of its own `src/index.ts` — `registerSingleton(name, version, import.meta.url)`, with `name`/`version` pulled from that package\'s own `package.json`. Bundlers can produce TWO instances of the same package (Vite bare-vs-entry resolver divergence, sub-dependency version mismatches, workspace + npm-published mixes), and each instance has its OWN module-level state, so a producer on instance A and a consumer reading instance B silently break every framework invariant. The FIRST registration for a package name records a marker; a SECOND with a DIFFERENT (query-string-normalized, so Vite HMR re-evals are allowed) module location triggers detection: `\'throw\'` (default — the loud failure), `\'warn\'` (log via `console.error` and continue), or `\'silent\'` (the escape hatch for browser extensions, micro-frontends, and nested SSR harnesses that legitimately dual-load). Controlled by the `PYREON_SINGLE_INSTANCE` env var.',
+        "Fail-loud detection of duplicate framework instances. Every `@pyreon/*` package with module-level state calls this once at the TOP of its own `src/index.ts` — `registerSingleton(name, version, import.meta.url)`, with `name`/`version` pulled from that package's own `package.json`. Bundlers can produce TWO instances of the same package (Vite bare-vs-entry resolver divergence, sub-dependency version mismatches, workspace + npm-published mixes), and each instance has its OWN module-level state, so a producer on instance A and a consumer reading instance B silently break every framework invariant. The FIRST registration for a package name records a marker; a SECOND with a DIFFERENT (query-string-normalized, so Vite HMR re-evals are allowed) module location triggers detection: `'throw'` (default — the loud failure), `'warn'` (log via `console.error` and continue), or `'silent'` (the escape hatch for browser extensions, micro-frontends, and nested SSR harnesses that legitimately dual-load). Controlled by the `PYREON_SINGLE_INSTANCE` env var.",
       example: `// Top of any package's own src/index.ts:
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
@@ -1034,7 +1054,7 @@ const registry = defineCrossModuleState('my-lib:widget-registry', () => new Map<
 // Every module instance of "my-lib" that calls this with the SAME key shares the SAME Map.`,
       mistakes: [
         'Returning a primitive from `init()` — the constraint is `T extends object`; primitives cannot be mutated in place, so cross-instance updates would not propagate. Return a mutable object/Map/Set',
-        'Using a non-globally-unique `key` — `Symbol.for` is a GLOBAL registry, so a generic key like `\'state\'` can collide with an unrelated package doing the same thing; namespace your key (`\'my-lib:feature-name\'`)',
+        "Using a non-globally-unique `key` — `Symbol.for` is a GLOBAL registry, so a generic key like `'state'` can collide with an unrelated package doing the same thing; namespace your key (`'my-lib:feature-name'`)",
         'Reaching for this as a substitute for `registerSingleton` — that function DETECTS and warns/throws on accidental dual-instancing (the bug you usually want surfaced); this one SILENTLY shares state across instances, which is only correct when dual-instancing is expected and harmless for this particular piece of state',
       ],
       seeAlso: ['registerSingleton'],
@@ -1044,7 +1064,7 @@ const registry = defineCrossModuleState('my-lib:widget-registry', () => new Map<
       kind: 'function',
       signature: '() => EffectScope | null',
       summary:
-        'Read the currently active CONTEXT OWNER — the `EffectScope` that `@pyreon/core`\'s `provide()`/`useContext()` resolve against. Distinct from `getCurrentScope()`: the context owner tracks the COMPONENT TREE (set by the renderer at mount, mirroring parent→child structure), while `getCurrentScope()` tracks EFFECT NESTING. A component\'s `EffectScope` doubles as its context owner — `provide()` writes onto `scope._contexts`, and `useContext()` walks `scope._parent` up the owner chain. Framework primitives that defer mounting past the synchronous render frame (an island, a lazy boundary, a scheduled re-mount) must capture this at setup time and restore it with `runWithContextOwner` when they finally mount — otherwise `useContext()` inside the deferred content resolves against whatever owner happens to be active later, not the real ancestor chain.',
+        "Read the currently active CONTEXT OWNER — the `EffectScope` that `@pyreon/core`'s `provide()`/`useContext()` resolve against. Distinct from `getCurrentScope()`: the context owner tracks the COMPONENT TREE (set by the renderer at mount, mirroring parent→child structure), while `getCurrentScope()` tracks EFFECT NESTING. A component's `EffectScope` doubles as its context owner — `provide()` writes onto `scope._contexts`, and `useContext()` walks `scope._parent` up the owner chain. Framework primitives that defer mounting past the synchronous render frame (an island, a lazy boundary, a scheduled re-mount) must capture this at setup time and restore it with `runWithContextOwner` when they finally mount — otherwise `useContext()` inside the deferred content resolves against whatever owner happens to be active later, not the real ancestor chain.",
       example: `// A primitive that defers mounting (simplified island shape):
 const owner = getContextOwner()   // capture while the real ancestor chain is active
 scheduleLater(() => {
@@ -1061,7 +1081,7 @@ scheduleLater(() => {
       kind: 'function',
       signature: '<T>(owner: EffectScope | null, fn: () => T) => T',
       summary:
-        'Run `fn` with `owner` as the active context owner, then restore whatever was active before — the safe, try/finally-guarded way to temporarily swap the context owner (mirrors `scope.runInScope` for effect scopes). This is how a deferred boundary (an island\'s late hydration, `<Show>`/`<For>` mounting children) re-establishes the REAL ancestor chain for a mount that happens after the synchronous render frame — capture the owner with `getContextOwner()` while it is genuinely active, then wrap the later mount call in `runWithContextOwner(capturedOwner, () => …)` so `useContext()` inside it resolves against the right provider.',
+        "Run `fn` with `owner` as the active context owner, then restore whatever was active before — the safe, try/finally-guarded way to temporarily swap the context owner (mirrors `scope.runInScope` for effect scopes). This is how a deferred boundary (an island's late hydration, `<Show>`/`<For>` mounting children) re-establishes the REAL ancestor chain for a mount that happens after the synchronous render frame — capture the owner with `getContextOwner()` while it is genuinely active, then wrap the later mount call in `runWithContextOwner(capturedOwner, () => …)` so `useContext()` inside it resolves against the right provider.",
       example: `const owner = getContextOwner()
 onIdle(() => {
   runWithContextOwner(owner, () => {

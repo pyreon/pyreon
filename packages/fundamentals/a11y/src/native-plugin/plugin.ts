@@ -8,7 +8,6 @@
 // local names and its `callExprs` recognizer matches a call against them.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   hasDynamicKey,
   staticPropKey,
   type CallExprRecognizer,
@@ -84,7 +83,7 @@ const announceExpr: ExprEmitter = {
  */
 export const a11yPlugin: CompilerPlugin = {
   name: A11Y_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/a11y'],
   scanModule: scanA11y,
   callExprs: recognizeAnnounce,

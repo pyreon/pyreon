@@ -106,7 +106,7 @@ describe('a third-party plugin claim via createCompiler({ plugins })', () => {
   }
   const acme = (elements: readonly ElementLowering[]): CompilerPlugin => ({
     name: '@acme/ui',
-    apiVersion: 1,
+    apiVersion: 2,
     elements,
   })
   const SRC = `import { Banner } from '@acme/ui'

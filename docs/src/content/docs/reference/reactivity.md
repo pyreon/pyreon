@@ -13,12 +13,13 @@ Standalone reactive primitives — no DOM, no JSX, no framework dependency. Sign
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets
+L0 of the shared-code model: the package plugin maps signal/computed to native state; PyreonReactivity runtime ports ship on both targets, while bare effect statements require a supported lifecycle hook
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
+- Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata
 - signal&lt;T&gt;() — callable function with .set(), .update(), .trigger()
 - computed&lt;T&gt;() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`
 - effect() / renderEffect() — side-effects with auto-tracking

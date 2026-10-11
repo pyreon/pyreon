@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // Sweep batch 4 (iter45). Four finds, three of them SILENT:
 // (1) a template-literal (or any dynamic) value in `data-testid` /

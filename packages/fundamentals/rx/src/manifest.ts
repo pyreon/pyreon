@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn',
+      'supported namespace and standalone transforms lower recursively to native collection operations, including import aliases; unsupported methods warn',
   },
   longExample: `import { signal, effect } from '@pyreon/reactivity'
 import { rx, pipe, filter, sortBy, map, flatMap, groupBy, countBy, take, sum, debounce, search } from '@pyreon/rx'

@@ -7,8 +7,7 @@
 // `0` seed (zero regression).
 
 import { describe, expect, it } from 'vitest'
-import { parsePyreon } from '../parse'
-import { transform } from '../index'
+import { transform, parsePyreon } from './first-party-plugins'
 import type { ExprIR } from '../types'
 
 // `revenue` is Int, `growth` is fractional (12.5 → Double via the struct

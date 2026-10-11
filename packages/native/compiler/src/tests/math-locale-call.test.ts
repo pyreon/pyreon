@@ -13,7 +13,7 @@
 // grouping) + a warning, rather than a silent invalid emit.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = (expr: string) =>
   `import { signal, computed } from '@pyreon/reactivity'

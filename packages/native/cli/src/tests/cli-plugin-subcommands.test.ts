@@ -11,7 +11,7 @@ import { main, mainWithPlugins } from '../cli'
 // `@pyreon/hooks` ships its own plugin; the compiler carries no copy, so an app's `useShare` lowers only through the discovered package.
 const HOOKS_PLUGIN = `export default {
   name: '@pyreon/hooks',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@pyreon/hooks'],
   services: {
     useShare: {
@@ -102,7 +102,7 @@ describe('pyreon-native explain', () => {
 
   it('loads an explicitly passed plugin before explaining', async () => {
     const plugin = join(root, 'plugin.mjs')
-    writeFileSync(plugin, `export default { name: 'explicit', apiVersion: 1 }`)
+    writeFileSync(plugin, `export default { name: 'explicit', apiVersion: 2 }`)
     const file = join(app, 'src', 'Example.tsx')
     expect(await mainWithPlugins(['explain', file, `--app=${app}`, `--plugin=${plugin}`])).toBe(0)
   })

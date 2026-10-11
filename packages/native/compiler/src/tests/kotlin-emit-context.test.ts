@@ -1,3 +1,4 @@
+import reactivityPlugin from '../../../../core/reactivity/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin } from '../index'
 import type { EmitContext } from '../emit-context'
@@ -9,14 +10,16 @@ import type { JsxElementIR } from '../types'
 // any single member fails exactly one spec here. `swift-emit-context.test.ts` is the Swift twin.
 const lowering = (emit: (el: JsxElementIR, ctx: EmitContext) => string): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { kotlin: emit } }],
-  // The scope itself belongs to a plugin: the core opens it around `<PyreonUI mode>`'s children, the toy supplies the value.
-  scopes: [{ module: '@pyreon/ui-core', tags: ['PyreonUI'], enter: () => ({ pinned: true }) }],
+  // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
+  scopes: [
+    { module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) },
+  ],
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
-  createCompiler({ plugins: [plugin] }).transform(
+  createCompiler({ plugins: [reactivityPlugin, plugin] }).transform(
     `import { Toy } from '@acme/toy'
 import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
@@ -45,14 +48,20 @@ describe('EmitContext members both targets supply (Kotlin)', () => {
 
   it('stringAttr returns a literal or an interpolation, undefined when absent', () => {
     const out = compile(
-      lowering((el, ctx) => `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`),
+      lowering(
+        (el, ctx) =>
+          `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`,
+      ),
       '<Toy a="lit" b={`x${n()}`} />',
     )
     expect(out.code).toContain('S("lit", "x${n}", undefined)')
   })
 
   it("layoutModifiers lowers the element's own styling props", () => {
-    const out = compile(lowering((el, ctx) => `Box(modifier = ${ctx.layoutModifiers(el)})`), '<Toy padding={4} />')
+    const out = compile(
+      lowering((el, ctx) => `Box(modifier = ${ctx.layoutModifiers(el)})`),
+      '<Toy padding={4} />',
+    )
     expect(out.code).toMatch(/Box\(modifier = Modifier\.padding\(/)
   })
 
@@ -80,17 +89,26 @@ describe('EmitContext members both targets supply (Kotlin)', () => {
     expect(out.code).toContain('C(42L, none)')
   })
 
-  it('colorScope is the enclosing mode scope: set inside <PyreonUI mode>, restored for a sibling', () => {
+  it('colorScope is the enclosing mode scope: set inside <Mode>, restored for a sibling', () => {
     const out = compile(
       lowering((_el, ctx) => `Scope(${ctx.colorScope() === undefined ? 'none' : 'scoped'})`),
-      '<Toy /><PyreonUI mode="dark"><Toy /></PyreonUI><Toy />',
-      "import { PyreonUI } from '@pyreon/ui-core'",
+      '<Toy /><Mode><Toy /></Mode><Toy />',
+      "import { Mode } from '@acme/toy'",
     )
-    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual(['Scope(none)', 'Scope(scoped)', 'Scope(none)'])
+    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual([
+      'Scope(none)',
+      'Scope(scoped)',
+      'Scope(none)',
+    ])
   })
 
   it('the claimed element passes the spread / unread-JSX-attribute checks before the plugin runs', () => {
-    const out = compile(lowering(() => 'Box {}'), '<Toy {...rest} />', '', 'const rest = { a: 1 }')
+    const out = compile(
+      lowering(() => 'Box {}'),
+      '<Toy {...rest} />',
+      '',
+      'const rest = { a: 1 }',
+    )
     expect(out.warnings.join('\n')).toContain('<Toy {...}> spread is not lowered to native')
   })
 })

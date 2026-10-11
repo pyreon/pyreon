@@ -25,7 +25,7 @@ const badMember = model({ state: { n: 1 } })
   .views((self) => ({ [key]: () => self.n() }))
   .create()
 const nonFunction = model({ state: { n: 1 } })
-  .actions((self) => ({ add: 1 }))
+  .actions((_self) => ({ add: 1 }))
   .create()
 const blockView = model({ state: { n: 1 } })
   .views((self) => ({

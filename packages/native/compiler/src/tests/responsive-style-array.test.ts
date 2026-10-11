@@ -9,7 +9,7 @@
 // pattern that does work.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const app = (style: string) => `
   import { Stack, Text } from '@pyreon/primitives'

@@ -7,7 +7,7 @@
 // the RHS) is unchanged (stringified into a Text interpolation as before).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
 
 const SRC = `import { Stack, Text } from '@pyreon/primitives'

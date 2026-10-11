@@ -22,7 +22,7 @@
 // all (`a.name > b.name ? 1 : -1`), and the conversion would be wrong there.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const app = (field: string) => `import { signal } from '@pyreon/reactivity'

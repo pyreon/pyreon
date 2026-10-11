@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const app = (name: string) => `import { Transition } from '@pyreon/runtime-dom'
 import { Stack, Text } from '@pyreon/primitives'

@@ -11,9 +11,9 @@ import {
   emitKotlinRocketstyleModifier,
   emitSwiftRocketstyleModifier,
   type RocketstyleIR,
-} from '../emit-rocketstyle'
-import { parseRocketstyle } from '../parse-rocketstyle'
-import { checkStyleFidelity } from '../style-fidelity'
+} from '../../../../ui-system/rocketstyle/src/native-plugin/emit-rocketstyle'
+import { parseRocketstyle } from '../../../../ui-system/rocketstyle/src/native-plugin/parse-rocketstyle'
+import { checkStyleFidelity } from '../../../../ui-system/rocketstyle/src/native-plugin/style-fidelity'
 
 /** Parse a rocketstyle chain and return its single IR — the honest route in. */
 function irFrom(chain: string, name = 'Btn'): RocketstyleIR {

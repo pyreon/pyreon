@@ -28,7 +28,11 @@ const KEY_ALIASES: Readonly<Record<string, string>> = {
   comma: ',',
 }
 
-import type { HotkeyComboIR, HotkeyModifier } from './types'
+export type HotkeyModifier = 'mod' | 'control' | 'shift' | 'alt' | 'meta'
+export interface HotkeyComboIR {
+  key: string
+  modifiers: HotkeyModifier[]
+}
 
 const ORDER: readonly HotkeyModifier[] = ['mod', 'meta', 'control', 'alt', 'shift']
 

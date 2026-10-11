@@ -4,6 +4,7 @@
  * levels, real drift findings). Every spec drives the UI the way a user does.
  */
 import { expect, test } from '@playwright/test'
+import type { LoomReport } from '../packages/tools/loom/src/core/types'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -84,11 +85,23 @@ test('cycles view reports the acyclic truth for this repo', async ({ page }) => 
   await expect(page.getByTestId('cycles-clean')).toBeVisible()
 })
 
-test('impact view ranks by reach with reactivity at the top', async ({ page }) => {
+test('impact view ranks every package by reported reach with alphabetical ties', async ({ page }) => {
+  const response = await page.request.get('/@loom/report.json')
+  expect(response.ok()).toBe(true)
+  const report = (await response.json()) as LoomReport
+  // The real workspace changes as packages add runtime/optional peers. Its
+  // report, rather than a fixed package name, defines the current ranking.
+  const expected = report.model.packages
+    .map(({ name }) => ({ name, reach: report.graph.reach[name] ?? 0 }))
+    .sort((a, b) => b.reach - a.reach || a.name.localeCompare(b.name))
+  expect(expected.length).toBeGreaterThan(100)
+
   await page.getByTestId('view-impact').click()
-  const first = page.locator('[data-testid^="impact-@"]').first()
-  // The foundation package every other depends on — rank 01 by construction.
-  await expect(first).toHaveAttribute('data-testid', 'impact-@pyreon/reactivity')
+  const rows = page.getByTestId('impact-view').locator('button[data-testid^="impact-"]')
+  await expect(rows).toHaveCount(expected.length)
+  await expect(rows).toHaveText(
+    expected.map(({ name, reach }, index) => `${String(index + 1).padStart(2, '0')}${name}${reach} dependents`),
+  )
 })
 
 test('manifest table renders every node as a row with a status badge', async ({ page }) => {

@@ -21,7 +21,7 @@
 // `string + <unknown>` leaves the unknown operand alone (best-effort).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

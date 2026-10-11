@@ -19,13 +19,10 @@
 // away.
 
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { createCompiler } from '../compiler'
+import { nativeLoweredHooks } from '../parse'
+import { FIRST_PARTY_PLUGINS } from '../../../../../scripts/native-first-party-plugins'
 import { transform } from './first-party-plugins'
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const PARSE_SRC = readFileSync(join(HERE, '../parse.ts'), 'utf8')
 
 const app = (imports: string, body: string) => `${imports}
 import { Stack, Text } from '@pyreon/primitives'
@@ -71,7 +68,10 @@ describe('a Pyreon hook with no native lowering', () => {
         app(`import { useWatch } from '@pyreon/form'`, `const value = useWatch('email')`),
         target,
       )
-      expect(w.some((x) => x.includes('useWatch')), target).toBe(true)
+      expect(
+        w.some((x) => x.includes('useWatch')),
+        target,
+      ).toBe(true)
     }
   })
 
@@ -85,9 +85,7 @@ describe('a Pyreon hook with no native lowering', () => {
   it('does NOT warn for a USER-DEFINED hook', () => {
     // A user's own `useThing()` is ordinary code the compiler may well handle.
     // Warning about it would be noise, and noise is how a warning gets ignored.
-    const w = warningsFor(
-      app(`import { useThing } from './my-hooks'`, `const t = useThing()`),
-    )
+    const w = warningsFor(app(`import { useThing } from './my-hooks'`, `const t = useThing()`))
     expect(w.filter((x) => x.includes('NO native lowering'))).toEqual([])
   })
 
@@ -99,26 +97,25 @@ describe('a Pyreon hook with no native lowering', () => {
     expect(warningsFor(src).filter((x) => x.includes('useWatch'))).toHaveLength(1)
   })
 
-  // DRIFT GUARD. The lowered set is declared in one place so its complement is
-  // nameable; if an entry stops being handled, the warning silently stops
-  // firing for it and we are back to uncompilable-and-quiet.
-  it('every hook in NATIVE_LOWERED_HOOKS is actually referenced by the parser', () => {
-    const setBlock = /const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\)/.exec(
-      PARSE_SRC,
-    )
-    expect(setBlock, 'NATIVE_LOWERED_STATIC_HOOKS not found').toBeTruthy()
-    const listed = [...setBlock![1]!.matchAll(/'(use[A-Za-z]+)'/g)].map((m) => m[1]!)
-    // The stateful containers and useFetch moved into @pyreon/hooks' plugin (phase 3m), so the core set shrank.
-    expect(listed.length).toBeGreaterThan(10)
-
-    // Each must appear OUTSIDE the set literal — i.e. in the parser's actual
-    // recognition logic.
-    const withoutSet = PARSE_SRC.replace(setBlock![0], '')
-    const unhandled = listed.filter((h) => !withoutSet.includes(`'${h}'`))
-    expect(
-      unhandled,
-      'Listed as lowered but never referenced by the parser — the warning will not fire ' +
-        'for these, so an app using them emits uncompilable code silently.',
-    ).toEqual([])
+  // Claims must follow the loaded owners, including statement and pattern calls.
+  it('derives native hook claims from loaded plugins without compiler fallback claims', () => {
+    const bare = nativeLoweredHooks(createCompiler().registries)
+    const owned = nativeLoweredHooks(createCompiler({ plugins: FIRST_PARTY_PLUGINS }).registries)
+    expect(bare.size).toBe(0)
+    expect(owned.size).toBeGreaterThan(28)
+    for (const hook of [
+      'useForm',
+      'useFieldArray',
+      'useCounter',
+      'useInterval',
+      'useTimeout',
+      'useParams',
+      'useHotkey',
+      'useColorMode',
+      'useNativeModule',
+    ]) {
+      expect(bare.has(hook), hook).toBe(false)
+      expect(owned.has(hook), hook).toBe(true)
+    }
   })
 })

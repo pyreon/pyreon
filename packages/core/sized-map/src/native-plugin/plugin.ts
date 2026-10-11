@@ -8,17 +8,21 @@
 // cannot be baked into the emit (the same conservative rule useFetch applies to its URL).
 //
 // The construction is gated on the IMPORT: `SizedMap` is a plausible name for a user's own class, and mis-lowering
-// someone else's constructor is worse than not lowering ours. The scan records the local name(s) the file bound to the
-// export; a user's own `SizedMap` is never seen.
+// someone else's constructor is worse than not lowering ours. The scan resolves lexical import identity for both expression and declaration
+// sites; a local binding with the same spelling is never claimed.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
+  type AstNode,
   type CallExprRecognizer,
   type CompilerPlugin,
+  type DeclConstructRecognizer,
+  type DeclEmitter,
+  type ExtDecl,
   type ExprEmitter,
   type ExtExprIR,
   type ModuleScanner,
+  type ParseContext,
   type TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
 import { sizedMapStubs } from './stubs'
@@ -28,7 +32,8 @@ type AnyNode = any
 
 export const SIZED_MAP_PLUGIN_NAME = '@pyreon/sized-map'
 const EXPR_TYPE = 'new-sized-map'
-const NAMES_KEY = '@pyreon/sized-map:names'
+const REFERENCE_KEY = '@pyreon/sized-map:import-reference'
+type ImportReference = (node: AstNode) => boolean
 
 interface SizedMapPayload {
   readonly keyType: TypeIR
@@ -37,29 +42,36 @@ interface SizedMapPayload {
   readonly lru: boolean
 }
 
-const sizedMapOf = (e: ExtExprIR): SizedMapPayload => e.payload as unknown as SizedMapPayload
+const sizedMapOf = (e: ExtExprIR | ExtDecl): SizedMapPayload =>
+  e.payload as unknown as SizedMapPayload
 
-/** Record the local name(s) the file binds to `SizedMap` imported from `@pyreon/sized-map`. */
+/** Share one lexical import check between expression and declaration lowering. */
 const scanSizedMap: ModuleScanner = (scan) => {
-  const names = scan.fileState(NAMES_KEY, () => new Set<string>())
-  for (const node of scan.body as readonly AnyNode[]) {
-    if (node.type !== 'ImportDeclaration') continue
-    if (node.source?.value !== SIZED_MAP_PLUGIN_NAME) continue
-    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'SizedMap') {
-        const local = spec.local?.name
-        if (typeof local === 'string') names.add(local)
-      }
-    }
-  }
+  if (
+    !scan.body.some(
+      (node) =>
+        node.type === 'ImportDeclaration' &&
+        (node.source as AnyNode)?.value === SIZED_MAP_PLUGIN_NAME,
+    )
+  )
+    return
+  if (typeof scan.isImportedReference !== 'function')
+    throw new Error(
+      '[Pyreon] Upgrade @pyreon/native-compiler: the SizedMap plugin requires ModuleScan.isImportedReference.',
+    )
+  scan.fileState<ImportReference>(
+    REFERENCE_KEY,
+    () => (node) => scan.isImportedReference(node, SIZED_MAP_PLUGIN_NAME, 'SizedMap'),
+  )
 }
+const isSizedMapReference = (node: AstNode, ctx: Pick<ParseContext, 'fileState'>): boolean =>
+  ctx.fileState<ImportReference>(REFERENCE_KEY, () => () => false)(node)
 
 const recognizeSizedMap: CallExprRecognizer = (site, ctx) => {
   if (site.construct !== true) return undefined
   const callee = site.callee as AnyNode
-  if (callee.type !== 'Identifier') return undefined
+  if (!isSizedMapReference(site.callee, ctx)) return undefined
   const calleeName = callee.name as string
-  if (!ctx.fileState(NAMES_KEY, () => new Set<string>()).has(calleeName)) return undefined
   const typeArgs = ctx.typeArgs(site.node)
   // Anything but the two type arguments is not this lowering's shape: decline, and the parser reports it as it would any construction.
   if (typeArgs.length !== 2) return undefined
@@ -83,7 +95,15 @@ const recognizeSizedMap: CallExprRecognizer = (site, ctx) => {
     )
     return null
   }
-  return { type: EXPR_TYPE, payload: { keyType: typeArgs[0]!, valueType: typeArgs[1]!, maxEntries, lru: readNum('lru') === 1 } }
+  return {
+    type: EXPR_TYPE,
+    payload: {
+      keyType: typeArgs[0]!,
+      valueType: typeArgs[1]!,
+      maxEntries,
+      lru: readNum('lru') === 1,
+    },
+  }
 }
 
 const sizedMapExpr: ExprEmitter = {
@@ -108,16 +128,55 @@ const sizedMapExpr: ExprEmitter = {
   },
 }
 
+/** Component setup owns this container; an expression elsewhere remains an expression. */
+const recognizeSizedMapDecl: DeclConstructRecognizer = (site, ctx) => {
+  if (!isSizedMapReference(site.callee, ctx)) return undefined
+  // Reuse the expression recognizer's exact option/type validation and diagnostic.
+  const expression = ctx.expr(site.node)
+  if (
+    expression.kind !== 'ext-expr' ||
+    expression.plugin !== SIZED_MAP_PLUGIN_NAME ||
+    expression.type !== EXPR_TYPE
+  )
+    return null
+  return { type: EXPR_TYPE, payload: expression.payload }
+}
+
+const sizedMapDecl: DeclEmitter = {
+  typing: {
+    member: (_decl, property) => (property === 'size' ? { kind: 'number' } : undefined),
+    methodReturn(decl, method) {
+      const { keyType, valueType } = sizedMapOf(decl)
+      if (method === 'get') return { kind: 'union', branches: [valueType, { kind: 'undefined' }] }
+      if (method === 'has' || method === 'delete') return { kind: 'boolean' }
+      if (method === 'keys') return { kind: 'array', element: keyType }
+      if (method === 'values') return { kind: 'array', element: valueType }
+      if (method === 'entries') return { kind: 'array', element: { kind: 'unknown' } }
+      return undefined
+    },
+  },
+  swift(decl, ctx) {
+    const { keyType, valueType, maxEntries, lru } = sizedMapOf(decl)
+    return `@State private var ${ctx.ident(decl.name)} = PyreonSizedMap<${ctx.typeText(keyType)}, ${ctx.typeText(valueType)}>(maxEntries: ${maxEntries}${lru ? ', lru: true' : ''})`
+  },
+  kotlin(decl, ctx) {
+    const { keyType, valueType, maxEntries, lru } = sizedMapOf(decl)
+    return `val ${ctx.ident(decl.name)} = remember { PyreonSizedMap<${ctx.typeText(keyType)}, ${ctx.typeText(valueType)}>(maxEntries = ${maxEntries}L${lru ? ', lru = true' : ''}) }`
+  },
+}
+
 /**
  * The `@pyreon/sized-map` native plugin. Shipped by `@pyreon/sized-map` itself and discovered from its manifest
  * (`pyreon.native.plugin`) when a source file imports the package.
  */
 export const sizedMapPlugin: CompilerPlugin = Object.freeze({
   name: SIZED_MAP_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([SIZED_MAP_PLUGIN_NAME]),
   scanModule: scanSizedMap,
   callExprs: recognizeSizedMap,
+  declConstructs: recognizeSizedMapDecl,
+  decls: Object.freeze({ [EXPR_TYPE]: sizedMapDecl }),
   exprs: Object.freeze({ [EXPR_TYPE]: sizedMapExpr }),
   stubs: sizedMapStubs,
 })

@@ -16,7 +16,7 @@
 // wrong answer — so the unknown arm is asserted on the warning text.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 /** Emit a component whose computeds are the expressions under test. */
 function sw(decls: string, params = ''): { code: string; warnings: string[] } {

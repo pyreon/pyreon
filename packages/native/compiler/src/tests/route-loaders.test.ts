@@ -18,8 +18,8 @@
 // and emit the route with NO loader (the component still renders).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isSwiftcAvailable, isKotlincAvailable, validateSwift } from '../validate'
 
 const SRC = `import { Stack, Text } from '@pyreon/primitives'
 function Home() { return (<Stack><Text>home</Text></Stack>) }

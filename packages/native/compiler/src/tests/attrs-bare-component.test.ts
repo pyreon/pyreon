@@ -29,8 +29,13 @@
 // other two targets; a named warning naming the fix is the deliverable.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform } from './first-party-plugins'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '../validate'
 
 const app = (defn: string) => `import attrs from '@pyreon/attrs'
 import { Text } from '@pyreon/primitives'

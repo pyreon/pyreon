@@ -21,6 +21,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Native compiler tooling: hotkeysPlugin from @pyreon/hotkeys/native-plugin owns static shortcut recognition, SwiftUI control binding and Compose focus/key handlers; the CLI discovers it automatically
 - useHotkey(shortcut, handler, options?) — component-scoped, auto-unregisters on unmount
 - useHotkeyScope(scope) — activate a scope for a component's lifetime (reference-counted)
 - mod alias — Command on Mac, Ctrl elsewhere

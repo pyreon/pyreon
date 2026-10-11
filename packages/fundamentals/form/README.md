@@ -4,6 +4,22 @@ Signal-based form management — fields, validation, arrays, and context.
 
 Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. Two complementary APIs: the classic `useForm({ initialValues, validators, onSubmit })`, and the composable `field('name', default, validator) → useForm({ fields }) + useField('name')` that infers `FormState` from a field array and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.
 
+## Native compiler plugin
+
+`@pyreon/form/native-plugin` owns the native `useForm` and `useFieldArray` lowering. `pyreon-native` discovers its built entry when app source imports `@pyreon/form`. Direct compiler callers install it explicitly:
+
+```ts
+import { createCompiler } from '@pyreon/native-compiler'
+import formPlugin from '@pyreon/form/native-plugin'
+
+const compiler = createCompiler({ plugins: [formPlugin] })
+const result = compiler.transform(source, { target: 'swift' })
+```
+
+The current native subset accepts classic `useForm({ initialValues, validators, schema, onSubmit })` with literal string defaults, single-parameter expression validators, and schema declarations in the same file. It preserves `<Field>` bindings, map/accessor reads, submit callback field reads, and `useForm` result destructuring. `useFieldArray` accepts a literal string array or no initial argument; `<For>` scopes its row accessors and restores the enclosing row when nested.
+
+Composable `field()`/`useField()` forms and the rest of the web form API still need native lowerings. This plugin move preserves the existing native capability and emitted output.
+
 ## Install
 
 ```bash
@@ -80,16 +96,16 @@ function EmailInput() {
 
 ## `useForm(options)`
 
-| Option           | Type                                         | Description                                                             |
-| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
-| `initialValues`  | `TValues`                                    | Required when using the value-form. Drives field keys + types.          |
-| `fields`         | `FieldDefinition[]`                          | Required when using the composable form. Drives `TValues` via inference. |
-| `onSubmit`       | `(values: TValues) => void \| Promise<void>` | Submit handler — receives validated values                              |
-| `validators`     | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators; signature `(value, allValues) => string \| undefined` |
-| `schema`         | `SchemaValidateFn` \| Standard Schema \| typed adapter | Whole-form schema validator — a raw Standard Schema (zod / valibot / arktype / `@pyreon/validate`'s `s`) directly, a plain `SchemaValidateFn`, or a `@pyreon/validation` typed adapter |
-| `validateOn`     | `'blur' \| 'change' \| 'submit'`             | When to validate. **Default: `'blur'`**                                   |
-| `debounceMs`     | `number`                                     | Debounce delay for validators (especially async)                         |
-| `focusOnError`   | `boolean`                                    | Focus the first errored + `register()`-bound field on a failed submit. **Default: `true`** |
+| Option          | Type                                                   | Description                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialValues` | `TValues`                                              | Required when using the value-form. Drives field keys + types.                                                                                                                         |
+| `fields`        | `FieldDefinition[]`                                    | Required when using the composable form. Drives `TValues` via inference.                                                                                                               |
+| `onSubmit`      | `(values: TValues) => void \| Promise<void>`           | Submit handler — receives validated values                                                                                                                                             |
+| `validators`    | `Partial<Record<keyof TValues, ValidateFn>>`           | Per-field validators; signature `(value, allValues) => string \| undefined`                                                                                                            |
+| `schema`        | `SchemaValidateFn` \| Standard Schema \| typed adapter | Whole-form schema validator — a raw Standard Schema (zod / valibot / arktype / `@pyreon/validate`'s `s`) directly, a plain `SchemaValidateFn`, or a `@pyreon/validation` typed adapter |
+| `validateOn`    | `'blur' \| 'change' \| 'submit'`                       | When to validate. **Default: `'blur'`**                                                                                                                                                |
+| `debounceMs`    | `number`                                               | Debounce delay for validators (especially async)                                                                                                                                       |
+| `focusOnError`  | `boolean`                                              | Focus the first errored + `register()`-bound field on a failed submit. **Default: `true`**                                                                                             |
 
 Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `getValues(name?)`, `errors()`, `dirtyFields()`, `touchedFields()`), and handlers (`handleSubmit`, `register`, `validate`, `trigger`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`, `getFieldState`, `focusFirstError`, `registerField`, `unregisterField`).
 
@@ -130,18 +146,18 @@ const f = useField(form, 'email')
 
 Returns `UseFieldResult<T>`:
 
-| Property      | Type                                            | Description                                  |
-| ------------- | ----------------------------------------------- | -------------------------------------------- |
-| `value`       | `Signal<T>`                                     | Field value                                  |
-| `error`       | `Signal<ValidationError>`                       | `string \| undefined`                        |
-| `touched`     | `Signal<boolean>`                               | True after first blur                        |
-| `dirty`       | `Signal<boolean>`                               | True when value differs from initial         |
-| `hasError`    | `Computed<boolean>`                             | True when an error string exists             |
-| `showError`   | `Computed<boolean>`                             | True when `touched()` AND `hasError()`       |
-| `setValue`    | `(v: T) => void`                                | Programmatic set                             |
-| `setTouched`  | `(b: boolean) => void`                          | Mark touched                                 |
-| `reset`       | `() => void`                                    | Reset to field's initial value               |
-| `register`    | `() => FieldRegisterProps<T>`                   | Spreadable input props                       |
+| Property     | Type                          | Description                            |
+| ------------ | ----------------------------- | -------------------------------------- |
+| `value`      | `Signal<T>`                   | Field value                            |
+| `error`      | `Signal<ValidationError>`     | `string \| undefined`                  |
+| `touched`    | `Signal<boolean>`             | True after first blur                  |
+| `dirty`      | `Signal<boolean>`             | True when value differs from initial   |
+| `hasError`   | `Computed<boolean>`           | True when an error string exists       |
+| `showError`  | `Computed<boolean>`           | True when `touched()` AND `hasError()` |
+| `setValue`   | `(v: T) => void`              | Programmatic set                       |
+| `setTouched` | `(b: boolean) => void`        | Mark touched                           |
+| `reset`      | `() => void`                  | Reset to field's initial value         |
+| `register`   | `() => FieldRegisterProps<T>` | Spreadable input props                 |
 
 `showError` is the right gate for displaying error messages — it stays silent until the user has blurred at least once, even when `validateOn: 'change'`.
 
@@ -192,7 +208,7 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.is
 ## `FormProvider` / `useFormContext()` / `<Form>` / `<Submit>`
 
 ```tsx
-<FormProvider form={form}>
+;<FormProvider form={form}>
   <DeepInputs />
 </FormProvider>
 
@@ -285,11 +301,11 @@ form.reset()
 form.reset(await fetchLatest()) // { name: 'server', email: 'a@b.com' }
 
 // Preserve selected state across the reset:
-form.reset(undefined, { keepErrors: true })      // also keepTouched / keepDirty / keepSubmitCount
+form.reset(undefined, { keepErrors: true }) // also keepTouched / keepDirty / keepSubmitCount
 
 // Single field:
-form.resetField('email')                          // revert value + clear error/touched
-form.resetField('email', { keepError: true })     // also keepTouched
+form.resetField('email') // revert value + clear error/touched
+form.resetField('email', { keepError: true }) // also keepTouched
 ```
 
 ## Schema validation
@@ -310,7 +326,7 @@ const form = useForm({
 
 It also still accepts a plain `SchemaValidateFn` (`(values) => Partial<Record<key, string>>`) and a `@pyreon/validation` typed adapter (`zodSchema` / `valibotSchema` / `arktypeSchema` — the compile-time-typed form). Per-field validators run first; schema errors merge after.
 
-A **raw ArkType** schema is a special case worth calling out: `type({ ... })` returns a **callable** (`typeof === 'function'`) that also carries `~standard`. `useForm` checks Standard-Schema detection **before** the plain-function fallback, so a raw ArkType schema is recognized as a schema and validated through `~standard` — a hand-written `SchemaValidateFn` (a function *without* `~standard`) still takes the function path unchanged.
+A **raw ArkType** schema is a special case worth calling out: `type({ ... })` returns a **callable** (`typeof === 'function'`) that also carries `~standard`. `useForm` checks Standard-Schema detection **before** the plain-function fallback, so a raw ArkType schema is recognized as a schema and validated through `~standard` — a hand-written `SchemaValidateFn` (a function _without_ `~standard`) still takes the function path unchanged.
 
 The `~standard` contract + bridge live in `@pyreon/validation`; `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn`, so the historical `import { ValidationError } from '@pyreon/form'` keeps working.
 

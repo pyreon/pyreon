@@ -14,9 +14,11 @@
 // must not, and asserts the emitted code, the parsed IR, or the named warning.
 
 import { describe, expect, it } from 'vitest'
-import { firstPartyCompiler, transform } from './first-party-plugins'
-import type { FlowStatePayload, FlowStateDecl } from '../../../../fundamentals/flow/src/native-plugin/types'
-import { parsePyreon } from '../parse'
+import { firstPartyCompiler, transform, parsePyreon } from './first-party-plugins'
+import type {
+  FlowStatePayload,
+  FlowStateDecl,
+} from '../../../../fundamentals/flow/src/native-plugin/types'
 import type { DeclIR } from '../types'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
@@ -58,7 +60,9 @@ describe('parse.ts — useQuery options-function shapes', () => {
   })
 
   it('a concise body calling a NON-endpoint `.query()` is not claimed as the endpoint form', () => {
-    const r = swift(qApp('  const api = { query: () => 1 }\n  const q = useQuery<Resp>(() => api.query())'))
+    const r = swift(
+      qApp('  const api = { query: () => 1 }\n  const q = useQuery<Resp>(() => api.query())'),
+    )
     expect(warn(r)).toContain('useQuery options function must return an object literal')
   })
 
@@ -78,7 +82,9 @@ describe('parse.ts — useQuery options-function shapes', () => {
   })
 
   it('staleTime: a numeric literal is baked; a non-literal warns and defaults to 0', () => {
-    expect(q(`() => ({ queryKey: ['a'], ${OK_FN}, staleTime: 5000 })`).code).toContain('staleSeconds: 5')
+    expect(q(`() => ({ queryKey: ['a'], ${OK_FN}, staleTime: 5000 })`).code).toContain(
+      'staleSeconds: 5',
+    )
     expect(warn(q(`() => ({ queryKey: ['a'], ${OK_FN}, staleTime: n() })`))).toContain(
       'useQuery staleTime must be a number literal (ms) to lower to native; got CallExpression',
     )
@@ -87,15 +93,19 @@ describe('parse.ts — useQuery options-function shapes', () => {
 
 describe('parse.ts — tryQueryFnValue (direct-value queryFn)', () => {
   it('a single-return block body lowers to a direct resolve', () => {
-    expect(q(`() => ({ queryKey: ['a'], queryFn: () => { return { ok: true } } })`).code).toContain('q.resolve(')
-    expect(q(`() => ({ queryKey: ['a'], queryFn: function () { return { ok: true } } })`).code).toContain(
+    expect(q(`() => ({ queryKey: ['a'], queryFn: () => { return { ok: true } } })`).code).toContain(
       'q.resolve(',
     )
+    expect(
+      q(`() => ({ queryKey: ['a'], queryFn: function () { return { ok: true } } })`).code,
+    ).toContain('q.resolve(')
   })
 
   it('a multi-statement block, an empty return, an await, or a non-function bails by name', () => {
     const msg = 'useQuery queryFn must be an inline'
-    expect(warn(q(`() => ({ queryKey: ['a'], queryFn: () => { const a = 1; return a } })`))).toContain(msg)
+    expect(
+      warn(q(`() => ({ queryKey: ['a'], queryFn: () => { const a = 1; return a } })`)),
+    ).toContain(msg)
     expect(warn(q(`() => ({ queryKey: ['a'], queryFn: () => { return } })`))).toContain(msg)
     expect(warn(q(`() => ({ queryKey: ['a'], queryFn: async () => await load() })`))).toContain(msg)
     expect(warn(q(`() => ({ queryKey: ['a'], queryFn: 5 })`))).toContain(msg)
@@ -109,19 +119,26 @@ describe('parse.ts — tryQueryFnValue (direct-value queryFn)', () => {
 })
 
 describe('parse.ts — parseFetchInitObject (queryFn fetch init)', () => {
-  const fi = (init: string) => q(`() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', ${init}) })`)
+  const fi = (init: string) =>
+    q(`() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', ${init}) })`)
 
   it('a non-object init warns and stays a plain GET', () => {
     const r = fi('opts')
-    expect(warn(r)).toContain('useQuery queryFn fetch init must be an object literal to lower to native; got Identifier')
+    expect(warn(r)).toContain(
+      'useQuery queryFn fetch init must be an object literal to lower to native; got Identifier',
+    )
     expect(r.code).not.toContain('method: .post')
   })
 
   it('bakes method / body / headers literals', () => {
-    const r = fi(`{ method: 'put', body: 'payload', headers: { 'x-a': 'b', auth: 'c', n: 1, [k]: 'z', ...more } }`)
+    const r = fi(
+      `{ method: 'put', body: 'payload', headers: { 'x-a': 'b', auth: 'c', n: 1, [k]: 'z', ...more } }`,
+    )
     // The computed `[k]` header is NAMED (it used to vanish silently).
     expect(r.warnings).toEqual([
-      expect.stringContaining('useQuery queryFn fetch headers: the computed key `[k]` is only known at runtime'),
+      expect.stringContaining(
+        'useQuery queryFn fetch headers: the computed key `[k]` is only known at runtime',
+      ),
     ])
     expect(r.code).toContain('method: .put')
     expect(r.code).toContain('"payload"')
@@ -132,9 +149,15 @@ describe('parse.ts — parseFetchInitObject (queryFn fetch init)', () => {
   it('warns by name for a non-literal method / body / headers and skips odd keys', () => {
     const r = fi(`{ method: m, body: b(), headers: h, [dyn]: 1, 2: 'x', ...spread }`)
     const w = warn(r)
-    expect(w).toContain('useQuery queryFn fetch method must be a string literal to lower to native; got Identifier')
-    expect(w).toContain('useQuery queryFn fetch body must be a string literal to lower to native; got CallExpression')
-    expect(w).toContain('useQuery queryFn fetch headers must be an object literal to lower to native; got Identifier')
+    expect(w).toContain(
+      'useQuery queryFn fetch method must be a string literal to lower to native; got Identifier',
+    )
+    expect(w).toContain(
+      'useQuery queryFn fetch body must be a string literal to lower to native; got CallExpression',
+    )
+    expect(w).toContain(
+      'useQuery queryFn fetch headers must be an object literal to lower to native; got Identifier',
+    )
   })
 
   it('a quoted-key method and an all-non-literal header map emit no headers', () => {
@@ -153,29 +176,35 @@ const rxApp = (imports: string, b: string) =>
 
 describe('parse.ts — tryRxNamespaceLowering', () => {
   it('the rx namespace form lowers a v1 method', () => {
-    const r = swift(rxApp(`import { rx } from '@pyreon/rx'`, '  const r = rx.filter(nums, (x) => x > 1)'))
+    const r = swift(
+      rxApp(`import { rx } from '@pyreon/rx'`, '  const r = rx.filter(nums, (x) => x > 1)'),
+    )
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('.filter')
   })
 
   it('a standalone import resolves through the IMPORT map (aliased)', () => {
-    const r = swift(rxApp(`import { filter as keep } from '@pyreon/rx'`, '  const r = keep(nums, (x) => x > 1)'))
+    const r = swift(
+      rxApp(`import { filter as keep } from '@pyreon/rx'`, '  const r = keep(nums, (x) => x > 1)'),
+    )
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('.filter')
   })
 
   it('pipe() is named as unlowerable, not emitted as closures', () => {
-    const r = swift(rxApp(`import { pipe } from '@pyreon/rx'`, '  const r = pipe(nums, (xs) => xs)'))
+    const r = swift(
+      rxApp(`import { pipe } from '@pyreon/rx'`, '  const r = pipe(nums, (xs) => xs)'),
+    )
     expect(warn(r)).toContain('pipe() has no native lowering')
   })
 
   it('a missing source argument, and a non-v1 method, warn by name', () => {
-    expect(warn(swift(rxApp(`import { rx } from '@pyreon/rx'`, '  const r = rx.filter()')))).toContain(
-      'rx.filter requires a signal source as its first argument.',
-    )
-    expect(warn(swift(rxApp(`import { rx } from '@pyreon/rx'`, '  const r = rx.combine(nums, nums)')))).toContain(
-      'rx.combine is not yet lowered to native',
-    )
+    expect(
+      warn(swift(rxApp(`import { rx } from '@pyreon/rx'`, '  const r = rx.filter()'))),
+    ).toContain('rx.filter requires a signal source as its first argument.')
+    expect(
+      warn(swift(rxApp(`import { rx } from '@pyreon/rx'`, '  const r = rx.combine(nums, nums)'))),
+    ).toContain('rx.combine is not yet lowered to native')
   })
 
   it('a member call on a non-`rx` object, a computed member, or an unimported bare name is not rx', () => {
@@ -190,7 +219,12 @@ describe('parse.ts — tryRxNamespaceLowering', () => {
   })
 
   it('the `rx` specifier itself is not recorded as a standalone transform', () => {
-    const r = swift(rxApp(`import { rx, map } from '@pyreon/rx'\nimport * as all from '@pyreon/rx'`, '  const r = map(nums, (x) => x * 2)'))
+    const r = swift(
+      rxApp(
+        `import { rx, map } from '@pyreon/rx'\nimport * as all from '@pyreon/rx'`,
+        '  const r = map(nums, (x) => x * 2)',
+      ),
+    )
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('.map')
   })
@@ -221,7 +255,9 @@ describe('parse.ts — tryDeclFromCreateMachine', () => {
     const w = warn(r)
     // The one computed key (`[dyn]`) is named; nothing else warns.
     expect(r.warnings).toEqual([
-      expect.stringContaining('createMachine declaration `m`: state `idle` `on`: the computed key `[dyn]`'),
+      expect.stringContaining(
+        'createMachine declaration `m`: state `idle` `on`: the computed key `[dyn]`',
+      ),
     ])
     expect(w).toContain('createMachine declaration')
     expect(r.code).toContain('"idle"')
@@ -233,9 +269,15 @@ describe('parse.ts — tryDeclFromCreateMachine', () => {
   it('warns for a non-object config, a missing/non-literal initial, and missing states', () => {
     expect(warn(swift(machineApp('cfg')))).toContain('config argument is not an object literal')
     expect(warn(swift(machineApp('')))).toContain('config argument is not an object literal')
-    expect(warn(swift(machineApp('{ initial: 1, states: {} }')))).toContain('`initial` field is missing or not a string literal')
-    expect(warn(swift(machineApp(`{ initial: 'a' }`)))).toContain('`states` field is missing or not an object literal')
-    expect(warn(swift(machineApp(`{ initial: 'a', states: s }`)))).toContain('`states` field is missing')
+    expect(warn(swift(machineApp('{ initial: 1, states: {} }')))).toContain(
+      '`initial` field is missing or not a string literal',
+    )
+    expect(warn(swift(machineApp(`{ initial: 'a' }`)))).toContain(
+      '`states` field is missing or not an object literal',
+    )
+    expect(warn(swift(machineApp(`{ initial: 'a', states: s }`)))).toContain(
+      '`states` field is missing',
+    )
   })
 })
 
@@ -279,13 +321,21 @@ describe('parse.ts — tryDeclFromSyncedSignal', () => {
   })
 
   it('warns by name for each missing/unlowerable field', () => {
-    expect(warn(swift(syncedApp('cfg')))).toContain('argument must be an object literal { doc, key, initial }')
+    expect(warn(swift(syncedApp('cfg')))).toContain(
+      'argument must be an object literal { doc, key, initial }',
+    )
     expect(warn(swift(syncedApp(`{ doc: getDoc(), key: 'k', initial: 1 }`)))).toContain(
       '`doc` must reference a `new PyreonCrdtDoc(...)` binding',
     )
-    expect(warn(swift(syncedApp(`{ doc, key: k, initial: 1 }`)))).toContain('`key` must be a string literal')
-    expect(warn(swift(syncedApp(`{ doc, key: 'k', initial: null }`)))).toContain('`initial` must be a string, number, or boolean literal')
-    expect(warn(swift(syncedApp(`{ doc, key: 'k', initial: [1] }`)))).toContain('`initial` must be a string')
+    expect(warn(swift(syncedApp(`{ doc, key: k, initial: 1 }`)))).toContain(
+      '`key` must be a string literal',
+    )
+    expect(warn(swift(syncedApp(`{ doc, key: 'k', initial: null }`)))).toContain(
+      '`initial` must be a string, number, or boolean literal',
+    )
+    expect(warn(swift(syncedApp(`{ doc, key: 'k', initial: [1] }`)))).toContain(
+      '`initial` must be a string',
+    )
     expect(warn(swift(syncedApp(`{ doc, key: 'k', map: m, initial: 'x' }`)))).toEqual('')
   })
 })
@@ -298,9 +348,16 @@ describe('parse.ts — tryDeclFromSyncedSignal', () => {
 // closed `flow-state` kind did, so the tests keep reading it through the same shape.
 type FlowDecl = FlowStateDecl
 const asFlowDecl = (d: DeclIR | undefined): FlowDecl | undefined =>
-  d?.kind === 'ext' && d.type === 'flow-state' ? { ...(d.payload as unknown as FlowStatePayload), name: d.name } : undefined
+  d?.kind === 'ext' && d.type === 'flow-state'
+    ? { ...(d.payload as unknown as FlowStatePayload), name: d.name }
+    : undefined
 
-const flowSrc = (cfg: string, factory = 'createFlow', pre = '', generic = '') => `import { ${factory} } from '@pyreon/flow'
+const flowSrc = (
+  cfg: string,
+  factory = 'createFlow',
+  pre = '',
+  generic = '',
+) => `import { ${factory} } from '@pyreon/flow'
 ${pre}
 export function App(){
   const flow = ${factory}${generic}(${cfg})
@@ -308,15 +365,21 @@ export function App(){
 }`
 
 const parseFlow = (cfg: string, factory = 'createFlow', pre = '', generic = '') => {
-  const r = parsePyreon(flowSrc(cfg, factory, pre, generic), undefined, { registries: firstPartyCompiler.registries })
-  const decl = asFlowDecl(r.components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'flow-state'))
+  const r = parsePyreon(flowSrc(cfg, factory, pre, generic), undefined, {
+    registries: firstPartyCompiler.registries,
+  })
+  const decl = asFlowDecl(
+    r.components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'flow-state'),
+  )
   return { decl, warnings: r.warnings.join('\n') }
 }
 
 const N1 = `{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }`
 const N2 = `{ id: 'b', position: { x: 1, y: 2 }, data: { label: 'B' } }`
-const withNode = (extra: string) => `{ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' }, ${extra} }], edges: [] }`
-const withEdge = (extra: string) => `{ nodes: [${N1}, ${N2}], edges: [{ source: 'a', target: 'b', ${extra} }] }`
+const withNode = (extra: string) =>
+  `{ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' }, ${extra} }], edges: [] }`
+const withEdge = (extra: string) =>
+  `{ nodes: [${N1}, ${N2}], edges: [{ source: 'a', target: 'b', ${extra} }] }`
 const withCfg = (extra: string) => `{ nodes: [${N1}], edges: [], ${extra} }`
 
 describe('parse.ts — createFlow node readers', () => {
@@ -347,7 +410,9 @@ describe('parse.ts — createFlow node readers', () => {
   })
 
   it("`extent: 'parent'` is the parent-clamp flag, not a numeric extent", () => {
-    expect(parseFlow(withNode(`extent: 'parent'`)).decl!.nodes[0]).toMatchObject({ extentParent: true })
+    expect(parseFlow(withNode(`extent: 'parent'`)).decl!.nodes[0]).toMatchObject({
+      extentParent: true,
+    })
   })
 
   it('names every non-literal node field as dropped', () => {
@@ -386,7 +451,9 @@ describe('parse.ts — createFlow node readers', () => {
       `[{ type: 'source', position: 'top', offset: o }]`,
       `[{ type: 'source', position: side.foo }]`,
     ]) {
-      expect(parseFlow(withNode(`sourceHandles: ${h}`)).warnings).toContain('sourceHandles (not a literal handle array)')
+      expect(parseFlow(withNode(`sourceHandles: ${h}`)).warnings).toContain(
+        'sourceHandles (not a literal handle array)',
+      )
     }
   })
 
@@ -417,7 +484,9 @@ describe('parse.ts — createFlow node readers', () => {
 describe('parse.ts — createFlow edge readers', () => {
   it('derives a deterministic id from source/handles/target when `id` is absent', () => {
     expect(parseFlow(withEdge('')).decl!.edges[0]!.id).toBe('e-a-b')
-    expect(parseFlow(withEdge(`sourceHandle: 's', targetHandle: 't'`)).decl!.edges[0]!.id).toBe('e-a-s-b-t')
+    expect(parseFlow(withEdge(`sourceHandle: 's', targetHandle: 't'`)).decl!.edges[0]!.id).toBe(
+      'e-a-s-b-t',
+    )
   })
 
   it('reads every literal edge field onto the IR', () => {
@@ -450,7 +519,9 @@ describe('parse.ts — createFlow edge readers', () => {
 
   it('`markerEnd: null` explicitly clears the default marker; a member marker type reads through', () => {
     expect(parseFlow(withEdge('markerEnd: null')).decl!.edges[0]!.markerEnd).toBeNull()
-    expect(parseFlow(withEdge('markerStart: MarkerType.Arrow')).decl!.edges[0]!.markerStart).toEqual({ type: 'arrow' })
+    expect(
+      parseFlow(withEdge('markerStart: MarkerType.Arrow')).decl!.edges[0]!.markerStart,
+    ).toEqual({ type: 'arrow' })
   })
 
   it('names every non-literal edge field as dropped', () => {
@@ -480,7 +551,9 @@ describe('parse.ts — createFlow edge readers', () => {
   })
 
   it('rejects a pathOptions entry that is not numeric, and malformed marker objects', () => {
-    expect(parseFlow(withEdge('pathOptions: { curvature: c }')).warnings).toContain('pathOptions (not a literal numeric')
+    expect(parseFlow(withEdge('pathOptions: { curvature: c }')).warnings).toContain(
+      'pathOptions (not a literal numeric',
+    )
     for (const m of [
       `{ type: 'diamond' }`,
       `{ type: 'arrow', color: c }`,
@@ -488,15 +561,26 @@ describe('parse.ts — createFlow edge readers', () => {
       `{ type: Marker.Custom }`,
       '5',
     ]) {
-      expect(parseFlow(withEdge(`markerStart: ${m}`)).warnings).toContain('markerStart (not a literal marker)')
+      expect(parseFlow(withEdge(`markerStart: ${m}`)).warnings).toContain(
+        'markerStart (not a literal marker)',
+      )
     }
-    expect(parseFlow(withEdge('waypoints: [1]')).warnings).toContain('waypoints (not an array literal')
-    expect(parseFlow(withEdge('waypoints: w')).warnings).toContain('waypoints (not an array literal')
+    expect(parseFlow(withEdge('waypoints: [1]')).warnings).toContain(
+      'waypoints (not an array literal',
+    )
+    expect(parseFlow(withEdge('waypoints: w')).warnings).toContain(
+      'waypoints (not an array literal',
+    )
   })
 
   it('bails for a malformed edge (non-object, non-literal id, missing endpoints) or a non-array edges', () => {
     const bail = 'must be literal arrays of object literals'
-    for (const edges of ['[1]', `[{ id: x, source: 'a', target: 'b' }]`, `[{ source: 'a' }]`, 'es']) {
+    for (const edges of [
+      '[1]',
+      `[{ id: x, source: 'a', target: 'b' }]`,
+      `[{ source: 'a' }]`,
+      'es',
+    ]) {
       expect(parseFlow(`{ nodes: [${N1}], edges: ${edges} }`).warnings).toContain(bail)
     }
   })
@@ -504,13 +588,24 @@ describe('parse.ts — createFlow edge readers', () => {
 
 describe('parse.ts — createFlow bails + generic data type', () => {
   it('a non-object argument is named', () => {
-    expect(parseFlow('cfg').warnings).toContain('argument must be an object literal { nodes, edges }')
-    expect(parseFlow('', 'useFlow').warnings).toContain('useFlow declaration `flow`: argument must be an object literal')
+    expect(parseFlow('cfg').warnings).toContain(
+      'argument must be an object literal { nodes, edges }',
+    )
+    expect(parseFlow('', 'useFlow').warnings).toContain(
+      'useFlow declaration `flow`: argument must be an object literal',
+    )
   })
 
   it('an empty untyped seed warns; an explicit generic accepts it', () => {
-    expect(parseFlow('{ nodes: [], edges: [] }').warnings).toContain('an empty `nodes: []` has no literal or explicit generic')
-    const typed = parseFlow('{ nodes: [], edges: [] }', 'createFlow', 'type D = { label: string }', '<D>')
+    expect(parseFlow('{ nodes: [], edges: [] }').warnings).toContain(
+      'an empty `nodes: []` has no literal or explicit generic',
+    )
+    const typed = parseFlow(
+      '{ nodes: [], edges: [] }',
+      'createFlow',
+      'type D = { label: string }',
+      '<D>',
+    )
     expect(typed.decl?.dataType).toBeDefined()
   })
 
@@ -570,8 +665,17 @@ describe('parse.ts — createFlow config readers', () => {
   })
 
   it('`panOnDrag: [0]` keeps primary-pointer panning; `deleteKeys: null` disables deletion', () => {
-    const { decl } = parseFlow(withCfg('panOnDrag: [0], deleteKeys: null, selectionMode: \'partial\', connectionMode: \'strict\''))
-    expect(decl).toMatchObject({ panOnDrag: true, deleteKeys: null, selectionMode: 'partial', connectionMode: 'strict' })
+    const { decl } = parseFlow(
+      withCfg(
+        "panOnDrag: [0], deleteKeys: null, selectionMode: 'partial', connectionMode: 'strict'",
+      ),
+    )
+    expect(decl).toMatchObject({
+      panOnDrag: true,
+      deleteKeys: null,
+      selectionMode: 'partial',
+      connectionMode: 'strict',
+    })
   })
 
   it('names every unlowerable config key', () => {
@@ -624,12 +728,22 @@ describe('parse.ts — createFlow config readers', () => {
     for (const e of ['e', '[[0, 0]]', '[1, 2]', '[[0], [1, 1]]']) {
       expect(parseFlow(withCfg(`nodeExtent: ${e}`)).warnings).toContain('nodeExtent (not a numeric')
     }
-    for (const r of ['{ ...x }', '{ a: 1 }', '{ a: { outputs: o } }', '{ a: { outputs: [x] } }', '{ [k]: { outputs: [] } }']) {
-      expect(parseFlow(withCfg(`connectionRules: ${r}`)).warnings).toContain('connectionRules (not a literal')
+    for (const r of [
+      '{ ...x }',
+      '{ a: 1 }',
+      '{ a: { outputs: o } }',
+      '{ a: { outputs: [x] } }',
+      '{ [k]: { outputs: [] } }',
+    ]) {
+      expect(parseFlow(withCfg(`connectionRules: ${r}`)).warnings).toContain(
+        'connectionRules (not a literal',
+      )
     }
     // A NUMERIC key is a static key — JS stores it as the string "5", and the
     // web looks rules up by `node.type`, so a node type "5" matches it.
-    expect(parseFlow(withCfg(`connectionRules: { 5: { outputs: ['a'] } }`)).decl?.connectionRules).toEqual({ 5: ['a'] })
+    expect(
+      parseFlow(withCfg(`connectionRules: { 5: { outputs: ['a'] } }`)).decl?.connectionRules,
+    ).toEqual({ 5: ['a'] })
   })
 
   it('rejects each unsupported defaultEdgeOptions shape', () => {
@@ -645,7 +759,9 @@ describe('parse.ts — createFlow config readers', () => {
       "{ markerEnd: 'diamond' }",
       '{ unknownKey: 1 }',
     ]) {
-      expect(parseFlow(withCfg(`defaultEdgeOptions: ${o}`)).warnings).toContain('defaultEdgeOptions (not a supported literal')
+      expect(parseFlow(withCfg(`defaultEdgeOptions: ${o}`)).warnings).toContain(
+        'defaultEdgeOptions (not a supported literal',
+      )
     }
   })
 })
@@ -666,7 +782,9 @@ export function App(){
 describe('parse.ts — tryDeclFromCreateTableState', () => {
   it('lowers data getter + string-id columns + numeric pageSize, skipping odd entries', () => {
     const r = swift(
-      tableApp(`{ 'data': () => rows(), pageSize: 10, ...rest, columns: [{ id: 'name', 'header': 'N', [k]: 1, ...c }, 5, { id: 1 }] }`),
+      tableApp(
+        `{ 'data': () => rows(), pageSize: 10, ...rest, columns: [{ id: 'name', 'header': 'N', [k]: 1, ...c }, 5, { id: 1 }] }`,
+      ),
     )
     // Only the computed column key is named.
     expect(r.warnings).toEqual([
@@ -676,13 +794,15 @@ describe('parse.ts — tryDeclFromCreateTableState', () => {
   })
 
   it('warns for a non-object config, a block-body data, and no string-id column', () => {
-    expect(warn(swift(tableApp('cfg')))).toContain('argument must be an object literal { data, columns, pageSize }')
-    expect(warn(swift(tableApp(`{ data: () => { return rows() }, columns: [{ id: 'a' }] }`)))).toContain(
-      '`data` must be an expression-body getter',
+    expect(warn(swift(tableApp('cfg')))).toContain(
+      'argument must be an object literal { data, columns, pageSize }',
     )
-    expect(warn(swift(tableApp(`{ data: () => rows(), pageSize: p, columns: [{ id: x }] }`)))).toContain(
-      'needs at least one `columns: [{ id }]` entry',
-    )
+    expect(
+      warn(swift(tableApp(`{ data: () => { return rows() }, columns: [{ id: 'a' }] }`))),
+    ).toContain('`data` must be an expression-body getter')
+    expect(
+      warn(swift(tableApp(`{ data: () => rows(), pageSize: p, columns: [{ id: x }] }`))),
+    ).toContain('needs at least one `columns: [{ id }]` entry')
   })
 })
 
@@ -702,13 +822,21 @@ describe('parse.ts — tryDeclFromUseSortable', () => {
     const r = swift(sortApp(`{ ${OK}, axis: 'horizontal', 'label2': 1, ...more }`))
     expect(warn(r)).not.toContain('useSortable declaration')
     expect(r.code).toContain('horizontal')
-    const block = swift(sortApp(`{ items: () => items(), by: (it) => it.id, onReorder: () => { items.set([]) } }`))
+    const block = swift(
+      sortApp(`{ items: () => items(), by: (it) => it.id, onReorder: () => { items.set([]) } }`),
+    )
     expect(warn(block)).not.toContain('useSortable declaration')
     expect(swift(sortApp(`{ ${OK}, axis: 'vertical' }`)).code).not.toContain('horizontal')
   })
 
   it('names the cross-list and label options that have no native lowering', () => {
-    const w = warn(swift(sortApp(`{ ${OK}, groupId: 'g', onCrossListDrop: () => {}, onCrossListReceive: () => {}, label: 'x' }`)))
+    const w = warn(
+      swift(
+        sortApp(
+          `{ ${OK}, groupId: 'g', onCrossListDrop: () => {}, onCrossListReceive: () => {}, label: 'x' }`,
+        ),
+      ),
+    )
     expect(w).toContain('`groupId` (cross-list boards) has NO native lowering')
     expect(w).toContain('`onCrossListDrop` (cross-list boards)')
     expect(w).toContain('`onCrossListReceive` (cross-list boards)')
@@ -716,18 +844,26 @@ describe('parse.ts — tryDeclFromUseSortable', () => {
   })
 
   it('warns for a non-object config and each unlowerable required option', () => {
-    expect(warn(swift(sortApp('cfg')))).toContain('argument must be an object literal { items, by, onReorder }')
-    expect(warn(swift(sortApp(`{ items: () => { return items() }, by: (it) => it.id, onReorder: (n) => items.set(n) }`)))).toContain(
-      '`items` must be an expression-body getter',
+    expect(warn(swift(sortApp('cfg')))).toContain(
+      'argument must be an object literal { items, by, onReorder }',
     )
+    expect(
+      warn(
+        swift(
+          sortApp(
+            `{ items: () => { return items() }, by: (it) => it.id, onReorder: (n) => items.set(n) }`,
+          ),
+        ),
+      ),
+    ).toContain('`items` must be an expression-body getter')
     for (const by of ['(a, b) => a.id', '(it) => { return it.id }', 'key', '({ id }) => id']) {
-      expect(warn(swift(sortApp(`{ items: () => items(), by: ${by}, onReorder: (n) => items.set(n) }`)))).toContain(
-        '`by` must be a single-param expression-body arrow',
-      )
+      expect(
+        warn(swift(sortApp(`{ items: () => items(), by: ${by}, onReorder: (n) => items.set(n) }`))),
+      ).toContain('`by` must be a single-param expression-body arrow')
     }
-    expect(warn(swift(sortApp(`{ items: () => items(), by: (it) => it.id, onReorder: handler }`)))).toContain(
-      '`onReorder` must be an arrow function',
-    )
+    expect(
+      warn(swift(sortApp(`{ items: () => items(), by: (it) => it.id, onReorder: handler }`))),
+    ).toContain('`onReorder` must be an arrow function')
   })
 })
 
@@ -750,7 +886,11 @@ describe('i18n plugin — createI18n recognizer', () => {
       ),
       'i18n',
     )
-    expect(payloadOf(d)).toMatchObject({ locale: 'cs', fallbackLocale: 'en', messages: { en: { hello: 'Hi', 'a.b': 'AB' }, cs: {} } })
+    expect(payloadOf(d)).toMatchObject({
+      locale: 'cs',
+      fallbackLocale: 'en',
+      messages: { en: { hello: 'Hi', 'a.b': 'AB' }, cs: {} },
+    })
   })
 
   it('omits fallbackLocale when absent', () => {
@@ -761,8 +901,12 @@ describe('i18n plugin — createI18n recognizer', () => {
 
   it('warns for a non-object config, a missing locale, and missing messages', () => {
     expect(warn(swift(i18nApp('cfg')))).toContain('config argument is not an object literal')
-    expect(warn(swift(i18nApp(`{ locale: l, messages: {} }`)))).toContain('`locale` field is missing or not a string literal')
-    expect(warn(swift(i18nApp(`{ locale: 'en', messages: m }`)))).toContain('`messages` field is missing or not an object literal')
+    expect(warn(swift(i18nApp(`{ locale: l, messages: {} }`)))).toContain(
+      '`locale` field is missing or not a string literal',
+    )
+    expect(warn(swift(i18nApp(`{ locale: 'en', messages: m }`)))).toContain(
+      '`messages` field is missing or not an object literal',
+    )
   })
 })
 
@@ -780,7 +924,9 @@ function App(){
 describe('parse.ts — router global guards + route loaders', () => {
   it('names an inline / member / other-shape global guard instead of dropping it silently', () => {
     const r = swift(
-      routerSrc(`{ routes: [{ path: '/', component: Home }], beforeEach: [authGuard, (to) => true, guards.auth, 'x'] }`),
+      routerSrc(
+        `{ routes: [{ path: '/', component: Home }], beforeEach: [authGuard, (to) => true, guards.auth, 'x'] }`,
+      ),
     )
     const w = warn(r)
     expect(w).toContain('router `beforeEach`: an inline function guard is not lowered')
@@ -804,11 +950,19 @@ describe('parse.ts — router global guards + route loaders', () => {
     expect(w).toContain('Route `loader` for route "/b" is a block-body arrow')
     expect(w).toContain('Route `loader` for route "/c" has an unsupported parameter shape')
     expect(w).toContain('Route `loader` for route "/d" has an unsupported parameter shape')
-    expect(w).toContain('Route `loader` for route "/e" reads `ctx` for something other than `ctx.params.*`')
+    expect(w).toContain(
+      'Route `loader` for route "/e" reads `ctx` for something other than `ctx.params.*`',
+    )
   })
 
   it('names "a route" when the offending key precedes `path`', () => {
-    const w = warn(swift(routerSrc(`{ routes: [{ loader: () => { return 1 }, beforeEnter: () => { return 1 }, path: '/z', component: Home }] }`)))
+    const w = warn(
+      swift(
+        routerSrc(
+          `{ routes: [{ loader: () => { return 1 }, beforeEnter: () => { return 1 }, path: '/z', component: Home }] }`,
+        ),
+      ),
+    )
     expect(w).toContain('Route `loader` for a route is a block-body arrow')
     expect(w).toContain('Per-route `beforeEnter` guard for a route')
   })
@@ -816,7 +970,9 @@ describe('parse.ts — router global guards + route loaders', () => {
 
 describe('parse.ts — Kotlin parity spot-checks for the lowered recognizers', () => {
   it('a createMachine and a flow both lower on Kotlin too', () => {
-    expect(kotlin(machineApp(`{ initial: 'a', states: { a: { on: { GO: 'b' } }, b: {} } }`)).code).toContain('"GO"')
+    expect(
+      kotlin(machineApp(`{ initial: 'a', states: { a: { on: { GO: 'b' } }, b: {} } }`)).code,
+    ).toContain('"GO"')
     expect(kotlin(flowSrc(withCfg('minZoom: 0.5'))).code).toContain('0.5')
   })
 })
@@ -828,22 +984,31 @@ describe('parse.ts — Kotlin parity spot-checks for the lowered recognizers', (
 // config fields, and the router/form readers' skip arms.
 // ---------------------------------------------------------------------------
 
-const declsOf = (src: string) => parsePyreon(src, undefined, { registries: firstPartyCompiler.registries }).components[0]?.decls ?? []
+const declsOf = (src: string) =>
+  parsePyreon(src, undefined, { registries: firstPartyCompiler.registries }).components[0]?.decls ??
+  []
 // A plugin's declaration is the open `ext` kind; its payload carries what the closed kind did.
 const extDecl = (decls: readonly DeclIR[], type: string) =>
-  decls.find((d) => d.kind === 'ext' && d.type === type) as Extract<DeclIR, { kind: 'ext' }> | undefined
-const payloadOf = (d: Extract<DeclIR, { kind: 'ext' }> | undefined) => (d?.payload ?? {}) as Record<string, unknown>
+  decls.find((d) => d.kind === 'ext' && d.type === type) as
+    | Extract<DeclIR, { kind: 'ext' }>
+    | undefined
+const payloadOf = (d: Extract<DeclIR, { kind: 'ext' }> | undefined) =>
+  (d?.payload ?? {}) as Record<string, unknown>
 
 describe('parse.ts — useQuery residual arms', () => {
   it('an unrecognised fetch-init key (`mode`) is ignored, not mis-read as a header', () => {
-    const r = q(`() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', { mode: 'cors', method: 'POST' }) })`)
+    const r = q(
+      `() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', { mode: 'cors', method: 'POST' }) })`,
+    )
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('method: .post')
     expect(r.code).not.toContain('cors')
   })
 
   it('a numeric-keyed header is a static key (JS stores it as the string "1")', () => {
-    const r = q(`() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', { headers: { 1: 'x', a: 'b' } }) })`)
+    const r = q(
+      `() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', { headers: { 1: 'x', a: 'b' } }) })`,
+    )
     expect(r.code).toContain('"a": "b"')
     expect(r.code).toContain('"1": "x"')
   })
@@ -874,11 +1039,25 @@ describe('parse.ts — computed-expression keys are named by every literal-confi
       } }`),
       undefined,
       { registries: firstPartyCompiler.registries },
-    ).components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'machine') as Extract<DeclIR, { kind: 'ext' }>
-    expect((decl.payload as { transitions: unknown }).transitions).toEqual({ idle: { GO: 'run' }, run: { BACK: 'idle' } })
-    const w = warn(swift(machineApp(`{ [a + b]: 1, initial: 'idle', states: { idle: { on: { [a + b]: 'x', GO: 'idle' } } } }`)))
+    ).components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'machine') as Extract<
+      DeclIR,
+      { kind: 'ext' }
+    >
+    expect((decl.payload as { transitions: unknown }).transitions).toEqual({
+      idle: { GO: 'run' },
+      run: { BACK: 'idle' },
+    })
+    const w = warn(
+      swift(
+        machineApp(
+          `{ [a + b]: 1, initial: 'idle', states: { idle: { on: { [a + b]: 'x', GO: 'idle' } } } }`,
+        ),
+      ),
+    )
     expect(w).toContain('createMachine declaration `m`: config: the computed key `[a + b]`')
-    expect(w).toContain('createMachine declaration `m`: state `idle` `on`: the computed key `[a + b]`')
+    expect(w).toContain(
+      'createMachine declaration `m`: state `idle` `on`: the computed key `[a + b]`',
+    )
   })
 
   it('syncedSignal: a computed key is named, the rest lowers', () => {
@@ -898,18 +1077,31 @@ describe('parse.ts — computed-expression keys are named by every literal-confi
   })
 
   it('createTableState: config + column keys', () => {
-    const d = extDecl(declsOf(tableApp(`{ [a + b]: 1, data: () => rows(), columns: [{ [a + b]: 'x', id: 'name' }] }`)), 'table-state')
+    const d = extDecl(
+      declsOf(
+        tableApp(`{ [a + b]: 1, data: () => rows(), columns: [{ [a + b]: 'x', id: 'name' }] }`),
+      ),
+      'table-state',
+    )
     expect(payloadOf(d).columns).toEqual([{ id: 'name' }])
   })
 
   it('useSortable: a computed key is skipped', () => {
-    const d = declsOf(sortApp('{ [a + b]: 1, items: () => items(), by: (it) => it.id, onReorder: (n) => items.set(n) }'))
+    const d = declsOf(
+      sortApp(
+        '{ [a + b]: 1, items: () => items(), by: (it) => it.id, onReorder: (n) => items.set(n) }',
+      ),
+    )
     expect(extDecl(d, 'sortable')).toBeDefined()
   })
 
   it('createI18n: config / locale / message keys', () => {
     const d = extDecl(
-      declsOf(i18nApp(`{ [a + b]: 1, locale: 'en', extra: true, messages: { [a + b]: {}, en: { [a + b]: 'z', hi: 'Hi', n: 1 } } }`)),
+      declsOf(
+        i18nApp(
+          `{ [a + b]: 1, locale: 'en', extra: true, messages: { [a + b]: {}, en: { [a + b]: 'z', hi: 'Hi', n: 1 } } }`,
+        ),
+      ),
       'i18n',
     )
     expect(payloadOf(d).messages).toEqual({ en: { hi: 'Hi' } })
@@ -930,7 +1122,9 @@ describe('parse.ts — createFlow residual arms', () => {
   })
 
   it('a partial pathOptions keeps only the keys written', () => {
-    expect(parseFlow(withEdge('pathOptions: { curvature: 0.3 }')).decl!.edges[0]!.pathOptions).toEqual({ curvature: 0.3 })
+    expect(
+      parseFlow(withEdge('pathOptions: { curvature: 0.3 }')).decl!.edges[0]!.pathOptions,
+    ).toEqual({ curvature: 0.3 })
   })
 
   it('a marker object whose `type` is a computed member lookup is not a literal marker', () => {
@@ -940,32 +1134,49 @@ describe('parse.ts — createFlow residual arms', () => {
   })
 
   it('a non-literal selectionMode is named with the expected values', () => {
-    expect(parseFlow(withCfg('selectionMode: sm')).warnings).toContain('selectionMode (expected "partial" or "full")')
+    expect(parseFlow(withCfg('selectionMode: sm')).warnings).toContain(
+      'selectionMode (expected "partial" or "full")',
+    )
   })
 
   it('node data spread from a base object still counts as an object literal', () => {
-    expect(parseFlow(`{ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { ...base, v: 1 } }], edges: [] }`).decl?.nodes).toHaveLength(1)
+    expect(
+      parseFlow(
+        `{ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { ...base, v: 1 } }], edges: [] }`,
+      ).decl?.nodes,
+    ).toHaveLength(1)
   })
 })
 
 describe('parse.ts — createTableState / useSortable residual arms', () => {
   it('a FunctionExpression data getter (always a block body) is not an expression-body getter', () => {
-    expect(warn(swift(tableApp(`{ data: function () { return rows() }, columns: [{ id: 'a' }] }`)))).toContain(
-      '`data` must be an expression-body getter',
-    )
-    expect(warn(swift(sortApp(`{ items: function () { return items() }, by: (it) => it.id, onReorder: (n) => items.set(n) }`)))).toContain(
-      '`items` must be an expression-body getter',
-    )
+    expect(
+      warn(swift(tableApp(`{ data: function () { return rows() }, columns: [{ id: 'a' }] }`))),
+    ).toContain('`data` must be an expression-body getter')
+    expect(
+      warn(
+        swift(
+          sortApp(
+            `{ items: function () { return items() }, by: (it) => it.id, onReorder: (n) => items.set(n) }`,
+          ),
+        ),
+      ),
+    ).toContain('`items` must be an expression-body getter')
   })
 
   it('a non-array `columns` contributes no columns', () => {
-    expect(warn(swift(tableApp('{ data: () => rows(), columns: cols }')))).toContain('needs at least one `columns: [{ id }]` entry')
+    expect(warn(swift(tableApp('{ data: () => rows(), columns: cols }')))).toContain(
+      'needs at least one `columns: [{ id }]` entry',
+    )
   })
 })
 
 describe('parse.ts — createI18n residual arms', () => {
   it('a non-literal fallbackLocale is dropped (no fallback), not mis-baked', () => {
-    const d = extDecl(declsOf(i18nApp(`{ locale: 'en', fallbackLocale: fb(), messages: { en: {} } }`)), 'i18n')
+    const d = extDecl(
+      declsOf(i18nApp(`{ locale: 'en', fallbackLocale: fb(), messages: { en: {} } }`)),
+      'i18n',
+    )
     expect(d).toBeDefined()
     expect('fallbackLocale' in payloadOf(d)).toBe(false)
   })
@@ -976,10 +1187,13 @@ const formApp = (cfg: string) =>
 
 describe('parse.ts — tryExtractFormInitialValues', () => {
   it('keeps identifier-, string- and numeric-keyed string literals; skips spreads and non-string values', () => {
-    const d = declsOf(formApp(`{ initialValues: { ...base, email: 'a@b', 'name': 'n', 1: 'x', age: 3, tag: t } }`)).find(
-      (x) => x.kind === 'form',
-    ) as Extract<DeclIR, { kind: 'form' }>
-    expect(d.initialValues).toEqual([
+    const d = declsOf(
+      formApp(`{ initialValues: { ...base, email: 'a@b', 'name': 'n', 1: 'x', age: 3, tag: t } }`),
+    ).find((x) => x.kind === 'ext' && x.plugin === '@pyreon/form' && x.type === 'form') as Extract<
+      DeclIR,
+      { kind: 'ext' }
+    >
+    expect((d.payload as unknown as { initialValues: unknown }).initialValues).toEqual([
       { key: 'email', value: 'a@b' },
       { key: 'name', value: 'n' },
       { key: '1', value: 'x' },
@@ -988,8 +1202,10 @@ describe('parse.ts — tryExtractFormInitialValues', () => {
 
   it('a non-object config or initialValues yields an empty seed', () => {
     for (const cfg of ['cfg', '{ initialValues: iv }', '']) {
-      const d = declsOf(formApp(cfg)).find((x) => x.kind === 'form') as Extract<DeclIR, { kind: 'form' }>
-      expect(d.initialValues).toEqual([])
+      const d = declsOf(formApp(cfg)).find(
+        (x) => x.kind === 'ext' && x.plugin === '@pyreon/form' && x.type === 'form',
+      ) as Extract<DeclIR, { kind: 'ext' }>
+      expect((d.payload as unknown as { initialValues: unknown }).initialValues).toEqual([])
     }
   })
 })
@@ -1006,7 +1222,9 @@ describe('parse.ts — parseRouteArray residual arms', () => {
   })
 
   it('a literal redirect is captured; spreads, non-literal paths/redirects are skipped', () => {
-    const r = routes(`[{ ...base, path: '/', component: Home }, { path: '/old', redirect: '/' }, { path: '/x', redirect: r, component: Home }]`)
+    const r = routes(
+      `[{ ...base, path: '/', component: Home }, { path: '/old', redirect: '/' }, { path: '/x', redirect: r, component: Home }]`,
+    )
     expect(r.code).toContain('matchPath(path, "/old")')
     expect(r.code).toContain('matchPath(path, "/x")')
     // A route whose path is not a string literal has no dispatch key — the table bails to the bare instance.
@@ -1021,13 +1239,17 @@ describe('parse.ts — parseRouteArray residual arms', () => {
 
   it('an empty or malformed `children` array leaves the route childless', () => {
     for (const c of ['[]', '[1]', 'kids']) {
-      expect(routes(`[{ path: '/', component: Home, children: ${c} }]`).code).toContain('PyreonRouter')
+      expect(routes(`[{ path: '/', component: Home, children: ${c} }]`).code).toContain(
+        'PyreonRouter',
+      )
     }
   })
 
   it('a bad-param / residual-ctx loader BEFORE `path` names "a route"', () => {
     const w = warn(
-      routes(`[{ loader: (a, b) => 1, path: '/a', component: Home }, { loader: (ctx) => ctx.request, path: '/b', component: Home }]`),
+      routes(
+        `[{ loader: (a, b) => 1, path: '/a', component: Home }, { loader: (ctx) => ctx.request, path: '/b', component: Home }]`,
+      ),
     )
     expect(w).toContain('Route `loader` for a route has an unsupported parameter shape')
     expect(w).toContain('Route `loader` for a route reads `ctx` for something other than')
@@ -1045,7 +1267,11 @@ describe('parse.ts — KNOWN BUG: a computed `[ident]` key is read as the litera
   // rather than the VALUE of `kind`. A computed key is not statically known;
   // it should be named as unlowerable, never silently renamed.
   it('createFlow connectionRules: `{ [kind]: { outputs } }` should be named, not lowered under the key "kind"', () => {
-    const { decl, warnings } = parseFlow(withCfg(`connectionRules: { [kind]: { outputs: ['a'] } }`), 'createFlow', `const kind = 'input'`)
+    const { decl, warnings } = parseFlow(
+      withCfg(`connectionRules: { [kind]: { outputs: ['a'] } }`),
+      'createFlow',
+      `const kind = 'input'`,
+    )
     expect(decl?.connectionRules).toBeUndefined()
     expect(warnings).toContain('connectionRules (not a literal')
   })

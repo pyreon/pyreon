@@ -8,8 +8,8 @@ import { describe, expect, it } from 'vitest'
 import {
   emitKotlinRocketstyleModifier,
   emitSwiftRocketstyleModifier,
-} from '../emit-rocketstyle'
-import type { RocketstyleIR } from '../emit-rocketstyle'
+} from '../../../../ui-system/rocketstyle/src/native-plugin/emit-rocketstyle'
+import type { RocketstyleIR } from '../../../../ui-system/rocketstyle/src/native-plugin/emit-rocketstyle'
 
 // The canonical PyreonButton matrix from the PMTC plan: state × size.
 // state owns background-color; size owns padding. (Rocketstyle's
@@ -124,15 +124,11 @@ describe('emit-rocketstyle — Swift ViewModifier', () => {
             values: [
               {
                 name: 'small',
-                properties: [
-                  { name: 'font-size', value: { kind: 'number', value: 12 } },
-                ],
+                properties: [{ name: 'font-size', value: { kind: 'number', value: 12 } }],
               },
               {
                 name: 'large',
-                properties: [
-                  { name: 'font-size', value: { kind: 'number', value: 20 } },
-                ],
+                properties: [{ name: 'font-size', value: { kind: 'number', value: 20 } }],
               },
             ],
           },
@@ -216,9 +212,7 @@ describe('emit-rocketstyle — Kotlin Modifier function', () => {
     expect(
       emitKotlinRocketstyleModifier(PYREON_BUTTON).startsWith('enum class PyreonButtonState'),
     ).toBe(true)
-    expect(emitKotlinRocketstyleModifier(PYREON_BUTTON)).toContain(
-      'fun pyreonButtonModifier(',
-    )
+    expect(emitKotlinRocketstyleModifier(PYREON_BUTTON)).toContain('fun pyreonButtonModifier(')
   })
 
   it('handles opacity → alpha mapping in the chain ref', () => {

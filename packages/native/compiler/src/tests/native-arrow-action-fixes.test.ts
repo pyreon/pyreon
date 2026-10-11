@@ -33,7 +33,7 @@
 // corresponding specs; both restored → all pass.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Round-1 audit — Bug 1: empty arrow body `() => {}` emits `{ }`, not `{ "" }`', () => {
   it('Swift: <Button onPress={() => {}}> emits `Button("X") { }` (truly empty closure)', () => {

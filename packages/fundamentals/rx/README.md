@@ -178,7 +178,7 @@ Full docs: [pyreon.dev/docs/rx](https://pyreon.dev/docs/rx) (or `docs/src/conten
 
 ## Native (iOS / Android)
 
-`rx.filter(src, p)` and the standalone source-first transforms (`filter`, `map`, `take`, `unique`, …, `reduce`, `average`) lower to the idiomatic native collection call over the source signal's value, as a computed; `pipe` does not lower. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+`rx.filter(src, p)` and the standalone source-first transforms (`filter`, `map`, `take`, `unique`, …, `reduce`, `average`) lower to the idiomatic native collection call over the source signal's value, as a computed. Nested transforms such as `rx.take(rx.reverse(ids), 2)` lower recursively, including namespace and standalone import aliases; local variables that shadow those imports remain local. Inline reads inside `computed(() => rx.take(rx.reverse(ids), 2)())` lower too. `pipe` does not lower. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
 
 ## License
 

@@ -25,7 +25,7 @@
 // disagreed with it).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, validateSwiftWithStubs } from '../validate'
 
 const head = `import { Stack, Text } from '@pyreon/primitives'

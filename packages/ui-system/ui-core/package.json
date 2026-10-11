@@ -2,16 +2,23 @@
   "name": "@pyreon/ui-core",
   "version": "0.52.0",
   "description": "Core utilities, config, and context for Pyreon UI System",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/ui-system/ui-core#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/ui-system/ui-core"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "README.md",
+    "LICENSE",
+    "src"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -21,30 +28,28 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "README.md",
-    "LICENSE",
-    "src"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "bun run vl_rolldown_build",
     "lint": "oxlint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
   "dependencies": {
     "@pyreon/styler": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
@@ -52,10 +57,25 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-rolldown": "^2.6.3"
   },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
   "engines": {
     "node": ">= 22"
   },
-  "publishConfig": {
-    "access": "public"
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/ui-core"
+      ]
+    }
   }
 }

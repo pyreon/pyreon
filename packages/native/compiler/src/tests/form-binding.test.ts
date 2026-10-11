@@ -1,3 +1,4 @@
+import { transform } from './first-party-plugins'
 // Form-binding arc (v2) — useForm with validators + onSubmit, runtime
 // Field bindings, per-field dict subscripts, web-parity API flow
 // (production-gaps arc, 2026-06-10).
@@ -14,7 +15,6 @@
 // emitSwiftField / emitKotlinField.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 
 const FORM_APP = `
   import { useForm } from '@pyreon/form'
@@ -46,7 +46,7 @@ describe('form-binding — Swift', () => {
   it('init carries validators as closures + the onSubmit callback', () => {
     const out = transform(FORM_APP, { target: 'swift' }).code
     expect(out).toContain(
-      'validators: ["username": { v in (v.count < 3 ? "At least 3 characters" : "") }]',
+      'validators: ["username": { v in (v.utf16.count < 3 ? "At least 3 characters" : "") }]',
     )
     // onSubmit attaches via .onAppear, NOT the init — SwiftUI @State
     // property initializers run before `self` exists, so a callback

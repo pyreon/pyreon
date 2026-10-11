@@ -5,14 +5,14 @@
 //
 //   "pyreon": { "native": { "plugin": "native/plugin.mjs", "modules": ["@acme/camera"] } }
 //
-// Discovery walks the app's declared dependencies with the SAME resolver the
+// Discovery walks installed runtime dependencies and peers with the SAME resolver the
 // native-source scan uses (`findPackageDir`), and loads a plugin LAZILY: only
 // when some source file under `--source` imports one of the package's
 // `modules`. Activation is decided from the manifest alone — the plugin cannot
 // declare its own activation set, because deciding whether to load a module by
 // asking the module defeats the laziness.
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { assertPluginShape, type CompilerPlugin } from '@pyreon/native-compiler'
@@ -38,27 +38,42 @@ export interface DiscoveredPlugin {
 
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs'])
 
-/** Every dependency of `appDir` that declares a plugin, in declaration order. */
+/** Installed runtime dependencies and peers, with app-only development dependencies. */
 export function listPluginPackages(appDir: string): PluginPackage[] {
   const app = readManifest(appDir)
   if (!app) return []
-  const names = [
-    ...new Set([...Object.keys(app.dependencies ?? {}), ...Object.keys(app.devDependencies ?? {})]),
+  const names = (manifest: NonNullable<ReturnType<typeof readManifest>>, appRoot = false): string[] => [
+    ...new Set([
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.optionalDependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+      ...(appRoot ? Object.keys(manifest.devDependencies ?? {}) : []),
+    ]),
   ]
+  const queue = names(app, true).map((name) => ({ name, fromDir: appDir }))
+  const visited = new Set<string>()
   const found: PluginPackage[] = []
-  for (const name of names) {
-    const packageDir = findPackageDir(name, appDir)
-    if (!packageDir) continue
+  for (let i = 0; i < queue.length; i++) {
+    const { name, fromDir } = queue[i]!
+    const installed = findPackageDir(name, fromDir)
+    if (!installed) continue
+    // Resolve a symlink before following its dependencies: pnpm peers may live
+    // beside the physical package, rather than beside the app's symlink.
+    const packageDir = realpathSync(installed)
+    if (visited.has(packageDir)) continue
+    visited.add(packageDir)
     const manifest = readManifest(packageDir)
-    const declared = manifest?.pyreon?.native?.plugin
+    if (!manifest) continue
+    for (const dependency of names(manifest)) queue.push({ name: dependency, fromDir: packageDir })
+    const declared = manifest.pyreon?.native?.plugin
     if (declared === undefined) continue
     if (typeof declared !== 'string' || !declared) {
       throw new Error(`[Pyreon] Package "${name}" declares pyreon.native.plugin that is not a path string.`)
     }
-    const modules = manifest?.pyreon?.native?.modules
+    const modules = manifest.pyreon?.native?.modules
     found.push({
       package: name,
-      version: manifest?.version,
+      version: manifest.version,
       packageDir,
       file: resolve(packageDir, declared),
       modules: modules !== undefined && modules.length > 0 ? modules : [name],

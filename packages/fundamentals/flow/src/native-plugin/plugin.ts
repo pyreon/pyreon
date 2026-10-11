@@ -1,5 +1,4 @@
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   type CompilerPlugin,
   type DeclEmitter,
   type ElementLowering,
@@ -130,7 +129,7 @@ const flowIntrinsics: readonly IntrinsicLowering[] = [
  */
 export const flowPlugin: CompilerPlugin = {
   name: FLOW_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/flow'],
   calls: { createFlow: recognizeFlow, useFlow: recognizeFlow },
   decls: { [FLOW_STATE_TYPE]: flowStateDecl },

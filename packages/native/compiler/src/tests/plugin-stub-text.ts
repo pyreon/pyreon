@@ -3,6 +3,11 @@
 // library after its lowering moves into its package. A library that moves registers here once; without it those gates
 // would silently stop reading its stubs — the failure mode of a moved stub nobody re-pointed a check at.
 import { join, resolve } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { FORM_SWIFT_STUBS, FORM_KOTLIN_STUBS } from '../../../../fundamentals/form/src/native-plugin/stubs'
+import { RATE_SWIFT_STUBS, RATE_KOTLIN_STUBS } from '../../../../fundamentals/hooks/src/native-plugin/stateful-stubs'
+import { storeStubs } from '../../../../fundamentals/store/src/native-plugin/stubs'
+import { modelStubs } from '../../../../fundamentals/state-tree/src/native-plugin/stubs'
 import { KOTLIN_CHART_VIEW_STUBS, SWIFT_CHART_VIEW_STUBS } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 import { FLOW_KOTLIN_STUBS, FLOW_SWIFT_STUBS } from '../../../../fundamentals/flow/src/native-plugin/stubs'
 import { I18N_KOTLIN_STUBS, I18N_SWIFT_STUBS } from '../../../../fundamentals/i18n/src/native-plugin/stubs'
@@ -32,6 +37,10 @@ export interface PluginStubs {
 }
 
 export const PLUGIN_STUBS: readonly PluginStubs[] = [
+  { label: 'form', swift: FORM_SWIFT_STUBS, kotlin: FORM_KOTLIN_STUBS },
+  { label: 'hooks', swift: RATE_SWIFT_STUBS, kotlin: RATE_KOTLIN_STUBS },
+  { label: 'store', swift: storeStubs.swift!('PyreonStoreProtocol'), kotlin: storeStubs.kotlin!('PyreonStore') },
+  { label: 'state-tree', swift: modelStubs.swift!('PyreonModelProtocol'), kotlin: modelStubs.kotlin!('PyreonModelProtocol') },
   { label: 'sized-map', swift: SIZED_MAP_SWIFT_STUBS, kotlin: SIZED_MAP_KOTLIN_STUBS },
   { label: 'storage', swift: STORAGE_SWIFT_STUBS, kotlin: STORAGE_KOTLIN_STUBS },
   { label: 'permissions', swift: PERMISSIONS_SWIFT_STUBS, kotlin: PERMISSIONS_KOTLIN_STUBS },
@@ -47,23 +56,28 @@ export const PLUGIN_STUBS: readonly PluginStubs[] = [
   { label: 'query', swift: QUERY_SWIFT_STUBS + STREAM_SWIFT_STUBS, kotlin: QUERY_KOTLIN_STUBS + STREAM_KOTLIN_STUBS },
 ]
 
-/**
- * The `native-plugin/` directories whose every `.ts` file but `stubs.ts` (and a generated blob) is an EMITTER —
- * text that can write a runtime type name into generated code. The charts plugin lists its emitter files by name
- * in the gate that scans it; a library that moves its lowering into its package adds its directory here.
- */
-export const PLUGIN_EMITTER_DIRS: readonly string[] = [
-  join(REPO, 'packages/ui-system/kinetic/src/native-plugin'),
-  join(REPO, 'packages/core/sized-map/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/storage/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/permissions/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/sync/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/dnd/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/table/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/a11y/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/toast/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/flow/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/i18n/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/machine/src/native-plugin'),
-  join(REPO, 'packages/fundamentals/query/src/native-plugin'),
-]
+/** Every package-owned source entry and its implementation directory, excluding validation stubs and generated blobs. */
+export const PLUGIN_EMITTER_SOURCES: readonly string[] = (() => {
+  const sources: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.ts') && !entry.name.endsWith('stubs.ts') && !entry.name.endsWith('.generated.ts')) sources.push(path)
+    }
+  }
+  for (const group of ['core', 'fundamentals', 'ui-system']) {
+    for (const entry of readdirSync(join(REPO, 'packages', group), { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const dir = join(REPO, 'packages', group, entry.name)
+      const manifestPath = join(dir, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { pyreon?: { native?: { plugin?: string } } }
+      if (!manifest.pyreon?.native?.plugin) continue
+      sources.push(join(dir, 'src/native-plugin.ts'))
+      const implementation = join(dir, 'src/native-plugin')
+      if (existsSync(implementation)) walk(implementation)
+    }
+  }
+  return sources.sort()
+})()

@@ -11,8 +11,8 @@
 // `isSystemInDarkTheme`, so ANY useColorScheme Kotlin emit failed kotlinc.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const CARD = `import { Stack, Text } from '@pyreon/primitives'
 const Card = rocketstyle()({ name: 'Card', component: Stack })

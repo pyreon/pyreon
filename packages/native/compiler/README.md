@@ -10,12 +10,15 @@ This package is TypeScript-in, TypeScript-out plumbing: given a source string, i
 import { transform } from '@pyreon/native-compiler'
 
 const { code: swiftSource, warnings } = transform(pyreonSource, { target: 'swift' })
-const { code: kotlinSource } = transform(pyreonSource, { target: 'kotlin', filename: 'Counter.tsx' })
+const { code: kotlinSource } = transform(pyreonSource, {
+  target: 'kotlin',
+  filename: 'Counter.tsx',
+})
 ```
 
 `transform(source, options)` returns `{ code: string, warnings: string[] }`. `options.target` is `'swift' | 'kotlin'`; `options.filename` (optional) improves parse-error diagnostics; `options.fonts` (optional, `Record<canonicalName, iOSPostScriptName>`) resolves `<Text font="Brand">` to `.font(.custom(…))` on iOS.
 
-## Compiler plugins (experimental API v1)
+## Compiler plugins (experimental API v2)
 
 The shared frontend parses once. A compiler instance then runs every plugin's
 `transformIR`, computes the module namespace, runs `prepareIR` (the built-in
@@ -28,13 +31,15 @@ import { createCompiler, type CompilerPlugin } from '@pyreon/native-compiler'
 
 export const releaseBadge = {
   name: 'release-badge',
-  apiVersion: 1,
+  apiVersion: 2,
   transformIR(module) {
     for (const component of module.components) {
       const expr = component.returnExpr
       if (expr.kind === 'jsx-element' && expr.tag === 'ReleaseBadge') {
         component.returnExpr = {
-          kind: 'jsx-element', tag: 'Text', attrs: [],
+          kind: 'jsx-element',
+          tag: 'Text',
+          attrs: [],
           children: [{ kind: 'text', value: 'Ready for release' }],
         }
       }
@@ -43,10 +48,10 @@ export const releaseBadge = {
 } satisfies CompilerPlugin<never>
 
 const compiler = createCompiler({ plugins: [releaseBadge] })
-const result = compiler.transform(
-  'export function Badge() { return <ReleaseBadge /> }',
-  { target: 'swift', filename: 'Badge.tsx' },
-)
+const result = compiler.transform('export function Badge() { return <ReleaseBadge /> }', {
+  target: 'swift',
+  filename: 'Badge.tsx',
+})
 ```
 
 `CompilerModule` is the typed shared IR. Extensions operate within the existing
@@ -78,16 +83,20 @@ registry grows across calls. Existing emitter internals still contain scoped
 state: callbacks run outside emission, and this API does not promise concurrent
 or recursive emission through the legacy backends.
 
-The plugin protocol and IR are experimental. Match
-`NATIVE_COMPILER_PLUGIN_API_VERSION` (currently `1`); incompatible protocol/IR
-changes require an API version bump. Test extensions by compiling both target
+The plugin protocol and IR are experimental. Pin `apiVersion: 2` in each plugin
+descriptor (or import the immutable `NATIVE_COMPILER_PLUGIN_API_V2`). Incompatible
+protocol/IR changes require a new version; additive optional hooks do not.
+`NATIVE_COMPILER_PLUGIN_API_VERSION` is deprecated and permanently remains `1`,
+so an old plugin importing that runtime constant cannot silently claim API 2.
+API 1 plugins fail at load time with the required and supported versions. Update
+the compiler and first-party package plugins together to the next minor release.
+Third-party plugins must review the IR migration below before opting into API 2. Test extensions by compiling both target
 outputs with the real validators below. The CLI's `--plugin` accepts local ESM
 modules with a default plugin export; CLI target selection remains iOS/Android.
 
-### Services, modules, requires (additive; API version stays 1)
+### Services, modules, requires
 
-Nine optional fields were added without a version bump, because additive
-fields never break an older plugin:
+These optional fields extend the plugin protocol:
 
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
   value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
@@ -101,11 +110,11 @@ fields never break an older plugin:
   plugin's hook is lowered end to end (on both targets) when it is imported from
   `@pyreon/*` or from one of the plugin's `modules`.
 - `elements` — JSX element lowerings (`{ module, tags, retag?, emit?: { swift?,
-  kotlin? }, styleBase? }`; `emit.kotlin` receives the `EmitContext` facade and
+kotlin? }, styleBase? }`; `emit.kotlin` receives the `EmitContext` facade and
   `emit.swift` a `SwiftEmitContext`, which adds only the members with no Compose
   analogue: `handlerName`, `markColorSchemeUsed()` and the `hostState` slot. The
   string / layout / action / const / read-only colour-scope members
-  (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`) are on
+  (`stringAttr`, `layoutModifiers`, `action`, `constExpr`, `colorScope<T>()`, `withColorScope(el, emit)`) are on
   the shared `EmitContext`). A target with no function falls through to the core, so
   a plugin may lower one target at a time. A `(module, tag)` pair claimed by two
   owners is a load-time error naming both. No lowering is built in: `@pyreon/elements`,
@@ -122,7 +131,7 @@ fields never break an older plugin:
   also a service — is a load-time error naming both. `createChartHandle()` is
   lowered this way by the `@pyreon/charts` plugin.
 - `memberCalls` — call EXPRESSIONS: keyed by method name, `{ swift(call, ctx),
-  kotlin(call, ctx) } => string | undefined` lowers `<receiver>.<method>(…)` when
+kotlin(call, ctx) } => string | undefined` lowers `<receiver>.<method>(…)` when
   `<receiver>` is a binding one of the plugin's own `decls` created (so two plugins
   may both claim `dispatch`: the receiver decides). `undefined` declines. Requires
   `decls`. `chart.dispatch({...})` is a `@pyreon/charts` `memberCalls` entry. Inside a lowering, `ctx.expr(e)` / `ctx.exprAs(type, e)` emit
@@ -137,7 +146,7 @@ fields never break an older plugin:
   error, and a plugin's entry wins over the compiler's own hand-maintained one. The
   `@pyreon/charts` entry is supplied by the charts plugin.
 - `scopes` — compile-time colour-scope providers: `[{ module, tags, enter(el, { warn, outer }),
-  transparent? }]`. `<PyreonUI mode>` / `<ColorModeProvider mode>` (and a plugin's own
+transparent? }]`. `<PyreonUI mode>` / `<ColorModeProvider mode>` (and a plugin's own
   scope-only element, `transparent: true`) open a scope around their children; `enter`
   returns the value a plugin's elements read back with `ctx.colorScope<T>()`. The core
   owns the plumbing; the value is the plugin's. One owner per `(module, tag)`.
@@ -166,7 +175,7 @@ fields never break an older plugin:
   discovered one. No plugin ships built in today (`BUILT_IN_PLUGINS` is empty); the
   mechanism is kept for a future compiler-shipped plugin.
 - Later additive members (each documented in `.agents/guides/multiplatform/README.md`,
-  "The plugin protocol"): `declCalls` (a declaration recognized by callee SHAPE, with
+  "The plugin protocol"): `declCalls` / `declConstructs` (calls / constructions recognized by callee SHAPE, with
   `{ signal }` / `{ computed }` verdicts), `tier2Calls` (the standing Tier-2
   diagnostic for a call the package does not lower, without claiming its name),
   `receivers`, `functions`, `identifiers`, `memberReads`, `intrinsics`, `refModifiers`,
@@ -201,12 +210,12 @@ a signature matches — keep the real-toolchain compile for that.
 
 Snapshot tests prove "the emit equals what it equalled last time," not "the emit is valid Swift/Kotlin." [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the real language toolchains, at increasing cost/fidelity:
 
-| Function | What it checks | Requires |
-|---|---|---|
-| `validateSwift(source)` | `swiftc -parse` — syntax only. Accepts unresolved type references (no SwiftUI stdlib at parse time). | `swiftc` on `PATH` |
-| `validateSwiftWithStubs(source)` | Real typecheck against hand-written stubs mirroring the SwiftUI/PyreonRuntime surface — the Linux-viable path, since a consumer that generates Pyreon source (the scaffolder, most of all) needs proof the output COMPILES without needing a real Apple SDK. | `swiftc` on `PATH` |
-| `validateSwiftTypecheck(source)` | Full typecheck against the real Apple SDK. | macOS + Xcode |
-| `validateKotlin(source)` | `kotlinc` against a small hand-written Compose/kotlinx-serialization stub set (no real Jetpack Compose, no Gradle, no Android SDK). | `kotlinc` on `PATH` |
+| Function                         | What it checks                                                                                                                                                                                                                                               | Requires            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| `validateSwift(source)`          | `swiftc -parse` — syntax only. Accepts unresolved type references (no SwiftUI stdlib at parse time).                                                                                                                                                         | `swiftc` on `PATH`  |
+| `validateSwiftWithStubs(source)` | Real typecheck against hand-written stubs mirroring the SwiftUI/PyreonRuntime surface — the Linux-viable path, since a consumer that generates Pyreon source (the scaffolder, most of all) needs proof the output COMPILES without needing a real Apple SDK. | `swiftc` on `PATH`  |
+| `validateSwiftTypecheck(source)` | Full typecheck against the real Apple SDK.                                                                                                                                                                                                                   | macOS + Xcode       |
+| `validateKotlin(source)`         | `kotlinc` against a small hand-written Compose/kotlinx-serialization stub set (no real Jetpack Compose, no Gradle, no Android SDK).                                                                                                                          | `kotlinc` on `PATH` |
 
 Also exported: `isSwiftcAvailable()`, `isSwiftUIAvailable()`, `isKotlincAvailable()` — toolchain-presence checks the CLI's `check --typecheck` and the test suite use to skip gracefully rather than fail when a toolchain isn't installed.
 
@@ -238,12 +247,32 @@ Pure TypeScript — `bun run test` runs the compiler's own suite (parse/emit fix
 
 A plugin shipped by a library imports from `@pyreon/native-compiler/plugin-api` and nothing
 else in this package: the IR types, the `EmitContext` / `ParseContext` facades and the plugin
-protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`,
+protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_V2`, `forEachExpr`,
 `substituteIdentifier`, and the pure spelling helpers `swiftStr` / `kotlinStr` / `swiftIdent` /
 `kotlinIdent`. Declare the compiler as an optional peer + a dev dependency, point
 `package.json` → `pyreon.native.plugin` at the built entry (default export = the plugin) and
 list the import specifiers that activate it in `pyreon.native.modules`. `@pyreon/charts` is
 the reference (`packages/fundamentals/charts/src/native-plugin/`).
+
+### State vocabulary, constants and factory components
+
+`intrinsicCalls` maps package exports onto generic `signal` or `computed` operations. Import aliases and foreign bindings follow the ordinary hook ownership rules; state IR, inference and target emission remain compiler operations. The reactivity plugin supplies its package's mapping.
+
+`constants(exportedName)` returns a compile-time string for named imports from the plugin's `modules`, or `undefined` for an unsupported export. Providers are registered before scanners run. A consuming plugin reads `scan.constant(node)` to get `{ module, name, value }` independently of plugin order. Kinetic consumes the separate kinetic-presets package's motion vocabulary through this seam.
+
+A factory component is a `topLevel` module item whose emitter supplies `element(item, element, context)`. The compiler looks up the visible item binding; the hook returns ordinary JSX/style IR, or `undefined` to keep normal rendering. `ModuleParseContext.binding(name)` distinguishes local bindings and named/default import aliases, and `theme` supplies static token resolution. Attrs, styler and rocketstyle own their factory syntax and definition payloads this way; the compiler retains generic style and theme rendering. New plugins omit `legacyList`, which exists only to keep earlier generated hashes stable.
+
+Programmatic callers load each owner explicitly. The former `ParseResult.styledComponents`, `rocketstyleComponents` and `attrsComponents` arrays have been replaced by `moduleItems`; runtime barrels remain separate from the optional tooling entry.
+
+### Statement and pattern calls
+
+`statementCalls` handles bare setup calls and `patternCalls` handles calls bound to a destructuring pattern (`ctx.pattern`). Both use the declaration recognizer contract: return a declaration to accept, `null` to drop after reporting a diagnostic, or `undefined` to continue normal parsing. Claims honor the owning plugin's module imports and aliases. A symbol has one owner across all call positions.
+
+`ctx.functionDeclaration` parses callback parameters and bodies; `ctx.initialType` supplies initial expression types. In a compiler pass, `ctx.inferType(module, expression, component, locals)` includes module helpers, constants, component fields and local overrides. Emission uses `ctx.argument(value, expectedType)` for backend numeric conversions. `ctx.typeText(type, { synthesize: false })` spells an opaque target type without creating anonymous Kotlin classes.
+
+A declaration can request shared environment reads through `usesColorScheme` and `usesSizeClass`. `lifecycleOnly` omits declaration text; `lifecycle.earlyOrder` orders setup contributions before ordinary lifecycle hooks, preserving declaration order within a priority. `legacyName: false` omits a synthetic binding from a previously nameless declaration's compatibility hash.
+
+`DeclEmitter.root` wraps the root once for all declarations of its owning type. Its `next(indent)` callback emits the previous wrapper or canonical root. Wrappers compose in first-declaration order and receive only declarations from the current component. `@pyreon/hotkeys` uses this to install Compose focus and keyboard handling without compiler-specific shortcut branches.
 
 ### Store and state-tree plugins
 
@@ -259,3 +288,9 @@ const output = compiler.transform(appSource, { target: 'swift' })
 ```
 
 `appSource` imports the libraries it uses. A bare compiler instance no longer lowers their APIs. Package plugins use generic module receivers, live member type evidence, alias factories and scoped function emission; store/model IR is owned by those packages.
+
+Form lowering is owned by `@pyreon/form/native-plugin`. Direct compiler users install that plugin; the native CLI discovers it from imports. Plugins can provide native field bindings with `DeclEmitter.valueBinding`, describe iteration rows with `iteration`, scope callback receivers/types with `EmitContext.withBindings`, and consume module-item validators with `fieldValidators`. These hooks keep library behavior out of the compiler's primitive emitters.
+
+Custom provider element emitters call `ctx.withColorScope(el, emit)` to render under a registered scope while retaining their own target-specific wrapper. Nested calls and thrown callbacks restore the enclosing scope. `@pyreon/ui-core/native-plugin` owns PyreonUI rendering; the compiler has no ui-core tag or package cases.
+
+Native validation caches successful capability probes. Interrupted probes fail without persisting toolchain absence and retry on a later call. With `PYREON_REQUIRE_NATIVE_VALIDATE=1`, source requiring Observation fails if that capability cannot be established; validation never reports that failure as a successful skip. SwiftUI SDK checks still skip on hosts without Apple frameworks.

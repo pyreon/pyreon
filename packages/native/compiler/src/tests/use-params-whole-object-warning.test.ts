@@ -20,8 +20,8 @@
 // The destructure is already the supported, idiomatic shape.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const app = (decl: string, use: string) => `import { useParams } from '@pyreon/router'
 import { Stack, Text } from '@pyreon/primitives'

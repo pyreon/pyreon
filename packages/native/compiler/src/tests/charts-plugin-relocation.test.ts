@@ -34,13 +34,17 @@ describe('the compiler carries no chart knowledge of its own', () => {
 describe('@pyreon/native-compiler/plugin-api', () => {
   it('exports the version, the walker and the pure spelling helpers a plugin uses', () => {
     expect(Object.keys(pluginApi).sort()).toEqual([
+      'DEFAULT_THEME',
       'KOTLIN_INT',
+      'NATIVE_COMPILER_PLUGIN_API_V2',
       'NATIVE_COMPILER_PLUGIN_API_VERSION',
       'dynamicKeyText',
       'forEachExpr',
       'hasDynamicKey',
+      'isCanonicalPrimitive',
       'isNullishLiteral',
       'isNumericLiteralOrNegation',
+      'isStyleBasePrimitive',
       'kotlinIdent',
       'kotlinMember',
       'kotlinStr',
@@ -51,6 +55,7 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'readJsonLiteral',
       'readLiteralEntries',
       'readObjectProp',
+      'resolveThemeToken',
       'staticPropKey',
       'substituteIdentifier',
       'swiftCodingKeysLines',
@@ -60,7 +65,7 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'unconsumedSlotWarning',
       'unwrapTypeLayers',
     ])
-    expect(pluginApi.NATIVE_COMPILER_PLUGIN_API_VERSION).toBe(chartsPlugin.apiVersion)
+    expect(pluginApi.NATIVE_COMPILER_PLUGIN_API_V2).toBe(chartsPlugin.apiVersion)
   })
 })
 
@@ -93,7 +98,7 @@ describe('CompilerPlugin.scopes', () => {
     [{ scopes: [{ module: '@a', tags: ['T'], enter() {}, transparent: 'yes' }] }, /colour-scope provider needs/],
     [{ stubs: { swift: 'no' } }, /stubs must be an object with swift and\/or kotlin functions/],
   ])('shape validation rejects a malformed field %#', (extra, message) => {
-    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 1, ...extra })).toThrow(message)
+    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 2, ...extra })).toThrow(message)
   })
 })
 

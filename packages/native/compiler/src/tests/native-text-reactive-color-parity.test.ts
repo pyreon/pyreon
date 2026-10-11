@@ -22,8 +22,13 @@
 // applies to any View, so the existing style path already handled it.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform } from './first-party-plugins'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '../validate'
 
 // The rocketstyle badge — the shape a real ui-system component takes.
 const SRC = `import { signal } from '@pyreon/reactivity'

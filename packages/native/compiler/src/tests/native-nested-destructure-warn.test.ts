@@ -15,7 +15,7 @@
 // (no diagnostic) while the two flat specs stay green.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const wrap = (body: string) =>
   `import { signal, computed } from '@pyreon/reactivity'\n` +

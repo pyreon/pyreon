@@ -13,7 +13,7 @@ Signal-aware reactive data transforms for Pyreon. Every collection/aggregation f
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn
+supported namespace and standalone transforms lower recursively to native collection operations, including import aliases; unsupported methods warn
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

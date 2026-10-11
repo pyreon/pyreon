@@ -80,7 +80,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
   const calls = createCallRegistry(ordered)
   // A name with a service descriptor AND a recognizer would be lowered by
   // whichever branch the parser reaches first — decide it here, loudly.
-  for (const [name, call] of calls.calls) {
+  for (const [name, call] of [...calls.calls, ...calls.intrinsicCalls]) {
     const service = services.get(name)
     if (service !== undefined) {
       throw new Error(
@@ -94,7 +94,7 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
   // whichever branch the parser reaches first.
   for (const [name, fn] of exprs.functions) {
     const service = services.get(name)
-    const call = calls.calls.get(name)
+    const call = calls.calls.get(name) ?? calls.intrinsicCalls.get(name)
     const other = service?.owner ?? call?.owner
     if (other !== undefined) {
       throw new Error(

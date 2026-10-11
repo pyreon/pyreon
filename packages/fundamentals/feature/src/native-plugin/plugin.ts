@@ -9,7 +9,6 @@
 
 import {
   KOTLIN_INT,
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   hasDynamicKey,
   kotlinMember,
   kotlinStr,
@@ -184,7 +183,7 @@ const featureItem: ModuleItemEmitter = {
 /** The `@pyreon/feature` native plugin — discovered from the package manifest when a source imports it. */
 export const featurePlugin: CompilerPlugin = Object.freeze({
   name: FEATURE_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([FEATURE_PLUGIN_NAME]),
   topLevel: recognizeFeature,
   items: Object.freeze({ [ITEM_TYPE]: featureItem }),

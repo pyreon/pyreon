@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // C-style `for` + `do…while` (iter48, sweep batch 7 — completes the loop
 // vocabulary). Pre-fix EVERY ForStatement and DoWhileStatement

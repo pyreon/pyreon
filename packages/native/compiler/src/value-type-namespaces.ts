@@ -76,7 +76,12 @@ function locallyBound(roots: readonly unknown[], name: string): boolean {
       if (typeof kind === 'string' && n.name === name) return true
       if (n.item === name) return true
       const params = n.params
-      if (Array.isArray(params) && params.some((p) => p === name || (p !== null && typeof p === 'object' && (p as Node).name === name))) {
+      if (
+        Array.isArray(params) &&
+        params.some(
+          (p) => p === name || (p !== null && typeof p === 'object' && (p as Node).name === name),
+        )
+      ) {
         return true
       }
     }
@@ -94,7 +99,10 @@ function itemBindings(item: ExtModuleItem): ItemBindings | undefined {
 }
 
 export function disambiguateValueTypeNames(result: ParseResult): void {
-  const typeNames = new Set<string>([...result.structs.map((s) => s.name), ...result.enums.map((e) => e.name)])
+  const typeNames = new Set<string>([
+    ...result.structs.map((s) => s.name),
+    ...result.enums.map((e) => e.name),
+  ])
   if (typeNames.size === 0) return
   const valueNames = [
     ...result.moduleDecls.map((d) => d.name),
@@ -113,13 +121,7 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
     ...result.moduleItems.flatMap((item) => itemBindings(item)?.reserved?.(item) ?? []),
   ])
   // The value side of the IR — everything but the type declarations.
-  const valueRoots: unknown[] = [
-    result.components,
-    result.helperFns,
-    result.styledComponents,
-    result.rocketstyleComponents,
-    result.attrsComponents,
-  ]
+  const valueRoots: unknown[] = [result.components, result.helperFns]
   const renames = new Map<string, string>()
   for (const name of clashes) {
     if (locallyBound(valueRoots, name)) {
@@ -152,11 +154,9 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
         const to = renames.get(n.name)
         if (to !== undefined) n.name = to
       }
-      // A form's `schema: Pet` link is the core's own field. A plugin's by-name links (an expression's payload, an
-      // item's field types) follow through its own `rename` hooks, never through a key name the core guesses at.
-      if (n.kind === 'form' && typeof n.schemaName === 'string') {
-        const to = renames.get(n.schemaName)
-        if (to !== undefined) n.schemaName = to
+      if (n.kind === 'ext') {
+        const d = n as unknown as import('./types').ExtDecl
+        activeRegistries().calls.emitter(d.plugin, d.type)?.rename?.(d, renames)
       }
     }
   }

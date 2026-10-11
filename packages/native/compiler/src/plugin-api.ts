@@ -13,7 +13,7 @@
  * protocol version plus a handful of pure functions.
  */
 
-export { NATIVE_COMPILER_PLUGIN_API_VERSION } from './plugin'
+export { NATIVE_COMPILER_PLUGIN_API_V2, NATIVE_COMPILER_PLUGIN_API_VERSION } from './plugin'
 export type {
   CompilerBackend,
   CompilerContext,
@@ -28,11 +28,14 @@ export type * from './types'
 export type {
   ComponentInfo,
   EmitContext,
+  EmitBinding,
+  EmitFieldValidators,
   EmitTarget,
   HostStateSlot,
   KotlinEmitContext,
   MemberEmitScope,
   StaticAttrValue,
+  StatementEmitOptions,
   StructRegistry,
   SwiftEmitContext,
   WebViewFacade,
@@ -44,11 +47,14 @@ export type {
   ComputedDeclSpec,
   DeclCallRecognizer,
   DeclCallSite,
+  DeclConstructRecognizer,
+  DeclConstructSite,
   DeclVerdict,
   SignalDeclSpec,
   SignalSpec,
   CallSite,
   DeclEmitter,
+  DeclValueBinding,
   DeclLifecycle,
   DeclSwiftInit,
   ExtDeclSpec,
@@ -79,8 +85,21 @@ export type {
   StructRefinementTarget,
   TopLevelRecognizer,
 } from './module-items'
-export type { JsxElementRewrite, JsxRewriteContext, ModuleScan, ModuleScanner, RequestOptions, RequestSource, ResolvedRequest } from './module-scan'
-export type { ParseRefinement, ParseRefinementTarget, PropsTypeContext, PropsTypeResolver } from './parse-extensions'
+export type {
+  JsxElementRewrite,
+  JsxRewriteContext,
+  ModuleScan,
+  ModuleScanner,
+  RequestOptions,
+  RequestSource,
+  ResolvedRequest,
+} from './module-scan'
+export type {
+  ParseRefinement,
+  ParseRefinementTarget,
+  PropsTypeContext,
+  PropsTypeResolver,
+} from './parse-extensions'
 export type {
   CallExprIR,
   EmitPreparation,
@@ -99,7 +118,11 @@ export type {
   ReceiverTargetLowering,
 } from './expr-lowering'
 export type { ScopeEnterContext, ScopeProvider } from './scope-provider'
-export type { KotlinPersistedSignal, PersistedSignalSite, SignalPersistence } from './signal-persistence'
+export type {
+  KotlinPersistedSignal,
+  PersistedSignalSite,
+  SignalPersistence,
+} from './signal-persistence'
 export type { StubAugmentation, ValidateOptions } from './stub-augmentation'
 export type { UnloweredSpec } from './unlowered-modules'
 export type { ServiceDescriptor } from './services'
@@ -125,3 +148,8 @@ export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
 export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'
 export { kotlinStr, swiftStr } from './string-literals'
+
+export { isCanonicalPrimitive } from './canonical-primitives'
+export { isStyleBasePrimitive } from './registry-lookup'
+export { DEFAULT_THEME, resolveThemeToken, type ThemeTable } from './theme-native'
+export type { StyleIR, StyleProperty, StyleValue } from './emit-style'

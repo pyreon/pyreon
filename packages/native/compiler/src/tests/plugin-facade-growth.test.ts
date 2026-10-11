@@ -41,7 +41,7 @@ const ping: MemberCallLowering = {
 
 const toyPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   calls: { createToy: () => ({ type: 'toy' }) },
   decls: { toy: toyDecl({ fallback: '0' }) },
@@ -119,7 +119,7 @@ export function App() {
   it('two plugins may claim one method name: the receiver decides who lowers it', () => {
     const second: CompilerPlugin = {
       name: '@acme/other',
-      apiVersion: 1,
+      apiVersion: 2,
       modules: ['@acme/other'],
       calls: { createOther: () => ({ type: 'other' }) },
       decls: { other: { swift: (d, ctx) => `let ${ctx.ident(d.name)} = Other()`, kotlin: (d, ctx) => `val ${ctx.ident(d.name)} = Other()` } },
@@ -252,7 +252,7 @@ export function App() { return <Text>x</Text> }`,
 })
 
 describe('shape validation for the new surfaces', () => {
-  const shape = (over: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 1, ...over })
+  const shape = (over: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 2, ...over })
   it('refuses malformed memberCalls and unlowered with the plugin named', () => {
     expect(shape({ memberCalls: [] })).toThrow(/memberCalls must be an object keyed by method name/)
     expect(shape({ memberCalls: { p: { swift: () => '' } }, decls: {} })).toThrow(/memberCall "p" needs swift and kotlin/)
@@ -261,7 +261,7 @@ describe('shape validation for the new surfaces', () => {
     expect(shape({ unlowered: { m: { advice: '' } } })).toThrow(/unlowered "m" needs a nonempty advice string/)
     expect(shape({ unlowered: { m: { advice: 'x', supported: [1] } } })).toThrow(/unlowered "m" needs/)
     expect(shape({ unlowered: { m: { advice: 'x', supported: ['a'] } } })).not.toThrow()
-    expect(() => createCompiler({ plugins: [{ name: '@acme/bad', apiVersion: 1, unlowered: { m: {} } } as never] })).toThrow(
+    expect(() => createCompiler({ plugins: [{ name: '@acme/bad', apiVersion: 2, unlowered: { m: {} } } as never] })).toThrow(
       /unlowered "m" needs a nonempty advice/,
     )
   })

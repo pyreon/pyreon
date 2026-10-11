@@ -1,5 +1,4 @@
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   topLevelDeclarators,
   type CallRecognizer,
   type CompilerPlugin,
@@ -47,7 +46,7 @@ const tier2: CallRecognizer = (call, ctx) => {
  */
 export const validationPlugin: CompilerPlugin = {
   name: VALIDATION_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/validation'],
   scanModule(scan) {
     // The unlowered-module warning runs before the declarations are recognized, so "does a schema lower?" is

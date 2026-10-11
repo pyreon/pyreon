@@ -9,13 +9,13 @@ import { testNativePlugin } from '../testing'
 // state), `EmitContext.rowType` / `rowFields` (how a container element's type spells and what fields it has), and
 // `CompilerPlugin.refModifiers` (a modifier derived from an element's `ref`).
 
+// Signals in these isolated toy fixtures use the compiler's unimported core operation.
 const HEAD = `import { Stack, Text } from '@pyreon/primitives'
-import { signal } from '@pyreon/reactivity'
 `
 
 const shelf = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/shelf',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/shelf'],
   calls: { useShelf: (_call, ctx) => ({ type: 'shelf', payload: { items: ctx.expr((ctx.args[0] as unknown as { body: never }).body) as never } }) },
   decls: {
@@ -72,8 +72,8 @@ describe.each(['swift', 'kotlin'] as const)('container seams (%s)', (target) => 
 
 describe('container seam shapes', () => {
   it('refModifiers must be an object with swift and/or kotlin functions', () => {
-    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 1, refModifiers: 1 })).toThrow('refModifiers must be an object')
-    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 1, refModifiers: {} })).toThrow('refModifiers must be an object')
-    expect(() => assertPluginShape({ name: '@acme/ok', apiVersion: 1, refModifiers: { swift: () => undefined } })).not.toThrow()
+    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 2, refModifiers: 1 })).toThrow('refModifiers must be an object')
+    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 2, refModifiers: {} })).toThrow('refModifiers must be an object')
+    expect(() => assertPluginShape({ name: '@acme/ok', apiVersion: 2, refModifiers: { swift: () => undefined } })).not.toThrow()
   })
 })

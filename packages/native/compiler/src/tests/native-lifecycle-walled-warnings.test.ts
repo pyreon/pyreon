@@ -22,7 +22,7 @@
 // limitation + the workaround (Layer-4 escape hatch).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Phase 3 — walled lifecycle tags surface silent-drop diagnostics', () => {
   // PR-3.2 — <Suspense fallback={...}> no longer surfaces a silent-drop

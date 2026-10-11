@@ -1,6 +1,10 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  BASELINE_PATH,
   COMPILERS,
+  type BoundaryBaseline,
   compareToBaseline,
   countSource,
   measure,
@@ -66,7 +70,10 @@ describe('check-compiler-boundary — the committed baseline matches the tree', 
   it.each(COMPILERS.map((c) => [c.id, c] as const))('%s has not grown past its baseline', (_id, spec) => {
     // A live measurement against the real source: the gate's own verdict, asserted in the unit suite too.
     const { counts } = measure(spec)
-    expect(counts.hooks).toBeGreaterThan(0)
-    expect(Object.keys(counts.packages).length).toBeGreaterThan(0)
+    // Zero is the finish line. Keep the nonempty-source guard separate from
+    // the ratchet so completed migrations cannot turn this assertion red.
+    expect(readdirSync(resolve(dirname(BASELINE_PATH), '..', spec.dir)).length).toBeGreaterThan(0)
+    const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as BoundaryBaseline
+    expect(compareToBaseline(counts, baseline[spec.id], spec.id)).toEqual([])
   })
 })

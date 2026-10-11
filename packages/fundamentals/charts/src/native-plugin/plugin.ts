@@ -1,6 +1,6 @@
 import { CHARTS_PLUGIN_NAME, CHART_HANDLE_TYPE, chartHandleSeriesKey } from './names'
 import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from './engine-structs'
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, forEachExpr, type CompilerModule, type CompilerPlugin, type DeclEmitter, type DeclIR, type ElementLowering, type EmitContext, type ExprIR, type ExtDecl, type MemberCallLowering, type MemberCallSite, type ParseRefinement, type ScopeProvider } from '@pyreon/native-compiler/plugin-api'
+import { forEachExpr, type CompilerModule, type CompilerPlugin, type DeclEmitter, type DeclIR, type ElementLowering, type EmitContext, type ExprIR, type ExtDecl, type MemberCallLowering, type MemberCallSite, type ParseRefinement, type ScopeProvider } from '@pyreon/native-compiler/plugin-api'
 import {
   ACCESSOR_CHART_HOSTS,
   GRAMMAR_CONFIG_TAGS,
@@ -165,7 +165,7 @@ const chartScopes: readonly ScopeProvider[] = Object.freeze([
 
 export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
   name: CHARTS_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   calls: chartCalls,
   runtimeTypes: Object.freeze(ENGINE_STRUCT_NAMES),
   refineParse: widenChartFormatterParams,

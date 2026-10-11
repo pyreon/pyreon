@@ -22,9 +22,10 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler\'s native target vocabulary',
+      "the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary",
   },
   features: [
+    'Native compiler tooling: primitivesPlugin from @pyreon/primitives/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
     '17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
     'One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere',
     'Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target',
@@ -102,13 +103,16 @@ export function App() {
       summary:
         'Stacked / overlay container. Web → `position:relative` single-cell grid (`align` → `place-items`); iOS → `ZStack`; Android → `Box`. Native children overlap automatically; on web, ordinary children flow into separate grid rows, so give the front child `position:absolute` to overlap. Use for badges, overlays, layered composition.',
       example: `<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>`,
-      mistakes: ['Using it for flow layout — Layer stacks children on the z-axis, not in a row/column'],
+      mistakes: [
+        'Using it for flow layout — Layer stacks children on the z-axis, not in a row/column',
+      ],
       seeAlso: ['Stack'],
     },
     {
       name: 'Scroll',
       kind: 'component',
-      signature: "(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode",
+      signature:
+        "(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode",
       summary:
         'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose).',
       example: `<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>`,
@@ -195,7 +199,9 @@ export function App() {
       summary:
         'Icon by canonical name. Web → svg; iOS → SF Symbol (`Image(systemName:)`); Android → Material `Icons.Filled.*`. The name maps through `ICON_MAP`; unmapped names warn + fall back.',
       example: `<Icon name="star" size="md" color="primary" />`,
-      mistakes: ['Using a platform-specific icon id — use the canonical name; the compiler maps it per target'],
+      mistakes: [
+        'Using a platform-specific icon id — use the canonical name; the compiler maps it per target',
+      ],
       seeAlso: ['Image'],
     },
     {
@@ -215,7 +221,8 @@ export function App() {
     {
       name: 'Press',
       kind: 'component',
-      signature: '(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode',
+      signature:
+        '(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode',
       summary:
         'Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`).',
       example: `<Press onPress={() => select(item)}><Card item={item} /></Press>`,
@@ -253,8 +260,10 @@ export function App() {
     {
       name: 'Toggle',
       kind: 'component',
-      signature: '(props: { value: boolean | (() => boolean); onChange: (next: boolean) => void; disabled?: boolean }) => VNode',
-      summary: 'Boolean switch/checkbox. Web checkbox; iOS `Toggle`; Android `Switch`. `onChange(next: boolean)`.',
+      signature:
+        '(props: { value: boolean | (() => boolean); onChange: (next: boolean) => void; disabled?: boolean }) => VNode',
+      summary:
+        'Boolean switch/checkbox. Web checkbox; iOS `Toggle`; Android `Switch`. `onChange(next: boolean)`.',
       example: `<Toggle value={enabled()} onChange={(v) => enabled.set(v)} />`,
       mistakes: ['Using `onPress`/`onClick` — Toggle uses `onChange(next: boolean)`'],
       seeAlso: ['Field'],
@@ -262,11 +271,14 @@ export function App() {
     {
       name: 'Modal',
       kind: 'component',
-      signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
+      signature:
+        '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
       summary:
         'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss.',
       example: `<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>`,
-      mistakes: ['Forgetting `onClose` — needed so the platform dismiss gesture updates your signal'],
+      mistakes: [
+        'Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
+      ],
       seeAlso: ['Layer'],
     },
     {
@@ -291,11 +303,11 @@ export function App() {
       kind: 'component',
       signature: '(props: { children }) => VNode',
       summary:
-        "A container that animates its own SIZE as rows enter and leave the keyed list inside it. Web measures the content with `ResizeObserver` and transitions the outer height; iOS emits `VStack { … }.animation(.default, value: <list>.count)`; Android emits `Column(modifier = Modifier.animateContentSize())`. Children-only by design — neither native emitter reads any other attribute, so a `duration`/`easing` prop here would be web-only decoration on a primitive whose whole purpose is parity. Wrap a `<For>` in it.",
+        'A container that animates its own SIZE as rows enter and leave the keyed list inside it. Web measures the content with `ResizeObserver` and transitions the outer height; iOS emits `VStack { … }.animation(.default, value: <list>.count)`; Android emits `Column(modifier = Modifier.animateContentSize())`. Children-only by design — neither native emitter reads any other attribute, so a `duration`/`easing` prop here would be web-only decoration on a primitive whose whole purpose is parity. Wrap a `<For>` in it.',
       example: `<TransitionGroup><For each={rows()} by={(r) => r.id}>{(r) => <Text>{r.label}</Text>}</For></TransitionGroup>`,
       mistakes: [
         'Expecting per-ROW enter/leave animation — this animates the CONTAINER; wrap an individual row in `<Transition>` for that',
-        'Relying on it in a no-JS / server-rendered snapshot — the height is only ever driven from a measurement, so SSR output has no inline height and lays out at the content\'s natural size',
+        "Relying on it in a no-JS / server-rendered snapshot — the height is only ever driven from a measurement, so SSR output has no inline height and lays out at the content's natural size",
       ],
       seeAlso: ['Transition'],
     },
@@ -392,7 +404,7 @@ function Pairing() {
       signature:
         'init(options: { navigate?: (to: string) => void }) => void · resetPrimitivesConfig() => void',
       summary:
-        "One-time app-boot configuration for `@pyreon/primitives`. The package is deliberately router-AGNOSTIC (a consumer using only `<Stack>`/`<Text>` never pulls a router into their graph), so `<Link>` needs a navigation handler supplied ONCE via `init({ navigate })`. With it, `<Link>` intercepts plain left-clicks and routes via `navigate` (SPA — no full reload); WITHOUT it, `<Link>` is a plain `<a href>` that does a normal full-page navigation — so links always WORK, `init` only UPGRADES them to SPA. `init` merges with any previous config (later calls override the keys they set). `resetPrimitivesConfig()` clears it back to defaults (primarily for tests / teardown). The config is a module-level singleton and SSR-safe (the server renders a static `<a href>`; `navigate` is read only inside a client click handler).",
+        'One-time app-boot configuration for `@pyreon/primitives`. The package is deliberately router-AGNOSTIC (a consumer using only `<Stack>`/`<Text>` never pulls a router into their graph), so `<Link>` needs a navigation handler supplied ONCE via `init({ navigate })`. With it, `<Link>` intercepts plain left-clicks and routes via `navigate` (SPA — no full reload); WITHOUT it, `<Link>` is a plain `<a href>` that does a normal full-page navigation — so links always WORK, `init` only UPGRADES them to SPA. `init` merges with any previous config (later calls override the keys they set). `resetPrimitivesConfig()` clears it back to defaults (primarily for tests / teardown). The config is a module-level singleton and SSR-safe (the server renders a static `<a href>`; `navigate` is read only inside a client click handler).',
       example: `import { init } from '@pyreon/primitives'
 
 // at app boot, wire your router's navigate so <Link> does SPA navigation:

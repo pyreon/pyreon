@@ -40,10 +40,13 @@
 // here.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findPackageDir, readManifest } from '../packages/native/cli/src/native-sources'
+import type { ValidationResult } from '../packages/native/compiler/src/validate'
+import { discoverPackages } from './check-changeset-required'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -56,6 +59,7 @@ interface Step {
   readonly name: string
   readonly ok: boolean
   readonly detail?: string
+  readonly skipped?: boolean
 }
 
 const steps: Step[] = []
@@ -73,6 +77,40 @@ function stripModuleHeader(src: string): string {
     .join('\n')
 }
 
+/** Install the scaffold's declared dependencies from this checkout, without
+ * fetching published versions that cannot include the change under test. */
+export function linkScaffoldDependencies(app: string, workspace: string): void {
+  const manifest = readManifest(app)
+  if (!manifest) throw new Error(`[Pyreon] Scaffold smoke needs ${join(app, 'package.json')}. Scaffold the app first.`)
+  const dependencies = new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+    ...Object.keys(manifest.optionalDependencies ?? {}),
+  ])
+  const local = new Map(discoverPackages(workspace).map((pkg) => [pkg.name, pkg.dir]))
+  for (const name of dependencies) {
+    const installed = local.get(name) ?? findPackageDir(name, workspace)
+    if (!installed) throw new Error(`[Pyreon] Scaffold dependency ${name} is missing from the checkout. Run bun install.`)
+    const destination = join(app, 'node_modules', name)
+    mkdirSync(dirname(destination), { recursive: true })
+    symlinkSync(installed, destination, 'dir')
+  }
+}
+
+function recordValidation(name: string, result: ValidationResult): void {
+  if (result.skipped) {
+    const required = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
+    steps.push({
+      name,
+      ok: !required,
+      skipped: true,
+      detail: `SKIPPED — ${result.skipReason ?? 'toolchain unavailable'}${required ? '; PYREON_REQUIRE_NATIVE_VALIDATE=1 forbids skipped validation' : ''}`,
+    })
+  } else {
+    record(name, result.ok, result.ok ? undefined : (result.error ?? '').split('\n').slice(0, 12).join('\n'))
+  }
+}
+
 async function main(): Promise<number> {
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-native-scaffold-'))
   const app = join(dir, APP_NAME)
@@ -86,6 +124,11 @@ async function main(): Promise<number> {
       return report(1)
     }
 
+    // A real user installs before building. Package-owned lowering is discovered
+    // from those installs; an empty temporary app cannot exercise that contract.
+    linkScaffoldDependencies(app, REPO)
+    record('link declared app dependencies', true)
+
     // 2. Emit both native targets from the scaffolded source.
     const iosOut = join(app, 'ios/generated')
     const androidOut = join(app, 'android/generated')
@@ -96,7 +139,7 @@ async function main(): Promise<number> {
       const r = spawnSync(
         'bun',
         [CLI, 'build', `--target=${target}`, `--source=${join(app, 'src')}`, `--out=${out}`],
-        { encoding: 'utf8' },
+        { cwd: app, encoding: 'utf8' },
       )
       const ok = r.status === 0
       if (!record(`emit ${target}`, ok, ok ? undefined : (r.stderr || r.stdout || '').trim().slice(0, 800))) {
@@ -110,10 +153,8 @@ async function main(): Promise<number> {
     const validate = (await import(
       join(REPO, 'packages/native/compiler/src/validate.ts')
     )) as {
-      isSwiftcAvailable(): boolean
-      isKotlincAvailable(): boolean
-      validateSwiftWithStubs(code: string): { ok: boolean; error?: string }
-      validateKotlin(code: string): { ok: boolean; error?: string }
+      validateSwiftWithStubs(code: string): ValidationResult
+      validateKotlin(code: string): ValidationResult
     }
 
     const swiftFile = join(iosOut, 'App.swift')
@@ -121,21 +162,9 @@ async function main(): Promise<number> {
     if (!record('emit produced App.swift', existsSync(swiftFile))) return report(1)
     if (!record('emit produced App.kt', existsSync(kotlinFile))) return report(1)
 
-    // A missing toolchain is a SKIP, never a silent pass — the summary says
-    // which checks actually ran.
-    if (validate.isSwiftcAvailable()) {
-      const r = validate.validateSwiftWithStubs(readFileSync(swiftFile, 'utf8'))
-      record('swift typecheck', r.ok, r.ok ? undefined : (r.error ?? '').split('\n').slice(0, 12).join('\n'))
-    } else {
-      record('swift typecheck', true, 'SKIPPED — swiftc not on PATH')
-    }
-
-    if (validate.isKotlincAvailable()) {
-      const r = validate.validateKotlin(stripModuleHeader(readFileSync(kotlinFile, 'utf8')))
-      record('kotlin typecheck', r.ok, r.ok ? undefined : (r.error ?? '').split('\n').slice(0, 12).join('\n'))
-    } else {
-      record('kotlin typecheck', true, 'SKIPPED — kotlinc not on PATH')
-    }
+    // The validators enforce required-toolchain mode even when a tool is absent.
+    recordValidation('swift typecheck', validate.validateSwiftWithStubs(readFileSync(swiftFile, 'utf8')))
+    recordValidation('kotlin typecheck', validate.validateKotlin(stripModuleHeader(readFileSync(kotlinFile, 'utf8'))))
 
     return report(steps.every((s) => s.ok) ? 0 : 1)
   } finally {
@@ -146,16 +175,18 @@ async function main(): Promise<number> {
 function report(code: number): number {
   const label = '[scaffold-native-smoke]'
   for (const s of steps) {
-    const mark = s.ok ? '✓' : '✗'
+    const mark = !s.ok ? '✗' : s.skipped ? '−' : '✓'
     const suffix = s.detail === undefined ? '' : ` — ${s.detail}`
     console.log(`${label} ${mark} ${s.name}${suffix}`)
   }
   console.log(
     code === 0
-      ? `${label} scaffolded app compiles for both native targets`
-      : `${label} FAILED — \`npx create-multiplatform\` would produce an app that does not build`,
+      ? steps.some((step) => step.skipped)
+        ? `${label} scaffolded app emitted; native typechecks incomplete (see skipped checks above)`
+        : `${label} scaffolded app compiles for both native targets`
+      : `${label} FAILED — scaffolded app did not pass native validation`,
   )
   return code
 }
 
-process.exit(await main())
+if (import.meta.main) process.exit(await main())

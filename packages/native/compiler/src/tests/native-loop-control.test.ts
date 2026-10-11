@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // Loop control-flow (iter47, sweep batch 6). Pre-fix, `break` and
 // `continue` statements warn-DROPPED — a SEMANTIC mis-emit: the emitted

@@ -5,7 +5,7 @@
 // `when` toggles after first show, hidden via opacity/alpha.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `
 import { signal } from '@pyreon/reactivity'

@@ -6,12 +6,12 @@ export default defineManifest({
   tagline:
     'Chainable HOC factory — default props (.attrs), base swaps (.config), HOC composition (.compose), statics (.statics)',
   description:
-    'Chainable HOC factory for Pyreon components. `attrs({ name, component })` wraps a component in an immutable builder that accumulates default props (`.attrs()`), reconfigures the base (`.config()`), composes named HOCs (`.compose()`), and attaches static metadata (`.statics()`). Every chain method returns a NEW component — the original is never mutated — and `.attrs<P>()` generics accumulate into the component\'s prop type. It is the chaining foundation `@pyreon/rocketstyle` builds on; use it directly for default-prop composition without the dimension-styling layer.',
+    "Chainable HOC factory for Pyreon components. `attrs({ name, component })` wraps a component in an immutable builder that accumulates default props (`.attrs()`), reconfigures the base (`.config()`), composes named HOCs (`.compose()`), and attaches static metadata (`.statics()`). Every chain method returns a NEW component — the original is never mutated — and `.attrs<P>()` generics accumulate into the component's prop type. It is the chaining foundation `@pyreon/rocketstyle` builds on; use it directly for default-prop composition without the dimension-styling layer.",
   category: 'universal',
   multiplatform: {
     tier: 'shared',
     rationale:
-      'attrs({ name, component }) default-prop HOC lowers via attrs-native (use-site wins)',
+      'attrs({ name, component }) default-prop HOC lowers through its package-owned native plugin (use-site wins)',
   },
   longExample: `import attrs, { isAttrsComponent } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
@@ -50,6 +50,7 @@ Tagged.meta.category                            // 'action'
 Button.getDefaultAttrs({})                      // resolved default props
 isAttrsComponent(Button)                        // true (IS_ATTRS marker)`,
   features: [
+    'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     'attrs({ name, component }) factory — immutable chainable builder, every method returns a new component',
     '.attrs(object | callback, { priority?, filter? }) — stacking default props; callbacks receive the current resolved props',
     'Merge precedence priorityAttrs < attrs < explicit props — call-site props always win; undefined values never shadow defaults',
@@ -82,7 +83,7 @@ const Button = attrs({ name: 'Button', component: Element })
         'Calling the factory with a bare component — `attrs(Element)` is wrong; the argument is the object `{ name, component }` and both keys are required (dev mode throws)',
         'Expecting chain calls to mutate — every method returns a NEW component; `Button.attrs({...})` without assigning the return value changes nothing',
         'Expecting deep merges — defaults are shallow-merged; an object-valued prop (`style={{ color: "red" }}`) from the call site REPLACES the default object, it does not combine with it',
-        'Stacking very deep `.attrs<P>()` generic chains — TypeScript\'s recursive conditional-type inference caps at roughly 24-50 levels depending on the host; past that, narrow the generics or split the component',
+        "Stacking very deep `.attrs<P>()` generic chains — TypeScript's recursive conditional-type inference caps at roughly 24-50 levels depending on the host; past that, narrow the generics or split the component",
         'Forwarding props onward with a plain spread inside a composed HOC — `{ ...props }` fires reactive getter props once and collapses them to static values; pass by reference or merge with `mergeProps` from `@pyreon/core`',
         'Relying on the `data-attrs` debug attribute in production — it is dev-only (`process.env.NODE_ENV !== "production"`) and tree-shaken from production builds',
       ],
@@ -94,7 +95,7 @@ const Button = attrs({ name: 'Button', component: Element })
       signature:
         '<P>(attrs: object | ((props) => object), opts?: { priority?: boolean; filter?: string[] }) => AttrsComponent',
       summary:
-        'Add default props. Object form for static defaults; callback form receives the CURRENT resolved props (priority attrs + explicit props) and returns a partial. Calls stack — later `.attrs()` calls override earlier ones for the same key. Render-time merge precedence is `priorityAttrs < attrs < explicit call-site props` (last wins); explicit `undefined` values are stripped first so they never shadow a default. `{ priority: true }` routes the entry to the priority chain — resolved FIRST and visible as input to later `.attrs()` callbacks, but LOWEST precedence in the final merge. `{ filter: [...] }` strips those prop names before they reach the base component; filter lists accumulate across the chain. The `<P>` generic widens the component\'s prop type.',
+        "Add default props. Object form for static defaults; callback form receives the CURRENT resolved props (priority attrs + explicit props) and returns a partial. Calls stack — later `.attrs()` calls override earlier ones for the same key. Render-time merge precedence is `priorityAttrs < attrs < explicit call-site props` (last wins); explicit `undefined` values are stripped first so they never shadow a default. `{ priority: true }` routes the entry to the priority chain — resolved FIRST and visible as input to later `.attrs()` callbacks, but LOWEST precedence in the final merge. `{ filter: [...] }` strips those prop names before they reach the base component; filter lists accumulate across the chain. The `<P>` generic widens the component's prop type.",
       example: `const Input = attrs({ name: 'Input', component: Element })
   // Callback form — reads the resolved props
   .attrs<{ error?: boolean }>((props) => ({
@@ -109,9 +110,9 @@ const Small = Base.attrs({ size: 'sm' })     // → size: 'sm'`,
       mistakes: [
         'Assuming `{ priority: true }` means highest precedence — despite the name, priority attrs are resolved EARLY (so normal `.attrs()` callbacks can read them as input) but sit at the LOWEST precedence in the final merge: `priorityAttrs < attrs < explicit props`',
         'Expecting an explicit `undefined` at the call site to defeat a default — `undefined`-valued props are stripped before merging, so the `.attrs()` default still applies',
-        'Expecting the callback to re-run reactively — `.attrs()` callbacks run once per mount during the HOC\'s prop resolution; reactive getter props flowing THROUGH the merge stay live for downstream JSX, but a value the callback READS is a one-shot snapshot',
+        "Expecting the callback to re-run reactively — `.attrs()` callbacks run once per mount during the HOC's prop resolution; reactive getter props flowing THROUGH the merge stay live for downstream JSX, but a value the callback READS is a one-shot snapshot",
         'Forgetting `filter` accumulates — every name listed in any `.attrs(..., { filter })` call along the chain is stripped; a later call cannot un-filter an earlier name',
-        'Confusing this chain method with rocketstyle\'s `.attrs()` — the rocketstyle variant passes extra callback arguments `(props, theme, helpers)`; the plain attrs callback receives only the resolved props',
+        "Confusing this chain method with rocketstyle's `.attrs()` — the rocketstyle variant passes extra callback arguments `(props, theme, helpers)`; the plain attrs callback receives only the resolved props",
       ],
       seeAlso: ['.config()', '.getDefaultAttrs()'],
     },
@@ -120,7 +121,7 @@ const Small = Base.attrs({ size: 'sm' })     // → size: 'sm'`,
       kind: 'function',
       signature: '(opts: { name?: string; component?: ElementType; DEBUG?: boolean }) => AttrsComponent',
       summary:
-        'Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). `DEBUG` is accepted by the type for parity with `@pyreon/rocketstyle` but has NO runtime effect at this layer. Returns a new component; the original keeps its own name/base. Unlike `@pyreon/rocketstyle`, swapping `component` at this layer PRESERVES the accumulated `.attrs()` / `priorityAttrs` / `filter` / `.compose()` / `.statics()` chains and re-applies them to the new base — reconciling the new base\'s prop shape is the caller\'s responsibility.',
+        "Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). `DEBUG` is accepted by the type for parity with `@pyreon/rocketstyle` but has NO runtime effect at this layer. Returns a new component; the original keeps its own name/base. Unlike `@pyreon/rocketstyle`, swapping `component` at this layer PRESERVES the accumulated `.attrs()` / `priorityAttrs` / `filter` / `.compose()` / `.statics()` chains and re-applies them to the new base — reconciling the new base's prop shape is the caller's responsibility.",
       example: `const Button = attrs({ name: 'Button', component: Element }).attrs({ tag: 'button' })
 
 const Renamed = Button.config({ name: 'PrimaryButton' })
@@ -130,7 +131,7 @@ Button.displayName    // 'Button' — original untouched
 // Base swap — the .attrs() chain still applies to the new base
 const Anchor = Button.config({ component: 'a', name: 'Anchor' })`,
       mistakes: [
-        'Expecting the rocketstyle chain-reset behavior — `@pyreon/attrs`\' `.config({ component })` KEEPS the accumulated chains across a base swap (test-locked); only `@pyreon/rocketstyle`\'s `.config()` resets prop-shape-coupled chains. If the new base has a different prop shape, stale defaults can leak invalid props — audit them yourself',
+        "Expecting the rocketstyle chain-reset behavior — `@pyreon/attrs`' `.config({ component })` KEEPS the accumulated chains across a base swap (test-locked); only `@pyreon/rocketstyle`'s `.config()` resets prop-shape-coupled chains. If the new base has a different prop shape, stale defaults can leak invalid props — audit them yourself",
         'Passing dimension or theme options — this `.config()` acts only on `name` / `component`; dimensions/provider/consumer/inversed are `@pyreon/rocketstyle` `.config()` surface',
         'Expecting `.config({ DEBUG: true })` to log — the key typechecks but `@pyreon/attrs` never reads it; render logging exists only on `@pyreon/rocketstyle` components',
         'Reading `displayName` off the original after renaming — `.config()` is immutable; the rename lands on the RETURNED component',
@@ -164,7 +165,7 @@ const NoTracking = Enhanced.compose({ withTracking: null })`,
       kind: 'function',
       signature: '(meta: Record<string, unknown>) => AttrsComponent',
       summary:
-        'Attach arbitrary metadata, readable on the component\'s `.meta` object. Successive `.statics()` calls merge (later keys win). Used by systems that need post-construction component introspection — e.g. `@pyreon/document-primitives` reads `_documentType` this way.',
+        "Attach arbitrary metadata, readable on the component's `.meta` object. Successive `.statics()` calls merge (later keys win). Used by systems that need post-construction component introspection — e.g. `@pyreon/document-primitives` reads `_documentType` this way.",
       example: `const Btn = attrs({ name: 'Btn', component: Element }).statics({
   category: 'action',
   sizes: ['sm', 'md', 'lg'],
@@ -173,7 +174,7 @@ const NoTracking = Enhanced.compose({ withTracking: null })`,
 Btn.meta.category   // 'action'
 Btn.meta.sizes      // ['sm', 'md', 'lg']`,
       mistakes: [
-        'Reading statics directly off the component — in `@pyreon/attrs` they land on `Component.meta`, NOT on the component object itself (rocketstyle\'s `.statics()` additionally assigns onto the component; this layer does not)',
+        "Reading statics directly off the component — in `@pyreon/attrs` they land on `Component.meta`, NOT on the component object itself (rocketstyle's `.statics()` additionally assigns onto the component; this layer does not)",
         'Using `.statics()` for per-instance data — statics are definition-level metadata shared by every instance',
       ],
       seeAlso: ['.compose()', 'isAttrsComponent'],
@@ -192,7 +193,7 @@ Button.getDefaultAttrs({})                  // { tag: 'button', alignX: 'center'
 Button.getDefaultAttrs({ primary: true })   // { ..., kind: 'primary' }`,
       mistakes: [
         'Expecting priority attrs in the result — `getDefaultAttrs` resolves only the normal `.attrs()` chain, not `priorityAttrs`',
-        'Calling with no argument when callbacks destructure props — pass at least `{}` so `({ primary }) => ...` callbacks don\'t destructure `undefined`',
+        "Calling with no argument when callbacks destructure props — pass at least `{}` so `({ primary }) => ...` callbacks don't destructure `undefined`",
       ],
       seeAlso: ['.attrs()'],
     },
@@ -218,11 +219,11 @@ isAttrsComponent(() => null)  // false — plain functions lack the marker`,
     "'priority' does NOT mean 'highest precedence' — priorityAttrs resolve FIRST (so later .attrs() callbacks can read them as input) but sit at the LOWEST precedence in the final merge: priorityAttrs < attrs < explicit props. @pyreon/rocketstyle uses the slot to seed structural base props the dimension layer can still override.",
     {
       label: 'Chains survive base swaps',
-      note: '`.config({ component })` at this layer PRESERVES the accumulated chains and re-applies them to the new base — the chain-reset-on-swap behavior belongs to `@pyreon/rocketstyle`, one layer up. Reconciling the new base\'s prop shape is on the caller.',
+      note: "`.config({ component })` at this layer PRESERVES the accumulated chains and re-applies them to the new base — the chain-reset-on-swap behavior belongs to `@pyreon/rocketstyle`, one layer up. Reconciling the new base's prop shape is on the caller.",
     },
     {
       label: 'Type accumulation',
-      note: 'Each `.attrs<P>()` generic accumulates into the component\'s prop type; the type-only `$$types` (origin + extended), `$$originTypes`, and `$$extendedTypes` properties expose the accumulated shapes, and `ExtractProps<typeof C>` from `@pyreon/core` recovers the union for HOC forwarding.',
+      note: "Each `.attrs<P>()` generic accumulates into the component's prop type; the type-only `$$types` (origin + extended), `$$originTypes`, and `$$extendedTypes` properties expose the accumulated shapes, and `ExtractProps<typeof C>` from `@pyreon/core` recovers the union for HOC forwarding.",
     },
     {
       label: 'Descriptor-safe forwarding',

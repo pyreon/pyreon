@@ -1,3 +1,4 @@
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 // `onSubmit: (values) => … values.field …` — reading a field off the form's
 // submit payload, the shape any real login/checkout screen needs.
 //
@@ -19,13 +20,8 @@
 // from the producer side.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // NOTE the submit body writes to a SIGNAL, not back into the form
 // (`form.setFieldValue(...)` inside its own onSubmit). That sibling shape is a

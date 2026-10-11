@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // Component props end-to-end (iter43). Pre-fix, the DOMINANT real-world
 // component shape — `type CardProps = { … }` + `function Card(props:

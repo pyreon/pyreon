@@ -1,10 +1,5 @@
-import { transform } from '../index'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable,  } from '../validate'
 
 const imports = `import { useCounter, useToggle } from '@pyreon/hooks'
 import { Button } from '@pyreon/primitives'`

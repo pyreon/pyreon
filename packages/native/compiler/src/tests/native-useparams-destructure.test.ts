@@ -11,7 +11,7 @@
 // Aliasing (`{ id: userId }`) binds the local to the param key.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Phase 3 — useParams() destructuring emit', () => {
   const SRC = `

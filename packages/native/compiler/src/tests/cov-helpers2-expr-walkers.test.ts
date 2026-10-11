@@ -20,7 +20,7 @@
 //     residual `ctx` read. One body shape per arm.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // ── substituteIdentifier, via component value-const inlining ────────────────
 

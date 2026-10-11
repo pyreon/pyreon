@@ -16,7 +16,7 @@ const persistence: SignalPersistence = {
 
 const toy = (extra: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   calls: {
     useKept: (_call, ctx) => {
@@ -84,6 +84,6 @@ describe('CompilerPlugin.persistence', () => {
   })
 
   it('rejects a backend without both targets', () => {
-    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 1, persistence: { swift: () => '' } })).toThrow(/persistence needs swift and kotlin functions/)
+    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 2, persistence: { swift: () => '' } })).toThrow(/persistence needs swift and kotlin functions/)
   })
 })

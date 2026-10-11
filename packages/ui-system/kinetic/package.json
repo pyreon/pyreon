@@ -2,16 +2,23 @@
   "name": "@pyreon/kinetic",
   "version": "0.52.0",
   "description": "CSS-transition-based animation components for Pyreon",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/ui-system/kinetic#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/ui-system/kinetic"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "README.md",
+    "LICENSE",
+    "src"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -28,13 +35,9 @@
       "types": "./lib/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "README.md",
-    "LICENSE",
-    "src"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "prepublish": "bun run build",
     "bench": "bun bench/run.ts",
@@ -46,17 +49,6 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^",
-    "@pyreon/native-compiler": "workspace:^"
-  },
-  "peerDependenciesMeta": {
-    "@pyreon/native-compiler": {
-      "optional": true
-    }
   },
   "dependencies": {
     "@pyreon/sized-map": "workspace:*"
@@ -73,18 +65,25 @@
     "@vitus-labs/tools-rolldown": "^2.6.3",
     "motion": "^13.4.6"
   },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
   "engines": {
     "node": ">= 22"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "pyreon": {
     "native": {
       "plugin": "./lib/native-plugin.js",
       "modules": [
-        "@pyreon/kinetic",
-        "@pyreon/kinetic-presets"
+        "@pyreon/kinetic"
       ]
     }
   }

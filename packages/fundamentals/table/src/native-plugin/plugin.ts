@@ -9,7 +9,6 @@
 // (`remember` runs sequentially, so the closure can name the row signal directly).
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
   unwrapTypeLayers,
   type CallRecognizer,
@@ -184,7 +183,7 @@ const tableReceiver: ReceiverLowering = {
  */
 export const tablePlugin: CompilerPlugin = {
   name: TABLE_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/table'],
   calls: { createTableState: recognizeTable },
   decls: { [TABLE_TYPE]: tableDecl },

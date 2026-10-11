@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { emitKotlinStyleModifier, emitSwiftStyleModifier } from '../emit-style'
-import { parseStyled } from '../parse-styled'
+import { parseStyled } from '../../../../ui-system/styler/src/native-plugin/parse-styled'
 
 describe('parse-styled — static CSS body', () => {
   it('parses a single styled() with all-static declarations', () => {
@@ -78,10 +78,7 @@ describe('parse-styled — static CSS body', () => {
         border-radius: 8px;
       \`
     `)
-    expect(styles[0]?.properties.map((p) => p.name)).toEqual([
-      'background-color',
-      'border-radius',
-    ])
+    expect(styles[0]?.properties.map((p) => p.name)).toEqual(['background-color', 'border-radius'])
   })
 })
 

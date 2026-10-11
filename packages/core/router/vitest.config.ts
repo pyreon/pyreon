@@ -12,7 +12,7 @@ export default defineNodeConfig({
   //   (scrollY positioning + scroll-event timing) — happy-dom returns 0 for
   //   all scroll metrics. Exercised by e2e nav tests in ssr-showcase.
   // src/tests/setup.ts: test setup file, not production source.
-  coverageExclude: ['src/scroll.ts', 'src/tests/**'],
+  coverageExclude: ['src/native-plugin.ts', 'src/scroll.ts', 'src/tests/**'],
   // Ratcheted 91/85 → 96/92 (measured 96.59/92.19). The 2026-07 re-baseline
   // attributed the gap to feature waves covered by e2e rather than node
   // vitest; that was true of some of it and not most. What was actually

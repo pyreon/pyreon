@@ -9,7 +9,7 @@
 //    literal, so the fix (and this test's failing half) is Kotlin's.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { cleanJsxText } from '../parse'
 import {
   isKotlincAvailable,

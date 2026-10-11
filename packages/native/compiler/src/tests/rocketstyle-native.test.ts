@@ -8,7 +8,7 @@
 // style-object IR; the connector is the shared native backend.
 
 import { describe, expect, it, vi } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,
@@ -85,18 +85,26 @@ function App() { return (<B state="primary"><Text>x</Text></B>) }`
     const unknown = `import { Stack, Text } from '@pyreon/primitives'
 const B = rocketstyle()({ name: 'B', component: Stack }).states({ primary: { backgroundColor: t.color.doesNotExist } })
 function App() { return (<B state="primary"><Text>x</Text></B>) }`
-    expect(swift(unknown).warnings.join('\n')).toMatch(/theme\s+token \/ expression.*not yet lowered/)
+    expect(swift(unknown).warnings.join('\n')).toMatch(
+      /theme\s+token \/ expression.*not yet lowered/,
+    )
   })
 })
 
 describe('rocketstyle native — toolchain gates', () => {
   const SRC = render(`<Btn state="primary" size="large"><Text>Click</Text></Btn>`)
-  it.skipIf(!isSwiftUIAvailable())('the resolved rocketstyle component typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(SRC).code)
-    expect(res.ok, res.error ?? '').toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable())('the resolved rocketstyle component compiles (Compose stubs)', () => {
-    const res = validateKotlin(kotlin(SRC).code)
-    expect(res.ok, res.error ?? '').toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable())(
+    'the resolved rocketstyle component typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(SRC).code)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable())(
+    'the resolved rocketstyle component compiles (Compose stubs)',
+    () => {
+      const res = validateKotlin(kotlin(SRC).code)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
 })
