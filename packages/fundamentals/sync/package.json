@@ -2,16 +2,25 @@
   "name": "@pyreon/sync",
   "version": "0.52.0",
   "description": "Local-first CRDT-backed sync for signals — a synced signal is just a signal, so remote ops drive surgical fine-grained updates",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/sync#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/sync"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -39,31 +48,15 @@
       "types": "./lib/types/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "README.md",
-    "LICENSE",
-    "native/swift",
-    "native/kotlin"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
-  },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^",
-    "ws": "^8.21.3",
-    "@pyreon/native-compiler": "workspace:^"
-  },
-  "peerDependenciesMeta": {
-    "ws": {
-      "optional": true
-    }
   },
   "dependencies": {
     "y-indexeddb": "^9.0.12",
@@ -82,8 +75,18 @@
     "bun-types": "^1.4.2",
     "ws": "^8.22.0"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "ws": "^8.21.3"
+  },
+  "peerDependenciesMeta": {
+    "ws": {
+      "optional": true
+    },
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "pyreon": {
     "native": {

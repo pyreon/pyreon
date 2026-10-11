@@ -1,3 +1,4 @@
+import { transform } from './first-party-plugins'
 // Text + Heading data-testid threading — the device-found tag-drop
 // class, third instance (fetch-arc, 2026-06-10).
 //
@@ -16,7 +17,6 @@
 // from double-emitting the identifier.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 
 const SRC = `
   export function App() {

@@ -2,16 +2,25 @@
   "name": "@pyreon/a11y",
   "version": "0.52.0",
   "description": "Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/a11y#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/a11y"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -34,15 +43,9 @@
       "types": "./lib/types/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "README.md",
-    "LICENSE",
-    "native/swift",
-    "native/kotlin"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -50,17 +53,6 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/router": "workspace:^",
-    "@pyreon/native-compiler": "workspace:^"
-  },
-  "peerDependenciesMeta": {
-    "@pyreon/router": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
@@ -73,8 +65,19 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.0.2"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/router": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/router": {
+      "optional": true
+    },
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "pyreon": {
     "native": {

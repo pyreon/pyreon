@@ -62,6 +62,8 @@ Read before adding or changing a workflow, job, required check, or cache key.
   Superseded coverage PR runs cancel by PR ref; main and merge-group runs finish
   and coalesce pending work. The static CI policy gate guards both behaviors.
 
+- Native capability disk caches accept only successful probes. A timeout or signal is a transient failure, never evidence that a compiler or module is absent. Failed legacy probe entries are ignored; interrupted module validation fails and retries on the next call. Required Observation validation fails instead of reporting a successful skip. Genuine SwiftUI absence on non-Apple hosts remains an SDK skip.
+
 ## Other workflows
 
 - `pr-gates.yml` — `Changeset` and `Diagnose Catalog`. These are label-sensitive (`skip-changeset`, `skip-diagnose-catalog`), so they live apart from `ci.yml`, whose `pull_request` trigger excludes `labeled` (a label would cancel the in-flight run).

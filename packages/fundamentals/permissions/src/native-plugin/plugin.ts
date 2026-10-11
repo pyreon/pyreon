@@ -13,7 +13,6 @@
 // unlisted key is denied either way) and a silent authorization FAILURE under one, so the provider reports it.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   kotlinStr,
   swiftStr,
   type CallRecognizer,
@@ -172,7 +171,7 @@ const scanPermissions: ModuleScanner = (scan) => {
  */
 export const permissionsPlugin: CompilerPlugin = Object.freeze({
   name: PERMISSIONS_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([PERMISSIONS_PLUGIN_NAME]),
   scanModule: scanPermissions,
   calls: Object.freeze({ usePermissions: recognizePermissions }),

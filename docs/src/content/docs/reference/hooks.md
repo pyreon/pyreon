@@ -19,6 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Native compiler tooling: hooksPlugin from @pyreon/hooks/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
 - 65 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll

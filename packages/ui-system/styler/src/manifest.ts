@@ -11,9 +11,10 @@ export default defineManifest({
   multiplatform: {
     tier: 'shared',
     rationale:
-      'styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile',
+      'styled(Prim) factories lower through its package-owned native plugin with shared defineTheme token resolution; the CSS-in-JS runtime is web, the authored patterns compile',
   },
   features: [
+    'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     "styled('div')`...` / styled(Component)`...` / styled.div`...` (Proxy) — component factory with `as` polymorphism + $-transient props",
     'css`...` — lazy CSSResult, resolved on use (NOT a string)',
     'keyframes`...` — returns the generated @keyframes animation-name string',
@@ -63,7 +64,7 @@ const Button = styled("button")\`
 \`
 // <Button $compact onClick={...}>Go</Button>  — $compact not forwarded to <button>`,
       mistakes: [
-        "Expecting `$`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-`$` name if the attribute must land on the element",
+        'Expecting `$`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-`$` name if the attribute must land on the element',
         'Destructuring `props` in the interpolation (`${({ theme }) => …}`) and being surprised it does not update on a whole-theme swap — read `props.theme` lazily; the theme context is reactive and the styled resolver re-runs on swap',
         'Passing a resolved value where a function interpolation is needed for reactivity — `${signal()}` snapshots once at definition; use `${() => signal()}` (or `${(p) => p.x}`) to stay on the dynamic path',
         'Using `styled.div` and expecting a different identity per call — the Proxy returns the same tag template fn shape; per-definition caches key on the template, not the call site',
@@ -225,7 +226,7 @@ const themeAccessor = useContext(ThemeContext) // () => Theme`,
       kind: 'function',
       signature: 'createSheet(options?: StyleSheetOptions): StyleSheet',
       summary:
-        'Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton `sheet`. Use for shadow-DOM roots, multi-window/iframe rendering, per-request SSR isolation, or test isolation where one request/realm must not share the global dedup cache. Options: `maxCacheSize`, `layer` (wrap scoped rules in an `@layer`), and `nonce` (CSP — stamps the SSR `<style>` from `getStyleTag()` and the client `<style>` element with a `nonce` so a strict `style-src \'nonce-…\'` policy admits the critical CSS). Most apps never need this — the singleton is correct for a single document.',
+        "Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton `sheet`. Use for shadow-DOM roots, multi-window/iframe rendering, per-request SSR isolation, or test isolation where one request/realm must not share the global dedup cache. Options: `maxCacheSize`, `layer` (wrap scoped rules in an `@layer`), and `nonce` (CSP — stamps the SSR `<style>` from `getStyleTag()` and the client `<style>` element with a `nonce` so a strict `style-src 'nonce-…'` policy admits the critical CSS). Most apps never need this — the singleton is correct for a single document.",
       example: `import { createSheet } from "@pyreon/styler"
 
 const shadowSheet = createSheet({ /* StyleSheetOptions */ })`,
@@ -311,7 +312,7 @@ afterEach(() => clearNormCache())`,
       signature:
         'buildProps(rawProps: Record<string, any>, generatedCls: string, isDOM: boolean, customFilter?: (prop: string) => boolean): Record<string, any>',
       summary:
-        "Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, and (for DOM targets) filters non-DOM attributes — `customFilter` overrides per-component. **Copies DESCRIPTORS, not values**, so compiler-emitted reactive (`_rp` getter) props survive forwarding instead of collapsing to a static snapshot.",
+        'Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, and (for DOM targets) filters non-DOM attributes — `customFilter` overrides per-component. **Copies DESCRIPTORS, not values**, so compiler-emitted reactive (`_rp` getter) props survive forwarding instead of collapsing to a static snapshot.',
       example: `import { buildProps } from "@pyreon/styler"
 
 const forwarded = buildProps(rawProps, "sc-abc123", true)`,
@@ -368,7 +369,7 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")`,
       signature:
         'setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void',
       summary:
-        'Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). `@pyreon/ui-core`\'s `init({ styleExtraction: true })` calls this to enable CPSE and inject the `cpseRewrite` function — which lives in `@pyreon/unistyle` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the `@pyreon/ui-core` init flag; it is exported only so ui-core can wire it.',
+        "Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). `@pyreon/ui-core`'s `init({ styleExtraction: true })` calls this to enable CPSE and inject the `cpseRewrite` function — which lives in `@pyreon/unistyle` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the `@pyreon/ui-core` init flag; it is exported only so ui-core can wire it.",
       example: `// Apps enable CPSE through ui-core, not this call:
 import { init } from "@pyreon/ui-core"
 init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood`,

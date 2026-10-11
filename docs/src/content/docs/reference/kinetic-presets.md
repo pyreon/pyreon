@@ -21,6 +21,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata
 - 122 presets — fades, slides, scales, zooms, flips, rotations, bounce/spring, blur, clip-path, perspective, tilt, swing, and more
 - Every preset is a named export AND a `presets` map entry (dynamic selection by name)
 - 5 factories: createFade / createSlide / createScale / createRotate / createBlur (direction, distance, duration, easing)

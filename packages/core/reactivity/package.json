@@ -2,16 +2,23 @@
   "name": "@pyreon/reactivity",
   "version": "0.52.0",
   "description": "Signals-based reactivity system for Pyreon",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/reactivity#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/reactivity"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -32,15 +39,16 @@
       "bun": "./src/coverage.ts",
       "import": "./lib/coverage.js",
       "types": "./lib/types/coverage.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -51,11 +59,26 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "@pyreon/native-compiler": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/reactivity",
+        "@pyreon/core/plain"
+      ]
+    }
   }
 }

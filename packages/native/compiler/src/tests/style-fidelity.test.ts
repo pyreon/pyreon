@@ -8,8 +8,8 @@
 // same Pyreon source" rests on this gate being green.
 
 import { describe, expect, it } from 'vitest'
-import type { RocketstyleIR } from '../emit-rocketstyle'
-import { checkStyleFidelity } from '../style-fidelity'
+import type { RocketstyleIR } from '../../../../ui-system/rocketstyle/src/native-plugin/emit-rocketstyle'
+import { checkStyleFidelity } from '../../../../ui-system/rocketstyle/src/native-plugin/style-fidelity'
 
 // The canonical PyreonButton matrix from the PMTC plan: state × size.
 // Same shape as emit-rocketstyle.test.ts but kept independent here so a
@@ -108,8 +108,14 @@ describe('style-fidelity — cross-target resolution contract', () => {
         {
           name: 'state',
           values: [
-            { name: 'visible', properties: [{ name: 'opacity', value: { kind: 'number', value: 1 } }] },
-            { name: 'dim', properties: [{ name: 'opacity', value: { kind: 'number', value: 0.5 } }] },
+            {
+              name: 'visible',
+              properties: [{ name: 'opacity', value: { kind: 'number', value: 1 } }],
+            },
+            {
+              name: 'dim',
+              properties: [{ name: 'opacity', value: { kind: 'number', value: 0.5 } }],
+            },
           ],
         },
       ],

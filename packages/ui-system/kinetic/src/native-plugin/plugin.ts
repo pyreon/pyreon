@@ -16,19 +16,18 @@
 // the order wrong would emit an unresolved tag for exactly one file layout.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   topLevelDeclarators,
   type CompilerPlugin,
   type DeclIR,
   type JsxElementRewrite,
   type ModuleScanner,
+  type ModuleScan,
 } from '@pyreon/native-compiler/plugin-api'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
 
 export const KINETIC_PLUGIN_NAME = '@pyreon/kinetic'
-const PRESETS_MODULE = '@pyreon/kinetic-presets'
 const STATE_KEY = '@pyreon/kinetic:state'
 /** Shared by the rewrite and the synthesis; internal, so `__`-prefixed. */
 const MOUNT_FLAG = '__kineticIn'
@@ -36,46 +35,24 @@ const MOUNT_FLAG = '__kineticIn'
 interface KineticState {
   /** Local names bound to the `kinetic` import (supports `as` renaming). */
   readonly imports: Set<string>
-  /** local name -> exported name, for presets imported from kinetic-presets. */
-  readonly presetImports: Map<string, string>
   /** Factory bindings, mapped to the `.preset('x')` in their chain (undefined when the chain declares none). */
   readonly factories: Map<string, string | undefined>
 }
 
 const stateOf = (fileState: <T>(key: string, init: () => T) => T): KineticState =>
-  fileState(STATE_KEY, () => ({ imports: new Set<string>(), presetImports: new Map<string, string>(), factories: new Map<string, string | undefined>() }))
-
-/**
- * Map a `@pyreon/kinetic-presets` export name onto the native preset vocabulary, or undefined when it has no analogue.
- *
- * Only UNAMBIGUOUS names map. The pack ships 123 presets and native knows seven, so most of them (backInDown, blurScale,
- * bounceIn, flip*, rotate*, …) have nothing to lower to. Mapping those to the nearest fade would silently animate the
- * wrong thing, which is worse than declining by name — and the decline is what the author can act on. Diagonal and
- * magnitude variants (fadeDownLeft, slideUpBig) are deliberately NOT mapped: native has neither a diagonal nor a distance
- * parameter, so a mapping would drop half the intent without saying so.
- */
-function nativePresetForPackName(name: string): string | undefined {
-  const exact: Readonly<Record<string, string>> = {
-    fade: 'fade',
-    fadeUp: 'slide-up',
-    fadeDown: 'slide-down',
-    fadeLeft: 'slide-left',
-    fadeRight: 'slide-right',
-    slideUp: 'slide-up',
-    slideDown: 'slide-down',
-    slideLeft: 'slide-left',
-    slideRight: 'slide-right',
-    scaleIn: 'scale-in',
-    scale: 'scale',
-  }
-  return exact[name]
-}
+  fileState(STATE_KEY, () => ({
+    imports: new Set<string>(),
+    factories: new Map<string, string | undefined>(),
+  }))
 
 /**
  * Walk a builder chain — `kinetic('div').preset('fade').duration(200)` — through every call and member, handing each
  * `.preset(arg)` argument to `visit`. The chain is a member chain of arbitrary depth and `.preset()` is rarely last.
  */
-function visitPresetArgs(expr: AnyNode, visit: (arg: AnyNode) => string | undefined | 'continue'): string | undefined {
+function visitPresetArgs(
+  expr: AnyNode,
+  visit: (arg: AnyNode) => string | undefined | 'continue',
+): string | undefined {
   let cur: AnyNode | undefined = expr
   while (cur) {
     if (cur.type === 'CallExpression') {
@@ -98,23 +75,23 @@ function visitPresetArgs(expr: AnyNode, visit: (arg: AnyNode) => string | undefi
 }
 
 /** The native preset a chain names (a literal, or a mapped kinetic-presets import), if any. */
-function presetOfChain(expr: AnyNode, state: KineticState): string | undefined {
+function presetOfChain(expr: AnyNode, scan: ModuleScan): string | undefined {
   return visitPresetArgs(expr, (arg) => {
     if (arg?.type === 'Literal' && typeof arg.value === 'string') return arg.value as string
     if (arg?.type === 'Identifier') {
-      const exported = state.presetImports.get(arg.name as string)
-      if (exported !== undefined) return nativePresetForPackName(exported)
+      const imported = scan.constant(arg)
+      if (imported !== undefined) return imported.value
     }
     return 'continue'
   })
 }
 
 /** The kinetic-presets export a chain names, when it maps to nothing native. */
-function unmappedPackName(expr: AnyNode, state: KineticState): string | undefined {
+function unmappedPackName(expr: AnyNode, scan: ModuleScan): string | undefined {
   return visitPresetArgs(expr, (arg) => {
     if (arg?.type === 'Identifier') {
-      const exported = state.presetImports.get(arg.name as string)
-      if (exported !== undefined && nativePresetForPackName(exported) === undefined) return exported
+      const imported = scan.constant(arg)
+      if (imported !== undefined && imported.value === undefined) return imported.name
     }
     return 'continue'
   })
@@ -144,17 +121,6 @@ const scanKinetic: ModuleScanner = (scan) => {
   const state = stateOf(scan.fileState)
   for (const node of scan.body as readonly AnyNode[]) {
     if (node.type !== 'ImportDeclaration') continue
-    // Named presets from @pyreon/kinetic-presets are the DOCUMENTED way to use the factory (`kinetic('div').preset(fadeUp)`),
-    // so an identifier argument has to resolve or the package's own example does not animate.
-    if (node.source?.value === PRESETS_MODULE) {
-      for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
-        if (spec.type !== 'ImportSpecifier') continue
-        const local = spec.local?.name
-        const imported = spec.imported?.name
-        if (typeof local === 'string' && typeof imported === 'string') state.presetImports.set(local, imported)
-      }
-      continue
-    }
     if (node.source?.value !== KINETIC_PLUGIN_NAME) continue
     for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
       if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'kinetic') {
@@ -170,12 +136,12 @@ const scanKinetic: ModuleScanner = (scan) => {
       const init = d.init as AnyNode | undefined
       if (typeof name !== 'string' || !init) continue
       if (!basesOnKinetic(init, state)) continue
-      const preset = presetOfChain(init, state)
+      const preset = presetOfChain(init, scan)
       state.factories.set(name, preset)
       if (preset !== undefined) continue // a preset LOWERS — see the tag rewrite
       // An UNMAPPED named preset is a different failure from "no preset at all", and blaming the factory for it sends the
       // author to the wrong place: the chain is right, that particular animation just has no native analogue.
-      const packName = unmappedPackName(init, state)
+      const packName = unmappedPackName(init, scan)
       if (packName !== undefined) {
         scan.report(
           `\`${name}\`: the \`${packName}\` preset has no native analogue — iOS and Android know ` +
@@ -199,7 +165,10 @@ const scanKinetic: ModuleScanner = (scan) => {
   // A statement is skipped only when EVERY declarator in it is a factory.
   scan.skipTopLevel((node) => {
     const decls = topLevelDeclarators(node as AnyNode) as readonly AnyNode[]
-    return decls.length > 0 && decls.every((d) => typeof d.id?.name === 'string' && state.factories.has(d.id.name as string))
+    return (
+      decls.length > 0 &&
+      decls.every((d) => typeof d.id?.name === 'string' && state.factories.has(d.id.name as string))
+    )
   })
 }
 
@@ -208,16 +177,28 @@ const scanKinetic: ModuleScanner = (scan) => {
  * the on-mount harness even carries the SwiftUI stable-identity host that a `.task` / `.onAppear` needs, so the enter fires
  * once instead of thrashing per recomposition. Built per request: the parser and later passes own (and may edit) the IR.
  */
-const mountSignal = (): DeclIR => ({ kind: 'signal', name: MOUNT_FLAG, type: { kind: 'boolean' }, initial: { kind: 'literal', value: false } })
+const mountSignal = (): DeclIR => ({
+  kind: 'signal',
+  name: MOUNT_FLAG,
+  type: { kind: 'boolean' },
+  initial: { kind: 'literal', value: false },
+})
 const mountEffect = (): DeclIR => ({
   kind: 'on-mount',
-  body: [{ kind: 'assign', target: { kind: 'identifier', name: MOUNT_FLAG }, op: '=', value: { kind: 'literal', value: true } }],
+  body: [
+    {
+      kind: 'assign',
+      target: { kind: 'identifier', name: MOUNT_FLAG },
+      op: '=',
+      value: { kind: 'literal', value: true },
+    },
+  ],
 })
 
 export const kineticPlugin: CompilerPlugin = Object.freeze({
   name: KINETIC_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
-  modules: Object.freeze([KINETIC_PLUGIN_NAME, PRESETS_MODULE]),
+  apiVersion: 2,
+  modules: Object.freeze([KINETIC_PLUGIN_NAME]),
   scanModule: scanKinetic,
   rewriteElement: ((el, ctx) => {
     const state = stateOf(ctx.fileState)

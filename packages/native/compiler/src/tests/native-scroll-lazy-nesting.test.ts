@@ -20,7 +20,7 @@
 // author's intent is preserved.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, validateKotlin } from '../validate'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })

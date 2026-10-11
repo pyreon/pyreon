@@ -8,7 +8,7 @@ import { createCompiler, type CompilerPlugin } from '../index'
 let asked = 0
 const toy: CompilerPlugin = {
   name: '@acme/tint',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/tint'],
   scanModule: (scan) => {
     const tags = scan.fileState('@acme/tint:tags', () => new Set<string>())
@@ -66,6 +66,6 @@ describe('CompilerPlugin.rewriteElement', () => {
   })
 
   it('rejects a rewrite that is not a function', () => {
-    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 1, rewriteElement: 'x' })).toThrow(/rewriteElement must be a synchronous function/)
+    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 2, rewriteElement: 'x' })).toThrow(/rewriteElement must be a synchronous function/)
   })
 })

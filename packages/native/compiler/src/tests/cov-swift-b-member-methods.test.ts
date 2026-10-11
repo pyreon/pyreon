@@ -15,7 +15,7 @@
 // a named warning (method-shapes.ts).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 /** A component whose computeds are emitted as Swift expressions. */
 function sw(decls: string): string {

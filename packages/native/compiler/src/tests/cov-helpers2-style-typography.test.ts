@@ -11,7 +11,7 @@
 // the shared-source model exists to prevent.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function app(inner: string): string {
   return `import { Stack, Text } from '@pyreon/primitives'

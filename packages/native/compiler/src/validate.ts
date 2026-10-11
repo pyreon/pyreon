@@ -79,20 +79,22 @@ function processFailure(err: unknown, fallback: string): ValidationResult {
   const stdout = typeof e.stdout === 'string' ? e.stdout : (e.stdout?.toString('utf8') ?? '')
   const output = [stderr, stdout].filter(Boolean).join('\n').trim()
   const error = output || e.message || fallback
-  return isTransientProcessFailure(err) ? { ok: false, error, transient: true } : { ok: false, error }
+  return isTransientProcessFailure(err)
+    ? { ok: false, error, transient: true }
+    : { ok: false, error }
 }
 
 /**
  * Detect whether `swiftc` is on PATH. Cheap probe via `swiftc --version`.
- * Cached for the lifetime of the process — tool availability won't
- * change mid-run.
+ * Successful probes and deterministic absence are cached in-process;
+ * interrupted probes retry on the next call. Only successes persist to disk.
  */
 let _swiftcAvailable: boolean | undefined
 let _swiftcVersion = ''
 export function isSwiftcAvailable(): boolean {
   if (_swiftcAvailable !== undefined) return _swiftcAvailable
   const cached = readToolProbe('swiftc')
-  if (cached !== null) {
+  if (cached?.available === true) {
     _swiftcAvailable = cached.available
     _swiftcVersion = cached.version
     return _swiftcAvailable
@@ -107,12 +109,13 @@ export function isSwiftcAvailable(): boolean {
       timeout: PROBE_TIMEOUT_MS,
     }).trim()
     _swiftcAvailable = true
-  } catch {
-    _swiftcAvailable = false
+  } catch (err) {
+    _swiftcAvailable = isTransientProcessFailure(err) ? undefined : false
     _swiftcVersion = ''
   }
-  writeToolProbe('swiftc', { available: _swiftcAvailable, version: _swiftcVersion })
-  return _swiftcAvailable
+  if (_swiftcAvailable === true)
+    writeToolProbe('swiftc', { available: true, version: _swiftcVersion })
+  return _swiftcAvailable === true
 }
 
 /**
@@ -142,12 +145,8 @@ export function validateSwift(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable()) {
     return validateSwiftUncached(source)
   }
-  return withVerdictCache(
-    'swift-parse' satisfies ValidateKind,
-    swiftcVersion(),
-    '',
-    source,
-    () => validateSwiftUncached(source),
+  return withVerdictCache('swift-parse' satisfies ValidateKind, swiftcVersion(), '', source, () =>
+    validateSwiftUncached(source),
   )
 }
 
@@ -180,7 +179,11 @@ function validateSwiftUncached(source: string): ValidationResult {
   writeFileSync(filename, source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
+    execFileSync(
+      'swiftc',
+      ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename],
+      { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
+    )
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -parse failed with no output')
@@ -200,21 +203,20 @@ function validateSwiftUncached(source: string): ValidationResult {
  * Foundation but no SwiftUI). So the type-check gate can only run on
  * macOS (local dev + macOS CI runners), and must skip — not fail — on a
  * Linux box. Probed by type-checking a trivial `import SwiftUI` file.
- * Cached for the lifetime of the process.
+ * Successful probes and deterministic absence are cached in-process;
+ * interrupted probes retry on the next call. Only successes persist to disk.
  */
 let _swiftUIAvailable: boolean | undefined
+let _swiftUIProbeFailure: ValidationResult | undefined
 export function isSwiftUIAvailable(): boolean {
   if (_swiftUIAvailable !== undefined) return _swiftUIAvailable
-  if (!isSwiftcAvailable()) {
-    _swiftUIAvailable = false
-    return false
-  }
+  if (!isSwiftcAvailable()) return false
   // Disk-cached under a `variant` so it cannot collide with the plain
   // availability probe for the same binary. This probe compiles a real
   // `import SwiftUI` file, so it is far from free, and vitest's per-file
   // isolation runs it once per test file.
   const cachedUI = readToolProbe('swiftc', 'swiftui')
-  if (cachedUI !== null) {
+  if (cachedUI?.available === true) {
     _swiftUIAvailable = cachedUI.available
     return _swiftUIAvailable
   }
@@ -222,10 +224,19 @@ export function isSwiftUIAvailable(): boolean {
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
   try {
-    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
+    execFileSync(
+      'swiftc',
+      ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
+      { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS },
+    )
     _swiftUIAvailable = true
-  } catch {
-    _swiftUIAvailable = false
+    _swiftUIProbeFailure = undefined
+  } catch (err) {
+    _swiftUIProbeFailure = processFailure(
+      err,
+      '[Pyreon] SwiftUI capability probe failed. Retry with a working Swift toolchain.',
+    )
+    _swiftUIAvailable = _swiftUIProbeFailure.transient === true ? undefined : false
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -233,13 +244,15 @@ export function isSwiftUIAvailable(): boolean {
       // best-effort
     }
   }
-  writeToolProbe('swiftc', { available: _swiftUIAvailable, version: '' }, 'swiftui')
-  return _swiftUIAvailable
+  if (_swiftUIAvailable === true)
+    writeToolProbe('swiftc', { available: true, version: '' }, 'swiftui')
+  return _swiftUIAvailable === true
 }
 
 /** For testing: reset the cached SwiftUI-availability result. */
 export function _resetSwiftUICache(): void {
   _swiftUIAvailable = undefined
+  _swiftUIProbeFailure = undefined
 }
 
 /**
@@ -251,23 +264,21 @@ export function _resetSwiftUICache(): void {
  * `validateSwiftWithStubs` adds it. `Observation` ships in the Swift 5.9+ stdlib
  * on macOS AND the open-source Linux toolchain, so this probe is normally true
  * wherever `swiftc` exists — but we probe rather than assume, so an older/partial
- * toolchain SKIPS the @Observable fixtures instead of going red (the
- * Linux-parity-safe graceful degradation). Probed by type-checking a trivial
- * `@Observable` class WITH an explicit `import Observation`. Cached for the
- * process lifetime.
+ * toolchain can skip @Observable fixtures when validation is optional. Required
+ * validation fails instead. Probed by type-checking a trivial `@Observable`
+ * class with an explicit `import Observation`. Interrupted probes retry on the
+ * next call; only successful probes persist to disk.
  */
 let _observationAvailable: boolean | undefined
+let _observationProbeFailure: ValidationResult | undefined
 export function isObservationAvailable(): boolean {
   if (_observationAvailable !== undefined) return _observationAvailable
-  if (!isSwiftcAvailable()) {
-    _observationAvailable = false
-    return false
-  }
+  if (!isSwiftcAvailable()) return false
   // Disk-cached like the SwiftUI probe: this type-checks a real @Observable
   // class, once per isolated test file, to answer a question whose answer only
   // changes when the toolchain does.
   const cachedObs = readToolProbe('swiftc', 'observation')
-  if (cachedObs !== null) {
+  if (cachedObs?.available === true) {
     _observationAvailable = cachedObs.available
     return _observationAvailable
   }
@@ -279,10 +290,19 @@ export function isObservationAvailable(): boolean {
     'utf8',
   )
   try {
-    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
+    execFileSync(
+      'swiftc',
+      ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
+      { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS },
+    )
     _observationAvailable = true
-  } catch {
-    _observationAvailable = false
+    _observationProbeFailure = undefined
+  } catch (err) {
+    _observationProbeFailure = processFailure(
+      err,
+      '[Pyreon] Observation capability probe failed. Retry with a working Swift toolchain.',
+    )
+    _observationAvailable = _observationProbeFailure.transient === true ? undefined : false
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -290,13 +310,15 @@ export function isObservationAvailable(): boolean {
       // best-effort
     }
   }
-  writeToolProbe('swiftc', { available: _observationAvailable, version: '' }, 'observation')
-  return _observationAvailable
+  if (_observationAvailable === true)
+    writeToolProbe('swiftc', { available: true, version: '' }, 'observation')
+  return _observationAvailable === true
 }
 
 /** For testing: reset the cached Observation-availability result. */
 export function _resetObservationCache(): void {
   _observationAvailable = undefined
+  _observationProbeFailure = undefined
 }
 
 /**
@@ -342,13 +364,22 @@ export function _swiftTypecheckPreamble(source: string): string {
  * preamble, and therefore of the verdict-cache key.
  */
 function swiftNumberRuntime(source: string): string {
-  if (!source.includes('pyreonNumberString(') || source.includes('func pyreonNumberString')) return ''
-  const file = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'))
+  if (!source.includes('pyreonNumberString(') || source.includes('func pyreonNumberString'))
+    return ''
+  const file = readIfPresent(
+    join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'),
+  )
   return file === undefined ? '' : `${file.replace(/^import Foundation\n/m, '')}\n`
 }
 
 export function validateSwiftTypecheck(source: string): ValidationResult {
-  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable() || !isSwiftUIAvailable()) {
+  if (
+    process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' ||
+    !isSwiftcAvailable() ||
+    !isSwiftUIAvailable()
+  ) {
+    if (_swiftUIProbeFailure?.transient === true && process.env.PYREON_SKIP_NATIVE_VALIDATE !== '1')
+      return _swiftUIProbeFailure
     return validateSwiftTypecheckUncached(source)
   }
   return withVerdictCache(
@@ -375,6 +406,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
     return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
   }
   if (!isSwiftUIAvailable()) {
+    if (_swiftUIProbeFailure?.transient === true) return _swiftUIProbeFailure
     // SwiftUI SDK absent (non-macOS). The cheap ubuntu PR gate falls
     // here — it can't type-check against an Apple framework. NOT an
     // error: the macOS device workflow + local macOS dev run this gate.
@@ -387,7 +419,11 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
   writeFileSync(filename, preamble + source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
+    execFileSync(
+      'swiftc',
+      ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
+      { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
+    )
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck failed with no output')
@@ -408,7 +444,8 @@ const SWIFT_STUBBED_IMPORTS = /^import (?:SwiftUI|PyreonRuntime|PyreonRouter)\s*
 /** Names of top-level types the emitted source declares (struct/enum/class/actor/protocol). */
 function emitDeclaredTypeNames(source: string): Set<string> {
   const names = new Set<string>()
-  const re = /(?:^|\n)[ \t]*(?:(?:public|private|internal|fileprivate|final|open)\s+)*(?:struct|enum|class|actor|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)/g
+  const re =
+    /(?:^|\n)[ \t]*(?:(?:public|private|internal|fileprivate|final|open)\s+)*(?:struct|enum|class|actor|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)/g
   for (const m of source.matchAll(re)) names.add(m[1]!)
   return names
 }
@@ -507,7 +544,10 @@ function readIfPresent(p: string): string | undefined {
   }
 }
 
-export function validateSwiftWithStubs(source: string, options?: ValidateOptions): ValidationResult {
+export function validateSwiftWithStubs(
+  source: string,
+  options?: ValidateOptions,
+): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -543,15 +583,24 @@ export function validateSwiftWithStubs(source: string, options?: ValidateOptions
   // `import Observation` (on Apple platforms it is implicit + SwiftUI re-exports
   // it; the stub build strips SwiftUI, and a non-Apple toolchain needs the
   // explicit import). Guarantee the import when the emit uses the macro. If the
-  // toolchain lacks Observation, SKIP rather than fail — the Linux-parity-safe
-  // graceful degradation (an @Observable fixture stays effectively excluded on an
-  // Observation-less toolchain instead of going red). NOTE: macOS resolves
+  // toolchain lacks Observation, optional validation can skip; required validation
+  // fails. Interrupted probes always fail and retry on the next call. macOS resolves
   // `@Observable` WITHOUT the import (implicit), so this guarantee is load-bearing
   // only on a toolchain that strips the implicit Observation (the Linux CI gate) —
   // the local bisect target is the PyreonStoreProtocol/PyreonModelProtocol stubs.
   const usesObservable = /@Observable\b/.test(stripped)
   if (usesObservable && !isObservationAvailable()) {
-    return { ok: true, skipped: true, skipReason: 'Observation module unavailable on this toolchain' }
+    if (_observationProbeFailure?.transient === true) return _observationProbeFailure
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1')
+      return {
+        ok: false,
+        error: `[Pyreon] Observation is required for this source. Install a Swift 5.9+ toolchain with Observation and retry native validation. ${_observationProbeFailure?.error ?? ''}`,
+      }
+    return {
+      ok: true,
+      skipped: true,
+      skipReason: 'Observation module unavailable on this toolchain',
+    }
   }
   const observation =
     usesObservable && !/^import Observation\s*$/m.test(stripped) ? 'import Observation\n' : ''
@@ -561,7 +610,8 @@ export function validateSwiftWithStubs(source: string, options?: ValidateOptions
   // build — the local module type wins for bare references. Our single-module
   // concat would instead see it as an "invalid redeclaration". Drop the stub's
   // copy of any type the emit declares so the concat behaves like real shadowing.
-  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, stripped) + swiftAugmentation(options, stripped)
+  const stub =
+    shadowStubDeclarations(SWIFT_UI_STUBS, stripped) + swiftAugmentation(options, stripped)
 
   // Everything above transformed the source; `stub` and `inputText` ARE the
   // bytes swiftc will see. Keying on them means every transform — import
@@ -591,11 +641,15 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
     // Keep Clang/Swift modules beside the disposable inputs. Sandboxed local
     // runs and hermetic CI workers may not be allowed to write the toolchain's
     // default user cache; typechecking must not depend on that ambient path.
-    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, inputPath], {
-      stdio: 'pipe',
-      encoding: 'utf8',
-      timeout: COMPILE_TIMEOUT_MS,
-    })
+    execFileSync(
+      'swiftc',
+      ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, inputPath],
+      {
+        stdio: 'pipe',
+        encoding: 'utf8',
+        timeout: COMPILE_TIMEOUT_MS,
+      },
+    )
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck (stubs) failed with no output')
@@ -622,7 +676,10 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
  * written as separate files, not concatenated), so a file-private helper two
  * modules both declare is correctly NOT a collision.
  */
-export function validateSwiftFilesWithStubs(sources: readonly string[], options?: ValidateOptions): ValidationResult {
+export function validateSwiftFilesWithStubs(
+  sources: readonly string[],
+  options?: ValidateOptions,
+): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -638,12 +695,23 @@ export function validateSwiftFilesWithStubs(sources: readonly string[], options?
   const stripped = sources.map((src) => src.replace(SWIFT_STUBBED_IMPORTS, ''))
   const usesObservable = stripped.some((s) => /@Observable\b/.test(s))
   if (usesObservable && !isObservationAvailable()) {
-    return { ok: true, skipped: true, skipReason: 'Observation module unavailable on this toolchain' }
+    if (_observationProbeFailure?.transient === true) return _observationProbeFailure
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1')
+      return {
+        ok: false,
+        error: `[Pyreon] Observation is required for this source. Install a Swift 5.9+ toolchain with Observation and retry native validation. ${_observationProbeFailure?.error ?? ''}`,
+      }
+    return {
+      ok: true,
+      skipped: true,
+      skipReason: 'Observation module unavailable on this toolchain',
+    }
   }
   const all = stripped.join('\n')
   const stub = shadowStubDeclarations(SWIFT_UI_STUBS, all) + swiftAugmentation(options, all)
   const inputs = stripped.map((s) => {
-    const observation = /@Observable\b/.test(s) && !/^import Observation\s*$/m.test(s) ? 'import Observation\n' : ''
+    const observation =
+      /@Observable\b/.test(s) && !/^import Observation\s*$/m.test(s) ? 'import Observation\n' : ''
     return _swiftInputPrelude(s, observation) + s
   })
   return withVerdictCache(
@@ -667,11 +735,15 @@ function compileSwiftFiles(stub: string, inputs: readonly string[]): ValidationR
     return p
   })
   try {
-    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, ...paths], {
-      stdio: 'pipe',
-      encoding: 'utf8',
-      timeout: COMPILE_TIMEOUT_MS,
-    })
+    execFileSync(
+      'swiftc',
+      ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, ...paths],
+      {
+        stdio: 'pipe',
+        encoding: 'utf8',
+        timeout: COMPILE_TIMEOUT_MS,
+      },
+    )
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck (stubs, multi-file) failed with no output')
@@ -686,14 +758,15 @@ function compileSwiftFiles(stub: string, inputs: readonly string[]): ValidationR
 
 /**
  * Detect whether `kotlinc` is on PATH. Cheap probe via `kotlinc -version`.
- * Cached for the lifetime of the process.
+ * Successful probes and deterministic absence are cached in-process;
+ * interrupted probes retry on the next call. Only successes persist to disk.
  */
 let _kotlincAvailable: boolean | undefined
 let _kotlincVersion = ''
 export function isKotlincAvailable(): boolean {
   if (_kotlincAvailable !== undefined) return _kotlincAvailable
   const cached = readToolProbe('kotlinc')
-  if (cached !== null) {
+  if (cached?.available === true) {
     _kotlincAvailable = cached.available
     _kotlincVersion = cached.version
     return _kotlincAvailable
@@ -717,12 +790,13 @@ export function isKotlincAvailable(): boolean {
       _kotlincVersion = stderr.trim()
       _kotlincAvailable = true
     } else {
-      _kotlincAvailable = false
+      _kotlincAvailable = isTransientProcessFailure(err) ? undefined : false
       _kotlincVersion = ''
     }
   }
-  writeToolProbe('kotlinc', { available: _kotlincAvailable, version: _kotlincVersion })
-  return _kotlincAvailable
+  if (_kotlincAvailable === true)
+    writeToolProbe('kotlinc', { available: true, version: _kotlincVersion })
+  return _kotlincAvailable === true
 }
 
 /**
@@ -773,7 +847,10 @@ export function validateKotlin(source: string, options?: ValidateOptions): Valid
   )
 }
 
-function validateKotlinUncached(source: string, options: ValidateOptions | undefined): ValidationResult {
+function validateKotlinUncached(
+  source: string,
+  options: ValidateOptions | undefined,
+): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }
@@ -793,9 +870,17 @@ function validateKotlinUncached(source: string, options: ValidateOptions | undef
   // this request), and the per-check `kotlinc` below answers instead — the
   // verdict is the same either way; only the cost differs.
   const augmentation = kotlinAugmentation(options, source)
-  const warm = compileKotlinViaDaemon(source, KOTLIN_COMPOSE_STUBS, augmentation, kotlincVersion(), COMPILE_TIMEOUT_MS)
+  const warm = compileKotlinViaDaemon(
+    source,
+    KOTLIN_COMPOSE_STUBS,
+    augmentation,
+    kotlincVersion(),
+    COMPILE_TIMEOUT_MS,
+  )
   if (warm) {
-    return warm.code === 0 ? { ok: true } : { ok: false, error: warm.output.trim() || 'kotlinc failed with no output' }
+    return warm.code === 0
+      ? { ok: true }
+      : { ok: false, error: warm.output.trim() || 'kotlinc failed with no output' }
   }
 
   // Set up a temp directory containing the stubs + the input. kotlinc
@@ -829,7 +914,6 @@ function validateKotlinUncached(source: string, options: ValidateOptions | undef
   }
 }
 
-
 /**
  * Compile SEVERAL emitted files together with `kotlinc`, against the same
  * stubs `validateKotlin` uses — the Kotlin twin of
@@ -838,7 +922,10 @@ function validateKotlinUncached(source: string, options: ValidateOptions | undef
  * `Redeclaration` no per-file compile can see. Written as separate files, so
  * a `private` top-level helper stays file-scoped exactly as in a real build.
  */
-export function validateKotlinFiles(sources: readonly string[], options?: ValidateOptions): ValidationResult {
+export function validateKotlinFiles(
+  sources: readonly string[],
+  options?: ValidateOptions,
+): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
   }

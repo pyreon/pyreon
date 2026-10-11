@@ -315,6 +315,23 @@ describe('diagnoseError — 0.51 `<Chart options>` against the 0.52 engine', () 
   })
 })
 
+describe('signal method called on its value', () => {
+  it('explains the accidental extra signal call', () => {
+    const result = diagnoseError('TypeError: count(...).set is not a function')
+    expect(result?.cause).toContain('signal method')
+    expect(result?.fix).toContain('count.set(...)')
+    expect(result?.fix).toContain('native binary')
+  })
+})
+
+describe('compiled named-function bindings', () => {
+  it('explains an extra call inserted into a function declaration', () => {
+    const result = diagnoseError('Expected { but found ( in function count()() { return count }')
+    expect(result?.cause).toContain('outer signal')
+    expect(result?.fix).toContain('native binary')
+  })
+})
+
 describe('Plain Mode signal-bridge warnings are diagnosable', () => {
   it.each([
     '[plain] signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.',

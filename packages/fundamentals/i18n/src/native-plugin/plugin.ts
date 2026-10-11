@@ -9,7 +9,6 @@
 // namespaces are out of scope; top-level dotted keys are kept verbatim (`{ 'section.title': 'Report' }`).
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
   unwrapTypeLayers,
   type CallRecognizer,
@@ -192,7 +191,7 @@ const i18nReceiver: ReceiverLowering = {
  */
 export const i18nPlugin: CompilerPlugin = {
   name: I18N_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/i18n'],
   calls: { createI18n: recognizeI18n },
   componentOnlyCalls: ['createI18n'],

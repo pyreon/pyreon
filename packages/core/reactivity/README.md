@@ -14,8 +14,16 @@ bun add @pyreon/reactivity
 
 ```ts
 import {
-  signal, computed, effect, batch, onCleanup, watch, untrack,
-  createStore, createResource, effectScope,
+  signal,
+  computed,
+  effect,
+  batch,
+  onCleanup,
+  watch,
+  untrack,
+  createStore,
+  createResource,
+  effectScope,
 } from '@pyreon/reactivity'
 
 const count = signal(0)
@@ -31,7 +39,10 @@ batch(() => {
   count.set(2) // subscribers fire once, with doubled = 4
 })
 
-watch(() => count(), (next, prev) => console.log(`${prev} → ${next}`))
+watch(
+  () => count(),
+  (next, prev) => console.log(`${prev} → ${next}`),
+)
 
 const store = createStore({ todos: [{ text: 'Learn Pyreon', done: false }] })
 store.todos[0].done = true // fine-grained update, no immer
@@ -43,10 +54,10 @@ dispose()
 
 ```ts
 const x = signal(0)
-x()           // read (subscribes if inside a tracked scope)
-x.set(1)      // write
-x.update(n => n + 1)
-x.peek()      // read without subscribing
+x() // read (subscribes if inside a tracked scope)
+x.set(1) // write
+x.update((n) => n + 1)
+x.peek() // read without subscribing
 ```
 
 Signals are **callable functions**, not `.value` getters (Vue) and not `[state, setState]` tuples (React). Calling the signal as a function is the read; `signal(5)` does NOT set the value — it reads and discards the argument. Dev mode warns; the `@pyreon/lint` rule `signal-write-as-call` flags it statically.
@@ -93,12 +104,12 @@ batch(() => {
 
 ```ts
 const store = createStore({ count: 0, todos: [{ text: 'a', done: false }] })
-store.count++              // notifies
+store.count++ // notifies
 store.todos[0].done = true // deep — notifies
 
 const shallow = shallowReactive({ user: { name: 'a' } })
 shallow.user = { name: 'b' } // notifies
-shallow.user.name = 'c'      // does NOT notify (shallow)
+shallow.user.name = 'c' // does NOT notify (shallow)
 
 const raw = markRaw(thirdPartyClassInstance) // skip proxy
 ```
@@ -110,14 +121,17 @@ const raw = markRaw(thirdPartyClassInstance) // skip proxy
 ## Resources
 
 ```ts
-const user = createResource(() => userId(), async (id) => {
-  const r = await fetch(`/api/users/${id}`)
-  return r.json()
-})
+const user = createResource(
+  () => userId(),
+  async (id) => {
+    const r = await fetch(`/api/users/${id}`)
+    return r.json()
+  },
+)
 
-user.data()      // T | undefined
-user.loading()   // boolean
-user.error()     // Error | undefined
+user.data() // T | undefined
+user.loading() // boolean
+user.error() // Error | undefined
 user.refetch()
 ```
 
@@ -166,7 +180,9 @@ The `@pyreon/compiler` auto-promotes the natural JSX shape `class={() => isSelec
 ```ts
 import { cell } from '@pyreon/reactivity'
 const c = cell(0)
-c.get(); c.set(1); c.subscribe(listener)
+c.get()
+c.set(1)
+c.subscribe(listener)
 ```
 
 `cell()` is a class-based primitive with a single-listener fast path and one allocation per cell. It is **not** callable and **does not** participate in effect tracking — use it only for cross-cutting state where the signal-tracking overhead would be wasteful.
@@ -181,11 +197,11 @@ const base = signal(load())
 const stored = wrapSignal(base, {
   set: (next) => {
     localStorage.setItem('k', JSON.stringify(next)) // side effect
-    base.set(next)                                   // then write through
+    base.set(next) // then write through
   },
 })
-stored()            // read (tracks)
-stored.set(value)   // runs your custom set: side effect, then base.set
+stored() // read (tracks)
+stored.set(value) // runs your custom set: side effect, then base.set
 ```
 
 `wrapSignal(base, { set, update? })` is the canonical primitive for "a signal whose writes carry a side effect" (persistence, cross-tab sync, patch emission, validation). It wraps a base `signal()` with a callable whose reads — `()`, `.peek`, `.subscribe`, `.direct` — AND the internal `_v` field delegate to `base`, while `.set` runs your custom handler (do the side effect, then call `base.set(value)` to commit). The `_v` forwarding is load-bearing: the compiler's `_bindText` fast path reads `source._v` directly, so a hand-rolled facade missing it binds `''` forever — the exact bug class this primitive retires. `update` is optional (defaults to `set(fn(peek()))`). `@pyreon/storage` (all 5 backends) and `@pyreon/state-tree` were migrated onto it; the `pyreon/storage-signal-v-forwarding` lint rule exists precisely because this primitive was missing before.
@@ -195,7 +211,13 @@ stored.set(value)   // runs your custom set: side effect, then base.set
 Type-only exports — zero runtime bytes:
 
 ```ts
-import { signal, type SignalValue, type ComputedValue, type MaybeAccessor, type AccessorReturn } from '@pyreon/reactivity'
+import {
+  signal,
+  type SignalValue,
+  type ComputedValue,
+  type MaybeAccessor,
+  type AccessorReturn,
+} from '@pyreon/reactivity'
 
 const user = signal({ id: 1, name: 'Ada' })
 type User = SignalValue<typeof user> // { id: number; name: string }
@@ -211,14 +233,20 @@ type Resolved = AccessorReturn<MaybeAccessor<string>> // string
 ## Debugging
 
 ```ts
-import { setErrorHandler, inspectSignal, onSignalUpdate, why, getReactiveTrace } from '@pyreon/reactivity'
+import {
+  setErrorHandler,
+  inspectSignal,
+  onSignalUpdate,
+  why,
+  getReactiveTrace,
+} from '@pyreon/reactivity'
 
 setErrorHandler((err, source) => reportToSentry(err, { tag: source }))
 
 const count = signal(0, { name: 'count' })
 onSignalUpdate(count, (next, prev) => console.log('count', prev, '→', next))
 inspectSignal(count) // { name, value, subscribers: number }
-why(count)           // print dependency graph for this signal
+why(count) // print dependency graph for this signal
 ```
 
 `activate/deactivate/getReactiveGraph/getReactiveFires` form the **opt-in** bridge consumed by the Pyreon devtools — zero cost until activated, gated by `process.env.NODE_ENV !== 'production'`, tree-shaken in production.
@@ -230,3 +258,11 @@ Full docs: [pyreon.dev/docs/reactivity](https://pyreon.dev/docs/reactivity) (or 
 ## License
 
 MIT
+
+## Native compiler plugin
+
+This package owns its native compilation frontend at `@pyreon/reactivity/native-plugin`. The native CLI discovers that tooling entry through `pyreon.native.plugin` when the application imports the package. Web runtime imports do not load compiler tooling, and the compiler is an optional peer.
+
+For programmatic compilation, pass the entry's default export to `createCompiler({ plugins: [plugin] })`. Load the owning plugins for every package the source uses. The compiler supplies generic state, JSX, theme tokens and native style operations; this package supplies its import vocabulary and recognition rules.
+
+Plain Mode imports from `@pyreon/core/plain` also activate this plugin: that compiler pass injects signal/computed imports. Discovery follows installed runtime dependencies and peers, including reactivity installed as core's peer.

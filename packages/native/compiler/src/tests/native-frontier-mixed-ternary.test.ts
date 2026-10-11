@@ -21,7 +21,7 @@
 // (`Double(n)` / `(n).toDouble()`) so a NON-literal Int branch compiles too.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

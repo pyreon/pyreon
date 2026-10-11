@@ -2,16 +2,25 @@
   "name": "@pyreon/form",
   "version": "0.52.0",
   "description": "Signal-based form management for Pyreon",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/form#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/form"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -27,17 +36,16 @@
       "bun": "./src/devtools.ts",
       "import": "./lib/devtools.js",
       "types": "./lib/types/devtools.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "README.md",
-    "LICENSE",
-    "native/swift",
-    "native/kotlin"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -47,13 +55,13 @@
     "bench": "NODE_ENV=production bun bench/form-bench.ts",
     "bench:rerender": "NODE_ENV=production bun bench/form-rerender-bench.ts"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+  "dependencies": {
+    "@pyreon/validation": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
@@ -65,16 +73,24 @@
     "react-dom": "^19.3.0",
     "react-hook-form": "^7.89.0"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   },
-  "dependencies": {
-    "@pyreon/validation": "workspace:^"
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
   },
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/form"
+      ]
     }
   }
 }

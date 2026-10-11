@@ -15,7 +15,7 @@ const NAMES = '@acme/ping:names'
 
 const pingPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/ping',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/ping'],
   scanModule(scan) {
     const names = scan.fileState<Set<string>>(NAMES, () => new Set())
@@ -83,7 +83,7 @@ describe.each(['swift', 'kotlin'] as const)('callExprs (%s)', (target) => {
   it('a decline falls through to the next plugin, and with no plugin loaded the call is verbatim', () => {
     const second: CompilerPlugin = {
       name: '@acme/ping-b',
-      apiVersion: 1,
+      apiVersion: 2,
       callExprs: () => ({ type: 'pingB' }),
       exprs: { pingB: { swift: () => 'B.swift()', kotlin: () => 'B.kotlin()' } },
     }
@@ -97,7 +97,7 @@ describe.each(['swift', 'kotlin'] as const)('callExprs (%s)', (target) => {
 
 describe('callExprs shape', () => {
   it('must be a synchronous function, and an ext-expr type needs an emitter', () => {
-    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 1, callExprs: 1 })).toThrow('callExprs must be a synchronous function')
+    expect(() => assertPluginShape({ name: '@acme/bad', apiVersion: 2, callExprs: 1 })).toThrow('callExprs must be a synchronous function')
     const noEmitter = pingPlugin({ exprs: {} })
     expect(() => createCompiler({ plugins: [noEmitter] }).transform(app(`p('x')`), { target: 'swift' })).toThrow('declares no `exprs.ping` emitter')
   })

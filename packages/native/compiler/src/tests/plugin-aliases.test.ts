@@ -6,7 +6,7 @@ import type { ComponentIR, ExprIR } from '../types'
 function aliasCompiler(alias: ExprIR = { kind: 'literal', value: 21 }) {
   let components: ComponentIR[] = []
   const plugin: CompilerPlugin = {
-    name: '@acme/alias', apiVersion: 1,
+    name: '@acme/alias', apiVersion: 2,
     declCalls: (site) => {
       const callee = site.callee as { type: string; name?: string }
       return callee.type === 'Identifier' && callee.name === 'createAlias' ? { alias } : undefined
@@ -71,7 +71,7 @@ describe('file-scanned alias factories', () => {
     it(`registers before components and keeps aliases local on ${target}`, () => {
       let components: ComponentIR[] = []
       const compiler = createCompiler({ discovered: [{
-        name: '@acme/factory', apiVersion: 1,
+        name: '@acme/factory', apiVersion: 2,
         scanModule(scan) {
           scan.aliasFactory('useExample', { kind: 'literal', value: 23 }, 'Use an identifier binding for useExample')
           scan.skipTopLevel(node => (node as { type: string }).type === 'EmptyStatement')
@@ -92,7 +92,7 @@ describe('file-scanned alias factories', () => {
   it('names the owning scanner when a factory expression is cyclic', () => {
     const alias = { kind: 'literal', value: 1 } as unknown as Record<string, unknown>
     alias.cycle = alias
-    const compiler = createCompiler({ discovered: [{ name: '@acme/factory', apiVersion: 1,
+    const compiler = createCompiler({ discovered: [{ name: '@acme/factory', apiVersion: 2,
       scanModule(scan) { scan.aliasFactory('useExample', alias as unknown as ExprIR) },
     }] })
     expect(() => compiler.transform('export function App() { return <Text>Ready</Text> }', { target: 'swift' })).toThrow(/factory.*scanModule.*cloneable/)

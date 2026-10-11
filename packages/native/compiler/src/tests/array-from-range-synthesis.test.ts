@@ -12,7 +12,7 @@
 // toolchains — the wrong-transform-masks class, again.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `import { signal } from '@pyreon/reactivity'
 export function App() {

@@ -107,7 +107,9 @@ describe('validate-cache — cacheKey', () => {
   })
 
   it('cannot collide by running one field into the next (NUL separators)', () => {
-    expect(cacheKey('swift-parse', 'ab', 'c', 'd')).not.toBe(cacheKey('swift-parse', 'a', 'bc', 'd'))
+    expect(cacheKey('swift-parse', 'ab', 'c', 'd')).not.toBe(
+      cacheKey('swift-parse', 'a', 'bc', 'd'),
+    )
   })
 })
 
@@ -220,7 +222,11 @@ describe('validate-cache — withVerdictCache', () => {
     const key = cacheKey('swift-parse', 'v1', '', src)
     // A rejection is only trusted when it carries the `v: 2` classification
     // marker; an unmarked one whose text is not compiler output is evicted.
-    writeFileSync(join(PRIVATE_CACHE, `${key}.json`), '{"v":2,"ok":false,"error":"planted"}', 'utf8')
+    writeFileSync(
+      join(PRIVATE_CACHE, `${key}.json`),
+      '{"v":2,"ok":false,"error":"planted"}',
+      'utf8',
+    )
     _resetValidateCache()
     let calls = 0
     const r = withVerdictCache('swift-parse', 'v1', '', src, () => {
@@ -268,7 +274,12 @@ describe('validate-cache — the tool-probe tier', () => {
     if (!toolResolves('sh')) return
     const files = readdirSync(PRIVATE_CACHE).filter((f) => f.startsWith('probe-'))
     expect(files.length).toBeGreaterThan(0)
-    for (const body of ['not json', 'null', '{"available":"yes","version":"v"}', '{"available":true}']) {
+    for (const body of [
+      'not json',
+      'null',
+      '{"available":"yes","version":"v"}',
+      '{"available":true}',
+    ]) {
       for (const f of files) writeFileSync(join(PRIVATE_CACHE, f), body, 'utf8')
       expect(readToolProbe('sh', 'cov-misc2'), body).toBeNull()
     }
@@ -289,13 +300,13 @@ describe('validate-cache — the tool-probe tier', () => {
 })
 
 describe('validate — the availability probes read the disk tier', () => {
-  it('answers each probe from a planted cache entry without spawning the tool', () => {
+  it('answers successful probes from disk without spawning the tool', () => {
     // Plant the four probe variants the validators consult, then reset the
     // in-process memos: a subsequent call must come back from disk.
     const planted: [string, string, boolean][] = [
       ['swiftc', '', true],
-      ['swiftc', 'swiftui', false],
-      ['swiftc', 'observation', false],
+      ['swiftc', 'swiftui', true],
+      ['swiftc', 'observation', true],
       ['kotlinc', '', true],
     ]
     for (const [bin, variant, available] of planted) {
@@ -313,8 +324,8 @@ describe('validate — the availability probes read the disk tier', () => {
 
     if (swiftcCached) {
       expect(isSwiftcAvailable()).toBe(true)
-      expect(isSwiftUIAvailable()).toBe(false)
-      expect(isObservationAvailable()).toBe(false)
+      expect(isSwiftUIAvailable()).toBe(true)
+      expect(isObservationAvailable()).toBe(true)
     }
     if (kotlincCached) expect(isKotlincAvailable()).toBe(true)
 

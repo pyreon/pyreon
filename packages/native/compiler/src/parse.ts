@@ -14,16 +14,47 @@ import {
   dynamicKeyText,
   unwrapTypeLayers,
 } from './plugin-ast'
-import { findPropsTypeResolver, findService, functionIrName, pluginItemFields, pluginItemScopes, findUnloweredModule, hookClaimsSource, isElementLoweringTag, pluginExprReduce } from './registry-lookup'
+import {
+  findPropsTypeResolver,
+  findService,
+  functionIrName,
+  pluginItemFields,
+  pluginItemScopes,
+  findUnloweredModule,
+  hookClaimsSource,
+  isElementLoweringTag,
+  pluginExprReduce,
+} from './registry-lookup'
+import { createImportReferenceQuery } from './import-reference'
 import type { UnloweredModule } from './unlowered-modules'
-import { isJson, stampExtDecl, type AstNode, type DeclCallSite, type DeclVerdict, type ParseContext } from './call-lowering'
-import { stampExtExpr, stampModuleItem, type CallExprSite, type ExtItemSpec, type MethodCallSite, type ModuleParseContext } from './module-items'
+import {
+  isJson,
+  stampExtDecl,
+  type AstNode,
+  type DeclConstructSite,
+  type DeclVerdict,
+  type ParseContext,
+} from './call-lowering'
+import {
+  stampExtExpr,
+  stampModuleItem,
+  type CallExprSite,
+  type ExtItemSpec,
+  type MethodCallSite,
+  type ModuleParseContext,
+} from './module-items'
 import type { JsxRewriteContext, ModuleScan } from './module-scan'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
-  typeIsOptional, buildInferenceCtx, buildModuleConstTypes, inferReturnType, inferType, moduleConstType, type InferenceCtx } from './infer-type'
-import { parseHotkeyCombo } from './hotkey-combo'
+  typeIsOptional,
+  buildInferenceCtx,
+  buildModuleConstTypes,
+  inferReturnType,
+  inferType,
+  moduleConstType,
+  type InferenceCtx,
+} from './infer-type'
 import { canonicalizeHookBindings } from './hook-binding'
 import type {
   AttrIR,
@@ -34,31 +65,18 @@ import type {
   ExprIR,
   ModuleDeclIR,
   ParseResult,
-  RocketstyleComponentIR,
   RouteIR,
   JsxElementIR,
   StatementIR,
   StructIR,
-  AttrsComponentIR,
-  StyledComponentIR,
   TypeIR,
   ExtModuleItem,
 } from './types'
-import { isCanonicalPrimitive } from './canonical-primitives'
-import { parseRocketstyleDefn } from './rocketstyle-native'
-import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
 import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
-import {
-  DEFAULT_THEME,
-  mergeTheme,
-  parseThemeDefinition,
-  resolveThemeToken,
-  type ThemeTable,
-} from './theme-native'
-import {
-  typeShapeKey, lowerRouteParams } from './expr-utils'
+import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, type ThemeTable } from './theme-native'
+import { typeShapeKey, lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -183,6 +201,7 @@ interface ParseCtx {
   pluginState: Map<string, unknown>
   /** Predicates plugins registered (`ModuleScan.skipTopLevel`): a top-level node one of them accepts is metadata and is not parsed. */
   skipTopLevel: ((node: AnyNode) => boolean)[]
+  moduleBindings: Map<string, ReturnType<ModuleParseContext['binding']>>
   /** `module#name` (module `*`: any) imports a plugin marked as consumed by lowering (`ModuleScan.lowered`). */
   loweredImports: Set<string>
   /**
@@ -193,7 +212,6 @@ interface ParseCtx {
   /** Items plugins synthesized outside a declaration (`ModuleParseContext.addItem`), appended after the declaration-level ones. */
   lateModuleItems: ExtModuleItem[]
 }
-
 
 /**
  * Nesting depth while parsing an object literal's field VALUES. Used only to
@@ -286,6 +304,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     theme: DEFAULT_THEME,
     pluginState: new Map(),
     skipTopLevel: [],
+    moduleBindings: new Map(),
     loweredImports: new Set(),
     responseDecodes: [],
     lateModuleItems: [],
@@ -317,7 +336,45 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Resolve hook BINDINGS before any recognizer reads a callee name: an aliased
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
-  ctx.warnings.push(...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource))
+  ctx.warnings.push(
+    ...canonicalizeHookBindings(
+      ast.program as AnyNode,
+      // Core operation spellings remain valid in unimported snippets. An imported
+      // or locally declared function with that spelling still needs its owner's
+      // mapping; otherwise the generic operation would claim unrelated code.
+      new Set(['signal', 'computed', ...nativeLoweredHooks()]),
+      (hook, module) =>
+        hook === 'signal' || hook === 'computed'
+          ? hookClaimsSource(hook, module)
+          : module.startsWith('@pyreon/') || hookClaimsSource(hook, module),
+    ),
+  )
+  for (const node of ast.program.body as AnyNode[]) {
+    if (node.type === 'ImportDeclaration') {
+      for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+        if (typeof spec.local?.name !== 'string') continue
+        const imported =
+          spec.type === 'ImportDefaultSpecifier'
+            ? 'default'
+            : spec.type === 'ImportNamespaceSpecifier'
+              ? '*'
+              : (spec.imported?.name ?? spec.imported?.value)
+        if (typeof imported === 'string')
+          ctx.moduleBindings.set(spec.local.name as string, {
+            kind: 'import',
+            module: node.source.value as string,
+            name: imported,
+          })
+      }
+    } else {
+      const declaration = node.type === 'ExportNamedDeclaration' ? node.declaration : node
+      if (typeof declaration?.id?.name === 'string')
+        ctx.moduleBindings.set(declaration.id.name as string, { kind: 'local' })
+      for (const decl of topLevelDeclarators(node as AstNode) as readonly AnyNode[])
+        if (typeof decl.id?.name === 'string')
+          ctx.moduleBindings.set(decl.id.name as string, { kind: 'local' })
+    }
+  }
   // Pre-pass: module-scope string constants, so a hook that bakes a string can
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
@@ -328,7 +385,10 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue
     for (const declarator of (declaration.declarations as AnyNode[] | undefined) ?? []) {
       if (declarator.id?.type === 'Identifier' && declarator.init) {
-        ctx.moduleStaticExprs.set(declarator.id.name as string, unwrapTypeLayers(declarator.init as AnyNode))
+        ctx.moduleStaticExprs.set(
+          declarator.id.name as string,
+          unwrapTypeLayers(declarator.init as AnyNode),
+        )
       }
     }
   }
@@ -354,7 +414,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
   // Pre-pass: map alias-tag local names to their import source, so the emit's
-  // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
+  // Registered element lowerings intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
   const aliasImports = collectAliasImports(ast.program.body as AnyNode[])
   // Pre-pass: parse the app's `defineTheme({ … })` so the styler + rocketstyle
@@ -371,9 +431,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const structs: StructIR[] = []
   const moduleDecls: ModuleDeclIR[] = []
   const moduleItems: ExtModuleItem[] = []
-  const styledComponents: StyledComponentIR[] = []
-  const rocketstyleComponents: RocketstyleComponentIR[] = []
-  const attrsComponents: AttrsComponentIR[] = []
   structs.push(...collectLiftedPropsStructs(ast.program.body as AnyNode[], declaredTypeNames, ctx))
 
   for (const node of ast.program.body as AnyNode[]) {
@@ -412,26 +469,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     const claimedItem = tryPluginTopLevel(node, ctx)
     if (claimedItem) {
       moduleItems.push(claimedItem)
-      continue
-    }
-    // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
-    // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
-    // catch-alls so the styled const isn't mis-parsed as a broken module binding.
-    const sc = tryStyledDefnFromTopLevel(node, ctx)
-    if (sc) {
-      styledComponents.push(sc)
-      continue
-    }
-    // rocketstyle()({component: Prim}).theme().states()… → the rocketstyle-native
-    // frontend resolves it at use-sites. Collected before the catch-alls.
-    const rc = tryRocketstyleDefnFromTopLevel(node, ctx)
-    if (rc) {
-      rocketstyleComponents.push(rc)
-      continue
-    }
-    const ac = tryAttrsDefnFromTopLevel(node, ctx)
-    if (ac) {
-      attrsComponents.push(ac)
       continue
     }
     // A `defineTheme({ … })` declaration is a COMPILE-TIME resolution source
@@ -498,7 +535,15 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // File-scope signatures must settle before component signal/struct inference consumes them.
   refinePluginItemMembers(moduleItems, structs, helperReturnSeed, moduleConsts)
   const componentCtx = (c: ComponentIR): InferenceCtx =>
-    buildInferenceCtx(c.decls, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts, moduleItems)
+    buildInferenceCtx(
+      c.decls,
+      structs,
+      c.props,
+      c.propsParamName,
+      helperReturnSeed,
+      moduleConsts,
+      moduleItems,
+    )
 
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
@@ -550,13 +595,17 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // before refineHelperReturns, because a helper's return type is inferred over
   // its (possibly widened) parameter; a post-parse `transformIR` pass would see
   // the return already inferred over the Int one.
-  for (const { refine } of activeRegistries().parseRefinements) refine({ components, helperFns: ctx.helperFns })
+  for (const { refine } of activeRegistries().parseRefinements)
+    refine({ components, helperFns: ctx.helperFns })
 
   const defaultCtx = buildInferenceCtx([], structs, [], undefined, helperReturnSeed, moduleConsts)
   refineFunctionDefaults(ctx.helperFns, defaultCtx)
   refinePluginItemMembers(moduleItems, structs, helperReturnSeed, moduleConsts)
   for (const component of components) {
-    refineFunctionDefaults(component.decls.filter((decl) => decl.kind === 'function'), componentCtx(component))
+    refineFunctionDefaults(
+      component.decls.filter((decl) => decl.kind === 'function'),
+      componentCtx(component),
+    )
   }
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
   // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
@@ -566,6 +615,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
+  for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
 
   // Items plugins synthesized outside a declaration, then each plugin's last pass over the whole list.
   moduleItems.push(...ctx.lateModuleItems)
@@ -580,9 +630,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     structs,
     moduleDecls,
     moduleItems,
-    styledComponents,
-    rocketstyleComponents,
-    attrsComponents,
     aliasImports,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
@@ -607,7 +654,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
 function isThemeDefinitionNode(node: AnyNode): boolean {
   const decl = node?.type === 'ExportNamedDeclaration' ? node.declaration : node
   if (!decl || decl.type !== 'VariableDeclaration') return false
-  return ((decl.declarations as AnyNode[]) ?? []).some((d) => parseThemeDefinition(d?.init) !== null)
+  return ((decl.declarations as AnyNode[]) ?? []).some(
+    (d) => parseThemeDefinition(d?.init) !== null,
+  )
 }
 
 function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
@@ -633,202 +682,6 @@ function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
     }
   }
   if (found) ctx.theme = mergeTheme(acc)
-}
-
-/**
- * `const X = rocketstyle()({name, component: Prim}).theme().states()…` → a
- * RocketstyleComponentIR. A thin var-declarator unwrap; the chain parsing +
- * dimension resolution lives in the `rocketstyle-native` frontend module.
- */
-function tryRocketstyleDefnFromTopLevel(
-  node: AnyNode,
-  ctx: ParseCtx,
-): RocketstyleComponentIR | null {
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') varDecl = node
-  else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  }
-  if (!varDecl || varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (decl?.id?.type !== 'Identifier') return null
-  return parseRocketstyleDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
-}
-
-/**
- * `const X = attrs({ name, component: Prim }).attrs({ … })…` → an
- * AttrsComponentIR. A thin var-declarator unwrap; the chain parsing lives in the
- * `attrs-native` frontend module.
- */
-function tryAttrsDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): AttrsComponentIR | null {
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') varDecl = node
-  else if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
-    varDecl = node.declaration
-  }
-  if (!varDecl || varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (decl?.id?.type !== 'Identifier') return null
-  return parseAttrsDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
-}
-
-/**
- * `const X = styled(Prim)\`css\`` where `Prim` is a CANONICAL @pyreon/primitives
- * component → a StyledComponentIR the emit rewrites at each `<X>` use-site to
- * `<Prim style={captured}>`. `styled` accepts a component ref OR a string tag
- * (`Tag = string | ComponentFn`); only a ref (or literal name) resolving to a
- * canonical primitive lowers — `styled('div')` / `styled(NonPrimitive)` warn.
- * Static CSS only (interpolations — theme tokens — warn + drop, a tracked
- * follow-up: they need compile-time theme resolution).
- */
-function tryStyledDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StyledComponentIR | null {
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') varDecl = node
-  else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  }
-  if (!varDecl || varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (decl?.id?.type !== 'Identifier') return null
-  const name = decl.id.name as string
-  const init = unwrapTypeLayers(decl.init)
-  if (init?.type !== 'TaggedTemplateExpression') return null
-  // The tag must be `styled(<Prim>)`.
-  const tagCall = unwrapTypeLayers(init.tag)
-  if (tagCall?.type !== 'CallExpression') return null
-  const callee = tagCall.callee
-  if (callee?.type !== 'Identifier' || callee.name !== 'styled') return null
-  const firstArg = unwrapTypeLayers((tagCall.arguments as AnyNode[])?.[0])
-  if (!firstArg) return null
-  let prim: string | null = null
-  let printedArg = ''
-  if (firstArg.type === 'Identifier') {
-    prim = firstArg.name as string
-    printedArg = prim
-  } else if (firstArg.type === 'Literal' && typeof firstArg.value === 'string') {
-    prim = firstArg.value as string
-    printedArg = `'${prim}'`
-  }
-  if (!prim) return null
-  if (!isCanonicalPrimitive(prim)) {
-    ctx.warnings.push(
-      `styled(${printedArg}) on '${name}': only styled() wrapping a CANONICAL @pyreon/primitives ` +
-        `component (Stack/Text/Button/Press/Field/…) lowers to native — '${prim}' has no native ` +
-        `primitive, so <${name}> was left unresolved. Wrap a canonical primitive, or use a Layer-4 adapter.`,
-    )
-    return null
-  }
-  const quasi = init.quasi
-  if (quasi?.type !== 'TemplateLiteral') return null
-  return { name, tag: prim, styleObject: cssTemplateToStyleObject(quasi, name, ctx) }
-}
-
-/** kebab-case CSS property → the camelCase key the inline-style connector reads. */
-function kebabToCamel(s: string): string {
-  return s.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase())
-}
-
-/**
- * A `styled()` CSS template to a style-object `ExprIR` (camelCase keys, literal
- * values). Static declarations lower verbatim; a declaration whose value is a
- * single THEME-TOKEN interpolation (`background: ${(t) => t.color.primary}`) is
- * RESOLVED via the theme-native frontend to its value. Any other interpolation
- * (a complex/runtime expression) is dropped + warned.
- */
-function cssTemplateToStyleObject(
-  quasi: AnyNode,
-  declName: string,
-  ctx: ParseCtx,
-): Extract<ExprIR, { kind: 'object' }> {
-  const quasis = (quasi.quasis as AnyNode[]) ?? []
-  const expressions = (quasi.expressions as AnyNode[]) ?? []
-
-  // Interleave quasis + interpolations into declarations, splitting on a text
-  // `;` (an interpolation stays attached to the declaration it sits in).
-  type Part = { t: 'text'; v: string } | { t: 'expr'; node: AnyNode }
-  const decls: Part[][] = [[]]
-  const pushText = (s: string) => {
-    let buf = ''
-    for (const ch of s) {
-      if (ch === ';') {
-        if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
-        decls.push([])
-        buf = ''
-      } else buf += ch
-    }
-    if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
-  }
-  for (let i = 0; i < quasis.length; i++) {
-    // Tagged templates retain raw CSS even when a CSS escape is invalid JS
-    // (for example \\2014). An absent cooked value must not erase its siblings.
-    pushText(quasis[i]?.value?.cooked ?? quasis[i]?.value?.raw ?? '')
-    if (i < expressions.length) decls[decls.length - 1]!.push({ t: 'expr', node: expressions[i] })
-  }
-
-  const fields: { name: string; value: ExprIR }[] = []
-  const droppedInterp: string[] = []
-  for (const decl of decls) {
-    let colonPart = -1
-    let colonAt = -1
-    for (let i = 0; i < decl.length; i++) {
-      const p = decl[i]!
-      if (p.t === 'text') {
-        const idx = p.v.indexOf(':')
-        if (idx !== -1) {
-          colonPart = i
-          colonAt = idx
-          break
-        }
-      }
-    }
-    if (colonPart === -1) continue
-    const propRaw = (
-      decl.slice(0, colonPart).map((p) => (p.t === 'text' ? p.v : '')).join('') +
-      (decl[colonPart] as { t: 'text'; v: string }).v.slice(0, colonAt)
-    ).trim()
-    if (!propRaw || !/^[-a-zA-Z][-a-zA-Z0-9]*$/.test(propRaw)) continue
-    const name = kebabToCamel(propRaw)
-
-    const valueParts: Part[] = []
-    const tail = (decl[colonPart] as { t: 'text'; v: string }).v.slice(colonAt + 1)
-    if (tail.length > 0) valueParts.push({ t: 'text', v: tail })
-    for (let i = colonPart + 1; i < decl.length; i++) valueParts.push(decl[i]!)
-
-    const exprs = valueParts.filter((p): p is { t: 'expr'; node: AnyNode } => p.t === 'expr')
-    const textBlank = valueParts.every((p) => p.t !== 'text' || p.v.trim() === '')
-
-    if (exprs.length === 0) {
-      const valueRaw = valueParts.map((p) => (p.t === 'text' ? p.v : '')).join('').trim()
-      if (!valueRaw) continue
-      const num = /^[+-]?\d+(?:\.\d+)?$/.test(valueRaw) ? Number(valueRaw) : null
-      fields.push({ name, value: { kind: 'literal', value: num !== null ? num : valueRaw } })
-    } else if (exprs.length === 1 && textBlank) {
-      const tok = resolveThemeToken(exprs[0]!.node, ctx.theme)
-      if (tok !== null) fields.push({ name, value: { kind: 'literal', value: tok } })
-      else droppedInterp.push(propRaw)
-    } else {
-      droppedInterp.push(propRaw)
-    }
-  }
-  if (droppedInterp.length > 0) {
-    ctx.warnings.push(
-      `styled(...) '${declName}': value(s) [${droppedInterp.join(', ')}] use an interpolation that isn't a ` +
-        `resolvable theme token — only static values + \`t.<group>.<entry>\` tokens lower to native (dropped).`,
-    )
-  }
-  return { kind: 'object', fields, spreads: [] }
 }
 
 /**
@@ -881,10 +734,7 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
 function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[] | null {
   // Walk through `ExportNamedDeclaration` → `VariableDeclaration`.
   let varDecl: AnyNode | null = null
-  if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
+  if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
     varDecl = node.declaration
   } else if (node.type === 'VariableDeclaration') {
     varDecl = node
@@ -990,7 +840,9 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // which then told the user to "consume on native via the `<WebView>` bridge
     // subpath", i.e. to do the thing they had just done. A warning that fires
     // on its own recommended fix trains people to ignore it.
-    const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
+    const subpath = src.startsWith('@pyreon/')
+      ? src.slice('@pyreon/'.length).split('/')[1]
+      : undefined
     const isWebviewBridgeImport = subpath === 'webview'
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
@@ -1007,9 +859,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
       // generated from the manifest so it cannot drift from the tier table.
       const why = WEB_ONLY_PACKAGES.get(pkg)
       const reason =
-        why !== undefined && why !== ''
-          ? why
-          : 'it renders via the DOM / a browser-only library'
+        why !== undefined && why !== '' ? why : 'it renders via the DOM / a browser-only library'
       // Native-equivalent FIRST, WebView second: the escape hatch is the
       // right answer for a genuine rendering engine, but it is the WRONG
       // first suggestion for most of this set, and it used to be the only
@@ -1025,7 +875,6 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     }
   }
 }
-
 
 /**
  * Push the shared named warning for a computed non-literal key in a config
@@ -1050,7 +899,8 @@ function collectTypedComponentAliases(body: AnyNode[], ctx: ParseCtx): void {
     for (const d of topLevelDeclarators(node)) {
       const name = d.id?.name as string | undefined
       const target = instantiatedComponent(d.init as AnyNode | undefined, ctx)
-      if (typeof name === 'string' && target !== undefined) ctx.typedComponentAliases.set(name, target)
+      if (typeof name === 'string' && target !== undefined)
+        ctx.typedComponentAliases.set(name, target)
     }
   }
 }
@@ -1065,37 +915,10 @@ function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
 }
 
 /**
- * Hooks the native parser LOWERS. Anything else imported from a `@pyreon/*`
- * package and called as `useX()` falls through to the generic
- * `const x = <call>` emit, which reproduces the call VERBATIM — and there is no
- * `useToggle` (or `useElementSize`) in the Swift or Kotlin
- * runtime, so the result is native code that cannot compile.
- *
- * That was silent. An un-lowered hook call emitted verbatim with ZERO
- * warnings, and the first sign of trouble was `cannot find … in scope` from
- * a device build — or
- * nothing at all, for an app nobody type-checked. 38 of the 52 hooks
- * `@pyreon/hooks` and `@pyreon/form` export behave this way.
- *
- * Listing the lowered set here (rather than leaving it implicit in the
- * if-chains below) is what makes the complement nameable. A drift test asserts
- * every entry is genuinely handled, so this cannot rot into a lie.
+ * Loaded plugins declare the supported hook set. Calls outside that set receive
+ * a diagnostic instead of silently reproducing an unresolved native function.
+ * The compile gate accounts for every registered hook across all call positions.
  */
-const NATIVE_LOWERED_STATIC_HOOKS: ReadonlySet<string> = new Set([
-  'useColorMode', 'useColorScheme',
-  'useFieldArray', 'useForm',
-  'useHotkey', 'useLoaderData',
-  'useNativeModule', 'useNavigate',
-  'useParams',
-  // Pure state — no platform dependency, so no runtime; see the
-  // `pure-state` DeclIR.
-  'useToggle', 'useCounter',
-  'useSizeClass',
-  'useDebouncedValue',
-  'useDebouncedCallback', 'useThrottledCallback',
-  // Pure timing over a callback — lowered at STATEMENT position.
-  'useInterval', 'useTimeout',
-])
 
 // Derived once per registry (keyed on the registry itself, so the entry dies with
 // the compiler instance that owns it).
@@ -1103,8 +926,8 @@ const LOWERED_HOOKS = new WeakMap<object, ReadonlySet<string>>()
 
 /**
  * The hooks the parser lowers for `registries` (default: the active ones): the
- * hand-written set above plus every registered service hook and plugin-recognized
- * call, so a plugin's lowering never trips the "no native lowering" warning.
+ * registered services, declaration/statement/pattern calls and function lowerings,
+ * so a plugin's lowering never trips the "no native lowering" warning.
  */
 export function nativeLoweredHooks(
   registries: CompilerRegistries = activeRegistries(),
@@ -1116,7 +939,6 @@ export function nativeLoweredHooks(
       ...registries.serviceTables.hooks,
       ...registries.calls.names,
       ...registries.exprs.functions.keys(),
-      ...NATIVE_LOWERED_STATIC_HOOKS,
     ])
     LOWERED_HOOKS.set(key, set)
   }
@@ -1145,7 +967,10 @@ export function nativeLoweredHooks(
 const UNLOWERED_CONTROL_FLOW: ReadonlyMap<string, string> = new Map([
   ['Switch', 'use nested `<Show>` / a ternary — an if/else chain lowers, a Switch view does not'],
   ['Match', 'only meaningful inside `<Switch>`, which does not lower'],
-  ['Dynamic', 'a runtime-chosen component has no SwiftUI/Compose analogue — branch explicitly with `<Show>`'],
+  [
+    'Dynamic',
+    'a runtime-chosen component has no SwiftUI/Compose analogue — branch explicitly with `<Show>`',
+  ],
   ['Portal', 'native uses sheets/dialogs, a different model — use `<Modal>`'],
   ['Index', 'use `<For each={…} by={…}>`, which lowers to ForEach/LazyColumn'],
 ])
@@ -1208,23 +1033,6 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  */
 export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
-    '@pyreon/reactivity',
-    {
-      // MEASURED: signal / computed / effect / onCleanup lower; these three do
-      // not, and failed both targets with no diagnostic.
-      //
-      // `batch` is arguably strippable rather than unsupported — SwiftUI @State
-      // and Compose mutableStateOf already coalesce writes within one action,
-      // so the wrapper is semantically a no-op on native. Emitting the body
-      // inline would be a real capability win. Warning first because that is an
-      // emit change with a return-value question (`batch(() => x)` yields x on
-      // web), and a warning is honest today.
-      advice:
-        'these have no native emit — writes inside one action already coalesce on both native targets, so drop the `batch(...)` wrapper and set signals directly; for `untrack` / `effectScope`, restructure with plain `computed()`',
-      unsupported: new Set(['batch', 'untrack', 'effectScope']),
-    },
-  ],
-  [
     '@pyreon/core',
     {
       // MEASURED: onMount lowers (and h / Fragment / Show / For / Suspense are
@@ -1260,7 +1068,9 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       : src
     const isWebviewBridge =
       src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
-    const entry = findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(srcRoot, UNLOWERED_PYREON_MODULES)
+    const entry =
+      findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ??
+      findUnloweredModule(srcRoot, UNLOWERED_PYREON_MODULES)
     if (entry === undefined || isWebviewBridge) continue
     // A type-only import (`import type { X }` or the per-specifier `import {
     // type X }`) is TS-erased before this code ever runs — it names no
@@ -1282,7 +1092,8 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       if (entry.supported?.has(imported)) continue
       // An import a plugin's scan marked as consumed by lowering (`createHttp({ schema })`'s schema
       // name, a stream opener used only as a `useStream` source): nothing of it reaches the emit.
-      if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`)) continue
+      if (ctx.loweredImports.has(`${src}#${imported}`) || ctx.loweredImports.has(`*#${imported}`))
+        continue
       // A component the emitters DROP with their own named warning at the use site
       // (a web-only one): nothing reaches Swift/Kotlin, so "reproduced verbatim …
       // the native build fails" would be false.
@@ -1323,7 +1134,10 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       const advSrcRoot = src.startsWith('@pyreon/')
         ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
         : src
-      const moduleAdvice = (findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(advSrcRoot, UNLOWERED_PYREON_MODULES))?.advice
+      const moduleAdvice = (
+        findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ??
+        findUnloweredModule(advSrcRoot, UNLOWERED_PYREON_MODULES)
+      )?.advice
       ctx.warnings.push(
         `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
           moduleAdvice
@@ -1339,7 +1153,6 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
  *  the guards in emit-swift/emit-kotlin. Tags claimed by a registered element
  *  lowering (`element-lowering.ts`) are tracked through the registry instead,
  *  so a plugin's tags get the same import guard with no edit here. */
-const ALIAS_TAG_NAMES = new Set(['PyreonUI', 'PyreonUIProvider'])
 
 /**
  * Collect each local name with its source package and original imported name.
@@ -1361,7 +1174,11 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
-      if (typeof local === 'string' && typeof imported === 'string' && (ALIAS_TAG_NAMES.has(imported) || isElementLoweringTag(imported))) {
+      if (
+        typeof local === 'string' &&
+        typeof imported === 'string' &&
+        isElementLoweringTag(imported)
+      ) {
         map.set(local, { source: pkg, imported })
       }
     }
@@ -1444,9 +1261,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (typeof initial.value === 'number') {
       // A non-integer literal (`12.5`) is fractional → Double; an
       // integer literal stays Int (PMTC's ergonomic default).
-      return Number.isInteger(initial.value)
-        ? { kind: 'number' }
-        : { kind: 'number', float: true }
+      return Number.isInteger(initial.value) ? { kind: 'number' } : { kind: 'number', float: true }
     }
     if (typeof initial.value === 'string') return { kind: 'string' }
     if (typeof initial.value === 'boolean') return { kind: 'boolean' }
@@ -1515,7 +1330,11 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
           const flagInts = (e: ExprIR): void => {
             if (e.kind === 'array') {
               for (const x of e.elements) flagInts(x)
-            } else if (e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value)) {
+            } else if (
+              e.kind === 'literal' &&
+              typeof e.value === 'number' &&
+              Number.isInteger(e.value)
+            ) {
               e.float = true
             }
           }
@@ -1542,7 +1361,8 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
       return { kind: 'set', element: initial.elementType }
     }
     // `new Set(seedArr)` — recover the element type from the seed array.
-    const seedT = initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
+    const seedT =
+      initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
     if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
     return { kind: 'unknown' }
   }
@@ -1576,9 +1396,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
  * supported; array-field / nested objects stay `Any` (unchanged, no
  * regression) pending the Kotlin emit-ordering follow-up.
  */
-function inferFlatObjectType(
-  obj: Extract<ExprIR, { kind: 'object' }>,
-): TypeIR | null {
+function inferFlatObjectType(obj: Extract<ExprIR, { kind: 'object' }>): TypeIR | null {
   if ((obj.spreads?.length ?? 0) > 0 || obj.fields.length === 0) return null
   const fields: { name: string; type: TypeIR }[] = []
   for (const f of obj.fields) {
@@ -1858,7 +1676,11 @@ function refineReduceSeedFloats(
  * Double is the faithful reading.
  */
 function isFractionalLiteral(e: ExprIR): boolean {
-  return e.kind === 'literal' && typeof e.value === 'number' && (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
+  return (
+    e.kind === 'literal' &&
+    typeof e.value === 'number' &&
+    (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
+  )
 }
 
 /**
@@ -1942,7 +1764,8 @@ function seedSignalTypeFromNumberBinding(
   if (e.kind === 'unary' && (e.op === '-' || e.op === '+')) e = e.argument
   if (e.kind !== 'identifier') return
   const t = inferType(e, ctx)
-  if (t.kind === 'number') d.type = t.float === true ? { kind: 'number', float: true } : { kind: 'number' }
+  if (t.kind === 'number')
+    d.type = t.float === true ? { kind: 'number', float: true } : { kind: 'number' }
 }
 
 /**
@@ -1969,7 +1792,10 @@ function refineModuleDeclFloats(
 }
 
 /** Flip a `number` / `number[]` annotation to Double on fractional evidence in its initializer. */
-function refineNumberBindingFromEvidence(d: { type: TypeIR; initial: ExprIR }, ctx: InferenceCtx): void {
+function refineNumberBindingFromEvidence(
+  d: { type: TypeIR; initial: ExprIR },
+  ctx: InferenceCtx,
+): void {
   // Scalar `signal<number>(12.5)` / `const x: number = RATE * 2`.
   if (d.type.kind === 'number' && d.type.float !== true && isFractionalEvidence(d.initial, ctx)) {
     d.type = { kind: 'number', float: true }
@@ -1998,13 +1824,30 @@ function refinePluginItemMembers(
   helperReturnSeed: Map<string, TypeIR>,
   moduleConsts: Map<string, TypeIR>,
 ): void {
-  const defaultCtx = buildInferenceCtx([], structs, [], undefined, helperReturnSeed, moduleConsts, moduleItems)
+  const defaultCtx = buildInferenceCtx(
+    [],
+    structs,
+    [],
+    undefined,
+    helperReturnSeed,
+    moduleConsts,
+    moduleItems,
+  )
   for (const item of moduleItems) {
     for (const field of pluginItemFields(item)) refineNumberBindingFromEvidence(field, defaultCtx)
     for (const memberScope of pluginItemScopes(item)) {
       const declarations = [...memberScope.declarations]
       const functions = declarations.filter((decl) => decl.kind === 'function')
-      const scope = buildInferenceCtx(declarations, structs, [], undefined, helperReturnSeed, moduleConsts, moduleItems, memberScope.receiver)
+      const scope = buildInferenceCtx(
+        declarations,
+        structs,
+        [],
+        undefined,
+        helperReturnSeed,
+        moduleConsts,
+        moduleItems,
+        memberScope.receiver,
+      )
       refineFunctionDefaults(functions, scope)
       for (const fn of functions) {
         if (fn.returnType.kind !== 'number' && fn.returnType.kind !== 'unknown') continue
@@ -2016,7 +1859,10 @@ function refinePluginItemMembers(
 }
 
 /** Defaults carry the same fractional evidence as signal and module initializers. */
-function refineFunctionDefaults(functions: readonly Extract<DeclIR, { kind: 'function' }>[], ctx: InferenceCtx): void {
+function refineFunctionDefaults(
+  functions: readonly Extract<DeclIR, { kind: 'function' }>[],
+  ctx: InferenceCtx,
+): void {
   for (const fn of functions) {
     for (const param of fn.params) {
       if (param.defaultValue === undefined) continue
@@ -2376,6 +2222,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     theme: DEFAULT_THEME,
     pluginState: new Map(),
     skipTopLevel: [],
+    moduleBindings: new Map(),
     loweredImports: new Set(),
     responseDecodes: [],
     lateModuleItems: [],
@@ -2472,22 +2319,36 @@ function liftedStructKey(t: Extract<TypeIR, { kind: 'object' }>): string {
  * declared struct by its field names, both resolve to it. Nested inline objects
  * are lifted the same way a declared interface's are.
  */
-function collectLiftedPropsStructs(body: AnyNode[], declared: Set<string>, ctx: ParseCtx): StructIR[] {
+function collectLiftedPropsStructs(
+  body: AnyNode[],
+  declared: Set<string>,
+  ctx: ParseCtx,
+): StructIR[] {
   const out: StructIR[] = []
   const propsTypes = activeRegistries().propsTypes
   if (propsTypes.size === 0) return out
   for (const top of body) {
-    const node = top?.type === 'ExportNamedDeclaration' || top?.type === 'ExportDefaultDeclaration' ? top.declaration : top
+    const node =
+      top?.type === 'ExportNamedDeclaration' || top?.type === 'ExportDefaultDeclaration'
+        ? top.declaration
+        : top
     const fns: { name: string; fn: AnyNode }[] = []
-    if (node?.type === 'FunctionDeclaration' && node.id?.name) fns.push({ name: node.id.name as string, fn: node })
+    if (node?.type === 'FunctionDeclaration' && node.id?.name)
+      fns.push({ name: node.id.name as string, fn: node })
     if (node?.type === 'VariableDeclaration') {
       for (const d of (node.declarations as AnyNode[]) ?? []) {
         const init = d?.init
-        if (d?.id?.type === 'Identifier' && (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression')) fns.push({ name: d.id.name as string, fn: init })
+        if (
+          d?.id?.type === 'Identifier' &&
+          (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression')
+        )
+          fns.push({ name: d.id.name as string, fn: init })
       }
     }
     for (const { name, fn } of fns) {
-      const annot = (fn.params as AnyNode[] | undefined)?.[0]?.typeAnnotation?.typeAnnotation as AnyNode | undefined
+      const annot = (fn.params as AnyNode[] | undefined)?.[0]?.typeAnnotation?.typeAnnotation as
+        | AnyNode
+        | undefined
       if (!annot) continue
       const t = parseTypeAnnotation(annot, ctx)
       const lift = t.kind === 'typeRef' ? propsTypes.get(t.name)?.resolver.liftInlineArg : undefined
@@ -2553,11 +2414,7 @@ function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): Expr
 }
 
 /** Declare a struct's lifted inline object types ahead of it, and report collisions. */
-function liftInlineObjects(
-  st: StructIR,
-  declared: ReadonlySet<string>,
-  ctx: ParseCtx,
-): StructIR[] {
+function liftInlineObjects(st: StructIR, declared: ReadonlySet<string>, ctx: ParseCtx): StructIR[] {
   const { struct, lifted, warnings } = liftInlineObjectStructs(st, declared)
   ctx.warnings.push(...warnings)
   return [...lifted, struct]
@@ -2579,12 +2436,16 @@ function liftInlineObjects(
  */
 /** Unsupported value parameters must not be hidden by successful return inference. */
 function unsupportedHelperParams(fn: AnyNode, name: string, ctx: ParseCtx): boolean {
-  const unsupported = ((fn.params as AnyNode[] | undefined) ?? []).some((param) =>
-    param.type === 'ArrayPattern' || param.type === 'RestElement' ||
-    (param.type === 'AssignmentPattern' && param.left?.type !== 'Identifier'),
+  const unsupported = ((fn.params as AnyNode[] | undefined) ?? []).some(
+    (param) =>
+      param.type === 'ArrayPattern' ||
+      param.type === 'RestElement' ||
+      (param.type === 'AssignmentPattern' && param.left?.type !== 'Identifier'),
   )
   if (!unsupported) return false
-  ctx.warnings.push(`${name} is a top-level helper function with unsupported value parameters — array/rest parameters and defaulted destructures do not lower. Use plain typed value parameters or inline the logic. Skipped rather than mis-emitted.`)
+  ctx.warnings.push(
+    `${name} is a top-level helper function with unsupported value parameters — array/rest parameters and defaulted destructures do not lower. Use plain typed value parameters or inline the logic. Skipped rather than mis-emitted.`,
+  )
   return true
 }
 
@@ -2794,7 +2655,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     if (stmt.type === 'VariableDeclaration') {
       for (const declarator of stmt.declarations as AnyNode[]) {
         if (stmt.kind === 'const' && declarator.id?.type === 'Identifier' && declarator.init) {
-          ctx.staticExprs?.set(declarator.id.name as string, unwrapTypeLayers(declarator.init as AnyNode))
+          ctx.staticExprs?.set(
+            declarator.id.name as string,
+            unwrapTypeLayers(declarator.init as AnyNode),
+          )
         }
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
         if (decl) decls.push(decl)
@@ -2823,6 +2687,29 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       // silently, so the documented `onMount(() => ws.connect())` pattern
       // compiled clean and did NOTHING on device.
       const call = stmt.expression as AnyNode
+      const entry =
+        call?.type === 'CallExpression' && call.callee?.type === 'Identifier'
+          ? activeRegistries().calls.statementCalls.get(call.callee.name as string)
+          : undefined
+      if (entry !== undefined) {
+        const verdict = entry.recognizer(
+          { callee: call.callee!.name as string, argCount: call.arguments?.length ?? 0 },
+          parseContextFor(name, call, ctx),
+        )
+        if (verdict !== undefined) {
+          if (verdict !== null) {
+            const declaration = declFromSpec(
+              entry.owner,
+              `__pyreonStatement${decls.length}`,
+              verdict,
+              call,
+              ctx,
+            )
+            if (declaration !== null) decls.push(declaration)
+          }
+          continue
+        }
+      }
       if (
         call?.type === 'CallExpression' &&
         call.callee?.type === 'Identifier' &&
@@ -2852,96 +2739,6 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           return !isCleanupReturn
         })
         decls.push({ kind: 'on-mount', body: kept })
-      } else if (
-        call?.type === 'CallExpression' &&
-        call.callee?.type === 'Identifier' &&
-        call.callee.name === 'useHotkey'
-      ) {
-        // useHotkey('mod+s', () => { … }) — a real keyboard shortcut on both
-        // targets. iPads with keyboards, Chromebooks, DeX and keyboard-equipped
-        // tablets all reach one, so the old "touch platforms have no
-        // hardware-shortcut surface" rationale was never true.
-        const shortcutNode = unwrapTypeLayers(call.arguments?.[0] as AnyNode | undefined)
-        const cb = call.arguments?.[1] as AnyNode | undefined
-        // A module-scope `const` resolves: the shortcut still ends up baked, and
-        // naming a shortcut once and reusing it is ordinary.
-        const shortcutValue = staticStringArg(shortcutNode, ctx)
-        if (shortcutValue === null) {
-          // A computed shortcut cannot be baked into a native binding: SwiftUI
-          // takes a KeyEquivalent at view-construction and Compose compares
-          // against a Key constant. Same literal rule as animation duration.
-          ctx.warnings.push(
-            `Component ${name}: useHotkey() needs a statically-known shortcut — an inline string, or a module-scope \`const\` holding one. A computed one cannot be baked into a native key binding, so the hotkey is DROPPED on iOS/Android.`,
-          )
-        } else if (
-          cb?.type !== 'ArrowFunctionExpression' &&
-          cb?.type !== 'FunctionExpression'
-        ) {
-          ctx.warnings.push(
-            `Component ${name}: useHotkey('${shortcutValue}', …) needs an inline handler function; a reference cannot be lowered. The hotkey is DROPPED on iOS/Android.`,
-          )
-        } else {
-          const parsed = parseHotkeyCombo(shortcutValue)
-          if (!parsed.ok) {
-            ctx.warnings.push(
-              `Component ${name}: useHotkey('${shortcutValue}') — ${parsed.reason}. The hotkey is DROPPED on iOS/Android.`,
-            )
-          } else {
-            // The web handler takes a KeyboardEvent; native has no such object,
-            // so a handler that USES its parameter would be silently wrong.
-            // Refuse it by name rather than emit a binding that ignores it.
-            if ((cb.params as AnyNode[] | undefined)?.length) {
-              ctx.warnings.push(
-                `Component ${name}: useHotkey('${shortcutValue}') handler takes a KeyboardEvent parameter, which has no native equivalent — drop the parameter, or keep the event-dependent logic behind a <Web> escape hatch. The hotkey is DROPPED on iOS/Android.`,
-              )
-            } else {
-              const handlerBody =
-                cb.body?.type === 'BlockStatement'
-                  ? parseStatementBlock(cb.body, ctx)
-                  : [{ kind: 'expr' as const, expr: parseExpr(cb.body, ctx) }]
-              decls.push({ kind: 'hotkey', combo: parsed.combo, body: handlerBody })
-            }
-          }
-        }
-      } else if (
-        call?.type === 'CallExpression' &&
-        call.callee?.type === 'Identifier' &&
-        (call.callee.name === 'useInterval' || call.callee.name === 'useTimeout')
-      ) {
-        // `useInterval(cb, ms)` / `useTimeout(cb, ms)` — pure timing over a
-        // callback, with no platform capability behind it. Both were dropped
-        // by the bare-statement arm below, so a ticking clock or a delayed
-        // action compiled clean and did NOTHING on device.
-        const mode = call.callee.name === 'useInterval' ? 'interval' : 'timeout'
-        const cb = call.arguments?.[0] as AnyNode | undefined
-        const delayNode = unwrapTypeLayers(call.arguments?.[1] as AnyNode | undefined)
-        if (
-          cb?.type !== 'ArrowFunctionExpression' &&
-          cb?.type !== 'FunctionExpression'
-        ) {
-          ctx.warnings.push(
-            `Component ${name}: ${call.callee.name}() needs an inline callback to lower natively — this one is not, so it was DROPPED and will not run on device.`,
-          )
-        } else if (delayNode?.type !== 'Literal' || typeof delayNode.value !== 'number') {
-          // A `null` delay means "paused" and a getter means "reactive
-          // interval"; neither can be baked into the emitted schedule, and
-          // silently treating a paused timer as a running one would be worse
-          // than declining.
-          ctx.warnings.push(
-            `Component ${name}: ${call.callee.name}() needs a literal millisecond delay to lower natively (a null/paused delay or a reactive getter cannot be baked into the native schedule), so it was DROPPED and will not run on device.`,
-          )
-        } else {
-          const cbBody =
-            cb.body?.type === 'BlockStatement'
-              ? parseStatementBlock(cb.body, ctx)
-              : [{ kind: 'expr' as const, expr: parseExpr(cb.body, ctx) }]
-          decls.push({
-            kind: 'tick',
-            mode,
-            delayMs: delayNode.value as number,
-            body: cbBody,
-          })
-        }
       } else if (call?.type === 'CallExpression') {
         // A bare CALL statement (`effect(...)`, a stray side-effecting
         // call) has no native lowering — dropped + NAMED warning, so the
@@ -2952,8 +2749,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // and is silently dropped, exactly as before this walker existed:
         // warning on it was an over-eager regression (rx-full's 20 `void`
         // refs). Only genuine calls warn.
-        const callee =
-          call.callee?.type === 'Identifier' ? `${call.callee.name}(...)` : 'a call'
+        const callee = call.callee?.type === 'Identifier' ? `${call.callee.name}(...)` : 'a call'
         // DEFERRED like the control-flow arm below: a pure-logic HELPER's body
         // legitimately contains bare calls (`out.push(x)`), and the helper
         // carve-out re-parses the whole body via tryFunctionDecl — warning
@@ -2962,9 +2758,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         droppedStmtWarnings.push(
           `Component ${name}: a bare component-body statement (${callee}) is not lowered natively and was DROPPED — only declarations, onMount(fn), and the return JSX run on native. Move side effects into onMount or a handler.`,
         )
-      } else if (
-        call?.type === 'AssignmentExpression' ||        call?.type === 'UpdateExpression'
-      ) {
+      } else if (call?.type === 'AssignmentExpression' || call?.type === 'UpdateExpression') {
         // A top-level REASSIGNMENT (`a = 5`, `a += 2`, `a++`) has a real
         // mutating effect, but the component body emits only declarations +
         // the return JSX — components run ONCE, and threading a setup-time
@@ -3093,7 +2887,8 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const hasNonViewReturnAnnotation = annoText !== '' && !VIEW_RETURN_TYPES.test(annoText.trim())
   const returnsNothing =
     !hasNonViewReturnAnnotation &&
-    returnExpr.kind === 'literal' && (returnExpr.value === null || returnExpr.value === undefined)
+    returnExpr.kind === 'literal' &&
+    (returnExpr.value === null || returnExpr.value === undefined)
   // camelCase is the third condition, and it is what keeps a RENDER-PROP
   // component out of the helper path. Such a component takes `children` and
   // returns `props.children(data)` — a value, not JSX, and not nullish — so the
@@ -3109,14 +2904,18 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const first = name.charAt(0)
   const isCamelCase = first === first.toLowerCase() && first !== first.toUpperCase()
   const hasValueParams = ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
-  if ((hasValueParams || hasNonViewReturnAnnotation) && isCamelCase && !returnContainsJsx(returnExpr) && !returnsNothing) {
+  if (
+    (hasValueParams || hasNonViewReturnAnnotation) &&
+    isCamelCase &&
+    !returnContainsJsx(returnExpr) &&
+    !returnsNothing
+  ) {
     // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
     // the IR has no generic-parameter representation, so a referenced `T`
     // degrades to `unknown` and the emitted signature is uncompilable. Keep
     // it a NAMED warning (the #2090 behavior for the shape helper-emission
     // doesn't yet cover).
-    const isGeneric =
-      ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    const isGeneric = ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
     if (isGeneric) {
       ctx.warnings.push(
         `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
@@ -3336,12 +3135,18 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   if (t.kind === 'typeRef') {
     const resolved = findPropsTypeResolver(t.name)?.resolve(
       { name: t.name, args: t.args },
-      { liftedStruct: (inline) => (inline.kind === 'object' ? ctx.liftedPropsStructs.get(liftedStructKey(inline)) : undefined) },
+      {
+        liftedStruct: (inline) =>
+          inline.kind === 'object'
+            ? ctx.liftedPropsStructs.get(liftedStructKey(inline))
+            : undefined,
+      },
     )
     if (resolved !== undefined) return resolved
   }
   if (t.kind === 'typeRef' && t.args.length === 0) {
-    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || activeRegistries().runtimeTypes.has(t.name)) return t
+    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || activeRegistries().runtimeTypes.has(t.name))
+      return t
     // A locally-declared string-literal union lowers to a native enum, so a
     // parameter typed with it emits verbatim and compiles — the same reason
     // the native primitives above are exempt. Warning on it told the author to
@@ -3462,14 +3267,15 @@ function bodyReferencesPropsParam(body: AnyNode[], paramName: string): boolean {
   return false
 }
 
-
 /** The facade a plugin's `CallRecognizer` reads the call through; each member delegates to parser state. */
 function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseContext {
   const facade: ParseContext = {
     declName,
+    initialType: (expression) => inferTypeFromInitial(expression),
     stringLiteralArg(index) {
       const arg = (call.arguments as AnyNode[] | undefined)?.[index]
-      return (arg?.type === 'Literal' || arg?.type === 'StringLiteral') && typeof arg.value === 'string'
+      return (arg?.type === 'Literal' || arg?.type === 'StringLiteral') &&
+        typeof arg.value === 'string'
         ? arg.value
         : undefined
     },
@@ -3488,7 +3294,8 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
       while (expr?.type === 'Identifier' && !seen.has(expr.name as string)) {
         const bindingName = expr.name as string
         seen.add(bindingName)
-        const resolved = ctx.staticExprs?.get(bindingName) ?? ctx.moduleStaticExprs?.get(bindingName)
+        const resolved =
+          ctx.staticExprs?.get(bindingName) ?? ctx.moduleStaticExprs?.get(bindingName)
         if (!resolved) break
         expr = resolved
       }
@@ -3501,6 +3308,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     statements: (block) => parseStatementBlock(block as AnyNode, ctx),
+    functionDeclaration: (name, node) => tryFunctionDecl(name, node as AnyNode, ctx),
     typeArgOf: (other) => parseGenericTypeArg(other as AnyNode, ctx),
     fileState: <T>(key: string, init: () => T): T => {
       if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
@@ -3524,6 +3332,8 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
 function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext {
   return {
     source: ctx.source,
+    theme: ctx.theme,
+    binding: (name) => ctx.moduleBindings.get(name),
     report: (message) => {
       ctx.warnings.push(message)
     },
@@ -3534,17 +3344,25 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     expr: (node) => parseExpr(node as AnyNode, ctx),
     functionDeclaration: (name, node) => {
-      if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression' && node.type !== 'FunctionDeclaration') {
-        throw new Error(`[Pyreon] functionDeclaration requires a function node; received ${node.type}.`)
+      if (
+        node.type !== 'ArrowFunctionExpression' &&
+        node.type !== 'FunctionExpression' &&
+        node.type !== 'FunctionDeclaration'
+      ) {
+        throw new Error(
+          `[Pyreon] functionDeclaration requires a function node; received ${node.type}.`,
+        )
       }
       return tryFunctionDecl(name, node as AnyNode, ctx)
     },
     initialType: (initial) => inferTypeFromInitial(initial),
     warnDynamicKey: (prop, where) => warnDynamicKey(prop as AnyNode, where, ctx),
     typeArgs: (node) =>
-      (((node as AnyNode).typeArguments?.params ?? (node as AnyNode).typeParameters?.params ?? []) as AnyNode[]).map((t) =>
-        parseTypeAnnotation(t, ctx),
-      ),
+      (
+        ((node as AnyNode).typeArguments?.params ??
+          (node as AnyNode).typeParameters?.params ??
+          []) as AnyNode[]
+      ).map((t) => parseTypeAnnotation(t, ctx)),
     loc: (node) => locOf(node as AnyNode, ctx),
     unsupported: (node, what, hint) => {
       unsupportedExpr(ctx, node as AnyNode, what, hint)
@@ -3572,7 +3390,9 @@ function runPluginHook<T>(owner: string, hook: string, run: () => T): T {
 function tryPluginTopLevel(node: AnyNode, ctx: ParseCtx): ExtModuleItem | undefined {
   const registry = activeRegistries().items
   for (const { owner, recognize } of registry.topLevel) {
-    const spec = runPluginHook(owner, 'topLevel', () => recognize(node as AstNode, moduleParseContextFor(ctx, owner)))
+    const spec = runPluginHook(owner, 'topLevel', () =>
+      recognize(node as AstNode, moduleParseContextFor(ctx, owner)),
+    )
     if (spec !== undefined) return stampModuleItem(registry, owner, spec)
   }
   return undefined
@@ -3590,7 +3410,8 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
   if (callee.property?.type !== 'Identifier') return undefined
   const method = callee.property.name as string
   const keyed = registry.methodCalls.get(method)
-  const recognizers = keyed === undefined ? registry.anyMethodCalls : [...keyed, ...registry.anyMethodCalls]
+  const recognizers =
+    keyed === undefined ? registry.anyMethodCalls : [...keyed, ...registry.anyMethodCalls]
   if (recognizers.length === 0) return undefined
   const site: MethodCallSite = {
     node: node as AstNode,
@@ -3599,9 +3420,13 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
     args: ((node.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
   for (const { owner, recognize } of recognizers) {
-    const verdict = runPluginHook(owner, `methodCalls.${method}`, () => recognize(site, moduleParseContextFor(ctx, owner)))
+    const verdict = runPluginHook(owner, `methodCalls.${method}`, () =>
+      recognize(site, moduleParseContextFor(ctx, owner)),
+    )
     if (verdict === undefined) continue
-    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
+    return verdict === null
+      ? { kind: 'literal', value: '' }
+      : stampExtExpr(registry, owner, verdict)
   }
   return undefined
 }
@@ -3620,9 +3445,13 @@ function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
     ...(node.type === 'NewExpression' ? { construct: true } : {}),
   }
   for (const { owner, recognize } of registry.callExprs) {
-    const verdict = runPluginHook(owner, 'callExprs', () => recognize(site, moduleParseContextFor(ctx, owner)))
+    const verdict = runPluginHook(owner, 'callExprs', () =>
+      recognize(site, moduleParseContextFor(ctx, owner)),
+    )
     if (verdict === undefined) continue
-    return verdict === null ? { kind: 'literal', value: '' } : stampExtExpr(registry, owner, verdict)
+    return verdict === null
+      ? { kind: 'literal', value: '' }
+      : stampExtExpr(registry, owner, verdict)
   }
   return undefined
 }
@@ -3662,10 +3491,29 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
   const { scanners } = activeRegistries().scan
   if (scanners.length === 0) return
   const body = (program.body as AnyNode[] | undefined) ?? []
+  const constants = new Map<string, { module: string; name: string; value: string | undefined }>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const module = node.source?.value as string | undefined
+    if (module === undefined) continue
+    const resolve = activeRegistries().scan.constants.get(module)
+    if (resolve === undefined) continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const name = spec.imported?.name ?? spec.imported?.value
+      if (typeof name === 'string' && typeof spec.local?.name === 'string')
+        constants.set(spec.local.name as string, { module, name, value: resolve(name) })
+    }
+  }
+  let importReference: ReturnType<typeof createImportReferenceQuery> | undefined
   const scan: ModuleScan = {
     program: program as AstNode,
+    constant: (node) =>
+      node.type === 'Identifier' ? constants.get(node.name as string) : undefined,
     body: body as readonly AstNode[],
     source,
+    isImportedReference: (node, module, imported) =>
+      (importReference ??= createImportReferenceQuery(program as AstNode))(node, module, imported),
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     fileState: <T>(key: string, init: () => T): T => {
       if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
@@ -3678,8 +3526,15 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
       ctx.loweredImports.add(`${module}#${name}`)
     },
     aliasFactory: (name, alias, destructureDiagnostic) => {
-      if (!alias || typeof alias !== 'object' || typeof alias.kind !== 'string' || !isJson(alias, new Set())) throw new Error(`[Pyreon] Alias factory ${name} must use cloneable expression IR`)
-      if (ctx.aliasFactories.has(name)) throw new Error(`[Pyreon] Alias factory ${name} is already registered`)
+      if (
+        !alias ||
+        typeof alias !== 'object' ||
+        typeof alias.kind !== 'string' ||
+        !isJson(alias, new Set())
+      )
+        throw new Error(`[Pyreon] Alias factory ${name} must use cloneable expression IR`)
+      if (ctx.aliasFactories.has(name))
+        throw new Error(`[Pyreon] Alias factory ${name} is already registered`)
       ctx.aliasFactories.set(name, { alias: structuredClone(alias), destructureDiagnostic })
     },
     report: (message) => {
@@ -3701,8 +3556,30 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
-  const factory = init?.type === 'CallExpression' && init.callee?.type === 'Identifier'
-    ? ctx.aliasFactories.get(init.callee.name as string) : undefined
+  if (
+    node.id?.type !== 'Identifier' &&
+    init?.type === 'CallExpression' &&
+    init.callee?.type === 'Identifier'
+  ) {
+    const entry = activeRegistries().calls.patternCalls.get(init.callee.name as string)
+    if (entry !== undefined) {
+      const facade = {
+        ...parseContextFor('(destructured)', init, ctx),
+        pattern: node.id as AstNode,
+      }
+      const verdict = entry.recognizer(
+        { callee: init.callee.name as string, argCount: init.arguments?.length ?? 0 },
+        facade,
+      )
+      if (verdict === null) return null
+      if (verdict !== undefined)
+        return declFromSpec(entry.owner, `__pyreonPattern${node.start ?? 0}`, verdict, init, ctx)
+    }
+  }
+  const factory =
+    init?.type === 'CallExpression' && init.callee?.type === 'Identifier'
+      ? ctx.aliasFactories.get(init.callee.name as string)
+      : undefined
   if (factory !== undefined) {
     if (node.id?.type === 'Identifier') {
       ctx.pluginAliases.set(node.id.name as string, structuredClone(factory.alias))
@@ -3738,11 +3615,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // Service descriptors that declare `destructure` (services.ts).
     ...activeRegistries().serviceTables.destructureHooks,
     ...activeRegistries().scan.destructureCalls,
-    'useForm',
-    'useColorScheme',
-    'useColorMode',
-    'useSizeClass',
-    'useNetworkStatus',
   ])
   if (
     node.id?.type === 'ObjectPattern' &&
@@ -3804,9 +3676,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const pkg = calleeName ? activeRegistries().calls.tier2Calls.get(calleeName) : undefined
     if (calleeName && pkg !== undefined) {
       const bindingName =
-        node.id?.type === 'Identifier'
-          ? (node.id.name as string)
-          : '(destructured)'
+        node.id?.type === 'Identifier' ? (node.id.name as string) : '(destructured)'
       ctx.warnings.push(
         `${calleeName}() declared (${pkg}, binding: \`${bindingName}\`) — Tier-2 package on native: parser ` +
           `recognition + runtime port not yet shipped. Setup function will not run on iOS/Android; downstream ` +
@@ -3817,93 +3687,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       )
       return null
     }
-  }
-  // Native readiness audit (2026-06, CRIT-4): `const data = useLoaderData<T>()`
-  // is currently DROPPED on both targets — PMTC has no emit branch, AND
-  // there's no diagnostic. The runtime `setLoaderData()` infrastructure
-  // ships on PyreonRouter (Swift + Kotlin), but the loader auto-emit
-  // that would WIRE a component-level `useLoaderData<T>()` call to it
-  // is deferred — see docs/src/content/docs/multiplatform.md "Loader auto-emit is
-  // intentionally deferred, not forgotten." A developer writing the
-  // call gets a silent-drop: data signal is never populated, component
-  // renders with undefined, no compile error, no runtime error. Warn
-  // at the call site naming the binding so the path forward is obvious.
-  //
-  // Two shapes covered:
-  //   (a) `const data = useLoaderData<User>()`  — Identifier binding
-  //   (b) `const { user } = useLoaderData<{ user: User }>()` — destructure
-  //       (also unsupported until loader auto-emit lands)
-  if (init?.type === 'CallExpression') {
-    const callee = init.callee?.name as string | undefined
-    if (callee === 'useLoaderData') {
-      // Phase B6 (native readiness audit): `const data = useLoaderData<T>()`
-      // now emits READ-ONLY (was silent-drop pre-B6). The Identifier shape
-      // emits a binding that reads the runtime container's loaderData entry
-      // for the current path, type-cast to T. Auto-loader emit (firing
-      // route.loader on navigation) remains future work — the warning
-      // below names this gap so authors aren't surprised when their
-      // useLoaderData hook stays `nil`/`null` without a host-side
-      // setLoaderData() call.
-      //
-      // Destructure shape (`const { x } = useLoaderData<T>()`) STILL
-      // silent-drops — the runtime read returns an OPAQUE T?, not a
-      // shape the destructure can pattern-match against without
-      // type-knowledge of T's fields. That's bigger Phase B+ work.
-      const isIdentifier = node.id?.type === 'Identifier'
-      const isObjectPattern = node.id?.type === 'ObjectPattern'
-
-      // Both shapes warn. Identifier softens to "emit ships read-only,
-      // auto-loader follow-up needed"; destructure keeps the original
-      // silent-drop warning because the shape genuinely doesn't emit.
-      const bindingDesc = isIdentifier
-        ? `\`const ${node.id?.name as string} = useLoaderData<T>()\``
-        : isObjectPattern
-          ? '`const { ... } = useLoaderData<T>()`'
-          : '`useLoaderData<T>()`'
-
-      if (isIdentifier) {
-        ctx.warnings.push(
-          `useLoaderData<T>() declared (${bindingDesc}) — PMTC ships READ-ONLY emit (Phase B6): the binding reads PyreonRouter.loaderData[currentPath] cast to T. Auto-loader emit (firing a route's \`loader\` on navigation) is future work — populate loaderData via the runtime container's \`setLoaderData(path, value)\` method from your native host code today. Reference: docs/src/content/docs/multiplatform.md → "Loader auto-emit is intentionally deferred, not forgotten."`,
-        )
-        // Phase B6 IR — capture name + type generic. The emit reads
-        // PyreonRouter.loaderData[currentPath] cast to T at the
-        // declaration site (read-only).
-        const name = node.id?.name as string
-        const type = parseGenericTypeArg(init, ctx)
-        return { kind: 'useLoaderData', name, type }
-      }
-
-      // Destructure (and other non-Identifier shapes) keep the original
-      // silent-drop behavior + warning. Phase B6+ work would unwrap a
-      // destructure against a known type — bigger scope.
-      ctx.warnings.push(
-        `useLoaderData<T>() declared (${bindingDesc}) — destructure form not yet emitted on native targets. Use the single-binding shape \`const data = useLoaderData<T>(); …data.x\` instead. Tracked as Phase B+ follow-up.`,
-      )
-      return null
-    }
-  }
-  // `const { id } = useParams()` / `const { id: userId } = useParams<{...}>()`
-  // — destructured router params. The ObjectPattern id has no `.name`, so this
-  // must run BEFORE the name-based bail below (otherwise the decl is silently
-  // dropped and the destructured locals reference undeclared identifiers).
-  if (
-    node.id?.type === 'ObjectPattern' &&
-    init?.type === 'CallExpression' &&
-    (init.callee?.name as string | undefined) === 'useParams'
-  ) {
-    const params: { key: string; local: string }[] = []
-    for (const prop of (node.id.properties as AnyNode[] | undefined) ?? []) {
-      if (prop?.type !== 'Property') continue
-      if (hasDynamicKey(prop)) {
-        warnDynamicKey(prop, '`const { … } = useParams()`', ctx)
-        continue
-      }
-      const key = staticPropKey(prop)
-      const local =
-        prop.value?.type === 'Identifier' ? (prop.value.name as string) : key
-      if (key !== undefined && local !== undefined) params.push({ key, local })
-    }
-    return params.length > 0 ? { kind: 'params-destructure', params } : null
   }
   // General local object destructure — `const { x, y } = <expr>` for any RHS
   // NOT caught by the hook / store / useParams / useLoaderData lowerings
@@ -4019,22 +3802,26 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // below. Object/array literals also flow through (they get the existing
   // object/array-literal emit). This widens the supported subset toward
   // "any app" — local consts are ubiquitous.
+  // A plugin may give a call OR construction component-owned storage. Without
+  // this constructor seam, stateful classes become body-local value expressions
+  // and Swift substitutes a fresh instance into every handler that uses them.
+  if (init.type === 'CallExpression' || init.type === 'NewExpression') {
+    const shaped = tryPluginDeclCall(name, init, ctx)
+    if (shaped !== undefined) return shaped
+  }
   if (init.type !== 'CallExpression') {
     return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
   }
 
-  // A declaration a plugin recognizes by the SHAPE of its callee (`CompilerPlugin.declCalls`) — `const active = rx.filter(todos, p)`,
-  // where the callee is whatever local name the file imported. Ahead of every by-name branch below, as the by-shape one always was.
-  const shaped = tryPluginDeclCall(name, init, ctx)
-  if (shaped !== undefined) return shaped
-
-  const calleeName = init.callee?.name as string | undefined
+  const writtenCallee = init.callee?.name as string | undefined
+  const calleeName =
+    writtenCallee === undefined
+      ? undefined
+      : (activeRegistries().calls.intrinsicCalls.get(writtenCallee)?.operation ?? writtenCallee)
   if (calleeName === 'signal') {
     const generic = parseGenericTypeArg(init, ctx)
     const initialArg = init.arguments?.[0]
-    const initial: ExprIR = initialArg
-      ? parseExpr(initialArg, ctx)
-      : { kind: 'literal', value: 0 }
+    const initial: ExprIR = initialArg ? parseExpr(initialArg, ctx) : { kind: 'literal', value: 0 }
     // Un-annotated `signal('')` / `signal(0)` / `signal(false)` infers
     // its type from the initial literal — same contract the store-setup
     // path applies (and what inferTypeFromInitial's own docstring
@@ -4112,212 +3899,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (afterEach.length > 0) decl.afterEach = afterEach
     return decl
   }
-  if (calleeName === 'useNavigate') {
-    return { kind: 'router-hook', name, hook: 'navigate' }
-  }
-  if (calleeName === 'useParams') {
-    // The WHOLE-OBJECT form. It lowers to a `[String: String]` / `Map`, so the
-    // natural JS follow-up — `p.id` — emits `p.id`, which is not how a Swift
-    // dictionary or a Kotlin map is read. That failed on BOTH targets with no
-    // diagnostic, while the destructured form
-    // (`const { id } = useParams()` → `useParams(router:)["id"] ?? ""`)
-    // works on both and handles the Optional.
-    //
-    // Warn rather than rewrite `.id` → `["id"]`: member access is emitted from
-    // everywhere, and narrowing a codegen rewrite to exactly this binding is a
-    // change that wants the full suite green to land safely. The destructure is
-    // already the supported, idiomatic shape — pointing at it costs the author
-    // one line and nothing in correctness.
-    ctx.warnings.push(
-      `const ${name} = useParams() lowers to a native dictionary/map, so a property read like \`${name}.id\` emits \`${name}.id\` and does NOT compile on either target. Destructure instead — \`const { id } = useParams()\` — which lowers per key (\`useParams(router:)["id"] ?? ""\`) and works on both.`,
-    )
-    return { kind: 'router-hook', name, hook: 'params' }
-  }
-  // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
-  // arg is optional; when present we capture the string-keyed literal
-  // `initialValues` to seed the native PyreonForm container. `onSubmit` /
-  // `validators` are web-only function logic — ignored on native (submission
-  // flows through the container's begin/endSubmit API). Always succeeds
-  // (no bail): a bare `useForm()` or an unrecognised config shape yields an
-  // empty `initialValues`, and the emit produces a default-constructed form.
-  if (calleeName === 'useForm') {
-    const cfg = init.arguments?.[0] as AnyNode | undefined
-    const decl: Extract<DeclIR, { kind: 'form' }> = {
-      kind: 'form',
-      name,
-      initialValues: tryExtractFormInitialValues(cfg, {
-        ctx,
-        where: `useForm \`${name}\`: initialValues`,
-      }),
-    }
-    // v2 (form-binding arc) — validators + onSubmit. Conservative:
-    // unparseable members are skipped with a warning (the form still
-    // works; that validator just doesn't run natively).
-    if (cfg?.type === 'ObjectExpression') {
-      for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
-        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        if (hasDynamicKey(prop)) {
-          warnDynamicKey(prop, `useForm \`${name}\`: config`, ctx)
-          continue
-        }
-        const key = staticPropKey(prop)
-        // `schema: SomeSchema` — an identifier naming a top-level schema
-        // declaration. Captured here; the emitters resolve it against the
-        // module's plugin items and synthesize validators from its constraints.
-        if (key === 'schema' && prop.value?.type === 'Identifier') {
-          decl.schemaName = prop.value.name as string
-        }
-        if (key === 'validators' && prop.value?.type === 'ObjectExpression') {
-          const validators: { key: string; param: string; body: ExprIR }[] = []
-          for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {
-            if (v?.type !== 'Property' && v?.type !== 'ObjectProperty') continue
-            const fieldName = staticPropKey(v)
-            const fn = v.value as AnyNode | undefined
-            if (
-              fieldName === undefined ||
-              fn?.type !== 'ArrowFunctionExpression' ||
-              (fn.params as AnyNode[] | undefined)?.length !== 1 ||
-              fn.body?.type === 'BlockStatement'
-            ) {
-              ctx.warnings.push(
-                `useForm \`${name}\`: validator \`${fieldName ?? dynamicKeyText(v, ctx)}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
-              )
-              continue
-            }
-            const param = ((fn.params as AnyNode[])[0] as AnyNode | undefined)?.name as
-              | string
-              | undefined
-            if (param === undefined) continue
-            validators.push({ key: fieldName, param, body: parseExpr(fn.body, ctx) })
-          }
-          if (validators.length > 0) decl.validators = validators
-        } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
-          const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
-          decl.onSubmit = { param: fn.params[0]?.name ?? 'values', body: fn.body }
-        }
-      }
-    }
-    return decl
-  }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
   // containers with NO platform dependency: a signal plus a few mutators.
   // They needed no runtime, only a lowering, and without one the call
   // emitted verbatim and failed the native build.
-  if (calleeName === 'useToggle' || calleeName === 'useCounter') {
-    const firstArg = init.arguments?.[0] as AnyNode | undefined
-    const initialNode = firstArg ? unwrapTypeLayers(firstArg) : undefined
-    if (calleeName === 'useToggle') {
-      // Default `false`, per the web signature.
-      let initial = false
-      if (initialNode !== undefined) {
-        if (initialNode.type !== 'Literal' || typeof initialNode.value !== 'boolean') {
-          ctx.warnings.push(
-            `useToggle() \`${name}\`: the initial value must be a boolean literal to bake into the native state — this one is not, so the declaration is NOT lowered.`,
-          )
-          return null
-        }
-        initial = initialNode.value as boolean
-      }
-      return { kind: 'pure-state', name, hook: 'useToggle', initial }
-    }
-    let initial = 0
-    if (initialNode !== undefined) {
-      if (initialNode.type !== 'Literal' || typeof initialNode.value !== 'number') {
-        ctx.warnings.push(
-          `useCounter() \`${name}\`: the initial value must be a numeric literal to bake into the native state — this one is not, so the declaration is NOT lowered.`,
-        )
-        return null
-      }
-      initial = initialNode.value as number
-    }
-    // The clamp is baked into every mutator at the use site, so it has to be
-    // literal. A computed bound would silently stop clamping on device.
-    const bounds: { min?: number; max?: number } = {}
-    const optsNode = init.arguments?.[1] as AnyNode | undefined
-    const opts = optsNode ? unwrapTypeLayers(optsNode) : undefined
-    if (opts !== undefined) {
-      if (opts.type !== 'ObjectExpression') {
-        ctx.warnings.push(
-          `useCounter() \`${name}\`: the options argument must be a literal { min, max } object — this one is not, so the declaration is NOT lowered.`,
-        )
-        return null
-      }
-      for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-        if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        const key = staticPropKey(prop)
-        const val = unwrapTypeLayers(prop.value as AnyNode | undefined)
-        if ((key !== 'min' && key !== 'max') || val?.type !== 'Literal' || typeof val.value !== 'number') {
-          ctx.warnings.push(
-            `useCounter() \`${name}\`: option \`${key ?? (hasDynamicKey(prop) ? dynamicKeyText(prop, ctx) : '?')}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
-          )
-          return null
-        }
-        bounds[key] = val.value as number
-      }
-    }
-    const decl: DeclIR = { kind: 'pure-state', name, hook: 'useCounter', initial }
-    if (bounds.min !== undefined || bounds.max !== undefined) decl.bounds = bounds
-    return decl
-  }
-  // `useDebouncedValue(() => expr, ms)` — see the DeclIR comment for the
-  // measured contract this reproduces.
-  if (calleeName === 'useDebouncedValue') {
-    const getter = unwrapTypeLayers(init.arguments?.[0] as AnyNode | undefined)
-    const delayNode = unwrapTypeLayers(init.arguments?.[1] as AnyNode | undefined)
-    if (
-      (getter?.type !== 'ArrowFunctionExpression' && getter?.type !== 'FunctionExpression') ||
-      getter.body?.type === 'BlockStatement'
-    ) {
-      ctx.warnings.push(
-        `useDebouncedValue() \`${name}\`: the source must be an expression-body getter (\`() => expr\`) to lower natively — this one is not, so the declaration is NOT lowered.`,
-      )
-      return null
-    }
-    if (delayNode?.type !== 'Literal' || typeof delayNode.value !== 'number') {
-      ctx.warnings.push(
-        `useDebouncedValue() \`${name}\`: the delay must be a numeric literal to bake into the native schedule — this one is not, so the declaration is NOT lowered.`,
-      )
-      return null
-    }
-    const source = parseExpr(getter.body as AnyNode, ctx)
-    return {
-      kind: 'debounced-value',
-      name,
-      source,
-      type: inferTypeFromInitial(source),
-      delayMs: delayNode.value as number,
-    }
-  }
-  // `useDebouncedCallback(fn, ms)` / `useThrottledCallback(fn, ms)` — see
-  // the DeclIR comment for why these need a runtime.
-  if (calleeName === 'useDebouncedCallback' || calleeName === 'useThrottledCallback') {
-    const mode = calleeName === 'useDebouncedCallback' ? 'debounce' : 'throttle'
-    const cb = unwrapTypeLayers(init.arguments?.[0] as AnyNode | undefined)
-    const delayNode = unwrapTypeLayers(init.arguments?.[1] as AnyNode | undefined)
-    if (cb?.type !== 'ArrowFunctionExpression' && cb?.type !== 'FunctionExpression') {
-      ctx.warnings.push(
-        `${calleeName}() \`${name}\`: the callback must be an inline function to lower natively — this one is not, so the declaration is NOT lowered.`,
-      )
-      return null
-    }
-    if (delayNode?.type !== 'Literal' || typeof delayNode.value !== 'number') {
-      ctx.warnings.push(
-        `${calleeName}() \`${name}\`: the delay must be a numeric literal to bake into the native schedule — this one is not, so the declaration is NOT lowered.`,
-      )
-      return null
-    }
-    const params = (cb.params as AnyNode[] | undefined) ?? []
-    if (params.length > 1) {
-      // Silently dropping the extra arguments would produce a callback that
-      // runs with the wrong data rather than one that visibly does not run.
-      ctx.warnings.push(
-        `${calleeName}() \`${name}\`: the native runtime carries ONE argument and this callback takes ${params.length}, so the declaration is NOT lowered. Pass a single value (an object literal if you need several).`,
-      )
-      return null
-    }
-    const fn = tryFunctionDecl(name, cb, ctx)
-    return { kind: 'rate-limited', name, mode, delayMs: delayNode.value as number, fn }
-  }
   // FFI escape hatch — `const bt = useNativeModule<T>('Bluetooth')` from
   // `@pyreon/primitives`. The ONE service declaration whose emitted type
   // the framework does NOT own: it lowers to an instance of a class the
@@ -4331,29 +3916,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // PMTC parses one file at a time, so a cross-module reference has no
   // value source here. A non-literal is a NAMED warning + bail — the
   // declaration is dropped rather than mis-emitted.
-  if (calleeName === 'useNativeModule') {
-    const arg = init.arguments?.[0] as AnyNode | undefined
-    const moduleName = arg?.type === 'Literal' || arg?.type === 'StringLiteral'
-      ? (arg.value as unknown)
-      : undefined
-    if (typeof moduleName !== 'string' || moduleName.length === 0) {
-      ctx.warnings.push(
-        `useNativeModule \`${name}\`: the module name must be a non-empty STRING LITERAL at the call site (e.g. useNativeModule<T>('Bluetooth')) — it is emitted verbatim as the Swift/Kotlin class name and PMTC resolves one file at a time, so an imported or computed name has no value here. Declaration skipped on native.`,
-      )
-      return null
-    }
-    // Emitted verbatim as a native TYPE name, so it must be a plain
-    // identifier. Rejecting anything else keeps arbitrary text out of the
-    // generated Swift/Kotlin (a name like `Foo(); evil()` would otherwise
-    // be spliced straight into the output).
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(moduleName)) {
-      ctx.warnings.push(
-        `useNativeModule \`${name}\`: module name "${moduleName}" is not a valid identifier — it is emitted directly as a Swift/Kotlin class name, so it must match /^[A-Za-z_][A-Za-z0-9_]*$/. Declaration skipped on native.`,
-      )
-      return null
-    }
-    return { kind: 'native-module', name, moduleName }
-  }
+
   // Plain service containers (`useShare`, `useLinking`, `useHaptics`,
   // `useNotifications`, `useBiometrics`, `useImagePicker`, `useFilePicker`,
   // `useCamera`) — no arguments, no reactive state; every call is a member
@@ -4371,7 +3934,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // A call a PLUGIN recognizes (`CompilerPlugin.calls`) — e.g. `createChartHandle()`
   // from `@pyreon/charts`. Sits where the hand-written by-name branches did, so a
   // recognizer that declines (`undefined`) falls through to everything below.
-  const recognized = calleeName === undefined ? undefined : activeRegistries().calls.calls.get(calleeName)
+  const recognized =
+    calleeName === undefined ? undefined : activeRegistries().calls.calls.get(calleeName)
   if (recognized !== undefined && calleeName !== undefined) {
     const spec = recognized.recognizer(
       { callee: calleeName, argCount: init.arguments?.length ?? 0 },
@@ -4389,46 +3953,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // it reads the platform scheme exactly as `useColorScheme` does (a literal
   // `<ColorModeProvider mode>` pins the CHART scope at compile time, but a
   // component's own read is the platform's).
-  if (calleeName === 'useColorScheme' || calleeName === 'useColorMode') {
-    return { kind: 'color-scheme', name }
-  }
   // M2.2 — `const sizeClass = useSizeClass()` from `@pyreon/hooks`
   // → platform-native horizontal size-class read. No arguments. NO
   // runtime port needed (same shape as useColorScheme) — SwiftUI ships
   // `@Environment(\.horizontalSizeClass)` and Compose derives it from
   // `LocalConfiguration.current.screenWidthDp`. Emit returns the same
   // `"compact" | "regular"` string the web hook uses.
-  if (calleeName === 'useSizeClass') {
-    return { kind: 'size-class', name }
-  }
-  // `useFieldArray(['a', 'b'])` — the dynamic form-list container
-  // (PyreonFieldArray on both targets, mirroring the web @pyreon/form
-  // surface). The initial must be an array of string literals (or absent)
-  // so it can be baked into the constructor — same literal rule as
-  // useWebSocket's URL.
-  if (calleeName === 'useFieldArray') {
-    const arg = init.arguments?.[0]
-    const initial: string[] = []
-    if (arg !== undefined) {
-      if (arg.type !== 'ArrayExpression') {
-        ctx.warnings.push(
-          `Declaration ${name}: useFieldArray initial must be an array literal of strings (or omitted); got ${arg.type}.`,
-        )
-        return null
-      }
-      for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
-        if ((el?.type === 'Literal' || el?.type === 'StringLiteral') && typeof el.value === 'string') {
-          initial.push(el.value as string)
-        } else {
-          ctx.warnings.push(
-            `Declaration ${name}: useFieldArray initial elements must be string literals; got ${el?.type ?? 'nothing'}.`,
-          )
-          return null
-        }
-      }
-    }
-    return { kind: 'fieldArray', name, initial }
-  }
   // Fallback — `const foo = <call>` binding an arbitrary call result that
   // none of the factory/hook branches above claimed: a signal/computed READ
   // (`const foo = o()`), a method-chain result (`const xs = arr.filter(p)`),
@@ -4450,8 +3980,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * optional field omitted — no struct at all (a tuple). Absent annotation,
  * absent field: the decl is byte-identical to before.
  */
-function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode, ctx: ParseCtx): DeclIR {
-  const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as AnyNode | undefined
+function withValueDeclType(
+  d: Extract<DeclIR, { kind: 'value' }>,
+  node: AnyNode,
+  ctx: ParseCtx,
+): DeclIR {
+  const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
+    | AnyNode
+    | undefined
   return ann ? { ...d, type: parseTypeAnnotation(ann, ctx) } : d
 }
 
@@ -4499,7 +4035,6 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
  * the original silent-drop — strictly better than `main`.
  */
 
-
 /**
  * A recognizer's verdict as a declaration: a plain SIGNAL (`{ signal }`, built here with the core's own rules so a
  * library's signal reads, writes, infers and synthesizes structs exactly like `signal()`), else the plugin's own `ext`
@@ -4509,16 +4044,37 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
  * `signal('')` / `signal(0)` / `signal(false)` already has: an un-annotated `@State var x: Any = ""` breaks every use
  * site on Swift. Property order is the order the hash (`moduleTag`) reads, so a persisted signal keeps its names.
  */
-function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyNode, ctx: ParseCtx): DeclIR | null {
+function declFromSpec(
+  owner: string,
+  name: string,
+  spec: DeclVerdict,
+  call: AnyNode,
+  ctx: ParseCtx,
+): DeclIR | null {
   if ('alias' in spec) {
-    if (!spec.alias || typeof spec.alias !== 'object' || typeof spec.alias.kind !== 'string' || !isJson(spec.alias, new Set())) throw new Error(`[Pyreon] plugin ${owner}: alias for ${name} must be cloneable expression IR.`)
+    if (
+      !spec.alias ||
+      typeof spec.alias !== 'object' ||
+      typeof spec.alias.kind !== 'string' ||
+      !isJson(spec.alias, new Set())
+    )
+      throw new Error(
+        `[Pyreon] plugin ${owner}: alias for ${name} must be cloneable expression IR.`,
+      )
     ctx.pluginAliases.set(name, structuredClone(spec.alias))
     return null
   }
-  if ('computed' in spec) return { kind: 'computed', name, expr: stampExtExpr(activeRegistries().items, owner, spec.computed) }
+  if ('computed' in spec)
+    return {
+      kind: 'computed',
+      name,
+      expr: stampExtExpr(activeRegistries().items, owner, spec.computed),
+    }
   if (!('signal' in spec)) return stampExtDecl(activeRegistries().calls, owner, name, spec)
   const { initial: initialArg, persistKey } = spec.signal
-  const initial: ExprIR = initialArg ? parseExpr(initialArg as AnyNode, ctx) : { kind: 'literal', value: 0 }
+  const initial: ExprIR = initialArg
+    ? parseExpr(initialArg as AnyNode, ctx)
+    : { kind: 'literal', value: 0 }
   const hasGeneric = ((call.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
   const type = hasGeneric ? parseGenericTypeArg(call, ctx) : inferTypeFromInitial(initial)
   return persistKey === undefined
@@ -4531,14 +4087,18 @@ function declFromSpec(owner: string, name: string, spec: DeclVerdict, call: AnyN
  * recognizer said why), or `undefined` (declined; the parser continues down its chain).
  */
 function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR | null | undefined {
-  const { declCalls } = activeRegistries().calls
-  if (declCalls.length === 0) return undefined
-  const site: DeclCallSite = {
+  const hook = init.type === 'NewExpression' ? 'declConstructs' : 'declCalls'
+  const recognizers = activeRegistries().calls[hook]
+  if (recognizers.length === 0) return undefined
+  const site: DeclConstructSite = {
+    node: init as AstNode,
     callee: init.callee as AstNode,
     args: ((init.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
-  for (const { owner, recognize } of declCalls) {
-    const verdict = runPluginHook(owner, 'declCalls', () => recognize(site, parseContextFor(name, init, ctx)))
+  for (const { owner, recognize } of recognizers) {
+    const verdict = runPluginHook(owner, hook, () =>
+      recognize(site, parseContextFor(name, init, ctx)),
+    )
     if (verdict === undefined) continue
     return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
   }
@@ -4552,7 +4112,12 @@ function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR |
  */
 function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
-  if (init?.type !== 'NewExpression' || init.callee?.type !== 'Identifier' || node.id?.type !== 'Identifier') return null
+  if (
+    init?.type !== 'NewExpression' ||
+    init.callee?.type !== 'Identifier' ||
+    node.id?.type !== 'Identifier'
+  )
+    return null
   const calleeName = init.callee.name as string
   const recognized = activeRegistries().calls.calls.get(calleeName)
   if (recognized === undefined) return null
@@ -4561,48 +4126,9 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     { callee: calleeName, argCount: init.arguments?.length ?? 0, construct: true },
     parseContextFor(name, init, ctx),
   )
-  return spec === undefined || spec === null ? null : declFromSpec(recognized.owner, name, spec, init, ctx)
-}
-
-/**
- * Phase 4.2 — pull the literal `initialValues` map out of a
- * `useForm({ initialValues: { email: 'a@b.com' } })` config. Returns the
- * string-keyed string-literal pairs; everything else (missing config,
- * non-object `initialValues`, non-string entries) is silently dropped so
- * the caller always gets a (possibly empty) array — `useForm` never bails.
- */
-function tryExtractFormInitialValues(
-  arg: AnyNode | undefined,
-  /** Names a computed key (the one shape that is NOT a deliberate drop). */
-  report?: { ctx: ParseCtx; where: string },
-): { key: string; value: string }[] {
-  if (!arg || arg.type !== 'ObjectExpression') return []
-  const props = arg.properties as AnyNode[] | undefined
-  if (!props) return []
-  const ivProp = props.find(
-    (p) =>
-      p?.type === 'Property' && staticPropKey(p) === 'initialValues',
-  )
-  if (!ivProp || ivProp.value?.type !== 'ObjectExpression') return []
-  const out: { key: string; value: string }[] = []
-  for (const p of (ivProp.value.properties as AnyNode[] | undefined) ?? []) {
-    if (p?.type !== 'Property') continue
-    if (hasDynamicKey(p)) {
-      if (report) warnDynamicKey(p, report.where, report.ctx)
-      continue
-    }
-    // Object keys are Identifiers (`email:`) or string literals (`'email':`).
-    const key = staticPropKey(p)
-    const v = p.value
-    if (
-      key !== undefined &&
-      (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
-      typeof v.value === 'string'
-    ) {
-      out.push({ key, value: v.value })
-    }
-  }
-  return out
+  return spec === undefined || spec === null
+    ? null
+    : declFromSpec(recognized.owner, name, spec, init, ctx)
 }
 
 /**
@@ -4722,10 +4248,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
       const key = staticPropKey(p)
       if (key === 'path') {
         const v = p.value
-        if (
-          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
-          typeof v.value === 'string'
-        ) {
+        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
           path = v.value
         }
       } else if (key === 'component') {
@@ -4735,10 +4258,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
         // redirects / `throw redirect()` are a later arc; they leave
         // `redirect` undefined here so the route still needs a component.
         const v = p.value
-        if (
-          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
-          typeof v.value === 'string'
-        ) {
+        if ((v?.type === 'Literal' || v?.type === 'StringLiteral') && typeof v.value === 'string') {
           redirect = v.value
         }
       } else if (key === 'beforeEnter') {
@@ -4846,8 +4366,11 @@ function withoutPluginAliases<T>(bindings: readonly AnyNode[], ctx: ParseCtx, ru
     if (node.type === 'Identifier') ctx.pluginAliases.delete(node.name as string)
     else if (node.type === 'AssignmentPattern') hide(node.left as AnyNode)
     else if (node.type === 'RestElement') hide(node.argument as AnyNode)
-    else if (node.type === 'ArrayPattern') for (const element of node.elements as AnyNode[]) hide(element)
-    else if (node.type === 'ObjectPattern') for (const prop of node.properties as AnyNode[]) hide((prop.value ?? prop.argument) as AnyNode)
+    else if (node.type === 'ArrayPattern')
+      for (const element of node.elements as AnyNode[]) hide(element)
+    else if (node.type === 'ObjectPattern')
+      for (const prop of node.properties as AnyNode[])
+        hide((prop.value ?? prop.argument) as AnyNode)
   }
   for (const binding of bindings) hide(binding)
   try {
@@ -4862,7 +4385,9 @@ function tryFunctionDecl(
   arrow: AnyNode,
   ctx: ParseCtx,
 ): Extract<DeclIR, { kind: 'function' }> {
-  return withoutPluginAliases((arrow.params as AnyNode[] | undefined) ?? [], ctx, () => tryFunctionDeclBody(name, arrow, ctx))
+  return withoutPluginAliases((arrow.params as AnyNode[] | undefined) ?? [], ctx, () =>
+    tryFunctionDeclBody(name, arrow, ctx),
+  )
 }
 
 function tryFunctionDeclBody(
@@ -4915,7 +4440,9 @@ function tryFunctionDeclBody(
       const paramName = left.name as string
       const annot = left.typeAnnotation?.typeAnnotation as AnyNode | undefined
       const defaultValue = parseExpr(p.right as AnyNode, ctx)
-      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : inferTypeFromInitial(defaultValue)
+      const type: TypeIR = annot
+        ? parseTypeAnnotation(annot, ctx)
+        : inferTypeFromInitial(defaultValue)
       params.push({ name: paramName, type, defaultValue })
     } else if (p?.type === 'ObjectPattern') {
       const synthName = `__p${synthParamIdx++}`
@@ -4992,7 +4519,9 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
   const bindings = ((block.body as AnyNode[] | undefined) ?? []).flatMap((stmt) =>
     stmt.type === 'VariableDeclaration'
       ? ((stmt.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
-      : stmt.type === 'FunctionDeclaration' ? [stmt.id as AnyNode] : [],
+      : stmt.type === 'FunctionDeclaration'
+        ? [stmt.id as AnyNode]
+        : [],
   )
   return withoutPluginAliases(bindings, ctx, () => parseStatementBlockBody(block, ctx))
 }
@@ -5005,7 +4534,10 @@ function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     // there is no combined-declarator form on either target). Re-parse each
     // declarator through the single-decl path so every binding shape it
     // already supports (incl. value inference) carries over verbatim.
-    if (stmt.type === 'VariableDeclaration' && ((stmt.declarations as AnyNode[])?.length ?? 0) > 1) {
+    if (
+      stmt.type === 'VariableDeclaration' &&
+      ((stmt.declarations as AnyNode[])?.length ?? 0) > 1
+    ) {
       // Each declarator re-enters THIS block walker (not bare parseStatement),
       // so a destructured declarator (`const n = 1, { b } = o`) takes the same
       // expansion / warning a lone `const { b } = o` does. Routed through
@@ -5190,11 +4722,25 @@ function markMethodMutatedLocals(stmts: StatementIR[]): void {
     for (const st of list) {
       if (st.kind === 'let' || st.kind === 'expr') scanExpr(st.expr)
       if (st.kind === 'return' && st.expr) scanExpr(st.expr)
-      if (st.kind === 'assign') { scanExpr(st.target); scanExpr(st.value) }
-      if (st.kind === 'if') { scanExpr(st.cond); walk(st.then); if (st.elseBody) walk(st.elseBody) }
-      if (st.kind === 'while' || st.kind === 'do-while') { scanExpr(st.cond); walk(st.body) }
-      if (st.kind === 'for-range') { walk(st.body) }
-      if (st.kind === 'for-of') { walk(st.body) }
+      if (st.kind === 'assign') {
+        scanExpr(st.target)
+        scanExpr(st.value)
+      }
+      if (st.kind === 'if') {
+        scanExpr(st.cond)
+        walk(st.then)
+        if (st.elseBody) walk(st.elseBody)
+      }
+      if (st.kind === 'while' || st.kind === 'do-while') {
+        scanExpr(st.cond)
+        walk(st.body)
+      }
+      if (st.kind === 'for-range') {
+        walk(st.body)
+      }
+      if (st.kind === 'for-of') {
+        walk(st.body)
+      }
     }
   }
   walk(stmts)
@@ -5389,10 +4935,16 @@ function astReassignsIdent(root: AnyNode, name: string): boolean {
 }
 
 function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
-  const head = node.type === 'ForStatement' ? node.init : node.type === 'ForOfStatement' ? node.left : undefined
-  const bindings = head?.type === 'VariableDeclaration'
-    ? ((head.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
-    : []
+  const head =
+    node.type === 'ForStatement'
+      ? node.init
+      : node.type === 'ForOfStatement'
+        ? node.left
+        : undefined
+  const bindings =
+    head?.type === 'VariableDeclaration'
+      ? ((head.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
+      : []
   return withoutPluginAliases(bindings, ctx, () => parseStatementBody(node, ctx))
 }
 
@@ -5869,7 +5421,9 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // "Unknown type annotation" warning.) `keyof` / `unique` have no native
       // form and stay warned — by name, so the fix is nameable.
       if (node.operator === 'readonly') return parseTypeAnnotation(node.typeAnnotation, ctx)
-      ctx.warnings.push(`\`${node.operator}\` types have no native form in PMTC — spell the concrete type (a string-literal union for \`keyof\`).`)
+      ctx.warnings.push(
+        `\`${node.operator}\` types have no native form in PMTC — spell the concrete type (a string-literal union for \`keyof\`).`,
+      )
       return { kind: 'unknown' }
     }
     case 'TSTupleType':
@@ -5887,7 +5441,11 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         // `{ [K]: string }` — the member name is the runtime VALUE of `K`, so
         // it has no static field name. Pre-fix it was read as a field named
         // `K`. Named, never silently renamed (same class as object literals).
-        if (m.type === 'TSPropertySignature' && m.computed === true && m.key?.type === 'Identifier') {
+        if (
+          m.type === 'TSPropertySignature' &&
+          m.computed === true &&
+          m.key?.type === 'Identifier'
+        ) {
           ctx.warnings.push(
             `Computed type-literal members (\`{ [${m.key.name as string}]: … }\`) aren't supported in native (PMTC) — a struct/data-class needs static field names. Spell the field name literally.`,
           )
@@ -6004,9 +5562,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // emitter drops names at emit time.
       const params = ((node.params as AnyNode[]) ?? []).map((p) => {
         const annotation = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
-        const type: TypeIR = annotation
-          ? parseTypeAnnotation(annotation, ctx)
-          : { kind: 'unknown' }
+        const type: TypeIR = annotation ? parseTypeAnnotation(annotation, ctx) : { kind: 'unknown' }
         // Omit `name` when absent — `exactOptionalPropertyTypes` disallows
         // `name: undefined` for an optional property.
         const paramName: string | undefined =
@@ -6196,8 +5752,10 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (calleeCall !== undefined) return calleeCall
       // A claimed library function keeps the callee spelling its plugin asked for (`FunctionLowering.irName`).
       const parsedCallee = parseExpr(node.callee, ctx)
-      const irName = parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined
-      const callee = irName === undefined ? parsedCallee : { kind: 'identifier' as const, name: irName }
+      const irName =
+        parsedCallee.kind === 'identifier' ? functionIrName(parsedCallee.name) : undefined
+      const callee =
+        irName === undefined ? parsedCallee : { kind: 'identifier' as const, name: irName }
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))
       // `node.optional` is set for the `f?.()` link of an optional chain
       // (oxc wraps the chain in a ChainExpression; each call carries its own
@@ -6400,7 +5958,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // its param types (`let f = { r in … }` is 'cannot infer type of
         // closure parameter'), so what the author wrote must survive to emit.
         const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
-        const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
+        const returnAnnot = returnAnnotNode
+          ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx)
+          : undefined
         const paramTypes = identParams.map((p) => {
           const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
           return annot ? parseTypeAnnotation(annot, ctx) : undefined
@@ -6422,12 +5982,28 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
                 ? body
                 : undefined
           if (seqBody !== undefined) {
-            const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
-              (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
-            )
-            return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' }, stmts }
+            const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map((x) => ({
+              kind: 'expr',
+              expr: parseExpr(x, ctx),
+            }))
+            return {
+              kind: 'arrow',
+              async: node.async === true,
+              params,
+              paramTypes,
+              returnAnnot,
+              body: { kind: 'literal', value: '' },
+              stmts,
+            }
           }
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(body, ctx) }
+          return {
+            kind: 'arrow',
+            async: node.async === true,
+            params,
+            paramTypes,
+            returnAnnot,
+            body: parseExpr(body, ctx),
+          }
         }
         // Block body. The common compact case — a single expression/return
         // statement (`() => { count.set(c() + 1) }`) — keeps the lean
@@ -6435,7 +6011,14 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // action emit already handles it; backward-compat).
         const stmts = body.body as AnyNode[]
         if (stmts.length === 0) {
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+          return {
+            kind: 'arrow',
+            async: node.async === true,
+            params,
+            paramTypes,
+            returnAnnot,
+            body: { kind: 'literal', value: '' },
+          }
         }
         // An ASSIGNMENT is a statement in the IR, not an expression, so
         // `() => { flow.config.pannable = false }` must keep the statement path
@@ -6443,16 +6026,34 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // rejects `AssignmentExpression`, and the handler emitted EMPTY on both
         // targets while the two-statement spelling of the same intent worked.
         const onlyIsAssignment =
-          stmts.length === 1 && stmts[0]!.type === 'ExpressionStatement' &&
-          (stmts[0]!.expression?.type === 'AssignmentExpression' || stmts[0]!.expression?.type === 'UpdateExpression')
+          stmts.length === 1 &&
+          stmts[0]!.type === 'ExpressionStatement' &&
+          (stmts[0]!.expression?.type === 'AssignmentExpression' ||
+            stmts[0]!.expression?.type === 'UpdateExpression')
         if (
-          stmts.length === 1 && !onlyIsAssignment &&
+          stmts.length === 1 &&
+          !onlyIsAssignment &&
           (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
         ) {
           const only = stmts[0]!
           const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-          if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
+          if (!inner)
+            return {
+              kind: 'arrow',
+              async: node.async === true,
+              params,
+              paramTypes,
+              returnAnnot,
+              body: { kind: 'literal', value: '' },
+            }
+          return {
+            kind: 'arrow',
+            async: node.async === true,
+            params,
+            paramTypes,
+            returnAnnot,
+            body: parseExpr(inner, ctx),
+          }
         }
         // MULTIPLE statements (or a single non-expr/return statement like an
         // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
@@ -6583,9 +6184,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           'An EMPTY object literal `{}` has no native lowering — it emits `()` (Void on Swift), so the value is not an object on either target. Give the literal its fields (`{ name: "" }`), or model the state as separate signals.',
         )
       }
-      return spreads.length > 0
-        ? { kind: 'object', fields, spreads }
-        : { kind: 'object', fields }
+      return spreads.length > 0 ? { kind: 'object', fields, spreads } : { kind: 'object', fields }
     }
     case 'ParenthesizedExpression': {
       // Parens around JSX in source (`return (<X>...)`) are syntactic
@@ -6671,7 +6270,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const constructed = tryPluginCallExpr(node, ctx)
       if (constructed !== undefined) return constructed
       const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
-      const typeArgs = (node.typeArguments?.params ?? node.typeParameters?.params ?? []) as AnyNode[]
+      const typeArgs = (node.typeArguments?.params ??
+        node.typeParameters?.params ??
+        []) as AnyNode[]
       // v1 scope: only SCALAR (number/string/boolean) element/key/value types
       // lower to native collections. A non-scalar element (`Set<{x:number}>`, a
       // `typeRef`, a nested array/union) has no `Hashable`/native-key guarantee
@@ -6859,7 +6460,10 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
       },
       requestComponentDecls: (key, requested) => {
         if (ctx.componentDeclRequests.has(key)) return
-        ctx.componentDeclRequests.set(key, { head: [...(requested.head ?? [])], tail: [...(requested.tail ?? [])] })
+        ctx.componentDeclRequests.set(key, {
+          head: [...(requested.head ?? [])],
+          tail: [...(requested.tail ?? [])],
+        })
       },
     }
     for (const { owner, rewrite } of elementRewriters) {
@@ -6893,11 +6497,6 @@ function warnIfHookInsideRenderCallback(
     ...activeRegistries().calls.names,
     'signal',
     'computed',
-    'useForm',
-    'useNativeModule',
-    'useColorScheme',
-    'useColorMode',
-    'useSizeClass',
   ])
   for (const child of children) {
     if (child?.type !== 'JSXExpressionContainer') continue
@@ -6938,11 +6537,10 @@ function warnIfHookInsideRenderCallback(
  * (lives in the emit context). Tracked as a separate follow-up.
  */
 function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx): void {
-  const hasAttr = (name: string): boolean =>
-    attrs.some((a) => a.kind === 'attr' && a.name === name)
+  const hasAttr = (name: string): boolean => attrs.some((a) => a.kind === 'attr' && a.name === name)
   if (tag === 'Icon' && !hasAttr('name')) {
     ctx.warnings.push(
-      "<Icon> requires a `name` prop (e.g. `<Icon name=\"star\"/>`). Without it the emit falls through to generic and produces an unbuildable `Icon(…)` literal on both Swift and Kotlin.",
+      '<Icon> requires a `name` prop (e.g. `<Icon name="star"/>`). Without it the emit falls through to generic and produces an unbuildable `Icon(…)` literal on both Swift and Kotlin.',
     )
   } else if (tag === 'Image' && !hasAttr('src')) {
     ctx.warnings.push(
@@ -6991,9 +6589,9 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
   // UNKNOWN literal value silently falls back to the default
   // alignment. Warn for the 4 most common typo shapes.
   if (tag === 'Stack' || tag === 'Inline' || tag === 'Layer') {
-    const alignAttr = attrs.find(
-      (a) => a.kind === 'attr' && a.name === 'align',
-    ) as Extract<AttrIR, { kind: 'attr' }> | undefined
+    const alignAttr = attrs.find((a) => a.kind === 'attr' && a.name === 'align') as
+      | Extract<AttrIR, { kind: 'attr' }>
+      | undefined
     if (alignAttr && alignAttr.value.kind === 'literal') {
       const v = alignAttr.value.value
       if (typeof v === 'string') {

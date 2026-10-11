@@ -12,7 +12,7 @@
 // Each has a CI-runnable emit-SHAPE assertion (no toolchain) + a macOS-only
 // `swiftc -typecheck` assertion against the real SwiftUI SDK.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const wrap = (body: string) =>

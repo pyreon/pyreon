@@ -8,7 +8,7 @@
  * declaration sharing that segment, with zero warnings.
  */
 import { describe, expect, it } from 'vitest'
-import { parseStyled } from '../parse-styled'
+import { parseStyled } from '../../../../ui-system/styler/src/native-plugin/parse-styled'
 
 describe('a CSS template segment with an unparseable escape', () => {
   it('does not drop the OTHER declarations sharing its segment', () => {

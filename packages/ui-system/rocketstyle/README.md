@@ -59,7 +59,9 @@ Each declared dimension creates a chain method AND a corresponding prop on the c
 ### Default: `useBooleans: false` (string prop values)
 
 ```tsx
-<Button state="primary" size="lg">Save</Button>
+<Button state="primary" size="lg">
+  Save
+</Button>
 ```
 
 Boolean shorthand (`<Button primary lg>Save</Button>`) is opt-in via `rocketstyle({ useBooleans: true })`. **Important**: before April 2026 the type default was `true` but the runtime was `false` — boolean props typechecked but were silently dropped at runtime. Fixed in `rocketstyle/init.ts`; new code should not rely on the historical behaviour.
@@ -105,7 +107,7 @@ Factory initializer. Returns a function that accepts component configuration.
 
 ```ts
 const factory = rocketstyle({
-  dimensions: { /* custom dimensions */ },
+  dimensions: {/* custom dimensions */},
   useBooleans: true,
 })
 
@@ -121,12 +123,15 @@ a library, where a global augmentation would merge into every other package's
 theme type.
 
 ```ts
-interface Tokens { accent: string; surface: string }
+interface Tokens {
+  accent: string
+  surface: string
+}
 
 const rs = rocketstyle({ useBooleans: false }).withTheme<Tokens>()
 
 const Card = rs({ name: 'Card', component: Element })
-  .theme((t) => ({ backgroundColor: t.surface }))  // t: Tokens
+  .theme((t) => ({ backgroundColor: t.surface })) // t: Tokens
   .states((t) => ({ active: { color: t.accent } }))
 // .theme((t) => ({ color: t.nope }))  ❌ Property 'nope' does not exist
 ```
@@ -209,8 +214,8 @@ styled(Component)`
 ```ts
 const rocketButton = rocketstyle({
   dimensions: {
-    intent: 'intent',                                  // prop: intent="primary"
-    size:   'size',
+    intent: 'intent', // prop: intent="primary"
+    size: 'size',
     appearance: { propName: 'appearance', multi: true },
   },
 })
@@ -307,3 +312,9 @@ Full docs: [pyreon.dev/docs/rocketstyle](https://pyreon.dev/docs/rocketstyle) (o
 ## License
 
 MIT
+
+## Native compiler plugin
+
+This package owns its native compilation frontend at `@pyreon/rocketstyle/native-plugin`. The native CLI discovers that tooling entry through `pyreon.native.plugin` when the application imports the package. Web runtime imports do not load compiler tooling, and the compiler is an optional peer.
+
+For programmatic compilation, pass the entry's default export to `createCompiler({ plugins: [plugin] })`. Load the owning plugins for every package the source uses. The compiler supplies generic state, JSX, theme tokens and native style operations; this package supplies its import vocabulary and recognition rules.

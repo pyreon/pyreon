@@ -40,7 +40,7 @@ const widenFmt: NonNullable<CompilerPlugin['refineParse']> = ({ components, help
 
 const toy = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   ...over,
 })

@@ -12,6 +12,7 @@ import { findManifests } from '../../../manifest/src'
 import {
   deriveWebOnlyPackages,
   listPublishedPackages,
+  nativePluginFailures,
   renderTierTable,
   strayWebOnlyCopies,
 } from '../../../../../scripts/check-multiplatform-tier'
@@ -227,5 +228,44 @@ describe('strayWebOnlyCopies', () => {
     // The positive control: with nothing allowed the one real block must
     // surface, otherwise an empty result above could be a dead scan.
     expect(strayWebOnlyCopies(REPO, [])).toEqual([CONSUMER])
+  })
+})
+
+describe('package-owned native plugin contract', () => {
+  const valid = {
+    pyreon: { native: { plugin: './lib/native-plugin.js', modules: ['@acme/state'] } },
+    exports: {
+      './native-plugin': {
+        bun: './src/native-plugin.ts',
+        import: './lib/native-plugin.js',
+        types: './lib/native-plugin.d.ts',
+      },
+    },
+    peerDependencies: { '@pyreon/native-compiler': '^0.1.0' },
+    peerDependenciesMeta: { '@pyreon/native-compiler': { optional: true } },
+  }
+  it('accepts an independently published and discoverable tooling entry', () => {
+    expect(nativePluginFailures('@acme/state', valid)).toEqual([])
+  })
+  it('rejects absent ownership, a stale built entry, and a mandatory compiler peer', () => {
+    expect(nativePluginFailures('@acme/state', {})).toHaveLength(4)
+    expect(
+      nativePluginFailures('@acme/state', {
+        ...valid,
+        exports: {
+          './native-plugin': {
+            bun: './src/native-plugin.ts',
+            import: './lib/wrong.js',
+            types: './lib/native-plugin.d.ts',
+          },
+        },
+      }),
+    ).toEqual([expect.stringContaining('matching pyreon.native.plugin')])
+    expect(nativePluginFailures('@acme/state', { ...valid, peerDependenciesMeta: {} })).toEqual([
+      expect.stringContaining('optional peer'),
+    ])
+    expect(nativePluginFailures('@acme/other', valid)).toEqual([
+      expect.stringContaining('owning package'),
+    ])
   })
 })

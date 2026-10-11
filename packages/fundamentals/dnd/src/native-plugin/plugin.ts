@@ -12,7 +12,6 @@
 // cross-list drops on device is the worst possible failure.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
   unwrapTypeLayers,
   type CallRecognizer,
@@ -247,7 +246,7 @@ const sortableRefs: RefModifierLowering = {
  */
 export const dndPlugin: CompilerPlugin = {
   name: DND_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/dnd'],
   calls: { useSortable: recognizeSortable },
   decls: { [SORTABLE_TYPE]: sortableDecl },

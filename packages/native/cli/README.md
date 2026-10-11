@@ -49,8 +49,10 @@ files always load; packages can also ship their own plugin (next section).
 
 A dependency that declares `"pyreon": { "native": { "plugin": "native/plugin.mjs" } }`
 in its `package.json` ships its own native lowering. `build` and `check` find
-it by walking the app's declared dependencies with the same resolver `wire`
-uses, and load it LAZILY: only when a file under `--source` imports one of the
+it by walking the app's installed dependencies, development dependencies, and peers,
+then each dependency's installed runtime dependencies and peers. Dependency
+development tools are excluded, and canonical package paths bound traversal
+and deduplicate symlinks. Plugins load LAZILY: only when a file under `--source` imports one of the
 package's `modules` (`"pyreon": { "native": { "modules": [...] } }`, default the
 package name, matched exactly or as a `name/subpath`). The import scan is a
 conservative regex — it can over-activate, never under-activate, and activation
@@ -72,12 +74,18 @@ types are declared in that package's own `native/swift` and `native/kotlin`
 owner and the declaration each target emits and whether it appears in the emit.
 Two plugins claiming one hook is a load-time error naming both.
 
+Plain Mode imports from `@pyreon/core/plain` activate the installed reactivity
+plugin, including reactivity installed as core's peer. Its manifest declares
+that activation because the Plain Mode pass injects signal/computed imports
+after discovery. Package descriptors pin API 2; update the compiler and package
+plugins together when upgrading from API 1.
+
 Programmatic `build`, `check`, `checkSource`, and `watchCheck` accept a
 `compiler` created by `createCompiler({ plugins })`. The synchronous `main()`
 entry remains available; `mainWithPlugins(argv)` loads modules asynchronously
 and returns the exit code. Loader or plugin errors exit with code 2, including
 watch/LSP setup failures. Unsupported check target flags exit with a usage
-error (code 1); omit the flag or choose iOS/Android, Swift/Kotlin, or `all`. See the [compiler plugin contract](../compiler/README.md#compiler-plugins-experimental-api-v1).
+error (code 1); omit the flag or choose iOS/Android, Swift/Kotlin, or `all`. See the [compiler plugin contract](../compiler/README.md#compiler-plugins-experimental-api-v2).
 
 ## `check` is the one to reach for while authoring
 

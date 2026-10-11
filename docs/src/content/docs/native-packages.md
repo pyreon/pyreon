@@ -188,7 +188,7 @@ duplicate targets fail explicitly.
 import { createCompiler, type CompilerPlugin } from '@pyreon/native-compiler'
 
 const diagnostics = {
-  name: 'release-policy', apiVersion: 1,
+  name: 'release-policy', apiVersion: 2,
   transformIR(module, context) {
     if (module.components.length === 0) context.warn('No native components found')
   },
@@ -206,9 +206,9 @@ Pass the same repeatable `--plugin` flags to `check`, `check --watch`, and
 `check --lsp` so generated code and editor diagnostics share one pipeline.
 The published Node binary loads JavaScript ESM modules; custom backend targets
 are available through the library API. Hooks are synchronous and operate on
-isolated typed IR. Match API version 1 and validate emitted code with the real
-Swift/Kotlin toolchains. See the
-[complete plugin contract](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/README.md#compiler-plugins-experimental-api-v1).
+isolated typed IR. Pin API version 2 and upgrade the compiler and package plugins
+together. Validate emitted code with the real Swift/Kotlin toolchains. See the
+[complete plugin contract](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/README.md#compiler-plugins-experimental-api-v2).
 
 A package can also ship its own plugin: declare `pyreon.native.plugin` (and
 optionally `pyreon.native.modules`) in its `package.json` and

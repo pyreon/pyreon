@@ -10,7 +10,7 @@ import { hooksPlugin, SERVICES } from './first-party-plugins'
 const spec = { swift: 'PyreonThing()', kotlin: ['val {id} = remember { PyreonThing() }'] }
 const plugin = (name: string, extra: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name,
-  apiVersion: 1,
+  apiVersion: 2,
   ...extra,
 })
 

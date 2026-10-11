@@ -1,3 +1,4 @@
+import reactivityPlugin from '../../../../core/reactivity/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin } from '../index'
 import type { SwiftEmitContext } from '../emit-context'
@@ -8,14 +9,16 @@ import type { JsxElementIR } from '../types'
 // `@pyreon/charts`) and a regression in any single member fails exactly one spec here.
 const lowering = (emit: (el: JsxElementIR, ctx: SwiftEmitContext) => string): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { swift: emit } }],
-  // The scope itself belongs to a plugin: the core opens it around `<PyreonUI mode>`'s children, the toy supplies the value.
-  scopes: [{ module: '@pyreon/ui-core', tags: ['PyreonUI'], enter: () => ({ pinned: true }) }],
+  // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
+  scopes: [
+    { module: '@acme/toy', tags: ['Mode'], transparent: true, enter: () => ({ pinned: true }) },
+  ],
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
-  createCompiler({ plugins: [plugin] }).transform(
+  createCompiler({ plugins: [reactivityPlugin, plugin] }).transform(
     `import { Toy } from '@acme/toy'
 import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
@@ -44,14 +47,20 @@ describe('SwiftEmitContext members', () => {
 
   it('stringAttr returns a literal or an interpolation, undefined when absent', () => {
     const out = compile(
-      lowering((el, ctx) => `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`),
+      lowering(
+        (el, ctx) =>
+          `S(${ctx.stringAttr(el, 'a')}, ${ctx.stringAttr(el, 'b')}, ${String(ctx.stringAttr(el, 'c'))})`,
+      ),
       '<Toy a="lit" b={`x${n()}`} />',
     )
     expect(out.code).toContain('S("lit", "x\\(n)", undefined)')
   })
 
-  it('layoutModifiers lowers the element\'s own styling props', () => {
-    const out = compile(lowering((el, ctx) => `Box()${ctx.layoutModifiers(el)}`), '<Toy padding={4} />')
+  it("layoutModifiers lowers the element's own styling props", () => {
+    const out = compile(
+      lowering((el, ctx) => `Box()${ctx.layoutModifiers(el)}`),
+      '<Toy padding={4} />',
+    )
     expect(out.code).toMatch(/Box\(\)\s*\.padding\(/)
   })
 
@@ -84,7 +93,10 @@ describe('SwiftEmitContext members', () => {
   })
 
   it('markColorSchemeUsed makes the component declare the colour-scheme environment value', () => {
-    const plain = compile(lowering(() => 'EmptyView()'), '<Toy />')
+    const plain = compile(
+      lowering(() => 'EmptyView()'),
+      '<Toy />',
+    )
     expect(plain.code).not.toContain('pyreonColorScheme')
     const used = compile(
       lowering((_el, ctx) => {
@@ -93,16 +105,22 @@ describe('SwiftEmitContext members', () => {
       }),
       '<Toy />',
     )
-    expect(used.code).toContain('@Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme')
+    expect(used.code).toContain(
+      '@Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme',
+    )
   })
 
-  it('colorScope is the enclosing mode scope: set inside <PyreonUI mode>, restored for a sibling', () => {
+  it('colorScope is the enclosing mode scope: set inside <Mode>, restored for a sibling', () => {
     const out = compile(
       lowering((_el, ctx) => `Scope(${ctx.colorScope() === undefined ? 'none' : 'scoped'})`),
-      '<Toy /><PyreonUI mode="dark"><Toy /></PyreonUI><Toy />',
-      "import { PyreonUI } from '@pyreon/ui-core'",
+      '<Toy /><Mode><Toy /></Mode><Toy />',
+      "import { Mode } from '@acme/toy'",
     )
-    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual(['Scope(none)', 'Scope(scoped)', 'Scope(none)'])
+    expect(out.code.match(/Scope\((none|scoped)\)/g)).toEqual([
+      'Scope(none)',
+      'Scope(scoped)',
+      'Scope(none)',
+    ])
   })
 
   it('hostState declares @State into the struct, lists what was declared, replaces a tail, and hands out fresh suffixes', () => {
@@ -131,7 +149,7 @@ describe('SwiftEmitContext members', () => {
       ctx.hostState.declare(`@State private var toy_${id}: Int = 0`)
       return 'EmptyView()'
     })
-    const compiler = createCompiler({ plugins: [plugin] })
+    const compiler = createCompiler({ plugins: [reactivityPlugin, plugin] })
     const src = `import { Toy } from '@acme/toy'
 import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'

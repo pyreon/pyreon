@@ -19,7 +19,7 @@ const METHOD: Extract<DeclIR, { kind: 'function' }> = {
 
 function scopedCompiler(throws: boolean) {
   const plugin: CompilerPlugin = {
-    name: '@acme/member-scope', apiVersion: 1,
+    name: '@acme/member-scope', apiVersion: 2,
     topLevel(node) {
       const n = node as { declarations?: { id?: { name?: string } }[] }
       return n.declarations?.[0]?.id?.name === 'ExampleModule' ? { type: 'module', name: 'ExampleModule' } : undefined

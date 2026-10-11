@@ -6,7 +6,7 @@
 // dynamic and is independent of data.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = (body: string) =>
   `import { Stack, WebView } from '@pyreon/primitives'

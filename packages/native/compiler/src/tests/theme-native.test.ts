@@ -8,14 +8,14 @@
 // compile time, never emitted (there is no native `defineTheme`).
 
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, resolveThemeToken } from '../theme-native'
+import { transform } from './first-party-plugins'
 import {
-  DEFAULT_THEME,
-  mergeTheme,
-  parseThemeDefinition,
-  resolveThemeToken,
-} from '../theme-native'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftTypecheck,
+} from '../validate'
 import { parseSync } from 'oxc-parser'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
@@ -60,9 +60,15 @@ describe('theme-native — resolveThemeToken (against defaults)', () => {
 describe('theme-native — parseThemeDefinition + mergeTheme', () => {
   it('parses a defineTheme({…}) marker into literal leaves', () => {
     const parsed = parseThemeDefinition(
-      exprNode(`defineTheme({ color: { primary: '#ff0000' }, spacing: { md: 20 }, radius: { sm: 6 } })`),
+      exprNode(
+        `defineTheme({ color: { primary: '#ff0000' }, spacing: { md: 20 }, radius: { sm: 6 } })`,
+      ),
     )
-    expect(parsed).toEqual({ color: { primary: '#ff0000' }, spacing: { md: 20 }, radius: { sm: 6 } })
+    expect(parsed).toEqual({
+      color: { primary: '#ff0000' },
+      spacing: { md: 20 },
+      radius: { sm: 6 },
+    })
   })
   it('requires the marker — a bare object literal is NOT a theme', () => {
     expect(parseThemeDefinition(exprNode(`{ color: { primary: '#ff0000' } }`))).toBeNull()
@@ -111,7 +117,9 @@ function App() { return (<Card><Text>x</Text></Card>) }`
     const src = `import { Stack, Text } from '@pyreon/primitives'
 const Card = styled(Stack)\`background: \${(t) => t.color.primary}\`
 function App() { return (<Card><Text>x</Text></Card>) }`
-    expect(swift(src).code).toContain('.background(Color(.sRGB, red: 0.145, green: 0.388, blue: 0.922')
+    expect(swift(src).code).toContain(
+      '.background(Color(.sRGB, red: 0.145, green: 0.388, blue: 0.922',
+    )
   })
 
   it('the defineTheme(…) declaration is consumed, NOT emitted natively', () => {
@@ -124,7 +132,9 @@ function App() { return (<Card><Text>x</Text></Card>) }`
 const theme = defineTheme({ color: { primary: '#ff3b30' } })
 const Btn = rocketstyle()({ name: 'Btn', component: Stack }).states({ primary: { backgroundColor: t.color.primary } })
 function App() { return (<Btn state="primary"><Text>x</Text></Btn>) }`
-    expect(swift(src).code).toContain('.background(Color(.sRGB, red: 1.000, green: 0.231, blue: 0.188')
+    expect(swift(src).code).toContain(
+      '.background(Color(.sRGB, red: 1.000, green: 0.231, blue: 0.188',
+    )
   })
 })
 
@@ -135,10 +145,13 @@ const Card = styled(Stack)\`background: \${(t) => t.color.primary}; padding: \${
 const Btn = rocketstyle()({ name: 'Btn', component: Stack }).states({ primary: { backgroundColor: t.color.primary, padding: t.spacing.lg } })
 function App() { return (<Card><Btn state="primary"><Text>x</Text></Btn></Card>) }`
 
-  it.skipIf(!isSwiftUIAvailable())('the app-themed styler + rocketstyle output typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(transform(SRC, { target: 'swift' }).code)
-    expect(res.ok, res.error).toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable())(
+    'the app-themed styler + rocketstyle output typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(transform(SRC, { target: 'swift' }).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
   it.skipIf(!isKotlincAvailable())('the app-themed output compiles (real kotlinc)', () => {
     const res = validateKotlin(transform(SRC, { target: 'kotlin' }).code)
     expect(res.ok, res.error).toBe(true)

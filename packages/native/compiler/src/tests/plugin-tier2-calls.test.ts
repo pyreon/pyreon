@@ -1,3 +1,4 @@
+import reactivityPlugin from '../../../../core/reactivity/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin } from '../index'
 
@@ -6,7 +7,7 @@ import { createCompiler, type CompilerPlugin } from '../index'
 // this package's. A toy package proves the seam names no library.
 const toy = (tier2Calls: readonly string[] | undefined): CompilerPlugin => ({
   name: '@acme/widgets',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/widgets'],
   ...(tier2Calls === undefined ? {} : { tier2Calls }),
 })
@@ -21,7 +22,7 @@ export function App() {
   return <Stack><Text>{String(n())}</Text></Stack>
 }`
 
-const run = (plugin: CompilerPlugin) => createCompiler({ plugins: [plugin] }).transform(SRC, { target: 'swift' })
+const run = (plugin: CompilerPlugin) => createCompiler({ plugins: [reactivityPlugin, plugin] }).transform(SRC, { target: 'swift' })
 
 describe('tier2Calls', () => {
   it('reports the Tier-2 diagnostic for each declaration, naming the plugin and the binding, and declares nothing', () => {

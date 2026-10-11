@@ -19,6 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
+- Native compiler tooling: corePlugin from @pyreon/core/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
 - h() — hyperscript function producing VNodes, JSX compiles to h() or _tpl()
 - Fragment — group children without a wrapper DOM element
 - onMount / onUnmount — lifecycle hooks, onMount supports cleanup return

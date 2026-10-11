@@ -13,7 +13,6 @@
 // `remember {}` blocks run sequentially, so there the declarations name each other directly.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
   unwrapTypeLayers,
   type CallRecognizer,
@@ -216,7 +215,7 @@ const signalReceiver: ReceiverLowering = {
  */
 export const syncPlugin: CompilerPlugin = {
   name: SYNC_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/sync'],
   scanModule: scanSync,
   calls: { PyreonCrdtDoc: recognizeDoc, syncedSignal: recognizeSyncedSignal },

@@ -5,7 +5,7 @@ import { createCompiler, type CompilerPlugin } from '../index'
 // compiler reads the flags from the emitter, not from a library name.
 const toy = (flags: { callable?: boolean; usesRouter?: boolean }): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   calls: { useToy: () => ({ type: 'toy' }) },
   decls: {

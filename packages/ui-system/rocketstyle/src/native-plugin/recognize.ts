@@ -28,10 +28,15 @@
 // switch over the dimension-set PRODUCT) — warns + falls back to the first branch.
 // ============================================================================
 
-import { isCanonicalPrimitive } from './canonical-primitives'
-import { isStyleBasePrimitive } from './registry-lookup'
-import { DEFAULT_THEME, resolveThemeToken, type ThemeTable } from './theme-native'
-import type { ExprIR, RocketstyleComponentIR } from './types'
+import {
+  isCanonicalPrimitive,
+  isStyleBasePrimitive,
+  DEFAULT_THEME,
+  resolveThemeToken,
+  type ThemeTable,
+  type ExprIR,
+} from '@pyreon/native-compiler/plugin-api'
+import type { RocketstyleComponentIR } from './types'
 
 export type { RocketstyleComponentIR }
 
@@ -72,6 +77,7 @@ export function parseRocketstyleDefn(
   init: AnyNode | undefined,
   warnings: string[],
   theme: ThemeTable = DEFAULT_THEME,
+  factory = 'rocketstyle',
 ): RocketstyleComponentIR | null {
   const chainTop = unwrap(init)
   if (!chainTop || chainTop.type !== 'CallExpression') return null
@@ -94,7 +100,7 @@ export function parseRocketstyleDefn(
   }
 
   // Head must be the CURRIED `rocketstyle(cfg)({ name, component: Prim })`.
-  const prim = readCurriedPrimitive(cur)
+  const prim = readCurriedPrimitive(cur, factory)
   if (prim === null) return null // not a rocketstyle-over-anything chain
   if (!isCanonicalPrimitive(prim) && !isStyleBasePrimitive(prim)) {
     warnings.push(
@@ -119,7 +125,7 @@ export function parseRocketstyleDefn(
  * primitive identifier from the inner config object's `component` field.
  * Returns null if the head isn't a rocketstyle curry.
  */
-function readCurriedPrimitive(head: AnyNode | undefined): string | null {
+function readCurriedPrimitive(head: AnyNode | undefined, factory: string): string | null {
   const h = unwrap(head)
   if (!h || h.type !== 'CallExpression') return null
   const innerCall = unwrap(h.callee)
@@ -127,7 +133,7 @@ function readCurriedPrimitive(head: AnyNode | undefined): string | null {
     !innerCall ||
     innerCall.type !== 'CallExpression' ||
     unwrap(innerCall.callee)?.type !== 'Identifier' ||
-    unwrap(innerCall.callee)?.name !== 'rocketstyle'
+    unwrap(innerCall.callee)?.name !== factory
   ) {
     return null
   }
@@ -173,7 +179,10 @@ function dimensionMap(
     // dropped every style under the dimension and reported nothing. A
     // `size="large"` app compiled, ran, and rendered unstyled — the exact
     // failure mode the PMTC arc has been converting into named warnings.
-    if (value && (value.type === 'ArrowFunctionExpression' || value.type === 'FunctionExpression')) {
+    if (
+      value &&
+      (value.type === 'ArrowFunctionExpression' || value.type === 'FunctionExpression')
+    ) {
       warnings.push(
         `Component ${compName}: .${dim}s() value '${valueName}' is a FUNCTION, so its styles were DROPPED ` +
           `(empty dimension theme). rocketstyle takes ONE callback returning the whole map — ` +
@@ -181,7 +190,13 @@ function dimensionMap(
       )
       continue
     }
-    out[valueName] = objectExprToStyleObject(value, compName, `${dim}.${valueName}`, warnings, theme)
+    out[valueName] = objectExprToStyleObject(
+      value,
+      compName,
+      `${dim}.${valueName}`,
+      warnings,
+      theme,
+    )
   }
   return out
 }
@@ -245,7 +260,11 @@ function objectExprToStyleObject(
       const v = unwrap(p.value)
       if (v?.type === 'Literal' && (typeof v.value === 'string' || typeof v.value === 'number')) {
         fields.push({ name: key, value: { kind: 'literal', value: v.value } })
-      } else if (v?.type === 'UnaryExpression' && v.operator === '-' && v.argument?.type === 'Literal') {
+      } else if (
+        v?.type === 'UnaryExpression' &&
+        v.operator === '-' &&
+        v.argument?.type === 'Literal'
+      ) {
         fields.push({ name: key, value: { kind: 'literal', value: -Number(v.argument.value) } })
       } else {
         // A theme-token reference (`t.color.primary`) → resolve to its value via
@@ -363,5 +382,7 @@ export function resolveRocketstyleUseSite(
     if (set) for (const f of set.fields) m.set(f.name, f.value)
     return toStyleObject(m)
   }
+  // `then` is the shared ternary IR branch, not a Promise method.
+  // oxlint-disable-next-line unicorn/no-thenable
   return { kind: 'ternary', cond, then: branch(a), otherwise: branch(b) }
 }

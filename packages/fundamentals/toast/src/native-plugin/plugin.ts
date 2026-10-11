@@ -10,7 +10,6 @@
 // an info toast.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   hasDynamicKey,
   staticPropKey,
   type CallExprRecognizer,
@@ -173,7 +172,7 @@ const toasterElements: readonly ElementLowering[] = [
  */
 export const toastPlugin: CompilerPlugin = {
   name: TOAST_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/toast'],
   scanModule: scanToast,
   callExprs: recognizeToast,

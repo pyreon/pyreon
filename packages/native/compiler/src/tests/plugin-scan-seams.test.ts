@@ -19,7 +19,7 @@ const HEAD = `import { Stack, Text, Suspense } from '@pyreon/primitives'
 /** A toy "endpoints" plugin: records `const ep = endpoint('/x')` facts and resolves calls of them. */
 const endpointsPlugin = (): CompilerPlugin => ({
   name: '@acme/endpoints',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/endpoints'],
   scanModule(scan) {
     const facts = scan.fileState<Map<string, string>>('@acme/endpoints:facts', () => new Map())
@@ -50,7 +50,7 @@ const endpointsPlugin = (): CompilerPlugin => ({
 /** A toy "feed" plugin: a keyed container that is an async source, has typed reads and a tail lifecycle. */
 const feedPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/feed',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/feed'],
   calls: {
     useFeed: (call, ctx) => (call.argCount === 0 ? null : { type: 'feed', payload: { label: ctx.stringLiteralArg(0) ?? '' } }),
@@ -200,7 +200,7 @@ describe('scan registry + shape', () => {
   })
 
   it('rejects a malformed scanModule / requestSources / destructureCalls with the plugin named', () => {
-    const bad = (over: object): CompilerPlugin => ({ name: '@acme/bad', apiVersion: 1, ...over }) as CompilerPlugin
+    const bad = (over: object): CompilerPlugin => ({ name: '@acme/bad', apiVersion: 2, ...over }) as CompilerPlugin
     expect(() => assertPluginShape(bad({ scanModule: 1 }))).toThrow(/@acme\/bad.*scanModule/)
     expect(() => assertPluginShape(bad({ requestSources: [{ has: () => true }] }))).toThrow(/request source needs has and resolve/)
     expect(() => assertPluginShape(bad({ requestSources: {} }))).toThrow(/requestSources must be an array/)
@@ -212,7 +212,7 @@ describe('scan registry + shape', () => {
       discovered: [
         {
           name: '@acme/boom',
-          apiVersion: 1,
+          apiVersion: 2,
           scanModule() {
             throw new Error('nope')
           },

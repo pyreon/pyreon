@@ -1,9 +1,7 @@
 {
   "native-compiler": {
-    "packages": {
-      "@pyreon/ui-core": 2
-    },
-    "hooks": 66
+    "packages": {},
+    "hooks": 0
   },
   "compiler": {
     "packages": {

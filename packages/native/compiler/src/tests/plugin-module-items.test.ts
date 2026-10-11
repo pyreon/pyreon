@@ -1,3 +1,4 @@
+import formPlugin from '../../../../fundamentals/form/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { withRegistries } from '../active-registries'
 import { createCompiler } from '../compiler'
@@ -18,7 +19,10 @@ import type { ParseResult } from '../types'
 const HEAD = `import { Stack, Text } from '@pyreon/primitives'
 `
 
-type Declarator = { id?: { name?: string }; init?: { callee?: { name?: string }; arguments?: { value?: unknown }[] } }
+type Declarator = {
+  id?: { name?: string }
+  init?: { callee?: { name?: string }; arguments?: { value?: unknown }[] }
+}
 
 const firstDeclarator = (node: unknown): Declarator | undefined => {
   const n = node as { declarations?: Declarator[]; declaration?: { declarations?: Declarator[] } }
@@ -32,7 +36,7 @@ const firstDeclarator = (node: unknown): Declarator | undefined => {
  */
 const unitsPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/units',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/units'],
   topLevel(node, ctx) {
     const d = firstDeclarator(node)
@@ -45,13 +49,25 @@ const unitsPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
         ctx.report(`defineUnit \`${name}\`: the symbol must be a string literal.`)
         return undefined
       }
-      return { type: 'unit', name, payload: { bindingName: name, symbol, fields: ['label', 'unit'] } }
+      return {
+        type: 'unit',
+        name,
+        payload: { bindingName: name, symbol, fields: ['label', 'unit'] },
+      }
     }
     if (callee === 'defineDecl') {
-      return { type: 'decl', name, payload: { text: ctx.staticString(d?.init?.arguments?.[0] as never) ?? '' } }
+      return {
+        type: 'decl',
+        name,
+        payload: { text: ctx.staticString(d?.init?.arguments?.[0] as never) ?? '' },
+      }
     }
     if (callee === 'defineNote') {
-      return { type: 'note', name, payload: { text: ctx.staticString(d?.init?.arguments?.[0] as never) ?? '' } }
+      return {
+        type: 'note',
+        name,
+        payload: { text: ctx.staticString(d?.init?.arguments?.[0] as never) ?? '' },
+      }
     }
     return undefined
   },
@@ -102,7 +118,12 @@ const unitsPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
     convert(site, ctx) {
       const receiver = site.receiver as { type?: string; name?: string }
       if (receiver.type !== 'Identifier' || receiver.name === undefined) return undefined
-      if (site.args.length !== 1) return ctx.unsupported(site.node, `\`${receiver.name}.convert(…)\``, 'convert takes exactly one argument.')
+      if (site.args.length !== 1)
+        return ctx.unsupported(
+          site.node,
+          `\`${receiver.name}.convert(…)\``,
+          'convert takes exactly one argument.',
+        )
       return { type: 'convert', payload: { unit: receiver.name }, args: [ctx.expr(site.args[0]!)] }
     },
   },
@@ -112,7 +133,8 @@ const unitsPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
       kotlin: (e, ctx) => `AcmeUnit_${String(e.payload.unit)}.convert(${ctx.expr(e.args[0]!)})`,
       typing: {
         type: () => ({ kind: 'number', float: true }),
-        member: (_e, property) => (property === 'value' ? { kind: 'number', float: true } : { kind: 'unknown' }),
+        member: (_e, property) =>
+          property === 'value' ? { kind: 'number', float: true } : { kind: 'unknown' },
       },
       rename(e, renames) {
         const to = renames.get(String(e.payload.unit))
@@ -133,7 +155,9 @@ export function App() { return <Stack><Text>x</Text></Stack> }`,
       { target },
     )
     expect(code).toContain('AcmeUnit_Meters')
-    expect(code.indexOf('AcmeUnit_Meters')).toBeLessThan(code.indexOf('struct App') === -1 ? code.indexOf('fun App') : code.indexOf('struct App'))
+    expect(code.indexOf('AcmeUnit_Meters')).toBeLessThan(
+      code.indexOf('struct App') === -1 ? code.indexOf('fun App') : code.indexOf('struct App'),
+    )
     // Without the plugin the declaration is not a plugin item.
     const bare = createCompiler().transform(
       `import { defineUnit } from '@acme/units'
@@ -153,7 +177,9 @@ export function App() { return <Stack><Text>x</Text></Stack> }`,
       { target },
     )
     expect(code).not.toContain('AcmeUnit_')
-    expect(warnings.some((w) => w.includes('defineUnit `Meters`: the symbol must be a string literal.'))).toBe(true)
+    expect(
+      warnings.some((w) => w.includes('defineUnit `Meters`: the symbol must be a string literal.')),
+    ).toBe(true)
   })
 
   it('slots: `models` emits before `declarations`, which emit before the default `data` slot — whatever the order in the file', () => {
@@ -203,7 +229,11 @@ export function App() {
     expect(typed).toContain('pyreonNumString(out)')
     const base = unitsPlugin()
     const untyped = testNativePlugin(
-      unitsPlugin({ exprs: { convert: { swift: base.exprs!.convert!.swift, kotlin: base.exprs!.convert!.kotlin } } }),
+      unitsPlugin({
+        exprs: {
+          convert: { swift: base.exprs!.convert!.swift, kotlin: base.exprs!.convert!.kotlin },
+        },
+      }),
       source,
       { target },
     ).code
@@ -219,7 +249,9 @@ export function App() {
     const { code } = testNativePlugin(unitsPlugin(), source, { target })
     expect(code).toContain('pyreonNumString(AcmeUnit_Meters.convert(1')
     // `.other` is `unknown`: the owner decided it, so it takes the plain spelling.
-    expect(code.split('\n').filter((l) => l.includes('pyreonNumString(AcmeUnit_Meters'))).toHaveLength(1)
+    expect(
+      code.split('\n').filter((l) => l.includes('pyreonNumString(AcmeUnit_Meters')),
+    ).toHaveLength(1)
   })
 
   it('a null verdict claims the call, reports it, and substitutes the empty literal', () => {
@@ -234,14 +266,25 @@ export function App() {
       { target },
     )
     expect(code).not.toContain('.convert(')
-    expect(warnings.some((w) => w.includes('`Meters.convert(…)` is not supported in native (PMTC) — convert takes exactly one argument.'))).toBe(true)
+    expect(
+      warnings.some((w) =>
+        w.includes(
+          '`Meters.convert(…)` is not supported in native (PMTC) — convert takes exactly one argument.',
+        ),
+      ),
+    ).toBe(true)
   })
 
   it('methodCalls: a call no recognizer claims is the ordinary call, and a decline falls through to the next recognizer', () => {
     const second: CompilerPlugin = {
       name: '@acme/units-b',
-      apiVersion: 1,
-      methodCalls: { convert: (site) => ({ type: 'convertB', payload: { receiver: (site.receiver as { name?: string }).name ?? '' } }) },
+      apiVersion: 2,
+      methodCalls: {
+        convert: (site) => ({
+          type: 'convertB',
+          payload: { receiver: (site.receiver as { name?: string }).name ?? '' },
+        }),
+      },
       exprs: { convertB: { swift: () => 'B.swift()', kotlin: () => 'B.kotlin()' } },
     }
     const declining = unitsPlugin({ methodCalls: { convert: () => undefined } })
@@ -280,7 +323,13 @@ export function App() {
       { target },
     )
     expect(seen).toEqual(['explode', 'keep'])
-    expect(warnings.some((w) => w.includes('`Meters.explode(…)` is not supported in native (PMTC) — only `convert` lowers.'))).toBe(true)
+    expect(
+      warnings.some((w) =>
+        w.includes(
+          '`Meters.explode(…)` is not supported in native (PMTC) — only `convert` lowers.',
+        ),
+      ),
+    ).toBe(true)
     // A call the wildcard declines is the ordinary call.
     expect(code).toContain('other.keep(1')
   })
@@ -299,7 +348,11 @@ export function App() {
     )
     // The item's own declaration (its struct, its value binding) AND the expression read follow the rename.
     expect(code).toContain('AcmeUnit_MetersValue {')
-    expect(code).toContain(target === 'swift' ? 'let MetersValue = AcmeUnit_MetersValue.self' : 'val MetersValue = AcmeUnit_MetersValue')
+    expect(code).toContain(
+      target === 'swift'
+        ? 'let MetersValue = AcmeUnit_MetersValue.self'
+        : 'val MetersValue = AcmeUnit_MetersValue',
+    )
     expect(code).toContain('AcmeUnit_MetersValue.convert(')
     expect(code).not.toContain('AcmeUnit_Meters {')
     expect(code).not.toMatch(/AcmeUnit_Meters\.convert/)
@@ -308,7 +361,13 @@ export function App() {
   it('bindings.reserved: a rename never lands on a name the item already takes', () => {
     const base = unitsPlugin().items!.unit!
     const plugin = unitsPlugin({
-      items: { ...unitsPlugin().items, unit: { ...base, bindings: { ...base.bindings!, reserved: (item) => [`${item.name}Value`] } } },
+      items: {
+        ...unitsPlugin().items,
+        unit: {
+          ...base,
+          bindings: { ...base.bindings!, reserved: (item) => [`${item.name}Value`] },
+        },
+      },
     })
     const { code } = testNativePlugin(
       plugin,
@@ -323,8 +382,7 @@ export function App() { return <Stack><Text>x</Text></Stack> }`,
   })
 
   it('fieldValidators: a form naming the item wires one validator per field, delegating to the plugin', () => {
-    const { code } = testNativePlugin(
-      unitsPlugin(),
+    const { code } = createCompiler({ plugins: [unitsPlugin(), formPlugin] }).transform(
       `import { defineUnit } from '@acme/units'
 import { useForm } from '@pyreon/form'
 ${HEAD}const Meters = defineUnit('m')
@@ -339,8 +397,7 @@ export function App() {
   })
 
   it("bindings: a form's `schema:` link follows the rename, so its validators resolve against the renamed item", () => {
-    const { code } = testNativePlugin(
-      unitsPlugin(),
+    const { code } = createCompiler({ plugins: [unitsPlugin(), formPlugin] }).transform(
       `import { defineUnit } from '@acme/units'
 import { useForm } from '@pyreon/form'
 ${HEAD}export const Meters = defineUnit('m')
@@ -373,12 +430,16 @@ export function App() {
     })
     const endpoints: CompilerPlugin = {
       name: '@acme/endpoints',
-      apiVersion: 1,
+      apiVersion: 2,
       modules: ['@acme/endpoints'],
       requestSources: [
         {
           has: (name) => name === 'getThing',
-          resolve: () => ({ url: '/things', method: 'GET', response: { binding: 'Meters', array: false } }),
+          resolve: () => ({
+            url: '/things',
+            method: 'GET',
+            response: { binding: 'Meters', array: false },
+          }),
         },
       ],
     }
@@ -392,7 +453,9 @@ export function App() {
   return <Stack><Text>{String(t.data()?.pages)}</Text></Stack>
 }`
     // `useFetch` is the hooks plugin's: it is the consumer of the request source.
-    const result = createCompiler({ plugins: [hooksPlugin, plugin, endpoints] }).transform(source, { target })
+    const result = createCompiler({ plugins: [hooksPlugin, plugin, endpoints] }).transform(source, {
+      target,
+    })
     expect(result.code).toContain(target === 'swift' ? 'var pages: Double' : 'pages: Double')
     expect(seen).toContain('unit:Meters')
     expect(result.warnings).toContain('units saw 1 item(s)')
@@ -430,9 +493,6 @@ describe('module-item registry, hash lane and shape', () => {
     moduleDecls: [],
     moduleItems: [],
     helperFns: [],
-    styledComponents: [],
-    rocketstyleComponents: [],
-    attrsComponents: [],
     aliasImports: new Map(),
     warnings: [],
     ...over,
@@ -448,14 +508,40 @@ describe('module-item registry, hash lane and shape', () => {
     return h.toString(36)
   }
   const legacyKey = (fieldMetas: unknown[], zodSchemas: unknown[], extra: unknown[] = []): string =>
-    fnv(JSON.stringify([[], [], [], [], [], [], fieldMetas, [], zodSchemas, [], [], [], [], ...extra]))
+    fnv(
+      JSON.stringify([
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        fieldMetas,
+        [],
+        zodSchemas,
+        [],
+        [],
+        [],
+        [],
+        ...extra,
+      ]),
+    )
 
   it('legacyList: an item hashes where the closed array it replaced stood, with its payload as the element', () => {
     const payload = { bindingName: 'Meters', symbol: 'm', fields: ['label'] }
     const item = { plugin: '@acme/units', type: 'unit', name: 'Meters', payload }
     const withLane = (lane: 'fieldMetas' | 'zodSchemas' | undefined) =>
       createCompiler({
-        plugins: [unitsPlugin({ items: { unit: { ...unitsPlugin().items!.unit!, ...(lane !== undefined ? { legacyList: lane } : {}) } } })],
+        plugins: [
+          unitsPlugin({
+            items: {
+              unit: {
+                ...unitsPlugin().items!.unit!,
+                ...(lane !== undefined ? { legacyList: lane } : {}),
+              },
+            },
+          }),
+        ],
       })
     const tag = (compiler: ReturnType<typeof createCompiler>) => withRegistries(compiler.registries, () => moduleTag(parsed({ moduleItems: [item] })))
     // The lane's position (and only the lane's) decides the hash: slot 6 for the metadata array, slot 8 for the schema array.
@@ -465,16 +551,30 @@ describe('module-item registry, hash lane and shape', () => {
     expect(tag(withLane(undefined))).toBe(legacyKey([], [], [[item]]))
   })
 
-  for (const [lane, slot] of [['stores', 4], ['models', 5]] as const) {
+  for (const [lane, slot] of [
+    ['stores', 4],
+    ['models', 5],
+  ] as const) {
     it(`keeps the former ${lane} payload in its recorded hash position`, () => {
       const payload = { binding: 'Example', initial: 3 }
       const item = { plugin: '@acme/units', type: 'unit', name: 'Example', payload }
-      const compiler = createCompiler({ plugins: [unitsPlugin({ items: { unit: {
-        ...unitsPlugin().items!.unit!, legacyList: lane,
-      } } })] })
+      const compiler = createCompiler({
+        plugins: [
+          unitsPlugin({
+            items: {
+              unit: {
+                ...unitsPlugin().items!.unit!,
+                legacyList: lane,
+              },
+            },
+          }),
+        ],
+      })
       const legacy: unknown[] = Array.from({ length: 13 }, () => [])
       legacy[slot] = [payload]
-      expect(withRegistries(compiler.registries, () => moduleTag(parsed({ moduleItems: [item] })))).toBe(fnv(JSON.stringify(legacy)))
+      expect(
+        withRegistries(compiler.registries, () => moduleTag(parsed({ moduleItems: [item] }))),
+      ).toBe(fnv(JSON.stringify(legacy)))
     })
   }
 
@@ -484,32 +584,52 @@ describe('module-item registry, hash lane and shape', () => {
   })
 
   it('assertPluginShape rejects malformed module-level members by name', () => {
-    const bad = (extra: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 1, ...extra })
+    const bad = (extra: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 2, ...extra })
     expect(bad({ topLevel: 'x' })).toThrow('topLevel must be a synchronous function')
-    expect(bad({ items: { unit: { swift: () => [] } } })).toThrow('items.unit needs a swift and a kotlin function')
-    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], legacyList: 'nope' } } })).toThrow('legacyList must be "models", "stores", "fieldMetas", "zodSchemas" or "features"')
-    expect(bad({ items: { unit: { swift: () => [], kotlin: () => [], after: 'missing' } } })).toThrow('items.unit.after must name a supported module emission slot')
-    expect(bad({ exprs: { e: { kotlin: () => '' } } })).toThrow('exprs.e needs a swift and a kotlin function')
-    expect(bad({ methodCalls: { convert: 1 } })).toThrow('methodCalls.convert must be a synchronous function')
+    expect(bad({ items: { unit: { swift: () => [] } } })).toThrow(
+      'items.unit needs a swift and a kotlin function',
+    )
+    expect(
+      bad({ items: { unit: { swift: () => [], kotlin: () => [], legacyList: 'nope' } } }),
+    ).toThrow(
+      'legacyList must be "models", "stores", "fieldMetas", "zodSchemas", "features", "styledComponents", "rocketstyleComponents" or "attrsComponents"',
+    )
+    expect(
+      bad({ items: { unit: { swift: () => [], kotlin: () => [], after: 'missing' } } }),
+    ).toThrow('items.unit.after must name a supported module emission slot')
+    expect(bad({ exprs: { e: { kotlin: () => '' } } })).toThrow(
+      'exprs.e needs a swift and a kotlin function',
+    )
+    expect(bad({ methodCalls: { convert: 1 } })).toThrow(
+      'methodCalls.convert must be a synchronous function',
+    )
     expect(bad({ refineStructs: 1 })).toThrow('refineStructs must be a synchronous function')
     expect(bad({ finishModule: 1 })).toThrow('finishModule must be a synchronous function')
   })
 
   it('an item whose type has no emitter, or a payload that is not JSON, fails loudly naming the plugin', () => {
     const missing = unitsPlugin({ topLevel: () => ({ type: 'nope', name: 'X' }) })
-    expect(() => createCompiler({ plugins: [missing] }).transform(`${HEAD}const X = 1`, { target: 'swift' })).toThrow(
+    expect(() =>
+      createCompiler({ plugins: [missing] }).transform(`${HEAD}const X = 1`, { target: 'swift' }),
+    ).toThrow(
       /Plugin "@acme\/units" recognized a module item of type "nope" but declares no `items\.nope` emitter/,
     )
-    const notJson = unitsPlugin({ topLevel: () => ({ type: 'unit', name: 'X', payload: { f: () => 1 } as never }) })
-    expect(() => createCompiler({ plugins: [notJson] }).transform(`${HEAD}const X = 1`, { target: 'swift' })).toThrow(
-      /module item "unit" has a payload that is not JSON/,
-    )
+    const notJson = unitsPlugin({
+      topLevel: () => ({ type: 'unit', name: 'X', payload: { f: () => 1 } as never }),
+    })
+    expect(() =>
+      createCompiler({ plugins: [notJson] }).transform(`${HEAD}const X = 1`, { target: 'swift' }),
+    ).toThrow(/module item "unit" has a payload that is not JSON/)
   })
 
   it('a throwing recognizer names its plugin and hook', () => {
-    const boom = unitsPlugin({ topLevel: () => { throw new Error('kaboom') } })
-    expect(() => createCompiler({ plugins: [boom] }).transform(`${HEAD}const X = 1`, { target: 'swift' })).toThrow(
-      '[Pyreon] Native compiler plugin "@acme/units" failed in topLevel: kaboom',
-    )
+    const boom = unitsPlugin({
+      topLevel: () => {
+        throw new Error('kaboom')
+      },
+    })
+    expect(() =>
+      createCompiler({ plugins: [boom] }).transform(`${HEAD}const X = 1`, { target: 'swift' }),
+    ).toThrow('[Pyreon] Native compiler plugin "@acme/units" failed in topLevel: kaboom')
   })
 })

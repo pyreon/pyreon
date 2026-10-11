@@ -1,3 +1,21 @@
+import { statefulStubs } from './native-plugin/stateful-stubs'
+import { recognizeStateful } from './native-plugin/stateful-recognize'
+import {
+  pureStateDecl,
+  pureStateReceiver,
+  debouncedDecl,
+  rateDecl,
+  timerDecl,
+  prepareStateful,
+  refineCounters,
+} from './native-plugin/stateful-emit'
+import { recognizeTimer } from './native-plugin/timers'
+import {
+  recognizeColorScheme,
+  recognizeSizeClass,
+  colorSchemeDecl,
+  sizeClassDecl,
+} from './native-plugin/environment'
 /**
  * `@pyreon/hooks`' native lowering, owned by the library.
  *
@@ -35,16 +53,51 @@ const ERROR_OBJECT = { kind: 'typeRef' as const, name: 'Error', args: [] }
 
 const nativePlugin = {
   name: '@pyreon/hooks',
-  apiVersion: 1,
+  apiVersion: 2,
+  stubs: statefulStubs,
   modules: ['@pyreon/hooks'],
   // Code-shaped lowerings, beside the data-only service table below: `useFetch<T>(url, init?)` and its container.
-  calls: { useFetch: recognizeFetch, ...containerPlugin.calls },
+  calls: {
+    useFetch: recognizeFetch,
+    ...containerPlugin.calls,
+    useToggle: recognizeStateful,
+    useCounter: recognizeStateful,
+    useDebouncedValue: recognizeStateful,
+    useDebouncedCallback: recognizeStateful,
+    useThrottledCallback: recognizeStateful,
+    useColorScheme: recognizeColorScheme,
+    useSizeClass: recognizeSizeClass,
+  },
+  statementCalls: { useInterval: recognizeTimer, useTimeout: recognizeTimer },
   // `const { data, isPending } = useFetch(url)` aliases onto the container.
-  destructureCalls: ['useFetch', ...containerPlugin.destructureCalls],
-  decls: { [FETCH_TYPE]: fetchDecl, ...containerPlugin.decls },
-  receivers: { [FETCH_TYPE]: fetchReceiver, ...containerPlugin.receivers },
+  destructureCalls: [
+    'useFetch',
+    'useColorScheme',
+    'useSizeClass',
+    ...containerPlugin.destructureCalls,
+  ],
+  decls: {
+    [FETCH_TYPE]: fetchDecl,
+    ...containerPlugin.decls,
+    'pure-state': pureStateDecl,
+    'debounced-value': debouncedDecl,
+    'rate-limited': rateDecl,
+    tick: timerDecl,
+    'color-scheme': colorSchemeDecl,
+    'size-class': sizeClassDecl,
+  },
+  receivers: {
+    [FETCH_TYPE]: fetchReceiver,
+    ...containerPlugin.receivers,
+    'pure-state': pureStateReceiver,
+  },
   // The websocket's implicit connect-on-mount (see `containers.ts`).
-  prepareEmit: containerPlugin.prepareEmit,
+  prepareEmit: (input, ctx) => {
+    const prepared = containerPlugin.prepareEmit(input, ctx)
+    prepareStateful(input, ctx)
+    return prepared
+  },
+  transformIR: refineCounters,
   services: {
     // M3.2 — share sheet. iOS presents a UIActivityViewController from the key
     // window itself; Android needs a Context (hoisted from LocalContext because

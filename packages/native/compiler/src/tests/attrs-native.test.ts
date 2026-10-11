@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin } from './first-party-plugins'
-import { parseAttrsDefn } from '../attrs-native'
+import { parseAttrsDefn } from '../../../../ui-system/attrs/src/native-plugin/recognize'
 import { DEFAULT_THEME } from '../theme-native'
 import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 import { parseSync } from 'oxc-parser'

@@ -19,7 +19,9 @@ interface FakeError {
   stdout?: string | Buffer
   stderr?: string | Buffer
   message?: string
-  status?: number
+  status?: number | null
+  signal?: string
+  code?: string
 }
 type Behaviour = { out?: string; err?: FakeError }
 
@@ -49,6 +51,7 @@ const {
   validateSwift,
   validateSwiftTypecheck,
   validateSwiftWithStubs,
+  validateSwiftFilesWithStubs,
 } = await import('../validate')
 
 const PRIVATE_CACHE = mkdtempSync(join(tmpdir(), 'cov-misc2-validate-'))
@@ -139,7 +142,8 @@ describe('validate — tool probing', () => {
   })
 
   it('takes the kotlinc status-0 version from a STRING stderr as well as a Buffer', () => {
-    route = (f) => (f === 'kotlinc' ? { err: { status: 0, stderr: 'info: kotlinc-jvm 2.0.0' } } : {})
+    route = (f) =>
+      f === 'kotlinc' ? { err: { status: 0, stderr: 'info: kotlinc-jvm 2.0.0' } } : {}
     expect(isKotlincAvailable()).toBe(true)
     _resetKotlincCache()
     route = (f) => (f === 'kotlinc' ? { err: { status: 0 } } : {})
@@ -254,6 +258,71 @@ describe('validate — the absent-tool policy', () => {
       skipped: true,
       skipReason: 'Observation module unavailable on this toolchain',
     })
+  })
+})
+
+describe('interrupted native capability probes', () => {
+  it.each(['observation', 'observation-files', 'swiftui'] as const)(
+    'fails and retries an interrupted %s probe',
+    (kind) => {
+      let attempts = 0
+      route = (_file, args) => {
+        if (args[0] === '--version') return { out: 'swiftc 6' }
+        if (isProbe(args, kind === 'swiftui' ? 'swiftui' : 'observation') && ++attempts === 1)
+          return {
+            err: {
+              status: null,
+              signal: 'SIGTERM',
+              code: 'ETIMEDOUT',
+              message: 'probe interrupted',
+            },
+          }
+        return {}
+      }
+      const validate =
+        kind === 'observation'
+          ? () => validateSwiftWithStubs('@Observable final class S { var x = 0 }\n')
+          : kind === 'observation-files'
+            ? () => validateSwiftFilesWithStubs(['@Observable final class S { var x = 0 }\n'])
+            : () => validateSwiftTypecheck('let x = 1\n')
+      expect(validate()).toMatchObject({ ok: false, transient: true })
+      expect(validate()).toEqual({ ok: true })
+      expect(attempts).toBe(2)
+    },
+  )
+
+  it.each(['single', 'module'] as const)(
+    'fails required %s-file Observation validation when unavailable',
+    (mode) => {
+      process.env.PYREON_REQUIRE_NATIVE_VALIDATE = '1'
+      route = (_file, args) =>
+        args[0] === '--version'
+          ? { out: 'swiftc 6' }
+          : isProbe(args, 'observation')
+            ? { err: { status: 1, stderr: 'no such module Observation' } }
+            : {}
+      const source = '@Observable final class S { var x = 0 }\n'
+      const result =
+        mode === 'single' ? validateSwiftWithStubs(source) : validateSwiftFilesWithStubs([source])
+      expect(result.ok).toBe(false)
+      expect(result.skipped).not.toBe(true)
+      expect(result.error).toContain('Observation')
+    },
+  )
+
+  it.each(['swiftc', 'kotlinc'] as const)('retries a transient %s version failure', (binary) => {
+    let attempts = 0
+    route = (_file, args) => {
+      if (args[0] === '--version' || args[0] === '-version')
+        return ++attempts === 1
+          ? { err: { status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' } }
+          : { out: 'toolchain version' }
+      return {}
+    }
+    const available = binary === 'swiftc' ? isSwiftcAvailable : isKotlincAvailable
+    expect(available()).toBe(false)
+    expect(available()).toBe(true)
+    expect(attempts).toBe(2)
   })
 })
 

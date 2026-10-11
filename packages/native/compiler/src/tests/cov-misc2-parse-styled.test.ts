@@ -8,7 +8,7 @@
 // silently vanish).
 
 import { describe, expect, it } from 'vitest'
-import { parseStyled } from '../parse-styled'
+import { parseStyled } from '../../../../ui-system/styler/src/native-plugin/parse-styled'
 
 const names = (src: string) => parseStyled(src).styles.map((s) => s.name)
 const props = (src: string) => parseStyled(src).styles[0]?.properties ?? []

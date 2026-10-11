@@ -16,7 +16,7 @@
 // Each is paired with the neighbouring shape that must take the other arm.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function sw(body: string, params = ''): { code: string; warnings: string[] } {
   const r = transform(

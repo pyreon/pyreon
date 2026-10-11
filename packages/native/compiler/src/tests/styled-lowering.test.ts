@@ -11,7 +11,7 @@
 // toolchains).
 
 import { describe, expect, it, vi } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,
@@ -96,10 +96,13 @@ function App() { return (<T><Text>x</Text></T>) }`
 })
 
 describe('styled(Prim) — toolchain gates', () => {
-  it.skipIf(!isSwiftUIAvailable())('the lowered styled component typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(BOX).code)
-    expect(res.ok, res.error ?? '').toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable())(
+    'the lowered styled component typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(BOX).code)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
   it.skipIf(!isKotlincAvailable())('the lowered styled component compiles (Compose stubs)', () => {
     const res = validateKotlin(kotlin(BOX).code)
     expect(res.ok, res.error ?? '').toBe(true)

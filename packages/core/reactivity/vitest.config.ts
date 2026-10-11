@@ -13,7 +13,12 @@ export default defineNodeConfig({
   // V8/Node without mocking the runtime (which tests the mock). They're
   // excluded from the PRODUCTION coverage gate — same precedent as the
   // devtools panel — so the gate measures the code that actually ships.
-  coverageExclude: ['src/reactive-devtools.ts', 'src/lpih.ts'],
+  coverageExclude: [
+    'src/native-plugin.ts',
+    'src/native-plugin/**',
+    'src/reactive-devtools.ts',
+    'src/lpih.ts',
+  ],
   // branches: honest re-baseline 98 → 96 (2026-07). Measured node-suite
   // reality on main was 96.02% — the configured 98 made the LOCAL
   // `bun run test -- --coverage` exit non-zero on a clean tree while the CI

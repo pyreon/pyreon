@@ -19,7 +19,7 @@
 //           androidx.compose.foundation.)
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 describe('Phase 4 follow-up — useColorScheme() native emit', () => {
   describe('Swift', () => {

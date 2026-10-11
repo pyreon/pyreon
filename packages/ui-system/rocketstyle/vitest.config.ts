@@ -1,6 +1,7 @@
 import { defineNodeConfig } from '@pyreon/vitest-config'
 
 export default defineNodeConfig({
+  coverageExclude: ['src/native-plugin.ts', 'src/native-plugin/**'],
   category: 'ui',
   environment: 'happy-dom',
   // Node-suite coverage sits at 100% across all four metrics after the

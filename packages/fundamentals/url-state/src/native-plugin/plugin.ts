@@ -12,7 +12,6 @@
 // site, so they report why and stay on the web.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   swiftStr,
   type CallRecognizer,
   type CompilerPlugin,
@@ -156,7 +155,7 @@ const urlStateDecl: DeclEmitter = {
  */
 export const urlStatePlugin: CompilerPlugin = Object.freeze({
   name: URL_STATE_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([URL_STATE_PLUGIN_NAME]),
   calls: Object.freeze({ useUrlState: recognizeUrlState }),
   decls: Object.freeze({ [DECL_TYPE]: urlStateDecl }),

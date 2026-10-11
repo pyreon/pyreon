@@ -114,7 +114,7 @@ Runtime guard — returns `true` for components produced by `attrs()`.
 ```ts
 import { isAttrsComponent } from '@pyreon/attrs'
 isAttrsComponent(Button) // true
-isAttrsComponent('div')   // false
+isAttrsComponent('div') // false
 ```
 
 ## TypeScript
@@ -122,9 +122,9 @@ isAttrsComponent('div')   // false
 Each `.attrs<P>()` generic accumulates into the component's prop type. Three type-only properties expose the accumulated shapes:
 
 ```ts
-type AllProps      = typeof Button.$$types          // origin + extended
-type OriginProps   = typeof Button.$$originTypes    // base component's props
-type ExtendedProps = typeof Button.$$extendedTypes  // everything added through .attrs<P>()
+type AllProps = typeof Button.$$types // origin + extended
+type OriginProps = typeof Button.$$originTypes // base component's props
+type ExtendedProps = typeof Button.$$extendedTypes // everything added through .attrs<P>()
 ```
 
 Use `ExtractProps<typeof Button>` from `@pyreon/core` to recover the union when forwarding through another HOC.
@@ -144,3 +144,9 @@ Full docs: [pyreon.dev/docs/attrs](https://pyreon.dev/docs/attrs) (or `docs/src/
 ## License
 
 MIT
+
+## Native compiler plugin
+
+This package owns its native compilation frontend at `@pyreon/attrs/native-plugin`. The native CLI discovers that tooling entry through `pyreon.native.plugin` when the application imports the package. Web runtime imports do not load compiler tooling, and the compiler is an optional peer.
+
+For programmatic compilation, pass the entry's default export to `createCompiler({ plugins: [plugin] })`. Load the owning plugins for every package the source uses. The compiler supplies generic state, JSX, theme tokens and native style operations; this package supplies its import vocabulary and recognition rules.

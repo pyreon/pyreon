@@ -32,6 +32,19 @@ export interface MemberEmitScope {
   readonly observable?: boolean | undefined
 }
 
+/** A callback-local name, optionally typed and owned by a plugin receiver lowering. */
+export interface EmitBinding {
+  readonly name: string
+  readonly type?: TypeIR | undefined
+  readonly declaration?: ExtDecl | undefined
+}
+
+/** Validators offered by a loaded module item, rendered for the active target. */
+export interface EmitFieldValidators {
+  readonly fields: readonly string[]
+  body(field: string, value: string): string
+}
+
 /** A literal attribute value the compiler can read at compile time. */
 export type StaticAttrValue = string | number | boolean
 
@@ -94,6 +107,15 @@ export interface EmitContextBackendExtras {
   argument(e: ExprIR, type: TypeIR | undefined, indent: number): string
   /** A member accessed from outside a target-observable class. */
   observableIdent(name: string): string
+  /** Emit a callback with temporary local type and receiver bindings. */
+  withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
+  /** Validators supplied by the named module item, or undefined. */
+  fieldValidators(name: string): EmitFieldValidators | undefined
+  /** The loaded providers' declaration advice. */
+  fieldValidatorsAdvice(): string | undefined
+
+  /** Enter the registered colour scope around a plugin's custom element emit. */
+  withColorScope<T>(el: JsxElementIR, emit: () => T): T
   /** The component being emitted. */
   component(): ComponentInfo
   /** `_functionNames.has` — `name` is a function declared in the file (module level or component body). */
@@ -103,7 +125,7 @@ export interface EmitContextBackendExtras {
   /** `emitSwiftGeneric` / `emitKotlinGeneric` — the element as an unclaimed component call, bypassing every lowering. */
   generic(el: JsxElementIR, indent: number): string
   /** `swiftType` / `kotlinType` — the target spelling of a type. */
-  typeText(type: TypeIR): string
+  typeText(type: TypeIR, options?: { synthesize?: boolean | undefined }): string
   /** The target type name of a typed container's element (a table row, a sortable item) — see {@link EmitContext.rowType}. */
   rowType(element: TypeIR): string
   /** The fields of a typed container's element — see {@link EmitContext.rowFields}. */
@@ -121,7 +143,12 @@ export interface EmitContextBackendExtras {
   /** `emitSwiftLayoutModifiers` / `emitKotlinLayoutModifier` with `handled` props the caller already consumed. */
   layoutModifiersFor(el: JsxElementIR, handled: ReadonlySet<string>): string
   /** `emitSwiftStatement` / `emitKotlinStatement` over a statement list, with `locals` typed for inference where the emitter keeps an inference context for handler locals. */
-  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
+  statements(
+    stmts: readonly StatementIR[],
+    indent: number,
+    locals?: ReadonlyMap<string, TypeIR>,
+    options?: StatementEmitOptions,
+  ): string[]
 }
 
 /** What a target emitter supplies; `createEmitContext` adds the pure helpers. */
@@ -183,6 +210,17 @@ export interface SwiftEmitContextBackend extends EmitContextBackend, EmitContext
   hostState: HostStateSlot
 }
 
+/** Target control for a callback body; the owning plugin supplies its Kotlin lambda label. */
+export interface StatementEmitOptions {
+  readonly kotlin?:
+    | {
+        readonly returnLabel?: string | undefined
+        /** Evaluate a returned expression for side effects, then return Unit. */
+        readonly discardReturnValue?: boolean | undefined
+      }
+    | undefined
+}
+
 export interface EmitContext {
   /** Own signals/computeds/functions and an optional signal receiver, scoped for the synchronous callback. */
   memberScope<T>(scope: MemberEmitScope, run: () => T): T
@@ -192,7 +230,21 @@ export interface EmitContext {
   argument(e: ExprIR, type: TypeIR | undefined, at?: number): string
   /** The target's spelling for a member of an observable class. */
   observableIdent(name: string): string
+
+  /**
+   * Emit a custom provider's children under its registered colour scope.
+   * Nested calls restore the enclosing scope on return and throw.
+   * @example
+   * ctx.withColorScope(el, () => el.children.map(child => ctx.child(child)))
+   */
+  withColorScope<T>(el: JsxElementIR, emit: () => T): T
   readonly target: EmitTarget
+  /** Temporarily bind callback names and their receiver lowerings; restores on return and throw. A binding without a declaration hides an enclosing plugin receiver. */
+  withBindings<T>(bindings: readonly EmitBinding[], emit: () => T): T
+  /** Field validators offered by a loaded module item named name. */
+  fieldValidators(name: string): EmitFieldValidators | undefined
+  /** Declaration shapes the loaded validator providers advise. */
+  fieldValidatorsAdvice(): string | undefined
   /** Indentation (in spaces) of the element being emitted. */
   readonly indent: number
   /** Emit another element through the full dispatcher; `indent` defaults to this one's. */
@@ -222,7 +274,7 @@ export interface EmitContext {
   /**
    * The compile-time colour-mode scope enclosing the element, as the value its
    * owner stored — or `undefined` outside any scope. READ-ONLY: the scope is
-   * entered and left by the core's `<PyreonUI mode>` / `<ColorModeProvider>`
+   * entered and left by provider element emitters
    * handling and by any plugin-declared scope provider (`CompilerPlugin.scopes`;
    * saved and restored in `finally`, so providers nest and a sibling inherits nothing). The facade does not know
    * the value's type; the plugin that reads it names it (`colorScope<T>()`).
@@ -259,7 +311,7 @@ export interface EmitContext {
    */
   generic(el: JsxElementIR, at?: number): string
   /** The target's spelling of `type`. */
-  typeText(type: TypeIR): string
+  typeText(type: TypeIR, options?: { synthesize?: boolean | undefined }): string
   /**
    * The target type name a typed container's ELEMENT spells to: a declared struct, the struct synthesized for an
    * inline object, or the scalar's own type — what a generic container (`PyreonTableState<Row>`) is instantiated
@@ -289,9 +341,14 @@ export interface EmitContext {
    * A statement list (a callback body a recognizer carried in its payload) as target statements, one
    * string each. `locals` names parameters whose types the body's inference should know (`(ev) => …`
    * over a typed stream item); the Swift emitter seeds them (and the body's own `let`s), the Kotlin
-   * emitter infers handler locals itself and ignores them.
+   * emitter seeds the same callback locals and restores them on return or throw.
    */
-  statements(stmts: readonly StatementIR[], indent: number, locals?: ReadonlyMap<string, TypeIR>): string[]
+  statements(
+    stmts: readonly StatementIR[],
+    indent: number,
+    locals?: ReadonlyMap<string, TypeIR>,
+    options?: StatementEmitOptions,
+  ): string[]
 }
 
 /**
@@ -331,7 +388,10 @@ export interface KotlinEmitContext extends EmitContext {
   intArg(e: ExprIR, at?: number): string
 }
 
-export function createKotlinEmitContext(backend: KotlinEmitContextBackend, indent: number): KotlinEmitContext {
+export function createKotlinEmitContext(
+  backend: KotlinEmitContextBackend,
+  indent: number,
+): KotlinEmitContext {
   return {
     ...createEmitContext('kotlin', backend, indent),
     intArg: (e, at = indent) => backend.intArg(e, at),
@@ -340,7 +400,9 @@ export function createKotlinEmitContext(backend: KotlinEmitContextBackend, inden
 
 /** The member `name` of a context built without it: an error naming it (a real emitter supplies every one). */
 function missing(name: string): never {
-  throw new Error(`[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`)
+  throw new Error(
+    `[Pyreon] this EmitContext was built without \`${name}\` — only a real emitter supplies it.`,
+  )
 }
 
 export function createEmitContext(
@@ -351,10 +413,18 @@ export function createEmitContext(
   return {
     target,
     indent,
-    memberScope: (scope, run) => (backend.memberScope ?? (() => missing('memberScope')))(scope, run),
-    functionDeclaration: (decl) => (backend.functionDeclaration ?? (() => missing('functionDeclaration')))(decl),
-    argument: (e, type, at = indent) => (backend.argument ?? (() => missing('argument')))(e, type, at),
-    observableIdent: (name) => (backend.observableIdent ?? (() => missing('observableIdent')))(name),
+    memberScope: (scope, run) =>
+      (backend.memberScope ?? (() => missing('memberScope')))(scope, run),
+    functionDeclaration: (decl) =>
+      (backend.functionDeclaration ?? (() => missing('functionDeclaration')))(decl),
+    observableIdent: (name) =>
+      (backend.observableIdent ?? (() => missing('observableIdent')))(name),
+    withBindings: (bindings, emit) =>
+      (backend.withBindings ?? (() => missing('withBindings')))(bindings, emit),
+    fieldValidators: (name) =>
+      (backend.fieldValidators ?? (() => missing('fieldValidators')))(name),
+    fieldValidatorsAdvice: () =>
+      (backend.fieldValidatorsAdvice ?? (() => missing('fieldValidatorsAdvice')))(),
     emit: (el, at = indent) => backend.emit(el, at),
     pad: (n = indent) => ' '.repeat(n),
     staticAttr: (el, name) => backend.staticAttr(el, name),
@@ -363,11 +433,15 @@ export function createEmitContext(
     warn: (message) => backend.warn(message),
     expr: (e, at = indent) => backend.expr(e, at),
     exprAs: (type, e, at = indent) => backend.exprAs(type, e, at),
+    argument: (value, type, at = indent) =>
+      (backend.argument ?? (() => missing('argument')))(value, type, at),
     stringAttr: (el, name, at = indent) => backend.stringAttr(el, name, at),
     layoutModifiers: (el) => backend.layoutModifiers(el),
     action: (handler, at = indent) => backend.action(handler, at),
     constExpr: (name) => backend.constExpr(name),
     colorScope: <T extends object>() => backend.colorScope() as T | undefined,
+    withColorScope: (el, emit) =>
+      (backend.withColorScope ?? (() => missing('withColorScope')))(el, emit),
     decls: (plugin, type) => backend.scope().decls(plugin, type),
     state: (key, init) => backend.scope().state(key, init),
     deferred: (key, fallback) => backend.scope().deferred(key, fallback),
@@ -376,7 +450,7 @@ export function createEmitContext(
     isFunctionName: (name) => (backend.isFunctionName ?? (() => missing('isFunctionName')))(name),
     child: (child, at = indent) => (backend.child ?? (() => missing('child')))(child, at),
     generic: (el, at = indent) => (backend.generic ?? (() => missing('generic')))(el, at),
-    typeText: (type) => (backend.typeText ?? (() => missing('typeText')))(type),
+    typeText: (type, options) => (backend.typeText ?? (() => missing('typeText')))(type, options),
     rowType: (element) => (backend.rowType ?? (() => missing('rowType')))(element),
     rowFields: (element) => (backend.rowFields ?? (() => missing('rowFields')))(element),
     inferType: (e) => (backend.inferType ?? (() => missing('inferType')))(e),
@@ -392,12 +466,17 @@ export function createEmitContext(
       messageHandler: () => missing('webView'),
     },
     fileState: (key, init) => (backend.fileState ?? (() => missing('fileState')))(key, init),
-    layoutModifiersFor: (el, handled) => (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
-    statements: (stmts, at, locals) => (backend.statements ?? (() => missing('statements')))(stmts, at, locals),
+    layoutModifiersFor: (el, handled) =>
+      (backend.layoutModifiersFor ?? (() => missing('layoutModifiersFor')))(el, handled),
+    statements: (stmts, at, locals, options) =>
+      (backend.statements ?? (() => missing('statements')))(stmts, at, locals, options),
   }
 }
 
-export function createSwiftEmitContext(backend: SwiftEmitContextBackend, indent: number): SwiftEmitContext {
+export function createSwiftEmitContext(
+  backend: SwiftEmitContextBackend,
+  indent: number,
+): SwiftEmitContext {
   return {
     ...createEmitContext('swift', backend, indent),
     handlerName: (handler) => backend.handlerName(handler),

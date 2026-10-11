@@ -2,7 +2,7 @@
 // platform scheme read, exactly as `useColorScheme()` (@pyreon/hooks) does —
 // same `'light' | 'dark'` string, same emit.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const app = (imp: string, hook: string) => `import { Text } from '@pyreon/primitives'
 ${imp}
@@ -23,7 +23,7 @@ describe('useColorMode on native', () => {
   }
 })
 
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const PINNED = `import { Text } from '@pyreon/primitives'
 import { ColorModeProvider, useColorMode } from '@pyreon/core'

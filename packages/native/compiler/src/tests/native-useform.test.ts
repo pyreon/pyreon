@@ -1,3 +1,4 @@
+import { transform } from './first-party-plugins'
 // Phase 4.2 — `useForm()` native emit. In its own test file (not
 // canonical-primitives.test.ts) so it doesn't append-conflict with the
 // in-flight router/data emit PRs that also extend that file.
@@ -12,7 +13,6 @@
 // on native (submission flows through the container's begin/endSubmit API).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 
 describe('Phase 4.2 — useForm() native emit', () => {
   it('Swift: @State PyreonForm seeded with literal initialValues', () => {
@@ -43,7 +43,9 @@ describe('Phase 4.2 — useForm() native emit', () => {
       `,
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('val form = remember { PyreonForm(initialValues = mapOf("email" to "a@b.com")) }')
+    expect(out).toContain(
+      'val form = remember { PyreonForm(initialValues = mapOf("email" to "a@b.com")) }',
+    )
   })
 
   it('Kotlin: MutableState field reads append .value (isSubmitting / values / errors)', () => {

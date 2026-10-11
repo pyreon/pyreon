@@ -1391,12 +1391,17 @@
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/core/head": {
       "name": "@pyreon/head",
@@ -1424,6 +1429,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
@@ -1434,18 +1440,29 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/core/reactivity": {
       "name": "@pyreon/reactivity",
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/core/router": {
       "name": "@pyreon/router",
@@ -1456,6 +1473,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -1464,9 +1482,13 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/core/runtime-dom": {
       "name": "@pyreon/runtime-dom",
@@ -1563,6 +1585,7 @@
         "@pyreon/router": "workspace:^",
       },
       "optionalPeers": [
+        "@pyreon/native-compiler",
         "@pyreon/router",
       ],
     },
@@ -1802,6 +1825,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
@@ -1815,8 +1839,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",
@@ -1850,6 +1878,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "hotkeys-js": "^4.0.8",
@@ -1858,8 +1887,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/http": {
       "name": "@pyreon/http",
@@ -2140,6 +2173,7 @@
         "ws": "^8.21.3",
       },
       "optionalPeers": [
+        "@pyreon/native-compiler",
         "ws",
       ],
     },
@@ -2866,6 +2900,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -2873,7 +2908,11 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/connector-document": {
       "name": "@pyreon/connector-document",
@@ -3013,11 +3052,18 @@
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-rolldown": "^2.6.3",
       },
+      "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/rocketstyle": {
       "name": "@pyreon/rocketstyle",
@@ -3029,6 +3075,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
@@ -3036,17 +3083,25 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.2",
         "@vitus-labs/tools-rolldown": "^2.6.3",
+        "oxc-parser": "^0.152.0",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "oxc-parser": "^0.152.0",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+        "oxc-parser",
+      ],
     },
     "packages/ui-system/styler": {
       "name": "@pyreon/styler",
       "version": "0.52.0",
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -3055,11 +3110,18 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.2",
         "@vitus-labs/tools-rolldown": "^2.6.3",
+        "oxc-parser": "^0.152.0",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "oxc-parser": "^0.152.0",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+        "oxc-parser",
+      ],
     },
     "packages/ui-system/ui-core": {
       "name": "@pyreon/ui-core",
@@ -3069,6 +3131,7 @@
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
@@ -3078,8 +3141,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/ui-system/unistyle": {
       "name": "@pyreon/unistyle",
@@ -3190,6 +3257,7 @@
       "devDependencies": {
         "@pyreon/lint": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },

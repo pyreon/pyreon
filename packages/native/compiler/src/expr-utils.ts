@@ -351,9 +351,9 @@ export function moduleTag(parsed: ParseResult): string {
       lane('features'),
       lane('zodSchemas'),
       parsed.helperFns,
-      parsed.styledComponents,
-      parsed.rocketstyleComponents,
-      parsed.attrsComponents,
+      lane('styledComponents'),
+      lane('rocketstyleComponents'),
+      lane('attrsComponents'),
       ...(foreign.length > 0 ? [foreign] : []),
     ],
     hashServiceDeclsAsLegacy,
@@ -464,7 +464,10 @@ export function namedInlineParamType(
     case 'array':
       return { kind: 'array', element: namedInlineParamType(t.element, declared, structs, keys) }
     case 'union':
-      return { kind: 'union', branches: t.branches.map((b) => namedInlineParamType(b, declared, structs, keys)) }
+      return {
+        kind: 'union',
+        branches: t.branches.map((b) => namedInlineParamType(b, declared, structs, keys)),
+      }
     default:
       return t
   }
@@ -598,7 +601,11 @@ export type StructResolver = (name: string) => readonly { name: string; type: Ty
  * the same field name never collide on the lossy key (the collision the
  * scalar-only key had). Recursive over arrays.
  */
-export function typeShapeKey(t: TypeIR, resolve?: StructResolver, seen?: ReadonlySet<string>): string {
+export function typeShapeKey(
+  t: TypeIR,
+  resolve?: StructResolver,
+  seen?: ReadonlySet<string>,
+): string {
   switch (t.kind) {
     case 'number':
       return t.float === true ? 'number.f' : 'number'
@@ -1057,7 +1064,10 @@ function walkLowerParams(
     case 'new-collection':
       if (expr.seed !== undefined) return { ...expr, seed: rec(expr.seed) }
       if (expr.entries !== undefined) {
-        return { ...expr, entries: expr.entries.map(([k, v]): [ExprIR, ExprIR] => [rec(k), rec(v)]) }
+        return {
+          ...expr,
+          entries: expr.entries.map(([k, v]): [ExprIR, ExprIR] => [rec(k), rec(v)]),
+        }
       }
       return expr
     case 'literal':
@@ -1197,6 +1207,7 @@ export function classifyDynamicStylingAttr(
  * declared struct a shape resolves to.
  */
 export function structShapeKey(
+
   fields: readonly { name: string; type: TypeIR }[],
   resolve?: StructResolver,
   seen?: ReadonlySet<string>,
@@ -1206,7 +1217,6 @@ export function structShapeKey(
     .sort()
     .join(',')
 }
-
 
 /**
  * Typed shape key for an object LITERAL, derived from its own values.
@@ -1223,9 +1233,7 @@ export function structShapeKey(
  * identifier, a member read). Callers fall back to the name-only lookup, so
  * this can only ever ADD a correct match — never remove one that works today.
  */
-export function literalShapeKey(
-  fields: readonly { name: string; value: ExprIR }[],
-): string | null {
+export function literalShapeKey(fields: readonly { name: string; value: ExprIR }[]): string | null {
   const parts: string[] = []
   for (const f of fields) {
     const v = f.value
@@ -1288,7 +1296,10 @@ export function resolveForElementKey(
     case 'object':
       return elem.fields.some((f) => f.name === 'id')
         ? { kind: 'id' }
-        : { kind: 'no-id', what: `an object with fields (${elem.fields.map((f) => f.name).join(', ') || 'none'})` }
+        : {
+            kind: 'no-id',
+            what: `an object with fields (${elem.fields.map((f) => f.name).join(', ') || 'none'})`,
+          }
     case 'typeRef': {
       const fields = structs.get(elem.name)
       // An UNKNOWN name is not a proof of absence — PMTC does not follow
@@ -1321,9 +1332,7 @@ export function forMissingByWarning(what: string, target: 'swift' | 'kotlin'): s
  * nullable is a shape the OPTIONAL machinery already handles at the condition
  * seam, and flagging it here would fire on correct code.
  */
-export function classifyNonBooleanLogicalOperand(
-  t: TypeIR,
-): { name: string } | undefined {
+export function classifyNonBooleanLogicalOperand(t: TypeIR): { name: string } | undefined {
   switch (t.kind) {
     case 'string':
       return { name: 'string' }
@@ -1389,9 +1398,7 @@ export function exprContainsJsx(e: ExprIR): boolean {
     case 'comparison':
       return exprContainsJsx(e.left) || exprContainsJsx(e.right)
     case 'ternary':
-      return (
-        exprContainsJsx(e.cond) || exprContainsJsx(e.then) || exprContainsJsx(e.otherwise)
-      )
+      return exprContainsJsx(e.cond) || exprContainsJsx(e.then) || exprContainsJsx(e.otherwise)
     case 'unary':
       return exprContainsJsx(e.argument)
     case 'await':
@@ -1477,5 +1484,10 @@ export function optionalSpreadWarning(name: string): string {
  */
 export function isNumericLiteralOrNegation(x: ExprIR): boolean {
   if (x.kind === 'literal') return typeof x.value === 'number' || typeof x.value === 'string'
-  return x.kind === 'unary' && (x.op === '-' || x.op === '+') && x.argument.kind === 'literal' && typeof x.argument.value === 'number'
+  return (
+    x.kind === 'unary' &&
+    (x.op === '-' || x.op === '+') &&
+    x.argument.kind === 'literal' &&
+    typeof x.argument.value === 'number'
+  )
 }

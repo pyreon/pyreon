@@ -67,6 +67,7 @@ const User = () => {
   )
 }`,
   features: [
+    'Native compiler tooling: routerPlugin from @pyreon/router/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
     'Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation',
     'createRouter() — factory with routes, guards, middleware, loaders, hash/history mode',
     'RouterProvider / RouterView / RouterLink — context-based rendering components',
@@ -138,7 +139,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
       kind: 'component',
       signature: '<RouterView />',
       summary:
-        'Render the matched route\'s component. For nested routes, the parent route component includes a `<RouterView />` that renders the matched child. Each `<RouterView>` renders one level of the route tree.',
+        "Render the matched route's component. For nested routes, the parent route component includes a `<RouterView />` that renders the matched child. Each `<RouterView>` renders one level of the route tree.",
       example: `// Renders the matched route's component
 <RouterView />
 
@@ -152,17 +153,18 @@ const Admin = () => (
       mistakes: [
         'SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call `router.preload(path, req)` (resolves lazy components into `_componentCache`) before rendering.',
         'Forgetting the inner `<RouterView />` inside a LAYOUT component — nested child routes render by placing a SECOND `<RouterView />` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).',
-        'Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth\'s own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.',
+        "Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.",
         'Passing the route component as a prop or child to `<RouterView>` — it takes none except `router?` (explicit router override; defaults to the context/active router) and `announceRouteChanges` (a11y live-region opt-out). It reads the matched chain from `RouterContext`; configure routes in `createRouter`, never on RouterView.',
         'In a `*-compat` app, wrapping `<RouterView>` in your OWN layout helper that uses `provide()`/`onMount()`/`effect()` at body scope without marking it `nativeCompat()` — the compat jsx runtime relocates its setup into a wrapper accessor. RouterView itself ships `nativeCompat`-marked; your helpers around it must be too.',
-        'Passing `layout` to `@pyreon/zero`\'s `createApp`/`startClient` when fs-router already emits `_layout.tsx` — the layout is a parent route in the matched chain that RouterView renders, so the explicit `layout` mounts it a SECOND time (two navbars / two providers). Let `_layout.tsx` be the canonical registration; do not also pass `layout`.',
+        "Passing `layout` to `@pyreon/zero`'s `createApp`/`startClient` when fs-router already emits `_layout.tsx` — the layout is a parent route in the matched chain that RouterView renders, so the explicit `layout` mounts it a SECOND time (two navbars / two providers). Let `_layout.tsx` be the canonical registration; do not also pass `layout`.",
       ],
       seeAlso: ['RouterProvider', 'createRouter'],
     },
     {
       name: 'RouterLink',
       kind: 'component',
-      signature: '<RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>',
+      signature:
+        '<RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>',
       summary:
         'Declarative navigation link that renders an `<a>` element. Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Only INTERNAL navigations are intercepted (`router.push()` + `preventDefault`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `to` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. Resolves its router like every hook does (context ?? active router), so links outside the provider subtree still client-navigate; with NO router resolvable it degrades to a plain anchor (plain-path `href`, no click interception → full-load navigation) and warns once per `to` in dev. `to` is generic (`CheckHref<T>`): with routes registered via the `RegisteredRoutes` augmentation, a mistyped internal path is a compile error, while dynamic `string`s and external URLs are always accepted.',
       example: `<RouterLink to="/" activeClass="nav-active">Home</RouterLink>
@@ -288,7 +290,7 @@ const data = useMiddlewareData()
       kind: 'hook',
       signature: 'useLoaderData<T>(): T',
       summary:
-        'Access the data returned by the current route\'s `loader` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type.',
+        "Access the data returned by the current route's `loader` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type.",
       example: `// Route: { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) }
 
 const User = () => {
@@ -300,7 +302,7 @@ const User = () => {
         'Wrapping `useLoaderData()` in an `effect` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.',
         'SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`prefetchLoaderData` or `router.preload`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.',
         'Calling it in a component NOT rendered by `<RouterView>` (a sibling inside `<RouterProvider>`, a portal outside the route tree) — no `LoaderDataProvider` wraps it, so the context is the default `undefined`.',
-        'Expecting a nested LAYOUT\'s `useLoaderData()` to return the child PAGE\'s data — each depth is wrapped with its OWN `LoaderDataProvider`, so a layout reads its own loader\'s data and the page reads the page\'s. The hook reads the nearest provider, not the leaf.',
+        "Expecting a nested LAYOUT's `useLoaderData()` to return the child PAGE's data — each depth is wrapped with its OWN `LoaderDataProvider`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.",
       ],
       seeAlso: ['useMiddlewareData', 'useRoute'],
     },
@@ -353,7 +355,8 @@ import { isRedirectError } from "@pyreon/router"
     {
       name: 'getRedirectInfo',
       kind: 'function',
-      signature: 'getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null',
+      signature:
+        'getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null',
       summary:
         "Extract the redirect URL and status from a thrown RedirectError. Returns `null` for non-redirect errors. Used by `@pyreon/server`'s SSR handler to convert the thrown error into a 302/307 `Response`.",
       example: `import { getRedirectInfo } from "@pyreon/router"
@@ -399,7 +402,7 @@ setSearch({ page: "2" })`,
 // later, e.g. after save:
 blocker.remove()`,
       mistakes: [
-        'Expecting `proceed()` / `reset()` methods (React Router shape) — Pyreon\'s blocker is a predicate: return `true` to block, `false` to allow; `remove()` unregisters it',
+        "Expecting `proceed()` / `reset()` methods (React Router shape) — Pyreon's blocker is a predicate: return `true` to block, `false` to allow; `remove()` unregisters it",
         'Returning `false` to block — inverted: `true` means BLOCK (it answers "should this navigation be blocked?")',
         'Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL',
       ],
@@ -439,13 +442,13 @@ blocker.remove()`,
       kind: 'function',
       signature: 'useNavigate() => (path: string) => void',
       summary:
-        "Returns an imperative navigate function. Resolves the active router (context first, module singleton fallback) and returns `(path) => router.push(path)`. The returned function ALWAYS pushes (never replaces) and is typed `void` — the underlying `push()` Promise<NavigationResult> is dropped. Mirrors the `useNavigate()` shape on the native (Swift/Kotlin) targets for cross-target source parity.",
+        'Returns an imperative navigate function. Resolves the active router (context first, module singleton fallback) and returns `(path) => router.push(path)`. The returned function ALWAYS pushes (never replaces) and is typed `void` — the underlying `push()` Promise<NavigationResult> is dropped. Mirrors the `useNavigate()` shape on the native (Swift/Kotlin) targets for cross-target source parity.',
       example: `const navigate = useNavigate()
 // call it from an event handler / onMount / effect — never the render body:
 const goHome = () => navigate('/')`,
       mistakes: [
         "Awaiting the result — the returned function is typed `void` (it drops `push()`'s Promise). To observe the NavigationResult ('committed' | 'cancelled' | 'superseded'), or to `replace()` instead of push, call `useRouter().push()` / `.replace()` directly.",
-        "Calling `navigate()` synchronously in the component body — that fires during render and infinite-loops. Defer it (event handler, `onMount`, `effect`); the `pyreon/no-imperative-navigate-in-render` lint rule catches this.",
+        'Calling `navigate()` synchronously in the component body — that fires during render and infinite-loops. Defer it (event handler, `onMount`, `effect`); the `pyreon/no-imperative-navigate-in-render` lint rule catches this.',
         'Calling `useNavigate()` before a router exists (outside a `<RouterProvider>` with no module router set) — it throws `[Pyreon] No router installed`.',
       ],
       seeAlso: ['useRouter', 'RouterLink'],
@@ -479,7 +482,7 @@ const search = useValidatedSearch<{ q: string; page: number }>()
 // read the accessor inside a reactive scope:
 const page = () => search().page`,
       mistakes: [
-        'Passing a schema to the hook — it takes NO argument. The schema goes on the route record\'s `validateSearch` config; `useValidatedSearch()` only READS the already-validated result.',
+        "Passing a schema to the hook — it takes NO argument. The schema goes on the route record's `validateSearch` config; `useValidatedSearch()` only READS the already-validated result.",
         "Confusing it with the other two search hooks: `useTypedSearchParams(schema)` takes a `{ key: 'string' | 'number' | 'boolean' }` shape, coerces primitives itself, and returns a `[get, set]` tuple; `useSearchParams(defaults?)` returns raw strings with no coercion. `useValidatedSearch` is READ-ONLY (no setter), argument-less, and defers to the route validator (arbitrary shapes).",
         'Reading the accessor once and caching the value — call `search()` inside a reactive scope so it re-reads on navigation.',
       ],
@@ -529,7 +532,8 @@ const app = (
     {
       name: 'LoaderData',
       kind: 'type',
-      signature: 'type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never',
+      signature:
+        'type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never',
       summary:
         "Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData<LoaderData<typeof loader>>()` so the component's data type follows the loader with no second annotation (and no drift when the loader changes). Unwraps async returns via `Awaited`; sync-returning loaders pass through. Type-only, zero runtime bytes.",
       example: `export const loader = async () => ({ posts: await fetchPosts() })
@@ -548,9 +552,10 @@ function PostsPage() {
     {
       name: 'getActiveRouter / setActiveRouter',
       kind: 'function',
-      signature: 'getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void',
+      signature:
+        'getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void',
       summary:
-        "The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for \"is a router active at all?\" checks in framework-adjacent code.",
+        'The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`\'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for "is a router active at all?" checks in framework-adjacent code.',
       example: `// App setup (once):
 setActiveRouter(router)
 
@@ -577,7 +582,7 @@ classifyHref('mailto:hi@example.com')     // 'protocol'
 toRouterPath('https://example.com/about?tab=1')  // '/about?tab=1'`,
       mistakes: [
         "Building a custom link component that only checks `to.startsWith('http')` — misses protocol-relative (`//host`) and other-scheme (`mailto:`) values, which need different handling (external navigation / plain anchor) than a router push",
-        'Assuming `classifyHref` decides based on a CLICK — it is a pure string classifier; the actual navigation choice (`preventDefault` + `router.push` vs letting the browser handle it) is the caller\'s job, exactly what `RouterLink` does with the result',
+        "Assuming `classifyHref` decides based on a CLICK — it is a pure string classifier; the actual navigation choice (`preventDefault` + `router.push` vs letting the browser handle it) is the caller's job, exactly what `RouterLink` does with the result",
       ],
       seeAlso: ['RouterLink', 'LinkKind'],
     },
@@ -585,7 +590,7 @@ toRouterPath('https://example.com/about?tab=1')  // '/about?tab=1'`,
       name: 'classifyRedirectTarget / safeRedirectLocation',
       kind: 'function',
       signature:
-        "classifyRedirectTarget(target: string) => RedirectClass · safeRedirectLocation(target: string) => string",
+        'classifyRedirectTarget(target: string) => RedirectClass · safeRedirectLocation(target: string) => string',
       summary:
         "The open-redirect guard `redirect()` runs its target through. `classifyRedirectTarget` returns a `{ kind: 'internal' | 'external' | 'block', url }` verdict: a root-relative path or a genuine `http(s)://` URL passes as `'internal'`/`'external'`; anything that could trick the URL parser into resolving to an attacker-controlled host — a protocol-relative/authority-delimiter prefix (`//host`, `\\\\host`, `/\\host`, `\\/host`, all of which the parser reads as introducing a HOST exactly like `//host` does), or an explicit non-http(s) scheme (`javascript:`, `data:`, …) — is `'block'`ed to `/` (with a dev warning naming why). `safeRedirectLocation` is the convenience wrapper: `'block'` collapses to `/`, everything else passes through as a plain string. Exported for anyone building their OWN redirect helper outside `redirect()`/loaders (a webhook handler validating a `returnTo` query param, for instance).",
       example: `safeRedirectLocation('/dashboard')           // '/dashboard'
@@ -594,7 +599,7 @@ safeRedirectLocation('//evil.com')           // '/' — blocked, dev-warns why
 safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
       mistakes: [
         "Validating a redirect target with `target.startsWith('http')` or `!target.startsWith('//')` by hand instead of this — the authority-delimiter class (`\\\\host`, `/\\host`, `\\/host`) resolves to a host exactly like `//host` and is easy to miss when hand-rolling the check",
-        'Using `classifyRedirectTarget` result\'s `.url` directly for a `\'block\'` verdict — it is undefined for that kind; use `safeRedirectLocation` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked',
+        "Using `classifyRedirectTarget` result's `.url` directly for a `'block'` verdict — it is undefined for that kind; use `safeRedirectLocation` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked",
       ],
       seeAlso: ['redirect', 'isRedirectError', 'getRedirectInfo'],
     },
@@ -604,7 +609,7 @@ safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
       signature:
         'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
       summary:
-        "The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. Server side: `serializeLoaderData(router)` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a `path#1` suffix so neither clobbers the other); `stringifyLoaderData(data)` then turns that into a STRING ready to embed inside an inline `<script>` — it strips functions/symbols, throws a clear `[Pyreon] Loader returned circular reference at \"<path>\"` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole `<` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the `<script>` boundary. Client side: `hydrateLoaderData(router, serialized)` — called once, BEFORE `mount()`, right after `createRouter()` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders.",
+        'The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. Server side: `serializeLoaderData(router)` collects the matched chain\'s loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a `path#1` suffix so neither clobbers the other); `stringifyLoaderData(data)` then turns that into a STRING ready to embed inside an inline `<script>` — it strips functions/symbols, throws a clear `[Pyreon] Loader returned circular reference at "<path>"` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole `<` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the `<script>` boundary. Client side: `hydrateLoaderData(router, serialized)` — called once, BEFORE `mount()`, right after `createRouter()` — populates the router\'s internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders.',
       example: `// Server (SSR handler):
 await prefetchLoaderData(router, req.url)
 const json = stringifyLoaderData(serializeLoaderData(router))
@@ -617,7 +622,7 @@ mount(h(App, null), document.getElementById('app')!)`,
       mistakes: [
         'Calling `JSON.stringify(serializeLoaderData(router))` directly instead of `stringifyLoaderData` — loses the circular-reference diagnostic (a bare `JSON.stringify` throws an opaque "Converting circular structure to JSON" naming no route) AND the `<script>`-context escaping (a loader value containing `</script>` or `<!--<script>` can corrupt the page)',
         'Calling `hydrateLoaderData` AFTER `mount()` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data',
-        "Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and `stringifyLoaderData` throws naming the exact key; strip back-references or return a plain serialized shape",
+        'Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and `stringifyLoaderData` throws naming the exact key; strip back-references or return a plain serialized shape',
       ],
       seeAlso: ['useLoaderData', 'prefetchLoaderData'],
     },
@@ -636,7 +641,7 @@ resolved.params.id      // '42'
 buildPath('/user/:id', { id: '42' })            // '/user/42'
 parseQueryMulti('color=red&color=blue')          // { color: ['red', 'blue'] }`,
       mistakes: [
-        'Calling `resolveRoute` per-navigation in app code instead of using the router\'s own `push`/`useRoute()` — this is the low-level matcher for OFFLINE/tooling use; a live app already has a resolved route via the router instance',
+        "Calling `resolveRoute` per-navigation in app code instead of using the router's own `push`/`useRoute()` — this is the low-level matcher for OFFLINE/tooling use; a live app already has a resolved route via the router instance",
         'Using `parseQuery` when duplicate keys matter (`?tag=a&tag=b`) — it keeps only the LAST value per key; use `parseQueryMulti` to get an array',
         'Calling `findRouteByName` in a hot path (per-render, per-navigation) — it is an O(n) recursive walk; the router itself uses a pre-built `Map` (`buildNameIndex`) for repeated lookups',
       ],

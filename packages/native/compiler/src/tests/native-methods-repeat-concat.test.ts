@@ -8,7 +8,7 @@
 // `=== -1` compiles; Kotlin's indexOfFirst already returns -1).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
 
 const SRC = (body: string) =>

@@ -18,7 +18,7 @@
 // fractional bodies stop typechecking (`x * 1.5` on an Int param).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,

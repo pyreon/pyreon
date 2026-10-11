@@ -17,12 +17,10 @@
 //            focus. A Modifier alone compiles and never fires.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
 } from '../validate'
 
 const src = (body: string) => `

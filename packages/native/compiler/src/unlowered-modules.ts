@@ -33,6 +33,8 @@ export interface UnloweredModule {
 
 /** What a plugin supplies per module (`CompilerPlugin.unlowered`); plain data, so it survives a JSON round trip. */
 export interface UnloweredSpec {
+  /** Warn only these exports when the remainder is core syntax. */
+  readonly unsupported?: readonly string[] | undefined
   readonly advice: string
   /** Exports that DO lower and must stay silent. */
   readonly supported?: readonly string[] | undefined
@@ -70,6 +72,7 @@ export function createUnloweredRegistry(
       }
       out.set(module, {
         advice: spec.advice,
+        ...(spec.unsupported !== undefined ? { unsupported: new Set(spec.unsupported) } : {}),
         ...(spec.supported !== undefined ? { supported: new Set(spec.supported) } : {}),
         ...(spec.dropped !== undefined ? { dropped: new Set(spec.dropped) } : {}),
         owner: plugin.name,

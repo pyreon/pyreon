@@ -2,16 +2,23 @@
   "name": "@pyreon/hotkeys",
   "version": "0.52.0",
   "description": "Reactive keyboard shortcut management for Pyreon — scope-aware, conflict detection",
-  "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/hotkeys#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/hotkeys"
   },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "sideEffects": false,
   "main": "./lib/index.js",
@@ -22,15 +29,16 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
-  "files": [
-    "lib",
-    "!lib/analysis",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
@@ -39,20 +47,32 @@
     "lint": "oxlint .",
     "bench:keys": "NODE_ENV=production bun bench/hotkeys-bench.ts"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "hotkeys-js": "^4.0.8",
     "mousetrap": "^1.6.5",
     "tinykeys": "^4.0.1"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
+    }
+  },
+  "pyreon": {
+    "native": {
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/hotkeys"
+      ]
+    }
   }
 }

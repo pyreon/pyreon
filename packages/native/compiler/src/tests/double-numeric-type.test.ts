@@ -10,7 +10,7 @@
 // + Double-aware reduce seeds are the tracked next slices.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = (body: string) =>
   `import { signal } from '@pyreon/reactivity'

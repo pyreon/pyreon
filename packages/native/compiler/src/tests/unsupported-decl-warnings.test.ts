@@ -7,7 +7,7 @@
 // → struct, components, stores) must NOT warn.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const wrap = (decl: string, body = 'function C() { return (<Stack><Text>x</Text></Stack>) }') =>
   `import { Stack, Text } from '@pyreon/primitives'\n${decl}\n${body}`

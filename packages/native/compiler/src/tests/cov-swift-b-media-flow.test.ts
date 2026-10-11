@@ -9,7 +9,7 @@
 // is exactly the class the guard exists to close.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function tx(jsxBody: string): { code: string; warnings: string[] } {
   return transform(

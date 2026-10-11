@@ -175,17 +175,15 @@ export function deriveWebOnlyRationales(rows: TierRow[]): Array<[string, string]
 export function renderWebOnlySet(entries: Array<[string, string]>): string {
   // A Map rather than a Set: `.has()` still answers membership exactly as
   // before, and `.get()` hands the warning its per-package reason.
-  const lines = entries.map(
-    ([n, why]) => `  ['${n}', ${JSON.stringify(why)}],`,
-  )
+  const lines = entries.map(([n, why]) => `  ['${n}', ${JSON.stringify(why)}],`)
   return [
     WEB_ONLY_START,
-    '// GENERATED — do not edit by hand. Derived from every package manifest\'s',
-    '// `multiplatform` declaration (tier === \'web-only\' AND no `nativeFrontend`)',
+    "// GENERATED — do not edit by hand. Derived from every package manifest's",
+    "// `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)",
     '// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also',
     '// gates that this stays in sync. Edit the MANIFEST, not this list.',
     '//',
-    '// The value is the manifest\'s `rationale` — the per-package reason the',
+    "// The value is the manifest's `rationale` — the per-package reason the",
     '// warning quotes, so one blanket line does not have to serve packages as',
     '// different as a linter, a `<head>` manager and an animation engine.',
     'export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([',
@@ -247,7 +245,7 @@ export function renderTierTable(rows: TierRow[]): string {
   return [
     TABLE_START,
     '',
-    '> Generated from each package manifest\'s `multiplatform` declaration by',
+    "> Generated from each package manifest's `multiplatform` declaration by",
     '> `bun scripts/check-multiplatform-tier.ts --write-table` — edit the',
     '> manifests, not this table. The gate fails when they drift.',
     '',
@@ -256,6 +254,40 @@ export function renderTierTable(rows: TierRow[]): string {
     section('`web-only` — architecturally coupled to the web platform', 'web-only'),
     TABLE_END,
   ].join('\n')
+}
+
+/** A multiplatform runtime package must publish its own optional compiler entry. */
+export function nativePluginFailures(name: string, manifest: Record<string, unknown>): string[] {
+  const failures: string[] = []
+  const native = (
+    manifest.pyreon as { native?: { plugin?: unknown; modules?: unknown } } | undefined
+  )?.native
+  const entry = (manifest.exports as Record<string, unknown> | undefined)?.['./native-plugin'] as
+    | { bun?: unknown; import?: unknown; types?: unknown }
+    | undefined
+  if (typeof native?.plugin !== 'string' || !native.plugin.startsWith('./lib/'))
+    failures.push(`${name}: native lowering needs its own pyreon.native.plugin entry under ./lib/.`)
+  if (!Array.isArray(native?.modules) || !native.modules.includes(name))
+    failures.push(`${name}: native plugin modules must include its owning package.`)
+  if (
+    typeof entry?.bun !== 'string' ||
+    !entry.bun.startsWith('./src/') ||
+    entry.import !== native?.plugin ||
+    typeof entry?.types !== 'string'
+  )
+    failures.push(
+      `${name}: export ./native-plugin with source, built import and types entries matching pyreon.native.plugin.`,
+    )
+  const peers = manifest.peerDependencies as Record<string, unknown> | undefined
+  const meta = manifest.peerDependenciesMeta as Record<string, { optional?: unknown }> | undefined
+  if (
+    typeof peers?.['@pyreon/native-compiler'] !== 'string' ||
+    meta?.['@pyreon/native-compiler']?.optional !== true
+  )
+    failures.push(
+      `${name}: @pyreon/native-compiler must be an optional peer so web consumers do not install compiler tooling.`,
+    )
+  return failures
 }
 
 async function main(): Promise<number> {
@@ -308,6 +340,19 @@ async function main(): Promise<number> {
       rationale: typeof mp.rationale === 'string' ? mp.rationale : '',
       nativeFrontend: typeof nativeFrontend === 'string' ? nativeFrontend : '',
     })
+  }
+
+  // Runtime packages that claim shared lowering must own its discovery and packaging contract.
+  const tierByName = new Map(rows.map((row) => [row.name, row]))
+  for (const pkg of listPublishedPackages(REPO)) {
+    const row = tierByName.get(pkg.name)
+    if (row === undefined || (row.tier === 'web-only' && !row.nativeFrontend)) continue
+    failures.push(
+      ...nativePluginFailures(
+        pkg.name,
+        JSON.parse(readFileSync(join(pkg.dir, 'package.json'), 'utf8')),
+      ),
+    )
   }
 
   // 2. Published packages must have a manifest or an explicit exemption.
@@ -415,7 +460,9 @@ async function main(): Promise<number> {
       const next =
         consumerSrc.slice(0, wStart) + renderedSet + consumerSrc.slice(wEnd + WEB_ONLY_END.length)
       writeFileSync(consumerPath, next)
-      console.log(`[check-multiplatform-tier] web-only set written to ${rel} (${derivedNames.length})`)
+      console.log(
+        `[check-multiplatform-tier] web-only set written to ${rel} (${derivedNames.length})`,
+      )
     } else if (consumerSrc.slice(wStart, wEnd + WEB_ONLY_END.length) !== renderedSet) {
       failures.push(
         `${rel}'s WEB_ONLY_PACKAGES set is STALE — a manifest's multiplatform declaration ` +

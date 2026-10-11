@@ -18,7 +18,7 @@
 // plural aliases match the market convention (fontSizes/fontWeights).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = `
 import { Stack, Text } from '@pyreon/primitives'
@@ -76,7 +76,10 @@ describe('typography theme tokens (fontSize/fontWeight groups)', () => {
   })
 
   it('plural aliases fontSizes/fontWeights resolve to the same groups', () => {
-    const alias = SRC.replace('fontSize: {', 'fontSizes: {').replace('fontWeight: {', 'fontWeights: {')
+    const alias = SRC.replace('fontSize: {', 'fontSizes: {').replace(
+      'fontWeight: {',
+      'fontWeights: {',
+    )
     const r = transform(alias, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('.font(.system(size: 34, weight: .bold))')

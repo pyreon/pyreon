@@ -9,7 +9,7 @@
 // observable difference, and each property has its OWN `break`/guard.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function app(style: string): string {
   return `import { Stack, Text } from '@pyreon/primitives'

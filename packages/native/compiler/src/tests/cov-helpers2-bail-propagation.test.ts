@@ -18,7 +18,7 @@
 // same class one file over, so they live here too.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 // ── substituteIdentifier bail propagation ──────────────────────────────────
 

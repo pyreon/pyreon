@@ -29,7 +29,7 @@ const ACME_ELEMENT: ElementLowering = {
 
 const acme: CompilerPlugin = {
   name: '@acme/kit',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/kit'],
   services: { useGadget: SERVICE_SPEC },
   elements: [ACME_ELEMENT],
@@ -105,7 +105,7 @@ describe('conflicts are load-time errors naming both owners', () => {
 
   it('a plugin service claiming a hook the hooks plugin owns', () => {
     expect(() =>
-      createCompiler({ plugins: [hooksPlugin, { name: 'A', apiVersion: 1, services: { useShare: SERVICE_SPEC } }] }),
+      createCompiler({ plugins: [hooksPlugin, { name: 'A', apiVersion: 2, services: { useShare: SERVICE_SPEC } }] }),
     ).toThrow(/hook "useShare" is claimed by both "@pyreon\/hooks" and "A"/)
   })
 
@@ -113,8 +113,8 @@ describe('conflicts are load-time errors naming both owners', () => {
     expect(() =>
       createCompiler({
         plugins: [
-          { name: '@pyreon/coolgrid', apiVersion: 1, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
-          { name: 'A', apiVersion: 1, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
+          { name: '@pyreon/coolgrid', apiVersion: 2, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
+          { name: 'A', apiVersion: 2, elements: [{ module: '@pyreon/coolgrid', tags: ['Row'], retag }] },
         ],
       }),
     ).toThrow(/<Row> from @pyreon\/coolgrid is claimed by both "@pyreon\/coolgrid" and "A"/)
@@ -123,7 +123,7 @@ describe('conflicts are load-time errors naming both owners', () => {
   it('two plugins claiming one (module, tag)', () => {
     const el = (name: string): CompilerPlugin => ({
       name,
-      apiVersion: 1,
+      apiVersion: 2,
       elements: [{ module: '@acme/ui', tags: ['Banner'], retag }],
     })
     expect(() => createCompiler({ plugins: [el('one'), el('two')] })).toThrow(
@@ -134,7 +134,7 @@ describe('conflicts are load-time errors naming both owners', () => {
   it('a discovered plugin replacing a builtIn plugin by name is NOT a conflict', () => {
     const replacement: CompilerPlugin = {
       name: '@pyreon/hooks',
-      apiVersion: 1,
+      apiVersion: 2,
       elements: [{ module: '@pyreon/hooks', tags: ['Row', 'Col', 'Container'], retag }],
     }
     const compiler = createCompiler({ discovered: [replacement] })
@@ -143,7 +143,7 @@ describe('conflicts are load-time errors naming both owners', () => {
       replacement.elements![0],
     )
     const services = createCompiler({
-      discovered: [{ name: '@pyreon/hooks', apiVersion: 1, services: { useShare: SERVICE_SPEC } }],
+      discovered: [{ name: '@pyreon/hooks', apiVersion: 2, services: { useShare: SERVICE_SPEC } }],
     })
     expect(services.services.get('useShare')?.descriptor.swift).toBe('AcmeGadget()')
     expect(services.services.has('useOnline')).toBe(false)
@@ -151,7 +151,7 @@ describe('conflicts are load-time errors naming both owners', () => {
 
   it('rejects a malformed element lowering at load time', () => {
     const bad = (elements: unknown) =>
-      createCompiler({ plugins: [{ name: 'A', apiVersion: 1, elements } as unknown as CompilerPlugin] })
+      createCompiler({ plugins: [{ name: 'A', apiVersion: 2, elements } as unknown as CompilerPlugin] })
     expect(() => bad('x')).toThrow(/elements must be an array/)
     expect(() => bad([{ module: '', tags: ['A'], retag }])).toThrow(/needs a nonempty module/)
     expect(() => bad([{ module: 'm', tags: [] }])).toThrow(/nonempty tags/)
@@ -168,7 +168,7 @@ describe('conflicts are load-time errors naming both owners', () => {
 describe('the active slot is scoped: exception-safe and re-entrant', () => {
   const boom: CompilerPlugin = {
     name: 'boom',
-    apiVersion: 1,
+    apiVersion: 2,
     services: { useGadget: SERVICE_SPEC },
     transformIR() {
       throw new Error('pass failed')
@@ -199,7 +199,7 @@ describe('the active slot is scoped: exception-safe and re-entrant', () => {
         acme,
         {
           name: 'nested',
-          apiVersion: 1,
+          apiVersion: 2,
           transformIR() {
             const innerCode = inner.transform(SOURCE, { target: 'swift' }).code
             seen.during = !innerCode.includes('AcmeGadget')

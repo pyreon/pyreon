@@ -91,6 +91,7 @@ const Card = () => {
   return <div ref={cardEl} tabIndex={0} />
 }`,
   features: [
+    'Native compiler tooling: corePlugin from @pyreon/core/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
     'h() — hyperscript function producing VNodes, JSX compiles to h() or _tpl()',
     'Fragment — group children without a wrapper DOM element',
     'onMount / onUnmount — lifecycle hooks, onMount supports cleanup return',
@@ -290,7 +291,7 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
       mistakes: [
         '`{cond() ? <A /> : <B />}` — works but less efficient than `<Show>` for signal-driven conditions',
         '`<Show when={items().length}>` — works (truthy check), but be explicit: `<Show when={items().length > 0}>`',
-        '`<Show when={signal}>` (bare reference) — relies on the compiler\'s signal auto-call to rewrite to `when={signal()}`. Works defensively but use `when={() => signal()}` for explicit accessor semantics across the entire reactive lifecycle.',
+        "`<Show when={signal}>` (bare reference) — relies on the compiler's signal auto-call to rewrite to `when={signal()}`. Works defensively but use `when={() => signal()}` for explicit accessor semantics across the entire reactive lifecycle.",
       ],
       seeAlso: ['Switch', 'Match', 'For'],
     },
@@ -396,7 +397,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
       kind: 'component',
       signature: '<Suspense fallback={loadingUI}>{children}</Suspense>',
       summary:
-        'Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a still-loading descendant registers with the NEAREST boundary through context. While it waits, the content stays mounted off-screen (not torn down), so the descendant\'s ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout); hydration never shows the fallback over server content. Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.',
+        "Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a still-loading descendant registers with the NEAREST boundary through context. While it waits, the content stays mounted off-screen (not torn down), so the descendant's ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout); hydration never shows the fallback over server content. Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.",
       example: `const LazyPage = lazy(() => import("./HeavyPage"))
 
 <Suspense fallback={<div>Loading...</div>}>
@@ -498,7 +499,8 @@ cx(["a", ["b", { c: true }]])            // nested arrays
     {
       name: 'useColorMode',
       kind: 'function',
-      signature: "useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()",
+      signature:
+        "useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()",
       summary:
         "The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow and the code editor agree. Resolution, nearest first: a `<ColorModeProvider mode>` / `provideColorMode(mode)` above the component (`<PyreonUI mode>` calls it), else the page's scheme (the CSS `color-scheme` `<html>` declares, when it names exactly one — a site's own theme toggle), else `prefers-color-scheme`; light on the server. `mode` is `'light'`, `'dark'` or `'system'`, or an accessor over one. `systemColorMode()` is the page/OS half alone, a document-lifetime singleton. On native a literal `mode` is a compile-time scope; a reactive one follows the platform scheme.",
       example: `import { ColorModeProvider, useColorMode } from '@pyreon/core'
@@ -515,15 +517,14 @@ const Badge = () => {
         'Calling `useColorMode()()` once at setup — it returns an ACCESSOR; read it inside JSX, an effect or a computed so a flip re-renders',
         'Adding a separate mode prop to each library component — `<PyreonUI mode>` or `<ColorModeProvider mode>` sets it for everything below; a component that takes its own mode prop should treat it as an override of `useColorMode()`, not the source',
         "Reading `matchMedia('(prefers-color-scheme: dark)')` directly — it ignores both an app's pinned mode and the page's declared `color-scheme`",
-        'Calling it outside component setup — it reads context, so outside a component it returns the system mode, not a provider\'s',
+        "Calling it outside component setup — it reads context, so outside a component it returns the system mode, not a provider's",
       ],
       seeAlso: ['createReactiveContext', 'provide'],
     },
     {
       name: 'splitProps',
       kind: 'function',
-      signature:
-        'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
+      signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
       summary:
         'Split a props object into two parts: the picked keys and the rest. Both halves preserve signal reactivity — reads through either half still track the original reactive prop getters. This is the Pyreon replacement for `const { x, ...rest } = props` destructuring, which captures values once and loses reactivity.',
       example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
@@ -556,7 +557,8 @@ const Badge = () => {
     {
       name: 'removeUndefinedProps',
       kind: 'function',
-      signature: 'removeUndefinedProps<T>(props: T): { [K in keyof T as T[K] extends undefined ? never : K]: T[K] }',
+      signature:
+        'removeUndefinedProps<T>(props: T): { [K in keyof T as T[K] extends undefined ? never : K]: T[K] }',
       summary:
         'Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactive) prop verbatim. The descriptor-aware filter a prop-forwarding HOC runs before `mergeProps`: an `undefined` consumer prop must not shadow a default, but a compiler-emitted reactive prop must survive with its subscription intact. Copies property descriptors (never values) — a value-copy would fire each getter at setup time and collapse the live signal to a static snapshot. `null` / `0` / `""` / `false` are kept; only `undefined` data props are dropped, and getter descriptors are always kept (cannot peek without firing).',
       example: `const filtered = removeUndefinedProps(props) // undefined keys gone, getters live
@@ -601,7 +603,8 @@ const merged = mergeProps(defaults, filtered)`,
     {
       name: 'mapArray',
       kind: 'function',
-      signature: 'mapArray<T, U>(source: () => T[], getKey: (item: T) => string | number, map: (item: T) => U): () => U[]',
+      signature:
+        'mapArray<T, U>(source: () => T[], getKey: (item: T) => string | number, map: (item: T) => U): () => U[]',
       summary:
         'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array through a transform, caching results per KEY so unchanged items reuse their mapped value. Takes THREE args — the source accessor, a `getKey` identity function, and the `map` transform. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering.',
       example: `const items = signal([{ id: 1, n: 2 }, { id: 2, n: 3 }])
@@ -659,7 +662,7 @@ export const RouterView = nativeCompat(function RouterView(props) {
       seeAlso: ['isNativeCompat', 'NATIVE_COMPAT_MARKER'],
       mistakes: [
         'Forgetting to mark a new framework JSX export — under compat mode, the component\'s `provide()` / `onMount()` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.',
-        'Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that\'s how they get re-render-on-state-change semantics).',
+        "Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).",
       ],
     },
     {
@@ -691,7 +694,7 @@ return wrapCompatComponent(type)(props)`,
       signature:
         "<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>",
       summary:
-        "Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the accessor becomes truthy (the modal-open pattern); `on=\"visible\"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `'200px'` so it's typically ready before the user scrolls to it); `on=\"idle\"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest `ErrorBoundary` on render.",
+        'Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the accessor becomes truthy (the modal-open pattern); `on="visible"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `\'200px\'` so it\'s typically ready before the user scrolls to it); `on="idle"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`\'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest `ErrorBoundary` on render.',
       example: `// Signal-driven (modal) — explicit form:
 <Defer chunk={() => import('./ConfirmDeleteModal')} when={open} fallback={<Spinner/>}>
   {Modal => <Modal onClose={() => setOpen(false)} />}
@@ -704,7 +707,7 @@ return wrapCompatComponent(type)(props)`,
       mistakes: [
         'Using the inline JSX form WITHOUT `@pyreon/vite-plugin` enabled — the compiler pass that rewrites `<Defer on="visible"><Comments/></Defer>` into the chunk-prop form never runs, so `Defer` throws a clear "`<Defer>` has no `chunk` prop" error the moment the trigger fires; use the explicit render-prop form instead in a non-Vite build',
         'Expecting the chunk to re-fetch when a `when` accessor flips false then true again — it loads exactly once per mounted `Defer`; unmount and remount the `<Defer>` itself if you need a fresh fetch',
-        'Forgetting the module needs a `default` export — `Defer` accepts either `{ default: Component }` or a bare `ComponentFn`, matching `lazy()`\'s contract; a module with neither dev-warns and renders nothing',
+        "Forgetting the module needs a `default` export — `Defer` accepts either `{ default: Component }` or a bare `ComponentFn`, matching `lazy()`'s contract; a module with neither dev-warns and renders nothing",
       ],
       seeAlso: ['lazy', 'Suspense', 'ErrorBoundary'],
     },
@@ -714,7 +717,7 @@ return wrapCompatComponent(type)(props)`,
       signature:
         'registerErrorHandler(handler: (ctx: ErrorContext) => void) => () => void · reportError(ctx: ErrorContext) => void',
       summary:
-        "`registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component throws in ANY lifecycle phase (setup/render/mount/unmount) OR an `effect()` in `@pyreon/reactivity` throws (bridged via a `globalThis.__pyreon_report_error__` sink, since reactivity can't depend on core). Returns an unregister function; multiple handlers can be registered simultaneously (all fire). The `ErrorContext` passed to your handler carries `component`/`phase`/`error`/`timestamp`/`props`, plus (dev-only, tree-shaken in production) `reactiveTrace` — the last ~50 signal writes leading up to the error, answering \"what reactive state changed in the run-up?\" for free. `reportError` is the lower-level function the RUNTIME calls to dispatch a caught error through the registered handlers — call it directly only from custom framework-adjacent code (a hand-rolled error boundary, a compat-layer bridge) that catches an error the normal mount pipeline won't see.",
+        '`registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component throws in ANY lifecycle phase (setup/render/mount/unmount) OR an `effect()` in `@pyreon/reactivity` throws (bridged via a `globalThis.__pyreon_report_error__` sink, since reactivity can\'t depend on core). Returns an unregister function; multiple handlers can be registered simultaneously (all fire). The `ErrorContext` passed to your handler carries `component`/`phase`/`error`/`timestamp`/`props`, plus (dev-only, tree-shaken in production) `reactiveTrace` — the last ~50 signal writes leading up to the error, answering "what reactive state changed in the run-up?" for free. `reportError` is the lower-level function the RUNTIME calls to dispatch a caught error through the registered handlers — call it directly only from custom framework-adjacent code (a hand-rolled error boundary, a compat-layer bridge) that catches an error the normal mount pipeline won\'t see.',
       example: `import { registerErrorHandler } from '@pyreon/core'
 import * as Sentry from '@sentry/browser'
 
@@ -733,7 +736,7 @@ registerErrorHandler((ctx) => {
     {
       name: 'isClient / isServer',
       kind: 'constant',
-      signature: "isClient: boolean · isServer: boolean",
+      signature: 'isClient: boolean · isServer: boolean',
       summary:
         "Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its inverse. Plain runtime constants evaluated ONCE at module load (not an export-condition fold), so they work correctly in any bundler regardless of whether it sets a `browser` condition. Use for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for DOM access INSIDE a component prefer `onMount`/`effect` (which never run during SSR at all) over branching on `isClient` yourself, and for large server-only code prefer a `/server` subpath export over a runtime branch.",
       example: `import { isClient } from '@pyreon/core'
@@ -743,7 +746,7 @@ if (isClient) {
 }`,
       mistakes: [
         'Hand-rolling `const isBrowser = typeof window !== "undefined"` instead of importing `isClient`/`isServer` — `typeof document` (what this uses) is the more reliable discriminator than `typeof window`, and a hand-rolled local const is NOT recognized by the `no-window-in-ssr` lint rule\'s SSR-guard detection the way `isClient`/`isServer` imported from `@pyreon/core`/`@pyreon/reactivity` are',
-        'Using `isClient` to gate DOM access inside a component body when `onMount`/`effect` would do — those never run during SSR at all, which is simpler and doesn\'t need the guard',
+        "Using `isClient` to gate DOM access inside a component body when `onMount`/`effect` would do — those never run during SSR at all, which is simpler and doesn't need the guard",
       ],
       seeAlso: ['onMount'],
     },
@@ -765,7 +768,7 @@ if (isClient) {
       signature:
         'type ExtractProps<T> = /* matches up to 4 overloads, unions the props */ T extends ComponentFn<infer P> ? P : T',
       summary:
-        "Extracts the props type from a `ComponentFn`. Passes through unchanged if `T` is not a `ComponentFn`. **Multi-overload aware** — matches up to 4 call signatures and produces the UNION of their first-argument types. Critical for multi-overload primitives (Iterator, List, Element) whose loosest overload is last; without overload-aware extraction, HOC wrapping (`rocketstyle()`, `attrs()`) silently downgraded their public prop surface. Single-overload functions still work — the union of 4 copies of the same props type dedupes back to the single shape.",
+        'Extracts the props type from a `ComponentFn`. Passes through unchanged if `T` is not a `ComponentFn`. **Multi-overload aware** — matches up to 4 call signatures and produces the UNION of their first-argument types. Critical for multi-overload primitives (Iterator, List, Element) whose loosest overload is last; without overload-aware extraction, HOC wrapping (`rocketstyle()`, `attrs()`) silently downgraded their public prop surface. Single-overload functions still work — the union of 4 copies of the same props type dedupes back to the single shape.',
       example: `function Iterator<T extends SimpleValue>(p: { data: T[]; valueName?: string }): VNodeChild
 function Iterator<T extends ObjectValue>(p: { data: T[]; component: ComponentFn<T> }): VNodeChild
 type Props = ExtractProps<typeof Iterator>
@@ -782,7 +785,7 @@ type Props = ExtractProps<typeof Iterator>
       kind: 'type',
       signature: 'type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>',
       summary:
-        'Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component\'s own props. The resulting component accepts both sets of props.',
+        "Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component's own props. The resulting component accepts both sets of props.",
       example: `function withLogger<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ logLevel?: string }, P> {
   return (props) => {
     console.log(\`[\${props.logLevel ?? "info"}] Rendering\`)

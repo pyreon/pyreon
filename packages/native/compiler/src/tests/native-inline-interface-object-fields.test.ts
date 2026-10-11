@@ -14,7 +14,7 @@
 // path, so the two cannot disagree about what a field is called.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,

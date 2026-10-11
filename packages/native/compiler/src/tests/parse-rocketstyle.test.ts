@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import {
   emitKotlinRocketstyleModifier,
   emitSwiftRocketstyleModifier,
-} from '../emit-rocketstyle'
-import { parseRocketstyle } from '../parse-rocketstyle'
+} from '../../../../ui-system/rocketstyle/src/native-plugin/emit-rocketstyle'
+import { parseRocketstyle } from '../../../../ui-system/rocketstyle/src/native-plugin/parse-rocketstyle'
 
 describe('parse-rocketstyle — single dimension', () => {
   it('parses .states((t) => ({...})) into a state dimension', () => {

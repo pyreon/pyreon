@@ -41,3 +41,47 @@ for (const [name, transform] of backends) {
     })
   })
 }
+
+const nestedForSource = `function Example(props) {
+  const record = () => props.record
+  const summary = () => record().summary
+  const indices = computed(() => record().items.map((_, index) => index))
+  return <Box>
+    {record().items.length === 0 ? (
+      <Label text={\`Empty \${summary().count}\`} />
+    ) : (
+      <Box>
+        <Row><Label text={String(summary().count)} /></Row>
+        <List><For each={indices} by={index => index}>{index =>
+          <Label text={\`\${record().items[index]?.name} (\${record().items[index]?.value})\`} />
+        }</For></List>
+      </Box>
+    )}
+    <Label text={\`Count \${summary().count} · Total \${summary().total}\`} />
+  </Box>
+}`
+
+for (const [name, transform] of backends) {
+  describe(`${name} — nested For inside implicit conditionals (#3861)`, () => {
+    for (const prefix of ['', '// 字😀 before AST spans\n']) {
+      for (const explicit of [false, true]) {
+        it(`preserves following siblings (Unicode=${!!prefix}, explicit=${explicit})`, () => {
+          const source =
+            prefix +
+            (explicit
+              ? nestedForSource.replace(
+                  '{record().items.length === 0 ?',
+                  '{() => record().items.length === 0 ?',
+                )
+              : nestedForSource)
+          expect(parseSync('fixture.tsx', source).errors).toEqual([])
+          const output = transform(source)
+          expect(parseSync('fixture.tsx', output).errors, output).toEqual([])
+          expect(output.match(/Count /g)).toHaveLength(1)
+          expect(output).toMatch(/each=\{(?:_rp\(\(\) => )?indices/)
+          expect(output).toBe(transformJSX_JS(source, 'fixture.tsx').code)
+        })
+      }
+    }
+  })
+}

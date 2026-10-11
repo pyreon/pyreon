@@ -41,8 +41,8 @@ export interface ScopeProvider {
   /**
    * The element exists ONLY to provide the scope: the core emits its children
    * under it, in a transparent wrapper, and nothing else. Leave it off for an
-   * element the core already emits itself (`<PyreonUI>`, `<ColorModeProvider>`),
-   * which only needs the scope entered.
+   * element with its own wrapper emitter (which calls `withColorScope`) or a
+   * canonical provider the core already emits.
    */
   readonly transparent?: boolean | undefined
 }
@@ -57,7 +57,7 @@ export interface RegisteredScopeProvider {
 export interface ScopeRegistry {
   readonly entries: readonly RegisteredScopeProvider[]
   /** The provider that claims `tag` when `guard` accepts `(tag, module)`, or `undefined`. */
-  find(tag: string, guard: ElementClaimGuard): ScopeProvider | undefined
+  find(tag: string, guard: ElementClaimGuard, importedAs?: string): ScopeProvider | undefined
   /** True when some provider claims `name` (the parser then records where it was imported from). */
   hasTag(name: string): boolean
 }
@@ -68,7 +68,10 @@ export interface ScopeRegistry {
  * tag opens depend on plugin order — and names both owners.
  */
 export function createScopeRegistry(
-  plugins: readonly { readonly name: string; readonly scopes?: readonly ScopeProvider[] | undefined }[],
+  plugins: readonly {
+    readonly name: string
+    readonly scopes?: readonly ScopeProvider[] | undefined
+  }[],
 ): ScopeRegistry {
   const entries: RegisteredScopeProvider[] = []
   const claimed = new Map<string, string>()
@@ -92,9 +95,15 @@ export function createScopeRegistry(
   }
   return Object.freeze<ScopeRegistry>({
     entries,
-    find(tag, guard) {
+    find(tag, guard, importedAs) {
       for (const { provider } of entries) {
         if (provider.tags.includes(tag) && guard(tag, provider.module)) return provider
+      }
+      if (importedAs !== undefined && importedAs !== tag) {
+        for (const { provider } of entries) {
+          if (provider.tags.includes(importedAs) && guard(tag, provider.module, importedAs))
+            return provider
+        }
       }
       return undefined
     },

@@ -31,7 +31,7 @@ const toyCall: CallRecognizer = (_call, ctx) => {
 }
 const toyPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   calls: { createToy: toyCall },
   decls: { toy: toyDecl },
@@ -57,7 +57,7 @@ describe('code-shaped plugin: calls + decls', () => {
 
   it('a recognizer that returns undefined DECLINES: the parser falls through exactly as without the plugin', () => {
     const declined = testNativePlugin(toyPlugin(), app('createToy()'), { target: 'swift' })
-    const absent = testNativePlugin({ name: 'noop', apiVersion: 1 }, app('createToy()'), { target: 'swift' })
+    const absent = testNativePlugin({ name: 'noop', apiVersion: 2 }, app('createToy()'), { target: 'swift' })
     expect(declined.code).toBe(absent.code)
     expect(declined.code).not.toContain('ToyBox')
     // ...and the facade `warn` reached the author, attributed to the declaration.
@@ -124,12 +124,12 @@ describe('code-shaped plugin: load-time errors', () => {
   })
 
   it('refuses malformed shapes with the plugin named', () => {
-    const shape = (over: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 1, ...over })
+    const shape = (over: object) => () => assertPluginShape({ name: '@acme/bad', apiVersion: 2, ...over })
     expect(shape({ calls: [] })).toThrow(/calls must be an object keyed by hook name/)
     expect(shape({ calls: { a: 1 }, decls: {} })).toThrow(/call "a" must be a recognizer function/)
     expect(shape({ decls: { t: { swift: () => '' } } })).toThrow(/decl "t" needs swift and kotlin/)
     expect(shape({ calls: { a: toyCall } })).toThrow(/declares calls but no decls/)
-    expect(() => createCompiler({ plugins: [{ name: '@acme/bad', apiVersion: 1, decls: { t: {} } } as never] })).toThrow(
+    expect(() => createCompiler({ plugins: [{ name: '@acme/bad', apiVersion: 2, decls: { t: {} } } as never] })).toThrow(
       /decl "t" needs swift and kotlin/,
     )
   })

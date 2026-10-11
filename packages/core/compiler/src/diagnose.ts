@@ -40,12 +40,21 @@ export interface ErrorPattern {
  */
 /** Which new `@pyreon/compiler` subpath an export moved to (see the matching `ERROR_PATTERNS` entry). */
 function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' {
-  if (/^(?:analyzeValidate|emitSchemaSource|emitValidator|isEmittable)$/.test(name)) return 'validate'
-  if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext)/.test(name)) return 'audits'
+  if (/^(?:analyzeValidate|emitSchemaSource|emitValidator|isEmittable)$/.test(name))
+    return 'validate'
+  if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext)/.test(name))
+    return 'audits'
   return 'analyze'
 }
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
+  {
+    pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
+    diagnose: (m) => ({
+      cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,
+      fix: `Use \`${m[1]}.${m[2]}(...)\`, or upgrade @pyreon/compiler and its native binary if source is correct.`,
+    }),
+  },
   {
     // Before #3815 the compiler's name-keyed registries (prop-derived aliases,
     // `props` names, signal variables) outlived the function that declared
@@ -56,15 +65,25 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     // entry so the specific teaching wins.
     pattern: /\bprops is not defined\b/,
     diagnose: () => ({
-      cause: 'On @pyreon/compiler versions before the lexical-scope fix (#3815), a prop-derived const (`const label = props.label`) in one component was substituted by NAME into every later `label` in the module — including a sibling component\'s own local, an import, or a module const — emitting `props.label` where no `props` exists. (The same leak made a function-local `signal()` auto-call a same-named import: `x is not a function`.)',
-      fix: 'Upgrade @pyreon/compiler (and @pyreon/vite-plugin) to a version with the fix; aliases now resolve by lexical binding. As a workaround on an older compiler, give the sibling\'s local a different name than the other function\'s prop-derived const, or declare the alias with `let`.',
+      cause:
+        "On @pyreon/compiler versions before the lexical-scope fix (#3815), a prop-derived const (`const label = props.label`) in one component was substituted by NAME into every later `label` in the module — including a sibling component's own local, an import, or a module const — emitting `props.label` where no `props` exists. (The same leak made a function-local `signal()` auto-call a same-named import: `x is not a function`.)",
+      fix: "Upgrade @pyreon/compiler (and @pyreon/vite-plugin) to a version with the fix; aliases now resolve by lexical binding. As a workaround on an older compiler, give the sibling's local a different name than the other function's prop-derived const, or declare the alias with `let`.",
     }),
   },
   {
-    pattern: /useLoaderData(?:\(\))?.*(?:undefined|empty).*first.*loader.*(?:resolved|finished|completed)|first.*loader.*(?:resolved|finished|completed).*useLoaderData(?:\(\))?.*(?:undefined|empty)/i,
+    pattern:
+      /useLoaderData(?:\(\))?.*(?:undefined|empty).*first.*loader.*(?:resolved|finished|completed)|first.*loader.*(?:resolved|finished|completed).*useLoaderData(?:\(\))?.*(?:undefined|empty)/i,
     diagnose: () => ({
-      cause: 'On older @pyreon/router versions, a leaf route without a pendingComponent ignored its first loader-data arrival. Its component kept the initial undefined LoaderDataContext snapshot even after the loader completed.',
+      cause:
+        'On older @pyreon/router versions, a leaf route without a pendingComponent ignored its first loader-data arrival. Its component kept the initial undefined LoaderDataContext snapshot even after the loader completed.',
       fix: 'Upgrade @pyreon/router to include the first-loader-arrival fix. RouterView now renders the resolved data when no pendingComponent is configured, while PendingLoader retains its minimum display interval when configured. Also check that your loader returns its data.',
+    }),
+  },
+  {
+    pattern: /function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\(/,
+    diagnose: (m) => ({
+      cause: `The function binding \`${m[1]}\` was mistaken for an outer signal and auto-called.`,
+      fix: 'Upgrade @pyreon/compiler and its native binary. Remove any extra call before the body.',
     }),
   },
   {
@@ -76,10 +95,11 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     // compiled build would reject input the runtime validator accepts. The
     // vite-plugin checks `emittable` and leaves such a schema to the runtime;
     // a direct caller of the emitters that skips that check hits this throw.
-    pattern: /\[Pyreon\] (?:emitValidator: cannot emit an unsupported node|emitSchemaSource: unsupported node) \(([^()]*)\)/,
+    pattern:
+      /\[Pyreon\] (?:emitValidator: cannot emit an unsupported node|emitSchemaSource: unsupported node) \(([^()]*)\)/,
     diagnose: (m) => ({
-      cause: `The schema contains a shape the validate compiler cannot emit faithfully (\`${m[1]}\`), so \`analyzeValidate\` reported it as \`unsupported\`. Option-dependent formats bail on purpose: \`.email({ precision })\` and \`.url({ protocol })\` change what the check accepts, while the compiled check enforces only the default, so emitting it would reject input the runtime accepts.`,
-      fix: 'Check `info.emittable` from `analyzeValidate` before calling `emitValidator` / `emitSchemaSource`, and leave a non-emittable schema to the runtime validator — that is what `@pyreon/vite-plugin` does. The schema itself is correct; only the compiled fast path is skipped.',
+      cause: `The validate compiler cannot preserve \`${m[1]}\`. Options such as \`.email({ precision })\` and \`.url({ protocol })\` alter accepted inputs, so compiling only their defaults would change validation.`,
+      fix: "Check `info.emittable` from `analyzeValidate` before calling `emitValidator` or `emitSchemaSource`. Leave unsupported schemas to the runtime validator, as @pyreon/vite-plugin does.",
       fixCode: `for (const info of analyzeValidate(code, id)) {
   if (!info.emittable) continue // runtime validator handles it
   const verdict = emitValidator(info.node)
@@ -101,7 +121,9 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     diagnose: (m) => ({
       cause:
         "`@pyreon/charts` 0.52 removed the ECharts wrapper: it is now Pyreon's own engine, where `<Chart>` takes your rows and marks as children instead of an ECharts `options` object. " +
-        (m[1] !== undefined ? '`@pyreon/charts/' + m[1] + '` no longer exists.' : '`' + m[2] + '` belonged to the wrapper and no longer exists.'),
+        (m[1] !== undefined
+          ? '`@pyreon/charts/' + m[1] + '` no longer exists.'
+          : '`' + m[2] + '` belonged to the wrapper and no longer exists.'),
       fix: "Rewrite the chart with marks: each ECharts series becomes a mark (`type: 'bar'` → `<Bar y=\"field\" />`, `'line'` → `<Line>`, `'pie'` → `<Arc>`), `tooltip` becomes `<Tooltip />`, `legend` `<Legend />`, and the family charts (sankey, treemap, gauge, …) are components. Delete the `/vite` tslib alias — it is no longer needed. `pyreon check` lists every import still on the wrapper.",
       fixCode: `import { Bar, Chart, Tooltip } from '@pyreon/charts'
 
@@ -125,7 +147,7 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
         '`' +
         (m[1] ?? 'options') +
         "` is a prop of the 0.51 ECharts wrapper `<Chart options>`, which `@pyreon/charts` 0.52 removed. The new `<Chart>` is Pyreon's own engine: it takes your rows as `data` and draws the marks you give it as children, so it has no ECharts option object to accept.",
-      fix: 'Translate the option into marks: pass the rows as `data` and the category field as `x`, turn each series into a mark (`type: \'bar\'` → `<Bar y="field" />`, `\'line\'` → `<Line>`, `\'pie\'` → `<Arc>`), and replace `tooltip` / `legend` with `<Tooltip />` / `<Legend />`. `pyreon check` flags every remaining `<Chart options>` in the project.',
+      fix: "Translate the option into marks: pass the rows as `data` and the category field as `x`, turn each series into a mark (`type: 'bar'` → `<Bar y=\"field\" />`, `'line'` → `<Line>`, `'pie'` → `<Arc>`), and replace `tooltip` / `legend` with `<Tooltip />` / `<Legend />`. `pyreon check` flags every remaining `<Chart options>` in the project.",
       fixCode: `import { Bar, Chart, Tooltip } from '@pyreon/charts'
 
 <Chart data={rows} x="month">
@@ -144,7 +166,7 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
       /(?:has no exported member(?: named)? \x27systemChartMode\x27|does not provide an export named \x27systemChartMode\x27|Property \x27mode\x27 does not exist on type \x27IntrinsicAttributes & ChartThemeProviderProps\x27)/,
     diagnose: () => ({
       cause:
-        "The chart colour mode is now the framework-wide one: `useColorMode()` / `<ColorModeProvider mode>` from `@pyreon/core`, which `<PyreonUI mode>` provides. `systemChartMode()` moved there as `systemColorMode()`, and `<ChartThemeProvider>` no longer takes `mode` — charts, the UI system and every other component read the same mode.",
+        'The chart colour mode is now the framework-wide one: `useColorMode()` / `<ColorModeProvider mode>` from `@pyreon/core`, which `<PyreonUI mode>` provides. `systemChartMode()` moved there as `systemColorMode()`, and `<ChartThemeProvider>` no longer takes `mode` — charts, the UI system and every other component read the same mode.',
       fix: 'Drop `mode` from `<ChartThemeProvider>`. In a UI-system app `<PyreonUI mode>` already sets it; otherwise wrap the charts in `<ColorModeProvider mode="dark">` (or an accessor). Replace `systemChartMode()` with `systemColorMode()` from `@pyreon/core`.',
       fixCode: `import { ColorModeProvider } from '@pyreon/core'
 import { ChartThemeProvider } from '@pyreon/charts'
@@ -164,7 +186,8 @@ import { ChartThemeProvider } from '@pyreon/charts'
       cause:
         "This build defined globalThis.__PYREON_ROUTER_LOADERS__ as false, which removes the router's loader engine, but a route in the running app declares a loader. @pyreon/zero sets the flag from its scan of src/routes, and a route passed to startClient/createApp by hand is not part of that scan.",
       fix: 'Turn loaders back on for this app by defining the flag yourself in the Vite config — zero never overrides a value you set. Or move the route into src/routes so the scan sees it.',
-      fixCode: "// vite.config.ts\nexport default defineConfig({\n  define: { 'globalThis.__PYREON_ROUTER_LOADERS__': 'true' },\n  plugins: [zero()],\n})",
+      fixCode:
+        "// vite.config.ts\nexport default defineConfig({\n  define: { 'globalThis.__PYREON_ROUTER_LOADERS__': 'true' },\n  plugins: [zero()],\n})",
     }),
   },
   {
@@ -178,7 +201,7 @@ import { ChartThemeProvider } from '@pyreon/charts'
     pattern:
       /(\w+) is not a function\. \(In '\1\(\)', '\1' is an instance of (?:Error|Object|Array|\w+)\)/,
     diagnose: (m) => ({
-      cause: `A JSX child or attribute read \`${m[1]}\` bare, and the compiler auto-called it as a signal because a module-level \`const ${m[1]} = signal(…)\` exists — but at that point \`${m[1]}\` is a LOCAL binding (a \`catch (${m[1]})\` parameter, a \`for (const ${m[1]} of …)\` head, a nested destructure, a block-scoped \`let\`), which compilers before 0.53 did not recognise as a shadow.`,
+      cause: `The compiler auto-called \`${m[1]}\` as a module signal, but JSX resolves it to a local binding: a catch/loop binding, nested destructure or block-scoped variable. Compilers before 0.53 missed these shadows.`,
       fix: `Upgrade @pyreon/compiler — every binding form now shadows. If you are pinned, rename the local binding so it does not share a module signal's name.`,
       fixCode: `// pinned workaround — a distinct name for the local
 try { load() } catch (err) { return <p>{err.message}</p> }`,
@@ -228,9 +251,10 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
     pattern: /Hydration mismatch \(tag\): expected \w+, got 8 at .*> reactive/i,
     diagnose: () => ({
       cause:
-        'While hydrating a compiled template slot, the walker expected an element but met a COMMENT node right after a reactive range. That means a range boundary was misread — typically a slot whose SSR markers were elided (it was its element\'s sole child) and whose value starts with a NESTED range (a <Show>, or a fragment beginning with an accessor). The nested consumer then found its markers already consumed, mounted its content fresh, and left the server nodes standing: the DOM shows the content twice.',
-      fix: 'Upgrade @pyreon/compiler and @pyreon/runtime-dom together — the compiler now emits the slot\'s soleness verdict and the runtime trusts it, so this shape adopts correctly. If you are pinned, wrap the slot\'s value in an element (<div>{…}</div>) so the nested range is not the slot\'s first node, or give the slot a static sibling so SSR marks it.',
-      fixCode: "// pinned workaround — give the nested range a parent of its own\n<section>{() => (ready() ? <div><Show when={…}>…</Show></div> : null)}</section>",
+        "While hydrating a compiled template slot, the walker expected an element but met a COMMENT node right after a reactive range. That means a range boundary was misread — typically a slot whose SSR markers were elided (it was its element's sole child) and whose value starts with a NESTED range (a <Show>, or a fragment beginning with an accessor). The nested consumer then found its markers already consumed, mounted its content fresh, and left the server nodes standing: the DOM shows the content twice.",
+      fix: "Upgrade @pyreon/compiler and @pyreon/runtime-dom together — the compiler now emits the slot's soleness verdict and the runtime trusts it, so this shape adopts correctly. If you are pinned, wrap the slot's value in an element (<div>{…}</div>) so the nested range is not the slot's first node, or give the slot a static sibling so SSR marks it.",
+      fixCode:
+        '// pinned workaround — give the nested range a parent of its own\n<section>{() => (ready() ? <div><Show when={…}>…</Show></div> : null)}</section>',
     }),
   },
   {
@@ -243,19 +267,21 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
     // fails at the bundler's import check, naming the app's own file, not the
     // framework. Seen exactly this way in-repo: a rebuilt compiler against a
     // pre-fusion `core/lib`.
-    pattern: /"?_fuse"? is not exported by|_fuse is not defined|does not provide an export named ['"]_fuse['"]/i,
+    pattern:
+      /"?_fuse"? is not exported by|_fuse is not defined|does not provide an export named ['"]_fuse['"]/i,
     diagnose: () => ({
       cause:
         'The Pyreon compiler emitted `_fuse` (text fusion: a static-text run around an interpolation such as `<p>Hello {name}!</p>` is lowered to ONE accessor child so it renders and hydrates without `<!--$-->` range markers), but the `@pyreon/core` your build resolved is older than the compiler and does not export it. The two packages are released as a fixed group, so this is a version skew: a partial upgrade, a second copy of `@pyreon/core` in the dependency tree, or — inside the Pyreon monorepo — a stale `packages/core/core/lib` that Vite reads through the `node` condition.',
       fix: 'Align `@pyreon/core` and `@pyreon/compiler` (and `@pyreon/vite-plugin`) to the same version — `pyreon upgrade` does this — and make sure only ONE `@pyreon/core` resolves (`pyreon info` reports version skew and duplicates). In the monorepo, run `bun scripts/bootstrap.ts` so the built `lib/` catches up with source.',
-      fixCode: "// every @pyreon/* package on ONE version — the compiler's emit and core's exports move together\n// package.json\n\"@pyreon/core\": \"0.52.0\",\n\"@pyreon/compiler\": \"0.52.0\",\n\"@pyreon/vite-plugin\": \"0.52.0\"\n\n// or, in one step:\n// npx pyreon upgrade",
-// package.json
-"@pyreon/core": "0.52.0",
-"@pyreon/compiler": "0.52.0",
-"@pyreon/vite-plugin": "0.52.0"
+      fixCode:
+        '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx pyreon upgrade',
+      // package.json
+      '@pyreon/core': '0.52.0',
+      '@pyreon/compiler': '0.52.0',
+      '@pyreon/vite-plugin': '0.52.0',
 
-// or, in one step:
-// npx pyreon upgrade",
+      // or, in one step:
+      // npx pyreon upgrade",
     }),
   },
   {
@@ -270,7 +296,8 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
       cause:
         'A route loader returned an object graph containing a CYCLE, and loader data must be serialized into the page as JSON so the client can hydrate without re-fetching. The key path in the message is where the cycle closes. The overwhelmingly common source is an ORM instance with its back-references intact — a Prisma/Mongo/TypeORM row whose `author` points at a user whose `posts` array points back at the row. Note the serializer distinguishes a real cycle from a SHARED reference: `{ author: user, lastEditor: user }` is a DAG, not a cycle, and serializes fine — so this error means the graph genuinely closes on itself.',
       fix: 'Return a plain projection of the fields the route actually renders, rather than the ORM object. That is worth doing regardless of this error: everything a loader returns is embedded in the HTML and shipped to every visitor, so returning a whole row also ships columns the page never displays. If you need the nested shape, select it explicitly (Prisma `select`, a Mongo projection) or map it yourself — a custom `replacer` is not an option, because the framework owns this serialization.',
-      fixCode: "// throws — `post.author.posts` points back at `post`\n// export const loader = () => db.post.findUnique({ where: { id }, include: { author: true } })\n\n// returns a plain projection: no cycle, and no columns the page never renders\nexport const loader = async () => {\n  const post = await db.post.findUnique({\n    where: { id },\n    select: { id: true, title: true, body: true, author: { select: { id: true, name: true } } },\n  })\n  return { post }\n}",
+      fixCode:
+        '// throws — `post.author.posts` points back at `post`\n// export const loader = () => db.post.findUnique({ where: { id }, include: { author: true } })\n\n// returns a plain projection: no cycle, and no columns the page never renders\nexport const loader = async () => {\n  const post = await db.post.findUnique({\n    where: { id },\n    select: { id: true, title: true, body: true, author: { select: { id: true, name: true } } },\n  })\n  return { post }\n}',
     }),
   },
   {
@@ -287,10 +314,10 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
       /Top-level `interface [A-Za-z0-9_$]+` with generics or `extends` is NOT compiled to native|interface[^\n]{0,60}(generic|extends)[^\n]{0,60}not (compiled|lowered) to native/i,
     diagnose: () => ({
       cause:
-        "PMTC synthesizes a native struct (Swift) / data class (Kotlin) from an object-shape interface by reading its fields directly. It cannot do that for an interface that carries GENERICS — there is no single field list to emit, since the shape depends on a type argument — nor for one that uses `extends`, because the inherited members live in another declaration the emitter would have to resolve and flatten. Neither lowers, so the declaration is skipped and anything typed by it references a symbol that was never emitted. A plain interface, one with optional fields, one with a nested object field and one with an array field ALL compile normally — this is specifically the generic / `extends` case.",
-      fix: "Flatten the shape into a single non-generic declaration. For `extends`, write the inherited fields out in the child (or keep the parent as a separate struct and hold it as a FIELD, which does lower). For a generic, declare the concrete instantiation you actually cross with — `interface UserPage { items: User[] }` rather than `interface Page<T> { items: T[] }`. Both spellings work identically on web, so this costs the shared source nothing.",
+        'PMTC synthesizes a native struct (Swift) / data class (Kotlin) from an object-shape interface by reading its fields directly. It cannot do that for an interface that carries GENERICS — there is no single field list to emit, since the shape depends on a type argument — nor for one that uses `extends`, because the inherited members live in another declaration the emitter would have to resolve and flatten. Neither lowers, so the declaration is skipped and anything typed by it references a symbol that was never emitted. A plain interface, one with optional fields, one with a nested object field and one with an array field ALL compile normally — this is specifically the generic / `extends` case.',
+      fix: 'Flatten the shape into a single non-generic declaration. For `extends`, write the inherited fields out in the child (or keep the parent as a separate struct and hold it as a FIELD, which does lower). For a generic, declare the concrete instantiation you actually cross with — `interface UserPage { items: User[] }` rather than `interface Page<T> { items: T[] }`. Both spellings work identically on web, so this costs the shared source nothing.',
       fixCode:
-        "// does NOT lower — generics have no single field list to emit\n// interface Page<T> { items: T[]; total: number }\n\n// lowers on both targets\ninterface UserPage {\n  items: User[]\n  total: number\n}",
+        '// does NOT lower — generics have no single field list to emit\n// interface Page<T> { items: T[]; total: number }\n\n// lowers on both targets\ninterface UserPage {\n  items: User[]\n  total: number\n}',
     }),
   },
   {
@@ -305,8 +332,9 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
     diagnose: () => ({
       cause:
         "A reactive boundary (`<Show>` / `<Switch>` / any `{() => …}` that mounts a subtree) re-runs whenever ITS OWN accessor's dependencies change, even when the resulting value is unchanged — `when={() => selected() !== undefined}` re-runs on every `selected` change while staying `true`. Two things can make the child go stale there. (1) On @pyreon/runtime-dom BEFORE the identity-skip release, the boundary tore down and re-mounted on every such re-run; a component's sole child is `_lc`-memoized, so the accessor returned the SAME compiled `_tpl` item whose DOM and bindings were built once — the teardown disposed the bindings and the remount re-inserted the same element without rebuilding them, leaving one live node permanently stale with no warning. (2) On current versions the boundary SKIPS re-mounting when the accessor returns the value it already mounted, so an accessor that returns the same object after mutating it IN PLACE (`items.push(x); return items`) is correctly seen as unchanged and nothing re-renders.",
-      fix: "For (1), upgrade @pyreon/runtime-dom. For (2), return a NEW value rather than mutating: `return [...items, x]`, or drive the list from a signal (`items.set([...items(), x])`) — mutation-in-place is invisible to every identity-based check in the framework, not just this one. If the child genuinely must rebuild on each re-run, give the accessor a value that differs per run rather than relying on the boundary to rebuild an unchanged one.",
-      fixCode: "// mutating in place is invisible to the boundary\n// items.push(next); return items\n\n// return a new value instead\nreturn [...items, next]",
+      fix: 'For (1), upgrade @pyreon/runtime-dom. For (2), return a NEW value rather than mutating: `return [...items, x]`, or drive the list from a signal (`items.set([...items(), x])`) — mutation-in-place is invisible to every identity-based check in the framework, not just this one. If the child genuinely must rebuild on each re-run, give the accessor a value that differs per run rather than relying on the boundary to rebuild an unchanged one.',
+      fixCode:
+        '// mutating in place is invisible to the boundary\n// items.push(next); return items\n\n// return a new value instead\nreturn [...items, next]',
     }),
   },
   {
@@ -385,7 +413,7 @@ export default defineConfig({
     diagnose: () => ({
       cause:
         'Hydration expected a text node and found an ELEMENT. Two causes. (1) On `@pyreon/runtime-dom` versions before the explicit-whitespace fix, an explicitly rendered whitespace-only child (`<First />{\' \'}<span/>`) was skipped by the hydration cursor as "server formatting" and a duplicate space was inserted — upgrade. (2) The client renders text where the server rendered an element (a real server/client divergence).',
-      fix: 'Upgrade `@pyreon/runtime-dom` if the text in question is only whitespace (`{\' \'}`) — the walker now decides whitespace by the client VNODE, not by the DOM alone. Otherwise make the first client render match the server render (branch on `typeof window`/`Date.now()`/locale only inside `onMount`).',
+      fix: "Upgrade `@pyreon/runtime-dom` if the text in question is only whitespace (`{' '}`) — the walker now decides whitespace by the client VNODE, not by the DOM alone. Otherwise make the first client render match the server render (branch on `typeof window`/`Date.now()`/locale only inside `onMount`).",
       fixCode: `// Works on current versions: the explicit space is adopted, not duplicated
 <div><First />{' '}<span>Two</span></div>`,
       related: 'https://pyreon.dev/docs/troubleshooting/ssr',
@@ -503,7 +531,8 @@ function Panel() {
     // most often the DATA rather than the source (`of={q.data()}`), or a
     // resource whose accessors are named differently. Reading `.isPending` off
     // undefined throws before anything renders, so the trigger is reliable.
-    pattern: /Cannot read (?:property |properties of )['"]?(?:undefined|null)['"]?\s*\(reading ['"](isPending|isError)['"]\)/,
+    pattern:
+      /Cannot read (?:property |properties of )['"]?(?:undefined|null)['"]?\s*\(reading ['"](isPending|isError)['"]\)/,
     diagnose: (m) => ({
       cause: `<Async> read \`${m[1]}\` off an \`of\` that is undefined or null. \`of\` takes the async SOURCE — an object with isPending/isError/error/data accessors — not the resolved data.`,
       fix: 'Pass the query/resource itself to `of`; the child function receives the data.',
@@ -538,7 +567,8 @@ try { q = decodeURIComponent(raw) } catch { return new Response('Bad Request', {
     // per-traversal write lowers the router's own history traffic, but an APP
     // that writes history on every keystroke still trips the browser's rate
     // limit — Firefox and Safari throw, Chrome warns and drops the write.
-    pattern: /(?:Too many calls to Location or History APIs|more than 100 times per 10 seconds|Throttling navigation)/i,
+    pattern:
+      /(?:Too many calls to Location or History APIs|more than 100 times per 10 seconds|Throttling navigation)/i,
     diagnose: () => ({
       cause:
         'The browser rate-limits history writes (~100 per 10s). Something is calling pushState/replaceState per keystroke or per animation frame — most often a URL-synced signal bound directly to an input.',
@@ -561,7 +591,8 @@ const debounced = useDebouncedValue(q, 300)  // write the URL from this`,
     // Keyed on the diagnostic text rather than a thrown message, for the same
     // reason as the <textarea value> entry above: a silent wrong render never
     // produces an exception to match on.
-    pattern: /props?[- ]destructured|destructur\w* props|prop (?:is |value )?(?:frozen|stale|never updates)/i,
+    pattern:
+      /props?[- ]destructured|destructur\w* props|prop (?:is |value )?(?:frozen|stale|never updates)/i,
     diagnose: () => ({
       cause:
         'A component body destructured `props` — `const { gap } = props`. Pyreon components run ONCE, so that reads the value a single time at setup and pins it. A later `gap={zoom()}` never reaches the DOM, and nothing throws.',
@@ -586,7 +617,7 @@ const debounced = useDebouncedValue(q, 300)  // write the URL from this`,
     diagnose: () => ({
       cause:
         "A prop-derived `const` whose initializer is a CALL used to be re-invoked at every JSX use site. The inlining pass exists so `const a = props.x + 1` stays reactive — it splices the initializer back in at each use — but applied to a factory it mints a NEW instance per binding. The handlers write the body's instance; the bindings read their own; the DOM never moves and nothing errors.",
-      fix: "Upgrade `@pyreon/compiler` — a prop-derived const initialized by a `useX` / `createX` call is now REFERENCED at its use sites, not re-invoked. If your factory is named something else (`makeStore`, `buildModel`), it is still inlined: rename it to the `use*` / `create*` convention, or declare the binding `let`, which the inliner has never tracked.",
+      fix: 'Upgrade `@pyreon/compiler` — a prop-derived const initialized by a `useX` / `createX` call is now REFERENCED at its use sites, not re-invoked. If your factory is named something else (`makeStore`, `buildModel`), it is still inlined: rename it to the `use*` / `create*` convention, or declare the binding `let`, which the inliner has never tracked.',
       fixCode: `// re-invoked per use site on older compilers, and still is when the
 // callee matches neither convention
 const s = makeStore(props.id)
@@ -625,7 +656,7 @@ const s = useStore(props.id)`,
     pattern: /(\w+) is not defined/,
     diagnose: (m) => ({
       cause: `\`${m[1]}\` was referenced from a scope that does not declare it. Under SSR this used to happen on its own: a prop-derived \`const\` whose initializer contains JSX was INLINED at its use sites by splicing the original source, which put pre-transform text into an \`_ssr\` hole — and two sibling \`.map()\` callbacks could end up carrying each other's expressions, so a binding from one appeared inside the other.`,
-      fix: "Update @pyreon/compiler — the SSR path now references such a const by name instead of inlining it. If you are pinned to an older version, compute the value into a plain (non-JSX) local first, or move the JSX into its own component. Under SSG this shows up as a silently EMPTY page rather than a failed build: prerender reports pages ATTEMPTED, so check `dist/_pyreon-ssg-errors.json`.",
+      fix: 'Update @pyreon/compiler — the SSR path now references such a const by name instead of inlining it. If you are pinned to an older version, compute the value into a plain (non-JSX) local first, or move the JSX into its own component. Under SSG this shows up as a silently EMPTY page rather than a failed build: prerender reports pages ATTEMPTED, so check `dist/_pyreon-ssg-errors.json`.',
     }),
   },
   {
@@ -670,8 +701,8 @@ expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe(
     pattern: /not assignable to type 'VNodeChild(Atom)?'/i,
     diagnose: () => ({
       cause:
-        "A value in child position is not a valid VNodeChild. The usual cause is an ACCESSOR returning another accessor: `() => () => value`. VNodeChild allows an accessor that yields an atom or an array, but a returned FUNCTION is rendered as-is rather than called again, so the type rejects it — and if it slipped through you would see a function stringified into the DOM instead of your value.",
-      fix: "Return the VALUE from the accessor, not another function. `{() => count()}` — call the signal inside the accessor. If you are forwarding a signal, pass it directly (`{count}`) and let the compiler auto-call it; do not wrap it in an extra arrow.",
+        'A value in child position is not a valid VNodeChild. The usual cause is an ACCESSOR returning another accessor: `() => () => value`. VNodeChild allows an accessor that yields an atom or an array, but a returned FUNCTION is rendered as-is rather than called again, so the type rejects it — and if it slipped through you would see a function stringified into the DOM instead of your value.',
+      fix: 'Return the VALUE from the accessor, not another function. `{() => count()}` — call the signal inside the accessor. If you are forwarding a signal, pass it directly (`{count}`) and let the compiler auto-call it; do not wrap it in an extra arrow.',
       fixCode: `// BAD — the accessor returns another function
 <Text>{() => () => count()}</Text>
 
@@ -690,7 +721,7 @@ expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe(
     pattern: /Duplicate key .* in <For> list/i,
     diagnose: (m) => ({
       cause: `Two items in a <For> list produced the same key${m[0]?.match(/"([^"]*)"/)?.[1] ? ` ("${m[0].match(/"([^"]*)"/)?.[1]}")` : ''}. Keys must be unique: the reconciler stores one cache entry per key, so a collision would overwrite the first row's DOM handle and orphan its nodes. To avoid that corruption it SKIPS the duplicate and keeps the first occurrence — which is why the rendered list is SHORTER than your array, usually the symptom you actually noticed.`,
-      fix: "Return a genuinely unique key from `by`. A database id is ideal. If the data has no natural id, do NOT reach for the array index — it breaks keyed reconciliation on reorder (every row after an insert is treated as changed). Derive a stable composite instead, or assign an id once when the item is created.",
+      fix: 'Return a genuinely unique key from `by`. A database id is ideal. If the data has no natural id, do NOT reach for the array index — it breaks keyed reconciliation on reorder (every row after an insert is treated as changed). Derive a stable composite instead, or assign an id once when the item is created.',
       fixCode: `// BAD — non-unique: two items can share a name
 <For each={items} by={(i) => i.name}>{…}</For>
 
@@ -874,7 +905,7 @@ return <span style={{ color: color }} />`,
       /reading '(ESNext|Latest|ScriptTarget|ScriptKind|forEachChild)'|ScriptTarget.*(undefined|is not)|typescript\s*7.*(classic|compiler api|tsgo)/i,
     diagnose: () => ({
       cause:
-        'TypeScript 7 ("tsgo", the native preview published as `latest` on npm) removed the classic Compiler API (`ScriptTarget` / `ScriptKind` and the parse + traverse primitives). `@pyreon/compiler`\'s pattern detectors, audits, and migrators parse with that API, so under TS7 `ts.ScriptTarget` is `undefined` and the parse throws `Cannot read properties of undefined (reading \'ESNext\')`. A fresh `bunx @pyreon/mcp` — or any clean install that resolved an uncapped `typescript` range to 7.x — hits this; a project pinned to 5.x/6.x works.',
+        "TypeScript 7 (\"tsgo\", the native preview published as `latest` on npm) removed the classic Compiler API (`ScriptTarget` / `ScriptKind` and the parse + traverse primitives). `@pyreon/compiler`'s pattern detectors, audits, and migrators parse with that API, so under TS7 `ts.ScriptTarget` is `undefined` and the parse throws `Cannot read properties of undefined (reading 'ESNext')`. A fresh `bunx @pyreon/mcp` — or any clean install that resolved an uncapped `typescript` range to 7.x — hits this; a project pinned to 5.x/6.x works.",
       fix: 'Pin `"typescript": ">=5.0.0 <7.0.0"` in your project — TypeScript 6.x is the supported classic-API line. Upgrade `@pyreon/compiler` / `@pyreon/mcp` / `@pyreon/cli` to a version whose `typescript` range is capped `<7`, so a fresh install stops pulling TS7 automatically.',
       fixCode: `// package.json
 {
@@ -965,7 +996,8 @@ mount(
     // type-layers (`as never` / `satisfies` / `!` / parens) opaque to the
     // template child/attr classifier, so a cast accessor fell through to a
     // STATIC bake (`textContent = (() => x()) as never`).
-    pattern: /(\(\.\.\.args\) =>|function\s*\(\)|\(\)\s*=>).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|(as never|satisfies).*(textContent|attribute|source|rendered|literal text)|s\w*\.set\(.*=>.*\+/i,
+    pattern:
+      /(\(\.\.\.args\) =>|function\s*\(\)|\(\)\s*=>).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|(as never|satisfies).*(textContent|attribute|source|rendered|literal text)|s\w*\.set\(.*=>.*\+/i,
     diagnose: () => ({
       cause:
         'A function\'s SOURCE text is rendering into the DOM. Two known causes: (1) on `@pyreon/compiler` versions before the auto-call reachability release, bare signal reads inside event-handler bodies, `.map`/callback re-emits, and nested JSX under conditional slots were NOT auto-called on one or both backends — the signal FUNCTION leaked into the emitted code, so string contexts rendered its source (`id="v(...args) => {…"`), boolean contexts were always truthy (`title={sig ? "a" : "b"}` stuck), and the canonical counter (`count.set(count + 1)`) concatenated the function. (2) On versions before the template-classification TS-transparency release, a TS-cast accessor child/attr (`{(() => x()) as never}`, `title={(() => x()) satisfies unknown}`, or even plain parens `{(() => x())}`) was OPAQUE to the template classifier and fell through to a STATIC bake — rendering the function source as literal text / attribute value.',
@@ -977,7 +1009,8 @@ mount(
 // TS-layer wrappers are value-transparent (but prefer the bare form):
 <div>{(() => name()) as never}</div>  // ≡ <div>{() => name()}</div>
 <div title={(() => tip())!}>hi</div>  // ≡ <div title={() => tip()}>hi</div>`,
-      related: 'duplicate-jsx-attr warning: duplicate JSX attributes now dedupe last-wins (JSX object semantics) with a compiler warning.',
+      related:
+        'duplicate-jsx-attr warning: duplicate JSX attributes now dedupe last-wins (JSX object semantics) with a compiler warning.',
     }),
   },
   {
@@ -987,10 +1020,11 @@ mount(
     // @pyreon/router versions, useLoaderData() in one of the two could read
     // the OTHER record's data after hydration (last-write-wins, timing-
     // dependent).
-    pattern: /useLoaderData\(\).*(wrong|layout|other route|collid|overwrit)|loader data.*(layout|page).*(swap|collid|wrong|overwrit)/i,
+    pattern:
+      /useLoaderData\(\).*(wrong|layout|other route|collid|overwrit)|loader data.*(layout|page).*(swap|collid|wrong|overwrit)/i,
     diagnose: () => ({
       cause:
-        'On `@pyreon/router` versions before the server-loaders correctness release, the SSR hydration blob (`window.__PYREON_LOADER_DATA__`) keyed loader data by `record.path`. A layout and its index page share a path, so when BOTH carry loaders their data collided in the blob (last-write-wins) — post-hydration, `useLoaderData()` in one component read the other record\'s data.',
+        "On `@pyreon/router` versions before the server-loaders correctness release, the SSR hydration blob (`window.__PYREON_LOADER_DATA__`) keyed loader data by `record.path`. A layout and its index page share a path, so when BOTH carry loaders their data collided in the blob (last-write-wins) — post-hydration, `useLoaderData()` in one component read the other record's data.",
       fix: 'Upgrade `@pyreon/router` — the blob now keys the first record at a path bare (back-compat) and subsequent same-path records as `path#<occurrence>`, so layout + page data never collide. No app code change needed.',
       fixCode: `// routes/dashboard/_layout.tsx — layout loader
 export async function loader() { return { user: await getUser() } }
@@ -1004,7 +1038,8 @@ export async function loader() { return { stats: await getStats() } }
     // route whose data comes from a `.server.ts` serverLoader sibling, on
     // @pyreon/router versions where the RouterView render gates checked
     // only `record.loader` before wrapping in LoaderDataProvider.
-    pattern: /useLoaderData\(\).*(undefined|none).*(serverLoader|server loader|\.server\.ts)|serverLoader.*(data|useLoaderData).*(undefined|missing)/i,
+    pattern:
+      /useLoaderData\(\).*(undefined|none).*(serverLoader|server loader|\.server\.ts)|serverLoader.*(data|useLoaderData).*(undefined|missing)/i,
     diagnose: () => ({
       cause:
         'On `@pyreon/router` versions before the server-loaders release, BOTH RouterView render-gate branches checked only `record.loader` before wrapping the route in `LoaderDataProvider` — a route whose data comes from a `.server.ts` `serverLoader` sibling rendered WITHOUT the provider, so `useLoaderData()` read the context default (undefined) even though the loader ran and the hydration blob carried the value.',
@@ -1020,7 +1055,8 @@ const data = useLoaderData<Dashboard>()`,
     // aria-* props on CUSTOM ELEMENTS landed as JS properties, so
     // getAttribute/dataset/CSS attribute selectors silently read null while
     // SSR HTML carried real attributes.
-    pattern: /getAttribute\(['"](data-|aria-)[\w-]+['"]\).*(null|undefined)|dataset\.\w+.*undefined.*(custom|hyphen|web component)/i,
+    pattern:
+      /getAttribute\(['"](data-|aria-)[\w-]+['"]\).*(null|undefined)|dataset\.\w+.*undefined.*(custom|hyphen|web component)/i,
     diagnose: () => ({
       cause:
         'On `@pyreon/runtime-dom` versions before the data-/aria- carve-out, `data-*`/`aria-*` props on CUSTOM ELEMENTS (hyphenated tags) were set as JS PROPERTIES via the pre-upgrade branch — `getAttribute("data-x")`, `el.dataset`, and CSS attribute selectors all read null on client-mounted elements even though SSR HTML carried real attributes.',
@@ -1164,10 +1200,11 @@ function List({ items }) { return <ul>{() => items}</ul> }  // accessor → subt
     // default ({}), so reads like `locals.nonce` / `locals.user` are
     // undefined inside SSR-rendered components even though the handler's
     // middleware populated ctx.locals.
-    pattern: /useRequestLocals\(\).*(undefined|empty|\{\})|locals.*(nonce|user).*undefined.*(SSR|server)/i,
+    pattern:
+      /useRequestLocals\(\).*(undefined|empty|\{\})|locals.*(nonce|user).*undefined.*(SSR|server)/i,
     diagnose: () => ({
       cause:
-        '`useRequestLocals()` resolves its default ({}) inside SSR-rendered components on `@pyreon/runtime-server` versions where `renderToString`/`renderToStream` opened a FRESH request-context stack — the nested ALS scope silently discarded every request-level `provide()`, including the handler\'s `provideRequestLocals(ctx.locals)` bridge.',
+        "`useRequestLocals()` resolves its default ({}) inside SSR-rendered components on `@pyreon/runtime-server` versions where `renderToString`/`renderToStream` opened a FRESH request-context stack — the nested ALS scope silently discarded every request-level `provide()`, including the handler's `provideRequestLocals(ctx.locals)` bridge.",
       fix: 'Upgrade `@pyreon/runtime-server` + `@pyreon/server` to the release where the renderers INHERIT an active `runWithRequestContext` scope (the renderPage unification). Middleware locals then reach components with no code change. If you cannot upgrade, pass values through route loaders instead of locals.',
       fixCode: `// middleware (unchanged):
 middleware: [(ctx) => { ctx.locals.nonce = makeNonce() }]
@@ -1187,7 +1224,7 @@ const { nonce } = useRequestLocals()`,
     pattern: /Cannot read properties of undefined \(reading 'ref'\)/,
     diagnose: () => ({
       cause:
-        'Pyreon\'s client mount/hydrate hit a Promise where it expected a VNode — typically an `async function Component()` returned to a route or other JSX call site on a runtime-dom version older than this fix. SSR awaits the Promise and inlines content; the older client read `.props.ref` straight off the Promise and crashed.',
+        "Pyreon's client mount/hydrate hit a Promise where it expected a VNode — typically an `async function Component()` returned to a route or other JSX call site on a runtime-dom version older than this fix. SSR awaits the Promise and inlines content; the older client read `.props.ref` straight off the Promise and crashed.",
       fix: 'Upgrade `@pyreon/runtime-dom` to the version that ships async-function-component support on the client (parity with `renderToString`). On older versions, refactor to one of the documented sync patterns:\n  • `lazy(() => import(...))` + `<Suspense>`\n  • move the await into `onMount(async () => { ... signal.set(result) })` and render from the signal',
       fixCode:
         '// Old pattern (crashes on the client):\nasync function DocBody({ slug }) {\n  const entry = await getEntry("docs", slug)\n  return <article>...</article>\n}\n\n// Sync + signal alternative (works on every version):\nfunction DocBody({ slug }) {\n  const data = signal(null)\n  onMount(async () => {\n    const entry = await getEntry("docs", slug)\n    data.set(entry)\n  })\n  return () => {\n    const d = data()\n    if (!d) return <article class="loading" />\n    return <article>...</article>\n  }\n}',
@@ -1197,7 +1234,7 @@ const { nonce } = useRequestLocals()`,
     pattern: /Hydration: async component <(\w+)> SSR markers/,
     diagnose: (m) => ({
       cause: `Pyreon's client hydrate ran <${m[1]}> (an async function component) but couldn't find the SSR sentinel markers (\`<!--$pas-->\`/\`<!--$pae-->\`) that bracket the resolved subtree in the server-rendered HTML. Without them, the client can't attach events / onMount / signal subscriptions to the async subtree — content stays visible but is interactive-dead.`,
-      fix: 'Almost always a version-skew issue: `@pyreon/runtime-server` (server build) is older than `@pyreon/runtime-dom` (client build). Bump them in lockstep so the SSR side emits the markers the client side expects.\n  • Check both packages are on the SAME version in package.json + lockfile\n  • Rebuild the server bundle after the upgrade — `lib/` may be cached from the older runtime-server\n  • If you intentionally pin runtime-server to an older version, downgrade runtime-dom to match (or accept that async subtrees won\'t hydrate)',
+      fix: "Almost always a version-skew issue: `@pyreon/runtime-server` (server build) is older than `@pyreon/runtime-dom` (client build). Bump them in lockstep so the SSR side emits the markers the client side expects.\n  • Check both packages are on the SAME version in package.json + lockfile\n  • Rebuild the server bundle after the upgrade — `lib/` may be cached from the older runtime-server\n  • If you intentionally pin runtime-server to an older version, downgrade runtime-dom to match (or accept that async subtrees won't hydrate)",
       fixCode:
         '// package.json — keep these two in lockstep:\n{\n  "dependencies": {\n    "@pyreon/runtime-server": "0.x.y",  // server SSR\n    "@pyreon/runtime-dom":    "0.x.y"   // client hydrate\n  }\n}\n\n// then:\nbun install\nbun run build  // rebuild both server + client bundles',
     }),
@@ -1218,7 +1255,7 @@ const { nonce } = useRequestLocals()`,
       /(?:Unhandled effect error|Object\.cleanup|at cleanup|effect.*cleanup).*\bis not a function\b|\bis not a function\b.*\bcleanup\b/i,
     diagnose: () => ({
       cause:
-        'On `@pyreon/runtime-dom` versions before the `_mountSlot` callable-cleanup fix, a conditional JSX slot that evaluated FALSY/BOOLEAN (`{cond && <x/>}` → false, `{cond ? <x/> : null}` → null) made `_mountSlot` return `null` instead of a disposer. The compiler emits a template\'s cleanup as an UNCONDITIONAL call of every slot disposer (`() => { __d0(); __d1(); … }`), so the `null` slot threw `<slot> is not a function` (minified: e.g. `g is not a function` at `Object.cleanup`) the instant the reactive boundary re-ran or the component unmounted. The `@pyreon/flow` Controls crash on drag/zoom/navigate-away was exactly this (`showLock` defaults false → the lock-button slot is `_mountSlot(false)` → null).',
+        "On `@pyreon/runtime-dom` versions before the `_mountSlot` callable-cleanup fix, a conditional JSX slot that evaluated FALSY/BOOLEAN (`{cond && <x/>}` → false, `{cond ? <x/> : null}` → null) made `_mountSlot` return `null` instead of a disposer. The compiler emits a template's cleanup as an UNCONDITIONAL call of every slot disposer (`() => { __d0(); __d1(); … }`), so the `null` slot threw `<slot> is not a function` (minified: e.g. `g is not a function` at `Object.cleanup`) the instant the reactive boundary re-ran or the component unmounted. The `@pyreon/flow` Controls crash on drag/zoom/navigate-away was exactly this (`showLock` defaults false → the lock-button slot is `_mountSlot(false)` → null).",
       fix: 'Upgrade `@pyreon/runtime-dom` to the release where `_mountSlot` ALWAYS returns a callable cleanup (a shared no-op for the falsy case), so the compiler-emitted unconditional disposer call is always safe. No app code change needed. If you cannot upgrade, avoid bare falsy conditional slots inside a templatized element — wrap the conditional in a `<Show>` (`<Show when={cond}>{<x/>}</Show>`) so the slot always mounts a real reactive child.',
       fixCode: `// Crashes on re-render/unmount pre-upgrade (falsy slot → null disposer):
 <div class="controls">{showLock && <button>Lock</button>}</div>
@@ -1340,7 +1377,7 @@ const items = signal([1, 2, 3, 4])
 <For each={items} by={(x) => x}>{(x) => <li>{x}</li>}</For>
 items.set([1, 5, 3])  // remove 2 & 4, add 5 in the middle`,
       related:
-        'The mount-order-vs-logical-position class: any reconciler that mounts new nodes at a fixed anchor (the tail) but feeds a position-based reorder must record the node\'s ACTUAL physical position, not its target logical index — the reorder trusts that position to decide moves.',
+        "The mount-order-vs-logical-position class: any reconciler that mounts new nodes at a fixed anchor (the tail) but feeds a position-based reorder must record the node's ACTUAL physical position, not its target logical index — the reorder trusts that position to decide moves.",
     }),
   },
   {
@@ -1374,11 +1411,12 @@ const Page = lazy(() => import('./Page'))`,
     // chunk FAILS instead, those nodes are dropped and the error reaches the
     // nearest <ErrorBoundary> — the residual a user now sees is the browser's
     // own chunk-load error, arriving after the page looked complete.
-    pattern: /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/,
+    pattern:
+      /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/,
     diagnose: () => ({
       cause:
         'A code-split chunk (a `lazy()` / `defineAsyncComponent` import) failed to load. During hydration the server-rendered content of that component stayed on screen while the chunk loaded; when the load failed it was removed and the error was sent to the nearest `<ErrorBoundary>`. The usual causes are a deploy that replaced the hashed chunk files while this page was open, or a network error.',
-      fix: 'Wrap lazily loaded regions in an `<ErrorBoundary>` with a fallback that offers a reload, so a stale deploy degrades visibly instead of emptying the region. Keep the previous deploy\'s assets available for a while (most hosts do), or reload the page on this error.',
+      fix: "Wrap lazily loaded regions in an `<ErrorBoundary>` with a fallback that offers a reload, so a stale deploy degrades visibly instead of emptying the region. Keep the previous deploy's assets available for a while (most hosts do), or reload the page on this error.",
       fixCode: `<ErrorBoundary fallback={() => <button onClick={() => location.reload()}>Reload</button>}>
   <Suspense fallback={<Spinner />}>
     <Settings />
@@ -1595,7 +1633,8 @@ redirect(next)`,
   {
     // mountFor LIS-scratch retention (fixed 2026-07): memory-growth symptom
     // when a large keyed list is reordered then filtered down.
-    pattern: /(memory|heap|retained).*(For|list|rows).*(shrink|filter|grow|leak)|removed rows.*(retain|pinned|memory|leak)/i,
+    pattern:
+      /(memory|heap|retained).*(For|list|rows).*(shrink|filter|grow|leak)|removed rows.*(retain|pinned|memory|leak)/i,
     diagnose: () => ({
       cause:
         'On `@pyreon/runtime-dom` versions before the LIS-scratch release fix, `<For>`\u2019s reorder scratch retained ForEntry references after each pass. A large reorder followed by a SHRINK (10k rows filtered to 50) left the stale scratch tail pinning every removed row\u2019s DOM subtree + cleanup closure for as long as the <For> stayed mounted.',
@@ -1610,7 +1649,8 @@ rows.set(filtered50)        // shrink — removed rows are now GC-eligible`,
     // SSR↔hydration parity fixes (2026-07 fuzz campaign): symptoms of the
     // OLD hydration behavior — duplicated lists, mismatches, or dynamic
     // content rendered wrong after hydration.
-    pattern: /hydrat.*(duplicat|twice|doubled|wrong order)|<For>.*(duplicat|twice|doubled).*hydrat|\[object Object\].*(hydrat|reactive|accessor)|SSR.*(duplicat|doubled).*hydrat/i,
+    pattern:
+      /hydrat.*(duplicat|twice|doubled|wrong order)|<For>.*(duplicat|twice|doubled).*hydrat|\[object Object\].*(hydrat|reactive|accessor)|SSR.*(duplicat|doubled).*hydrat/i,
     diagnose: () => ({
       cause:
         'On `@pyreon/runtime-dom` / `@pyreon/runtime-server` versions before the SSR↔hydration parity release, hydration had cursor/extent bugs: a `<For>` duplicated its list (fresh rows mounted while the SSR rows stayed), adjacent text-producing children (merged into one node by the HTML parser) misaligned the sibling cursor, a reactive accessor with a multi-root initial removed only ONE node before re-mounting, and a reactive text accessor that later yielded a VNode rendered `[object Object]`.',
@@ -1679,7 +1719,7 @@ const rows = items.map((i) => <li>{i}</li>);  // -> mounts each <li>
       /className.*(getter|read-?only)|(getter|read-?only).*className|(className|class).*SVGElement|SVGElement.*(className|class)|(flow|svg|edge).*(lines?|edges?|paths?).*(not|missing|don'?t).*(render|show|draw)/i,
     diagnose: () => ({
       cause:
-        "A `class={…}` binding on an SVG element (`<g>`/`<path>`/`<rect>`/…) in a compiled template used `element.className = …`. On an HTMLElement `className` is a writable string, but on an SVGElement it is a READ-ONLY `SVGAnimatedString`, so the assignment throws — the reactive binding effect throws, and (for a `<For>` of edges) the item is skipped, so the shape renders nothing. It stayed hidden until `_tpl` began parsing SVG-rooted templates in the correct namespace: before that the cloned `<g>`/`<path>` were HTML-namespaced (writable `className`, but inert / invisible).",
+        'A `class={…}` binding on an SVG element (`<g>`/`<path>`/`<rect>`/…) in a compiled template used `element.className = …`. On an HTMLElement `className` is a writable string, but on an SVGElement it is a READ-ONLY `SVGAnimatedString`, so the assignment throws — the reactive binding effect throws, and (for a `<For>` of edges) the item is skipped, so the shape renders nothing. It stayed hidden until `_tpl` began parsing SVG-rooted templates in the correct namespace: before that the cloned `<g>`/`<path>` were HTML-namespaced (writable `className`, but inert / invisible).',
       fix: 'Upgrade `@pyreon/compiler` + `@pyreon/runtime-dom`. The compiler now emits `_setClass(el, value)` for every class binding (the runtime `applyClassProp`), which uses `setAttribute("class", …)` — valid on BOTH HTML and SVG — instead of `el.className = …`. No app code change is needed. If you cannot upgrade, avoid a reactive `class=` on SVG elements in templates; set the class via `setAttribute` in a `ref` callback, or wrap the SVG element so its class lives on an HTML ancestor.',
       fixCode: `// Fixed by upgrade — a reactive class on an SVG element now works:
 <svg>
@@ -1889,11 +1929,12 @@ box.current = node         // writable by design`,
     // because the message a user actually sees is a bundler PARSE error naming
     // a file they did not write that way, with no hint that two transforms
     // collided.
-    pattern: /(Unexpected token|Expected .*? but found|Parse error|Transform failed).*(__rsCollapse|_mountChild\(\{)/s,
+    pattern:
+      /(Unexpected token|Expected .*? but found|Parse error|Transform failed).*(__rsCollapse|_mountChild\(\{)/s,
     diagnose: () => ({
       cause:
-        'Two compiler passes rewrote the same node and disagreed about syntax position. `templatizeComponentChildren` moves a component child into a call argument; `collapseRocketstyle` then decided to wrap its replacement in JSX braces because the AST PARENT was still a JSX element — producing `_mountChild({__rsCollapse(…)}, …)`, which is not valid JavaScript. Both passes are individually correct; the emit is only broken where they overlap, which is why it stayed invisible while templatization was opt-in.',
-      fix: 'Upgrade `@pyreon/compiler` and `@pyreon/vite-plugin` — collapse now decides braces from the EMIT position rather than the AST parent, in both the JS and native backends. If you cannot upgrade yet, disable either pass to break the overlap: `pyreon({ templatizeComponentChildren: false })` or `pyreon({ collapseRocketstyle: false })`. Disabling templatization is the cheaper loss — it costs an optimization, while collapse affects rendered output.',
+        "`templatizeComponentChildren` moved a child into a call argument, but `collapseRocketstyle` used its old JSX parent to add braces. The resulting `_mountChild({__rsCollapse(…)}, …)` is invalid JavaScript.",
+      fix: "Upgrade @pyreon/compiler and @pyreon/vite-plugin; both backends now use the emitted position. Until then, set `templatizeComponentChildren: false` (loses an optimization) or `collapseRocketstyle: false` (can affect rendered output) in `pyreon()`.",
       fixCode: `// vite.config.ts — temporary workaround on an affected version
 export default defineConfig({
   plugins: [
@@ -1904,7 +1945,7 @@ export default defineConfig({
   ],
 })`,
       related:
-        'The general shape is worth remembering: when two transforms rewrite the same node, a decision made from the AST PARENT is only valid if no earlier pass can relocate that node. Ask what the node position will be at EMIT time, not what it was at parse time.',
+        "When composing transforms, decide syntax from the emitted position; an earlier pass may have moved the node away from its AST parent.",
     }),
   },
   {
@@ -1951,7 +1992,7 @@ export default defineConfig({
       /=["']?\(\s*\)\s*=(?:&gt;|>)|["'(]\(\s*\)\s*=(?:&gt;|>)[^"']*["']\s*(?:\/?>|\sdata-)|textarea[^\n]{0,60}(?:blank|empty)[^\n]{0,40}(?:ssr|server|hydrat|prefill)/i,
     diagnose: () => ({
       cause:
-        "A compiled SSR attribute rendered its value's SOURCE TEXT instead of the value (`d=\"() =&gt; geometry()?.path\"`), or a prefilled `<textarea>` server-rendered empty with a dead `value=\"…\"` attribute. Both come from the compile-to-string SSR fast path (`ssrTemplate`, on by default): it routes an attribute to a LEAN helper chosen from the attribute NAME, and those helpers omitted two branches the name cannot decide. Whether the value must be RESOLVED depends on its TYPE — a bare identifier holding an accessor (`d={geometry}`, where the compiler only auto-wraps syntactically-visible functions) arrives as a raw function and gets stringified. And `<textarea>` has no `value` content attribute at all — the value IS the text content — but the lean helper is not passed the tag, so that skip could not fire. Either way the client disagrees, so hydration mismatches too.",
+        'A compiled SSR attribute rendered its value\'s SOURCE TEXT instead of the value (`d="() =&gt; geometry()?.path"`), or a prefilled `<textarea>` server-rendered empty with a dead `value="…"` attribute. Both come from the compile-to-string SSR fast path (`ssrTemplate`, on by default): it routes an attribute to a LEAN helper chosen from the attribute NAME, and those helpers omitted two branches the name cannot decide. Whether the value must be RESOLVED depends on its TYPE — a bare identifier holding an accessor (`d={geometry}`, where the compiler only auto-wraps syntactically-visible functions) arrives as a raw function and gets stringified. And `<textarea>` has no `value` content attribute at all — the value IS the text content — but the lean helper is not passed the tag, so that skip could not fire. Either way the client disagrees, so hydration mismatches too.',
       fix: "Upgrade — both are fixed at the SSR seam: the lean helpers now resolve a callable before serializing (and before the url-guard), and `<textarea value>` bails to the `h()` path, which emits the value as the element's text content. To confirm you are on a fixed build, server-render `<path d={someAccessor} />` and check the HTML holds the RESOLVED value. If you cannot upgrade, call the accessor at the JSX site (`d={geometry()}`) so a value — not a function — reaches the attribute, and set a textarea's initial text as its child instead of `value`. NOTE the fix makes attribute accessors RUN during SSR: one that touches `window`/`document`, or a signal only populated on the client, now throws at render where it previously stringified silently — guard it with `isServer` or move the read into `onMount`.",
       fixCode: `// Renders the closure SOURCE on affected versions — a bare identifier
 // holding an accessor is not auto-wrapped, so a function reaches the attr.
@@ -1992,10 +2033,11 @@ const geometry = () => props.shape
     // compiler leaves the call in place (so it throws at runtime) and warns —
     // this entry teaches the warning. `signalOf` needs a binding the pre-pass
     // KNOWS is a signal; `state.from`/`derived.from` need exactly one argument.
-    pattern: /(signalOf\(\) takes exactly one state\/derived binding|(state|derived)\.from\(\) takes exactly one signal argument)/,
+    pattern:
+      /(signalOf\(\) takes exactly one state\/derived binding|(state|derived)\.from\(\) takes exactly one signal argument)/,
     diagnose: () => ({
       cause:
-        "A Plain Mode signal bridge could not be compiled. `signalOf(x)` returns the SIGNAL behind a plain binding, so `x` must be a binding the compiler knows is reactive: one declared with `state(…)` / `derived(…)` / `state.from(…)` in plain code, or an imported plain export. A prop, a local, an expression (`signalOf(a + 1)`) or a second argument has no signal behind it. `state.from(sig)` / `derived.from(sig)` adopt ONE existing signal as a plain binding and must initialize a variable declaration.",
+        'A Plain Mode signal bridge could not be compiled. `signalOf(x)` returns the SIGNAL behind a plain binding, so `x` must be a binding the compiler knows is reactive: one declared with `state(…)` / `derived(…)` / `state.from(…)` in plain code, or an imported plain export. A prop, a local, an expression (`signalOf(a + 1)`) or a second argument has no signal behind it. `state.from(sig)` / `derived.from(sig)` adopt ONE existing signal as a plain binding and must initialize a variable declaration.',
       fix: "Pass the plain binding itself: `signalOf(count)`. To expose a derived value as a signal, declare it with `derived(…)` first and pass that binding. To use a library signal in plain code, adopt it once — `let theme = state.from(useStorage('theme', 'light'))` — and read/assign `theme` directly. In a call argument next to arrow siblings, pin the type with `signalOf<typeof x>(x)` if TypeScript infers `unknown`.",
       fixCode:
         "let count = state(0)\nconst doubled = derived(count * 2)\nuseAutosave(signalOf(count))\nregister(signalOf(doubled))\n\nlet theme = state.from(useStorage('theme', 'light'))",
@@ -2030,10 +2072,10 @@ const geometry = () => props.shape
       /(cannot find '(?:Pie|Gauge|Plot|Heatmap|Candlestick)Chart' in scope|Unresolved reference '(?:Pie|Gauge|Plot|Heatmap|Candlestick)Chart')/,
     diagnose: () => ({
       cause:
-        "A chart component from `@pyreon/charts` reached the emitted Swift/Kotlin as a literal tag — nothing by that name exists on either platform. For `<PieChart>`/`<GaugeChart>` this means the native lowering DECLINED: the transform warnings name the reason (an `(d, index)` two-argument accessor, or a missing required prop — the lowering needs `data`, `value` and `label` for pie, `value` for gauge). For `<PlotChart>`/heatmap/candlestick there is no native lowering at all — the cartesian family is marks-based and web-only.",
-      fix: "Read the transform warnings first — the decline paths are named. For the radials: use single-argument accessors (`value={(t) => t.amount}`) and pass the required props; index-dependent slices need a precomputed array. For the cartesian family: keep it in a `<Web>` branch, or embed the web chart via the `@pyreon/charts/webview` bridge inside a `<WebView>` host.",
+        'A chart component from `@pyreon/charts` reached the emitted Swift/Kotlin as a literal tag — nothing by that name exists on either platform. For `<PieChart>`/`<GaugeChart>` this means the native lowering DECLINED: the transform warnings name the reason (an `(d, index)` two-argument accessor, or a missing required prop — the lowering needs `data`, `value` and `label` for pie, `value` for gauge). For `<PlotChart>`/heatmap/candlestick there is no native lowering at all — the cartesian family is marks-based and web-only.',
+      fix: 'Read the transform warnings first — the decline paths are named. For the radials: use single-argument accessors (`value={(t) => t.amount}`) and pass the required props; index-dependent slices need a precomputed array. For the cartesian family: keep it in a `<Web>` branch, or embed the web chart via the `@pyreon/charts/webview` bridge inside a `<WebView>` host.',
       fixCode:
-        "// radial: lowers to the native PyreonPieChart over the generated engine\n<PieChart data={txns} value={(t) => Math.abs(t.amount)} label={(t) => t.description} />\n\n// cartesian: web-only — branch it\n<Web><PlotChart data={rows} marks={[line((d) => d.y)]} /></Web>",
+        '// radial: lowers to the native PyreonPieChart over the generated engine\n<PieChart data={txns} value={(t) => Math.abs(t.amount)} label={(t) => t.description} />\n\n// cartesian: web-only — branch it\n<Web><PlotChart data={rows} marks={[line((d) => d.y)]} /></Web>',
     }),
   },
   {
@@ -2064,7 +2106,7 @@ const geometry = () => props.shape
     diagnose: () => ({
       cause:
         "A compiled template's bind called `replaceChild` through a parent it computed by walking from an earlier placeholder — `_setChildAt(__p0.nextSibling, __p1, …)` — after the line before it had already REPLACED `__p0`, so the walk started from a detached node and the parent was `null`. The element that parents the second placeholder never got a phase-1 const because the compiler classified it as static: its expression child was wrapped in a FRAGMENT (`<b><i/><>{text}</></b>`), and the classifier read the element's direct children while the emit reads the flattened list. The crash is on the client mount, and the stack blames runtime-dom rather than the fragment.",
-      fix: 'Upgrade `@pyreon/compiler` (the classifier looks through fragments since the compiled-path parity fuzz landed). On an older compiler, unwrap the fragment — write the text directly as the element\'s child, or wrap it in a real element — so the parent is classified as dynamic and gets its own const.',
+      fix: "Upgrade `@pyreon/compiler` (the classifier looks through fragments since the compiled-path parity fuzz landed). On an older compiler, unwrap the fragment — write the text directly as the element's child, or wrap it in a real element — so the parent is classified as dynamic and gets its own const.",
       fixCode:
         '// crashes on older compilers — two fragment-wrapped texts in one template\n// <p><>{""}</><b class="c1"><i>x</i><>{label}</></b></p>\n\n// same output, no fragments\n<p>{""}<b class="c1"><i>x</i>{label}</b></p>',
     }),
@@ -2077,9 +2119,8 @@ const geometry = () => props.shape
     // renders data the client cannot reproduce on its first render.
     pattern: /Hydration mismatch \(tag\): expected (\w+), got (\w+) at [^\n]*> reactive/,
     diagnose: (m) => ({
-      cause:
-        `A reactive accessor's FIRST client render (<${m[1]}>) is not what the server rendered (<${m[2]}>), so hydration could not adopt the server subtree and re-mounted the client's render. The common shape is DATA on the server and a PLACEHOLDER on the client (a list vs "Loading…"). The usual reason is server-only state: a module-level QueryClient/store that stayed warm from an EARLIER request served the data synchronously during SSR, while the browser's fresh cache starts cold. Current runtime-dom removes the unclaimed server nodes at once; older versions left them on screen — visible, countable, with no handlers — until the accessor's next run, so a click on a server-rendered button did nothing.`,
-      fix: 'Make the server and the client agree on the FIRST render: create the query client / store per request (`runWithRequestContext`, a factory called in the route or `createApp`), or gate the fetch on `isServer` so SSR renders the same placeholder the client will; or hand the server data to the client through the loader-data pipeline (`useLoaderData`) so the client\'s first render has it too. Upgrade `@pyreon/runtime-dom` so a residual mismatch never leaves dead server DOM behind.',
+      cause: `A reactive accessor's FIRST client render (<${m[1]}>) is not what the server rendered (<${m[2]}>), so hydration could not adopt the server subtree and re-mounted the client's render. The common shape is DATA on the server and a PLACEHOLDER on the client (a list vs "Loading…"). The usual reason is server-only state: a module-level QueryClient/store that stayed warm from an EARLIER request served the data synchronously during SSR, while the browser's fresh cache starts cold. Current runtime-dom removes the unclaimed server nodes at once; older versions left them on screen — visible, countable, with no handlers — until the accessor's next run, so a click on a server-rendered button did nothing.`,
+      fix: "Make the server and the client agree on the FIRST render: create the query client / store per request (`runWithRequestContext`, a factory called in the route or `createApp`), or gate the fetch on `isServer` so SSR renders the same placeholder the client will; or hand the server data to the client through the loader-data pipeline (`useLoaderData`) so the client's first render has it too. Upgrade `@pyreon/runtime-dom` so a residual mismatch never leaves dead server DOM behind.",
       fixCode:
         '// server renders rows from a cache warmed by an earlier request;\n// the client renders "Loading…" and the two disagree\nconst client = new QueryClient() // module-level — shared across SSR requests\n\n// per-request client: SSR and the browser both start cold\nexport function App() {\n  const client = createQueryClient()\n  return <QueryClientProvider client={client}>…</QueryClientProvider>\n}',
     }),
@@ -2132,8 +2173,7 @@ const geometry = () => props.shape
     // entry covers both because the message is identical.
     pattern: /applyStaticProp received a function for "([^"]+)"/,
     diagnose: (m) => ({
-      cause:
-        `A prop reached the DOM sink as a FUNCTION. \`${m[1] ?? 'the prop'}\` was an accessor whose value was itself an accessor: either stored behind a getter (a primitive's helper object such as \`getItemProps()\` after a descriptor-copying spread), or a function-valued \`const\` passed as the prop on a spread element (\`const tabIndexFor = () => …; <div {...rest} tabIndex={tabIndexFor} />\`), which the compiler inlines as \`() => (() => …)\`. The inner closure was passed through unresolved, so the element got the function instead of its value — for \`tabIndex\` that is 0 on every item, which breaks roving focus.`,
+      cause: `A prop reached the DOM sink as a FUNCTION. \`${m[1] ?? 'the prop'}\` was an accessor whose value was itself an accessor: either stored behind a getter (a primitive's helper object such as \`getItemProps()\` after a descriptor-copying spread), or a function-valued \`const\` passed as the prop on a spread element (\`const tabIndexFor = () => …; <div {...rest} tabIndex={tabIndexFor} />\`), which the compiler inlines as \`() => (() => …)\`. The inner closure was passed through unresolved, so the element got the function instead of its value — for \`tabIndex\` that is 0 on every item, which breaks roving focus.`,
       fix: 'Upgrade: `applyProps` and `applyProp` now resolve an accessor that returns an accessor, inside the same tracked frame, so the value stays live. On an older runtime, pass the value (`tabIndex={tabIndexFor()}`) rather than the function; for a helper object, call the accessor at the spread site (`tabIndex={props.tabIndex()}`) or pass the helper object through `mergeProps` / `splitProps` from `@pyreon/core` instead of a hand-rolled descriptor copy.',
       fixCode:
         '// stringified on older runtimes: a getter whose value is an accessor\n// <Star {...state.getItemProps(i)} />  // { tabIndex: () => 0 | -1 }\n\n// resolve at the site if you cannot upgrade\nconst item = state.getItemProps(i)\n<Star {...item} tabIndex={item.tabIndex()} />',
@@ -2151,8 +2191,7 @@ const geometry = () => props.shape
     // the fix is an allowlist at the boundary.
     pattern: /Refused to write event-handler attribute "([^"]+)"/,
     diagnose: (m) => ({
-      cause:
-        `An event-handler ATTRIBUTE reached a DOM sink. \`${m[1] ?? 'the name'}\` is HTML's inline-handler spelling, which is executable markup: written as an attribute, the browser compiles its value and runs it. Pyreon's own spelling is camelCase (\`onClick\`), which binds a real listener and never becomes an attribute, so a lowercase name is either a typo or — the reachable case — a spread of an object whose KEYS came from user data.`,
+      cause: `An event-handler ATTRIBUTE reached a DOM sink. \`${m[1] ?? 'the name'}\` is HTML's inline-handler spelling, which is executable markup: written as an attribute, the browser compiles its value and runs it. Pyreon's own spelling is camelCase (\`onClick\`), which binds a real listener and never becomes an attribute, so a lowercase name is either a typo or — the reachable case — a spread of an object whose KEYS came from user data.`,
       fix: 'Use the camelCase prop (`onClick={fn}`) to attach a handler. If the props come from a spread of a user-keyed object, validate the keys against an allowlist before spreading — an attacker-chosen key is the whole threat model here, and the same spread can inject a URL or a structurally-invalid attribute name too.',
       fixCode:
         "// refused — an inline handler attribute is executable markup\n<button onclick={`alert(1)`}>x</button>\n\n// bind a listener instead\n<button onClick={() => alert(1)}>x</button>\n\n// spreading user-keyed data? allowlist the keys first\nconst SAFE = new Set(['id', 'title', 'class'])\nconst safe = Object.fromEntries(Object.entries(userProps).filter(([k]) => SAFE.has(k)))\n<button {...safe}>x</button>",
@@ -2173,10 +2212,11 @@ const geometry = () => props.shape
     // never claimed. That is the general shape: under hydration this error is
     // SILENT at the page level, because the SSR markup stays on screen and
     // looks like a working render.
-    pattern: /Can't find variable: (_(?:tpl|bind\w*|applyProps|set\w+|mount\w+|textSlot|fuse|lc|ssr\w*|esc\w*|rsCollapse\w*))/,
+    pattern:
+      /Can't find variable: (_(?:tpl|bind\w*|applyProps|set\w+|mount\w+|textSlot|fuse|lc|ssr\w*|esc\w*|rsCollapse\w*))/,
     diagnose: (m) => ({
-      cause: `\`${m[1]}\` is a RUNTIME HELPER the Pyreon JSX transform injects an import for, and at the point it ran nothing provided it. Three ways that happens: \`@pyreon/runtime-dom\` (or \`@pyreon/core\`, which owns \`_fuse\` and \`_lc\`) is OLDER than \`@pyreon/compiler\` and does not export the helper yet; a downstream transform stripped the injected import line; or a test harness evaluates the emit through \`new Function\` / \`eval\` and hands it a hand-maintained dependency map that has fallen behind the emit. Under HYDRATION the page-level symptom is misleading — the throw is caught per component, the server's markup stays on screen, and the page looks rendered while none of its bindings exist.`,
-      fix: 'Align the versions (`pyreon info` reports `@pyreon/*` skew; `pyreon upgrade` fixes it) and make sure whatever consumes the transform output preserves its injected imports. In a harness that evaluates the emit, do not maintain the dependency list by hand — parse the emitted `import { … } from "@pyreon/…"` names and ASSERT every one is provided, so a missing helper fails the spec loudly instead of leaving it asserting the server DOM.',
+      cause: `Injected runtime helper \`${m[1]}\` is missing: runtime-dom/core is older than the compiler, a later transform removed its import, or an eval/new Function harness omitted it. Core owns \`_fuse\` and \`_lc\`. During hydration, surviving server markup can hide the failed client mount and its missing bindings.`,
+      fix: "Use `pyreon info` to find version skew and `pyreon upgrade` to align packages. Preserve injected imports. In an eval harness, derive dependencies from emitted imports and assert that every name is provided, so a missing helper cannot leave tests checking only server DOM.",
       fixCode: `// harness: assert the deps cover the emit instead of discovering a gap
 const { code } = transformJSX(source, 'app.tsx')
 for (const m of code.matchAll(/^import\\s*\\{([^}]*)\\}/gm))
@@ -2262,6 +2302,13 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
         fixCode: `import { ${name} } from '@pyreon/compiler/${subpath}'`,
       }
     },
+  },
+  {
+    pattern: /Plugin "([^"\n]+)" recognized a declaration of type "([^"\n]+)" but declares no/,
+    diagnose: (m) => ({
+      cause: `The native plugin ${m[1]} returned a declaration type (${m[2]}) without registering its target emitters.`,
+      fix: 'Declare matching Swift and Kotlin emitters in the plugin decls map, or return undefined to decline the call. Install package-owned plugins through their native-plugin subpaths when calling createCompiler directly.',
+    }),
   },
 ]
 

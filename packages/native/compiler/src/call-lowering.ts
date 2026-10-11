@@ -43,6 +43,19 @@ export interface CallSite {
 export interface ParseContext {
   /** The binding the author wrote: `chart` in `const chart = createChartHandle()`. */
   readonly declName: string
+  /** Object pattern supplied to a pattern-position recognizer. */
+  readonly pattern?: AstNode | undefined
+  /** Parse a callback with the compiler's parameter/default/body builder.
+   * @example ctx.functionDeclaration('action', ctx.args[0]!)
+   */
+  functionDeclaration(
+    name: string,
+    node: AstNode,
+  ): Extract<import('./types').DeclIR, { kind: 'function' }>
+  /** Initial expression type before component inference is available.
+   * @example ctx.initialType(ctx.expr(ctx.args[0]!))
+   */
+  initialType(expression: ExprIR): TypeIR
   /** Argument `index` when it is a string LITERAL, else `undefined` (a name, a template, a call, absent). */
   stringLiteralArg(index: number): string | undefined
   /** Report a limitation to the author, attributed to the declaration (the message is prefixed `Declaration <name>:`). */
@@ -82,6 +95,11 @@ export interface ParseContext {
   staticString(node: AstNode | null | undefined): string | null
   /** The statements of a function body (`{ … }`) parsed to IR, for a recognizer that carries a callback. */
   statements(block: AstNode): StatementIR[]
+  /** Parse a callback through the same function builder as module and component helpers. */
+  functionDeclaration(
+    name: string,
+    node: AstNode,
+  ): Extract<import('./types').DeclIR, { kind: 'function' }>
   /** The first generic type argument of ANOTHER call node (`openEventStream<T>(…)`), `{ kind: 'unknown' }` when none was written. */
   typeArgOf(call: AstNode): TypeIR
   /** Plugin-owned memory for THIS file (see {@link ModuleScan.fileState}); namespace the key with the plugin name. */
@@ -171,7 +189,25 @@ export interface DeclCallSite {
  * continues down its chain, `null` claims the declaration without declaring anything. Called for every call declaration once a
  * plugin registers one, so the first check must be cheap.
  */
-export type DeclCallRecognizer = (site: DeclCallSite, ctx: ParseContext) => DeclVerdict | undefined | null
+export type DeclCallRecognizer = (
+  site: DeclCallSite,
+  ctx: ParseContext,
+) => DeclVerdict | undefined | null
+
+/** A constructor used in a component declaration, with its complete expression node. */
+export interface DeclConstructSite extends DeclCallSite {
+  readonly node: AstNode
+}
+
+/**
+ * Opt in to recognizing `const x = new PackageClass(...)` by callee shape.
+ * Constructor sites never reach existing `declCalls` recognizers. Verdicts and
+ * declaration emission follow the same contract as {@link DeclCallRecognizer}.
+ */
+export type DeclConstructRecognizer = (
+  site: DeclConstructSite,
+  ctx: ParseContext,
+) => DeclVerdict | undefined | null
 
 /** Renders one declaration type on each target. */
 /**
@@ -202,6 +238,8 @@ export interface DeclLifecycle {
    * capture `self`. A declaration with neither `midOrder` nor `tailOrder` is emitted in declaration order, first.
    */
   readonly midOrder?: number | undefined
+  /** Before component timers/mount hooks, after declarations are available; ordered across plugins. */
+  readonly earlyOrder?: number | undefined
   /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
   swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
   /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */
@@ -258,7 +296,49 @@ export interface DeclSwiftInit {
   lines(decl: ExtDecl, ctx: EmitContext): readonly string[]
 }
 
+/** A container-owned expression used as a native field binding. */
+export interface DeclValueBinding {
+  swift(value: ExprIR, decl: ExtDecl, ctx: EmitContext): string | undefined
+  kotlin(
+    value: ExprIR,
+    decl: ExtDecl,
+    ctx: EmitContext,
+  ): { readonly value: string; readonly onChange: string } | undefined
+}
+
 export interface DeclEmitter {
+  /** Wrap the component root once for this declaration type; next emits the previous wrapper at the requested indentation.
+   * @example root: { kotlin: (_decls, ctx, next) => next(ctx.indent) }
+   */
+  readonly root?:
+    | {
+        readonly swift?: (
+          decls: readonly ExtDecl[],
+          ctx: EmitContext,
+          next: (indent: number) => string,
+        ) => string
+        readonly kotlin?: (
+          decls: readonly ExtDecl[],
+          ctx: EmitContext,
+          next: (indent: number) => string,
+        ) => string
+      }
+    | undefined
+
+  /** A declaration that contributes only lifecycle statements has no stored-property text. */
+  readonly lifecycleOnly?: boolean | undefined
+  /** Shared environment reads used by canonical style and provider emission. */
+  readonly usesColorScheme?: boolean | undefined
+  readonly usesSizeClass?: boolean | undefined
+  /** Omit the synthetic binding from a previously nameless declaration's legacy hash. */
+  readonly legacyName?: boolean | undefined
+  /** Rename module-value links in this declaration's payload when the file's value/type namespace is separated. */
+  rename?(decl: ExtDecl, renames: ReadonlyMap<string, string>): void
+  /** A field value rooted at this declaration. Return undefined to keep the normal controlled-field path. */
+  readonly valueBinding?: DeclValueBinding | undefined
+  /** Describe a For row over this container's source expression. The core supplies the plugin and row name. */
+  iteration?(source: ExprIR, decl: ExtDecl): ExtDeclSpec | undefined
+
   /**
    * The binding is CALLABLE (`q()` through Swift's `callAsFunction` / Kotlin's `operator invoke`): a zero-argument call
    * of it keeps its parentheses and a bare reference as an event handler is called, where an unknown identifier's
@@ -282,10 +362,12 @@ export interface DeclEmitter {
    * while ANY source is pending, and `<ErrorBoundary>` while ANY has failed. Read in declaration
    * order, after the core's own sources.
    */
-  readonly asyncState?: {
-    swift(decl: ExtDecl, ctx: EmitContext): AsyncState
-    kotlin(decl: ExtDecl, ctx: EmitContext): AsyncState
-  } | undefined
+  readonly asyncState?:
+    | {
+        swift(decl: ExtDecl, ctx: EmitContext): AsyncState
+        kotlin(decl: ExtDecl, ctx: EmitContext): AsyncState
+      }
+    | undefined
   /** One declaration line (or lines, joined with a newline). */
   swift(decl: ExtDecl, ctx: EmitContext): string
   /** One line, or several (joined with the same newline-and-indent a built-in multi-line declaration uses). */
@@ -334,11 +416,26 @@ export interface RegisteredCall {
 /** One compiler instance's call recognizers and declaration emitters. */
 export interface CallRegistry {
   /** Hook name → recognizer + owner. */
+  readonly intrinsicCalls: ReadonlyMap<
+    string,
+    {
+      readonly operation: 'signal' | 'computed'
+      readonly owner: string
+      readonly modules?: readonly string[] | undefined
+    }
+  >
   readonly calls: ReadonlyMap<string, RegisteredCall>
+  readonly statementCalls: ReadonlyMap<string, RegisteredCall>
+  readonly patternCalls: ReadonlyMap<string, RegisteredCall>
   /** Every claimed hook name. */
   readonly names: ReadonlySet<string>
   /** Declaration recognizers keyed by callee shape, in plugin order. */
   readonly declCalls: readonly { readonly owner: string; readonly recognize: DeclCallRecognizer }[]
+  /** Constructor recognizers, explicitly opted in and isolated from call-only hooks. */
+  readonly declConstructs: readonly {
+    readonly owner: string
+    readonly recognize: DeclConstructRecognizer
+  }[]
   /** Callee name → the plugin that declared it `tier2Calls` (a call it ships no lowering for; see `CompilerPlugin.tier2Calls`). */
   readonly tier2Calls: ReadonlyMap<string, string>
   /** Plugin name → declaration type → emitter. */
@@ -352,8 +449,12 @@ export interface CallRegistry {
 type CallPlugin = {
   readonly name: string
   readonly modules?: readonly string[] | undefined
+  readonly intrinsicCalls?: Readonly<Record<string, 'signal' | 'computed'>> | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
+  readonly statementCalls?: Readonly<Record<string, CallRecognizer>> | undefined
+  readonly patternCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly declCalls?: DeclCallRecognizer | undefined
+  readonly declConstructs?: DeclConstructRecognizer | undefined
   readonly tier2Calls?: readonly string[] | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
   readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
@@ -370,34 +471,70 @@ type CallPlugin = {
  * createCallRegistry([{ name: '@acme/toy', calls: { createToy: () => ({ type: 'toy' }) }, decls: { toy } }])
  */
 export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry {
+  const intrinsicCalls = new Map<
+    string,
+    { operation: 'signal' | 'computed'; owner: string; modules?: readonly string[] | undefined }
+  >()
   const calls = new Map<string, RegisteredCall>()
+  const statementCalls = new Map<string, RegisteredCall>()
+  const patternCalls = new Map<string, RegisteredCall>()
+  const owners = new Map<string, string>()
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
   const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
   const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
+  const declConstructs: { owner: string; recognize: DeclConstructRecognizer }[] = []
   const tier2Calls = new Map<string, string>()
   for (const plugin of plugins) {
-    if (plugin.declCalls !== undefined) declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
-    for (const callee of plugin.tier2Calls ?? []) if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
-    // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
-    // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
-    for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
-      const owners = memberCalls.get(method) ?? new Map<string, MemberCallLowering>()
-      owners.set(plugin.name, lowering)
-      memberCalls.set(method, owners)
-    }
-    for (const [hook, recognizer] of Object.entries(plugin.calls ?? {})) {
-      const existing = calls.get(hook)
-      if (existing !== undefined) {
+    for (const [name, operation] of Object.entries(plugin.intrinsicCalls ?? {})) {
+      const existing = owners.get(name)
+      if (existing !== undefined)
         throw new Error(
-          `[Pyreon] call "${hook}" is claimed by both "${existing.owner}" and "${plugin.name}". ` +
-            `A call has exactly one recognizer — remove one of the two plugins from this app.`,
+          `[Pyreon] intrinsic call "${name}" is claimed by both "${existing}" and "${plugin.name}".`,
         )
-      }
-      calls.set(hook, {
-        recognizer,
+      owners.set(name, plugin.name)
+      intrinsicCalls.set(name, {
+        operation,
         owner: plugin.name,
         ...(plugin.modules !== undefined ? { modules: plugin.modules } : {}),
       })
+    }
+    if (plugin.declCalls !== undefined)
+      declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
+    if (plugin.declConstructs !== undefined)
+      declConstructs.push({ owner: plugin.name, recognize: plugin.declConstructs })
+    for (const callee of plugin.tier2Calls ?? [])
+      if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
+    // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
+    // calls on a binding one of its own declarations created. Two plugins cannot collide on `(method, receiver)`.
+    for (const [method, lowering] of Object.entries(plugin.memberCalls ?? {})) {
+      const memberOwners = memberCalls.get(method) ?? new Map<string, MemberCallLowering>()
+      memberOwners.set(plugin.name, lowering)
+      memberCalls.set(method, memberOwners)
+    }
+    for (const [entries, registry] of [
+      [plugin.calls, calls],
+      [plugin.statementCalls, statementCalls],
+      [plugin.patternCalls, patternCalls],
+    ] as const) {
+      for (const [hook, recognizer] of Object.entries(entries ?? {})) {
+        const existing = owners.get(hook)
+        if (existing !== undefined && existing !== plugin.name) {
+          throw new Error(
+            `[Pyreon] call "${hook}" is claimed by both "${existing}" and "${plugin.name}". A call has exactly one owner — remove one of the two plugins from this app.`,
+          )
+        }
+        if (intrinsicCalls.has(hook)) {
+          throw new Error(
+            `[Pyreon] Plugin "${plugin.name}" cannot claim "${hook}" as both an intrinsic and a declaration call.`,
+          )
+        }
+        owners.set(hook, plugin.name)
+        registry.set(hook, {
+          recognizer,
+          owner: plugin.name,
+          ...(plugin.modules !== undefined ? { modules: plugin.modules } : {}),
+        })
+      }
     }
     if (plugin.decls !== undefined) {
       emitters.set(plugin.name, new Map(Object.entries(plugin.decls)))
@@ -405,8 +542,12 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   }
   return Object.freeze<CallRegistry>({
     calls,
-    names: new Set(calls.keys()),
+    intrinsicCalls,
+    statementCalls,
+    patternCalls,
+    names: new Set(owners.keys()),
     declCalls: Object.freeze(declCalls),
+    declConstructs: Object.freeze(declConstructs),
     tier2Calls,
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),

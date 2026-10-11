@@ -22,7 +22,7 @@
 // at SSR/build time and emitting a single concrete .background(…))
 // is a separate concern, not in scope here.
 
-import type { StyleProperty, StyleValue } from './emit-style'
+import type { StyleProperty, StyleValue } from '@pyreon/native-compiler/plugin-api'
 
 export interface RocketstyleIR {
   /** Component name — emitted as `<Name>Modifier` (Swift) / `<name>Modifier`

@@ -18,7 +18,7 @@
 // helpers stop emitting (no `func`/`fun`, no call-site inference).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,

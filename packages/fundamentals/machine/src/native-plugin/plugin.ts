@@ -6,7 +6,6 @@
 // `operator fun invoke()`, so the call keeps its parentheses (a bare identifier would be the container).
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
   unwrapTypeLayers,
   type CallRecognizer,
@@ -174,7 +173,7 @@ const machineReceiver: ReceiverLowering = {
  */
 export const machinePlugin: CompilerPlugin = {
   name: MACHINE_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/machine'],
   calls: { createMachine: recognizeMachine },
   componentOnlyCalls: ['createMachine'],
