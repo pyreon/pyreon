@@ -92,8 +92,8 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     // a direct caller of the emitters that skips that check hits this throw.
     pattern: /\[Pyreon\] (?:emitValidator: cannot emit an unsupported node|emitSchemaSource: unsupported node) \(([^()]*)\)/,
     diagnose: (m) => ({
-      cause: `The schema contains a shape the validate compiler cannot emit faithfully (\`${m[1]}\`), so \`analyzeValidate\` reported it as \`unsupported\`. Option-dependent formats bail on purpose: \`.email({ precision })\` and \`.url({ protocol })\` change what the check accepts, while the compiled check enforces only the default, so emitting it would reject input the runtime accepts.`,
-      fix: 'Check `info.emittable` from `analyzeValidate` before calling `emitValidator` / `emitSchemaSource`, and leave a non-emittable schema to the runtime validator — that is what `@pyreon/vite-plugin` does. The schema itself is correct; only the compiled fast path is skipped.',
+      cause: `The validate compiler cannot preserve \`${m[1]}\`. Options such as \`.email({ precision })\` and \`.url({ protocol })\` alter accepted inputs, so compiling only their defaults would change validation.`,
+      fix: "Check `info.emittable` from `analyzeValidate` before calling `emitValidator` or `emitSchemaSource`. Leave unsupported schemas to the runtime validator, as @pyreon/vite-plugin does.",
       fixCode: `for (const info of analyzeValidate(code, id)) {
   if (!info.emittable) continue // runtime validator handles it
   const verdict = emitValidator(info.node)
@@ -192,7 +192,7 @@ import { ChartThemeProvider } from '@pyreon/charts'
     pattern:
       /(\w+) is not a function\. \(In '\1\(\)', '\1' is an instance of (?:Error|Object|Array|\w+)\)/,
     diagnose: (m) => ({
-      cause: `A JSX child or attribute read \`${m[1]}\` bare, and the compiler auto-called it as a signal because a module-level \`const ${m[1]} = signal(…)\` exists — but at that point \`${m[1]}\` is a LOCAL binding (a \`catch (${m[1]})\` parameter, a \`for (const ${m[1]} of …)\` head, a nested destructure, a block-scoped \`let\`), which compilers before 0.53 did not recognise as a shadow.`,
+      cause: `The compiler auto-called \`${m[1]}\` as a module signal, but JSX resolves it to a local binding: a catch/loop binding, nested destructure or block-scoped variable. Compilers before 0.53 missed these shadows.`,
       fix: `Upgrade @pyreon/compiler — every binding form now shadows. If you are pinned, rename the local binding so it does not share a module signal's name.`,
       fixCode: `// pinned workaround — a distinct name for the local
 try { load() } catch (err) { return <p>{err.message}</p> }`,
@@ -1899,8 +1899,8 @@ box.current = node         // writable by design`,
     pattern: /(Unexpected token|Expected .*? but found|Parse error|Transform failed).*(__rsCollapse|_mountChild\(\{)/s,
     diagnose: () => ({
       cause:
-        'Two compiler passes rewrote the same node and disagreed about syntax position. `templatizeComponentChildren` moves a component child into a call argument; `collapseRocketstyle` then decided to wrap its replacement in JSX braces because the AST PARENT was still a JSX element — producing `_mountChild({__rsCollapse(…)}, …)`, which is not valid JavaScript. Both passes are individually correct; the emit is only broken where they overlap, which is why it stayed invisible while templatization was opt-in.',
-      fix: 'Upgrade `@pyreon/compiler` and `@pyreon/vite-plugin` — collapse now decides braces from the EMIT position rather than the AST parent, in both the JS and native backends. If you cannot upgrade yet, disable either pass to break the overlap: `pyreon({ templatizeComponentChildren: false })` or `pyreon({ collapseRocketstyle: false })`. Disabling templatization is the cheaper loss — it costs an optimization, while collapse affects rendered output.',
+        "`templatizeComponentChildren` moved a child into a call argument, but `collapseRocketstyle` used its old JSX parent to add braces. The resulting `_mountChild({__rsCollapse(…)}, …)` is invalid JavaScript.",
+      fix: "Upgrade @pyreon/compiler and @pyreon/vite-plugin; both backends now use the emitted position. Until then, set `templatizeComponentChildren: false` (loses an optimization) or `collapseRocketstyle: false` (can affect rendered output) in `pyreon()`.",
       fixCode: `// vite.config.ts — temporary workaround on an affected version
 export default defineConfig({
   plugins: [
@@ -1911,7 +1911,7 @@ export default defineConfig({
   ],
 })`,
       related:
-        'The general shape is worth remembering: when two transforms rewrite the same node, a decision made from the AST PARENT is only valid if no earlier pass can relocate that node. Ask what the node position will be at EMIT time, not what it was at parse time.',
+        "When composing transforms, decide syntax from the emitted position; an earlier pass may have moved the node away from its AST parent.",
     }),
   },
   {
@@ -2182,8 +2182,8 @@ const geometry = () => props.shape
     // looks like a working render.
     pattern: /Can't find variable: (_(?:tpl|bind\w*|applyProps|set\w+|mount\w+|textSlot|fuse|lc|ssr\w*|esc\w*|rsCollapse\w*))/,
     diagnose: (m) => ({
-      cause: `\`${m[1]}\` is a RUNTIME HELPER the Pyreon JSX transform injects an import for, and at the point it ran nothing provided it. Three ways that happens: \`@pyreon/runtime-dom\` (or \`@pyreon/core\`, which owns \`_fuse\` and \`_lc\`) is OLDER than \`@pyreon/compiler\` and does not export the helper yet; a downstream transform stripped the injected import line; or a test harness evaluates the emit through \`new Function\` / \`eval\` and hands it a hand-maintained dependency map that has fallen behind the emit. Under HYDRATION the page-level symptom is misleading — the throw is caught per component, the server's markup stays on screen, and the page looks rendered while none of its bindings exist.`,
-      fix: 'Align the versions (`pyreon info` reports `@pyreon/*` skew; `pyreon upgrade` fixes it) and make sure whatever consumes the transform output preserves its injected imports. In a harness that evaluates the emit, do not maintain the dependency list by hand — parse the emitted `import { … } from "@pyreon/…"` names and ASSERT every one is provided, so a missing helper fails the spec loudly instead of leaving it asserting the server DOM.',
+      cause: `Injected runtime helper \`${m[1]}\` is missing: runtime-dom/core is older than the compiler, a later transform removed its import, or an eval/new Function harness omitted it. Core owns \`_fuse\` and \`_lc\`. During hydration, surviving server markup can hide the failed client mount and its missing bindings.`,
+      fix: "Use `pyreon info` to find version skew and `pyreon upgrade` to align packages. Preserve injected imports. In an eval harness, derive dependencies from emitted imports and assert that every name is provided, so a missing helper cannot leave tests checking only server DOM.",
       fixCode: `// harness: assert the deps cover the emit instead of discovering a gap
 const { code } = transformJSX(source, 'app.tsx')
 for (const m of code.matchAll(/^import\\s*\\{([^}]*)\\}/gm))
