@@ -1,0 +1,344 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > --- later in body 1`] = `
+{
+  "content": "body
+---
+more",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > BOM 1`] = `
+{
+  "content": "body",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > BOM without frontmatter 1`] = `
+{
+  "content": "body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > CRLF 1`] = `
+{
+  "content": "body
+more",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > anchors + merge 1`] = `
+{
+  "content": "b",
+  "data": {
+    "base": {
+      "a": 1,
+      "b": 2,
+    },
+    "ref": {
+      "a": 1,
+      "b": 2,
+    },
+    "x": {
+      "a": 1,
+      "b": 3,
+    },
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > basic 1`] = `
+{
+  "content": "# Body",
+  "data": {
+    "title": "Hello",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > blank line after close kept once 1`] = `
+{
+  "content": "
+body",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > block scalars 1`] = `
+{
+  "content": "body",
+  "data": {
+    "fold": "folded text
+",
+    "lit": "line one
+line two
+",
+    "strip": "x",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > close at EOF 1`] = `
+{
+  "content": "",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > comment-only block 1`] = `
+{
+  "content": "body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > comments 1`] = `
+{
+  "content": "b",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > deep nesting 1`] = `
+{
+  "content": "",
+  "data": {
+    "a": {
+      "b": {
+        "c": [
+          {
+            "d": 1,
+            "e": [
+              "x",
+              {
+                "f": "g",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > empty block 1`] = `
+{
+  "content": "body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > empty collections 1`] = `
+{
+  "content": "",
+  "data": {
+    "a": [],
+    "b": {},
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > empty source 1`] = `
+{
+  "content": "",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > four dashes is not frontmatter 1`] = `
+{
+  "content": "----
+title: X
+----
+body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > frontmatter not at start 1`] = `
+{
+  "content": "
+---
+title: X
+---
+body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > json language line 1`] = `
+{
+  "content": "body",
+  "data": {
+    "n": [
+      1,
+      2,
+    ],
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > keys with dashes and dots 1`] = `
+{
+  "content": "",
+  "data": {
+    "meta.title": "y",
+    "og-image": "x.png",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > longer close line 1`] = `
+{
+  "content": "--
+body",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > nested + lists 1`] = `
+{
+  "content": "body",
+  "data": {
+    "list": [
+      "x",
+      "y",
+    ],
+    "sidebar": {
+      "group": "Guide",
+      "order": 3,
+    },
+    "tags": [
+      "a",
+      "b",
+    ],
+    "title": "Hi",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > no close delimiter 1`] = `
+{
+  "content": "",
+  "data": {
+    "more": "y",
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > no frontmatter 1`] = `
+{
+  "content": "# Title
+
+body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > quoted strings 1`] = `
+{
+  "content": "",
+  "data": {
+    "a": "x: y",
+    "b": "it's",
+    "c": "é
+",
+    "d": "0.20.0",
+    "e": "true",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > scalars 1`] = `
+{
+  "content": "b",
+  "data": {
+    "empty": null,
+    "exp": 1000,
+    "f": 1.5,
+    "fl": false,
+    "hex": 31,
+    "inf": Infinity,
+    "n": 42,
+    "neg": -3,
+    "nul": null,
+    "t": true,
+    "tilde": null,
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > timestamps 1`] = `
+{
+  "content": "b",
+  "data": {
+    "at": 2024-01-15T10:30:00.000Z,
+    "day": 2024-01-15T00:00:00.000Z,
+    "spaced": 2001-12-15T02:59:43.100Z,
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > trailing space after open 1`] = `
+{
+  "content": "body",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > unicode 1`] = `
+{
+  "content": "body",
+  "data": {
+    "title": "Příliš žluťoučký 🐎",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > whitespace-only block 1`] = `
+{
+  "content": "body",
+  "data": {},
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > yaml language line 1`] = `
+{
+  "content": "body",
+  "data": {
+    "title": "X",
+  },
+}
+`;
+
+exports[`parseFrontmatter — compatibility with gray-matter 4.0.3 > yml language line 1`] = `
+{
+  "content": "body",
+  "data": {
+    "title": "X",
+  },
+}
+`;

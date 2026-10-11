@@ -17,7 +17,7 @@
 
 import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, isServer, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isClient, isServer, signal } from '@pyreon/reactivity'
 import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput, A11yTable } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
@@ -565,12 +565,17 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   const themeOf = useChartTheme()
   const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
+  const canvasReady = signal(false)
   let tip: HTMLDivElement | null = null
   // CSS a rich tooltip view last added to the themed box (its colours, border, padding, transition).
   let appliedLook = ''
   let sizeObserver: ResizeObserver | null = null
-  const keyboardOn = props.keyboard !== false
-  const toolList: ToolboxTool[] = props.toolbox?.saveAsImage === true ? ['saveAsImage'] : []
+  const keyboardOn = computed(() => props.keyboard !== false)
+  const tableOn = computed(() => props.accessibleTable !== false)
+  const tooltipOn = computed(() => props.tooltip === true && spec.tooltip !== undefined)
+  const toolList = computed<ToolboxTool[]>(() => props.toolbox?.saveAsImage === true ? ['saveAsImage'] : [], {
+    equals: (a, b) => a.length === b.length && a.every((tool, i) => tool === b[i]),
+  })
   const tableId = createUniqueId()
   // The server first frame (see `serverFrameSvg`), until the canvas paints over it.
   let ssrFrame: Element | null = null
@@ -675,8 +680,9 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     let left = 0.0
     let right = 0.0
     let toolBoxes: Rect[] = []
-    if (toolList.length > 0) {
-      const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, { fontSize: t.fontSize, color: t.label })
+    const tools = toolList()
+    if (tools.length > 0) {
+      const tb = renderToolbox(tools, { x: 0, y: 0, w, h: hgt }, { fontSize: t.fontSize, color: t.label })
       for (const c of tb.cmds) chrome.push(c)
       toolBoxes = tb.boxes
       top += tb.height
@@ -718,6 +724,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   /** The keyboard focus ring for the focused item, when the family can place one. */
   const ringCmds = (f: Frame<L>): DrawCmd[] => {
+    if (!keyboardOn()) return []
     const i = focusIdx()
     if (i < 0 || spec.focusRect === undefined) return []
     const r = spec.focusRect(f.layout, i)
@@ -811,6 +818,10 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   }
 
   effect(() => {
+    // The first draw must run inside this effect, after its ref attaches.
+    // Otherwise draw() returns early and render-only options never become
+    // dependencies until an unrelated data change happens to redraw it.
+    if (!canvasReady()) return
     spec.track()
     theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     trackChartImages() // a pattern image that finishes loading repaints
@@ -818,9 +829,9 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     // effect to its own write and re-run it once per batch pass (32 times,
     // cancelling the update tween on every pass) — the intentional
     // loop-prevention use the lint rule cannot tell from a stale read.
+    draw()
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     a11yVersion.set(a11yVersion.peek() + 1)
-    draw()
   })
 
   /** The layout the pointer handlers must agree with the draw on — the last draw's, re-laid only if the size moved under it. */
@@ -859,9 +870,10 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const el = canvas
     if (el === null) return
     const p = localPoint(el, ev)
-    if (toolList.length > 0) {
+    const tools = toolList()
+    if (tools.length > 0) {
       const f = layoutNow(el)
-      if (f !== null && hitToolbox(toolList, f.toolBoxes, p.x, p.y) === 'saveAsImage') {
+      if (f !== null && hitToolbox(tools, f.toolBoxes, p.x, p.y) === 'saveAsImage') {
         saveImage(el)
         return
       }
@@ -987,6 +999,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     paintCached()
   }
   const handleKeyDown = (ev: KeyboardEvent): void => {
+    if (!keyboardOn()) return
     const key = ev.key
     if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
     else if (key === 'ArrowLeft' || key === 'ArrowDown') moveFocus(-1)
@@ -1081,16 +1094,15 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
       chartDrag?.end?.()
     }
   }
-  const tooltipOn = props.tooltip === true && spec.tooltip !== undefined
   const onPointerDown = (ev: PointerEvent): void => {
     if (dragDown(ev)) return
     roamDown(ev)
-    if (tooltipOn) handleMove(ev)
+    if (tooltipOn()) handleMove(ev)
   }
   const onPointerMove = (ev: PointerEvent): void => {
     if (dragMove(ev)) return
     roamMove(ev)
-    if (tooltipOn && !dragMoved) handleMove(ev)
+    if (tooltipOn() && !dragMoved) handleMove(ev)
   }
   const onClickRoamAware = (ev: MouseEvent): void => {
     if (dragMoved) {
@@ -1105,8 +1117,11 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     // `img` + a label is what makes the canvas announce as a single described
     // thing; the table it is described BY carries the numbers.
     role: 'img',
-    'aria-label': () => (spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y())),
-    ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
+    'aria-label': () => {
+      a11yVersion()
+      return spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y())
+    },
+    'aria-describedby': () => tableOn() ? tableId : undefined,
     // The SSR box (see `canvasSizeAttrs`): without it a hydrated chart shifts
     // from the 300x150 canvas default to its real size on the first paint.
     ...canvasSizeAttrs(props.width, props.height ?? spec.defaultHeight, false),
@@ -1115,6 +1130,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
       sizeObserver?.disconnect()
       sizeObserver = null
       if (el === null) {
+        canvasReady.set(false)
         // Unmounted mid-animation: the frames must not keep the closure alive.
         cancelFrame(entranceFrame)
         cancelFrame(tweenFrame)
@@ -1126,7 +1142,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         return
       }
       startEntrance()
-      draw()
+      canvasReady.set(true)
       const box = el.parentElement
       if (box === null || typeof ResizeObserver === 'undefined') return
       sizeObserver = new ResizeObserver(() => {
@@ -1141,25 +1157,34 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     onClick: onClickRoamAware,
     ...(roam !== undefined ? { onWheel: handleWheel } : {}),
     ...(roam !== undefined || chartDrag !== undefined ? { onPointerUp: roamUp } : {}),
-    ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { batch(() => { focusIdx.set(-1); announce.set('') }); paintCached() } } : {}),
+    tabIndex: () => keyboardOn() ? 0 : undefined,
+    onKeyDown: handleKeyDown,
+    onBlur: () => { batch(() => { focusIdx.set(-1); announce.set('') }); paintCached() },
     // Pointer events, not mouse events: a finger gets the tooltip on tap
     // (pointerdown) and on drag (pointermove) exactly as a mouse does on hover.
-    ...(tooltipOn || roam !== undefined || chartDrag !== undefined ? { onPointerMove, onPointerDown } : {}),
-    ...(tooltipOn ? { onPointerLeave: handleLeave, onPointerCancel: () => { roamUp(); handleLeave() } } : roam !== undefined || chartDrag !== undefined ? { onPointerCancel: roamUp } : {}),
+    ...(spec.tooltip !== undefined || roam !== undefined || chartDrag !== undefined ? { onPointerMove, onPointerDown } : {}),
+    ...(spec.tooltip !== undefined ? { onPointerLeave: () => { if (tooltipOn()) handleLeave() }, onPointerCancel: () => { roamUp(); if (tooltipOn()) handleLeave() } } : roam !== undefined || chartDrag !== undefined ? { onPointerCancel: roamUp } : {}),
   })
 
   const tipNode = (): VNode | null =>
-    props.tooltip === true && spec.tooltip !== undefined
+    tooltipOn()
       ? h('div', {
           'data-pyreon-chart-tooltip': 'true',
           style: () => tooltipStyle(theme(), FONT),
           ref: (el: HTMLDivElement | null) => {
             tip = el
+            if (el === null) {
+              cancelHide()
+              currentView = null
+              appliedLook = ''
+              if (canvas !== null && spec.cursor !== undefined) canvas.style.cursor = ''
+              spec.leave?.()
+            }
           },
         })
       : null
 
-  const liveNode = (): VNode => h('div', { role: 'status', 'aria-live': 'polite', style: OFFSCREEN }, () => announce())
+  const liveNode = (): VNode | null => keyboardOn() ? h('div', { role: 'status', 'aria-live': 'polite', style: OFFSCREEN }, () => announce()) : null
 
   // The server's first frame: the family drawn as SVG at its final state, so an
   // SSR / SSG page shows the chart before any script runs — the same frame the
@@ -1195,12 +1220,9 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     },
   })
 
-  const extras: (VNode | (() => VNode))[] = [ssrFrameNode]
-  const t = tipNode()
-  if (t !== null) extras.push(t)
-  if (keyboardOn) extras.push(liveNode())
-  if (props.accessibleTable !== false) {
-    extras.push(a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption))
-  }
+  // Derived booleans keep these children mounted across data-only updates.
+  // The table owns its effects in a component scope, so disabling it disposes them.
+  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption)
+  const extras: (VNode | (() => VNode | null))[] = [ssrFrameNode, tipNode, liveNode, () => tableOn() ? h(AccessibleTable, null) : null]
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
 }
