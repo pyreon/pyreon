@@ -8,8 +8,8 @@ import { parse as parseYaml } from 'yaml'
 // strip-bom-string, and js-yaml 3 with its argparse + esprima deps).
 //
 // The SPLIT reproduces gray-matter 4's rules exactly (characterized in
-// `tests/frontmatter.test.ts`, which also differentially checks a corpus
-// against gray-matter itself):
+// `tests/frontmatter.test.ts`, whose compatibility snapshots were captured
+// from gray-matter 4.0.3 with js-yaml 3.15.2):
 //
 //   - A leading BOM is stripped.
 //   - Frontmatter exists only when the source STARTS with `---` and the

@@ -1,32 +1,19 @@
 /**
- * `parseFrontmatter` — the first-party replacement for `gray-matter`.
+ * Compatibility snapshots captured from gray-matter 4.0.3 with js-yaml 3.15.2.
+ * The legacy parser is no longer installed: it was a test-only oracle and
+ * pulled in the unpatched sprintf-js dependency (GHSA-hp3w-g68c-fv3c).
  *
- * Two halves:
+ * These expectations came from the legacy parser, not parseFrontmatter.
+ * Before changing them, verify the proposed contract against the pinned
+ * historical versions in an isolated fixture. Do not update snapshots from
+ * the replacement parser just to accept a compatibility regression.
  *
- *  1. A DIFFERENTIAL corpus run against gray-matter itself (kept as a
- *     devDependency for exactly this). The split rules and every YAML shape
- *     real frontmatter uses must produce the same `{ data, content }`. The
- *     corpus covers each split rule gray-matter implements (BOM, `----`,
- *     language line, missing close, CR/LF after the close, comment-only
- *     block) plus the YAML 1.1 features js-yaml's safe schema had that
- *     frontmatter commonly relies on (timestamps, `<<` merge keys).
- *
- *  2. The DELIBERATE divergences, each pinned so a future change to them
- *     is a conscious one: YAML 1.2 number/string semantics where js-yaml 3
- *     applied YAML 1.1 (`010`, `1:30`, `1_000`), `---js` refused (gray-matter
- *     `eval`ed it), non-object frontmatter refused, `~` → `{}`.
+ * The corpus covers delimiter rules, BOM/CRLF, nested YAML, timestamps and
+ * merge keys. Independent malformed-input and deliberate-divergence tests
+ * retain the first-party parser's safety and YAML 1.2 contracts.
  */
-import matter from 'gray-matter'
 import { describe, expect, it } from 'vitest'
 import { parseFrontmatter } from '../pipeline/frontmatter'
-
-const grayMatter = (source: string) => {
-  // gray-matter memoizes by input string in a module-level cache; clear it
-  // so one case can never answer for another.
-  ;(matter as unknown as { clearCache: () => void }).clearCache()
-  const r = matter(source)
-  return { data: r.data, content: r.content }
-}
 
 const CORPUS: Array<[string, string]> = [
   ['no frontmatter', '# Title\n\nbody'],
@@ -62,9 +49,9 @@ const CORPUS: Array<[string, string]> = [
   ['keys with dashes and dots', '---\nog-image: x.png\nmeta.title: y\n---\n'],
 ]
 
-describe('parseFrontmatter — differential against gray-matter', () => {
+describe('parseFrontmatter — compatibility with gray-matter 4.0.3', () => {
   it.each(CORPUS)('%s', (_label, source) => {
-    expect(parseFrontmatter(source)).toEqual(grayMatter(source))
+    expect(parseFrontmatter(source)).toMatchSnapshot()
   })
 
   it('timestamps stay Date instances, like js-yaml produced', () => {
@@ -82,8 +69,6 @@ describe('parseFrontmatter — malformed input throws', () => {
     ['malformed json', '---json\n{title: X}\n---\n'],
   ])('%s', (_label, source) => {
     expect(() => parseFrontmatter(source)).toThrow()
-    // gray-matter threw on the same input — the throw is parity, not new.
-    expect(() => grayMatter(source)).toThrow()
   })
 })
 
@@ -110,7 +95,6 @@ describe('parseFrontmatter — control characters', () => {
     ] as const) {
       it(`refuses ${name} in a ${form} scalar, as gray-matter did`, () => {
         const src = `---\n${body}\n---\n`
-        expect(() => grayMatter(src)).toThrow()
         expect(() => parseFrontmatter(src)).toThrow(/control character/)
       })
     }
@@ -130,13 +114,11 @@ describe('parseFrontmatter — control characters', () => {
 describe('parseFrontmatter — deliberate divergences from gray-matter', () => {
   it('refuses a control character inside a comment (js-yaml skipped comments)', () => {
     const src = '---\ntitle: x # a\x07b\n---\n'
-    expect(grayMatter(src).data).toEqual({ title: 'x' })
     expect(() => parseFrontmatter(src)).toThrow(/control character/)
   })
 
   it('refuses DEL inside quotes (js-yaml passed it through)', () => {
     const src = '---\ntitle: "a\x7fb"\n---\n'
-    expect(grayMatter(src).data).toEqual({ title: 'a\x7fb' })
     expect(() => parseFrontmatter(src)).toThrow(/U\+007F/)
   })
 
@@ -147,8 +129,7 @@ describe('parseFrontmatter — deliberate divergences from gray-matter', () => {
       sexagesimal: '1:30',
       underscore: '1_000',
     })
-    // What gray-matter (js-yaml 3) produced — recorded so the change is visible.
-    expect(grayMatter(src).data).toEqual({ octal: 8, sexagesimal: 90, underscore: 1000 })
+    // The legacy parser produced { octal: 8, sexagesimal: 90, underscore: 1000 }.
   })
 
   it('refuses JavaScript frontmatter instead of eval-ing it', () => {
