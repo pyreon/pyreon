@@ -56,4 +56,4 @@ class SizedMap<K, V> {
 
 ## Native (iOS / Android)
 
-`new SizedMap<K, V>({ maxEntries, lru })` lowers to the `PyreonSizedMap` class both native runtimes ship; the option object must be a literal. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.
+`new SizedMap<K, V>({ maxEntries, lru })` lowers to the `PyreonSizedMap` class both native runtimes ship; the option object must be a literal. A component-local cache uses stable native storage (`@State` on SwiftUI, `remember` on Compose), so rerenders and handlers share the same instance. The compile-time half ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon-native`), not in `@pyreon/native-compiler`.

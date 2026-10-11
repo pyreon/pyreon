@@ -54,6 +54,8 @@ On web, `@pyreon/primitives` runs the real DOM implementation. On iOS/Android PM
 - The project audit (`auditNative` / `detectNativePatterns`, behind `pyreon doctor --check-native` and MCP `validate`) lives in `packages/native/compiler/src/native-audit.ts`, served as `@pyreon/native-compiler/audit`, and reads the one generated `WEB_ONLY_PACKAGES` set in `web-only-packages.ts`. `check-multiplatform-tier` regenerates that set and FAILS if a second generated copy appears anywhere else. `@pyreon/cli` and `@pyreon/mcp` load it lazily as an optional peer and skip loudly when it is absent.
 - `scripts/check-native-cosource.ts` typechecks and smoke-runs the co-located sources; every Kotlin file must be declared or listed in `kotlinSdkOnly`.
 
+Component-owned class constructions use `CompilerPlugin.declConstructs`: parse `site.node` through `ctx.expr` to reuse the expression recognizer. Emit stable storage (`@State` / `remember`) through `DeclEmitter` and publish member/method types there; a mutable class is not a dictionary merely because its reads resemble a map. `@pyreon/sized-map` follows this contract, so handlers use the same instance across renders. Existing `declCalls` recognizers continue receiving calls only. Both SizedMap recognizers use `ModuleScan.isImportedReference` so a parameter, destructuring binding, or local declaration that shadows an import cannot be mistaken for the package constructor. The query builds lexical scopes lazily once per file.
+
 ## Lifecycle auto-start
 
 `scripts/check-native-lifecycle-wiring.ts` (`LIFECYCLE_REGISTRY`) classifies every native container that exposes `start()`/`connect()`. An unclassified container fails the gate, because one nobody starts ships frozen at its initial value.
@@ -220,6 +222,7 @@ Rules a plugin lives by:
 | `persistence`                                                            | how a persisted SIGNAL is declared on each target (a library's own `@AppStorage` / `by rememberPersisted`)                                                   | `signal-persistence.ts`                                       |
 | `stubs`                                                                  | compile-gate stub text beyond the SwiftUI / Compose bundle; the compiler never reads it, the caller passes it as `ValidateOptions.augment`                   | `stub-augmentation.ts`                                        |
 | `modules`, `requires`, `builtIn`, `transformIR`, `prepareIR`, `backends` | activation, ordering, replacement-by-name, IR passes, extra backends                                                                                         | `compiler.ts`                                                 |
+| `declConstructs` | a constructor declaration recognized by callee shape; `site.node` can reuse expression parsing, while the package owns storage and types | `tryPluginDeclCall` |
 
 **A declaration recognizer's verdict** (`CallRecognizer`, `DeclCallRecognizer`) is one of: `{ type, payload }` (the plugin's own `ext` decl); `{ signal: { initial, persistKey? } }` (a plain core SIGNAL, built with the core's own rules, so a library's signal reads, writes, infers and synthesizes structs exactly like `signal()`); `{ computed: ExtExprSpec }` (a core `computed` around the plugin's own expression); `undefined` (decline); `null` (claim without declaring).
 

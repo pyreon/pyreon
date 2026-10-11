@@ -31,7 +31,7 @@ import {
   isJson,
   stampExtDecl,
   type AstNode,
-  type DeclCallSite,
+  type DeclConstructSite,
   type DeclVerdict,
   type ParseContext,
 } from './call-lowering'
@@ -3802,14 +3802,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // below. Object/array literals also flow through (they get the existing
   // object/array-literal emit). This widens the supported subset toward
   // "any app" — local consts are ubiquitous.
+  // A plugin may give a call OR construction component-owned storage. Without
+  // this constructor seam, stateful classes become body-local value expressions
+  // and Swift substitutes a fresh instance into every handler that uses them.
+  if (init.type === 'CallExpression' || init.type === 'NewExpression') {
+    const shaped = tryPluginDeclCall(name, init, ctx)
+    if (shaped !== undefined) return shaped
+  }
   if (init.type !== 'CallExpression') {
     return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
   }
-
-  // A declaration a plugin recognizes by the SHAPE of its callee (`CompilerPlugin.declCalls`) — `const active = rx.filter(todos, p)`,
-  // where the callee is whatever local name the file imported. Ahead of every by-name branch below, as the by-shape one always was.
-  const shaped = tryPluginDeclCall(name, init, ctx)
-  if (shaped !== undefined) return shaped
 
   const writtenCallee = init.callee?.name as string | undefined
   const calleeName =
@@ -4085,16 +4087,16 @@ function declFromSpec(
  * recognizer said why), or `undefined` (declined; the parser continues down its chain).
  */
 function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR | null | undefined {
-  const { declCalls } = activeRegistries().calls
-  if (declCalls.length === 0) return undefined
-  const site: DeclCallSite = {
+  const hook = init.type === 'NewExpression' ? 'declConstructs' : 'declCalls'
+  const recognizers = activeRegistries().calls[hook]
+  if (recognizers.length === 0) return undefined
+  const site: DeclConstructSite = {
+    node: init as AstNode,
     callee: init.callee as AstNode,
     args: ((init.arguments as AnyNode[] | undefined) ?? []) as readonly AstNode[],
   }
-  for (const { owner, recognize } of declCalls) {
-    const verdict = runPluginHook(owner, 'declCalls', () =>
-      recognize(site, parseContextFor(name, init, ctx)),
-    )
+  for (const { owner, recognize } of recognizers) {
+    const verdict = runPluginHook(owner, hook, () => recognize(site, parseContextFor(name, init, ctx)))
     if (verdict === undefined) continue
     return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
   }

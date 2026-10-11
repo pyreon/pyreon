@@ -47,6 +47,8 @@ export type {
   ComputedDeclSpec,
   DeclCallRecognizer,
   DeclCallSite,
+  DeclConstructRecognizer,
+  DeclConstructSite,
   DeclVerdict,
   SignalDeclSpec,
   SignalSpec,

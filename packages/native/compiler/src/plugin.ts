@@ -2,6 +2,7 @@ import type { CompilerRegistries } from './active-registries'
 import type {
   CallRecognizer,
   DeclCallRecognizer,
+  DeclConstructRecognizer,
   DeclEmitter,
   MemberCallLowering,
 } from './call-lowering'
@@ -158,6 +159,12 @@ export interface CompilerPlugin<Target extends string = string> {
    * where `rx` / `filter` are whatever this file imported. Pair it with `exprs` (a `computed` verdict) or `decls`.
    */
   readonly declCalls?: DeclCallRecognizer | undefined
+  /**
+   * Opt in to constructor declarations (`const cache = new ImportedCache(...)`).
+   * Match the imported callee shape and return package-owned storage through `decls`.
+   * Existing `declCalls` hooks continue receiving call expressions only.
+   */
+  readonly declConstructs?: DeclConstructRecognizer | undefined
   /**
    * Calls of this package that ship NO native lowering, by callee name (`defineFeature` for a package whose literal form lowers
    * at file scope but whose component-body form does not). A declaration `const x = <callee>(…)` that no recognizer claimed gets

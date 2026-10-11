@@ -194,6 +194,21 @@ export type DeclCallRecognizer = (
   ctx: ParseContext,
 ) => DeclVerdict | undefined | null
 
+/** A constructor used in a component declaration, with its complete expression node. */
+export interface DeclConstructSite extends DeclCallSite {
+  readonly node: AstNode
+}
+
+/**
+ * Opt in to recognizing `const x = new PackageClass(...)` by callee shape.
+ * Constructor sites never reach existing `declCalls` recognizers. Verdicts and
+ * declaration emission follow the same contract as {@link DeclCallRecognizer}.
+ */
+export type DeclConstructRecognizer = (
+  site: DeclConstructSite,
+  ctx: ParseContext,
+) => DeclVerdict | undefined | null
+
 /** Renders one declaration type on each target. */
 /**
  * What a declaration contributes to its component's lifecycle. Both are
@@ -416,6 +431,8 @@ export interface CallRegistry {
   readonly names: ReadonlySet<string>
   /** Declaration recognizers keyed by callee shape, in plugin order. */
   readonly declCalls: readonly { readonly owner: string; readonly recognize: DeclCallRecognizer }[]
+  /** Constructor recognizers, explicitly opted in and isolated from call-only hooks. */
+  readonly declConstructs: readonly { readonly owner: string; readonly recognize: DeclConstructRecognizer }[]
   /** Callee name → the plugin that declared it `tier2Calls` (a call it ships no lowering for; see `CompilerPlugin.tier2Calls`). */
   readonly tier2Calls: ReadonlyMap<string, string>
   /** Plugin name → declaration type → emitter. */
@@ -434,6 +451,7 @@ type CallPlugin = {
   readonly statementCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly patternCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly declCalls?: DeclCallRecognizer | undefined
+  readonly declConstructs?: DeclConstructRecognizer | undefined
   readonly tier2Calls?: readonly string[] | undefined
   readonly decls?: Readonly<Record<string, DeclEmitter>> | undefined
   readonly memberCalls?: Readonly<Record<string, MemberCallLowering>> | undefined
@@ -461,6 +479,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   const emitters = new Map<string, ReadonlyMap<string, DeclEmitter>>()
   const memberCalls = new Map<string, Map<string, MemberCallLowering>>()
   const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
+  const declConstructs: { owner: string; recognize: DeclConstructRecognizer }[] = []
   const tier2Calls = new Map<string, string>()
   for (const plugin of plugins) {
     for (const [name, operation] of Object.entries(plugin.intrinsicCalls ?? {})) {
@@ -478,6 +497,8 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
     }
     if (plugin.declCalls !== undefined)
       declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
+    if (plugin.declConstructs !== undefined)
+      declConstructs.push({ owner: plugin.name, recognize: plugin.declConstructs })
     for (const callee of plugin.tier2Calls ?? [])
       if (!tier2Calls.has(callee)) tier2Calls.set(callee, plugin.name)
     // A method name may be claimed by several plugins: the RECEIVER decides, because a plugin only ever sees
@@ -521,6 +542,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
     patternCalls,
     names: new Set(owners.keys()),
     declCalls: Object.freeze(declCalls),
+    declConstructs: Object.freeze(declConstructs),
     tier2Calls,
     emitters,
     emitter: (plugin, type) => emitters.get(plugin)?.get(type),

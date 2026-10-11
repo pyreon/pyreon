@@ -175,7 +175,7 @@ transparent? }]`. `<PyreonUI mode>` / `<ColorModeProvider mode>` (and a plugin's
   discovered one. No plugin ships built in today (`BUILT_IN_PLUGINS` is empty); the
   mechanism is kept for a future compiler-shipped plugin.
 - Later additive members (each documented in `.agents/guides/multiplatform/README.md`,
-  "The plugin protocol"): `declCalls` (a declaration recognized by callee SHAPE, with
+  "The plugin protocol"): `declCalls` / `declConstructs` (calls / constructions recognized by callee SHAPE, with
   `{ signal }` / `{ computed }` verdicts), `tier2Calls` (the standing Tier-2
   diagnostic for a call the package does not lower, without claiming its name),
   `receivers`, `functions`, `identifiers`, `memberReads`, `intrinsics`, `refModifiers`,

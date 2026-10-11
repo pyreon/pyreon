@@ -70,6 +70,7 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     statementCalls,
     patternCalls,
     declCalls,
+    declConstructs,
     tier2Calls,
     decls,
     memberCalls,
@@ -595,6 +596,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     (!Array.isArray(tier2Calls) || tier2Calls.some((c) => typeof c !== 'string' || c === ''))
   ) {
     throw new Error(`[Pyreon] Plugin "${name}" tier2Calls must be an array of callee names.`)
+  }
+  if (declConstructs !== undefined && typeof declConstructs !== 'function') {
+    throw new Error(`[Pyreon] Plugin "${name}" declConstructs must be a synchronous function.`)
   }
   if (declCalls !== undefined && typeof declCalls !== 'function') {
     throw new Error(`[Pyreon] Plugin "${name}" declCalls must be a synchronous function.`)
