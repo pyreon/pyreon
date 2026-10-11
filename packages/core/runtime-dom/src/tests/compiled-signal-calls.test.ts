@@ -23,6 +23,9 @@ try {
 }
 
 const calls = [
+  '(() => { for (const count of [0]) {} count?.[method]?.(count + step) })()',
+  '(() => { { const method = "ignored" } (count as typeof count)?.[method](count + step) })()',
+  'new (class { run() { count?.set(count + step) } })().run()',
   'count.set(count + step)',
   'count?.set(count + step)',
   'count.set?.(count + step)',

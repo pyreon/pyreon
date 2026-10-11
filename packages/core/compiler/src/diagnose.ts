@@ -49,8 +49,8 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
   {
     pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
     diagnose: (m) => ({
-      cause: `The signal's value is being used as its API object: \`${m[1]}().${m[2]}\` reads the value first, then looks for a signal method on it. Older compiler versions could introduce this extra call when optional chaining, bracket access or a TypeScript cast surrounded the method call.`,
-      fix: `Call \`${m[1]}.${m[2]}(...)\` on the signal itself. If the source already calls the signal method correctly, upgrade @pyreon/compiler and its matching native binary.`,
+      cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,
+      fix: `Use \`${m[1]}.${m[2]}(...)\`, or upgrade @pyreon/compiler and its native binary if source is correct.`,
     }),
   },
   {
@@ -77,8 +77,8 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
   {
     pattern: /function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\(/,
     diagnose: (m) => ({
-      cause: `A named function declaration has an extra call before its body. If this appears only in compiled JSX, older signal auto-calling could mistake the function's binding \`${m[1]}\` for an outer signal with the same name.`,
-      fix: 'Upgrade @pyreon/compiler and its matching native binary. If the extra parentheses are in your source, remove them; a function body starts with an opening brace. Renaming the inner function also avoids the older compiler collision.',
+      cause: `The function binding \`${m[1]}\` was mistaken for an outer signal and auto-called.`,
+      fix: 'Upgrade @pyreon/compiler and its native binary. Remove any extra call before the body.',
     }),
   },
   {
