@@ -43,6 +43,12 @@ export function createFetchTransport(fetchImpl?: typeof fetch): Transport {
       headers: request.headers,
       body: request.body,
     }
+    // Node fetch and Chromium require half-duplex for a streamed request
+    // body. The DOM RequestInit type does not expose it on every TS version;
+    // the local intersection keeps the portable public request API unchanged.
+    if (typeof ReadableStream !== 'undefined' && request.body instanceof ReadableStream) {
+      ;(init as RequestInit & { duplex: 'half' }).duplex = 'half'
+    }
     if (request.signal) init.signal = request.signal
     if (request.credentials) init.credentials = request.credentials
 

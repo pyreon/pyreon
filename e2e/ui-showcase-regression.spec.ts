@@ -107,6 +107,19 @@ test.describe('ui-showcase — rocketstyle Button interaction', () => {
     await expect(page.getByRole('button', { name: /Clicked: 0/ })).toBeVisible()
   })
 
+  test('numeric Element label stays visible through 1 → 0 → 2', async ({ page }) => {
+    await page.goto('/button')
+    await waitForHydration(page)
+    const count = page.getByRole('status', { name: 'Numeric count' })
+    await page.getByRole('button', { name: 'Clicked: 0', exact: true }).click()
+    await expect(count).toHaveText('1')
+    await page.getByRole('button', { name: 'Reset', exact: true }).click()
+    await expect(count).toHaveText('0')
+    await page.getByRole('button', { name: 'Clicked: 0', exact: true }).click()
+    await page.getByRole('button', { name: 'Clicked: 1', exact: true }).click()
+    await expect(count).toHaveText('2')
+  })
+
   test('Primary button has theme-derived computed styles (non-zero border-radius + background)', async ({
     page,
   }) => {
@@ -920,4 +933,34 @@ test.describe('ui-showcase — SSR styler CSS emission', () => {
     // cascade falls back to source order once the browser parses it.
     expect(css.indexOf('@layer elements, rocketstyle;')).toBe(0)
   })
+})
+
+
+test('native checkbox h() binding follows a user click and model reset', async ({ page }) => {
+  await page.goto('/checkbox')
+  await waitForHydration(page)
+  const form = page.getByRole('form', { name: 'Native checkbox reset' })
+  const checkbox = form.getByRole('checkbox', { name: 'Native checkbox' })
+  await checkbox.check()
+  await expect(form.locator('output')).toHaveText('true')
+  await form.getByRole('button', { name: 'Reset checkbox' }).click()
+  await expect(form.locator('output')).toHaveText('false')
+  await expect(checkbox).not.toBeChecked()
+})
+
+test('ui-showcase — restores mixed checkbox state after a native click', async ({ page }) => {
+  await page.goto('/checkbox')
+  await waitForHydration(page)
+  const section = page.getByRole('region', { name: 'Mixed checkbox' })
+  await expect(section.getByRole('checkbox', { name: 'Mixed selection preview' })).toHaveJSProperty('indeterminate', true)
+  const checkbox = section.getByRole('checkbox', { name: 'Select all items' })
+  await expect(checkbox).toHaveJSProperty('indeterminate', true)
+  await expect(section).toContainText('Some items are selected.')
+  await checkbox.click()
+  await expect(checkbox).toBeChecked()
+  await expect(checkbox).toHaveJSProperty('indeterminate', false)
+  await expect(section).toContainText('Selection is no longer mixed.')
+  await section.getByRole('button', { name: 'Restore mixed selection' }).click()
+  await expect(section).toContainText('Some items are selected.')
+  await expect(checkbox).toHaveJSProperty('indeterminate', true)
 })

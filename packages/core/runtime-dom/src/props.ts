@@ -710,7 +710,8 @@ function setAttrNsAware(el: Element, key: string, value: string): void {
  *
  * The compiler routes class → `_setClass`, style → `_setStyle`, and the
  * DOM_PROPS set (`value`/`checked`/…) to a property assignment BEFORE a
- * value reaches this helper, so it deliberately omits those branches AND
+ * value reaches this helper. Media `muted` needs both a live property write
+ * and its existing attribute reflection here. This omits other DOM_PROPS AND
  * the `key in el` property routing — it mirrors ONLY `setStaticProp`'s
  * `value == null` / boolean-aria / boolean tail. Keep those three
  * branches byte-identical to `setStaticProp`'s (same ARIA charCode probe)
@@ -718,6 +719,15 @@ function setAttrNsAware(el: Element, key: string, value: string): void {
  * class. Mirrors the `applyStyleProp`→`_setStyle` /
  * `applyClassProp`→`_setClass` extractions.
  */
+// A media element's `muted` attribute controls defaultMuted, not its live audio
+// state. Both the template attribute sink and h()/spreads must write the live
+// property as well. Keep the existing attribute reflection for SSR parity.
+function applyMediaMutedProp(el: Element, value: unknown): void {
+  if (el.namespaceURI === XHTML_NS && (el.tagName === 'AUDIO' || el.tagName === 'VIDEO')) {
+    ;(el as HTMLMediaElement).muted = Boolean(value)
+  }
+}
+
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
   // Event-handler NAMES first — BEFORE the accessor resolution below, which is
   // the load-bearing ordering. `_setAttr` is the compiled sink for every generic
@@ -751,6 +761,7 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
   // past it. A blocked write leaves the attribute untouched (the last SAFE
   // value stays), mirroring `setStaticProp`'s early return.
   if (isBlockedUrl(el, key, value)) return
+  if (key === 'muted') applyMediaMutedProp(el, value)
   if (value == null) {
     el.removeAttribute(key)
     return
@@ -841,6 +852,28 @@ export function applyValueProp(el: Element, value: unknown): void {
   node.defaultValue = node.value
 }
 
+// Like DEFAULT_VALUE_INIT, this marker is owned by the element and dies with it.
+const DEFAULT_CHECKED_INIT = Symbol('pyreon.defaultCheckedInit')
+
+function applyInputBooleanProp(
+  el: Element,
+  key: 'checked' | 'defaultChecked' | 'indeterminate',
+  value: unknown,
+): void {
+  const node = el as HTMLInputElement
+  // These are live properties even for booleans and nullish values. A native
+  // click can dirty checkedness or clear mixed state without changing attrs.
+  node[key] = Boolean(value)
+  if (key === 'indeterminate') return
+
+  const seen = el as unknown as Record<symbol, unknown>
+  const initializeDefault = key === 'checked' && !seen[DEFAULT_CHECKED_INIT]
+  // Explicit defaultChecked owns the reset target; later checked writes only
+  // update live state. Both paths establish the marker on their first write.
+  seen[DEFAULT_CHECKED_INIT] = true
+  if (initializeDefault) node.defaultChecked = node.checked
+}
+
 /**
  * The url-guard predicate shared by `setStaticProp` (h() path) and
  * `applyAttrProp` (`_setAttr`, compiled path): true when `key` is a URL-bearing
@@ -916,6 +949,8 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // so nothing that worked stops working.
   if (isBlockedHandlerAttr(el, key, value)) return
 
+  if (key === 'muted') applyMediaMutedProp(el, value)
+
   if (key === 'class' || key === 'className') {
     applyClassProp(el, value)
     return
@@ -923,6 +958,18 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
 
   if (key === 'style') {
     applyStyleProp(el as HTMLElement, value)
+    return
+  }
+
+  // Input checkedness and mixed state must bypass boolean-presence and
+  // nullish attribute handling. Keep their namespace check and live-property
+  // assignment together, including the checked/defaultChecked reset contract.
+  if (
+    (key === 'checked' || key === 'defaultChecked' || key === 'indeterminate') &&
+    el.tagName === 'INPUT' &&
+    el.namespaceURI === XHTML_NS
+  ) {
+    applyInputBooleanProp(el, key, value)
     return
   }
 

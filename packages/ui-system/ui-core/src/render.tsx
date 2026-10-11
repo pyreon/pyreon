@@ -10,7 +10,7 @@ type RenderProps<T extends Record<string, unknown> | undefined> = (props: Partia
  * - Component functions — created via h()
  * - VNode objects — returned as-is (with props merged if provided)
  * - Render props (functions) — called with attachProps
- * - Falsy values — return null
+ * - Null, undefined, false and empty strings — return null
  */
 export type Render = <T extends Record<string, any> | undefined>(
   content?: ComponentFn | string | VNodeChild | VNodeChild[] | RenderProps<T>,
@@ -18,7 +18,7 @@ export type Render = <T extends Record<string, any> | undefined>(
 ) => VNodeChild
 
 const render: Render = (content, attachProps) => {
-  if (!content) return null
+  if (content == null || content === false || content === '') return null
 
   const t = typeof content
   if (t === 'string' || t === 'number' || t === 'boolean' || t === 'bigint') {

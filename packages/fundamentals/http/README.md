@@ -112,6 +112,8 @@ api.post('/v1/customers', {                                  // x-www-form-urlen
 })                                                           // email=a%40b.c&metadata%5Bplan%5D=pro
 api.post('/files', { multipart: { file, purpose: 'x' } })   // FormData; Blob/File = file part
 api.post('/raw', { body: bytes, headers: { 'content-type': 'application/octet-stream' } })
+// ReadableStream bodies use fetch half-duplex automatically on supporting runtimes.
+api.post('/upload', { body: uploadStream })
 ```
 
 `form` follows OpenAPI's Encoding Object per field: the default `form` + `explode` repeats an array's key, `deepObject` writes brackets (`items[0][price]=…`, what Stripe declares), `spaceDelimited` / `pipeDelimited` join arrays. `null` / `undefined` fields are dropped, never sent as text. `encodeForm`, `encodeMultipart` and `encodeCookies` are exported for transports that need the same bytes.
@@ -178,13 +180,34 @@ the only shape that expresses what people actually need:
 Order is lexical (the `use: [...]` array), so there is no registration
 registry and no `eject()` handle to leak.
 
+Place `dedupe()` after middleware that sets request headers, credentials or
+URLs. If later middleware changes the effective request, waiting callers send
+their own request. Body-bearing requests are shared only with an explicit
+`key` that accounts for the body's meaning; streams are never read to build a
+key. Keys remain private to the in-flight map and are never logged.
+
+Endpoint `.key()` / `.query()` cache keys include the endpoint scope, method,
+path, params and query. They do not include headers or bodies. When these alter
+the result, extend `queryKey` with a non-secret discriminator (for example,
+locale), and use a separate `keyScope` or QueryClient for distinct APIs/users.
+Credentials do not belong in dehydrated or logged query keys:
+
+```ts
+useQuery(() => {
+  const language = locale()
+  const request = getArticles.query({ headers: { 'accept-language': language } })
+  return { ...request, queryKey: [...request.queryKey, { language }] }
+})
+```
+
+
 ## Defaults
 
 | Concern | Default | Why |
 | --- | --- | --- |
 | timeout | **on**, 30s — covers the body read too (`.json()` / `.text()`) | `fetch` has none — a hung request otherwise hangs forever |
 | retry | **off** | query already retries 3×; a client default of 3 makes one logical query **nine** requests |
-| dedupe | off | query already dedupes by key. When on, `authorization` + `cookie` are part of the key, so two users never share a response |
+| dedupe | off | query already dedupes by key. When on, method, URL, all normalized headers and credentials mode form the private in-flight key; bodies require an explicit custom key |
 | `bearer` scope | the `baseUrl` origin | a path that is an absolute URL leaves `baseUrl`; the token does not follow it (`bearer(token, { crossOrigin: true })` opts in) |
 | throw on non-2xx | on | query needs a *rejected* promise to enter its error state |
 | credentials | `same-origin` | — |
