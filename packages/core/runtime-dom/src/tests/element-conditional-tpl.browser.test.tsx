@@ -20,9 +20,8 @@
 import { h } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { _mountSlot, _tpl, mountChild } from '@pyreon/runtime-dom'
+import { _mountSlot, _tpl } from '@pyreon/runtime-dom'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { describe, expect, it } from 'vitest'
 
 describe('element-conditional `_tpl` fast path — runtime contract', () => {
   it('ternary: wrapper is one cloneNode, active branch renders, swaps reactively, old branch disposed', async () => {
@@ -114,43 +113,64 @@ describe('element-conditional `_tpl` fast path — runtime contract', () => {
     unmount()
   })
 
-  it('PERF: the wrapper is a cloneNode template, not slower than the h() wrapper (logs the figure)', () => {
-    // A/B over the WRAPPER only — both paths mount the same conditional accessor
-    // (identical inner cost), so the delta isolates wrapper creation:
-    //   NEW: `_tpl("<div class=\"card\"><!></div>", _mountSlot(accessor))` (cloneNode)
-    //   OLD: `h("div", { class: "card" }, accessor)`              (createElement + setAttribute)
-    const N = 400
-    const RUNS = 5
-    const mk = (build: () => unknown) => {
-      const times: number[] = []
-      for (let r = 0; r < RUNS; r++) {
-        const c = document.createElement('div')
-        document.body.appendChild(c)
-        const t0 = performance.now()
-        for (let i = 0; i < N; i++) mountChild(build() as VNodeChild, c)
-        times.push(performance.now() - t0)
-        c.remove()
-      }
-      times.sort((a, b) => a - b)
-      return times[Math.floor(times.length / 2)] ?? 0 // median (RUNS > 0)
+  it('reuses the parsed template, clones each wrapper once and disposes every subscription', async ({ onTestFinished }) => {
+    const template = '<div class="clone-contract"><!></div>'
+    const open = signal(true)
+    let reads = 0
+    const build = () =>
+      _tpl(template, (root) =>
+        _mountSlot(
+          () => {
+            reads++
+            return open() ? h('span', { class: 'a' }, 'A') : h('b', { class: 'b' }, 'B')
+          },
+          root,
+          root.firstChild as Node,
+        ),
+      )
+
+    // Parse once, then measure the work the fast path promises, independent of
+    // runner load and engine timing resolution. Dispose the warmup as well.
+    const warmup = mountInBrowser(build() as unknown as VNodeChild)
+    warmup.unmount()
+    const clone = vi.spyOn(Node.prototype, 'cloneNode')
+    const create = vi.spyOn(document, 'createElement')
+    const mounted: ReturnType<typeof mountInBrowser>[] = []
+    onTestFinished(() => {
+      for (const fixture of mounted) fixture.unmount()
+      clone.mockRestore()
+      create.mockRestore()
+    })
+    const count = 12
+    for (let i = 0; i < count; i++) {
+      mounted.push(mountInBrowser(build() as unknown as VNodeChild))
     }
-    const sig = signal(true)
-    const accessor = () => (sig() ? h('span', { class: 'a' }, 'A') : h('b', { class: 'b' }, 'B'))
-    const newMs = mk(() =>
-      _tpl('<div class="card"><!></div>', (root) => {
-        const d = _mountSlot(accessor, root, root.firstChild as Node)
-        return () => {
-          d?.()
-        }
-      }),
-    )
-    const oldMs = mk(() => h('div', { class: 'card' }, accessor))
-    // eslint-disable-next-line no-console
-    console.log(
-      `[element-conditional perf] ${N} wrappers × ${RUNS} runs (median): _tpl=${newMs.toFixed(2)}ms  h()=${oldMs.toFixed(2)}ms  (ratio ${(oldMs / newMs).toFixed(2)}×)`,
-    )
-    // Direction-only, deliberately loose so CI load can't flake it: the cloneNode
-    // wrapper must not be pathologically slower than the createElement wrapper.
-    expect(newMs).toBeLessThan(oldMs * 2)
+    await flush()
+
+    const wrappers = mounted.map(({ container }) => container.querySelector('.clone-contract'))
+    expect(wrappers.every((wrapper) => wrapper !== null)).toBe(true)
+    expect(new Set(wrappers).size).toBe(count)
+    expect(clone).toHaveBeenCalledTimes(count)
+    expect(clone.mock.calls.every(([deep]) => deep === true)).toBe(true)
+    expect(create.mock.calls.filter(([tag]) => tag === 'template')).toHaveLength(0)
+    for (const wrapper of wrappers) expect(wrapper?.textContent).toBe('A')
+
+    open.set(false)
+    await flush()
+    for (const [i, { container }] of mounted.entries()) {
+      expect(container.querySelector('.clone-contract')).toBe(wrappers[i])
+      expect(container.querySelector('.a')).toBeNull()
+      expect(container.querySelector('.b')?.textContent).toBe('B')
+    }
+    expect(clone).toHaveBeenCalledTimes(count)
+    expect(create.mock.calls.filter(([tag]) => tag === 'template')).toHaveLength(0)
+
+    // Removing a container alone leaves reactive subscriptions alive. Invoke
+    // every disposer and prove a subsequent write does no work in detached DOM.
+    for (const fixture of mounted.splice(0)) fixture.unmount()
+    const disposedReads = reads
+    open.set(true)
+    await flush()
+    expect(reads).toBe(disposedReads)
   })
 })
