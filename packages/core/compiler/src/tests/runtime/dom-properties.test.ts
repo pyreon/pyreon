@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 /// <reference lib="dom" />
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { flush } from '@pyreon/test-utils/browser'
 import { compileAndMount } from './harness'
@@ -135,4 +136,36 @@ describe('compiler-runtime — DOM properties', () => {
     expect(input.getAttribute('placeholder')).toBe('changed')
     unmount()
   })
+})
+
+describe('compiler-runtime — dynamic media muting', () => {
+  for (const tag of ['audio', 'video'] as const) {
+    it(`updates ${tag}.muted as its signal changes`, () => {
+      const muted = signal<boolean | null>(false)
+      const { container, unmount } = compileAndMount(`<div><${tag} muted={() => muted()} /></div>`, { muted })
+      try {
+        const media = query(container, tag)
+        muted.set(true)
+        expect(media.muted).toBe(true)
+        expect(media.hasAttribute('muted')).toBe(true)
+        muted.set(null)
+        expect(media.muted).toBe(false)
+        expect(media.hasAttribute('muted')).toBe(false)
+      } finally { unmount() }
+    })
+  }
+})
+
+
+describe('compiler-runtime — static mixed checkbox state', () => {
+  for (const attr of ['indeterminate', 'indeterminate={true}', 'indeterminate="true"']) {
+    it(`applies ${attr} as a live property`, () => {
+      const { container, unmount } = compileAndMount(`<div><input type="checkbox" ${attr} /></div>`)
+      try {
+        const input = container.querySelector('input')!
+        expect(input.indeterminate).toBe(true)
+        expect(input.hasAttribute('indeterminate')).toBe(false)
+      } finally { unmount() }
+    })
+  }
 })

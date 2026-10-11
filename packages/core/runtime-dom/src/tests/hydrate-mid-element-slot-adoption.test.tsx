@@ -271,11 +271,16 @@ describe('mid ELEMENT slot — the hazard cases', () => {
     // a close marker that is inside the fragment — that walk would remove the
     // static sibling. It discards the park and takes a fresh node; the bind
     // then mounts its VNode value into it.
+    // An element sibling prevents text fusion from bypassing _textSlot.
+    expect(transformJSX(
+      `const App = () => { const v = signal(h('b', null, 'x')); return <p>{v()}<span>!</span></p> }`,
+      'test.tsx',
+    ).code).toContain('_textSlot(')
     const { out, host, dispose } = await roundTrip(
-      h('p', { class: 'e6' }, () => h('b', null, 'x'), '!'),
-      `const App = () => { const v = signal(h('b', null, 'x')); return <p class="e6">{v()}!</p> }`,
+      h('p', { class: 'e6' }, () => h('b', null, 'x'), h('span', null, '!')),
+      `const App = () => { const v = signal(h('b', null, 'x')); return <p class="e6">{v()}<span>!</span></p> }`,
     )
-    expect(noC(out)).toBe('<p class="e6"><b>x</b>!</p>')
+    expect(noC(out)).toBe('<p class="e6"><b>x</b><span>!</span></p>')
     expect(out.match(/<b>x<\/b>/g)).toHaveLength(1)
     expect(host.textContent).toBe('x!')
     dispose()

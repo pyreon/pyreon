@@ -83,6 +83,7 @@ Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, w
 ## Runtime-DOM specifics
 
 - SVG and MathML elements (tracked by `SVG_TAGS`/`MATHML_TAGS` plus a depth counter in `mount.ts`) are created with `createElementNS` and always receive attributes via `setAttribute` (namespace-aware for `xlink:href`), because many of their properties are read-only `SVGAnimated*` getters.
+- The `h()` input `checked` binding writes live checkedness after user interaction. Its initial value establishes `defaultChecked` once; later updates keep that form-reset default. An explicit `defaultChecked` prop owns the default regardless of prop order. ARIA/SVG remain attribute-based. Locked by `checked-prop.browser.test.tsx`.
 - Custom elements (hyphenated tags) receive props as properties, except `data-*`/`aria-*`, which are always attributes on every element.
 - `Transition`/`TransitionGroup` finish via a 5s safety timeout if no `transitionend` arrives. Subpath exports `@pyreon/runtime-dom/transition`, `/keep-alive` and `/sanitizer` keep a `mount`-only import small.
 - A 10k-row `<For>` allocates ~10k signals; virtualize with `@pyreon/virtual`.
@@ -154,3 +155,9 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 - `data-pyreon-html`: accept any server children (no string comparison); `_setHtml` (`applyDangerousHtml`) skips its first write to a marked element (the `h()` path marks in `hydrateElement`). A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.
 
 Expression rewrites that share AST offsets must compose against the original source: collect prop substitutions and signal auto-calls before emitting either. A later pass must not slice original source using the length of an already-expanded expression. Static hoist declarations include their own semicolon so a following JSX statement cannot continue the initializer.
+
+Live boolean DOM state needs browser assertions on the property. An input's
+`indeterminate` has no content attribute, and media `muted` attributes reflect
+`defaultMuted` instead of current audio state. Keep h()/spread and compiled
+attribute sinks aligned, including nullish clearing. A native checkbox click
+clears its mixed state; a signal-driven restore must set the live property.
