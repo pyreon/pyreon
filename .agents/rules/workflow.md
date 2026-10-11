@@ -41,7 +41,7 @@ When CI fails on a gate not listed here, add a row in the same PR.
 
 ### Optional native plugin packaging
 
-| Gate | When it trips | Fix |
+| Failure | Cause | Prevention |
 | --- | --- | --- |
 | Bootstrap / Release Build: `UNLOADABLE_DEPENDENCY` in an optional native plugin | A runtime plugin import was declared only as a devDependency, so the library builder traversed partially built provider output | Declare real runtime providers as optional peers so their subpath imports stay external; retain devDependencies for tests. Prove the packaged consumer resolves installed providers and builds with provider output absent or incomplete. |
 
