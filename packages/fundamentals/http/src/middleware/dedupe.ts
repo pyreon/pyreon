@@ -16,16 +16,11 @@
  *    per-middleware-instance rather than module-level so disposing the
  *    client releases it.
  *
- * ## Two more it closes (2026-09)
- *
- * 3. **Credentials are identity.** Two concurrent requests to the same URL
- *    with DIFFERENT `authorization` / `cookie` headers are two different
- *    users. Under SSR (`forwardHeaders(['cookie'])`, a per-request
- *    `bearer`) sharing one response hands user A's data to user B. The
- *    default key therefore includes both headers — and because credentials
- *    are often attached BELOW this middleware (`use: [dedupe(), bearer()]`),
- *    a joiner that discovers the leader's request gained credentials after
- *    the key was computed does NOT take its response; it issues its own.
+ * 3. **Headers and credentials are identity.** Content negotiation and tenant
+ *    headers can change a response just as authorization/cookie can. The
+ *    default key includes all normalized headers and the fetch credentials
+ *    mode. If downstream middleware changes that identity, joiners issue their
+ *    own requests. Keys stay private to this temporary map, never in logs.
  * 4. **One caller's abort is not everyone's abort.** The shared request runs
  *    on its OWN controller. Each caller races its own signal (rejecting only
  *    itself), and the shared request is cancelled only once every caller has
@@ -39,9 +34,10 @@ export interface DedupeOptions {
   /** Methods eligible for sharing. Default `['GET', 'HEAD']`. */
   methods?: readonly string[] | undefined
   /**
-   * Custom key. Default: `METHOD url` plus the `authorization` and `cookie`
-   * header values. A custom key takes over that responsibility — requests
-   * with the same key WILL share a response, whoever sent them.
+   * Custom key. Default: method, URL, normalized headers and credentials mode.
+   * Requests carrying a body bypass default sharing: even a replayable body
+   * can change the response. A custom key takes over ALL identity decisions,
+   * including headers, credentials and body — equal keys share a response.
    */
   key?: ((request: HttpRequest) => string) | undefined
 }
@@ -50,18 +46,16 @@ function cloneFor(response: HttpResponse, request: HttpRequest): HttpResponse {
   return { ...response, raw: response.raw.clone(), request }
 }
 
-/** The credential headers, as one comparable string. */
-function credentialsOf(headers: Headers): string {
-  const auth = headers.get('authorization')
-  const cookie = headers.get('cookie')
-  return auth === null && cookie === null ? '' : `${auth ?? ''}\n${cookie ?? ''}`
-}
-
-function defaultKey(request: HttpRequest): string {
-  const credentials = credentialsOf(request.headers)
-  return credentials
-    ? `${request.method} ${request.url}\n${credentials}`
-    : `${request.method} ${request.url}`
+/** Private identity only: never expose headers (which may contain secrets). */
+function requestIdentity(request: HttpRequest): string {
+  // WHATWG Headers iterates normalized names in sorted order, independent of
+  // input casing/insertion order. JSON keeps field boundaries unambiguous.
+  return JSON.stringify([
+    request.method,
+    request.url,
+    request.credentials ?? 'same-origin',
+    [...request.headers],
+  ])
 }
 
 interface Shared {
@@ -69,8 +63,8 @@ interface Shared {
   controller: AbortController
   /** Callers still waiting on the shared response (not aborted). */
   waiting: number
-  /** Credentials on the leader's request when the key was computed. */
-  credentialsAtEntry: string
+  /** Snapshot before downstream middleware can mutate the request. */
+  identityAtEntry: string
 }
 
 /**
@@ -143,12 +137,14 @@ function awaitShared(
 export function dedupe(options: DedupeOptions = {}): HttpMiddleware {
   const methods = options.methods ?? ['GET', 'HEAD']
   const customKey = options.key
-  const keyOf = customKey ?? defaultKey
+  const keyOf = customKey ?? requestIdentity
   const inFlight = new Map<string, Shared>()
   let warnedOrder = false
 
   return async function dedupeMiddleware(request, next) {
-    if (!methods.includes(request.method)) return next()
+    if (!methods.includes(request.method) || (customKey === undefined && request.body != null)) {
+      return next()
+    }
 
     const key = keyOf(request)
     let shared = inFlight.get(key)
@@ -159,7 +155,7 @@ export function dedupe(options: DedupeOptions = {}): HttpMiddleware {
       const entry: Shared = {
         controller,
         waiting: 0,
-        credentialsAtEntry: credentialsOf(request.headers),
+        identityAtEntry: requestIdentity(request),
         // The shared request runs on its OWN signal, so the leader aborting
         // does not cancel the joiners — see `awaitShared`.
         promise: next({ ...request, signal: controller.signal }),
@@ -181,16 +177,16 @@ export function dedupe(options: DedupeOptions = {}): HttpMiddleware {
     if (
       joined &&
       customKey === undefined &&
-      credentialsOf(response.request.headers) !== entry.credentialsAtEntry
+      (requestIdentity(response.request) !== entry.identityAtEntry || response.request.body != null)
     ) {
-      // Credentials were attached BELOW this middleware, after the key was
-      // computed — the leader's response belongs to the leader's user.
+      // Downstream middleware changed the effective request after keying.
+      // Its result cannot safely satisfy the joiner's original identity.
       if (process.env.NODE_ENV !== 'production' && !warnedOrder) {
         warnedOrder = true
         console.warn(
-          '[Pyreon] http: dedupe() runs before the middleware that attaches credentials ' +
-            '(bearer / forwardHeaders), so it cannot tell users apart and is not sharing ' +
-            'credentialed requests. Place dedupe() AFTER them in `use: [...]`.',
+          '[Pyreon] http: middleware after dedupe() changed request identity. ' +
+            'Place dedupe() AFTER middleware that sets headers, credentials, URL or body ' +
+            '(including bearer / forwardHeaders); this request will not be shared.',
         )
       }
       return next()
