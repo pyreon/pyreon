@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { sizedMapPlugin, transform } from './first-party-plugins'
-import { createCompiler, type ModuleScan } from '../index'
+import { createCompiler } from '../index'
+import type { ModuleScan } from '../plugin-api'
 
 const imports = `import { SizedMap as Cache } from '@pyreon/sized-map'
 import { Text } from '@pyreon/primitives'
