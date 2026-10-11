@@ -121,13 +121,7 @@ export function disambiguateValueTypeNames(result: ParseResult): void {
     ...result.moduleItems.flatMap((item) => itemBindings(item)?.reserved?.(item) ?? []),
   ])
   // The value side of the IR — everything but the type declarations.
-  const valueRoots: unknown[] = [
-    result.components,
-    result.helperFns,
-    result.styledComponents,
-    result.rocketstyleComponents,
-    result.attrsComponents,
-  ]
+  const valueRoots: unknown[] = [result.components, result.helperFns]
   const renames = new Map<string, string>()
   for (const name of clashes) {
     if (locallyBound(valueRoots, name)) {

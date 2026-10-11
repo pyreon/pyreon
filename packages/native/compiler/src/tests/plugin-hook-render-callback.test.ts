@@ -6,7 +6,7 @@ import { createCompiler, type CompilerPlugin } from '../index'
 // be hand-written, so a hook that moved into a plugin lost the diagnostic silently.
 const toy: CompilerPlugin = {
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   calls: { useToy: () => ({ type: 'toy' }) },
   decls: { toy: { swift: (d, ctx) => `let ${ctx.ident(d.name)} = Toy()`, kotlin: (d, ctx) => `val ${ctx.ident(d.name)} = Toy()` } },

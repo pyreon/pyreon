@@ -1,4 +1,4 @@
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
+import { NATIVE_COMPILER_PLUGIN_API_V2, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
 
 const isStringArray = (value: unknown): value is readonly string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim() !== '')
@@ -65,6 +65,8 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     scopes,
     stubs,
     calls,
+    intrinsicCalls,
+    constants,
     statementCalls,
     patternCalls,
     declCalls,
@@ -100,6 +102,26 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     requires,
     builtIn,
   } = plugin as Record<string, unknown>
+  if (
+    constants !== undefined &&
+    (typeof constants !== 'function' || !isStringArray(modules) || modules.length === 0)
+  ) {
+    throw new Error(`[Pyreon] Plugin "${name}" constants needs a function and nonempty modules.`)
+  }
+  if (intrinsicCalls !== undefined) {
+    if (
+      !intrinsicCalls ||
+      typeof intrinsicCalls !== 'object' ||
+      Array.isArray(intrinsicCalls) ||
+      Object.values(intrinsicCalls).some(
+        (operation) => operation !== 'signal' && operation !== 'computed',
+      )
+    ) {
+      throw new Error(
+        `[Pyreon] Plugin "${name}" intrinsicCalls must map names to "signal" or "computed".`,
+      )
+    }
+  }
   if (services !== undefined) {
     if (!services || typeof services !== 'object' || Array.isArray(services)) {
       throw new Error(`[Pyreon] Plugin "${name}" services must be an object keyed by hook name.`)
@@ -185,7 +207,17 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       }
       if (features?.root !== undefined) {
         const root = features.root as Record<string, unknown> | null
-        if (!root || typeof root !== 'object' || Array.isArray(root) || ['swift', 'kotlin'].some(target => root[target] !== undefined && typeof root[target] !== 'function')) throw new Error(`[Pyreon] Plugin "${name}" decl "${type}" root needs swift and/or kotlin wrapper functions.`)
+        if (
+          !root ||
+          typeof root !== 'object' ||
+          Array.isArray(root) ||
+          ['swift', 'kotlin'].some(
+            (target) => root[target] !== undefined && typeof root[target] !== 'function',
+          )
+        )
+          throw new Error(
+            `[Pyreon] Plugin "${name}" decl "${type}" root needs swift and/or kotlin wrapper functions.`,
+          )
       }
       const entry = emitter as { swift?: unknown; kotlin?: unknown; legacyKind?: unknown } | null
       if (
@@ -398,14 +430,20 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       throw new Error(`[Pyreon] Plugin "${name}" unlowered must be an object keyed by module.`)
     }
     for (const [module, spec] of Object.entries(unlowered)) {
-      const entry = spec as { advice?: unknown; supported?: unknown; dropped?: unknown } | null
+      const entry = spec as {
+        advice?: unknown
+        supported?: unknown
+        dropped?: unknown
+        unsupported?: unknown
+      } | null
       if (
         !entry ||
         typeof entry !== 'object' ||
         typeof entry.advice !== 'string' ||
         !entry.advice.trim() ||
         (entry.supported !== undefined && !isStringArray(entry.supported)) ||
-        (entry.dropped !== undefined && !isStringArray(entry.dropped))
+        (entry.dropped !== undefined && !isStringArray(entry.dropped)) ||
+        (entry.unsupported !== undefined && !isStringArray(entry.unsupported))
       ) {
         throw new Error(
           `[Pyreon] Plugin "${name}" unlowered "${module}" needs a nonempty advice string and, optionally, a supported array of strings.`,
@@ -455,23 +493,62 @@ export function assertPluginExtensions(name: string, plugin: object): void {
       throw new Error(`[Pyreon] Plugin "${name}" ${field} must be an object keyed by type.`)
     }
     for (const [type, emitter] of Object.entries(value)) {
-      const entry = emitter as { swift?: unknown; kotlin?: unknown; after?: unknown; legacyList?: unknown; receivers?: unknown; typing?: unknown } | null
-      if (!entry || typeof entry !== 'object' || typeof entry.swift !== 'function' || typeof entry.kotlin !== 'function') {
+      const entry = emitter as {
+        swift?: unknown
+        kotlin?: unknown
+        after?: unknown
+        legacyList?: unknown
+        receivers?: unknown
+        typing?: unknown
+        element?: unknown
+      } | null
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof entry.swift !== 'function' ||
+        typeof entry.kotlin !== 'function'
+      ) {
         throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} needs ${what}.`)
       }
-      if (field === 'items' && entry.after !== undefined && !['bindings', 'models', 'declarations', 'data'].includes(entry.after as string)) {
-        throw new Error(`[Pyreon] Plugin "${name}" items.${type}.after must name a supported module emission slot.`)
+      if (
+        field === 'items' &&
+        entry.after !== undefined &&
+        !['bindings', 'models', 'declarations', 'data'].includes(entry.after as string)
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" items.${type}.after must name a supported module emission slot.`,
+        )
       }
       // A lane the hash does not have would silently drop the item from `moduleTag`.
-      if (entry.legacyList !== undefined && entry.legacyList !== 'models' && entry.legacyList !== 'stores' && entry.legacyList !== 'fieldMetas' && entry.legacyList !== 'zodSchemas' && entry.legacyList !== 'features') {
-        throw new Error(`[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "models", "stores", "fieldMetas", "zodSchemas" or "features".`)
+      if (
+        entry.legacyList !== undefined &&
+        entry.legacyList !== 'models' &&
+        entry.legacyList !== 'stores' &&
+        entry.legacyList !== 'fieldMetas' &&
+        entry.legacyList !== 'zodSchemas' &&
+        entry.legacyList !== 'features' &&
+        entry.legacyList !== 'styledComponents' &&
+        entry.legacyList !== 'rocketstyleComponents' &&
+        entry.legacyList !== 'attrsComponents'
+      ) {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" ${field}.${type} legacyList must be "models", "stores", "fieldMetas", "zodSchemas", "features", "styledComponents", "rocketstyleComponents" or "attrsComponents".`,
+        )
+      }
+      if (field === 'items' && entry.element !== undefined && typeof entry.element !== 'function') {
+        throw new Error(
+          `[Pyreon] Plugin "${name}" items.${type}.element must be a synchronous function.`,
+        )
       }
       if (field === 'items' && entry.receivers !== undefined) {
         const itemReceivers = entry.receivers as { swift?: unknown; kotlin?: unknown } | null
         if (!itemReceivers || typeof itemReceivers !== 'object' || Array.isArray(itemReceivers) ||
           (itemReceivers.swift !== undefined && typeof itemReceivers.swift !== 'function') ||
-          (itemReceivers.kotlin !== undefined && typeof itemReceivers.kotlin !== 'function')) {
-          throw new Error(`[Pyreon] Plugin "${name}" items.${type}.receivers must be an object with swift/kotlin functions.`)
+          (itemReceivers.kotlin !== undefined && typeof itemReceivers.kotlin !== 'function')
+        ) {
+          throw new Error(
+            `[Pyreon] Plugin "${name}" items.${type}.receivers must be an object with swift/kotlin functions.`,
+          )
         }
       }
       if (field === 'items' && entry.typing !== undefined) {
@@ -479,8 +556,11 @@ export function assertPluginExtensions(name: string, plugin: object): void {
         if (!typing || typeof typing !== 'object' || Array.isArray(typing) ||
           (typing.fields !== undefined && typeof typing.fields !== 'function') ||
           (typing.scopes !== undefined && typeof typing.scopes !== 'function') ||
-          (typing.type !== undefined && typeof typing.type !== 'function')) {
-          throw new Error(`[Pyreon] Plugin "${name}" items.${type}.typing must be an object with fields/scopes/type functions.`)
+          (typing.type !== undefined && typeof typing.type !== 'function')
+        ) {
+          throw new Error(
+            `[Pyreon] Plugin "${name}" items.${type}.typing must be an object with fields/scopes/type functions.`,
+          )
         }
       }
     }
@@ -548,7 +628,7 @@ export function assertPluginExtensions(name: string, plugin: object): void {
  */
 export function assertPluginShape(value: unknown): asserts value is {
   readonly name: string
-  readonly apiVersion: typeof NATIVE_COMPILER_PLUGIN_API_VERSION
+  readonly apiVersion: typeof NATIVE_COMPILER_PLUGIN_API_V2
 } {
   if (!value || typeof value !== 'object') {
     throw new Error('[Pyreon] A native compiler plugin must be an object (the default export).')

@@ -13,12 +13,13 @@ Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile
+styled(Prim) factories lower through its package-owned native plugin with shared defineTheme token resolution; the CSS-in-JS runtime is web, the authored patterns compile
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
+- Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata
 - styled('div')`...` / styled(Component)`...` / styled.div`...` (Proxy) — component factory with `as` polymorphism + $-transient props
 - css`...` — lazy CSSResult, resolved on use (NOT a string)
 - keyframes`...` — returns the generated @keyframes animation-name string

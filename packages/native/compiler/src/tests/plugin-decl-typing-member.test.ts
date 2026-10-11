@@ -6,7 +6,7 @@ import { createCompiler, type CompilerPlugin } from '../index'
 // nullable union — which is what makes both emitters wrap its interpolation (`(g.level).map { … }`) instead of printing `Optional(…)`.
 const toy = (withMember: boolean): CompilerPlugin => ({
   name: '@acme/gizmo',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/gizmo'],
   calls: { useGizmo: () => ({ type: 'gizmo' }) },
   decls: {

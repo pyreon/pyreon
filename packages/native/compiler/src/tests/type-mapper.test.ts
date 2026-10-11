@@ -312,7 +312,7 @@ describe('type mapper — unknown / void / never degrade to Any', () => {
 // produces the right TypeIR for each TS shape, which the unit tests
 // above then map to the right per-target string.
 
-import { parsePyreon } from '../parse'
+import { parsePyreon } from './first-party-plugins'
 
 // Helper: parse a Pyreon snippet with a single signal declaration and
 // return the parsed TypeIR. Lets us exercise the type-annotation

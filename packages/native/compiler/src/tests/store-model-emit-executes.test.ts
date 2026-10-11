@@ -62,7 +62,7 @@ function extractDecl(code: string, declMatch: RegExp, attrPrefixes: string[] = [
 const STORE_SRC = `
 import { Text, Stack } from '@pyreon/primitives'
 import { defineStore } from '@pyreon/store'
-import { signal } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 const useCounter = defineStore('counter', () => {
   const count = signal(0)
   return { count }

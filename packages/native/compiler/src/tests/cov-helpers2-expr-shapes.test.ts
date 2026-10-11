@@ -21,7 +21,7 @@
 // claims.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const run = (src: string, target: 'swift' | 'kotlin' = 'swift') =>
   transform(src, { target })

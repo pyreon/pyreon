@@ -8,7 +8,7 @@
 // any divergence indicts the pre-pass integration, not the emitters.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const PLAIN = `'use plain'
 import { state, derived } from '@pyreon/core/plain'

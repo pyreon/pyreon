@@ -1,5 +1,4 @@
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   type CompilerPlugin,
   type EmitContext,
   type JsxElementIR,
@@ -16,7 +15,7 @@ function provider(el: JsxElementIR, ctx: EmitContext): string {
 /** Package-owned native providers; the client runtime entry never imports this module. */
 export const uiCorePlugin: CompilerPlugin = Object.freeze({
   name: '@pyreon/ui-core',
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/ui-core'],
   elements: [
     {

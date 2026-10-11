@@ -50,7 +50,7 @@ const box: DeclEmitter = {
 }
 const plugin: CompilerPlugin = {
   name: '@acme/box',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/box'],
   calls: { useBox: () => ({ type: 'box' }) },
   decls: { box, row: { swift: () => '', kotlin: () => '' } },

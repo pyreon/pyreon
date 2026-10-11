@@ -27,8 +27,8 @@
 // already fixed for signals, now applied to module bindings too.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
 import {
+  transform,
   transform as transformWithPlugins,
   validateKotlin as validateKotlinWithPlugins,
   validateSwiftWithStubs as validateWithPlugins,

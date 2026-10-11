@@ -31,6 +31,12 @@ export interface ModuleScan {
   readonly source: string
   /** The statically-known string an argument denotes — a literal, or a module-scope `const` holding one — else `null`. */
   staticString(node: AstNode | null | undefined): string | null
+  /** A named import owned by a constant provider, including unresolved vocabulary entries. */
+  constant(
+    node: AstNode,
+  ):
+    | { readonly module: string; readonly name: string; readonly value: string | undefined }
+    | undefined
   /** Plugin-owned memory for THIS file. Namespace the key with the plugin name; the core never reads it. */
   fileState<T>(key: string, init: () => T): T
   /** Make the core skip every top-level node for which `skip` is true (a declaration that is metadata only). */
@@ -55,7 +61,10 @@ export interface JsxRewriteContext {
    * Requested once per `key` however many elements ask, and applied when the component is finished (a request made
    * while parsing something that turns out not to be a component is applied to the next one, as it always was).
    */
-  requestComponentDecls(key: string, decls: { readonly head?: readonly DeclIR[]; readonly tail?: readonly DeclIR[] }): void
+  requestComponentDecls(
+    key: string,
+    decls: { readonly head?: readonly DeclIR[]; readonly tail?: readonly DeclIR[] },
+  ): void
 }
 
 /**
@@ -63,7 +72,10 @@ export interface JsxRewriteContext {
  * file (`const Box = kinetic('div').preset('fade')`), which no import guard can claim. Returns the element that replaces
  * it, or `undefined` to leave it. Called for every element once a plugin registers one, so the first check must be cheap.
  */
-export type JsxElementRewrite = (el: JsxElementIR, ctx: JsxRewriteContext) => JsxElementIR | undefined
+export type JsxElementRewrite = (
+  el: JsxElementIR,
+  ctx: JsxRewriteContext,
+) => JsxElementIR | undefined
 
 /** A call of a plugin-known binding, lowered to a concrete request. */
 export interface ResolvedRequest {
@@ -90,11 +102,18 @@ export interface RequestSource {
   /** True when `name` is a binding this source resolves. */
   has(name: string, ctx: ParseContext): boolean
   /** The request for a call of `name` with `arg` as its first argument, or `null` after reporting why it stays web. */
-  resolve(name: string, arg: AstNode | undefined, options: RequestOptions, ctx: ParseContext): ResolvedRequest | null
+  resolve(
+    name: string,
+    arg: AstNode | undefined,
+    options: RequestOptions,
+    ctx: ParseContext,
+  ): ResolvedRequest | null
 }
 
 type ScanPlugin = {
   readonly name: string
+  readonly modules?: readonly string[] | undefined
+  readonly constants?: ((name: string) => string | undefined) | undefined
   readonly scanModule?: ModuleScanner | undefined
   readonly rewriteElement?: JsxElementRewrite | undefined
   readonly requestSources?: readonly RequestSource[] | undefined
@@ -103,9 +122,13 @@ type ScanPlugin = {
 }
 
 export interface ScanRegistry {
+  readonly constants: ReadonlyMap<string, (name: string) => string | undefined>
   readonly scanners: readonly { readonly owner: string; readonly scan: ModuleScanner }[]
   /** Element rewrites in plugin order. */
-  readonly elementRewriters: readonly { readonly owner: string; readonly rewrite: JsxElementRewrite }[]
+  readonly elementRewriters: readonly {
+    readonly owner: string
+    readonly rewrite: JsxElementRewrite
+  }[]
   readonly sources: readonly { readonly owner: string; readonly source: RequestSource }[]
   /** Hooks whose result may be destructured (`const { data } = useQuery(…)`). */
   readonly destructureCalls: ReadonlySet<string>
@@ -115,17 +138,39 @@ export interface ScanRegistry {
 
 /** Build the registry from every plugin's scan-side hooks, in plugin order. */
 export function createScanRegistry(plugins: readonly ScanPlugin[]): ScanRegistry {
+  const constants = new Map<string, (name: string) => string | undefined>()
   const scanners: { owner: string; scan: ModuleScanner }[] = []
   const elementRewriters: { owner: string; rewrite: JsxElementRewrite }[] = []
   const sources: { owner: string; source: RequestSource }[] = []
   const destructureCalls = new Set<string>()
   const componentOnlyCalls = new Set<string>()
   for (const plugin of plugins) {
-    if (plugin.scanModule !== undefined) scanners.push({ owner: plugin.name, scan: plugin.scanModule })
-    if (plugin.rewriteElement !== undefined) elementRewriters.push({ owner: plugin.name, rewrite: plugin.rewriteElement })
+    if (plugin.constants !== undefined)
+      for (const module of plugin.modules ?? []) {
+        if (constants.has(module))
+          throw new Error(`[Pyreon] imported constants for "${module}" have more than one owner.`)
+        const resolve = plugin.constants
+        constants.set(module, (name) => {
+          const value = resolve(name)
+          if (value !== undefined && typeof value !== 'string')
+            throw new Error(`[Pyreon] Plugin "${plugin.name}" constant "${name}" must resolve to a string or undefined.`)
+          return value
+        })
+      }
+    if (plugin.scanModule !== undefined)
+      scanners.push({ owner: plugin.name, scan: plugin.scanModule })
+    if (plugin.rewriteElement !== undefined)
+      elementRewriters.push({ owner: plugin.name, rewrite: plugin.rewriteElement })
     for (const source of plugin.requestSources ?? []) sources.push({ owner: plugin.name, source })
     for (const name of plugin.destructureCalls ?? []) destructureCalls.add(name)
     for (const name of plugin.componentOnlyCalls ?? []) componentOnlyCalls.add(name)
   }
-  return Object.freeze({ scanners: Object.freeze(scanners), elementRewriters: Object.freeze(elementRewriters), sources: Object.freeze(sources), destructureCalls, componentOnlyCalls })
+  return Object.freeze({
+    constants,
+    scanners: Object.freeze(scanners),
+    elementRewriters: Object.freeze(elementRewriters),
+    sources: Object.freeze(sources),
+    destructureCalls,
+    componentOnlyCalls,
+  })
 }

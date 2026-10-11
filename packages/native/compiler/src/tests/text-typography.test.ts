@@ -7,8 +7,13 @@
 // connector. Works for a rocketstyle/styled Text AND an inline `<Text style>`.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform } from './first-party-plugins'
+import {
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftTypecheck,
+} from '../validate'
 
 const TITLE = `import { Text } from '@pyreon/primitives'
 const theme = defineTheme({ color: { heading: '#111827' } })
@@ -57,12 +62,18 @@ export function App() { return (<Text style={{ fontSize: 18, backgroundColor: '#
 })
 
 describe('Text typography — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the typographic Text typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(transform(TITLE, { target: 'swift' }).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the typographic Text compiles (real kotlinc)', () => {
-    const res = validateKotlin(transform(TITLE, { target: 'kotlin' }).code)
-    expect(res.ok, res.error).toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the typographic Text typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(transform(TITLE, { target: 'swift' }).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the typographic Text compiles (real kotlinc)',
+    () => {
+      const res = validateKotlin(transform(TITLE, { target: 'kotlin' }).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
 })

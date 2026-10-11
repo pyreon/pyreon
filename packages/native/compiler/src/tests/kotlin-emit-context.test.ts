@@ -1,3 +1,4 @@
+import reactivityPlugin from '../../../../core/reactivity/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin } from '../index'
 import type { EmitContext } from '../emit-context'
@@ -9,7 +10,7 @@ import type { JsxElementIR } from '../types'
 // any single member fails exactly one spec here. `swift-emit-context.test.ts` is the Swift twin.
 const lowering = (emit: (el: JsxElementIR, ctx: EmitContext) => string): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { kotlin: emit } }],
   // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
   scopes: [
@@ -18,7 +19,7 @@ const lowering = (emit: (el: JsxElementIR, ctx: EmitContext) => string): Compile
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
-  createCompiler({ plugins: [plugin] }).transform(
+  createCompiler({ plugins: [reactivityPlugin, plugin] }).transform(
     `import { Toy } from '@acme/toy'
 import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'

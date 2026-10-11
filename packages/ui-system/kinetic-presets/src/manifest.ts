@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       'preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend',
     nativeFrontend:
-      "the presets that name motion both targets know — fade / fadeUp / fadeDown / fadeLeft / fadeRight / slideUp / slideDown / slideLeft / slideRight / scaleIn / scale — resolve through `kinetic(tag).preset(name)` to the same <Transition> path the primitive uses. The other 112 (backIn* / blur* / bounce* / flip* / rotate* / zoom*, and the diagonal and *Big magnitude variants) have no native analogue and decline BY NAME rather than animating something else",
+      'the presets that name motion both targets know — fade / fadeUp / fadeDown / fadeLeft / fadeRight / slideUp / slideDown / slideLeft / slideRight / scaleIn / scale — resolve through `kinetic(tag).preset(name)` to the same <Transition> path the primitive uses. The other 112 (backIn* / blur* / bounce* / flip* / rotate* / zoom*, and the diagonal and *Big magnitude variants) have no native analogue and decline BY NAME rather than animating something else',
   },
   longExample: `import { kinetic } from '@pyreon/kinetic'
 import {
@@ -48,6 +48,7 @@ const myPreset: Preset = {
   leaveTransition: 'all 250ms ease-in',
 }`,
   features: [
+    'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     '122 presets — fades, slides, scales, zooms, flips, rotations, bounce/spring, blur, clip-path, perspective, tilt, swing, and more',
     'Every preset is a named export AND a `presets` map entry (dynamic selection by name)',
     '5 factories: createFade / createSlide / createScale / createRotate / createBlur (direction, distance, duration, easing)',
@@ -79,7 +80,7 @@ const Dynamic = kinetic('div').preset(presets[userChoice])    // 'fadeUp' | 'sca
       kind: 'function',
       signature: '(options?: FadeOptions) => Preset',
       summary:
-        'Factory for fade presets. With no `direction` it is a pure opacity fade (0 → 1); with a `direction` it adds movement — the element enters traveling in that direction (`\'up\'` starts `translateY(distance)` below and moves to 0). Options: `direction?: \'up\' | \'down\' | \'left\' | \'right\'`, `distance?: number` (px, default 16), plus the timing options every factory shares: `duration?: number` (ms, default 300), `leaveDuration?: number` (default 200), `easing?: string` (default \'ease-out\'), `leaveEasing?: string` (default \'ease-in\').',
+        "Factory for fade presets. With no `direction` it is a pure opacity fade (0 → 1); with a `direction` it adds movement — the element enters traveling in that direction (`'up'` starts `translateY(distance)` below and moves to 0). Options: `direction?: 'up' | 'down' | 'left' | 'right'`, `distance?: number` (px, default 16), plus the timing options every factory shares: `duration?: number` (ms, default 300), `leaveDuration?: number` (default 200), `easing?: string` (default 'ease-out'), `leaveEasing?: string` (default 'ease-in').",
       params: [
         {
           name: 'options',
@@ -89,7 +90,10 @@ const Dynamic = kinetic('div').preset(presets[userChoice])    // 'fadeUp' | 'sca
           optional: true,
         },
       ],
-      returns: { type: 'Preset', description: 'A style-form preset — pass to `kinetic(...).preset(...)`.' },
+      returns: {
+        type: 'Preset',
+        description: 'A style-form preset — pass to `kinetic(...).preset(...)`.',
+      },
       example: `createFade()                                    // pure opacity fade
 createFade({ direction: 'up', distance: 24 })   // fade with movement
 createFade({ duration: 500, easing: 'ease-in-out' })`,
@@ -100,7 +104,7 @@ createFade({ duration: 500, easing: 'ease-in-out' })`,
       kind: 'function',
       signature: '(options?: SlideOptions) => Preset',
       summary:
-        'Factory for slide presets — same shape as `createFade` but `direction` defaults to `\'up\'` (always includes movement). The generated preset fades opacity alongside the translate. Options: `direction?` (default \'up\'), `distance?` (px, default 16), plus the shared `duration` / `leaveDuration` / `easing` / `leaveEasing`.',
+        "Factory for slide presets — same shape as `createFade` but `direction` defaults to `'up'` (always includes movement). The generated preset fades opacity alongside the translate. Options: `direction?` (default 'up'), `distance?` (px, default 16), plus the shared `duration` / `leaveDuration` / `easing` / `leaveEasing`.",
       params: [
         {
           name: 'options',
@@ -177,9 +181,7 @@ createBlur({ amount: 8, scale: 0.95 })  // blur + scale`,
       signature: '(...items: Preset[]) => Preset',
       summary:
         'Merge multiple presets into one. Style objects (`enterStyle` / `enterToStyle` / `leaveStyle` / `leaveToStyle`) are shallow-merged — a later preset wins per CSS property. Transition strings (`enterTransition` / `leaveTransition`) are LAST-preset-wins (replaced, not comma-joined). Class fields (`enter` / `enterFrom` / ... ) are concatenated with a space. Style-form and class-form fields merge independently, so composing an inline preset with a class preset yields both surfaces.',
-      params: [
-        { name: 'items', type: 'Preset[]', description: 'Presets merged left to right.' },
-      ],
+      params: [{ name: 'items', type: 'Preset[]', description: 'Presets merged left to right.' }],
       returns: { type: 'Preset', description: 'A new merged preset; inputs are not mutated.' },
       example: `const fancy = compose(fade, scaleIn, blurIn)
 // enterStyle:      { opacity: 0, transform: 'scale(0.9)', filter: 'blur(8px)' }
@@ -245,7 +247,7 @@ createBlur({ amount: 8, scale: 0.95 })  // blur + scale`,
       kind: 'function',
       signature: '(preset: Preset, enterDelayMs: number, leaveDelayMs?: number) => Preset',
       summary:
-        'Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition string, following the CSS shorthand order `property duration delay easing` (`all 300ms ease-out` → `all 300ms 150ms ease-out`). `leaveDelayMs` defaults to `enterDelayMs`; pass `0` for no leave delay. Useful for hand-rolled staggering when you are not using kinetic\'s stagger mode.',
+        "Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition string, following the CSS shorthand order `property duration delay easing` (`all 300ms ease-out` → `all 300ms 150ms ease-out`). `leaveDelayMs` defaults to `enterDelayMs`; pass `0` for no leave delay. Useful for hand-rolled staggering when you are not using kinetic's stagger mode.",
       params: [
         { name: 'preset', type: 'Preset', description: 'Source preset (not mutated).' },
         { name: 'enterDelayMs', type: 'number', description: 'Enter delay in ms.' },
@@ -256,7 +258,10 @@ createBlur({ amount: 8, scale: 0.95 })  // blur + scale`,
           optional: true,
         },
       ],
-      returns: { type: 'Preset', description: 'A new preset with delay inserted into the transition strings.' },
+      returns: {
+        type: 'Preset',
+        description: 'A new preset with delay inserted into the transition strings.',
+      },
       example: `const delayed = withDelay(fadeUp, 150, 0)
 // enterTransition: 'all 300ms 150ms ease-out'
 // leaveTransition: 'all 200ms 0ms ease-in'`,
@@ -269,7 +274,10 @@ createBlur({ amount: 8, scale: 0.95 })  // blur + scale`,
       summary:
         'Swap the enter and leave phases of a preset — ALL fields are swapped, style-form (`enterStyle` ↔ `leaveStyle`, `enterToStyle` ↔ `leaveToStyle`, `enterTransition` ↔ `leaveTransition`) and class-form (`enter` ↔ `leave`, `enterFrom` ↔ `leaveFrom`, `enterTo` ↔ `leaveTo`) alike. A preset that entered from below now enters from where it used to leave to.',
       params: [{ name: 'preset', type: 'Preset', description: 'Source preset (not mutated).' }],
-      returns: { type: 'Preset', description: 'A new preset with enter and leave phases exchanged.' },
+      returns: {
+        type: 'Preset',
+        description: 'A new preset with enter and leave phases exchanged.',
+      },
       example: `const flipped = reverse(fadeUp)
 // enterStyle:   { opacity: 1, transform: 'translateY(0)' }     (was leaveStyle)
 // enterToStyle: { opacity: 0, transform: 'translateY(16px)' }  (was leaveToStyle)`,
@@ -284,7 +292,7 @@ createBlur({ amount: 8, scale: 0.95 })  // blur + scale`,
       signature:
         'type Preset = { enterStyle?: CSSProperties; enterToStyle?: CSSProperties; enterTransition?: string; leaveStyle?: CSSProperties; leaveToStyle?: CSSProperties; leaveTransition?: string; enter?: string; enterFrom?: string; enterTo?: string; leave?: string; leaveFrom?: string; leaveTo?: string }',
       summary:
-        'A preset is a plain object with up to 12 optional fields: six style-form (`enterStyle` / `enterToStyle` : `CSSProperties`, `enterTransition` : `string`, + leave siblings) and six class-form strings (`enter` / `enterFrom` / `enterTo` + leave siblings, Tailwind-friendly). Structurally identical to `@pyreon/kinetic`\'s own `Preset` type, so hand-written objects and factory results interoperate. Supporting option types are also exported: `Direction`, `FadeOptions`, `SlideOptions`, `ScaleOptions`, `RotateOptions`, `BlurOptions`, `CSSProperties`.',
+        "A preset is a plain object with up to 12 optional fields: six style-form (`enterStyle` / `enterToStyle` : `CSSProperties`, `enterTransition` : `string`, + leave siblings) and six class-form strings (`enter` / `enterFrom` / `enterTo` + leave siblings, Tailwind-friendly). Structurally identical to `@pyreon/kinetic`'s own `Preset` type, so hand-written objects and factory results interoperate. Supporting option types are also exported: `Direction`, `FadeOptions`, `SlideOptions`, `ScaleOptions`, `RotateOptions`, `BlurOptions`, `CSSProperties`.",
       example: `import type { Preset } from '@pyreon/kinetic-presets'
 
 const twPreset: Preset = {
@@ -311,7 +319,7 @@ const twPreset: Preset = {
     },
     {
       label: 'Framework-agnostic',
-      note: 'Zero dependencies and no Pyreon coupling — presets are plain objects; any runtime that accepts the same field shape can consume them. Pairs with `@pyreon/kinetic`\'s `.preset(...)`.',
+      note: "Zero dependencies and no Pyreon coupling — presets are plain objects; any runtime that accepts the same field shape can consume them. Pairs with `@pyreon/kinetic`'s `.preset(...)`.",
     },
   ],
 })

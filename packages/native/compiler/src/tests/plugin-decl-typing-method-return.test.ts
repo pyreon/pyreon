@@ -7,7 +7,7 @@ import { createCompiler, type CompilerPlugin } from '../index'
 // either target.
 const toy = (withReturn: boolean): CompilerPlugin => ({
   name: '@acme/vault',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/vault'],
   calls: { useVault: () => ({ type: 'vault' }) },
   decls: {

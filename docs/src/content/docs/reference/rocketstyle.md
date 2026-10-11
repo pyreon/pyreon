@@ -13,12 +13,13 @@ Multi-dimensional style composition for Pyreon components — the styling engine
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) via rocketstyle-native
+rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) through its package-owned native plugin
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
+- Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata
 - Chainable immutable builder — every method returns a NEW component, bases fork cleanly into variants
 - Five built-in dimensions: states/sizes/variants (single-value), multiple (multi-value), modifiers (multi + transform)
 - Custom dimensions at factory init — each key becomes a chain method + a typed consumer prop

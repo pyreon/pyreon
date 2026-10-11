@@ -7,8 +7,7 @@
 // stay `Any` (the safe degrade).
 
 import { describe, expect, it } from 'vitest'
-import { parsePyreon } from '../parse'
-import { transform } from '../index'
+import { transform, parsePyreon } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
 
 const wrap = (decls: string): string =>

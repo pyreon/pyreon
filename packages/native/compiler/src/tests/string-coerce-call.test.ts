@@ -5,7 +5,7 @@
 // on the Kotlin backend; Swift is unchanged.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const SRC = (expr: string) =>
   `import { signal } from '@pyreon/reactivity'

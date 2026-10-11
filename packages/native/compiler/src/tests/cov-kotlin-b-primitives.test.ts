@@ -9,7 +9,7 @@
 // otherwise; an UNKNOWN token must resolve to the documented default rather
 // than emit an unresolved Compose symbol.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 

@@ -9,7 +9,7 @@
 // (3) that a JSX-valued attribute no emitter reads is NAMED, never dropped.
 
 import { describe, expect, it, vi } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 vi.setConfig({ testTimeout: 90_000 })

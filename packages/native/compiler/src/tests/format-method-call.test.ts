@@ -9,7 +9,7 @@
 // dynamic counts fall through.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const N = (expr: string) =>
   `import { signal, computed } from '@pyreon/reactivity'

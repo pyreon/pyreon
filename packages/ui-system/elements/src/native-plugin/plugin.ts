@@ -21,7 +21,6 @@
 // ============================================================================
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   unconsumedSlotWarning,
   type AttrIR,
   type CompilerPlugin,
@@ -104,7 +103,7 @@ export const elementsLowering: ElementLowering = Object.freeze({
 /** The `@pyreon/elements` native plugin — discovered from the package manifest when a source imports it. */
 export const elementsPlugin: CompilerPlugin = Object.freeze({
   name: elementsLowering.module,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   elements: Object.freeze([elementsLowering]),
   unlowered: Object.freeze({
     // Measured every export: only `Element` lowers (to Stack). Text, List, Overlay and Portal all failed both

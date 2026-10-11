@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { parseTheme } from '../parse-theme'
-import { parseRocketstyle } from '../parse-rocketstyle'
+import { parseRocketstyle } from '../../../../ui-system/rocketstyle/src/native-plugin/parse-rocketstyle'
 
 describe('parse-theme skips a computed top-level key', () => {
   it('does not read the variable name as the token name', () => {

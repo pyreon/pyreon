@@ -18,7 +18,7 @@ const { code: kotlinSource } = transform(pyreonSource, {
 
 `transform(source, options)` returns `{ code: string, warnings: string[] }`. `options.target` is `'swift' | 'kotlin'`; `options.filename` (optional) improves parse-error diagnostics; `options.fonts` (optional, `Record<canonicalName, iOSPostScriptName>`) resolves `<Text font="Brand">` to `.font(.custom(…))` on iOS.
 
-## Compiler plugins (experimental API v1)
+## Compiler plugins (experimental API v2)
 
 The shared frontend parses once. A compiler instance then runs every plugin's
 `transformIR`, computes the module namespace, runs `prepareIR` (the built-in
@@ -31,7 +31,7 @@ import { createCompiler, type CompilerPlugin } from '@pyreon/native-compiler'
 
 export const releaseBadge = {
   name: 'release-badge',
-  apiVersion: 1,
+  apiVersion: 2,
   transformIR(module) {
     for (const component of module.components) {
       const expr = component.returnExpr
@@ -83,16 +83,20 @@ registry grows across calls. Existing emitter internals still contain scoped
 state: callbacks run outside emission, and this API does not promise concurrent
 or recursive emission through the legacy backends.
 
-The plugin protocol and IR are experimental. Match
-`NATIVE_COMPILER_PLUGIN_API_VERSION` (currently `1`); incompatible protocol/IR
-changes require an API version bump. Test extensions by compiling both target
+The plugin protocol and IR are experimental. Pin `apiVersion: 2` in each plugin
+descriptor (or import the immutable `NATIVE_COMPILER_PLUGIN_API_V2`). Incompatible
+protocol/IR changes require a new version; additive optional hooks do not.
+`NATIVE_COMPILER_PLUGIN_API_VERSION` is deprecated and permanently remains `1`,
+so an old plugin importing that runtime constant cannot silently claim API 2.
+API 1 plugins fail at load time with the required and supported versions. Update
+the compiler and first-party package plugins together to the next minor release.
+Third-party plugins must review the IR migration below before opting into API 2. Test extensions by compiling both target
 outputs with the real validators below. The CLI's `--plugin` accepts local ESM
 modules with a default plugin export; CLI target selection remains iOS/Android.
 
-### Services, modules, requires (additive; API version stays 1)
+### Services, modules, requires
 
-Nine optional fields were added without a version bump, because additive
-fields never break an older plugin:
+These optional fields extend the plugin protocol:
 
 - `services` — plain service hooks the plugin lowers, keyed by hook name. Each
   value is a `ServiceSpec` (a `ServiceDescriptor` without its `hook`: a `swift`
@@ -243,12 +247,22 @@ Pure TypeScript — `bun run test` runs the compiler's own suite (parse/emit fix
 
 A plugin shipped by a library imports from `@pyreon/native-compiler/plugin-api` and nothing
 else in this package: the IR types, the `EmitContext` / `ParseContext` facades and the plugin
-protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`,
+protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_V2`, `forEachExpr`,
 `substituteIdentifier`, and the pure spelling helpers `swiftStr` / `kotlinStr` / `swiftIdent` /
 `kotlinIdent`. Declare the compiler as an optional peer + a dev dependency, point
 `package.json` → `pyreon.native.plugin` at the built entry (default export = the plugin) and
 list the import specifiers that activate it in `pyreon.native.modules`. `@pyreon/charts` is
 the reference (`packages/fundamentals/charts/src/native-plugin/`).
+
+### State vocabulary, constants and factory components
+
+`intrinsicCalls` maps package exports onto generic `signal` or `computed` operations. Import aliases and foreign bindings follow the ordinary hook ownership rules; state IR, inference and target emission remain compiler operations. The reactivity plugin supplies its package's mapping.
+
+`constants(exportedName)` returns a compile-time string for named imports from the plugin's `modules`, or `undefined` for an unsupported export. Providers are registered before scanners run. A consuming plugin reads `scan.constant(node)` to get `{ module, name, value }` independently of plugin order. Kinetic consumes the separate kinetic-presets package's motion vocabulary through this seam.
+
+A factory component is a `topLevel` module item whose emitter supplies `element(item, element, context)`. The compiler looks up the visible item binding; the hook returns ordinary JSX/style IR, or `undefined` to keep normal rendering. `ModuleParseContext.binding(name)` distinguishes local bindings and named/default import aliases, and `theme` supplies static token resolution. Attrs, styler and rocketstyle own their factory syntax and definition payloads this way; the compiler retains generic style and theme rendering. New plugins omit `legacyList`, which exists only to keep earlier generated hashes stable.
+
+Programmatic callers load each owner explicitly. The former `ParseResult.styledComponents`, `rocketstyleComponents` and `attrsComponents` arrays have been replaced by `moduleItems`; runtime barrels remain separate from the optional tooling entry.
 
 ### Statement and pattern calls
 

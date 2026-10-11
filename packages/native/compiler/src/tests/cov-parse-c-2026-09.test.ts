@@ -14,12 +14,11 @@
 // must not, and asserts the emitted code, the parsed IR, or the named warning.
 
 import { describe, expect, it } from 'vitest'
-import { firstPartyCompiler, transform } from './first-party-plugins'
+import { firstPartyCompiler, transform, parsePyreon } from './first-party-plugins'
 import type {
   FlowStatePayload,
   FlowStateDecl,
 } from '../../../../fundamentals/flow/src/native-plugin/types'
-import { parsePyreon } from '../parse'
 import type { DeclIR } from '../types'
 
 const swift = (src: string) => transform(src, { target: 'swift' })

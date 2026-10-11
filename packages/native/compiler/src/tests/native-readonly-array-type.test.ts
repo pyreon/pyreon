@@ -7,7 +7,7 @@
 // of ordinary code (`as const` palettes, `readonly` props) that was silently
 // out of the subset.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const mutable = `import { signal } from '@pyreon/reactivity'
 import { Text } from '@pyreon/primitives'

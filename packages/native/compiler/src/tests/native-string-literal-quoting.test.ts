@@ -24,7 +24,7 @@
 // silently wrong on the other.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { kotlinStr, swiftStr } from '../string-literals'
 import {
   isKotlincAvailable,

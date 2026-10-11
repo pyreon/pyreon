@@ -40,6 +40,8 @@ import {
   pluginLifecycleLines,
   tailLifecycleDecls,
   serviceFor,
+  isPluginElement,
+  rewritePluginElement,
 } from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
 import { renderKotlinService, type ServiceDescriptor } from './services'
@@ -110,8 +112,6 @@ import { lowerMathCall, lowerMathConstant } from './math-lowering'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
-import { resolveRocketstyleUseSite } from './rocketstyle-native'
-import type { AttrsComponentIR } from './attrs-native'
 import {
   createKotlinEmitContext,
   type ComponentInfo,
@@ -188,8 +188,6 @@ import type {
   AttrIR,
   ChildIR,
   ComponentIR,
-  RocketstyleComponentIR,
-  StyledComponentIR,
   DeclIR,
   EnumIR,
   ExprIR,
@@ -287,10 +285,7 @@ let _componentNames: Set<string> = new Set()
 let _jsxFnNames: Set<string> = new Set()
 // `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
 // + the captured style injected as a synthetic `style` attr (see emitKotlinJsx).
-let _styledComponents: Map<string, StyledComponentIR> = new Map()
 // `rocketstyle()({component})…` components — resolved per use-site (see emitKotlinJsx).
-let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
-let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
 // Alias-tag local name → its import package. The Element/PyreonUI/Container/
 // Row/Col hooks intercept a tag ONLY when it resolves from its expected
 // @pyreon package, so a same-named user component isn't mis-lowered.
@@ -307,13 +302,7 @@ let _aliasImports: Map<string, { source: string; imported: string }> = new Map()
  * this only SUPPRESSES a tag imported from another package.
  */
 function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = tag): boolean {
-  if (
-    _componentNames.has(tag) ||
-    _styledComponents.has(tag) ||
-    _rocketstyleComponents.has(tag) ||
-    _attrsComponents.has(tag)
-  )
-    return false
+  if (_componentNames.has(tag) || isPluginElement(tag, _pluginScope)) return false
   const src = _aliasImports.get(tag)
   return src === undefined || (src.source === expectedPkg && src.imported === expectedImport)
 }
@@ -715,9 +704,6 @@ export function emitKotlin(
   // the map is accepted for signature symmetry but unused here.
   _fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
-  styledComponents: StyledComponentIR[] = [],
-  rocketstyleComponents: RocketstyleComponentIR[] = [],
-  attrsComponents: AttrsComponentIR[] = [],
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
@@ -731,9 +717,6 @@ export function emitKotlin(
   // tested, which is why no wrong emit has been observed — but relying on
   // that is relying on an accident.
   _serviceBindingsKotlin = new Map()
-  _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
-  _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
-  _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
   _aliasImports = aliasImports
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
@@ -923,9 +906,6 @@ export function emitKotlin(
   _moduleViewHelpersKotlin = new Map()
   _viewHelpersKotlin = new Map()
   _jsxFnNames = new Set()
-  _styledComponents = new Map()
-  _rocketstyleComponents = new Map()
-  _attrsComponents = new Map()
   _aliasImports = new Map()
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
@@ -5001,62 +4981,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     }
   }
 
-  // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
-  // synthetic `style` attr, then re-enter the dispatch; the inline-style
-  // connector (emitKotlinLayoutModifier → styleToNativeModifiers) lowers it
-  // unchanged. Mirror of the Swift dispatcher's styled hook.
-  const styled = _styledComponents.get(tag)
-  if (styled !== undefined) {
-    return emitKotlinJsx(
-      {
-        ...e,
-        tag: styled.tag,
-        attrs: [{ kind: 'attr', name: 'style', value: styled.styleObject }, ...e.attrs],
-      },
-      indent,
-    )
-  }
-
-  // rocketstyle(…) — resolve state/size/variant → merge base ∪ dims → strip the
-  // consumed dim attrs → rewrite to `<Prim style={merged}>`. Mirror of Swift.
-  const rkt = _rocketstyleComponents.get(tag)
-  if (rkt !== undefined) {
-    const dimNames = Object.keys(rkt.dims)
-    const merged = resolveRocketstyleUseSite(
-      rkt,
-      (d) => {
-        const v = readStaticAttrKotlin(e, d)
-        return typeof v === 'string' ? v : undefined
-      },
-      (d) => {
-        const a = e.attrs.find(
-          (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === d,
-        )
-        return a?.value
-      },
-      (msg) => _emitWarnings.push(msg),
-    )
-    const rest = e.attrs.filter((a) => !(a.kind === 'attr' && dimNames.includes(a.name)))
-    return emitKotlinJsx(
-      { ...e, tag: rkt.tag, attrs: [{ kind: 'attr', name: 'style', value: merged }, ...rest] },
-      indent,
-    )
-  }
-
-  // attrs({component: Prim}).attrs({…}) — rewrite to `<Prim …use-site …defaults>`
-  // (use-site wins), then re-enter dispatch. Swift-dispatcher parity.
-  const attrsComp = _attrsComponents.get(tag)
-  if (attrsComp !== undefined) {
-    const useSite = new Set(
-      e.attrs
-        .filter((a) => a.kind === 'attr')
-        .map((a) => (a as Extract<AttrIR, { kind: 'attr' }>).name),
-    )
-    const defaults = attrsComp.defaultAttrs
-      .filter((d) => !useSite.has(d.name))
-      .map((d) => ({ kind: 'attr' as const, name: d.name, value: d.value }))
-    return emitKotlinJsx({ ...e, tag: attrsComp.tag, attrs: [...e.attrs, ...defaults] }, indent)
-  }
+  const rewritten = rewritePluginElement(e, _pluginScope, () => kotlinEmitContext(indent))
+  if (rewritten !== undefined) return emitKotlinJsx(rewritten, indent)
 
   warnUnreadKotlinAttrs(e)
 
@@ -5820,12 +5746,7 @@ function pushEmitWarning(w: string): void {
 
 /** A tag the user (or a styled/rocketstyle/attrs factory) defined — its view-typed props lower as slot parameters. */
 function isUserComponentTagKotlin(tag: string): boolean {
-  return (
-    _componentNames.has(tag) ||
-    _styledComponents.has(tag) ||
-    _rocketstyleComponents.has(tag) ||
-    _attrsComponents.has(tag)
-  )
+  return _componentNames.has(tag) || isPluginElement(tag, _pluginScope)
 }
 
 function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

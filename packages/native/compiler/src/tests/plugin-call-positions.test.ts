@@ -19,7 +19,7 @@ const tick: DeclEmitter = {
 }
 const toy: CompilerPlugin = {
   name: '@acme/position',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/position'],
   statementCalls: {
     useTick: (_call, ctx) => {
@@ -93,7 +93,7 @@ describe.each(['swift', 'kotlin'] as const)('plugin call positions on %s', (targ
 it('rejects competing owners across positions and malformed recognizers', () => {
   expect(() =>
     createCompiler({
-      plugins: [toy, { name: 'other', apiVersion: 1, calls: { useTick: () => null }, decls: {} }],
+      plugins: [toy, { name: 'other', apiVersion: 2, calls: { useTick: () => null }, decls: {} }],
     }),
   ).toThrow('claimed by both')
   for (const position of ['statementCalls', 'patternCalls'])
@@ -102,7 +102,7 @@ it('rejects competing owners across positions and malformed recognizers', () => 
         plugins: [
           {
             name: 'invalid',
-            apiVersion: 1,
+            apiVersion: 2,
             [position]: { useBad: 1 },
             decls: {},
           } as unknown as CompilerPlugin,
@@ -116,7 +116,7 @@ it('pass inference sees module helpers, component fields and callback-local over
     plugins: [
       {
         name: 'inference',
-        apiVersion: 1,
+        apiVersion: 2,
         transformIR: (module, ctx) => {
           const component = module.components.find((c) => c.name === 'App')!
           for (const expression of [
@@ -141,7 +141,7 @@ it('pass inference sees module helpers, component fields and callback-local over
     ],
   })
   compiler.transform(
-    `import { signal } from '@pyreon/reactivity'; function step(x: number) { return x + 0.25 } export function App() { const local = signal('x'); return <Text>{local()}</Text> }`,
+    `function step(x: number) { return x + 0.25 } export function App() { const local = signal('x'); return <Text>{local()}</Text> }`,
     { target: 'swift' },
   )
   expect(seen).toEqual([{ kind: 'number', float: true }, { kind: 'string' }, { kind: 'boolean' }])
@@ -153,7 +153,7 @@ it.each(['swift', 'kotlin'] as const)(
       plugins: [
         {
           name: '@acme/typed',
-          apiVersion: 1,
+          apiVersion: 2,
           modules: ['@acme/typed'],
           calls: {
             useTyped: (_call, ctx) => ({
@@ -217,7 +217,7 @@ it.each(['swift', 'kotlin'] as const)(
       plugins: [
         {
           name: '@acme/order',
-          apiVersion: 1,
+          apiVersion: 2,
           modules: ['@acme/order'],
           statementCalls: {
             useLate: () => ({ type: 'late' }),
@@ -260,7 +260,7 @@ it('Kotlin type spelling can explicitly avoid synthesizing anonymous classes', (
     plugins: [
       {
         name: '@acme/opaque',
-        apiVersion: 1,
+        apiVersion: 2,
         modules: ['@acme/opaque'],
         calls: { useOpaque: () => ({ type: 'opaque' }) },
         decls: {
@@ -298,7 +298,7 @@ it.each(['swift', 'kotlin'] as const)(
       plugins: [
         {
           name: '@acme/wrapper',
-          apiVersion: 1,
+          apiVersion: 2,
           modules: ['@acme/wrapper'],
           calls: { useWrapper: () => ({ type: 'wrapper' }) },
           decls: {
@@ -328,8 +328,8 @@ it('root wrapper groups remain distinct when owner and type names contain colons
   const groups: number[] = []
   const emitter: DeclEmitter = { lifecycleOnly: true, swift: () => '', kotlin: () => '', root: { kotlin: (decls, ctx, next) => { groups.push(decls.length); return next(ctx.indent) } } }
   const compiler = createCompiler({ plugins: [
-    { name: 'p:a', apiVersion: 1, modules: ['@acme/first'], calls: { useFirst: () => ({ type: 'b' }) }, decls: { b: emitter } },
-    { name: 'p', apiVersion: 1, modules: ['@acme/second'], calls: { useSecond: () => ({ type: 'a:b' }) }, decls: { 'a:b': emitter } },
+    { name: 'p:a', apiVersion: 2, modules: ['@acme/first'], calls: { useFirst: () => ({ type: 'b' }) }, decls: { b: emitter } },
+    { name: 'p', apiVersion: 2, modules: ['@acme/second'], calls: { useSecond: () => ({ type: 'a:b' }) }, decls: { 'a:b': emitter } },
   ] })
   compiler.transform(`import { useFirst } from '@acme/first'; import { useSecond } from '@acme/second'; export function App() { const a = useFirst(); const b = useSecond(); return <Text>groups</Text> }`, { target: 'kotlin' })
   expect(groups).toEqual([1, 1])
@@ -337,7 +337,7 @@ it('root wrapper groups remain distinct when owner and type names contain colons
 
 it('rejects asynchronous or missing root text before native source is joined', () => {
   for (const root of [() => undefined, async () => 'text']) {
-    const compiler = createCompiler({ plugins: [{ name: '@acme/async-root', apiVersion: 1, modules: ['@acme/async-root'], calls: { useRoot: () => ({ type: 'root' }) }, decls: { root: { swift: () => '', kotlin: () => '', root: { kotlin: root as never } } } }] })
+    const compiler = createCompiler({ plugins: [{ name: '@acme/async-root', apiVersion: 2, modules: ['@acme/async-root'], calls: { useRoot: () => ({ type: 'root' }) }, decls: { root: { swift: () => '', kotlin: () => '', root: { kotlin: root as never } } } }] })
     expect(() => compiler.transform(`import { useRoot } from '@acme/async-root'; export function App() { const r = useRoot(); return <Text>root</Text> }`, { target: 'kotlin' })).toThrow('must return a string synchronously')
   }
 })

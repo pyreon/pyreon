@@ -18,10 +18,14 @@
 // (base swap) / `.statics` / `.compose` are walked-through / dropped — v1.
 // ============================================================================
 
-import { isCanonicalPrimitive } from './canonical-primitives'
-import { isStyleBasePrimitive } from './registry-lookup'
-import { resolveThemeToken, type ThemeTable } from './theme-native'
-import type { AttrsComponentIR, ExprIR } from './types'
+import {
+  isCanonicalPrimitive,
+  isStyleBasePrimitive,
+  resolveThemeToken,
+  type ThemeTable,
+  type ExprIR,
+} from '@pyreon/native-compiler/plugin-api'
+import type { AttrsComponentIR } from './types'
 
 export type { AttrsComponentIR }
 
@@ -103,6 +107,7 @@ export function parseAttrsDefn(
   init: AnyNode | undefined,
   warnings: string[],
   theme: ThemeTable,
+  factory = 'attrs',
 ): AttrsComponentIR | null {
   // Walk the chain bottom-up, collecting `.attrs({ … })` objects (chain order).
   const attrObjs: AnyNode[] = []
@@ -110,7 +115,7 @@ export function parseAttrsDefn(
   let head: AnyNode | undefined
   while (cur && cur.type === 'CallExpression') {
     const callee = unwrap(cur.callee)
-    if (callee?.type === 'Identifier' && callee.name === 'attrs') {
+    if (callee?.type === 'Identifier' && callee.name === factory) {
       head = cur // `attrs({ name, component })` — the base config
       break
     }
@@ -155,7 +160,11 @@ export function parseAttrsDefn(
       const v = unwrap(p.value)
       if (v?.type === 'Literal' && (typeof v.value === 'string' || typeof v.value === 'number')) {
         merged.set(key, { kind: 'literal', value: v.value })
-      } else if (v?.type === 'UnaryExpression' && v.operator === '-' && v.argument?.type === 'Literal') {
+      } else if (
+        v?.type === 'UnaryExpression' &&
+        v.operator === '-' &&
+        v.argument?.type === 'Literal'
+      ) {
         merged.set(key, { kind: 'literal', value: -Number(v.argument.value) })
       } else {
         const tok = resolveThemeToken(v, theme)

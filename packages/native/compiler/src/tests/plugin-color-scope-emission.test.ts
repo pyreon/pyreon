@@ -30,7 +30,7 @@ describe.each(['swift', 'kotlin'] as const)('custom provider scope on %s', (targ
     }
     return {
       name: '@acme/scope',
-      apiVersion: 1,
+      apiVersion: 2,
       modules: ['@acme/scope'],
       scopes: [
         {

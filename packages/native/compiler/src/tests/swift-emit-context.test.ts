@@ -1,3 +1,4 @@
+import reactivityPlugin from '../../../../core/reactivity/src/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { createCompiler, type CompilerPlugin } from '../index'
 import type { SwiftEmitContext } from '../emit-context'
@@ -8,7 +9,7 @@ import type { JsxElementIR } from '../types'
 // `@pyreon/charts`) and a regression in any single member fails exactly one spec here.
 const lowering = (emit: (el: JsxElementIR, ctx: SwiftEmitContext) => string): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   elements: [{ module: '@acme/toy', tags: ['Toy'], emit: { swift: emit } }],
   // The scope itself belongs to a plugin: the core opens it around `<Mode>`'s children, the toy supplies the value.
   scopes: [
@@ -17,7 +18,7 @@ const lowering = (emit: (el: JsxElementIR, ctx: SwiftEmitContext) => string): Co
 })
 
 const compile = (plugin: CompilerPlugin, body: string, head = '', inside = '') =>
-  createCompiler({ plugins: [plugin] }).transform(
+  createCompiler({ plugins: [reactivityPlugin, plugin] }).transform(
     `import { Toy } from '@acme/toy'
 import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
@@ -148,7 +149,7 @@ describe('SwiftEmitContext members', () => {
       ctx.hostState.declare(`@State private var toy_${id}: Int = 0`)
       return 'EmptyView()'
     })
-    const compiler = createCompiler({ plugins: [plugin] })
+    const compiler = createCompiler({ plugins: [reactivityPlugin, plugin] })
     const src = `import { Toy } from '@acme/toy'
 import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'

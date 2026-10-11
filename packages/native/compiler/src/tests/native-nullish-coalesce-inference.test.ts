@@ -25,7 +25,7 @@
 // `str ?? str` regression control (non-optional left) stays green throughout.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,

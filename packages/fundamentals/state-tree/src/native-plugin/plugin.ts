@@ -1,4 +1,4 @@
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, type AstNode, type CompilerPlugin, type ExtPayload, type ModuleItemEmitter, type ModuleParseContext } from '@pyreon/native-compiler/plugin-api'
+import { type AstNode, type CompilerPlugin, type ExtPayload, type ModuleItemEmitter, type ModuleParseContext } from '@pyreon/native-compiler/plugin-api'
 import { recognizeModel } from './recognize'
 import { emitKotlinModel, emitSwiftModel } from './emit'
 import { modelReceivers } from './receivers'
@@ -13,7 +13,7 @@ const modelItem: ModuleItemEmitter = {
   swift: emitSwiftModel, kotlin: emitKotlinModel,
 }
 export const stateTreePlugin: CompilerPlugin = Object.freeze({
-  name: '@pyreon/state-tree', apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  name: '@pyreon/state-tree', apiVersion: 2,
   modules: Object.freeze(['@pyreon/state-tree']),
   topLevel(node: AstNode, ctx: ModuleParseContext) {
     const model = recognizeModel(node, ctx)

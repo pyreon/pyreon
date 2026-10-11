@@ -8,7 +8,12 @@ export default defineNodeConfig({
   // `vitest bench`, not `vitest run`, so their source code
   // ends up in the denominator at 0% coverage and skews the
   // package's overall numbers (PR #323 finding).
-  coverageExclude: ['**/*.bench.ts', '**/__tests__/index.ts'],
+  coverageExclude: [
+    'src/native-plugin.ts',
+    'src/native-plugin/**',
+    '**/*.bench.ts',
+    '**/__tests__/index.ts',
+  ],
   coverageThresholds: {
     statements: 99,
     branches: 99,

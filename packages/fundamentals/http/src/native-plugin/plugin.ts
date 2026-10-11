@@ -1,4 +1,4 @@
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
+import { type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 import { httpRequestSource, scanHttp } from './endpoint'
 import { HTTP_PLUGIN_NAME } from './names'
 
@@ -16,7 +16,7 @@ export { HTTP_PLUGIN_NAME }
  */
 export const httpPlugin: CompilerPlugin = {
   name: HTTP_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/http'],
   scanModule: scanHttp,
   requestSources: [httpRequestSource],

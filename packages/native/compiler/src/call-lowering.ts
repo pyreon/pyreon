@@ -401,6 +401,14 @@ export interface RegisteredCall {
 /** One compiler instance's call recognizers and declaration emitters. */
 export interface CallRegistry {
   /** Hook name → recognizer + owner. */
+  readonly intrinsicCalls: ReadonlyMap<
+    string,
+    {
+      readonly operation: 'signal' | 'computed'
+      readonly owner: string
+      readonly modules?: readonly string[] | undefined
+    }
+  >
   readonly calls: ReadonlyMap<string, RegisteredCall>
   readonly statementCalls: ReadonlyMap<string, RegisteredCall>
   readonly patternCalls: ReadonlyMap<string, RegisteredCall>
@@ -421,6 +429,7 @@ export interface CallRegistry {
 type CallPlugin = {
   readonly name: string
   readonly modules?: readonly string[] | undefined
+  readonly intrinsicCalls?: Readonly<Record<string, 'signal' | 'computed'>> | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly statementCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   readonly patternCalls?: Readonly<Record<string, CallRecognizer>> | undefined
@@ -441,6 +450,10 @@ type CallPlugin = {
  * createCallRegistry([{ name: '@acme/toy', calls: { createToy: () => ({ type: 'toy' }) }, decls: { toy } }])
  */
 export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry {
+  const intrinsicCalls = new Map<
+    string,
+    { operation: 'signal' | 'computed'; owner: string; modules?: readonly string[] | undefined }
+  >()
   const calls = new Map<string, RegisteredCall>()
   const statementCalls = new Map<string, RegisteredCall>()
   const patternCalls = new Map<string, RegisteredCall>()
@@ -450,6 +463,19 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   const declCalls: { owner: string; recognize: DeclCallRecognizer }[] = []
   const tier2Calls = new Map<string, string>()
   for (const plugin of plugins) {
+    for (const [name, operation] of Object.entries(plugin.intrinsicCalls ?? {})) {
+      const existing = owners.get(name)
+      if (existing !== undefined)
+        throw new Error(
+          `[Pyreon] intrinsic call "${name}" is claimed by both "${existing}" and "${plugin.name}".`,
+        )
+      owners.set(name, plugin.name)
+      intrinsicCalls.set(name, {
+        operation,
+        owner: plugin.name,
+        ...(plugin.modules !== undefined ? { modules: plugin.modules } : {}),
+      })
+    }
     if (plugin.declCalls !== undefined)
       declCalls.push({ owner: plugin.name, recognize: plugin.declCalls })
     for (const callee of plugin.tier2Calls ?? [])
@@ -473,6 +499,9 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
             `[Pyreon] call "${hook}" is claimed by both "${existing}" and "${plugin.name}". A call has exactly one owner — remove one of the two plugins from this app.`,
           )
         }
+        if (intrinsicCalls.has(hook)) {
+          throw new Error(`[Pyreon] Plugin "${plugin.name}" cannot claim "${hook}" as both an intrinsic and a declaration call.`)
+        }
         owners.set(hook, plugin.name)
         registry.set(hook, {
           recognizer,
@@ -487,6 +516,7 @@ export function createCallRegistry(plugins: readonly CallPlugin[]): CallRegistry
   }
   return Object.freeze<CallRegistry>({
     calls,
+    intrinsicCalls,
     statementCalls,
     patternCalls,
     names: new Set(owners.keys()),

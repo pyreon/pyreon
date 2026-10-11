@@ -2,7 +2,7 @@ import { testNativePlugin } from '../testing'
 
 const noisy = {
   name: 'noisy',
-  apiVersion: 1 as const,
+  apiVersion: 2 as const,
   prepareIR(_module: unknown, context: { warn(message: string): void }) {
     context.warn('careful')
   },
@@ -11,7 +11,7 @@ const SOURCE = 'export function A() { return <Text>hi</Text> }'
 
 describe('testNativePlugin', () => {
   it.each(['swift', 'kotlin'] as const)('compiles a snippet for %s', (target) => {
-    const { code, warnings } = testNativePlugin({ name: 'quiet', apiVersion: 1 }, SOURCE, { target })
+    const { code, warnings } = testNativePlugin({ name: 'quiet', apiVersion: 2 }, SOURCE, { target })
     expect(code).toContain('hi')
     expect(warnings).toEqual([])
   })

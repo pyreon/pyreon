@@ -141,13 +141,14 @@ export async function pluginsReport(appDir: string, verify: boolean): Promise<Co
     const callNames = [
       ...Object.keys(found.plugin.calls ?? {}),
       ...Object.keys(found.plugin.statementCalls ?? {}),
+      ...Object.keys(found.plugin.intrinsicCalls ?? {}),
       ...Object.keys(found.plugin.patternCalls ?? {}),
     ]
     const memberNames = Object.keys(found.plugin.memberCalls ?? {})
     const unloweredNames = Object.keys(found.plugin.unlowered ?? {})
     const runtimeTypeNames = found.plugin.runtimeTypes ?? []
     lines.push(
-      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}${memberNames.length > 0 ? `  memberCalls: ${memberNames.join(', ')}` : ''}${unloweredNames.length > 0 ? `  unlowered: ${unloweredNames.join(', ')}` : ''}${runtimeTypeNames.length > 0 ? `  runtimeTypes: ${runtimeTypeNames.join(', ')}` : ''}${found.plugin.refineParse !== undefined ? '  refineParse' : ''}${found.plugin.refineStructs !== undefined ? '  refineStructs' : ''}${found.plugin.finishModule !== undefined ? '  finishModule' : ''}`,
+      `  ${found.plugin.name}  ${found.package}${found.version ? `@${found.version}` : ''}  services: ${services.length > 0 ? services.join(', ') : '-'}${found.plugin.elements?.length ? `  elements: ${found.plugin.elements.flatMap((e) => e.tags).join(', ')}` : ''}${callNames.length > 0 ? `  calls: ${callNames.join(', ')}` : ''}${memberNames.length > 0 ? `  memberCalls: ${memberNames.join(', ')}` : ''}${unloweredNames.length > 0 ? `  unlowered: ${unloweredNames.join(', ')}` : ''}${runtimeTypeNames.length > 0 ? `  runtimeTypes: ${runtimeTypeNames.join(', ')}` : ''}${found.plugin.refineParse !== undefined ? '  refineParse' : ''}${found.plugin.refineStructs !== undefined ? '  refineStructs' : ''}${found.plugin.finishModule !== undefined ? '  finishModule' : ''}${found.plugin.constants !== undefined ? '  constants' : ''}`,
     )
   }
   const undeclared = listPluginPackages(appDir).length - discovered.length

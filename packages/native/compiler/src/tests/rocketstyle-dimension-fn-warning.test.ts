@@ -18,7 +18,7 @@
 // the emit, rather than by a bug report.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const app = (dimension: string) => `import { rocketstyle } from '@pyreon/rocketstyle'
 import { Stack, Text } from '@pyreon/primitives'

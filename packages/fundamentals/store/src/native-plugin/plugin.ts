@@ -1,4 +1,4 @@
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CompilerPlugin, type ExtPayload, type ModuleItemEmitter, type ModuleScanner, type AstNode, type ModuleParseContext } from '@pyreon/native-compiler/plugin-api'
+import { type CompilerPlugin, type ExtPayload, type ModuleItemEmitter, type ModuleScanner, type AstNode, type ModuleParseContext } from '@pyreon/native-compiler/plugin-api'
 import { recognizeStore } from './recognize'
 import { emitKotlinStore, emitSwiftStore } from './emit'
 import { storeReceivers } from './receivers'
@@ -45,7 +45,7 @@ const storeItem: ModuleItemEmitter = {
   kotlin: emitKotlinStore,
 }
 export const storePlugin: CompilerPlugin = Object.freeze({
-  name: '@pyreon/store', apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  name: '@pyreon/store', apiVersion: 2,
   modules: Object.freeze(['@pyreon/store']), scanModule,
   topLevel(node: AstNode, ctx: ModuleParseContext) {
     const store = recognizeStore(node, ctx)

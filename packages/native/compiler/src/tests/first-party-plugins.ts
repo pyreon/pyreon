@@ -9,6 +9,7 @@
 // The emit is verified HERE, not in those packages, because this package owns the toolchain
 // lanes — the warm Kotlin compiler daemon, the 180s spec timeout, the real-SDK swiftc job.
 import { createCompiler } from '../compiler'
+import { parsePyreon as parseWithRegistries } from '../parse'
 import type { ServiceDescriptor } from '../services'
 import type { EmitOptions, TransformResult } from '../types'
 import * as validate from '../validate'
@@ -95,6 +96,10 @@ export {
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
+
+/** Parse package fixtures against the same explicit ownership registry. */
+export const parsePyreon: typeof parseWithRegistries = (source, filename, options) =>
+  parseWithRegistries(source, filename, { registries: firstPartyCompiler.registries, ...options })
 
 /** `transform` with the first-party plugins active. */
 export function transform(source: string, options: EmitOptions): TransformResult {

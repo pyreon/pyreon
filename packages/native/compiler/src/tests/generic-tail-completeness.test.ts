@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 /** Required props per primitive, so nothing falls through to generic emit. */
 const REQUIRED: Record<string, string> = {

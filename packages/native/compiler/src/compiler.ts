@@ -33,9 +33,6 @@ const MODULE_ARRAYS = [
   'moduleDecls',
   'moduleItems',
   'helperFns',
-  'styledComponents',
-  'rocketstyleComponents',
-  'attrsComponents',
   'warnings',
 ] as const
 
@@ -87,7 +84,7 @@ function invoke<T>(owner: string, phase: string, callback: () => T): T {
  * Custom callbacks receive isolated IR, including runtime-owned chart metadata.
  * @example
  * const compiler = createCompiler({ plugins: [{
- *   name: 'diagnostics', apiVersion: 1,
+ *   name: 'diagnostics', apiVersion: 2,
  *   transformIR(module, context) {
  *     if (!module.components.length) context.warn('No components found')
  *   },
@@ -182,6 +179,8 @@ export function createCompiler<Target extends string = never>(
       scopes: plugin.scopes,
       stubs: plugin.stubs,
       calls: plugin.calls,
+      intrinsicCalls: plugin.intrinsicCalls,
+      constants: plugin.constants,
       statementCalls: plugin.statementCalls,
       patternCalls: plugin.patternCalls,
       declCalls: plugin.declCalls,
@@ -264,7 +263,11 @@ export function createCompiler<Target extends string = never>(
           locals?: ReadonlyMap<string, TypeIR>,
         ) {
           const helpers = new Map(passModule.helperFns.map((fn) => [fn.name, fn.returnType]))
-          const constants = buildModuleConstTypes(passModule.moduleDecls, passModule.structs, helpers)
+          const constants = buildModuleConstTypes(
+            passModule.moduleDecls,
+            passModule.structs,
+            helpers,
+          )
           const inference = buildInferenceCtx(
             component?.decls ?? [],
             passModule.structs,

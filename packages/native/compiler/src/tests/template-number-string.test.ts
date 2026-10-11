@@ -3,7 +3,7 @@
 // built from arithmetic read `Total: 7.0` on iOS/Android and `Total: 7` on the
 // web. Double interpolands now go through the runtime's `pyreonNumberString`.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const src = `import { signal } from '@pyreon/reactivity'

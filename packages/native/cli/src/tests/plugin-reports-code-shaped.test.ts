@@ -14,7 +14,7 @@ export function App() { const toy = createToy('hello'); return <Text>{toy.label}
 
 const toyPlugin = (over: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: '@acme/toy',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/toy'],
   calls: {
     createToy: (_call, ctx) => {
@@ -78,7 +78,7 @@ describe('pluginsReport — a discovered code-shaped plugin', () => {
     writeFileSync(
       join(dir, 'native', 'plugin.mjs'),
       `export default {
-        name: '@acme/toy', apiVersion: 1, modules: ['@acme/toy'],
+        name: '@acme/toy', apiVersion: 2, modules: ['@acme/toy'],
         services: { useToy: { swift: 'ToyService()', kotlin: ['val {id} = remember { ToyService() }'] } },
         calls: { createToy: () => undefined },
         decls: { toy: { swift: () => '', kotlin: () => [] } },

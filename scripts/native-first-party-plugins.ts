@@ -1,3 +1,8 @@
+import kineticPresetsPlugin from '../packages/ui-system/kinetic-presets/src/native-plugin'
+import reactivityPlugin from '../packages/core/reactivity/src/native-plugin'
+import { rocketstylePlugin } from '../packages/ui-system/rocketstyle/src/native-plugin/plugin'
+import { stylerPlugin } from '../packages/ui-system/styler/src/native-plugin/plugin'
+import { attrsPlugin } from '../packages/ui-system/attrs/src/native-plugin/plugin'
 import { uiCorePlugin } from '../packages/ui-system/ui-core/src/native-plugin/plugin'
 /**
  * The first-party native-compiler plugins a repo script needs, the way the CLI
@@ -68,6 +73,11 @@ import primitivesPlugin from '../packages/core/primitives/src/native-plugin'
 import hotkeysPlugin from '../packages/fundamentals/hotkeys/src/native-plugin'
 
 export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
+  kineticPresetsPlugin,
+  reactivityPlugin,
+  rocketstylePlugin,
+  stylerPlugin,
+  attrsPlugin,
   formPlugin,
   stateTreePlugin,
   storePlugin,

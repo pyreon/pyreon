@@ -13,7 +13,7 @@
  * protocol version plus a handful of pure functions.
  */
 
-export { NATIVE_COMPILER_PLUGIN_API_VERSION } from './plugin'
+export { NATIVE_COMPILER_PLUGIN_API_V2, NATIVE_COMPILER_PLUGIN_API_VERSION } from './plugin'
 export type {
   CompilerBackend,
   CompilerContext,
@@ -146,3 +146,8 @@ export { isNumericLiteralOrNegation, substituteIdentifier } from './expr-utils'
 export { kotlinIdent, kotlinMember, localBase, swiftIdent } from './identifier-safety'
 export { KOTLIN_INT, swiftCodingKeysLines } from './spelling'
 export { kotlinStr, swiftStr } from './string-literals'
+
+export { isCanonicalPrimitive } from './canonical-primitives'
+export { isStyleBasePrimitive } from './registry-lookup'
+export { DEFAULT_THEME, resolveThemeToken, type ThemeTable } from './theme-native'
+export type { StyleIR, StyleProperty, StyleValue } from './emit-style'

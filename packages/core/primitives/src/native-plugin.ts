@@ -25,7 +25,7 @@ export const recognizeNativeModule: CallRecognizer = (_call, ctx) => {
 }
 export const primitivesPlugin: CompilerPlugin = {
   name: '@pyreon/primitives',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@pyreon/primitives'],
   calls: { useNativeModule: recognizeNativeModule },
   decls: {

@@ -45,9 +45,15 @@ const GlobalStyle = createGlobalStyle`
 Creates a styled Pyreon component from an HTML tag, another component, or a styled component.
 
 ```ts
-const Box = styled('div')`display: flex;`
-const StyledLink = styled(Link)`color: blue;`
-const Wider = styled(Box)`padding: 24px;`         // wrap an existing styled
+const Box = styled('div')`
+  display: flex;
+`
+const StyledLink = styled(Link)`
+  color: blue;
+`
+const Wider = styled(Box)`
+  padding: 24px;
+` // wrap an existing styled
 ```
 
 #### Dynamic interpolations
@@ -103,10 +109,12 @@ const Card = styled('div')`
 // Conditional fragments
 const Box = styled('div')`
   display: flex;
-  ${(props) => props.$bordered && css`
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-  `};
+  ${(props) =>
+    props.$bordered &&
+    css`
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+    `};
 `
 ```
 
@@ -140,13 +148,13 @@ const GlobalStyle = createGlobalStyle`
 ```tsx
 import { ThemeProvider, useTheme, useThemeAccessor } from '@pyreon/styler'
 
-<ThemeProvider theme={{ colors: { primary: '#0d6efd' } }}>
+;<ThemeProvider theme={{ colors: { primary: '#0d6efd' } }}>
   <App />
 </ThemeProvider>
 
 // Inside a component:
-const theme = useTheme()                  // snapshot at call time
-const themeFn = useThemeAccessor()        // () => Theme — track inside effects/computeds
+const theme = useTheme() // snapshot at call time
+const themeFn = useThemeAccessor() // () => Theme — track inside effects/computeds
 effect(() => console.log(themeFn().colors))
 ```
 
@@ -207,7 +215,7 @@ const sheet = createSheet({ layer: 'components' })
 — `@layer x{…}` (named, anonymous, nested, and nested inside
 `@media`/`@supports`/`@container`) unwraps to its inner rules so the content
 still lands. This is a least-bad fallback, **not** an emulation: flattened
-rules become *unlayered* (in a real `@layer` engine unlayered beats layered,
+rules become _unlayered_ (in a real `@layer` engine unlayered beats layered,
 so they can now win specificity ties they were authored to lose), and
 `@layer a, b;` ordering statements are meaningless once flattened — they are
 dropped with a dev warning; rules fall back to plain source order. On
@@ -222,9 +230,17 @@ Read-only hook for retrieving the resolved class name of a `CSSResult` — usefu
 
 ```ts
 import {
-  resolve, resolveValue, normalizeCSS, clearNormCache,
-  hash, hashUpdate, hashFinalize, HASH_INIT,
-  buildProps, filterProps, isDynamic,
+  resolve,
+  resolveValue,
+  normalizeCSS,
+  clearNormCache,
+  hash,
+  hashUpdate,
+  hashFinalize,
+  HASH_INIT,
+  buildProps,
+  filterProps,
+  isDynamic,
 } from '@pyreon/styler'
 ```
 
@@ -253,9 +269,15 @@ Native CSS nesting is forwarded unchanged — `&:hover`, `&::before`, nested sel
 ```ts
 const Card = styled('div')`
   padding: 16px;
-  &:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-  & > h2 { margin: 0 0 8px; }
-  @media (min-width: 768px) { padding: 24px; }
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  & > h2 {
+    margin: 0 0 8px;
+  }
+  @media (min-width: 768px) {
+    padding: 24px;
+  }
 `
 ```
 
@@ -280,7 +302,7 @@ CI, `NODE_ENV=production`, correctness-gated. Reproduce:
 | Operation                                     | **@pyreon/styler** |  @emotion/css |        goober | styled-components\* |
 | --------------------------------------------- | -----------------: | ------------: | ------------: | ------------------: |
 | Cold insert (100 unique rules / fresh sheet)  |         **~390 K** | ~185 K (2.1×) | ~164 K (2.4×) |                   — |
-| Warm dedup (repeat identical CSS — cache hit) |         **~35 M**  | ~4.9 M (7.1×) | ~6.9 M (5.1×) |                   — |
+| Warm dedup (repeat identical CSS — cache hit) |          **~35 M** | ~4.9 M (7.1×) | ~6.9 M (5.1×) |                   — |
 | Dynamic resolve (fn/prop interpolation)       |         **~1.9 M** | ~360 K (5.3×) | ~890 K (2.2×) |                   — |
 | SSR collect (100 rules → `<style>` string)    |         **~4.1 K** | ~1.8 K (2.3×) | ~1.6 K (2.5×) |       ~2.6 K (1.6×) |
 
@@ -317,3 +339,9 @@ Full docs: [pyreon.dev/docs/styler](https://pyreon.dev/docs/styler) (or `docs/sr
 ## License
 
 MIT
+
+## Native compiler plugin
+
+This package owns its native compilation frontend at `@pyreon/styler/native-plugin`. The native CLI discovers that tooling entry through `pyreon.native.plugin` when the application imports the package. Web runtime imports do not load compiler tooling, and the compiler is an optional peer.
+
+For programmatic compilation, pass the entry's default export to `createCompiler({ plugins: [plugin] })`. Load the owning plugins for every package the source uses. The compiler supplies generic state, JSX, theme tokens and native style operations; this package supplies its import vocabulary and recognition rules.

@@ -13,7 +13,7 @@ import { FORM_PLUGIN, FORM_TYPE, ARRAY_TYPE, VALUES_TYPE, ROW_TYPE } from './typ
 
 export const formPlugin: CompilerPlugin = Object.freeze({
   name: FORM_PLUGIN,
-  apiVersion: 1,
+  apiVersion: 2,
   modules: [FORM_PLUGIN],
   stubs: formStubs,
   destructureCalls: ['useForm'],

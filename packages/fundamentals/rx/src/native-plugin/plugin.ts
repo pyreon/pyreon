@@ -10,7 +10,6 @@
 // immediately-applied closure that loses its parameter type and fails to compile on both targets).
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   type CompilerPlugin,
   type DeclCallRecognizer,
   type ExprEmitter,
@@ -298,7 +297,7 @@ const rxExpr: ExprEmitter = {
 /** The `@pyreon/rx` native plugin — discovered from the package manifest when a source imports it. */
 export const rxPlugin: CompilerPlugin = Object.freeze({
   name: RX_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([RX_PLUGIN_NAME]),
   scanModule: scanRx,
   declCalls: recognizeRx,

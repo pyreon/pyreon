@@ -32,7 +32,7 @@
 //     emit specs fail. The 1-arg / non-Array controls stay green throughout.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,

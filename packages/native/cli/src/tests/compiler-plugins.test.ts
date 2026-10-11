@@ -19,7 +19,7 @@ import { main, mainWithPlugins } from '../cli'
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '../../bin/pyreon-native.js')
 const APP = 'export function Example() { return <ReleaseBadge /> }'
 const PLUGIN = `export default {
-  name: 'release-badge', apiVersion: 1,
+  name: 'release-badge', apiVersion: 2,
   transformIR(module) {
     for (const component of module.components) {
       if (component.returnExpr.kind === 'jsx-element' && component.returnExpr.tag === 'ReleaseBadge') {
@@ -53,7 +53,7 @@ describe('published compiler plugin CLI', () => {
     const second = join(root, 'second.mjs')
     writeFileSync(
       second,
-      `export default {name:'second',apiVersion:1,prepareIR(module,context){context.warn('second plugin')}}`,
+      `export default {name:'second',apiVersion: 2,prepareIR(module,context){context.warn('second plugin')}}`,
     )
     const out = join(root, 'out')
     const result = run(
@@ -96,7 +96,7 @@ describe('published compiler plugin CLI', () => {
     const warning = join(root, 'warning.mjs')
     writeFileSync(
       warning,
-      `export default {name:'warning',apiVersion:1,transformIR(module,context){context.warn('plugin check')}}`,
+      `export default {name:'warning',apiVersion: 2,transformIR(module,context){context.warn('plugin check')}}`,
     )
     const result = run(
       'check',
@@ -130,9 +130,9 @@ describe('published compiler plugin CLI', () => {
   })
   it.each([
     ['export const plugin = {}', /nonempty name/],
-    ["export default {name:'version',apiVersion:2}", /supports API 1/],
+    ["export default {name:'version',apiVersion: 3}", /supports API 2/],
     [
-      "export default {name:'throws',apiVersion:1,transformIR(){throw Error('pass failure')}}",
+      "export default {name:'throws',apiVersion: 2,transformIR(){throw Error('pass failure')}}",
       /pass failure/,
     ],
   ])('reports unusable plugin modules without successful outputs %#', (code, message) => {
@@ -155,7 +155,7 @@ describe('published compiler plugin CLI', () => {
     const warning = join(root, 'lsp.mjs')
     writeFileSync(
       warning,
-      `export default {name:'editor',apiVersion:1,transformIR(module,context){context.warn('editor plugin')}}`,
+      `export default {name:'editor',apiVersion: 2,transformIR(module,context){context.warn('editor plugin')}}`,
     )
     const message = {
       jsonrpc: '2.0',
@@ -194,7 +194,7 @@ describe('published compiler plugin CLI', () => {
     expect(await mainWithPlugins(['check', `--source=${source}`, `--plugin=${path}`])).toBe(0)
     expect(await mainWithPlugins(['check', `--source=${source}`])).toBe(0)
     expect(await mainWithPlugins(['--help'])).toBe(0)
-    writeFileSync(join(root, 'bad.mjs'), `export default {name:'bad',apiVersion:2}`)
+    writeFileSync(join(root, 'bad.mjs'), `export default {name:'bad',apiVersion: 3}`)
     expect(
       await mainWithPlugins(['check', `--source=${source}`, `--plugin=${join(root, 'bad.mjs')}`]),
     ).toBe(2)
@@ -211,7 +211,7 @@ describe('configured build/check/watch/editor pipeline', () => {
   it('shares compiler diagnostics across the programmatic entry points', async () => {
     const extension: CompilerPlugin<never> = {
       name: 'shared',
-      apiVersion: 1,
+      apiVersion: 2,
       transformIR(_module, context) {
         context.warn('configured')
       },

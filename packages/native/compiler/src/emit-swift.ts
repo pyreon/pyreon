@@ -49,6 +49,8 @@ import {
   pluginNeedsStableHost,
   serviceFor,
   serviceLifecycle,
+  isPluginElement,
+  rewritePluginElement,
 } from './registry-lookup'
 import { createPluginScope, type PluginScope } from './plugin-scope'
 import type { ServiceDescriptor } from './services'
@@ -128,8 +130,6 @@ import { lowerMathCall, lowerMathConstant } from './math-lowering'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
-import { resolveRocketstyleUseSite } from './rocketstyle-native'
-import type { AttrsComponentIR } from './attrs-native'
 import {
   createSwiftEmitContext,
   type ComponentInfo,
@@ -208,8 +208,6 @@ import type {
   AttrIR,
   ChildIR,
   ComponentIR,
-  RocketstyleComponentIR,
-  StyledComponentIR,
   DeclIR,
   EnumIR,
   ExprIR,
@@ -290,11 +288,8 @@ let _componentNames: Set<string> = new Set()
 let _jsxFnNames: Set<string> = new Set()
 // `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
 // + the captured style injected as a synthetic `style` attr (see emitSwiftJsx).
-let _styledComponents: Map<string, StyledComponentIR> = new Map()
 // `rocketstyle()({component})…` components — resolved per use-site (state/size/
 // variant merged) and rewritten to `<Prim style={merged}>` (see emitSwiftJsx).
-let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
-let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
 // Alias-tag local name → its import package. The Element/PyreonUI/Container/
 // Row/Col hooks intercept a tag ONLY when it resolves from its expected
 // @pyreon package, so a same-named user component isn't mis-lowered.
@@ -312,13 +307,7 @@ let _aliasImports: Map<string, { source: string; imported: string }> = new Map()
  * (e.g. `import { Row } from './my-components'` is no longer a coolgrid Row).
  */
 function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = tag): boolean {
-  if (
-    _componentNames.has(tag) ||
-    _styledComponents.has(tag) ||
-    _rocketstyleComponents.has(tag) ||
-    _attrsComponents.has(tag)
-  )
-    return false
+  if (_componentNames.has(tag) || isPluginElement(tag, _pluginScope)) return false
   const src = _aliasImports.get(tag)
   return src === undefined || (src.source === expectedPkg && src.imported === expectedImport)
 }
@@ -1010,9 +999,6 @@ export function emitSwift(
   moduleItems: ExtModuleItem[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
-  styledComponents: StyledComponentIR[] = [],
-  rocketstyleComponents: RocketstyleComponentIR[] = [],
-  attrsComponents: AttrsComponentIR[] = [],
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   // Per-FILE counters: reset on every emit so generated names depend only on
@@ -1031,9 +1017,6 @@ export function emitSwift(
   // tested, which is why no wrong emit has been observed — but relying on
   // that is relying on an accident.
   _serviceBindings = new Map()
-  _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
-  _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
-  _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
   _aliasImports = aliasImports
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a call `dbl(21)` resolves as a
@@ -1248,9 +1231,6 @@ export function emitSwift(
   _optionalSlotsAsRequired = new Set()
   _moduleViewHelpersSwift = new Map()
   _viewHelpersSwift = new Map()
-  _styledComponents = new Map()
-  _rocketstyleComponents = new Map()
-  _attrsComponents = new Map()
   _aliasImports = new Map()
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
@@ -6219,66 +6199,8 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     }
   }
 
-  // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
-  // as a synthetic `style` attr, then re-enter the dispatch. The whole
-  // inline-style connector (emitSwiftLayoutModifiers → styleToNativeModifiers)
-  // lowers it unchanged. The captured style is placed first so the component's
-  // own style applies; other use-site attrs (props / children / onPress) are
-  // preserved. (A use-site inline `style` on a styled component is a v1 gap.)
-  const styled = _styledComponents.get(tag)
-  if (styled !== undefined) {
-    return emitSwiftJsx(
-      {
-        ...e,
-        tag: styled.tag,
-        attrs: [{ kind: 'attr', name: 'style', value: styled.styleObject }, ...e.attrs],
-      },
-      indent,
-    )
-  }
-
-  // rocketstyle(…) — resolve the use-site's state/size/variant dims → merge
-  // base ∪ matched-dims into one style object, strip the (consumed) dimension
-  // attrs, and rewrite to `<Prim style={merged}>` (reusing the styled path).
-  const rkt = _rocketstyleComponents.get(tag)
-  if (rkt !== undefined) {
-    const dimNames = Object.keys(rkt.dims)
-    const merged = resolveRocketstyleUseSite(
-      rkt,
-      (d) => {
-        const v = readStaticAttr(e, d)
-        return typeof v === 'string' ? v : undefined
-      },
-      (d) => {
-        const a = e.attrs.find(
-          (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === d,
-        )
-        return a?.value
-      },
-      (msg) => _emitWarnings.push(msg),
-    )
-    const rest = e.attrs.filter((a) => !(a.kind === 'attr' && dimNames.includes(a.name)))
-    return emitSwiftJsx(
-      { ...e, tag: rkt.tag, attrs: [{ kind: 'attr', name: 'style', value: merged }, ...rest] },
-      indent,
-    )
-  }
-
-  // attrs({component: Prim}).attrs({…}) — rewrite `<X …use-site>` to
-  // `<Prim …use-site …defaults>` (use-site wins: a default whose name the
-  // use-site also sets is dropped), then re-enter dispatch.
-  const attrsComp = _attrsComponents.get(tag)
-  if (attrsComp !== undefined) {
-    const useSite = new Set(
-      e.attrs
-        .filter((a) => a.kind === 'attr')
-        .map((a) => (a as Extract<AttrIR, { kind: 'attr' }>).name),
-    )
-    const defaults = attrsComp.defaultAttrs
-      .filter((d) => !useSite.has(d.name))
-      .map((d) => ({ kind: 'attr' as const, name: d.name, value: d.value }))
-    return emitSwiftJsx({ ...e, tag: attrsComp.tag, attrs: [...e.attrs, ...defaults] }, indent)
-  }
+  const rewritten = rewritePluginElement(e, _pluginScope, () => swiftEmitContext(indent))
+  if (rewritten !== undefined) return emitSwiftJsx(rewritten, indent)
 
   warnUnreadSwiftAttrs(e)
 
@@ -7125,12 +7047,7 @@ function pushEmitWarning(w: string): void {
 
 /** A tag the user (or a styled/rocketstyle/attrs factory) defined — its view-typed props lower as slot parameters. */
 function isUserComponentTagSwift(tag: string): boolean {
-  return (
-    _componentNames.has(tag) ||
-    _styledComponents.has(tag) ||
-    _rocketstyleComponents.has(tag) ||
-    _attrsComponents.has(tag)
-  )
+  return _componentNames.has(tag) || isPluginElement(tag, _pluginScope)
 }
 
 function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

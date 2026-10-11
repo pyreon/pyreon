@@ -15,7 +15,7 @@ function moduleCompiler() {
   let seed: TypeIR | undefined
   const plugin: CompilerPlugin = {
     name: '@acme/module-builders',
-    apiVersion: 1,
+    apiVersion: 2,
     modules: ['@acme/module-builders'],
     topLevel(node, ctx) {
       const declaration = node as {

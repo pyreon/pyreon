@@ -24,7 +24,7 @@
 // typecheck) and kotlinc — the toolchains, not the strings, are the proof.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const H = `import { signal, computed } from '@pyreon/reactivity'

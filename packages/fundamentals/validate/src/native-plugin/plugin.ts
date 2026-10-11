@@ -1,4 +1,4 @@
-import { NATIVE_COMPILER_PLUGIN_API_VERSION, type CallRecognizer, type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
+import { type CallRecognizer, type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 import { createSchemaItem, createSchemaStructRefinement } from '@pyreon/validation/native-plugin'
 import { fieldMetaItem, safeParseExpr } from './exprs'
 import { FIELD_META_ITEM_TYPE, finishValidate, recognizeMethodCall, recognizeTopLevel } from './recognize'
@@ -39,7 +39,7 @@ const tier2: CallRecognizer = (call, ctx) => {
  */
 export const validatePlugin: CompilerPlugin = {
   name: VALIDATE_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@pyreon/validate'],
   scanModule: scanValidate,
   topLevel: recognizeTopLevel,

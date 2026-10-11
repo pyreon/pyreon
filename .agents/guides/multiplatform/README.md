@@ -107,7 +107,7 @@ Function defaults contribute numeric type evidence before return inference. A fr
 
 ## The rule: the compiler knows no library
 
-`@pyreon/native-compiler` knows its CONTRACT and nothing else. Contract means the surface PMTC exists to lower for every app: the canonical primitives, `signal` / `computed` / `effect` / `onMount`, the router (below), the ui-system authoring API (`styled`, `rocketstyle`, theme tokens), and the runtime packages it targets. Everything else is a library, and a library's lowering lives in the library's own package as a plugin. The test for any line in the compiler is: "if I deleted package X from the monorepo, would this line need editing?" If yes, the compiler is carrying X's knowledge.
+`@pyreon/native-compiler` knows its CONTRACT and nothing else. Contract means the surface PMTC exists to lower for every app: the canonical primitives, `signal` / `computed` / `effect` / `onMount`, navigation hosts, static theme tokens, and the runtime packages it targets. Package import vocabulary is owned by plugins, including reactivity imports and the `attrs`, `styled` and `rocketstyle` factory frontends. Everything else is a library, and a library's lowering lives in the library's own package as a plugin. The test for any line in the compiler is: "if I deleted package X from the monorepo, would this line need editing?" If yes, the compiler is carrying X's knowledge.
 
 **The plan this document records** (the compiler-boundary arc, phases 3h to 3m): move every library's recognizers, emitters, typing, stubs and unlowered-module advice out of `parse.ts`, `emit-swift.ts`, `emit-kotlin.ts` and `infer-type.ts` into `packages/<cat>/<pkg>/src/native-plugin*`, one library at a time, each as its own independently green commit, with three constraints that never relaxed:
 
@@ -115,7 +115,7 @@ Function defaults contribute numeric type evidence before return inference. A fr
 2. **Library-agnostic seams.** Every new core seam is proven by a toy plugin in the compiler's own tests that is NOT the library that motivated it, and bisected (neuter the seam in the compiler; that spec, and only that spec, fails). A seam that only its first user exercises is a back door.
 3. **The boundary only shrinks.** `scripts/check-compiler-boundary.ts` counts library specifiers and hook-name literals in non-test compiler source against `scripts/compiler-boundary-baseline.json`. A number may go down (`--update` tightens it) and never up.
 
-The remaining compiler library specifiers are the store/state-tree diagnostic cases. The ui-core provider move removes both ui-core specifiers. Its golden corpus includes 1,524 entries recorded on the parent, with unchanged code and warnings across the move.
+The compiler boundary contains no library package specifiers or hook-name literals. This ratchet alone does not prove coverage: `check-multiplatform-tier` also requires every shared/service-backend package, and every web-only package with a `nativeFrontend`, to publish its own optional plugin entry. `plugin-boundary.test.ts` discovers these entries from package metadata and checks that the shared corpus catalog includes every owner.
 
 ## Ownership map
 
@@ -139,13 +139,18 @@ Every first-party plugin is a package's own file, discovered from its manifest (
 
 `pyreon-native plugins` prints this table for an app (hook owners, call recognizers, element lowerings, module items, unlowered-module metadata); `pyreon-native explain <file>` attributes each lowered declaration to its owner.
 
+Additional package owners:
+
+- `@pyreon/reactivity` maps its `signal` and `computed` imports onto the compiler's generic state operations and owns its unsupported-export diagnostics. Unimported standalone snippets can still use the core operation spellings.
+- `@pyreon/attrs`, `@pyreon/styler` and `@pyreon/rocketstyle` own their factory recognizers, payload types and per-use JSX rewrites, including import aliases and foreign-binding refusal. The native style connector remains shared.
+- `@pyreon/kinetic-presets` owns the preset-name vocabulary. `@pyreon/kinetic` consumes imported constants through the generic scan facade, so it does not carry the preset package's table and plugin order does not affect resolution.
+
 ## Writing a plugin
 
 A package ships `src/native-plugin.ts` (exported as `./native-plugin`, built to `lib/native-plugin.js`, declared as `"pyreon": { "native": { "plugin": "./lib/native-plugin.js", "modules": ["@acme/camera"] } }`). It imports from `@pyreon/native-compiler/plugin-api` and nothing else of the compiler (`tests/plugin-boundary.test.ts` fails on any other `@pyreon/native-compiler/*` specifier or a relative path into `native/compiler`). `@pyreon/native-compiler` is an OPTIONAL peer plus a dev dependency, so no web import reaches the plugin.
 
 ```ts
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   type CallRecognizer,
   type CompilerPlugin,
   type DeclEmitter,
@@ -169,7 +174,7 @@ const gadget: DeclEmitter = {
 
 export default {
   name: '@acme/gadget',
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: ['@acme/gadget'],
   calls: { useGadget: recognize },
   decls: { gadget },
@@ -195,7 +200,7 @@ Rules a plugin lives by:
 
 ## The plugin protocol
 
-`CompilerPlugin` (`src/plugin.ts`, re-exported types in `src/plugin-api.ts`) is a bag of OPTIONAL, additive members. Adding a member never bumps `NATIVE_COMPILER_PLUGIN_API_VERSION` (an older plugin simply does not use it); an incompatible change does. The shape is validated at load (`assertPluginShape`), so a malformed member fails naming the plugin.
+`CompilerPlugin` (`src/plugin.ts`, re-exported types in `src/plugin-api.ts`) is a bag of OPTIONAL, additive members. Adding an optional member does not require a version bump; an incompatible IR change does. Descriptors pin `apiVersion: 2` (or use the immutable `NATIVE_COMPILER_PLUGIN_API_V2`). The deprecated `NATIVE_COMPILER_PLUGIN_API_VERSION` stays at 1 permanently so old plugins importing it are rejected rather than silently claiming compatibility. Update compiler and first-party package plugins together for the API 2 release. The shape is validated at load (`assertPluginShape`), so a malformed member fails naming the plugin.
 
 | Member                                                                   | Lowers                                                                                                                                                       | Core site                                                     |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
@@ -267,7 +272,7 @@ options through closures and must not change synthesized type namespaces. Legacy
 scoped and is not generally reentrant; hooks execute outside emission. Prove
 extensions with real Swift/Kotlin typechecking and cross-call isolation tests.
 Native CLI build/check/watch/LSP accept the same explicit local ESM `--plugin`
-list. Protocol and shared IR are experimental API v1; incompatible changes
+list. Protocol and shared IR are experimental API v2; incompatible changes
 require a version bump. See `packages/native/compiler/README.md`.
 
 ## Instance-owned registries
@@ -377,7 +382,7 @@ Recipe for the next parse-side extraction: find what the parser edits for a libr
 
 `@pyreon/charts` was the first library whose plugin is code-shaped AND large (≈15,000 lines with the generated engine registry), and it now lives in `packages/fundamentals/charts/src/native-plugin/`, so `@pyreon/native-compiler` has no dependency on it. The relocation needed three things the compiler did not have:
 
-- **A published plugin-author API.** `@pyreon/native-compiler/plugin-api` (`src/plugin-api.ts`) re-exports exactly what a plugin may use: the IR types, the `EmitContext` / `ParseContext` facades and the plugin protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_VERSION`, `forEachExpr`, `substituteIdentifier`, `isNumericLiteralOrNegation` (the literal predicate a numeric-prop plugin reads a `-1` / `1` argument with — the flow plugin's config and handle readers), and the pure spelling helpers `swiftStr` / `kotlinStr` / `swiftIdent` / `kotlinIdent`. A package-owned plugin imports NOTHING else from the compiler — `tests/plugin-boundary.test.ts` scans the charts plugin for it (any other `@pyreon/native-compiler/*` specifier, or a relative path into `native/compiler`, fails). `@pyreon/charts` declares the compiler as an OPTIONAL peer + a dev dependency; the plugin is a separate `./native-plugin` entry no web import reaches.
+- **A published plugin-author API.** `@pyreon/native-compiler/plugin-api` (`src/plugin-api.ts`) re-exports exactly what a plugin may use: the IR types, the `EmitContext` / `ParseContext` facades and the plugin protocol types (type-only), `NATIVE_COMPILER_PLUGIN_API_V2`, `forEachExpr`, `substituteIdentifier`, `isNumericLiteralOrNegation` (the literal predicate a numeric-prop plugin reads a `-1` / `1` argument with — the flow plugin's config and handle readers), and the pure spelling helpers `swiftStr` / `kotlinStr` / `swiftIdent` / `kotlinIdent`. A package-owned plugin imports NOTHING else from the compiler — `tests/plugin-boundary.test.ts` scans the charts plugin for it (any other `@pyreon/native-compiler/*` specifier, or a relative path into `native/compiler`, fails). `@pyreon/charts` declares the compiler as an OPTIONAL peer + a dev dependency; the plugin is a separate `./native-plugin` entry no web import reaches.
 - **Colour-scope providers (`CompilerPlugin.scopes`).** `<PyreonUI mode>` and `<ColorModeProvider mode>` pin the framework-wide colour mode and `<ChartThemeProvider>` layers a theme over it; none has a runtime context natively — each is a compile-time scope entered while the element's children are emitted. The CORE keeps the plumbing (`enterColorScope`, saved/restored in `finally`, the transparent `Group`/`Box`, the colour-scheme pin of a literal `<ColorModeProvider mode>`); the VALUE of the scope belongs to the plugin: `scopes: [{ module, tags, enter(el, { warn, outer }) → object | undefined, transparent? }]`. `transparent` marks an element that exists only to provide a scope (the core emits its children under it); leave it off for core-emitted ones. A `(module, tag)` pair has one owner (load-time error naming both); the claim goes through the same `canAliasIntercept` guard as element lowerings, and `isElementLoweringTag` also covers scope tags so the parser records where they were imported from. A plugin reads the scope back through `EmitContext.colorScope<T>()`. Without a provider the scope simply stays empty — the compiler alone opens scopes nobody reads.
 - **Stub augmentation (`CompilerPlugin.stubs`).** The compile gates (`validateSwiftWithStubs`, `validateSwiftFilesWithStubs`, `validateKotlin`, `validateKotlinFiles`) take `ValidateOptions { augment: StubAugmentation[] }`; a `StubAugmentation` is `{ swift?(source) → string, kotlin?(source) → string }`, appended to the stub bundle only for inputs that need it (return `''` otherwise). The charts plugin's `stubs` appends the REAL generated engine plus the canvas-owned draw-list types for any emit that names `PyreonChartCanvas(`, exactly as `validate.ts` did before. The compiler never reads `plugin.stubs`; the caller passes it (`scripts/native-first-party-plugins.ts` for repo scripts, `src/tests/charts-plugin.ts` for the compiler's tests). Verdict-cache keys already hash the bytes handed to the compiler, so an augmentation is part of the key by construction.
 
@@ -538,8 +543,8 @@ The golden corpus is only as strong as what it reaches. A plugin move therefore 
 
 These are not libraries, so their presence is correct, not a debt:
 
-- **The router.** `createRouter`, `useParams`, `useNavigate`, `useLoaderData`, `<RouterView>` and the canonical `Link` are PMTC's own navigation contract: `@pyreon/native-router-swift` / `-kotlin` are PMTC runtimes, and the emitted route dispatch (`matchPath` over a route table) is generated, not lowered from a library's implementation. A plugin could not own it without owning the app shell.
-- **The ui-system authoring API.** `styled(Prim)`, `rocketstyle()`, theme tokens and the 2-bucket size-class model are how PMTC styles the canonical primitives; the `styled` / `rocketstyle` frontends resolve at use-sites in the parser, and `useSizeClass` is read by the style emit.
+- **Navigation hosts.** `createRouter`, `<RouterView>` and the canonical `Link` implement PMTC's navigation contract; the router hooks themselves are owned by `@pyreon/router/native-plugin`: `@pyreon/native-router-swift` / `-kotlin` are PMTC runtimes, and the emitted route dispatch (`matchPath` over a route table) is generated, not lowered from a library's implementation. A plugin could not own it without owning the app shell.
+- **Generic styling.** Static theme-token resolution, style-object IR and the 2-bucket size-class model are shared compiler operations. Factory syntax, dimension selection and default-prop precedence belong to the `styler`, `rocketstyle` and `attrs` plugins.
 - **Colour-scope plumbing.** The core saves and restores opaque registered scopes. A package owns its provider wrapper and calls `withColorScope(el, emit)` to enter the scope around its children. `@pyreon/ui-core/native-plugin` owns PyreonUI and PyreonUIProvider; charts retains the chart-theme scope value. Canonical ColorModeProvider remains a core primitive.
 - **`fetch` as a concept.** An async source driving `<Suspense>` / `<ErrorBoundary>` is the core's `asyncState` seam; what moved is the hook that declares one.
 
@@ -584,3 +589,11 @@ Known defects found while moving code, deliberately NOT fixed here (the golden h
 For phase 3m: every golden entry byte-identical, never `--update`d; every new seam has a toy-plugin spec and a bisect; every moved mechanism was bisected against the golden and the specs (gaps closed with fixtures recorded from the parent); the seven native example apps build to identical output on both targets with plugins discovered. The CI reconciliation passed the complete native suite with real Swift/Kotlin compilers and SDK fixtures: 9,000 passing tests, 17 expected failures across 612 files. The earlier toolchain-free failures are not exemptions from this check. Compiler fixtures load the actual owning plugins; negative controls reproduce the stale fixture failures before restoring the fix. All 55 fast gates and the affected package typechecks passed. Required hosted native and device checks still run on the published head; local results do not replace them.
 
 Package-owned native hook lowerings now include the state/timing/environment hooks in `@pyreon/hooks`, navigation/params/loader reads in `@pyreon/router`, `useNativeModule` in `@pyreon/primitives`, and `useColorMode` in `@pyreon/core`. Runtime barrels never import their optional compiler tooling entries. Canonical JSX, style, lifecycle and navigation-host machinery remain backend primitives. Statement and pattern call plugins follow the same accept/decline/drop contract as ordinary calls.
+
+## Package frontend seams
+
+`CompilerPlugin.intrinsicCalls` maps a package's imported function names onto generic `signal` or `computed` operations. Binding canonicalization handles aliases and foreign imports; target state storage and inference remain compiler operations. `CompilerPlugin.constants` resolves a package's imported string vocabulary. Every constant provider is registered before module scanning begins, so `ModuleScan.constant(node)` can distinguish a supported imported value from a known but unsupported export independently of plugin order.
+
+A factory declaration is a regular `topLevel` module item. `ModuleParseContext.binding(name)` identifies its import or local binding, and `theme` supplies resolved static theme tokens. `ModuleItemEmitter.element(item, element, context)` rewrites a JSX use of that binding into ordinary JSX/style IR. The compiler dispatches by the visible item and preserves lexical shadowing, resets between files, and retains no package payload state. Legacy style hash lanes exist only to preserve generated names during relocation; new packages leave `legacyList` unset.
+
+The universal boundary test scans every package's tooling entry and directory, checks optional peer metadata and public facade imports, and compares the discovered owners to the shared compiler-fixture catalog. Installed-entry CLI tests exercise built files, not source aliases. Golden checks, Swift/Kotlin compilation, and device checks prove complementary properties; metadata coverage alone does not prove every runtime capability.

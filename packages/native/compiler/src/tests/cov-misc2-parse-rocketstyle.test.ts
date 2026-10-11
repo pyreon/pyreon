@@ -8,7 +8,7 @@
 // every warned drop asserted BY ITS MESSAGE rather than by absence.
 
 import { describe, expect, it } from 'vitest'
-import { parseRocketstyle } from '../parse-rocketstyle'
+import { parseRocketstyle } from '../../../../ui-system/rocketstyle/src/native-plugin/parse-rocketstyle'
 
 const irs = (src: string) => parseRocketstyle(src).rocketstyles
 const names = (src: string) => irs(src).map((r) => r.name)
@@ -19,7 +19,10 @@ const shape = (src: string) =>
     (irs(src)[0]?.dimensions ?? []).map((d) => [
       d.name,
       Object.fromEntries(
-        d.values.map((v) => [v.name, Object.fromEntries(v.properties.map((p) => [p.name, p.value]))]),
+        d.values.map((v) => [
+          v.name,
+          Object.fromEntries(v.properties.map((p) => [p.name, p.value])),
+        ]),
       ),
     ]),
   )

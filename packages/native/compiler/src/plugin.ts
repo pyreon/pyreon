@@ -35,15 +35,19 @@ import type { UnloweredSpec } from './unlowered-modules'
 import type { EmitOptions, ParseResult, TargetLanguage, TransformResult } from './types'
 
 /**
- * Bump ONLY when the plugin protocol or shared IR changes incompatibly.
- * Additive optional fields (`services`, `elements`, `calls`, `decls`, `memberCalls`, `unlowered`, `modules`, `requires`, `builtIn`) never
- * bump it — an older plugin simply does not use them.
+ * @deprecated Legacy API 1 descriptor constant, deliberately frozen at 1.
+ * Old plugins import this value at runtime. Advancing it would make an old
+ * plugin falsely advertise compatibility with a newer IR. Pin a descriptor
+ * to the version it was written against, or use a version-named constant.
  */
 export const NATIVE_COMPILER_PLUGIN_API_VERSION = 1 as const
 
+/** API 2: package-owned module items replace the closed style definition arrays. Never renumber this constant. */
+export const NATIVE_COMPILER_PLUGIN_API_V2 = 2 as const
+
 /** Every plugin `apiVersion` this compiler can load. */
 export const SUPPORTED_PLUGIN_API_VERSIONS: readonly number[] = Object.freeze([
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
+  NATIVE_COMPILER_PLUGIN_API_V2,
 ])
 
 /**
@@ -104,7 +108,7 @@ export type CompilerPass = (
 
 export interface CompilerPlugin<Target extends string = string> {
   readonly name: string
-  readonly apiVersion: typeof NATIVE_COMPILER_PLUGIN_API_VERSION
+  readonly apiVersion: typeof NATIVE_COMPILER_PLUGIN_API_V2
   /**
    * Plain service hooks this plugin lowers, keyed by hook name (`useShare`).
    * Two owners for one hook is a load-time error — the app must pick one.
@@ -144,6 +148,10 @@ export interface CompilerPlugin<Target extends string = string> {
   readonly statementCalls?: Readonly<Record<string, CallRecognizer>> | undefined
   /** Calls bound through an object pattern; ParseContext.pattern contains the written binding. */
   readonly patternCalls?: Readonly<Record<string, CallRecognizer>> | undefined
+  /** Map package exports onto generic core state operations; their IR and target semantics remain in the compiler. */
+  readonly intrinsicCalls?: Readonly<Record<string, 'signal' | 'computed'>> | undefined
+  /** Resolve imported compile-time string vocabulary owned by this package. Undefined names are known but unsupported. */
+  readonly constants?: ((name: string) => string | undefined) | undefined
   readonly calls?: Readonly<Record<string, CallRecognizer>> | undefined
   /**
    * A declaration recognizer keyed by the SHAPE of the callee, not a name (see `DeclCallRecognizer`): `const active = rx.filter(todos, p)`

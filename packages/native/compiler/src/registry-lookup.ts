@@ -60,18 +60,21 @@ export function allServices(): readonly ServiceDescriptor[] {
 
 /**
  * Does `source` serve `hook` for the plugin that owns it — as a service or as a
- * recognized call? True when the owner declared `modules` and `source` is one of them or a sub-path of one. Built-in
- * hooks declare none, so they stay `@pyreon/*`-only.
+ * recognized call? Declared modules are authoritative, including their sub-paths.
+ * A registered extension without modules keeps the namespace-only shorthand;
+ * an absent owner never claims an import.
  */
 export function hookClaimsSource(hook: string, source: string): boolean {
   const registries = activeRegistries()
   const modules =
     registries.services.get(hook)?.modules ??
+    registries.calls.intrinsicCalls.get(hook)?.modules ??
     registries.calls.calls.get(hook)?.modules ??
     registries.calls.statementCalls.get(hook)?.modules ??
     registries.calls.patternCalls.get(hook)?.modules ??
     registries.exprs.functions.get(hook)?.modules
-  return modules?.some((m) => source === m || source.startsWith(`${m}/`)) ?? false
+  const registered = registries.services.has(hook) || registries.calls.names.has(hook) || registries.exprs.functions.has(hook)
+  return modules?.some((m) => source === m || source.startsWith(`${m}/`)) ?? (registered && source.startsWith('@pyreon/'))
 }
 
 /** The lowering that claims `tag` (see {@link ElementClaimGuard}), or `undefined`. */
@@ -830,4 +833,25 @@ export function emitPluginRoot(
     }
   }
   return wrapped(indent)
+}
+
+/** Whether a visible file-scope binding owns a JSX rewrite. */
+export function isPluginElement(name: string, scope: PluginScope): boolean {
+  const item = scope.itemByName(name)
+  return (
+    item !== undefined &&
+    activeRegistries().items.emitter(item.plugin, item.type)?.element !== undefined
+  )
+}
+
+/** Dispatch a factory-bound element to its package, preserving lexical shadowing. */
+export function rewritePluginElement(
+  element: import('./types').JsxElementIR,
+  scope: PluginScope,
+  ctx: () => EmitContext,
+): import('./types').JsxElementIR | undefined {
+  const item = scope.itemByName(element.tag)
+  return item === undefined
+    ? undefined
+    : activeRegistries().items.emitter(item.plugin, item.type)?.element?.(item, element, ctx())
 }

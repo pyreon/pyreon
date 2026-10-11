@@ -62,7 +62,7 @@ const recognizePattern: CallRecognizer = (_call, ctx) => {
 }
 export const routerPlugin: CompilerPlugin = {
   name: '@pyreon/router',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@pyreon/router'],
   calls: {
     useNavigate: () => ({ type: 'navigate', payload: { hook: 'navigate' } }),

@@ -84,7 +84,7 @@ const hotkeyDecl: DeclEmitter = {
 }
 export const hotkeysPlugin: CompilerPlugin = {
   name: '@pyreon/hotkeys',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@pyreon/hotkeys'],
   statementCalls: { useHotkey: recognizeHotkey },
   decls: { hotkey: hotkeyDecl },

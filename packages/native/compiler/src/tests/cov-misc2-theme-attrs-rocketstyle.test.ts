@@ -10,9 +10,9 @@
 
 import { describe, expect, it } from 'vitest'
 import { parseSync } from 'oxc-parser'
-import { transform } from '../index'
-import { parseAttrsDefn } from '../attrs-native'
-import { parseRocketstyleDefn } from '../rocketstyle-native'
+import { transform } from './first-party-plugins'
+import { parseAttrsDefn } from '../../../../ui-system/attrs/src/native-plugin/recognize'
+import { parseRocketstyleDefn } from '../../../../ui-system/rocketstyle/src/native-plugin/recognize'
 import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, resolveThemeToken } from '../theme-native'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
@@ -51,13 +51,17 @@ describe('theme-native — parseThemeDefinition', () => {
   })
 
   it('accepts every GROUP ALIAS and rejects an unknown group', () => {
-    expect(parse(`const t = defineTheme({ colors: { a: '#1' }, space: { b: 2 }, radii: { c: 3 } })`)).toEqual({
+    expect(
+      parse(`const t = defineTheme({ colors: { a: '#1' }, space: { b: 2 }, radii: { c: 3 } })`),
+    ).toEqual({
       color: { a: '#1' },
       spacing: { b: 2 },
       radius: { c: 3 },
     })
     expect(
-      parse(`const t = defineTheme({ borderRadius: { d: 4 }, fontSizes: { e: 5 }, fontWeights: { f: 6 } })`),
+      parse(
+        `const t = defineTheme({ borderRadius: { d: 4 }, fontSizes: { e: 5 }, fontWeights: { f: 6 } })`,
+      ),
     ).toEqual({ radius: { d: 4 }, fontSize: { e: 5 }, fontWeight: { f: 6 } })
     expect(parse(`const t = defineTheme({ shadows: { a: '1px' } })`)).toBeNull()
   })
@@ -91,7 +95,9 @@ describe('theme-native — parseThemeDefinition', () => {
       spacing: { pull: -4 },
     })
     expect(
-      parse(`const t = defineTheme({ ...base, [k]: { a: 1 }, spacing: { ...more, [k]: 1, 900: 2, ok: 3 } })`),
+      parse(
+        `const t = defineTheme({ ...base, [k]: { a: 1 }, spacing: { ...more, [k]: 1, 900: 2, ok: 3 } })`,
+      ),
     ).toEqual({ spacing: { ok: 3 } })
   })
 
@@ -171,12 +177,12 @@ describe('attrs-native — the config object', () => {
     parseAttrsDefn('X', declInit(code), warnings, DEFAULT_THEME)
 
   it('reads `component` as an identifier AND as a string literal', () => {
-    expect(parse(`const X = attrs({ name: 'X', component: Stack }).attrs({ gap: 'md' })`)?.tag).toBe(
-      'Stack',
-    )
-    expect(parse(`const X = attrs({ name: 'X', component: 'Stack' }).attrs({ gap: 'md' })`)?.tag).toBe(
-      'Stack',
-    )
+    expect(
+      parse(`const X = attrs({ name: 'X', component: Stack }).attrs({ gap: 'md' })`)?.tag,
+    ).toBe('Stack')
+    expect(
+      parse(`const X = attrs({ name: 'X', component: 'Stack' }).attrs({ gap: 'md' })`)?.tag,
+    ).toBe('Stack')
   })
 
   it('refuses the BARE `attrs(Base)` form by name, because it throws at mount on web', () => {
@@ -200,7 +206,9 @@ describe('attrs-native — the config object', () => {
 
   it('warns by name for a base that has no native primitive', () => {
     const warnings: string[] = []
-    expect(parse(`const X = attrs({ component: SomeDiv }).attrs({ gap: 'md' })`, warnings)).toBeNull()
+    expect(
+      parse(`const X = attrs({ component: SomeDiv }).attrs({ gap: 'md' })`, warnings),
+    ).toBeNull()
     expect(warnings.join('\n')).toContain('has no native primitive')
   })
 })
@@ -220,7 +228,9 @@ describe('attrs-native — default-attr merging', () => {
   })
 
   it('reads string, number and NEGATIVE-number literal defaults', () => {
-    expect(defaults(`const X = attrs({ component: Stack }).attrs({ a: 's', b: 2, c: -3 })`)).toEqual({
+    expect(
+      defaults(`const X = attrs({ component: Stack }).attrs({ a: 's', b: 2, c: -3 })`),
+    ).toEqual({
       a: { kind: 'literal', value: 's' },
       b: { kind: 'literal', value: 2 },
       c: { kind: 'literal', value: -3 },
@@ -253,7 +263,9 @@ describe('attrs-native — default-attr merging', () => {
 
   it('skips a spread, a computed key and a numeric key among the defaults', () => {
     expect(
-      defaults(`const X = attrs({ component: Stack }).attrs({ ...more, [k]: 1, 900: 2, gap: 'md' })`),
+      defaults(
+        `const X = attrs({ component: Stack }).attrs({ ...more, [k]: 1, 900: 2, gap: 'md' })`,
+      ),
     ).toEqual({ gap: { kind: 'literal', value: 'md' } })
   })
 
@@ -284,13 +296,19 @@ describe('rocketstyle-native — parseRocketstyleDefn', () => {
   })
 
   it('reads the component as an identifier AND as a string literal', () => {
-    expect(parse(`const X = rocketstyle()({ component: Stack }).theme((t) => ({ padding: 1 }))`)?.tag).toBe('Stack')
-    expect(parse(`const X = rocketstyle()({ component: 'Stack' }).theme((t) => ({ padding: 1 }))`)?.tag).toBe('Stack')
+    expect(
+      parse(`const X = rocketstyle()({ component: Stack }).theme((t) => ({ padding: 1 }))`)?.tag,
+    ).toBe('Stack')
+    expect(
+      parse(`const X = rocketstyle()({ component: 'Stack' }).theme((t) => ({ padding: 1 }))`)?.tag,
+    ).toBe('Stack')
   })
 
   it('warns by name for a non-primitive base', () => {
     const warnings: string[] = []
-    expect(parse(`const X = rocketstyle()({ component: SomeDiv }).theme((t) => ({}))`, warnings)).toBeNull()
+    expect(
+      parse(`const X = rocketstyle()({ component: SomeDiv }).theme((t) => ({}))`, warnings),
+    ).toBeNull()
     expect(warnings.join('\n')).toContain('has no native primitive')
   })
 
@@ -352,14 +370,19 @@ describe('rocketstyle-native — parseRocketstyleDefn', () => {
 
   it('refuses the object-of-FUNCTIONS dimension form by name', () => {
     const warnings: string[] = []
-    const ir = parse(`const X = ${HEAD}.sizes((t) => ({ small: () => ({ width: 1 }), big: { width: 2 } }))`, warnings)
+    const ir = parse(
+      `const X = ${HEAD}.sizes((t) => ({ small: () => ({ width: 1 }), big: { width: 2 } }))`,
+      warnings,
+    )
     expect(Object.keys(ir?.dims.size ?? {})).toEqual(['big'])
     expect(warnings.join('\n')).toContain("value 'small' is a FUNCTION")
     expect(warnings.join('\n')).toContain('rocketstyle takes ONE callback returning the whole map')
   })
 
   it('skips a spread / computed / numeric key among the dimension VALUES', () => {
-    const ir = parse(`const X = ${HEAD}.states((t) => ({ ...more, [k]: {}, 900: {}, ok: { padding: 1 } }))`)
+    const ir = parse(
+      `const X = ${HEAD}.states((t) => ({ ...more, [k]: {}, 900: {}, ok: { padding: 1 } }))`,
+    )
     expect(Object.keys(ir?.dims.state ?? {})).toEqual(['ok'])
   })
 })
@@ -394,13 +417,17 @@ export function App({ hot }: { hot: boolean }) { return (${usage}) }`
   })
 
   it('warns when a dynamic dimension ternary is not two DECLARED values', () => {
-    const w = swift(src(`<Btn state={hot ? 'danger' : 'unknown'}><Text>x</Text></Btn>`)).warnings.join('\n')
+    const w = swift(
+      src(`<Btn state={hot ? 'danger' : 'unknown'}><Text>x</Text></Btn>`),
+    ).warnings.join('\n')
     expect(w).toContain('a dynamic dimension must be a ternary of TWO DECLARED state values')
   })
 
   it('warns and falls back to the FIRST branch when TWO dimensions are dynamic', () => {
     const w = swift(
-      src(`<Btn state={hot ? 'danger' : 'primary'} size={hot ? 'large' : 'small'}><Text>x</Text></Btn>`),
+      src(
+        `<Btn state={hot ? 'danger' : 'primary'} size={hot ? 'large' : 'small'}><Text>x</Text></Btn>`,
+      ),
     ).warnings.join('\n')
     expect(w).toContain('more than one dynamic dimension prop')
     expect(w).toContain('resolved to its FIRST branch')
@@ -432,13 +459,17 @@ describe('theme-native / attrs-native / rocketstyle-native — residual key and 
 
   it('rejects a non-string `component` literal in an attrs config and a rocketstyle one', () => {
     expect(parseAttrs(`const X = attrs({ component: 123 }).attrs({ gap: 'md' })`)).toBeNull()
-    expect(parseRkt(`const X = rocketstyle()({ component: 123 }).theme((t) => ({ padding: 1 }))`)).toBeNull()
+    expect(
+      parseRkt(`const X = rocketstyle()({ component: 123 }).theme((t) => ({ padding: 1 }))`),
+    ).toBeNull()
   })
 
   it('skips a SPREAD inside the rocketstyle config object', () => {
     // The spread is stepped over; `component` behind it still resolves.
     expect(
-      parseRkt(`const X = rocketstyle()({ ...base, component: Stack }).theme((t) => ({ padding: 1 }))`)?.tag,
+      parseRkt(
+        `const X = rocketstyle()({ ...base, component: Stack }).theme((t) => ({ padding: 1 }))`,
+      )?.tag,
     ).toBe('Stack')
   })
 

@@ -53,7 +53,7 @@ const ERROR_OBJECT = { kind: 'typeRef' as const, name: 'Error', args: [] }
 
 const nativePlugin = {
   name: '@pyreon/hooks',
-  apiVersion: 1,
+  apiVersion: 2,
   stubs: statefulStubs,
   modules: ['@pyreon/hooks'],
   // Code-shaped lowerings, beside the data-only service table below: `useFetch<T>(url, init?)` and its container.

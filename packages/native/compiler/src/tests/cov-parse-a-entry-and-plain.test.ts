@@ -6,7 +6,7 @@
 // site, so the product change retires the lock rather than the lock being
 // edited to match the product.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 

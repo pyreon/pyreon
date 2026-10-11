@@ -12,7 +12,6 @@
 // export; a user's own `SizedMap` is never seen.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   staticPropKey,
   type CallExprRecognizer,
   type CompilerPlugin,
@@ -114,7 +113,7 @@ const sizedMapExpr: ExprEmitter = {
  */
 export const sizedMapPlugin: CompilerPlugin = Object.freeze({
   name: SIZED_MAP_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([SIZED_MAP_PLUGIN_NAME]),
   scanModule: scanSizedMap,
   callExprs: recognizeSizedMap,

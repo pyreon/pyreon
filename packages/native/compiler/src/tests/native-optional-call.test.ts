@@ -25,7 +25,7 @@
 // parse `optional` threading → both targets warn ("index/call") + drop the `?`.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,

@@ -1,5 +1,14 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +31,7 @@ const BADGE_SOURCE =
   "import { Badge } from '@acme/badge'\nexport function Example() { return <ReleaseBadge /> }"
 const pluginModule = (name: string, body = '') => `
 (globalThis.${MARKERS} ??= []).push(${JSON.stringify(name)})
-export default { name: ${JSON.stringify(name)}, apiVersion: 1, ${body} }`
+export default { name: ${JSON.stringify(name)}, apiVersion: 2, ${body} }`
 const BADGE_BODY = `transformIR(module) {
   for (const c of module.components)
     if (c.returnExpr.kind === 'jsx-element' && c.returnExpr.tag === 'ReleaseBadge')
@@ -55,7 +64,7 @@ const declares = (extra: Record<string, unknown> = {}) => ({
 })
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'pyreon-native-discover-'))
+  root = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-native-discover-')))
   app = join(root, 'app')
   mkdirSync(app)
   g[MARKERS] = []
@@ -66,6 +75,59 @@ afterEach(() => {
 })
 
 describe('listPluginPackages', () => {
+  it('follows installed runtime and peer dependencies without traversing dependency development tools', async () => {
+    addPackage('@acme/host', {
+      dependencies: { '@acme/runtime': '1' },
+      peerDependencies: { '@acme/peer': '1', '@acme/absent': '1' },
+      devDependencies: { '@acme/dev-only': '1' },
+    })
+    addPackage('@acme/runtime', {
+      ...declares(), dependencies: { '@acme/host': '1' },
+    }, pluginModule('runtime'))
+    addPackage('@acme/peer', declares(), pluginModule('peer'))
+    addPackage('@acme/dev-only', declares(), pluginModule('dev-only'))
+    setApp(['@acme/host'], "import '@acme/peer'")
+    expect(listPluginPackages(app).map((p) => p.package)).toEqual(['@acme/runtime', '@acme/peer'])
+    expect((await discoverPlugins(app, join(app, 'src'))).map((p) => p.plugin.name)).toEqual(['peer'])
+    expect(g[MARKERS]).toEqual(['peer'])
+  })
+
+  it('resolves nested physical peers and loads a provider only once through repeated symlinks', async () => {
+    const installed = join(root, 'installed', 'node_modules', '@acme')
+    const host = join(installed, 'host')
+    const peer = join(installed, 'peer')
+    mkdirSync(host, { recursive: true })
+    mkdirSync(join(peer, 'native'), { recursive: true })
+    writeFileSync(join(host, 'package.json'), JSON.stringify({
+      name: '@acme/host', peerDependencies: { '@acme/peer': '1' },
+    }))
+    writeFileSync(join(peer, 'package.json'), JSON.stringify({
+      name: '@acme/peer', ...declares(), dependencies: { '@acme/host': '1' },
+    }))
+    writeFileSync(join(peer, 'native/plugin.mjs'), pluginModule('peer'))
+    const nm = join(app, 'node_modules', '@acme')
+    mkdirSync(nm, { recursive: true })
+    symlinkSync(host, join(nm, 'host'), 'dir')
+    setApp(['@acme/host'], "import '@acme/peer'")
+    expect(listPluginPackages(app).map((p) => p.packageDir)).toEqual([peer])
+    symlinkSync(peer, join(nm, 'peer'), 'dir')
+    setApp(['@acme/host', '@acme/peer'], "import '@acme/peer'")
+    expect(listPluginPackages(app).map((p) => p.packageDir)).toEqual([peer])
+    expect((await discoverPlugins(app, join(app, 'src'))).map((p) => p.plugin.name)).toEqual(['peer'])
+    expect(g[MARKERS]).toEqual(['peer'])
+  })
+
+  it('includes installed optional dependencies and application development dependencies', () => {
+    addPackage('@acme/optional', declares(), pluginModule('optional'))
+    addPackage('@acme/tool', declares(), pluginModule('tool'))
+    setApp([], 'export const value = 1')
+    writeFileSync(join(app, 'package.json'), JSON.stringify({
+      name: 'app', optionalDependencies: { '@acme/optional': '1', '@acme/missing': '1' },
+      devDependencies: { '@acme/tool': '1' },
+    }))
+    expect(listPluginPackages(app).map((p) => p.package)).toEqual(['@acme/optional', '@acme/tool'])
+  })
+
   it('lists only dependencies that declare a plugin; modules default to the package name', () => {
     addPackage('@acme/badge', declares(), pluginModule('badge'))
     addPackage('@acme/plain', {})
@@ -144,11 +206,11 @@ describe('plugin validation errors name the package and file', () => {
     [
       'an unsupported apiVersion',
       'export default { name: "p", apiVersion: 9 }',
-      /requires API 9; this compiler supports API 1/,
+      /requires API 9; this compiler supports API 2/,
     ],
     [
       'bad services',
-      'export default { name: "p", apiVersion: 1, services: [] }',
+      'export default { name: "p", apiVersion: 2, services: [] }',
       /services must be an object/,
     ],
   ])('%s', async (_label, body, message) => {
@@ -303,7 +365,7 @@ describe('plugins and explain reports', () => {
   it('explain prints hook, owner and the emitted declaration for both targets', () => {
     const hooks = {
       name: '@pyreon/hooks',
-      apiVersion: 1 as const,
+      apiVersion: 2 as const,
       modules: ['@pyreon/hooks'],
       services: {
         useShare: {
@@ -402,7 +464,7 @@ describe('a plugin package that fails to load is a hard error — nothing ships 
 describe('explain with a plugin-supplied service and element', () => {
   const plugin = {
     name: '@acme/kit',
-    apiVersion: 1 as const,
+    apiVersion: 2 as const,
     modules: ['@acme/kit'],
     services: {
       useGadget: { swift: 'AcmeGadget()', kotlin: ['val {id} = remember { AcmeGadget() }'] },
@@ -440,7 +502,7 @@ export function A() { const gadget = useGadget(); return <Button onClick={() => 
 export function A() { return <Button onClick={() => useShare().text('hi')}>x</Button> }`
     const hooks = {
       name: '@pyreon/hooks',
-      apiVersion: 1 as const,
+      apiVersion: 2 as const,
       modules: ['@pyreon/hooks'],
       services: {
         useShare: {
@@ -541,7 +603,9 @@ export function A() { const chart = createChartHandle(); return <Text>x</Text> }
     installCharts()
     const { lines, exitCode } = await pluginsReport(app, false)
     expect(exitCode).toBe(0)
-    expect(lines).toContain('call recognizers (1):')
+    expect(lines).toContain('call recognizers (3):')
+    expect(lines).toContain('  useColorMode  @pyreon/core  decls: color-mode')
+    expect(lines).toContain('  useNativeModule  @pyreon/primitives  decls: native-module')
     expect(lines).toContain('  createChartHandle  @pyreon/charts  decls: chart-handle')
     expect(lines).toContain('  TooltipContent  @pyreon/charts')
     expect(lines).toContain('parse refinements (1):')
@@ -598,6 +662,27 @@ describe('the source entry (bun src/cli.ts)', () => {
 })
 
 describe('the shipped bin', () => {
+  it('rejects an installed legacy plugin importing the current compiler version constant', () => {
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    const compilerDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../compiler')
+    symlinkSync(compilerDir, join(nm, 'native-compiler'), 'dir')
+    addPackage('@acme/legacy', declares(), `
+import { NATIVE_COMPILER_PLUGIN_API_VERSION } from '@pyreon/native-compiler/plugin-api'
+export default {
+  name: '@acme/legacy',
+  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  transformIR() { throw new Error('legacy transform must never execute') },
+}`)
+    setApp(['@acme/legacy'], "import '@acme/legacy'")
+    const run = spawnSync('node', [BIN, 'plugins', `--app=${app}`], {
+      encoding: 'utf8', timeout: 60_000,
+    })
+    expect(run.status).toBe(2)
+    expect(run.stdout + run.stderr).toContain('requires API 1; this compiler supports API 2')
+    expect(run.stdout + run.stderr).not.toContain('legacy transform must never execute')
+  })
+
   it('runs `plugins` and `explain` and reports exit codes only', () => {
     addPackage('@acme/badge', declares(), pluginModule('badge'))
     setApp(['@acme/badge'], "import '@acme/badge'")
@@ -686,9 +771,15 @@ describe('package-owned singleton plugins', () => {
       const nm = join(app, 'node_modules', '@pyreon')
       mkdirSync(nm, { recursive: true })
       symlinkSync(ownerDir, join(nm, fixture.owner), 'dir')
-      setApp([`@pyreon/${fixture.owner}`], fixture.source)
+      const dependencies = [`@pyreon/${fixture.owner}`]
+      if (fixture.owner === 'store') {
+        const reactivityDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../core/reactivity')
+        symlinkSync(reactivityDir, join(nm, 'reactivity'), 'dir')
+        dependencies.push('@pyreon/reactivity')
+      }
+      setApp(dependencies, fixture.source)
       const found = await discoverPlugins(app, join(app, 'src'))
-      expect(found.map((entry) => entry.plugin.name)).toEqual([`@pyreon/${fixture.owner}`])
+      expect(found.map((entry) => entry.plugin.name).sort()).toEqual(dependencies.sort())
       const compiler = createCompiler({ discovered: found.map((entry) => entry.plugin) })
       for (const target of ['swift', 'kotlin'] as const) {
         const bare = createCompiler().transform(fixture.source, { target })
@@ -773,4 +864,106 @@ describe('package-owned UI core plugin', () => {
       expect(result.code).not.toContain('PyreonUI(')
     }
   })
+})
+
+describe('package-owned state and styling frontends', () => {
+  it('discovers reactivity through core peers before Plain Mode injects its imports', async () => {
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    for (const name of ['core', 'reactivity']) {
+      const dir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../core', name)
+      symlinkSync(dir, join(nm, name), 'dir')
+    }
+    const source = `import { state, derived } from '@pyreon/core/plain'
+      export function Example() { let n = state(2); const doubled = derived(n * 2); return <Text>{doubled}</Text> }`
+    // Reactivity is installed as core's peer, absent from the app manifest and raw source.
+    setApp(['@pyreon/core'], source)
+    expect([...collectImportSpecifiers(source)]).toEqual(['@pyreon/core/plain'])
+    const found = await discoverPlugins(app, join(app, 'src'))
+    expect(found.map((entry) => entry.plugin.name).sort()).toEqual(['@pyreon/core', '@pyreon/reactivity'])
+    for (const target of ['ios', 'android']) {
+      const out = join(root, target)
+      const run = spawnSync('node', [BIN, 'build', `--target=${target}`, `--app=${app}`, `--source=${join(app, 'src')}`, `--out=${out}`], {
+        encoding: 'utf8', timeout: 60_000,
+      })
+      expect(run.status, run.stdout + run.stderr).toBe(0)
+      const code = readFileSync(join(out, `Example.${target === 'ios' ? 'swift' : 'kt'}`), 'utf8')
+      expect(code).toContain(target === 'ios' ? '@State private var n: Int = 2' : 'mutableStateOf(2L)')
+      expect(code).toContain(target === 'ios' ? 'n * 2' : 'n * 2L')
+      expect(code).not.toMatch(/\b(?:signal|state|derived)\(/)
+    }
+  })
+
+  it('loads the installed tooling entries and composes all owners on both targets', async () => {
+    const packages = [
+      ['core', 'reactivity'],
+      ['ui-system', 'attrs'],
+      ['ui-system', 'styler'],
+      ['ui-system', 'rocketstyle'],
+      ['ui-system', 'kinetic'],
+      ['ui-system', 'kinetic-presets'],
+    ] as const
+    const nm = join(app, 'node_modules', '@pyreon')
+    mkdirSync(nm, { recursive: true })
+    for (const [category, name] of packages) {
+      const dir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../', category, name)
+      expect(readFileSync(join(dir, 'lib/native-plugin.js'), 'utf8').length).toBeGreaterThan(0)
+      symlinkSync(dir, join(nm, name), 'dir')
+    }
+    const source = `import { signal as state, computed as derive } from '@pyreon/reactivity'
+      import attrs from '@pyreon/attrs'; import styled from '@pyreon/styler'
+      import rocketstyle from '@pyreon/rocketstyle'; import { kinetic } from '@pyreon/kinetic'
+      import { fadeUp } from '@pyreon/kinetic-presets'
+      const Row = attrs({ name: 'Row', component: Stack }).attrs({ padding: 2 })
+      const Card = styled(Stack)\`padding: 8px;\`
+      const Button = rocketstyle()({ name: 'Button', component: Stack }).theme(() => ({ padding: 4 }))
+      const Motion = kinetic('div').preset(fadeUp)
+      export function Example() { const n = state(2); const doubled = derive(() => n() * 2); return <Row><Card><Button><Motion><Text>{doubled()}</Text></Motion></Button></Card></Row> }`
+    setApp(
+      packages.map(([, name]) => `@pyreon/${name}`),
+      source,
+    )
+    const found = await discoverPlugins(app, join(app, 'src'))
+    expect(found.map((entry) => entry.plugin.name).sort()).toEqual(
+      packages.map(([, name]) => `@pyreon/${name}`).sort(),
+    )
+    const compiler = createCompiler({ discovered: found.map((entry) => entry.plugin) })
+    for (const target of ['swift', 'kotlin'] as const) {
+      const result = compiler.transform(source, { target })
+      expect(result.warnings).toEqual([])
+      expect(result.code).toContain('__kineticIn')
+      expect(result.code).toContain(
+        target === 'swift' ? '@State private var n: Int = 2' : 'mutableStateOf(2L)',
+      )
+      expect(result.code).not.toMatch(/\b(?:Row|Card|Button|Motion)[ ({]/)
+    }
+  })
+})
+
+it('discovers every installed package-owned plugin from its built manifest entry', async () => {
+  const packagesDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+  const owners: string[] = []
+  const nm = join(app, 'node_modules', '@pyreon')
+  mkdirSync(nm, { recursive: true })
+  for (const category of ['core', 'fundamentals', 'ui-system']) {
+    for (const folder of readdirSync(join(packagesDir, category))) {
+      const dir = join(packagesDir, category, folder)
+      const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+      if (manifest.pyreon?.native?.plugin === undefined) continue
+      expect(
+        readFileSync(resolve(dir, manifest.pyreon.native.plugin), 'utf8').length,
+      ).toBeGreaterThan(0)
+      symlinkSync(dir, join(nm, folder), 'dir')
+      owners.push(manifest.name)
+    }
+  }
+  expect(owners.length).toBeGreaterThan(30)
+  setApp(owners, owners.map((name) => `import '${name}'`).join('\n'))
+  const found = await discoverPlugins(app, join(app, 'src'))
+  expect(found.map((entry) => entry.plugin.name).sort()).toEqual(owners.sort())
+  const compiler = createCompiler({ discovered: found.map((entry) => entry.plugin) })
+  for (const target of ['swift', 'kotlin'] as const)
+    expect(
+      compiler.transform('function App() { return <Text>installed</Text> }', { target }).warnings,
+    ).toEqual([])
 })

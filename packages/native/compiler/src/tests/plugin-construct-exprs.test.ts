@@ -16,7 +16,7 @@ const expr = (seedsModuleConst?: boolean): ExprEmitter => ({
 
 const toy = (seedsModuleConst?: boolean): CompilerPlugin => ({
   name: '@acme/box',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@acme/box'],
   scanModule: (scan) => {
     const names = scan.fileState('@acme/box:names', () => new Set<string>())

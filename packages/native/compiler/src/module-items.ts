@@ -25,9 +25,23 @@
  * if the plugin were absent.
  */
 
+import type { ThemeTable } from './theme-native'
 import { isJson, type AstNode } from './call-lowering'
-import type { EmitContext, KotlinEmitContext, MemberEmitScope, SwiftEmitContext } from './emit-context'
-import type { DeclIR, ExprIR, ExtModuleItem, ExtPayload, StructIR, TypeIR } from './types'
+import type {
+  EmitContext,
+  KotlinEmitContext,
+  MemberEmitScope,
+  SwiftEmitContext,
+} from './emit-context'
+import type {
+  DeclIR,
+  ExprIR,
+  ExtModuleItem,
+  ExtPayload,
+  JsxElementIR,
+  StructIR,
+  TypeIR,
+} from './types'
 
 /** What a top-level recognizer (or `ModuleParseContext.addItem`) returns. The compiler stamps `plugin`. */
 export interface ExtItemSpec {
@@ -43,6 +57,15 @@ export interface ExtItemSpec {
 export interface ModuleParseContext {
   /** The file's source text. */
   readonly source: string
+  /** Resolved static theme tokens, shared by target-independent style frontends. */
+  readonly theme: ThemeTable
+  /** The module-scope binding of a name; absent names retain standalone snippet syntax. */
+  binding(
+    name: string,
+  ):
+    | { readonly kind: 'import'; readonly module: string; readonly name: string }
+    | { readonly kind: 'local' }
+    | undefined
   /** Report a limitation to the author exactly as written. */
   report(message: string): void
   /** Plugin-owned memory for THIS file (shared with `scanModule`); namespace the key with the plugin name. */
@@ -139,7 +162,11 @@ export interface ModuleItemTyping {
   /** Mutable field IR, so seed/struct refinement edits the owning item rather than a detached copy. */
   fields?(item: ExtModuleItem): readonly { name: string; type: TypeIR; initial: ExprIR }[]
   /** A read/call rooted at the item's primary binding, or `undefined` to decline. */
-  type?(item: ExtModuleItem, expr: ExprIR, infer: (expr: ExprIR, scope?: MemberEmitScope) => TypeIR): TypeIR | undefined
+  type?(
+    item: ExtModuleItem,
+    expr: ExprIR,
+    infer: (expr: ExprIR, scope?: MemberEmitScope) => TypeIR,
+  ): TypeIR | undefined
 }
 
 /** Renders one item type, and says how it takes part in the core's cross-cutting passes. */
@@ -155,7 +182,20 @@ export interface ModuleItemEmitter {
    * (`moduleTag`, the hash that names synthesized structs, hashes each lane's payloads where the array stood).
    * A new plugin has no prior output to preserve and omits it.
    */
-  readonly legacyList?: 'models' | 'stores' | 'fieldMetas' | 'zodSchemas' | 'features' | undefined
+  readonly legacyList?:
+    | 'models'
+    | 'stores'
+    | 'fieldMetas'
+    | 'zodSchemas'
+    | 'features'
+    | 'styledComponents'
+    | 'rocketstyleComponents'
+    | 'attrsComponents'
+    | undefined
+  /** Rewrite a JSX tag naming this item through ordinary element IR; undefined declines. */
+  readonly element?:
+    | ((item: ExtModuleItem, element: JsxElementIR, ctx: EmitContext) => JsxElementIR | undefined)
+    | undefined
   readonly bindings?: ItemBindings | undefined
   readonly fieldValidators?: FieldValidators | undefined
   /** Expression chains rooted at this item's primary binding; `undefined` declines. */
@@ -191,7 +231,10 @@ export interface ExtExprSpec {
  * without lowering it (the recognizer reported why through {@link ModuleParseContext.unsupported}; the parser
  * substitutes the same empty literal it uses for every unsupported expression).
  */
-export type MethodCallRecognizer = (site: MethodCallSite, ctx: ModuleParseContext) => ExtExprSpec | null | undefined
+export type MethodCallRecognizer = (
+  site: MethodCallSite,
+  ctx: ModuleParseContext,
+) => ExtExprSpec | null | undefined
 
 /** The call a {@link CallExprRecognizer} is asked about. */
 export interface CallExprSite {
@@ -210,7 +253,10 @@ export interface CallExprSite {
  * plugin registers one, so the first check must be cheap — read the names the plugin's `scanModule` recorded in
  * `fileState` and return `undefined` when the file holds none.
  */
-export type CallExprRecognizer = (site: CallExprSite, ctx: ModuleParseContext) => ExtExprSpec | null | undefined
+export type CallExprRecognizer = (
+  site: CallExprSite,
+  ctx: ModuleParseContext,
+) => ExtExprSpec | null | undefined
 
 /** Renders and types one `ext-expr` type. */
 export interface ExprEmitter {
@@ -246,7 +292,9 @@ export interface ExprEmitter {
    * seed — returned as the SAME nodes the expression holds, since the core widens an integer-valued seed to a Double in place when
    * the reducer accumulates a fractional value. Without it a plugin reduction keeps the seed it was written with.
    */
-  reduce?(e: ExtExprIR): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined
+  reduce?(
+    e: ExtExprIR,
+  ): { readonly source: ExprIR; readonly reducer: ExprIR; readonly seed: ExprIR } | undefined
 }
 
 /** What a struct refinement may edit and read. */
@@ -256,7 +304,10 @@ export interface StructRefinementTarget {
   /** Every declaration-level item (inline-synthesized ones are not evidence). */
   readonly items: readonly ExtModuleItem[]
   /** The decode sites plugins recorded (`ParseContext.recordDecode`): a hook's type argument + the schema its request names. */
-  readonly decodes: readonly { readonly type: TypeIR; readonly response: { readonly binding: string; readonly array: boolean } | undefined }[]
+  readonly decodes: readonly {
+    readonly type: TypeIR
+    readonly response: { readonly binding: string; readonly array: boolean } | undefined
+  }[]
 }
 
 /**
@@ -297,12 +348,18 @@ export interface ItemRegistry {
   /** Method name → recognizers in plugin order. A call with no claimant costs one `Map.get`. */
   readonly methodCalls: ReadonlyMap<string, readonly { readonly owner: string; readonly recognize: MethodCallRecognizer }[]>
   /** Recognizers registered under `'*'` — they see every method call, after the ones keyed by its own name. */
-  readonly anyMethodCalls: readonly { readonly owner: string; readonly recognize: MethodCallRecognizer }[]
+  readonly anyMethodCalls: readonly {
+    readonly owner: string
+    readonly recognize: MethodCallRecognizer
+  }[]
   /** Call-expression recognizers in plugin order. */
   readonly callExprs: readonly { readonly owner: string; readonly recognize: CallExprRecognizer }[]
   readonly exprEmitters: ReadonlyMap<string, ReadonlyMap<string, ExprEmitter>>
   exprEmitter(plugin: string, type: string): ExprEmitter | undefined
-  readonly structRefinements: readonly { readonly owner: string; readonly refine: StructRefinement }[]
+  readonly structRefinements: readonly {
+    readonly owner: string
+    readonly refine: StructRefinement
+  }[]
   readonly finishers: readonly { readonly owner: string; readonly finish: ModuleFinish }[]
 }
 
@@ -359,7 +416,11 @@ export function createItemRegistry(plugins: readonly ItemPlugin[]): ItemRegistry
  * emitter or the payload is not JSON — both would otherwise surface far away, as a missing declaration or as
  * a `structuredClone` error in a later pass.
  */
-export function stampModuleItem(registry: ItemRegistry, owner: string, spec: ExtItemSpec): ExtModuleItem {
+export function stampModuleItem(
+  registry: ItemRegistry,
+  owner: string,
+  spec: ExtItemSpec,
+): ExtModuleItem {
   if (registry.emitter(owner, spec.type) === undefined) {
     throw new Error(
       `[Pyreon] Plugin "${owner}" recognized a module item of type "${spec.type}" but declares no \`items.${spec.type}\` emitter.`,
@@ -371,7 +432,12 @@ export function stampModuleItem(registry: ItemRegistry, owner: string, spec: Ext
       `[Pyreon] Plugin "${owner}" module item "${spec.type}" has a payload that is not JSON (functions, NaN, class instances and cycles are refused) — the compiler clones its IR between passes.`,
     )
   }
-  return { plugin: owner, type: spec.type, name: spec.name, payload: payload as ExtModuleItem['payload'] }
+  return {
+    plugin: owner,
+    type: spec.type,
+    name: spec.name,
+    payload: payload as ExtModuleItem['payload'],
+  }
 }
 
 /** The `ext-expr` node for a method-call recognizer's spec, with the same checks as {@link stampModuleItem}. */
@@ -430,7 +496,13 @@ export function findFieldValidators(
   registry: ItemRegistry,
   items: readonly ExtModuleItem[],
   name: string,
-): { readonly item: ExtModuleItem; readonly validators: FieldValidators; readonly fields: readonly string[] } | undefined {
+):
+  | {
+      readonly item: ExtModuleItem
+      readonly validators: FieldValidators
+      readonly fields: readonly string[]
+    }
+  | undefined {
   for (const item of items) {
     if (item.name !== name) continue
     const validators = registry.emitter(item.plugin, item.type)?.fieldValidators

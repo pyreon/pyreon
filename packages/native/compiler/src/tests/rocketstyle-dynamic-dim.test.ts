@@ -8,8 +8,13 @@
 // components reactive rather than static-only.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { transform } from './first-party-plugins'
+import {
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftTypecheck,
+} from '../validate'
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
@@ -29,7 +34,9 @@ const render = (jsx: string) => BTN.replace('RENDER', jsx)
 
 describe('rocketstyle dynamic dimension — emit', () => {
   it('a dynamic state flip lowers to a conditional-value background (Swift)', () => {
-    const { code, warnings } = swift(render(`<Btn state={active() ? 'primary' : 'danger'}><Text>x</Text></Btn>`))
+    const { code, warnings } = swift(
+      render(`<Btn state={active() ? 'primary' : 'danger'}><Text>x</Text></Btn>`),
+    )
     // The reactive state flip → a conditional background modifier.
     expect(code).toContain('.background(((active) ? Color(.sRGB, red: 0.145')
     expect(code).toContain(': Color(.sRGB, red: 0.863') // #dc2626 else-branch
@@ -37,14 +44,18 @@ describe('rocketstyle dynamic dimension — emit', () => {
   })
 
   it('a dynamic state flip lowers to an if/else background (Kotlin)', () => {
-    const { code } = kotlin(render(`<Btn state={active() ? 'primary' : 'danger'}><Text>x</Text></Btn>`))
+    const { code } = kotlin(
+      render(`<Btn state={active() ? 'primary' : 'danger'}><Text>x</Text></Btn>`),
+    )
     expect(code).toContain('.background((if (active) Color(0xFF2563EB) else Color(0xFFDC2626)))')
   })
 
   it('merges a STATIC dim into BOTH branches of the dynamic flip', () => {
     // size="large" (padding 16) is static → present in both branches; the theme
     // cornerRadius 8 likewise. Only backgroundColor differs by the dynamic flip.
-    const { code } = swift(render(`<Btn state={active() ? 'primary' : 'danger'} size="large"><Text>x</Text></Btn>`))
+    const { code } = swift(
+      render(`<Btn state={active() ? 'primary' : 'danger'} size="large"><Text>x</Text></Btn>`),
+    )
     expect(code).toContain('.padding(((active) ? 16 : 16))') // static size in both
     expect(code).toContain('.cornerRadius(((active) ? 8 : 8))') // static theme in both
     expect(code).toContain('.background(((active) ?') // dynamic state flip
@@ -57,13 +68,17 @@ describe('rocketstyle dynamic dimension — emit', () => {
   })
 
   it('warns + drops a ternary whose branches are not both declared dimension values', () => {
-    const { warnings } = swift(render(`<Btn state={active() ? 'primary' : 'nope'}><Text>x</Text></Btn>`))
+    const { warnings } = swift(
+      render(`<Btn state={active() ? 'primary' : 'nope'}><Text>x</Text></Btn>`),
+    )
     expect(warnings.join('\n')).toMatch(/must be a ternary of TWO DECLARED state values/)
   })
 
   it('warns on ≥2 dynamic dims + falls back to the first branch (static)', () => {
     const { code, warnings } = swift(
-      render(`<Btn state={active() ? 'primary' : 'danger'} size={active() ? 'small' : 'large'}><Text>x</Text></Btn>`),
+      render(
+        `<Btn state={active() ? 'primary' : 'danger'} size={active() ? 'small' : 'large'}><Text>x</Text></Btn>`,
+      ),
     )
     expect(warnings.join('\n')).toMatch(/more than one dynamic dimension prop/)
     // Fallback: first branches (primary + small) resolved statically — no ternary.
@@ -73,13 +88,21 @@ describe('rocketstyle dynamic dimension — emit', () => {
 })
 
 describe('rocketstyle dynamic dimension — toolchain gates', () => {
-  const SRC = render(`<Btn state={active() ? 'primary' : 'danger'} size="large"><Text>Click</Text></Btn>`)
-  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the reactive rocketstyle flip typechecks (real SwiftUI SDK)', () => {
-    const res = validateSwiftTypecheck(swift(SRC).code)
-    expect(res.ok, res.error).toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the reactive rocketstyle flip compiles (real kotlinc)', () => {
-    const res = validateKotlin(kotlin(SRC).code)
-    expect(res.ok, res.error).toBe(true)
-  })
+  const SRC = render(
+    `<Btn state={active() ? 'primary' : 'danger'} size="large"><Text>Click</Text></Btn>`,
+  )
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the reactive rocketstyle flip typechecks (real SwiftUI SDK)',
+    () => {
+      const res = validateSwiftTypecheck(swift(SRC).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
+    'the reactive rocketstyle flip compiles (real kotlinc)',
+    () => {
+      const res = validateKotlin(kotlin(SRC).code)
+      expect(res.ok, res.error).toBe(true)
+    },
+  )
 })

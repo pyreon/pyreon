@@ -902,25 +902,6 @@ export interface ParseResult {
    */
   helperFns: Extract<DeclIR, { kind: 'function' }>[]
   /**
-   * `const X = styled(Prim)\`css\`` declarations wrapping a CANONICAL primitive.
-   * At emit each `<X>` use-site is rewritten to `<Prim>` with the captured CSS
-   * injected as a synthetic `style` attr, so the whole inline-style connector
-   * lowers it unchanged. `styled('div')` / `styled(NonPrimitive)` are NOT
-   * collected here (warned — no native primitive).
-   */
-  styledComponents: StyledComponentIR[]
-  /**
-   * `rocketstyle()({component: Prim})…` components resolved per use-site (the
-   * `rocketstyle-native` frontend). Sibling of `styledComponents`.
-   */
-  rocketstyleComponents: RocketstyleComponentIR[]
-  /**
-   * `attrs({component: Prim}).attrs({…})…` default-prop HOC components (the
-   * `attrs-native` frontend). Sibling of `styledComponents` — the emit rewrites
-   * each `<X>` use-site to `<Prim …defaults …use-site>`.
-   */
-  attrsComponents: AttrsComponentIR[]
-  /**
    * Local-name → source package + original imported name for package-specific
    * JSX hooks. The emit intercepts a tag ONLY when both match — so a user
    * component that happens to share a name (`Row` from `./my-components`) is
@@ -930,39 +911,6 @@ export interface ParseResult {
   aliasImports: Map<string, { source: string; imported: string }>
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
-}
-
-/** An `attrs({component: Prim}).attrs({…})` default-prop HOC lowered at its
- *  use-sites. Produced by the `attrs-native` frontend module. */
-export interface AttrsComponentIR {
-  name: string
-  tag: string
-  defaultAttrs: { name: string; value: ExprIR }[]
-}
-
-/** A `styled(Prim)`-wrapped canonical primitive lowered at its use-sites. */
-export interface StyledComponentIR {
-  /** The `const X = …` binding name (the JSX tag used at call sites). */
-  name: string
-  /** The wrapped canonical primitive tag (`Stack`, `Text`, …). */
-  tag: string
-  /** The static CSS body as a style object (camelCase keys, literal values). */
-  styleObject: Extract<ExprIR, { kind: 'object' }>
-}
-
-/**
- * A `rocketstyle()({component: Prim}).theme().states()…` component — resolved at
- * each `<Btn state="primary">` use-site by merging base ∪ matched dimensions.
- * Produced by the `rocketstyle-native` frontend module.
- */
-export interface RocketstyleComponentIR {
-  name: string
-  /** The canonical primitive base tag. */
-  tag: string
-  /** `.theme()` base styles. */
-  base: Extract<ExprIR, { kind: 'object' }>
-  /** dimension name (`state`/`size`/`variant`) → value name → its style object. */
-  dims: Record<string, Record<string, Extract<ExprIR, { kind: 'object' }>>>
 }
 
 export interface TransformResult {

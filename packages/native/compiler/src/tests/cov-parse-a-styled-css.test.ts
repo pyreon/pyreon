@@ -18,7 +18,7 @@
 // Each spec pairs the shape that produces a style modifier with the one that
 // must not, so the assertion reads the emit rather than the parser.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 
@@ -48,7 +48,9 @@ describe('styled() tag recognition', () => {
     // The string-literal argument IS read — that is what lets the warning quote
     // `styled('div')` back rather than printing a generic "unsupported tag".
     const w = warnings(mod("const Boxy = styled('div')`padding: 4px;`"))
-    expect(w.some((m) => m.includes("styled('div') on 'Boxy'") && m.includes("'div' has no native"))).toBe(true)
+    expect(
+      w.some((m) => m.includes("styled('div') on 'Boxy'") && m.includes("'div' has no native")),
+    ).toBe(true)
     expect(swift(mod("const Boxy = styled('div')`padding: 4px;`"))).not.toContain('.padding(4)')
   })
 
@@ -210,7 +212,9 @@ describe('CSS escapes preserve sibling declarations', () => {
   )
 
   it('retains declarations in separate quasis around a theme interpolation', () => {
-    const source = mod('const Boxy = styled(Stack)`padding: 4px; content: "\\2014"; color: ${() => "red"}; opacity: 0.5;`')
+    const source = mod(
+      'const Boxy = styled(Stack)`padding: 4px; content: "\\2014"; color: ${() => "red"}; opacity: 0.5;`',
+    )
     expect(swift(source)).toContain('.padding(4)')
     expect(swift(source)).toContain('.opacity(0.5)')
     expect(styledWarnings(source).join(' ')).toContain('color')

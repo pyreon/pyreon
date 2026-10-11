@@ -13,12 +13,13 @@ Chainable HOC factory for Pyreon components. `attrs({ name, component })` wraps 
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-attrs(&#123; name, component &#125;) default-prop HOC lowers via attrs-native (use-site wins)
+attrs(&#123; name, component &#125;) default-prop HOC lowers through its package-owned native plugin (use-site wins)
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
+- Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata
 - attrs(&#123; name, component &#125;) factory — immutable chainable builder, every method returns a new component
 - .attrs(object | callback, &#123; priority?, filter? &#125;) — stacking default props; callbacks receive the current resolved props
 - Merge precedence priorityAttrs &lt; attrs &lt; explicit props — call-site props always win; undefined values never shadow defaults

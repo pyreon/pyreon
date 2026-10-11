@@ -4,7 +4,7 @@ import type { EmitOptions, TransformResult } from './types'
 
 export { createCompiler, BUILT_IN_PLUGINS } from './compiler'
 export { swiftBackend, kotlinBackend } from './backends'
-export { NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
+export { NATIVE_COMPILER_PLUGIN_API_V2, NATIVE_COMPILER_PLUGIN_API_VERSION, SUPPORTED_PLUGIN_API_VERSIONS } from './plugin'
 export { assertPluginShape } from './plugin-shape'
 export {
   createServiceRegistry,

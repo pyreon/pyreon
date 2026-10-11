@@ -16,7 +16,7 @@ function declarationScope(item: ExtModuleItem): MemberEmitScope {
 }
 function moduleCompiler() {
   const plugin: CompilerPlugin = {
-    name: '@acme/module-inference', apiVersion: 1, modules: ['@acme/module-inference'],
+    name: '@acme/module-inference', apiVersion: 2, modules: ['@acme/module-inference'],
     topLevel(node, ctx) {
       const d = (node as { declarations?: { id?: { name?: string }; init?: AstNode & { callee?: { name?: string }; arguments?: AstNode[] } }[] }).declarations?.[0]
       if (d?.init?.callee?.name !== 'moduleBox' || !d.id?.name) return undefined
@@ -65,7 +65,6 @@ function moduleCompiler() {
   return createCompiler({ discovered: [plugin] })
 }
 const SOURCE = `import { moduleBox } from '@acme/module-inference'
-import { computed, signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 const FRACTION = 0.5
 const ExampleModule = moduleBox<number>((amount: number = 0.25): number => total() + amount, FRACTION)

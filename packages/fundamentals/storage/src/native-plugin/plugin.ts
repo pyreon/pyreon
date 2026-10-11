@@ -15,7 +15,6 @@
 // the emit, and a computed or imported key cannot be resolved at build time.
 
 import {
-  NATIVE_COMPILER_PLUGIN_API_VERSION,
   kotlinStr,
   swiftStr,
   type CallRecognizer,
@@ -80,7 +79,7 @@ const persistence: SignalPersistence = {
  */
 export const storagePlugin: CompilerPlugin = Object.freeze({
   name: STORAGE_PLUGIN_NAME,
-  apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION,
+  apiVersion: 2,
   modules: Object.freeze([STORAGE_PLUGIN_NAME]),
   calls: Object.freeze({
     useStorage: recognizeStorage,

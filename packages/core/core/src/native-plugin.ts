@@ -2,7 +2,7 @@
 import type { CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 export const corePlugin: CompilerPlugin = {
   name: '@pyreon/core',
-  apiVersion: 1,
+  apiVersion: 2,
   modules: ['@pyreon/core'],
   calls: { useColorMode: () => ({ type: 'color-mode' }) },
   destructureCalls: ['useColorMode'],

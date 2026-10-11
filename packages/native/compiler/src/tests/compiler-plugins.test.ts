@@ -1,18 +1,18 @@
 import { chartsCompiler, chartsPlugin } from './charts-plugin'
 import { hooksPlugin } from './first-party-plugins'
-import { createCompiler, transform, SUPPORTED_PLUGIN_API_VERSIONS, swiftBackend, type CompilerModule, type CompilerPlugin } from '../index'
+import { createCompiler, transform, SUPPORTED_PLUGIN_API_VERSIONS, NATIVE_COMPILER_PLUGIN_API_VERSION, swiftBackend, type CompilerModule, type CompilerPlugin } from '../index'
 import { parsePyreon } from '../parse'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck, validateSwiftWithStubs } from '../validate'
 const APP = 'export function Example() { return <Text>hello</Text> }'
 const BADGE = 'export function Example() { return <ReleaseBadge /> }'
 const plugin = (extra: Partial<CompilerPlugin> = {}): CompilerPlugin => ({
   name: 'test',
-  apiVersion: 1,
+  apiVersion: 2,
   ...extra,
 })
 const badge: CompilerPlugin<never> = {
   name: 'release-badge',
-  apiVersion: 1,
+  apiVersion: 2,
   transformIR(module) {
     for (const component of module.components) {
       const expr = component.returnExpr
@@ -104,7 +104,7 @@ describe('instance-owned compiler plugins', () => {
       plugins: [
         {
           name: 'preview',
-          apiVersion: 1,
+          apiVersion: 2,
           backends: [
             {
               target: 'preview' as const,
@@ -132,7 +132,7 @@ describe('instance-owned compiler plugins', () => {
       expect(Object.isFrozen(context.options.fonts)).toBe(true)
       context.warn('original')
     })
-    const mutable = { name: 'snapshot', apiVersion: 1 as const, transformIR: pass }
+    const mutable = { name: 'snapshot', apiVersion: 2 as const, transformIR: pass }
     const plugins = [mutable]
     const compiler = createCompiler({ plugins })
     plugins.length = 0
@@ -296,7 +296,7 @@ describe('instance-owned compiler plugins', () => {
     [{ plugins: [null] }, /nonempty name/],
     [{ plugins: [plugin({ name: '' })] }, /nonempty name/],
     [{ plugins: [plugin(), plugin()] }, /Duplicate native compiler plugin/],
-    [{ plugins: [{ ...plugin(), apiVersion: 2 }] }, /supports API 1/],
+    [{ plugins: [{ ...plugin(), apiVersion: 3 }] }, /supports API 2/],
     [{ plugins: [plugin({ transformIR: 1 as never })] }, /transformIR must be/],
     [{ plugins: [plugin({ prepareIR: 1 as never })] }, /prepareIR must be/],
     [{ plugins: [plugin({ backends: {} as never })] }, /backends must be an array/],
@@ -354,11 +354,17 @@ describe('instance-owned compiler plugins', () => {
   })
 })
 
-describe('additive protocol fields (apiVersion stays 1)', () => {
+describe('API 2 protocol fields', () => {
+  it('rejects an old plugin that imports the legacy version constant from the new compiler', () => {
+    const oldPlugin = { name: 'legacy-runtime-version-import', apiVersion: NATIVE_COMPILER_PLUGIN_API_VERSION, transformIR() { throw new Error('old IR must not run') } }
+    expect(() => createCompiler({ plugins: [oldPlugin as unknown as CompilerPlugin] })).toThrow('requires API 1; this compiler supports API 2')
+    expect(NATIVE_COMPILER_PLUGIN_API_VERSION).toBe(1)
+  })
+
   it('publishes the supported version set and still says what to update', () => {
-    expect(SUPPORTED_PLUGIN_API_VERSIONS).toEqual([1])
-    expect(() => createCompiler({ plugins: [{ ...plugin(), apiVersion: 2 as never }] })).toThrow(
-      /requires API 2; this compiler supports API 1\. Update the plugin and compiler together\./,
+    expect(SUPPORTED_PLUGIN_API_VERSIONS).toEqual([2])
+    expect(() => createCompiler({ plugins: [{ ...plugin(), apiVersion: 3 as never }] })).toThrow(
+      /requires API 3; this compiler supports API 2\. Update the plugin and compiler together\./,
     )
   })
   it('accepts services/modules/requires/builtIn without changing the emit', () => {

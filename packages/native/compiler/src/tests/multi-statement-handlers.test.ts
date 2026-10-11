@@ -6,7 +6,7 @@
 // emit every statement. The single-statement compact form is unchanged.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
 
 const SRC = `import { Stack, Button } from '@pyreon/primitives'

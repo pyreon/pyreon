@@ -3,8 +3,7 @@ import type { CompilerPlugin } from '../plugin'
 import type { StatementIR, TypeIR } from '../types'
 import { isKotlincAvailable, validateKotlin } from '../validate'
 
-const source = `import { signal } from '@pyreon/reactivity'
-import { useCallback } from '@acme/callbacks'
+const source = `import { useCallback } from '@acme/callbacks'
 export function CallbackApp() {
   const sink = signal('')
   const local = signal(7)
@@ -53,7 +52,7 @@ function compile(fail = false) {
   ]
   const plugin: CompilerPlugin = {
     name: '@acme/callbacks',
-    apiVersion: 1,
+    apiVersion: 2,
     modules: ['@acme/callbacks'],
     calls: { useCallback: () => ({ type: 'callback' }) },
     exprs: {

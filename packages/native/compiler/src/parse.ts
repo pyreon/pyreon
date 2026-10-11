@@ -64,29 +64,17 @@ import type {
   ExprIR,
   ModuleDeclIR,
   ParseResult,
-  RocketstyleComponentIR,
   RouteIR,
   JsxElementIR,
   StatementIR,
   StructIR,
-  AttrsComponentIR,
-  StyledComponentIR,
   TypeIR,
   ExtModuleItem,
 } from './types'
-import { isCanonicalPrimitive } from './canonical-primitives'
-import { parseRocketstyleDefn } from './rocketstyle-native'
-import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
 import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
-import {
-  DEFAULT_THEME,
-  mergeTheme,
-  parseThemeDefinition,
-  resolveThemeToken,
-  type ThemeTable,
-} from './theme-native'
+import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, type ThemeTable } from './theme-native'
 import { typeShapeKey, lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
@@ -212,6 +200,7 @@ interface ParseCtx {
   pluginState: Map<string, unknown>
   /** Predicates plugins registered (`ModuleScan.skipTopLevel`): a top-level node one of them accepts is metadata and is not parsed. */
   skipTopLevel: ((node: AnyNode) => boolean)[]
+  moduleBindings: Map<string, ReturnType<ModuleParseContext['binding']>>
   /** `module#name` (module `*`: any) imports a plugin marked as consumed by lowering (`ModuleScan.lowered`). */
   loweredImports: Set<string>
   /**
@@ -314,6 +303,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     theme: DEFAULT_THEME,
     pluginState: new Map(),
     skipTopLevel: [],
+    moduleBindings: new Map(),
     loweredImports: new Set(),
     responseDecodes: [],
     lateModuleItems: [],
@@ -346,8 +336,44 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // framework hook is renamed to its canonical export, and a same-named user
   // function or foreign import stops being claimed (see hook-binding.ts).
   ctx.warnings.push(
-    ...canonicalizeHookBindings(ast.program as AnyNode, nativeLoweredHooks(), hookClaimsSource),
+    ...canonicalizeHookBindings(
+      ast.program as AnyNode,
+      // Core operation spellings remain valid in unimported snippets. An imported
+      // or locally declared function with that spelling still needs its owner's
+      // mapping; otherwise the generic operation would claim unrelated code.
+      new Set(['signal', 'computed', ...nativeLoweredHooks()]),
+      (hook, module) =>
+        hook === 'signal' || hook === 'computed'
+          ? hookClaimsSource(hook, module)
+          : module.startsWith('@pyreon/') || hookClaimsSource(hook, module),
+    ),
   )
+  for (const node of ast.program.body as AnyNode[]) {
+    if (node.type === 'ImportDeclaration') {
+      for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+        if (typeof spec.local?.name !== 'string') continue
+        const imported =
+          spec.type === 'ImportDefaultSpecifier'
+            ? 'default'
+            : spec.type === 'ImportNamespaceSpecifier'
+              ? '*'
+              : (spec.imported?.name ?? spec.imported?.value)
+        if (typeof imported === 'string')
+          ctx.moduleBindings.set(spec.local.name as string, {
+            kind: 'import',
+            module: node.source.value as string,
+            name: imported,
+          })
+      }
+    } else {
+      const declaration = node.type === 'ExportNamedDeclaration' ? node.declaration : node
+      if (typeof declaration?.id?.name === 'string')
+        ctx.moduleBindings.set(declaration.id.name as string, { kind: 'local' })
+      for (const decl of topLevelDeclarators(node as AstNode) as readonly AnyNode[])
+        if (typeof decl.id?.name === 'string')
+          ctx.moduleBindings.set(decl.id.name as string, { kind: 'local' })
+    }
+  }
   // Pre-pass: module-scope string constants, so a hook that bakes a string can
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
@@ -404,9 +430,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const structs: StructIR[] = []
   const moduleDecls: ModuleDeclIR[] = []
   const moduleItems: ExtModuleItem[] = []
-  const styledComponents: StyledComponentIR[] = []
-  const rocketstyleComponents: RocketstyleComponentIR[] = []
-  const attrsComponents: AttrsComponentIR[] = []
   structs.push(...collectLiftedPropsStructs(ast.program.body as AnyNode[], declaredTypeNames, ctx))
 
   for (const node of ast.program.body as AnyNode[]) {
@@ -445,26 +468,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     const claimedItem = tryPluginTopLevel(node, ctx)
     if (claimedItem) {
       moduleItems.push(claimedItem)
-      continue
-    }
-    // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
-    // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
-    // catch-alls so the styled const isn't mis-parsed as a broken module binding.
-    const sc = tryStyledDefnFromTopLevel(node, ctx)
-    if (sc) {
-      styledComponents.push(sc)
-      continue
-    }
-    // rocketstyle()({component: Prim}).theme().states()… → the rocketstyle-native
-    // frontend resolves it at use-sites. Collected before the catch-alls.
-    const rc = tryRocketstyleDefnFromTopLevel(node, ctx)
-    if (rc) {
-      rocketstyleComponents.push(rc)
-      continue
-    }
-    const ac = tryAttrsDefnFromTopLevel(node, ctx)
-    if (ac) {
-      attrsComponents.push(ac)
       continue
     }
     // A `defineTheme({ … })` declaration is a COMPILE-TIME resolution source
@@ -626,9 +629,6 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     structs,
     moduleDecls,
     moduleItems,
-    styledComponents,
-    rocketstyleComponents,
-    attrsComponents,
     aliasImports,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
@@ -681,210 +681,6 @@ function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
     }
   }
   if (found) ctx.theme = mergeTheme(acc)
-}
-
-/**
- * `const X = rocketstyle()({name, component: Prim}).theme().states()…` → a
- * RocketstyleComponentIR. A thin var-declarator unwrap; the chain parsing +
- * dimension resolution lives in the `rocketstyle-native` frontend module.
- */
-function tryRocketstyleDefnFromTopLevel(
-  node: AnyNode,
-  ctx: ParseCtx,
-): RocketstyleComponentIR | null {
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') varDecl = node
-  else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  }
-  if (!varDecl || varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (decl?.id?.type !== 'Identifier') return null
-  return parseRocketstyleDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
-}
-
-/**
- * `const X = attrs({ name, component: Prim }).attrs({ … })…` → an
- * AttrsComponentIR. A thin var-declarator unwrap; the chain parsing lives in the
- * `attrs-native` frontend module.
- */
-function tryAttrsDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): AttrsComponentIR | null {
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') varDecl = node
-  else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  }
-  if (!varDecl || varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (decl?.id?.type !== 'Identifier') return null
-  return parseAttrsDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
-}
-
-/**
- * `const X = styled(Prim)\`css\`` where `Prim` is a CANONICAL @pyreon/primitives
- * component → a StyledComponentIR the emit rewrites at each `<X>` use-site to
- * `<Prim style={captured}>`. `styled` accepts a component ref OR a string tag
- * (`Tag = string | ComponentFn`); only a ref (or literal name) resolving to a
- * canonical primitive lowers — `styled('div')` / `styled(NonPrimitive)` warn.
- * Static CSS only (interpolations — theme tokens — warn + drop, a tracked
- * follow-up: they need compile-time theme resolution).
- */
-function tryStyledDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StyledComponentIR | null {
-  let varDecl: AnyNode | null = null
-  if (node.type === 'VariableDeclaration') varDecl = node
-  else if (
-    node.type === 'ExportNamedDeclaration' &&
-    node.declaration?.type === 'VariableDeclaration'
-  ) {
-    varDecl = node.declaration
-  }
-  if (!varDecl || varDecl.kind !== 'const') return null
-  const decls = (varDecl.declarations as AnyNode[]) ?? []
-  if (decls.length !== 1) return null
-  const decl = decls[0]
-  if (decl?.id?.type !== 'Identifier') return null
-  const name = decl.id.name as string
-  const init = unwrapTypeLayers(decl.init)
-  if (init?.type !== 'TaggedTemplateExpression') return null
-  // The tag must be `styled(<Prim>)`.
-  const tagCall = unwrapTypeLayers(init.tag)
-  if (tagCall?.type !== 'CallExpression') return null
-  const callee = tagCall.callee
-  if (callee?.type !== 'Identifier' || callee.name !== 'styled') return null
-  const firstArg = unwrapTypeLayers((tagCall.arguments as AnyNode[])?.[0])
-  if (!firstArg) return null
-  let prim: string | null = null
-  let printedArg = ''
-  if (firstArg.type === 'Identifier') {
-    prim = firstArg.name as string
-    printedArg = prim
-  } else if (firstArg.type === 'Literal' && typeof firstArg.value === 'string') {
-    prim = firstArg.value as string
-    printedArg = `'${prim}'`
-  }
-  if (!prim) return null
-  if (!isCanonicalPrimitive(prim)) {
-    ctx.warnings.push(
-      `styled(${printedArg}) on '${name}': only styled() wrapping a CANONICAL @pyreon/primitives ` +
-        `component (Stack/Text/Button/Press/Field/…) lowers to native — '${prim}' has no native ` +
-        `primitive, so <${name}> was left unresolved. Wrap a canonical primitive, or use a Layer-4 adapter.`,
-    )
-    return null
-  }
-  const quasi = init.quasi
-  if (quasi?.type !== 'TemplateLiteral') return null
-  return { name, tag: prim, styleObject: cssTemplateToStyleObject(quasi, name, ctx) }
-}
-
-/** kebab-case CSS property → the camelCase key the inline-style connector reads. */
-function kebabToCamel(s: string): string {
-  return s.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase())
-}
-
-/**
- * A `styled()` CSS template to a style-object `ExprIR` (camelCase keys, literal
- * values). Static declarations lower verbatim; a declaration whose value is a
- * single THEME-TOKEN interpolation (`background: ${(t) => t.color.primary}`) is
- * RESOLVED via the theme-native frontend to its value. Any other interpolation
- * (a complex/runtime expression) is dropped + warned.
- */
-function cssTemplateToStyleObject(
-  quasi: AnyNode,
-  declName: string,
-  ctx: ParseCtx,
-): Extract<ExprIR, { kind: 'object' }> {
-  const quasis = (quasi.quasis as AnyNode[]) ?? []
-  const expressions = (quasi.expressions as AnyNode[]) ?? []
-
-  // Interleave quasis + interpolations into declarations, splitting on a text
-  // `;` (an interpolation stays attached to the declaration it sits in).
-  type Part = { t: 'text'; v: string } | { t: 'expr'; node: AnyNode }
-  const decls: Part[][] = [[]]
-  const pushText = (s: string) => {
-    let buf = ''
-    for (const ch of s) {
-      if (ch === ';') {
-        if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
-        decls.push([])
-        buf = ''
-      } else buf += ch
-    }
-    if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
-  }
-  for (let i = 0; i < quasis.length; i++) {
-    // Tagged templates retain raw CSS even when a CSS escape is invalid JS
-    // (for example \\2014). An absent cooked value must not erase its siblings.
-    pushText(quasis[i]?.value?.cooked ?? quasis[i]?.value?.raw ?? '')
-    if (i < expressions.length) decls[decls.length - 1]!.push({ t: 'expr', node: expressions[i] })
-  }
-
-  const fields: { name: string; value: ExprIR }[] = []
-  const droppedInterp: string[] = []
-  for (const decl of decls) {
-    let colonPart = -1
-    let colonAt = -1
-    for (let i = 0; i < decl.length; i++) {
-      const p = decl[i]!
-      if (p.t === 'text') {
-        const idx = p.v.indexOf(':')
-        if (idx !== -1) {
-          colonPart = i
-          colonAt = idx
-          break
-        }
-      }
-    }
-    if (colonPart === -1) continue
-    const propRaw = (
-      decl
-        .slice(0, colonPart)
-        .map((p) => (p.t === 'text' ? p.v : ''))
-        .join('') + (decl[colonPart] as { t: 'text'; v: string }).v.slice(0, colonAt)
-    ).trim()
-    if (!propRaw || !/^[-a-zA-Z][-a-zA-Z0-9]*$/.test(propRaw)) continue
-    const name = kebabToCamel(propRaw)
-
-    const valueParts: Part[] = []
-    const tail = (decl[colonPart] as { t: 'text'; v: string }).v.slice(colonAt + 1)
-    if (tail.length > 0) valueParts.push({ t: 'text', v: tail })
-    for (let i = colonPart + 1; i < decl.length; i++) valueParts.push(decl[i]!)
-
-    const exprs = valueParts.filter((p): p is { t: 'expr'; node: AnyNode } => p.t === 'expr')
-    const textBlank = valueParts.every((p) => p.t !== 'text' || p.v.trim() === '')
-
-    if (exprs.length === 0) {
-      const valueRaw = valueParts
-        .map((p) => (p.t === 'text' ? p.v : ''))
-        .join('')
-        .trim()
-      if (!valueRaw) continue
-      const num = /^[+-]?\d+(?:\.\d+)?$/.test(valueRaw) ? Number(valueRaw) : null
-      fields.push({ name, value: { kind: 'literal', value: num !== null ? num : valueRaw } })
-    } else if (exprs.length === 1 && textBlank) {
-      const tok = resolveThemeToken(exprs[0]!.node, ctx.theme)
-      if (tok !== null) fields.push({ name, value: { kind: 'literal', value: tok } })
-      else droppedInterp.push(propRaw)
-    } else {
-      droppedInterp.push(propRaw)
-    }
-  }
-  if (droppedInterp.length > 0) {
-    ctx.warnings.push(
-      `styled(...) '${declName}': value(s) [${droppedInterp.join(', ')}] use an interpolation that isn't a ` +
-        `resolvable theme token — only static values + \`t.<group>.<entry>\` tokens lower to native (dropped).`,
-    )
-  }
-  return { kind: 'object', fields, spreads: [] }
 }
 
 /**
@@ -1235,23 +1031,6 @@ function warnUnloweredControlFlow(body: AnyNode[], ctx: ParseCtx): void {
  * listed.
  */
 export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
-  [
-    '@pyreon/reactivity',
-    {
-      // MEASURED: signal / computed / effect / onCleanup lower; these three do
-      // not, and failed both targets with no diagnostic.
-      //
-      // `batch` is arguably strippable rather than unsupported — SwiftUI @State
-      // and Compose mutableStateOf already coalesce writes within one action,
-      // so the wrapper is semantically a no-op on native. Emitting the body
-      // inline would be a real capability win. Warning first because that is an
-      // emit change with a return-value question (`batch(() => x)` yields x on
-      // web), and a warning is honest today.
-      advice:
-        'these have no native emit — writes inside one action already coalesce on both native targets, so drop the `batch(...)` wrapper and set signals directly; for `untrack` / `effectScope`, restructure with plain `computed()`',
-      unsupported: new Set(['batch', 'untrack', 'effectScope']),
-    },
-  ],
   [
     '@pyreon/core',
     {
@@ -2442,6 +2221,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     theme: DEFAULT_THEME,
     pluginState: new Map(),
     skipTopLevel: [],
+    moduleBindings: new Map(),
     loweredImports: new Set(),
     responseDecodes: [],
     lateModuleItems: [],
@@ -3551,6 +3331,8 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
 function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext {
   return {
     source: ctx.source,
+    theme: ctx.theme,
+    binding: (name) => ctx.moduleBindings.get(name),
     report: (message) => {
       ctx.warnings.push(message)
     },
@@ -3708,8 +3490,24 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
   const { scanners } = activeRegistries().scan
   if (scanners.length === 0) return
   const body = (program.body as AnyNode[] | undefined) ?? []
+  const constants = new Map<string, { module: string; name: string; value: string | undefined }>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const module = node.source?.value as string | undefined
+    if (module === undefined) continue
+    const resolve = activeRegistries().scan.constants.get(module)
+    if (resolve === undefined) continue
+    for (const spec of (node.specifiers as AnyNode[] | undefined) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const name = spec.imported?.name ?? spec.imported?.value
+      if (typeof name === 'string' && typeof spec.local?.name === 'string')
+        constants.set(spec.local.name as string, { module, name, value: resolve(name) })
+    }
+  }
   const scan: ModuleScan = {
     program: program as AstNode,
+    constant: (node) =>
+      node.type === 'Identifier' ? constants.get(node.name as string) : undefined,
     body: body as readonly AstNode[],
     source,
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
@@ -4009,7 +3807,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const shaped = tryPluginDeclCall(name, init, ctx)
   if (shaped !== undefined) return shaped
 
-  const calleeName = init.callee?.name as string | undefined
+  const writtenCallee = init.callee?.name as string | undefined
+  const calleeName =
+    writtenCallee === undefined
+      ? undefined
+      : (activeRegistries().calls.intrinsicCalls.get(writtenCallee)?.operation ?? writtenCallee)
   if (calleeName === 'signal') {
     const generic = parseGenericTypeArg(init, ctx)
     const initialArg = init.arguments?.[0]

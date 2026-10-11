@@ -10,7 +10,7 @@
 // are the places a one-sided edit silently diverges.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 function app(style: string, tag = 'Stack'): string {
   return `import { Stack, Text } from '@pyreon/primitives'
