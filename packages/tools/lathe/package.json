@@ -72,6 +72,7 @@
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/test-utils": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
     "@pyreon/validation": "workspace:*",
@@ -90,10 +91,26 @@
     "yaml": "^2.9.1"
   },
   "peerDependencies": {
-    "@pyreon/native-compiler": "workspace:*"
+    "@pyreon/http": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
+    "@pyreon/query": "workspace:*",
+    "@pyreon/validate": "workspace:*",
+    "@pyreon/validation": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "@pyreon/http": {
+      "optional": true
+    },
     "@pyreon/native-compiler": {
+      "optional": true
+    },
+    "@pyreon/query": {
+      "optional": true
+    },
+    "@pyreon/validate": {
+      "optional": true
+    },
+    "@pyreon/validation": {
       "optional": true
     }
   }

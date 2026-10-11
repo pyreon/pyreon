@@ -2585,6 +2585,7 @@
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/query": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
         "@pyreon/validation": "workspace:*",
@@ -2598,10 +2599,18 @@
         "zod": "^4.6.5",
       },
       "peerDependencies": {
+        "@pyreon/http": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/validate": "workspace:*",
+        "@pyreon/validation": "workspace:*",
       },
       "optionalPeers": [
+        "@pyreon/http",
         "@pyreon/native-compiler",
+        "@pyreon/query",
+        "@pyreon/validate",
+        "@pyreon/validation",
       ],
     },
     "packages/tools/lint": {
