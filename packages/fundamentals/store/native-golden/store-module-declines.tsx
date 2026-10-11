@@ -9,7 +9,8 @@ const useDynamic = defineStore(makeId(), () => {
 const useNonFunction = defineStore('non-function', {})
 const useConcise = defineStore('concise', () => ({ n: signal(0) }))
 const useNoReturn = defineStore('no-return', () => {
-  const n = signal(0)
+  // Intentionally declared without returning it: this fixture exercises the missing-return diagnostic.
+  const _n = signal(0)
 })
 const useNonObject = defineStore('non-object', () => {
   const n = signal(0)
@@ -20,7 +21,8 @@ const useLonghand = defineStore('longhand', () => {
   return { n: n }
 })
 const useUnknown = defineStore('unknown', () => {
-  const n = signal(0)
+  // The returned key deliberately does not reference this declared signal.
+  const _n = signal(0)
   return { missing }
 })
 const useStatement = defineStore('statement', () => {
@@ -36,8 +38,8 @@ const useBlockComputed = defineStore('computed', () => {
   return { n, d }
 })
 const useIgnored = defineStore('ignored', () => {
-  const { a } = other
-  const unrelated = work()
+  const { a: _a } = other
+  const _unrelated = work()
   const n = signal()
   return { n }
 })
@@ -53,4 +55,20 @@ const useA = defineStore('a', () => {
 
 export function StoreDeclines() {
   return <Text>Decline diagnostics</Text>
+}
+
+export {
+  useDynamic,
+  useNonFunction,
+  useConcise,
+  useNoReturn,
+  useNonObject,
+  useLonghand,
+  useUnknown,
+  useStatement,
+  useBlockComputed,
+  useIgnored,
+  useShort,
+  useA,
+  useB,
 }
