@@ -2551,6 +2551,7 @@
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/query": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
         "@pyreon/validation": "workspace:*",
