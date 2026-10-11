@@ -12,12 +12,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  createCompiler,
   isKotlincAvailable,
   isSwiftcAvailable,
-  transform,
   validateKotlin,
   validateSwiftWithStubs,
 } from '@pyreon/native-compiler'
+import { reactivityPlugin } from '@pyreon/reactivity/native-plugin'
 import { describe, expect, it } from 'vitest'
 import { parseArgs, writeScaffold } from '../index'
 import { buildScaffold, toIdentifierLeaf, toPascalCase } from '../scaffold'
@@ -319,6 +320,8 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
 
 describe('buildScaffold — the shared App.tsx is real PMTC-compilable source', () => {
   const src = buildScaffold({ name: 'my-app' }).find((f) => f.path === 'src/App.tsx')!.content
+  // Direct compiler consumers supply the package owners that the installed CLI discovers.
+  const { transform } = createCompiler({ plugins: [reactivityPlugin] })
 
   it('lowers to the expected SwiftUI shape', () => {
     const out = transform(src, { target: 'swift' }).code

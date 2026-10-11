@@ -3247,6 +3247,7 @@
       "devDependencies": {
         "@pyreon/lint": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
