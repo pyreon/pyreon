@@ -1,4 +1,5 @@
 import { Arc, Axis, Bar, Chart, Dot, GaugeChart, Legend, Line, Tooltip } from '@pyreon/charts'
+import { Show } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 
 export function ChartDemo() {
@@ -21,6 +22,8 @@ export function ChartDemo() {
 
   // ─── Mark selector ─────────────────────────────────────────────────────────
   const chartType = signal<'bar' | 'line' | 'scatter'>('bar')
+  const conditionalVisible = signal(false)
+  const donutRadius = signal(0.57)
 
   const log = signal<string[]>([])
   const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
@@ -87,14 +90,28 @@ export function ChartDemo() {
         </div>
       </div>
 
+      <div class="section" data-testid="conditional-chart">
+        <h3>Conditional Marks</h3>
+        <p>A mark can appear after its chart mounts and disappear again.</p>
+        <button type="button" onClick={() => conditionalVisible.update((value) => !value)}>
+          {() => conditionalVisible() ? 'Hide chart' : 'Show chart'}
+        </button>
+        <Chart data={() => rows()} x="month" height={220} animate={false} updateAnimation={false}>
+          <Show when={() => conditionalVisible()}><Bar y="revenue" label="Revenue" /></Show>
+        </Chart>
+      </div>
+
       {/* Donut */}
-      <div class="section">
+      <div class="section" data-testid="donut-chart">
         <h3>Donut Chart — Device Share</h3>
         <Chart data={() => pieData()} height={300} title="Device Share">
-          <Arc value="value" label="name" innerRadius={0.57} />
+          <Arc value="value" label="name" innerRadius={donutRadius()} />
           <Tooltip />
         </Chart>
         <div class="row" style="margin-top: 8px">
+          <button type="button" onClick={() => donutRadius.update((radius) => radius === 0.57 ? 0.2 : 0.57)}>
+            Change donut size
+          </button>
           <button
             type="button"
             onClick={() => {
