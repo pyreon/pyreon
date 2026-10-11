@@ -6241,15 +6241,32 @@ export function transformJSX_JS(
       t === 'FunctionExpression' ||
       t === 'FunctionDeclaration'
     ) {
+      if (node.id?.type === 'Identifier') out.push(node.id.name)
       for (const p of node.params ?? []) sigPatternNames(p, out)
+    } else if (t === 'ClassExpression' || t === 'ClassDeclaration') {
+      if (node.id?.type === 'Identifier') out.push(node.id.name)
     } else if (t === 'CatchClause') {
       sigPatternNames(node.param, out)
     } else if (t === 'ForStatement') {
       if (node.init?.type === 'VariableDeclaration') declNames(node.init)
     } else if (t === 'ForInStatement' || t === 'ForOfStatement') {
       if (node.left?.type === 'VariableDeclaration') declNames(node.left)
-    } else if (t === 'BlockStatement' || t === 'StaticBlock') {
-      const stmts = node.body ?? node.statements
+    } else if (t === 'BlockStatement' || t === 'StaticBlock' || t === 'SwitchStatement') {
+      const parent = findParent(node)
+      if (
+        t === 'StaticBlock' ||
+        (t === 'BlockStatement' &&
+          parent?.body === node &&
+          (parent.type === 'FunctionExpression' ||
+            parent.type === 'FunctionDeclaration' ||
+            parent.type === 'ArrowFunctionExpression'))
+      ) {
+        collectHoistedVarNames(node, out)
+      }
+      const stmts =
+        t === 'SwitchStatement'
+          ? node.cases.flatMap((c: N) => c.consequent)
+          : node.body ?? node.statements
       if (Array.isArray(stmts)) {
         for (const s of stmts) {
           if (s.type === 'VariableDeclaration') declNames(s)
@@ -6333,6 +6350,7 @@ export function transformJSX_JS(
 
     function findSignalIdents(node: N): void {
       if ((node.start as number) >= end || (node.end as number) <= start) return
+      if (node.type === 'SwitchStatement') findSignalIdents(node.discriminant)
       const introduced: string[] = []
       for (const n of scopeBoundSignals(node)) {
         if (!shadowed.has(n)) {
@@ -6361,12 +6379,22 @@ export function transformJSX_JS(
           if (parent.shorthand) return // { name } — can't auto-call without breaking syntax
           if (parent.key === node && !parent.computed) return // { name: val } — key position
         }
+        if (
+          parent &&
+          (parent.type === 'MethodDefinition' ||
+            parent.type === 'PropertyDefinition' ||
+            parent.type === 'AccessorProperty') &&
+          parent.key === node &&
+          !parent.computed
+        ) return
         // Exactly-bare DOM attr/child — leave bare for the runtimes'
         // fine-grained accessor treatment (see isBareDomBinding).
         if (isBareDomBinding(node, start, end)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
-      forEachChildFast(node, findSignalIdents)
+      if (node.type === 'SwitchStatement') {
+        for (const branch of node.cases) findSignalIdents(branch)
+      } else forEachChildFast(node, findSignalIdents)
       for (const n of introduced) shadowed.delete(n)
     }
     findSignalIdents(expr)
@@ -6609,6 +6637,22 @@ function collectPatternNames(p: N | null | undefined, out: string[]): void {
     default:
       return
   }
+}
+
+/** `var` belongs to the enclosing function even when declared in a block. */
+function collectHoistedVarNames(node: N | undefined, out: string[]): void {
+  if (!node) return
+  if (
+    node.type === 'FunctionDeclaration' ||
+    node.type === 'FunctionExpression' ||
+    node.type === 'ArrowFunctionExpression' ||
+    node.type === 'ClassDeclaration' ||
+    node.type === 'ClassExpression'
+  ) return
+  if (node.type === 'VariableDeclaration' && node.kind === 'var') {
+    for (const decl of node.declarations ?? []) collectPatternNames(decl.id, out)
+  }
+  forEachChild(node, (child) => collectHoistedVarNames(child, out))
 }
 
 interface FunctionBinding {

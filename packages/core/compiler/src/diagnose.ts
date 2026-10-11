@@ -75,6 +75,13 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
+    pattern: /function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\(/,
+    diagnose: (m) => ({
+      cause: `A named function declaration has an extra call before its body. If this appears only in compiled JSX, older signal auto-calling could mistake the function's binding \`${m[1]}\` for an outer signal with the same name.`,
+      fix: 'Upgrade @pyreon/compiler and its matching native binary. If the extra parentheses are in your source, remove them; a function body starts with an opening brace. Renaming the inner function also avoids the older compiler collision.',
+    }),
+  },
+  {
     // `analyzeValidate` marks a `@pyreon/validate` schema shape it cannot
     // compile FAITHFULLY as an `unsupported` node, and the emitters throw on
     // one. Some bails are option-dependent rather than method-dependent:

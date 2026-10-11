@@ -386,3 +386,11 @@ describe('signal method called on its value', () => {
     expect(result?.fix).toContain('native binary')
   })
 })
+
+describe('compiled named-function bindings', () => {
+  it('explains an extra call inserted into a function declaration', () => {
+    const result = diagnoseError('Expected { but found ( in function count()() { return count }')
+    expect(result?.cause).toContain('outer signal')
+    expect(result?.fix).toContain('native binary')
+  })
+})

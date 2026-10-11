@@ -36,6 +36,8 @@ A `{value}` child is polymorphic: a `VNode`/`VNode[]` mounts, a primitive sets t
 
 ### Signals and props
 
+Expression slices use lexical signal scopes: parameters and named function/class bindings shadow only their scope, block/catch/loop bindings are restored on exit, and `var` remains function scoped. Native and JavaScript collectors visit class fields, methods and static blocks, while excluding declaration names and noncomputed property keys. Computed object keys participate in prop-derived inlining just like values.
+
 - **Auto-call.** A tracked `const x = signal()`/`computed()` used bare in JSX becomes `{() => x()}`. Scope-aware. Cross-module signals come from the Vite plugin's export registry and the `knownSignals` option.
 - **Props inlining.** `const`s derived from `props.*` or `splitProps` are inlined at JSX use sites (transitive, cycle-safe). `let`/`var` are not.
 - **`<For>` item params are values, not props.** `row.id` bakes to a one-time `_setChild`; `row.label()` keeps `_bindText`.
