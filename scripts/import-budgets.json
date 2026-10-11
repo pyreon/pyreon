@@ -14,6 +14,6 @@
   "@pyreon/charts::plot-svg": 17400,
   "@pyreon/flow::core": 20050,
   "@pyreon/charts::chart-line": 39450,
-  "@pyreon/charts::chart-pie": 25260,
+  "@pyreon/charts::chart-pie": 26210,
   "@pyreon/zero::web-vitals": 1500
 }

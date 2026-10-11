@@ -4,6 +4,7 @@
 // accessible table the canvas is described BY. Real Chromium — a canvas host
 // has nothing to assert without a real 2d context.
 import { describe, expect, it } from 'vitest'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
@@ -96,7 +97,8 @@ describe('keyboard on a family host', () => {
 
 describe('accessibility wiring on a family host', () => {
   it('the canvas is described BY the table, and the gauge has the same contract as every host', async () => {
-    const { container } = mountInBrowser(() => GaugeChart({ value: 42, max: 100, title: 'Load', width: 200 }))
+    const { container, unmount } = mountInBrowser(h(GaugeChart, { value: 42, max: 100, title: 'Load', width: 200 }))
+    onTestFinished(unmount)
     await flush()
     const canvas = container.querySelector('canvas')!
     expect(canvas.getAttribute('role')).toBe('img')
@@ -112,7 +114,8 @@ describe('accessibility wiring on a family host', () => {
 
   it('a reactive gauge value repaints and re-describes', async () => {
     const v = signal(10)
-    const { container } = mountInBrowser(() => GaugeChart({ value: () => v(), width: 200, animate: false, updateAnimation: false }))
+    const { container, unmount } = mountInBrowser(h(GaugeChart, { value: () => v(), width: 200, animate: false, updateAnimation: false }))
+    onTestFinished(unmount)
     await flush()
     const canvas = container.querySelector('canvas')!
     const before = inked(canvas)
