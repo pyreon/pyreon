@@ -921,3 +921,17 @@ test.describe('ui-showcase — SSR styler CSS emission', () => {
     expect(css.indexOf('@layer elements, rocketstyle;')).toBe(0)
   })
 })
+
+
+test('numeric Element label stays visible through 1 → 0 → 2', async ({ page }) => {
+  await page.goto('/button')
+  await waitForHydration(page)
+  const count = page.getByRole('status', { name: 'Numeric count' })
+  await page.getByRole('button', { name: 'Clicked: 0', exact: true }).click()
+  await expect(count).toHaveText('1')
+  await page.getByRole('button', { name: 'Reset', exact: true }).click()
+  await expect(count).toHaveText('0')
+  await page.getByRole('button', { name: 'Clicked: 0', exact: true }).click()
+  await page.getByRole('button', { name: 'Clicked: 1', exact: true }).click()
+  await expect(count).toHaveText('2')
+})
