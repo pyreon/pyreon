@@ -382,6 +382,10 @@ jobs:
       # ~23s for both. Placed before the heavier co-located gate below so a
       # broken runtime fails early.
       - name: Unit-test the Kotlin packages (PyreonRuntime, PyreonRouter)
+        env:
+          PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         # The probe is the gate: both scripts self-skip without kotlinc and exit
         # 0, so without it this step reports green having run nothing.
         run: |
@@ -410,6 +414,8 @@ jobs:
         run: bun scripts/check-native-cosource.ts
         env:
           PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
       - name: Published npm tarballs are consumable (swift package describe on the real tarball)
         # #3787: the Swift runtimes shipped a Package.swift with a .testTarget but
         # no Tests/, so SwiftPM aborted with "overlapping sources" for every
