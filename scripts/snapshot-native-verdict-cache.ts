@@ -2,6 +2,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -15,7 +16,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 const ENTRY = /^(?:probe-)?[a-f0-9]{64}\.json$/
 
-/** Copy complete atomic verdict/probe records to a directory no worker writes. */
+/** Copy complete atomic records from both verdict stores to an idle directory. */
 export function snapshotNativeVerdicts(source: string, destination: string): number {
   const from = resolve(source)
   const to = resolve(destination)
@@ -29,36 +30,46 @@ export function snapshotNativeVerdicts(source: string, destination: string): num
   const staging = mkdtempSync(join(dirname(to), '.native-verdict-snapshot-'))
   let copied = 0
   try {
-    let names: string[]
-    try {
-      names = readdirSync(from)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      names = []
-    }
-    for (const name of names) {
-      // Cache writers rename completed JSON records atomically. Temporary
-      // files, daemon binaries and symlinks must never enter this archive.
-      if (!ENTRY.test(name)) continue
-      let fd: number | undefined
+    const copyStore = (store: string): void => {
+      const input = join(from, store)
+      const output = join(staging, store)
+      let names: string[]
       try {
-        fd = openSync(join(from, name), constants.O_RDONLY | constants.O_NOFOLLOW)
-        if (!fstatSync(fd).isFile()) continue
-        const text = readFileSync(fd, 'utf8')
-        try {
-          JSON.parse(text)
-        } catch {
-          continue
-        }
-        writeFileSync(join(staging, name), text, { flag: 'wx', mode: 0o600 })
-        copied++
+        // Only the two owned namespaces are archived. Never traverse directory
+        // symlinks or unrelated cache trees (which can contain live binaries).
+        if (!lstatSync(input).isDirectory()) return
+        names = readdirSync(input)
       } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code
-        if (code !== 'ENOENT' && code !== 'ELOOP') throw error
-      } finally {
-        if (fd !== undefined) closeSync(fd)
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        names = []
+      }
+      for (const name of names) {
+        // Cache writers rename completed JSON records atomically. Temporary
+        // files, daemon binaries and symlinks must never enter this archive.
+        if (!ENTRY.test(name)) continue
+        let fd: number | undefined
+        try {
+          fd = openSync(join(input, name), constants.O_RDONLY | constants.O_NOFOLLOW)
+          if (!fstatSync(fd).isFile()) continue
+          const text = readFileSync(fd, 'utf8')
+          try {
+            JSON.parse(text)
+          } catch {
+            continue
+          }
+          mkdirSync(output, { recursive: true })
+          writeFileSync(join(output, name), text, { flag: 'wx', mode: 0o600 })
+          copied++
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (code !== 'ENOENT' && code !== 'ELOOP') throw error
+        } finally {
+          if (fd !== undefined) closeSync(fd)
+        }
       }
     }
+    copyStore('')
+    copyStore('kotlin-runtime')
     rmSync(to, { recursive: true, force: true })
     renameSync(staging, to)
     return copied
