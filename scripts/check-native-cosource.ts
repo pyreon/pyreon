@@ -41,6 +41,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { runSwiftSmoke } from './swift-cosource-smoke'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -245,6 +246,7 @@ const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
 
 const swiftcVersion = swiftc ? toolVersion('swiftc', '--version') : ''
 const kotlinHarness = readOr(verifyKotlin)
+const swiftHarness = readOr(join(ROOT, 'scripts', 'swift-cosource-smoke.ts'))
 let cacheHits = 0
 /** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
 function cached(key: string, label: string, compute: () => boolean): boolean {
@@ -437,7 +439,7 @@ for (const pkg of pkgs) {
       const swiftKey = verdictKey({
         kind: 'swift-cosource',
         compilerVersion: swiftcVersion,
-        harness: '',
+        harness: swiftHarness,
         source: bytesOf(srcFiles),
         test: bytesOf(testFiles),
         typecheckOnly: testFiles.length === 0,
@@ -446,27 +448,15 @@ for (const pkg of pkgs) {
         cacheHits++
         console.log(`  ✓ ${pkg.name} [swift] (cached verdict)`)
       } else if (testFiles.length > 0) {
-        const bin = join('/tmp', `pyreon-cosource-${pkg.name.replace(/[^a-z0-9]/gi, '_')}`)
-        // `-parse-as-library`: the test file provides `@main` (top-level
-        // statements are illegal when compiling multiple files); the source
-        // files are plain library types.
-        const compile = spawnSync(
-          'swiftc',
-          ['-parse-as-library', ...srcFiles, ...testFiles, '-o', bin],
-          { encoding: 'utf8' },
-        )
-        if (compile.status !== 0) {
+        const result = runSwiftSmoke(srcFiles, testFiles)
+        if (result.status !== 0) {
           failures++
-          console.error(`  ✗ ${pkg.name} [swift] compile:\n${compile.stderr}`)
+          console.error(
+            `  ✗ ${pkg.name} [swift] ${result.phase}:\n${result.stdout ?? ''}\n${result.stderr ?? ''}${result.error?.message ?? ''}`,
+          )
         } else {
-          const run = spawnSync(bin, [], { encoding: 'utf8' })
-          if (run.status !== 0) {
-            failures++
-            console.error(`  ✗ ${pkg.name} [swift] test run:\n${run.stdout}\n${run.stderr}`)
-          } else {
-            console.log(`  ✓ ${pkg.name} [swift] (compiled + ran tests)`)
-            writeVerdict(swiftKey, { ok: true })
-          }
+          console.log(`  ✓ ${pkg.name} [swift] (compiled + ran tests)`)
+          writeVerdict(swiftKey, { ok: true })
         }
       } else {
         const r = spawnSync('swiftc', ['-typecheck', ...srcFiles], { encoding: 'utf8' })
