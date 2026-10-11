@@ -20,13 +20,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const P = '@pyreon/primitives'
 
@@ -117,7 +112,10 @@ describe('endpoint DSL — `headers` lower from the call AND the declaration', (
   it('lets a per-call headers object REPLACE the declaration, like the web does', () => {
     // The web is `args?.headers ?? options.headers` — a replace, not a merge.
     const r = swift(
-      app(`{ headers: { 'X-Call': 'y' } }`, `api.endpoint('POST /users', { headers: { 'X-App': 'x' } })`),
+      app(
+        `{ headers: { 'X-Call': 'y' } }`,
+        `api.endpoint('POST /users', { headers: { 'X-App': 'x' } })`,
+      ),
     )
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('"X-Call": "y"')
@@ -252,8 +250,12 @@ describe('endpoint DSL — the option set is CLOSED, not a list of instances', (
     const alias = /export type EndpointArgs<[^>]*> = (\w+)<\w+> & (\w+)\n/.exec(endpointTs)
     expect(alias, 'could not locate EndpointArgs in @pyreon/http').toBeTruthy()
     const [, inputName, optionsName] = alias as RegExpExecArray
-    const input = new RegExp(`export type ${inputName}<[^>]*> =([\\s\\S]*?)\\n\\n`).exec(endpointTs)?.[1]
-    const options = new RegExp(`export interface ${optionsName} \\{([\\s\\S]*?)\\n\\}`).exec(endpointTs)?.[1]
+    const input = new RegExp(`export type ${inputName}<[^>]*> =([\\s\\S]*?)\\n\\n`).exec(
+      endpointTs,
+    )?.[1]
+    const options = new RegExp(`export interface ${optionsName} \\{([\\s\\S]*?)\\n\\}`).exec(
+      endpointTs,
+    )?.[1]
     expect(input, `could not locate ${inputName}`).toBeTruthy()
     expect(options, `could not locate ${optionsName}`).toBeTruthy()
     const block = `${input}\n${options}`
@@ -266,11 +268,17 @@ describe('endpoint DSL — the option set is CLOSED, not a list of instances', (
     expect(fields).toContain('json')
     expect(fields.length).toBeGreaterThanOrEqual(7)
 
-    const parseTs = readFileSync(join(import.meta.dirname, '../../../../fundamentals/http/src/native-plugin/endpoint.ts'), 'utf8')
-    const lowered = /ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set\(\[([^\]]*)\]/.exec(parseTs)?.[1]
-    const named = /ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map\(\[([\s\S]*?)\n\]\)/.exec(
+    const parseTs = readFileSync(
+      join(import.meta.dirname, '../../../../fundamentals/http/src/native-plugin/endpoint.ts'),
+      'utf8',
+    )
+    const lowered = /ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set\(\[([^\]]*)\]/.exec(
       parseTs,
     )?.[1]
+    const named =
+      /ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map\(\[([\s\S]*?)\n\]\)/.exec(
+        parseTs,
+      )?.[1]
     const classified = new Set([
       ...[...(lowered ?? '').matchAll(/'(\w+)'/g)].map((m) => m[1]),
       ...[...(named ?? '').matchAll(/\['(\w+)'/g)].map((m) => m[1]),

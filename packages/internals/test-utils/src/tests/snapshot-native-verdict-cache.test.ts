@@ -14,11 +14,71 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { snapshotNativeVerdicts } from '../../../../../scripts/snapshot-native-verdict-cache'
+import {
+  readVerdict,
+  verdictKey,
+  writeVerdict,
+} from '../../../../native/runtime-kotlin/scripts/verdict-cache'
 
 const record = `${'a'.repeat(64)}.json`
 const probe = `probe-${'b'.repeat(64)}.json`
 
 describe('native verdict cache snapshots', () => {
+  it('restores real runtime verdicts in their namespace alongside a same-named compiler record', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-verdict-stores-'))
+    const live = join(dir, 'live')
+    const archive = join(dir, 'archive')
+    const restored = join(dir, 'restored')
+    vi.stubEnv('PYREON_VALIDATE_CACHE_DIR', live)
+    vi.stubEnv('PYREON_VALIDATE_NO_CACHE', '0')
+    try {
+      const key = verdictKey({
+        compilerVersion: 'fixture',
+        harness: 'runner',
+        source: 'service',
+        test: 'behavior',
+        typecheckOnly: false,
+        smokeRuns: true,
+      })
+      writeVerdict(key, { ok: true })
+      writeFileSync(join(live, `${key}.json`), '{"v":2,"ok":false,"error":"compiler control"}')
+      const runtime = join(live, 'kotlin-runtime')
+      writeFileSync(join(runtime, '.in-flight.tmp'), '{')
+      writeFileSync(join(runtime, `${'c'.repeat(64)}.json`), '{')
+      writeFileSync(join(runtime, 'daemon.jar'), 'binary')
+      symlinkSync(join(live, `${key}.json`), join(runtime, `${'d'.repeat(64)}.json`))
+      mkdirSync(join(live, 'unrelated'))
+      writeFileSync(join(live, 'unrelated', record), '{"ok":true}')
+      expect(snapshotNativeVerdicts(live, archive)).toBe(2)
+      expect(snapshotNativeVerdicts(archive, restored)).toBe(2)
+      expect(readdirSync(join(restored, 'kotlin-runtime'))).toEqual([`${key}.json`])
+      expect(existsSync(join(restored, 'unrelated'))).toBe(false)
+      expect(JSON.parse(readFileSync(join(restored, `${key}.json`), 'utf8')).ok).toBe(false)
+      vi.stubEnv('PYREON_VALIDATE_CACHE_DIR', restored)
+      expect(readVerdict(key)).toEqual({ ok: true })
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not follow a runtime-store directory symlink', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-verdict-linked-store-'))
+    try {
+      const live = join(dir, 'live')
+      const external = join(dir, 'external')
+      mkdirSync(live)
+      mkdirSync(external)
+      writeFileSync(join(external, record), '{"ok":true}')
+      symlinkSync(external, join(live, 'kotlin-runtime'))
+      expect(snapshotNativeVerdicts(live, join(dir, 'archive'))).toBe(0)
+      expect(readdirSync(join(dir, 'archive'))).toEqual([])
+      expect(readFileSync(join(external, record), 'utf8')).toBe('{"ok":true}')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('keeps complete records and probes while excluding temp files, binaries, malformed records and symlinks', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-verdict-snapshot-'))
     try {

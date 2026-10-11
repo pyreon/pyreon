@@ -7,10 +7,10 @@
 // default attrs).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { transform, validateKotlin } from './first-party-plugins'
 import { parseAttrsDefn } from '../attrs-native'
 import { DEFAULT_THEME } from '../theme-native'
-import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 import { parseSync } from 'oxc-parser'
 
 const swift = (src: string) => transform(src, { target: 'swift' })

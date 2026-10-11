@@ -18,7 +18,7 @@
 // primitives — migration happens in Phase E.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { transform, validateKotlin } from './first-party-plugins'
 
 // Shared minimal-component wrapper so tests focus on the JSX-body emit.
 function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
@@ -161,7 +161,10 @@ describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
   })
 
   it('Swift: <Layer padding={4} background="surface" radius="md"> → modifier chain', () => {
-    const out = tx(`<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`, 'swift')
+    const out = tx(
+      `<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`,
+      'swift',
+    )
     expect(out).toContain('.padding(16)')
     expect(out).toMatch(/\.background\(Color\(red: 1, green: 1, blue: 1\)\)/)
     expect(out).toContain('.cornerRadius(8)')
@@ -185,7 +188,10 @@ describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
   })
 
   it('Kotlin: <Layer padding={4} background="surface" radius="md"> → modifier chain', () => {
-    const out = tx(`<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`, 'kotlin')
+    const out = tx(
+      `<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`,
+      'kotlin',
+    )
     expect(out).toContain('Modifier.padding(16.dp)')
     expect(out).toContain('.clip(RoundedCornerShape(8.dp))')
   })
@@ -300,7 +306,9 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
   it('Kotlin: level maps to the Material 2 typography role', () => {
     expect(tx(`<Heading level={2}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.h5')
     expect(tx(`<Heading level={3}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.h6')
-    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.body2')
+    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain(
+      'MaterialTheme.typography.body2',
+    )
   })
 
   it('Kotlin: <Heading color="primary"> → color = arg', () => {
@@ -335,9 +343,15 @@ describe('Phase P2.1 — <Icon> emit (canonical mapping, PR-1.3)', () => {
   })
 
   it('Kotlin: size → Modifier.size; color → tint', () => {
-    expect(tx(`<Icon name="star" size="sm" />`, 'kotlin')).toContain('modifier = Modifier.size(16.dp)')
-    expect(tx(`<Icon name="star" size="lg" />`, 'kotlin')).toContain('modifier = Modifier.size(24.dp)')
-    expect(tx(`<Icon name="star" color="danger" />`, 'kotlin')).toMatch(/tint = Color\(0xFF[0-9A-F]{6}\)/)
+    expect(tx(`<Icon name="star" size="sm" />`, 'kotlin')).toContain(
+      'modifier = Modifier.size(16.dp)',
+    )
+    expect(tx(`<Icon name="star" size="lg" />`, 'kotlin')).toContain(
+      'modifier = Modifier.size(24.dp)',
+    )
+    expect(tx(`<Icon name="star" color="danger" />`, 'kotlin')).toMatch(
+      /tint = Color\(0xFF[0-9A-F]{6}\)/,
+    )
   })
 })
 
@@ -422,9 +436,7 @@ describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
       `<Modal open={props.todo.done} onClose={props.onToggle}><Text>x</Text></Modal>`,
       'swift',
     )
-    expect(out).toContain(
-      'Color.clear.frame(width: 0, height: 0).sheet(isPresented: Binding(',
-    )
+    expect(out).toContain('Color.clear.frame(width: 0, height: 0).sheet(isPresented: Binding(')
     expect(out).not.toContain('EmptyView().sheet')
     expect(out).toMatch(/get: \{ todo\.done \}/)
     expect(out).toMatch(/set: \{ if !\$0 \{ onToggle\(\) \} \}/)
@@ -437,7 +449,9 @@ describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
 
   it('Kotlin: <Modal open={signal} onClose={fn}> → if (signal) { Dialog(onDismissRequest = {...}) { ... } }', () => {
     const out = tx(`<Modal open={done} onClose={fn}><Text>body</Text></Modal>`, 'kotlin')
-    expect(out).toMatch(/if \(done\) \{[\s\S]+Dialog\(onDismissRequest = \{ fn\(\) \}\) \{[\s\S]+Text\(text = "body"\)/)
+    expect(out).toMatch(
+      /if \(done\) \{[\s\S]+Dialog\(onDismissRequest = \{ fn\(\) \}\) \{[\s\S]+Text\(text = "body"\)/,
+    )
   })
 
   it('Kotlin: <Modal open={props.open} onClose={onToggle}> → if (open) { Dialog(onDismissRequest = { onToggle() }) }', () => {
@@ -508,7 +522,10 @@ describe('Phase B — <Field> emit', () => {
     // `Field(value: …)`, an invalid SwiftUI symbol (`cannot find 'Field'
     // in scope`) that `-parse` accepted. Now emits a custom Binding
     // (mirrors Toggle's Shape 2), with the arrow param bound in the setter.
-    const out = tx(`<Field value={draft()} onChange={(v) => draft.set(v)} placeholder="N" />`, 'swift')
+    const out = tx(
+      `<Field value={draft()} onChange={(v) => draft.set(v)} placeholder="N" />`,
+      'swift',
+    )
     expect(out).toContain('TextField("N", text: Binding(')
     expect(out).toContain('get: { draft }')
     expect(out).toContain('set: { v in draft = v }')
@@ -575,7 +592,9 @@ describe('Phase B — <Button onPress> (canonical event name)', () => {
 
   it('Kotlin: <Button onPress={fn}>Save</Button> → Button(onClick = { fn() }) { Text("Save") }', () => {
     const out = tx(`<Button onPress={fn}>Save</Button>`, 'kotlin')
-    expect(out).toMatch(/Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\(JSON\.stringify\("Save"\)\)|Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\("Save"\)/)
+    expect(out).toMatch(
+      /Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\(JSON\.stringify\("Save"\)\)|Button\(onClick = \{ fn\(\) \}\) \{[\s\S]+Text\("Save"\)/,
+    )
   })
 
   it('Kotlin: <Button onClick={fn}> (legacy) also works', () => {
@@ -591,10 +610,7 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
   })
 
   it('Swift: <Toggle disabled> → .disabled(true) modifier', () => {
-    const out = tx(
-      `<Toggle value={done} onChange={(b) => done.set(b)} disabled />`,
-      'swift',
-    )
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} disabled />`, 'swift')
     expect(out).toContain('Toggle("", isOn: $done)')
     expect(out).toContain('.disabled(true)')
   })
@@ -608,10 +624,7 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
   })
 
   it('Kotlin: <Toggle disabled> → enabled = false', () => {
-    const out = tx(
-      `<Toggle value={done} onChange={(b) => done.set(b)} disabled />`,
-      'kotlin',
-    )
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} disabled />`, 'kotlin')
     expect(out).toContain('Switch(checked = done')
     expect(out).toContain('enabled = false')
   })
@@ -764,19 +777,13 @@ describe('Phase C3 — router primitive emit (<Link> + <RouterProvider> + <Route
   })
 
   it('Swift: <RouterProvider router={r}><RouterView /></RouterProvider> → nested', () => {
-    const out = tx(
-      `<RouterProvider router={router}><RouterView /></RouterProvider>`,
-      'swift',
-    )
+    const out = tx(`<RouterProvider router={router}><RouterView /></RouterProvider>`, 'swift')
     expect(out).toContain('RouterProvider(router: router)')
     expect(out).toContain('RouterView()')
   })
 
   it('Kotlin: <RouterProvider router={r}><RouterView /></RouterProvider> → nested', () => {
-    const out = tx(
-      `<RouterProvider router={router}><RouterView /></RouterProvider>`,
-      'kotlin',
-    )
+    const out = tx(`<RouterProvider router={router}><RouterView /></RouterProvider>`, 'kotlin')
     expect(out).toContain('RouterProvider(router)')
     expect(out).toContain('RouterView()')
   })
@@ -833,7 +840,9 @@ describe('Phase C4 — createRouter / useNavigate / useParams call interception'
       'swift',
     )
     expect(out).toContain('@Environment(\\.pyreonRouter) private var pyreonRouter')
-    expect(out).toContain('private var navigate: (String) -> Void { useNavigate(router: pyreonRouter) }')
+    expect(out).toContain(
+      'private var navigate: (String) -> Void { useNavigate(router: pyreonRouter) }',
+    )
     // Call site emits with parens (function-typed binding).
     expect(out).toContain('navigate("/x")')
   })
@@ -857,19 +866,15 @@ describe('Phase C4 — createRouter / useNavigate / useParams call interception'
     // for computed dict subscripts needs the parser to recognize
     // `params["id"]` as a subscript, not a field access). This test
     // covers the declaration emit + @Environment injection only.
-    const out = txRouter(
-      `const params = useParams(); return <Text>{params}</Text>`,
-      'swift',
-    )
+    const out = txRouter(`const params = useParams(); return <Text>{params}</Text>`, 'swift')
     expect(out).toContain('@Environment(\\.pyreonRouter) private var pyreonRouter')
-    expect(out).toContain('private var params: [String: String] { useParams(router: pyreonRouter) }')
+    expect(out).toContain(
+      'private var params: [String: String] { useParams(router: pyreonRouter) }',
+    )
   })
 
   it('Kotlin: const params = useParams() → val params = useParams()', () => {
-    const out = txRouter(
-      `const params = useParams(); return <Text>{params}</Text>`,
-      'kotlin',
-    )
+    const out = txRouter(`const params = useParams(); return <Text>{params}</Text>`, 'kotlin')
     expect(out).toContain('val params = useParams()')
     expect(out).not.toContain('useParams(router')
   })
@@ -988,11 +993,7 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
     `)
     const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
     expect(routerDecl?.routes).toHaveLength(3)
-    expect(routerDecl?.routes?.map((r) => r.path)).toEqual([
-      '/',
-      '/users/:id',
-      '/settings',
-    ])
+    expect(routerDecl?.routes?.map((r) => r.path)).toEqual(['/', '/users/:id', '/settings'])
   })
 
   it('bails (routes undefined) when arg is missing — back-compat with C4 scaffold', async () => {
@@ -1326,10 +1327,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
   it('R1.1 — bare RouterView outside routed RouterProvider stays bare', () => {
     // R1.1 is scoped to routes-bearing RouterProviders; bare RouterView
     // calls (no surrounding RouterProvider with routes) emit unchanged.
-    const out = txRouter(
-      `return <RouterView />`,
-      'swift',
-    )
+    const out = txRouter(`return <RouterView />`, 'swift')
     expect(out).toContain('RouterView()')
     expect(out).not.toMatch(/RouterView\(\) [^\n]+ HomePage/)
   })
@@ -1383,7 +1381,9 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
     // Pattern routes through the runtime helper (same shape as Swift).
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/users/:id") != null ->')
-    expect(out).toContain('val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()')
+    expect(out).toContain(
+      'val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()',
+    )
     expect(out).toContain('UserPage(params = params)')
   })
 
@@ -1431,7 +1431,9 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
     )
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/about") != null -> AboutPage()')
-    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/settings") != null -> SettingsPage()')
+    expect(out).toContain(
+      'PyreonRouter.matchPath(currentPath, "/settings") != null -> SettingsPage()',
+    )
   })
 })
 
@@ -1804,7 +1806,9 @@ describe('Phase 3 — per-route boolean guards (beforeEnter)', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/admin") != null -> if (isAuthed) AboutPage() else')
+    expect(out).toContain(
+      'PyreonRouter.matchPath(currentPath, "/admin") != null -> if (isAuthed) AboutPage() else',
+    )
     expect(out).toContain('Pyreon Router: access denied')
     // Unguarded sibling stays a plain branch (no `if (` wrap).
     expect(out).toContain('PyreonRouter.matchPath(currentPath, "/") != null -> HomePage()')
@@ -1886,7 +1890,7 @@ describe('Phase B — composition smoke', () => {
 // Kotlin job.
 // ============================================================================
 
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { isKotlincAvailable } from '../validate'
 
 const skipKotlincCondition =
   process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' ||
@@ -2030,7 +2034,9 @@ describe.skipIf(skipKotlincCondition)(
       )
       const result = validateKotlin(out)
       if (!result.ok) {
-        throw new Error(`align variants failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+        throw new Error(
+          `align variants failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
       }
       expect(result.ok).toBe(true)
       // Confirm all 3 variants resolved to their Alignment enum branches.
@@ -2060,7 +2066,10 @@ describe('Cross-platform a11y vocabulary → SwiftUI a11y modifiers (P5 native, 
   })
 
   it('Swift: accessibilityLabel on a leaf interaction primitive (Button)', () => {
-    const out = tx(`<Button onPress={() => {}} accessibilityLabel="Add to cart">cart</Button>`, 'swift')
+    const out = tx(
+      `<Button onPress={() => {}} accessibilityLabel="Add to cart">cart</Button>`,
+      'swift',
+    )
     expect(out).toContain('.accessibilityLabel("Add to cart")')
   })
 
@@ -2092,7 +2101,10 @@ describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Andro
   })
 
   it('Kotlin: accessibilityLabel on a leaf interaction primitive (Button)', () => {
-    const out = tx(`<Button onPress={() => {}} accessibilityLabel="Add to cart">cart</Button>`, 'kotlin')
+    const out = tx(
+      `<Button onPress={() => {}} accessibilityLabel="Add to cart">cart</Button>`,
+      'kotlin',
+    )
     expect(out).toContain('.semantics { contentDescription = "Add to cart" }')
   })
 
@@ -2104,11 +2116,16 @@ describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Andro
   })
 
   it('Kotlin: accessibilityLabel + accessibilityHidden → both emit, clearAndSetSemantics LAST (hidden wins)', () => {
-    const out = tx(`<Stack accessibilityLabel="Cart" accessibilityHidden><Text>x</Text></Stack>`, 'kotlin')
+    const out = tx(
+      `<Stack accessibilityLabel="Cart" accessibilityHidden><Text>x</Text></Stack>`,
+      'kotlin',
+    )
     expect(out).toContain('.semantics { contentDescription = "Cart" }')
     expect(out).toContain('.clearAndSetSemantics { }')
     // clearAndSetSemantics is emitted AFTER semantics so it clears the label (hidden wins, parity with web/iOS)
-    expect(out.indexOf('.clearAndSetSemantics { }')).toBeGreaterThan(out.indexOf('.semantics { contentDescription'))
+    expect(out.indexOf('.clearAndSetSemantics { }')).toBeGreaterThan(
+      out.indexOf('.semantics { contentDescription'),
+    )
   })
 
   it('Kotlin: accessibilityHidden={false} emits no .clearAndSetSemantics', () => {
@@ -2138,8 +2155,13 @@ describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Andro
   })
 
   it('Kotlin: accessibilityRole + accessibilityHidden → role before clearAndSetSemantics (hidden wins)', () => {
-    const out = tx(`<Stack accessibilityRole="button" accessibilityHidden><Text>x</Text></Stack>`, 'kotlin')
-    expect(out.indexOf('.clearAndSetSemantics { }')).toBeGreaterThan(out.indexOf('.semantics { role'))
+    const out = tx(
+      `<Stack accessibilityRole="button" accessibilityHidden><Text>x</Text></Stack>`,
+      'kotlin',
+    )
+    expect(out.indexOf('.clearAndSetSemantics { }')).toBeGreaterThan(
+      out.indexOf('.semantics { role'),
+    )
   })
 })
 
@@ -2150,7 +2172,9 @@ describe.skipIf(skipKotlincCondition)(
       const out = tx(`<Stack accessibilityLabel="Close menu"><Text>hi</Text></Stack>`, 'kotlin')
       const result = validateKotlin(out)
       if (!result.ok) {
-        throw new Error(`a11y semantics failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+        throw new Error(
+          `a11y semantics failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
       }
       expect(result.ok).toBe(true)
       expect(out).toContain('contentDescription = "Close menu"')
@@ -2160,7 +2184,9 @@ describe.skipIf(skipKotlincCondition)(
       const out = tx(`<Stack accessibilityHidden><Text>hi</Text></Stack>`, 'kotlin')
       const result = validateKotlin(out)
       if (!result.ok) {
-        throw new Error(`a11y clearAndSetSemantics failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+        throw new Error(
+          `a11y clearAndSetSemantics failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
       }
       expect(result.ok).toBe(true)
       expect(out).toContain('.clearAndSetSemantics { }')

@@ -31,13 +31,8 @@
 // (4) neuter the Swift connect lowering → the url-threading spec fails.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftUIAvailable,
-  validateKotlin,
-  validateSwiftTypecheck,
-} from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const WS = `import { signal, onMount } from '@pyreon/reactivity'
 import { useWebSocket } from '@pyreon/hooks'
@@ -138,27 +133,33 @@ export function App(){
 
   // Compile proofs — the pure-signal onMount body typechecks end-to-end
   // (websocket components need the PyreonRuntime module — device-gate scope).
-  it.skipIf(!isSwiftUIAvailable())('iOS: the onMount component TYPECHECKS against real SwiftUI', () => {
-    const r = validateSwiftTypecheck(transform(SIG, { target: 'swift' }).code)
-    expect(r.ok, r.error ?? '').toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable())(
+    'iOS: the onMount component TYPECHECKS against real SwiftUI',
+    () => {
+      const r = validateSwiftTypecheck(transform(SIG, { target: 'swift' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    },
+  )
   it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
     const r = validateKotlin(transform(SIG, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('Android: `ws.connect(url)` compiles against the OkHttp extension stub', () => {
-    // The #1987 runtime ships `fun PyreonWebSocket.connect(url: String)`; the
-    // kotlin-stubs mirror it, so the flipped emit `ws.connect("wss://…")`
-    // validates. `lastMessage` read omitted (the reactive-field-call `.value()`
-    // shape is a separate pre-existing gap, tracked as a follow-up).
-    const src = `import { useWebSocket } from '@pyreon/hooks'
+  it.skipIf(!isKotlincAvailable())(
+    'Android: `ws.connect(url)` compiles against the OkHttp extension stub',
+    () => {
+      // The #1987 runtime ships `fun PyreonWebSocket.connect(url: String)`; the
+      // kotlin-stubs mirror it, so the flipped emit `ws.connect("wss://…")`
+      // validates. `lastMessage` read omitted (the reactive-field-call `.value()`
+      // shape is a separate pre-existing gap, tracked as a follow-up).
+      const src = `import { useWebSocket } from '@pyreon/hooks'
 import { Stack, Text } from '@pyreon/primitives'
 export function App() {
   const ws = useWebSocket("wss://example.com/feed")
   onMount(() => { ws.connect() })
   return (<Stack><Text>x</Text></Stack>)
 }`
-    const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
-    expect(r.ok, r.error ?? '').toBe(true)
-  })
+      const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    },
+  )
 })

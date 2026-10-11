@@ -1,8 +1,6 @@
 {
   "native-compiler": {
     "packages": {
-      "@pyreon/state-tree": 1,
-      "@pyreon/store": 1,
       "@pyreon/ui-core": 2
     },
     "hooks": 66

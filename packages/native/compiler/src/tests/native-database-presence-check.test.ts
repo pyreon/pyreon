@@ -13,13 +13,8 @@
 // an app that reads local state at launch and branches on whether it is there.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `import { onMount } from '@pyreon/core'
 import { useDatabase } from '@pyreon/hooks'

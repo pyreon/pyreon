@@ -12,7 +12,11 @@ import { createCompiler } from '../compiler'
 import type { ServiceDescriptor } from '../services'
 import type { EmitOptions, TransformResult } from '../types'
 import * as validate from '../validate'
-import { FIRST_PARTY_PLUGINS, FIRST_PARTY_VALIDATE_OPTIONS } from '../../../../../scripts/native-first-party-plugins'
+import type { ValidateOptions } from '../stub-augmentation'
+import {
+  FIRST_PARTY_PLUGINS,
+  FIRST_PARTY_VALIDATE_OPTIONS,
+} from '../../../../../scripts/native-first-party-plugins'
 import { chartsPlugin } from '../../../../fundamentals/charts/src/native-plugin/plugin'
 import { chartsStubs } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 import { flowPlugin } from '../../../../fundamentals/flow/src/native-plugin/plugin'
@@ -50,7 +54,44 @@ import { coolgridPlugin } from '../../../../ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../../../../fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../../../../fundamentals/sync/src/native-plugin/stubs'
 
-export { chartsPlugin, chartsStubs, flowPlugin, flowStubs, httpPlugin, machinePlugin, machineStubs, queryPlugin, queryStubs, validatePlugin, validationPlugin, i18nPlugin, i18nStubs, toastPlugin, toastStubs, a11yPlugin, a11yStubs, tablePlugin, tableStubs, dndPlugin, dndStubs, syncPlugin, syncStubs, permissionsPlugin, permissionsStubs, urlStatePlugin, storagePlugin, storageStubs, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, sizedMapStubs, kineticPlugin, elementsPlugin, coolgridPlugin }
+export {
+  chartsPlugin,
+  chartsStubs,
+  flowPlugin,
+  flowStubs,
+  httpPlugin,
+  machinePlugin,
+  machineStubs,
+  queryPlugin,
+  queryStubs,
+  validatePlugin,
+  validationPlugin,
+  i18nPlugin,
+  i18nStubs,
+  toastPlugin,
+  toastStubs,
+  a11yPlugin,
+  a11yStubs,
+  tablePlugin,
+  tableStubs,
+  dndPlugin,
+  dndStubs,
+  syncPlugin,
+  syncStubs,
+  permissionsPlugin,
+  permissionsStubs,
+  urlStatePlugin,
+  storagePlugin,
+  storageStubs,
+  sizedMapPlugin,
+  rxPlugin,
+  featurePlugin,
+  hooksPlugin,
+  sizedMapStubs,
+  kineticPlugin,
+  elementsPlugin,
+  coolgridPlugin,
+}
 
 /** A compiler with the first-party plugins loaded the way the CLI loads discovered ones. */
 export const firstPartyCompiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
@@ -60,15 +101,30 @@ export function transform(source: string, options: EmitOptions): TransformResult
   return firstPartyCompiler.transform(source, options)
 }
 
-/** The compile gates, with the first-party stubs appended for inputs that name a plugin's runtime types. */
-export const validateSwiftWithStubs = (source: string) => validate.validateSwiftWithStubs(source, FIRST_PARTY_VALIDATE_OPTIONS)
-export const validateSwiftFilesWithStubs = (sources: readonly string[]) => validate.validateSwiftFilesWithStubs(sources, FIRST_PARTY_VALIDATE_OPTIONS)
-export const validateKotlin = (source: string) => validate.validateKotlin(source, FIRST_PARTY_VALIDATE_OPTIONS)
-export const validateKotlinFiles = (sources: readonly string[]) => validate.validateKotlinFiles(sources, FIRST_PARTY_VALIDATE_OPTIONS)
+/** Explicit first-party fixture stubs; callers may also provide their own plugin augmentations. */
+function fixtureOptions(options?: ValidateOptions): ValidateOptions {
+  return {
+    augment: [
+      ...new Set([...(FIRST_PARTY_VALIDATE_OPTIONS.augment ?? []), ...(options?.augment ?? [])]),
+    ],
+  }
+}
+export const validateSwiftWithStubs = (source: string, options?: ValidateOptions) =>
+  validate.validateSwiftWithStubs(source, fixtureOptions(options))
+export const validateSwiftFilesWithStubs = (
+  sources: readonly string[],
+  options?: ValidateOptions,
+) => validate.validateSwiftFilesWithStubs(sources, fixtureOptions(options))
+export const validateKotlin = (source: string, options?: ValidateOptions) =>
+  validate.validateKotlin(source, fixtureOptions(options))
+export const validateKotlinFiles = (sources: readonly string[], options?: ValidateOptions) =>
+  validate.validateKotlinFiles(sources, fixtureOptions(options))
 
 /** The `@pyreon/hooks` plain-service table as descriptors, in the plugin's own (meaningful) order. */
-export const SERVICES: readonly ServiceDescriptor[] = Object.entries(hooksPlugin.services).map(([hook, spec]) => ({
-  ...spec,
-  hook,
-  legacyKind: (spec as { legacyKind?: string }).legacyKind ?? 'service',
-}))
+export const SERVICES: readonly ServiceDescriptor[] = Object.entries(hooksPlugin.services).map(
+  ([hook, spec]) => ({
+    ...spec,
+    hook,
+    legacyKind: (spec as { legacyKind?: string }).legacyKind ?? 'service',
+  }),
+)
