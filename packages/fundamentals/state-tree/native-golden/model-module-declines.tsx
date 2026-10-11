@@ -38,3 +38,19 @@ const blockView = model({ state: { n: 1 } })
 export function ModelDeclines() {
   return <Text>Decline diagnostics</Text>
 }
+
+export {
+  badStep,
+  badConfig,
+  missingState,
+  nonObjectState,
+  partialState,
+  emptyState,
+  computedConfig,
+  badFactory,
+  badSelf,
+  badBody,
+  badMember,
+  nonFunction,
+  blockView,
+}

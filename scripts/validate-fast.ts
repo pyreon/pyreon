@@ -81,6 +81,8 @@ interface Gate {
 
 const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
+  // The advisory ratchet excludes errors; enforce the same zero-error gate as CI.
+  { name: 'lint:pyreon', cmd: 'bun run lint:pyreon' },
   // Tests intentionally permit unused callback/fixture parameters, but unused
   // imports are almost always review churn. Keep that narrower invariant hard.
   { name: 'check-unused-test-imports', cmd: 'bun scripts/check-unused-test-imports.ts' },
