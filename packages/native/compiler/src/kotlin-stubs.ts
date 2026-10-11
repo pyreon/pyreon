@@ -1778,17 +1778,6 @@ class PyreonCrashReporter {
 @Composable
 fun rememberPyreonCrashReporter(): PyreonCrashReporter = PyreonCrashReporter()
 
-// PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted
-// per-store singleton classes. Real impl in @pyreon/native-runtime-
-// kotlin's PyreonStore.kt. Empty by design — purely a documentation
-// + future-polymorphic-helper anchor.
-interface PyreonStore
-
-// PyreonModelProtocol — Gap 4 state-tree v2 marker interface for
-// emitted per-model singleton classes. Real impl in @pyreon/native-
-// runtime-kotlin's PyreonModel.kt. Empty by design.
-interface PyreonModelProtocol
-
 // Phase 5 — native data/services hook containers. Mirror the surface the
 // emit touches (no-arg / generic constructor + MutableState reactive fields
 // + Bool getters + methods). Real impls in @pyreon/native-runtime-kotlin.

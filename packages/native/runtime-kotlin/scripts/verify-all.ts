@@ -51,6 +51,7 @@ import { availableParallelism } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { planServices } from './services'
+import { smokeSkipped } from './smoke-marker'
 import { cacheDisabled, readVerdict, verdictKey, writeVerdict } from './verdict-cache'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -58,11 +59,16 @@ const PACKAGE_ROOT = join(HERE, '..')
 const SOURCE_DIR = join(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime')
 
 if (import.meta.main) {
+  const required = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
   // No kotlinc, no verification — the same graceful skip the chains had, so a
   // contributor without the Kotlin toolchain can still build the workspace.
   const probe = spawn('sh', ['-c', 'command -v kotlinc'], { stdio: 'ignore' })
   const hasKotlinc = await new Promise<boolean>((r) => probe.on('close', (c) => r(c === 0)))
   if (!hasKotlinc) {
+    if (required) {
+      console.error('[verify-all] FAILED — kotlinc absent, and PYREON_REQUIRE_NATIVE_VALIDATE=1.')
+      process.exit(1)
+    }
     console.log('[verify-all] kotlinc not on PATH; skipping (Android stack required)')
     process.exit(0)
   }
@@ -87,18 +93,47 @@ if (import.meta.main) {
     process.exit(1)
   }
 
-  console.log(
-    `[verify-all] ${plan.length} service(s), mode=${mode}, concurrency=${concurrency}`,
-  )
+  // Availability is a precondition, including on a cache hit. A prior local
+  // compile-only success cannot satisfy a request to RUN the smoke tests.
+  const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
+  const javaRuns = javaProbe.status === 0
+  // kotlinc can use JAVA_HOME while smoke execution uses a different PATH
+  // java. Its runtime version is an independent input to a behaviour verdict.
+  const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
+  const smokeCount = plan.filter(({ typecheckOnly }) => !typecheckOnly).length
+  if (smokeCount > 0 && !javaRuns) {
+    if (required) {
+      console.error(
+        '[verify-all] FAILED — no working JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.',
+      )
+      process.exit(1)
+    }
+    console.warn(
+      `[verify-all] ${smokeCount} smoke SKIPPED, no working JDK — typecheck only (including cached verdicts).`,
+    )
+  }
+
+  console.log(`[verify-all] ${plan.length} service(s), mode=${mode}, concurrency=${concurrency}`)
   const start = Date.now()
 
   // Key material shared by every service: the compiler, and the harness whose
   // bytes carry the per-service stubs (see ./verdict-cache.ts).
   const compilerVersion = (() => {
     const p = spawnSync('kotlinc', ['-version'], { encoding: 'utf8' })
+    if (p.status !== 0) {
+      console.error(
+        `[verify-all] FAILED — kotlinc -version failed:\n${p.stderr ?? ''}${p.error?.message ?? ''}`,
+      )
+      process.exit(1)
+    }
     return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
   })()
-  const harness = readFileSync(join(HERE, 'verify-kotlin.ts'), 'utf8')
+  // Include the runner contract, invalidating legacy records which recorded
+  // Java-less compiles under the full-smoke key.
+  const harness = [
+    readFileSync(join(HERE, 'verify-kotlin.ts'), 'utf8'),
+    readFileSync(join(HERE, 'verify-all.ts'), 'utf8'),
+  ].join('\0')
   const read = (f: string) => {
     try {
       return readFileSync(f, 'utf8')
@@ -115,10 +150,11 @@ if (import.meta.main) {
       const { name, typecheckOnly } = plan[next++]!
       const key = verdictKey({
         compilerVersion,
-        harness,
+        harness: typecheckOnly ? harness : `${harness}\0java\0${javaVersion}`,
         source: read(join(SOURCE_DIR, `${name}.kt`)),
         test: read(join(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${name}Test.kt`)),
         typecheckOnly,
+        smokeRuns: !typecheckOnly && javaRuns,
       })
       const hit = readVerdict(key)
       // Only a PASS is served from cache. A cached failure is re-derived so the
@@ -136,7 +172,13 @@ if (import.meta.main) {
       child.stderr.on('data', (c: Buffer) => (out += c))
       const code = await new Promise<number>((r) => child.on('close', (c) => r(c ?? 1)))
       if (code !== 0) failures.push({ name, output: out.trim() })
-      else writeVerdict(key, { ok: true })
+      else if (!typecheckOnly && smokeSkipped(out)) {
+        // The child can observe a toolchain change after our probe. Never
+        // store its weaker result under a key claiming the smoke executed.
+        console.warn(`[verify-all] ${name}: smoke SKIPPED, no working JDK — typecheck only.`)
+        if (required) failures.push({ name, output: out.trim() })
+        else if (!javaRuns) writeVerdict(key, { ok: true })
+      } else writeVerdict(key, { ok: true })
     }
   }
   // EVERY service runs even after one fails. The `&&` chain stopped at the

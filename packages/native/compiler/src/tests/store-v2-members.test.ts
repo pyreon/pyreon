@@ -12,7 +12,7 @@
 // the `_storeMethodNames*` chain rewrite in both emitters' call cases.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const STORE_V2 = `
   import { defineStore } from '@pyreon/store'

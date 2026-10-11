@@ -80,6 +80,31 @@ describe('parseJobBlocks', () => {
 })
 
 describe('native cache snapshot wiring', () => {
+  it('runs every runtime verifier against the archived store and bypasses it on nightly runs', () => {
+    const ci = readFileSync(
+      new URL('../../../../../.github/workflows/native-validate.yml', import.meta.url),
+      'utf8',
+    )
+    const verifiers = parseJobBlocks(ci).flatMap((job) =>
+      job.body
+        .split(/(?=^ {6}- name:)/m)
+        .filter((step) =>
+          /run: bun scripts\/check-native-cosource\.ts|bun run --filter='@pyreon\/native-\*-kotlin' test/.test(
+            step,
+          ),
+        ),
+    )
+    expect(verifiers).toHaveLength(3)
+    for (const step of verifiers) {
+      expect(step).toContain(
+        'PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate',
+      )
+      expect(step).toContain(
+        "PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}",
+      )
+    }
+  })
+
   for (const file of ['ci.yml', 'ci-main.yml', 'native-validate.yml']) {
     const ci = readFileSync(
       new URL(`../../../../../.github/workflows/${file}`, import.meta.url),

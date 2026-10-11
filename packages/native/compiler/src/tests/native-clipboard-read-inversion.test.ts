@@ -18,13 +18,8 @@
 // rewrite, or the two spellings are mutually exclusive.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const APP = `import { useClipboard } from '@pyreon/hooks'
 import { Stack, Text, Button } from '@pyreon/primitives'

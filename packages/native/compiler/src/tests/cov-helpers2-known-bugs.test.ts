@@ -10,13 +10,8 @@
 // by running the REAL toolchains, because "this compiles" is the whole claim.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 // A toolchain-unavailable validator returns `{ ok: true, skipped: true }`, so
 // an `it.fails` guarded only by an availability check inside the body would
@@ -274,14 +269,11 @@ describe('SwiftUI border validation', () => {
     )
   })
 
-  it.skipIf(!isSwiftcAvailable())(
-    'an inline border overlay compiles with SwiftUI stubs',
-    () => {
-      const r = validateSwiftWithStubs(transform(BORDER_APP, { target: 'swift' }).code)
-      // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
-      expect(r.ok, r.error ?? '').toBe(true)
-    },
-  )
+  it.skipIf(!isSwiftcAvailable())('an inline border overlay compiles with SwiftUI stubs', () => {
+    const r = validateSwiftWithStubs(transform(BORDER_APP, { target: 'swift' }).code)
+    // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
 
   it('the Kotlin twin IS stubbed (`RoundedCornerShape` + `BorderStroke`) and compiles', () => {
     expect(transform(BORDER_APP, { target: 'kotlin' }).code).toContain(
@@ -297,14 +289,11 @@ describe('Compose per-side padding validation', () => {
     )
   })
 
-  it.skipIf(!isKotlincAvailable())(
-    'per-side padding compiles with Compose stubs',
-    () => {
-      const r = validateKotlin(transform(PAD4_APP, { target: 'kotlin' }).code)
-      // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
-      expect(r.ok, r.error ?? '').toBe(true)
-    },
-  )
+  it.skipIf(!isKotlincAvailable())('per-side padding compiles with Compose stubs', () => {
+    const r = validateKotlin(transform(PAD4_APP, { target: 'kotlin' }).code)
+    // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
 
   it('uniform and axis padding compile alongside per-side padding', () => {
     const uniform = PAD4_APP.replace(
@@ -346,30 +335,21 @@ describe('optional member reads retain optional result types', () => {
     expect(transform(OPT_LEN, { target: 'swift' }).warnings.join('\n')).toBe('')
   })
 
-  it(
-    'optional member inference preserves undefined',
-    () => {
-      expect(transform(OPT_LEN, { target: 'swift' }).code).toContain('private var w: Int? {')
-    },
-  )
+  it('optional member inference preserves undefined', () => {
+    expect(transform(OPT_LEN, { target: 'swift' }).code).toContain('private var w: Int? {')
+  })
 
-  it.skipIf(!isSwiftcAvailable())(
-    'an optional array length compiles on Swift',
-    () => {
-      const r = validateSwiftWithStubs(transform(OPT_LEN, { target: 'swift' }).code)
-      // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
-      expect(r.ok, r.error ?? '').toBe(true)
-    },
-  )
+  it.skipIf(!isSwiftcAvailable())('an optional array length compiles on Swift', () => {
+    const r = validateSwiftWithStubs(transform(OPT_LEN, { target: 'swift' }).code)
+    // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
 
-  it.skipIf(!isKotlincAvailable())(
-    'an optional array length compiles on Kotlin',
-    () => {
-      const r = validateKotlin(transform(OPT_LEN, { target: 'kotlin' }).code)
-      // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
-      expect(r.ok, r.error ?? '').toBe(true)
-    },
-  )
+  it.skipIf(!isKotlincAvailable())('an optional array length compiles on Kotlin', () => {
+    const r = validateKotlin(transform(OPT_LEN, { target: 'kotlin' }).code)
+    // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
 
   // The same defect on the shape people actually write. `data` is optional at
   // every layer, so `q.data()?.text` is the CORRECT source for reading a field
@@ -390,14 +370,11 @@ export function App() {
     expect(transform(FETCH_OPT, { target: 'swift' }).warnings.join('\n')).toBe('')
   })
 
-  it.skipIf(!isSwiftcAvailable())(
-    'an optional fetch-response member compiles on Swift',
-    () => {
-      const r = validateSwiftWithStubs(transform(FETCH_OPT, { target: 'swift' }).code)
-      // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
-      expect(r.ok, r.error ?? '').toBe(true)
-    },
-  )
+  it.skipIf(!isSwiftcAvailable())('an optional fetch-response member compiles on Swift', () => {
+    const r = validateSwiftWithStubs(transform(FETCH_OPT, { target: 'swift' }).code)
+    // oxlint-disable-next-line vitest/no-standalone-expect -- inside swiftFails/kotlinFails, aliases of it.fails/it.skip picked by toolchain availability; oxlint cannot trace the alias back to a real test block.
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
 
   it('the NON-optional twin compiles and is annotated consistently', () => {
     const nonOpt = OPT_LEN.replace('rows?: string[]', 'rows: string[]').replace(

@@ -108,7 +108,7 @@ import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './js
 import type { SpreadResolver } from './spread-lowering'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
-import { createKotlinEmitContext, type ComponentInfo, type KotlinEmitContext, type StructRegistry, type WebViewFacade } from './emit-context'
+import { createKotlinEmitContext, type ComponentInfo, type KotlinEmitContext, type MemberEmitScope, type StructRegistry, type WebViewFacade } from './emit-context'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -173,10 +173,8 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
-  ModelDefnIR,
   ModuleDeclIR,
   StatementIR,
-  StoreDefnIR,
   StructIR,
   TypeIR,
   ExtModuleItem,
@@ -681,8 +679,6 @@ export function emitKotlin(
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
   moduleDecls: ModuleDeclIR[] = [],
-  stores: StoreDefnIR[] = [],
-  models: ModelDefnIR[] = [],
   moduleItems: ExtModuleItem[] = [],
   // fonts: Android resolves at runtime via pyreonFont(res/font), so
   // the map is accepted for signature symmetry but unused here.
@@ -716,7 +712,6 @@ export function emitKotlin(
   _helperParamTypesKotlin = new Map(helperFns.map((h) => [h.name, h.params.map((p) => p.type)]))
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
   _constStringMapKotlin = new Map()
-  _kotlinStoreDefs = stores
   // Declared structs for per-component inference (typed object-array
   // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
   _kotlinStructDefs = structs
@@ -731,7 +726,7 @@ export function emitKotlin(
   // File-scope bindings, typed once: a component (or helper) reading
   // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
   _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
-  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
+  _kotlinExprInferCtx = buildInferenceCtx([], structs, [], undefined, _helperReturns, _moduleConstTypes, moduleItems)
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -742,7 +737,7 @@ export function emitKotlin(
   }
   _moduleConstExprsKotlin = new Map()
   // Per module: a declaration from a previous file must not make this file's `x.dispatch(...)` lower.
-  _pluginScope = createPluginScope()
+  _pluginScope = createPluginScope(undefined, moduleItems)
   _moduleScope = _pluginScope
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
@@ -819,25 +814,6 @@ export function emitKotlin(
     parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Long get() = size.toLong()')
   }
   // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
-  _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
-  // v2 — per-hook method registry for the chain-call rewrite.
-  _storeMethodsKotlin = new Map(
-    stores.map((st) => [st.hookName, new Map((st.methods ?? []).map((m) => [m.name, m]))]),
-  )
-  // Gap 4 v2 follow-up: model instance → modelId for use-site rewriting.
-  _modelInstancesKotlin = new Map(models.map((m) => [m.instanceName, m.modelId]))
-  _pureStateKotlin = new Map()
-  // Mirror of the Swift registries: state fields + views are READ (a state
-  // field is a signal on web, so the read is a call); actions are CALLED.
-  _modelReadNamesKotlin = new Map(
-    models.map((m) => [
-      m.instanceName,
-      new Set([...m.fields.map((f) => f.name), ...(m.views ?? []).map((v) => v.name)]),
-    ]),
-  )
-  _modelMethodsKotlin = new Map(
-    models.map((m) => [m.instanceName, new Map((m.methods ?? []).map((mm) => [mm.name, mm]))]),
-  )
   // Gap 3 PR-3.2 — reset Suspense-wrapper flag per transform run.
   // Gap 3 PR-3.3 — reset ErrorBoundary-wrapper flag per transform.
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag.
@@ -845,13 +821,9 @@ export function emitKotlin(
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
-  // Gap 4 v1: emit per-store singleton class.
-  for (const s of stores) parts.push(emitKotlinStore(s))
-  // Shape A: emit top-level pure-logic HELPER functions at file scope (free
-  // `fun`s), AFTER stores + BEFORE components so both store methods and
-  // component bodies can call them. Reuses the same `emitKotlinFunction` store
-  // methods use; any anonymous-object data classes the body synthesizes are
-  // flushed to module scope (mirroring the component path).
+  // File-scope items declared before free helper functions.
+  for (const item of itemsInSlot(moduleItems, 'bindings')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
+  // Free helper functions are emitted between the two module-item groups.
   for (const h of helperFns) {
     const helperCtx: KotlinCtx = {
       synthesizedDataClasses: [],
@@ -863,7 +835,6 @@ export function emitKotlin(
     }
   }
   // Gap 4 v2 follow-up: emit per-model singleton object.
-  for (const m of models) parts.push(emitKotlinModel(m))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
   for (const item of itemsInSlot(moduleItems, 'models')) parts.push(...lowerPluginItem(item, 'kotlin', () => kotlinEmitContext(0)))
   // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
@@ -909,12 +880,7 @@ export function emitKotlin(
   _aliasImports = new Map()
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
-  _storeHooksKotlin = new Map()
-  _storeMethodsKotlin = new Map()
-  _modelInstancesKotlin = new Map()
   _serviceBindingsKotlin = new Map()
-  _modelReadNamesKotlin = new Map()
-  _modelMethodsKotlin = new Map()
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -932,13 +898,7 @@ let _componentParamsInfoKotlin: Map<
   { typeName: string; fields: { name: string; type: TypeIR }[] } | 'opaque'
 > = new Map()
 
-/** Map of useStoreName → storeId for Kotlin emit chain rewriting. */
-let _storeHooksKotlin: Map<string, string> = new Map()
-/** Per-hook store METHOD names — chain calls keep parens + args. */
-let _storeMethodsKotlin: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
-
 /** Map of model instance name → modelId for Kotlin use-site rewriting. */
-let _modelInstancesKotlin: Map<string, string> = new Map()
 /** `useToggle`/`useCounter` bindings — their members rewrite at use sites. */
 let _pureStateKotlin: ReturnType<typeof pureStateBindings> = new Map()
 /**
@@ -950,129 +910,7 @@ let _pureStateKotlin: ReturnType<typeof pureStateBindings> = new Map()
  */
 let _serviceBindingsKotlin: Map<string, ServiceDescriptor> = new Map()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
-let _activeModelSelfParamKotlin: string | undefined
-/** Per-instance model STATE-FIELD + VIEW names — reads drop their parens. */
-let _modelReadNamesKotlin: Map<string, Set<string>> = new Map()
-/** Per-instance model ACTION names — calls keep their parens + args. */
-let _modelMethodsKotlin: Map<string, Map<string, Extract<DeclIR, { kind: 'function' }>>> = new Map()
-
-/**
- * Emit a per-store Kotlin object singleton:
- *
- *   object PyreonStore_counter : PyreonStore {
- *       var count by mutableStateOf(0)
- *   }
- *
- * Kotlin `object` declarations ARE singletons by construction —
- * cleaner than Swift's `static let shared = ...` pattern.
- * The PMTC consumer accesses fields via `PyreonStore_counter.count`
- * (rewritten from `useCounter().store.count`).
- */
-function emitKotlinStore(s: StoreDefnIR): string {
-  const lines: string[] = []
-  lines.push(`object PyreonStore_${s.storeId} : PyreonStore {`)
-  for (const f of s.fields) {
-    const init = emitKotlinExpr(f.initial, 4)
-    // Empty-array seeds need the explicit type argument — kotlinc
-    // cannot infer T from `mutableStateOf(listOf())` (same shape the
-    // component signal emit already handles).
-    if (f.type.kind === 'array' && f.initial.kind === 'array' && f.initial.elements.length === 0) {
-      lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf<${kotlinType(f.type)}>(listOf())`)
-    } else {
-      lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf(${init})`)
-    }
-  }
-  // v2 — computeds + methods on the object (mirror of emitSwiftStore;
-  // see its doc comment for the module-state swap rationale).
-  // Computeds emit as `val X get() = …` — the getter re-evaluates on
-  // access and its reads of the mutableStateOf-backed vars keep it
-  // Compose-reactive. kotlinc infers the getter's type, so no
-  // annotation is needed.
-  const hasMembers = (s.computeds?.length ?? 0) > 0 || (s.methods?.length ?? 0) > 0
-  if (hasMembers) {
-    const prevSignals = _signalNames
-    const prevFunctions = _functionNames
-    _signalNames = new Set([
-      ...s.fields.map((f) => f.name),
-      ...(s.computeds ?? []).map((c) => c.name),
-    ])
-    _functionNames = new Set((s.methods ?? []).map((m) => m.name))
-    const memberCtx: KotlinCtx = {
-      synthesizedDataClasses: [],
-      componentName: `PyreonStore_${s.storeId}`,
-    }
-    for (const c of s.computeds ?? []) {
-      lines.push(`    val ${kotlinIdent(c.name)} get() = ${emitKotlinExpr(c.expr, 4)}`)
-      _signalNames.add(c.name)
-    }
-    for (const m of s.methods ?? []) {
-      lines.push(`    ${emitKotlinFunction(m, memberCtx)}`)
-    }
-    _signalNames = prevSignals
-    _functionNames = prevFunctions
-  }
-  lines.push(`}`)
-  return lines.join('\n')
-}
-
-/**
- * Gap 4 follow-up v2 — emit a per-model Kotlin singleton object for
- * `const X = model({ state: { ... } }).create()`. Mirror of
- * `emitKotlinStore` for state-tree's instance-shaped surface.
- *
- *   object PyreonModel_counter : PyreonModelProtocol {
- *       var count by mutableStateOf(0)
- *       var label by mutableStateOf("counter")
- *   }
- *
- * Use-site rewriting (`counter.field` → `PyreonModel_counter.field`)
- * happens at expression-emit time via `_modelInstancesKotlin`.
- */
-function emitKotlinModel(m: ModelDefnIR): string {
-  const lines: string[] = []
-  lines.push(`object PyreonModel_${m.modelId} : PyreonModelProtocol {`)
-  for (const f of m.fields) {
-    lines.push(`    var ${kotlinMember(f.name)} by mutableStateOf(${emitKotlinExpr(f.initial, 4)})`)
-  }
-  // Views + actions on the object — mirror of emitSwiftModel; see
-  // emitKotlinStore for the module-state swap rationale. `selfParam`
-  // rides the props-param rewrite so `self.count()` in a factory body
-  // resolves to the object's own `count`.
-  const hasMembers = (m.views?.length ?? 0) > 0 || (m.methods?.length ?? 0) > 0
-  if (hasMembers) {
-    const prevSignals = _signalNames
-    const prevFunctions = _functionNames
-    const prevPropsParam = _activePropsParamName
-    const prevModelSelf = _activeModelSelfParamKotlin
-    _signalNames = new Set([
-      ...m.fields.map((f) => f.name),
-      ...(m.views ?? []).map((v) => v.name),
-    ])
-    _functionNames = new Set((m.methods ?? []).map((mm) => mm.name))
-    const memberCtx: KotlinCtx = {
-      synthesizedDataClasses: [],
-      componentName: `PyreonModel_${m.modelId}`,
-    }
-    for (const v of m.views ?? []) {
-      _activePropsParamName = v.selfParam
-      _activeModelSelfParamKotlin = v.selfParam
-      lines.push(`    val ${kotlinIdent(v.name)} get() = ${emitKotlinExpr(v.expr, 4)}`)
-      _signalNames.add(v.name)
-    }
-    for (const mm of m.methods ?? []) {
-      _activePropsParamName = mm.selfParam
-      _activeModelSelfParamKotlin = mm.selfParam
-      lines.push(`    ${emitKotlinFunction(mm, memberCtx)}`)
-    }
-    _signalNames = prevSignals
-    _functionNames = prevFunctions
-    _activePropsParamName = prevPropsParam
-    _activeModelSelfParamKotlin = prevModelSelf
-  }
-  lines.push(`}`)
-  return lines.join('\n')
-}
-
+let _activeMemberReceiverKotlin: string | undefined
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
   // Each entry is a valid Kotlin name: a kebab-case / keyword union member
@@ -1214,7 +1052,6 @@ let _activePropsParamName: string | undefined
 // emit-swift's `_storeDefs`. Feeds `buildInferenceCtx` so a block-body
 // helper returning a `useX().store.field()` read can have its return type
 // inferred. Set once at the top of the emit entrypoint.
-let _kotlinStoreDefs: StoreDefnIR[] = []
 // Declared module structs — mirrors emit-swift's `_structDefs`. Feeds
 // `buildInferenceCtx` so member access on a typed object-array element
 // (`t.id` where `t: Todo`) resolves the field type instead of degrading
@@ -1281,7 +1118,7 @@ function kotlinModifierPredicate(mods: readonly HotkeyModifier[]): string {
 function emitKotlinComponent(c: ComponentIR): string {
   // A fresh plugin scope per component; the outer one is restored at the end (and a file start installs a new module scope).
   const outerPluginScope = _pluginScope
-  _pluginScope = createPluginScope(c.decls)
+  _pluginScope = createPluginScope(c.decls, _moduleItems)
   // Local binding names may repeat in unrelated components. Seed the kind,
   // bounds and reset value together, and release them with this component.
   _pureStateKotlin = pureStateBindings(c.decls)
@@ -1377,15 +1214,15 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
-  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs, _moduleConstTypes)
+  widenFloatSignals(c, _kotlinStructDefs, _moduleConstTypes, _moduleItems)
   const inferCtx = buildInferenceCtx(
     c.decls,
-    _kotlinStoreDefs,
     _kotlinStructDefs,
     c.props,
     c.propsParamName,
     _helperReturns,
     _moduleConstTypes,
+    _moduleItems,
   )
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
@@ -3217,7 +3054,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const pluginLowered = lowerPluginMemberCall(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent))
       if (pluginLowered !== undefined) return pluginLowered
       // A call, or a chain, rooted at a binding a plugin's declaration created (`flow.nodes.set(x)`).
-      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent))
+      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(indent), isLocalModuleReceiver)
       if (rooted !== undefined) return rooted
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
@@ -3551,40 +3388,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         )
         return `Boolean(${arg})`
       }
-      // `self.count()` inside a model view/action body — a READ of the
-      // model's own state; emit the property bare (mirror of Swift).
+      // A member-scope receiver exposes signal reads as stored properties.
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
-        _activeModelSelfParamKotlin !== undefined &&
-        e.callee.object.name === _activeModelSelfParamKotlin &&
+        _activeMemberReceiverKotlin !== undefined &&
+        e.callee.object.name === _activeMemberReceiverKotlin &&
         e.args.length === 0 &&
         _signalNames.has(e.callee.property)
       ) {
         return kotlinIdent(e.callee.property)
-      }
-      // state-tree model member call (mirror of the Swift rewrite):
-      // `counter.count()` is a signal READ and drops its parens onto the
-      // object's property; `counter.inc()` is an ACTION and keeps them.
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'identifier' &&
-        _modelInstancesKotlin.has(e.callee.object.name)
-      ) {
-        const instance = e.callee.object.name
-        const modelId = _modelInstancesKotlin.get(instance)!
-        const member = kotlinIdent(e.callee.property)
-        if (
-          e.args.length === 0 &&
-          _modelReadNamesKotlin.get(instance)?.has(e.callee.property) === true
-        ) {
-          return `PyreonModel_${modelId}.${member}`
-        }
-        if (_modelMethodsKotlin.get(instance)?.has(e.callee.property) === true) {
-          const params = _modelMethodsKotlin.get(instance)!.get(e.callee.property)!.params
-          const args = e.args.map((a, i) => kotlinTypedArgument(a, params[i]?.type, indent)).join(', ')
-          return `PyreonModel_${modelId}.${member}(${args})`
-        }
       }
       // Service accessor reads (services.ts `accessorReads`) — the web spells
       // them as accessors (`bt.scanning()`), the native container stores them as
@@ -3683,83 +3496,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}.value`
       }
-      // Store METHOD call — `useX().store.M(args…)` →
-      // `PyreonStore_id.M(args…)`. Mirror of emit-swift's rewrite;
-      // must precede the zero-arg READ rewrite (a zero-arg method call
-      // would otherwise lose its parens).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.property === 'store' &&
-        e.callee.object.object.kind === 'call' &&
-        e.callee.object.object.callee.kind === 'identifier' &&
-        _storeMethodsKotlin.get(e.callee.object.object.callee.name)?.has(e.callee.property) === true
-      ) {
-        const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
-        const params = _storeMethodsKotlin.get(e.callee.object.object.callee.name)!.get(e.callee.property)!.params
-        const args = e.args.map((a, i) => kotlinTypedArgument(a, params[i]?.type, indent)).join(', ')
-        return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}(${args})`
-      }
-      // Gap 4 v1: signal-style read on a store field — drop the parens.
-      // Same chain-shape as Swift: call(member(<field>, member(store,
-      // call(<hook>, []))), []).
-      if (
-        e.args.length === 0 &&
-        e.callee.kind === 'member' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.property === 'store' &&
-        e.callee.object.object.kind === 'call' &&
-        e.callee.object.object.callee.kind === 'identifier' &&
-        e.callee.object.object.args.length === 0 &&
-        _storeHooksKotlin.has(e.callee.object.object.callee.name)
-      ) {
-        const storeId = _storeHooksKotlin.get(e.callee.object.object.callee.name)!
-        return `PyreonStore_${storeId}.${kotlinIdent(e.callee.property)}`
-      }
-      // Gap 4 v1: write to a store field — `useFoo().store.X.set(v)`
-      // → `PyreonStore_foo.X = v` (Compose `by mutableStateOf` var).
-      if (
-        e.callee.kind === 'member' &&
-        e.callee.property === 'set' &&
-        e.callee.object.kind === 'member' &&
-        e.callee.object.object.kind === 'member' &&
-        e.callee.object.object.property === 'store' &&
-        e.callee.object.object.object.kind === 'call' &&
-        e.callee.object.object.object.callee.kind === 'identifier' &&
-        _storeHooksKotlin.has(e.callee.object.object.object.callee.name)
-      ) {
-        const storeId = _storeHooksKotlin.get(e.callee.object.object.object.callee.name)!
-        const field = kotlinIdent(e.callee.object.property)
-        const value = e.args[0] ? emitKotlinExpr(e.args[0], indent) : '0'
-        return `PyreonStore_${storeId}.${field} = ${value}`
-      }
       // `.update(fn)` lowering — mirror of emit-swift's (see its doc
       // comment): IR-level param substitution into an assignment.
       if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
         const target = e.callee.object
-        let storeLhs: string | undefined
-        let isUpdateTarget = target.kind === 'identifier' && _signalNames.has(target.name)
-        if (
-          !isUpdateTarget &&
-          target.kind === 'member' &&
-          target.object.kind === 'member' &&
-          target.object.property === 'store' &&
-          target.object.object.kind === 'call' &&
-          target.object.object.callee.kind === 'identifier' &&
-          _storeHooksKotlin.has(target.object.object.callee.name)
-        ) {
-          isUpdateTarget = true
-          const storeId = _storeHooksKotlin.get(target.object.object.callee.name)!
-          storeLhs = `PyreonStore_${storeId}.${kotlinIdent(target.property)}`
-        }
-        if (isUpdateTarget) {
+        if (target.kind === 'identifier' && _signalNames.has(target.name)) {
           const fn = e.args[0]!
           if (fn.kind === 'arrow' && fn.params.length === 1) {
             const read: ExprIR =
-              storeLhs === undefined ? target : { kind: 'call', callee: target, args: [] }
+              target
             const substituted = substituteIdentifier(fn.body, fn.params[0]!, read)
             if (substituted !== null) {
-              const lhs = storeLhs ?? emitKotlinExpr(target, indent)
+              const lhs = emitKotlinExpr(target, indent)
               return `${lhs} = ${emitKotlinExpr(substituted, indent)}`
             }
           }
@@ -4413,7 +4161,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     }
     case 'member': {
       // Reads rooted at a plugin declaration's binding (`flow.config.zoom`), then reads a plugin recognises by shape.
-      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(0))
+      const rooted = lowerPluginReceiver(e, 'kotlin', _pluginScope, () => kotlinEmitContext(0), isLocalModuleReceiver)
       if (rooted !== undefined) return rooted
       const shaped = lowerPluginMemberRead(e, 'kotlin', () => kotlinEmitContext(0))
       if (shaped !== undefined) return shaped
@@ -4466,31 +4214,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
         return `(${kotlinIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}.value[${kotlinStr(e.property)}] ?: ${dflt})`
-      }
-      // Gap 4 v1: rewrite `<useFoo>().store.X` → `PyreonStore_foo.X`.
-      // Same chain-shape recognition as emit-swift's; Kotlin's `object`
-      // declaration is the singleton (no `.shared` accessor needed).
-      if (
-        e.object.kind === 'member' &&
-        e.object.property === 'store' &&
-        e.object.object.kind === 'call' &&
-        e.object.object.callee.kind === 'identifier' &&
-        e.object.object.args.length === 0 &&
-        _storeHooksKotlin.has(e.object.object.callee.name)
-      ) {
-        const storeId = _storeHooksKotlin.get(e.object.object.callee.name)!
-        return `PyreonStore_${storeId}.${kotlinIdent(e.property)}`
-      }
-      // Gap 4 v2 follow-up: rewrite `<instance>.<field>` for top-level
-      // state-tree model instances. `const counter = model({...}).create()`
-      // produces a singleton object PyreonModel_counter; user reads
-      // `counter.label` emit as `PyreonModel_counter.label`.
-      if (
-        e.object.kind === 'identifier' &&
-        _modelInstancesKotlin.has(e.object.name)
-      ) {
-        const modelId = _modelInstancesKotlin.get(e.object.name)!
-        return `PyreonModel_${modelId}.${kotlinIdent(e.property)}`
       }
       // Rewrite `<propsParamName>.X` → `X`. The active component's
       // props-param binding is exposed as direct function parameters
@@ -5140,6 +4863,36 @@ function warnUntypeableObjectLiteral(
 }
 
 /** The facade element lowerings emit through — closes over this emitter's state. */
+function kotlinMemberScope<T>(scope: MemberEmitScope, run: () => T): T {
+  const savedSignals = _signalNames
+  const savedFunctions = _functionNames
+  const savedInfer = _kotlinExprInferCtx
+  const savedParams = _helperParamTypesKotlin
+  const savedProps = _activePropsParamName
+  const savedReceiver = _activeMemberReceiverKotlin
+  const savedContext = _activeKotlinCtx
+  const decls = [...scope.declarations]
+  const inference = buildInferenceCtx(decls, [..._declaredStructs], [], undefined, _helperReturns, _moduleConstTypes, [...(savedInfer.moduleItems?.values() ?? [])], scope.receiver)
+  _signalNames = new Set(decls.flatMap((d) => d.kind === 'signal' || d.kind === 'computed' ? [d.name] : []))
+  _functionNames = new Set(decls.flatMap((d) => d.kind === 'function' ? [d.name] : []))
+  _kotlinExprInferCtx = inference
+  _helperParamTypesKotlin = new Map([...savedParams, ...decls.flatMap((d) => d.kind === 'function' ? [[d.name, d.params.map((p) => p.type)] as const] : [])])
+  _activePropsParamName = scope.receiver
+  _activeMemberReceiverKotlin = scope.receiver
+  _activeKotlinCtx = { componentName: scope.name, synthesizedDataClasses: [] }
+  try {
+    return run()
+  } finally {
+    _signalNames = savedSignals
+    _functionNames = savedFunctions
+    _kotlinExprInferCtx = savedInfer
+    _helperParamTypesKotlin = savedParams
+    _activePropsParamName = savedProps
+    _activeMemberReceiverKotlin = savedReceiver
+    _activeKotlinCtx = savedContext
+  }
+}
+
 function kotlinEmitContext(indent: number): KotlinEmitContext {
   return createKotlinEmitContext(
     {
@@ -5174,6 +4927,10 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       webView: kotlinWebViewFacade,
       fileState: (key, init) => _moduleScope.state(key, init),
       layoutModifiersFor: (el, handled) => emitKotlinLayoutModifier(el, handled),
+      memberScope: kotlinMemberScope,
+      argument: kotlinTypedArgument,
+      observableIdent: kotlinIdent,
+      functionDeclaration: (decl) => emitKotlinFunction(decl, _activeKotlinCtx!),
       statements: (stmts, at) => stmts.map((st) => emitKotlinStatement(st, at, _activeKotlinCtx!)),
       intArg: kotlinIntArg,
     },
@@ -8853,6 +8610,9 @@ function escapeKotlinStringSegment(s: string): string {
  * `plugin-scope.ts`.
  */
 let _pluginScope: PluginScope = createPluginScope()
+function isLocalModuleReceiver(name: string): boolean {
+  return _kotlinExprInferCtx.locals.has(name) || _kotlinExprInferCtx.props?.has(name) === true || name === _activePropsParamName
+}
 /** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
 let _moduleScope: PluginScope = _pluginScope
 
