@@ -855,21 +855,23 @@ export function applyValueProp(el: Element, value: unknown): void {
 // Like DEFAULT_VALUE_INIT, this marker is owned by the element and dies with it.
 const DEFAULT_CHECKED_INIT = Symbol('pyreon.defaultCheckedInit')
 
-function applyCheckedProp(el: Element, key: 'checked' | 'defaultChecked', value: unknown): void {
+function applyInputBooleanProp(
+  el: Element,
+  key: 'checked' | 'defaultChecked' | 'indeterminate',
+  value: unknown,
+): void {
   const node = el as HTMLInputElement
-  const seen = el as unknown as Record<symbol, unknown>
-  if (key === 'defaultChecked') {
-    node.defaultChecked = Boolean(value)
-    seen[DEFAULT_CHECKED_INIT] = true
-    return
-  }
+  // These are live properties even for booleans and nullish values. A native
+  // click can dirty checkedness or clear mixed state without changing attrs.
+  node[key] = Boolean(value)
+  if (key === 'indeterminate') return
 
-  // The attribute controls the form-reset default, not a dirty input's live
-  // state. Assign the property even for nullish values, which clear the input.
-  node.checked = Boolean(value)
-  if (seen[DEFAULT_CHECKED_INIT]) return
+  const seen = el as unknown as Record<symbol, unknown>
+  const initializeDefault = key === 'checked' && !seen[DEFAULT_CHECKED_INIT]
+  // Explicit defaultChecked owns the reset target; later checked writes only
+  // update live state. Both paths establish the marker on their first write.
   seen[DEFAULT_CHECKED_INIT] = true
-  node.defaultChecked = node.checked
+  if (initializeDefault) node.defaultChecked = node.checked
 }
 
 /**
@@ -947,12 +949,6 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // so nothing that worked stops working.
   if (isBlockedHandlerAttr(el, key, value)) return
 
-  // `indeterminate` has no content attribute: a mixed checkbox is live state
-  // only. Native clicks clear it, and a later signal write must restore it.
-  if (key === 'indeterminate' && el.namespaceURI === XHTML_NS && el.tagName === 'INPUT') {
-    ;(el as HTMLInputElement).indeterminate = Boolean(value)
-    return
-  }
   if (key === 'muted') applyMediaMutedProp(el, value)
 
   if (key === 'class' || key === 'className') {
@@ -965,15 +961,15 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
-  // Input checkedness must bypass boolean-presence and nullish attribute
-  // handling. Establish the reset default once; explicit defaultChecked owns
-  // it thereafter, regardless of its order relative to checked in the props.
+  // Input checkedness and mixed state must bypass boolean-presence and
+  // nullish attribute handling. Keep their namespace check and live-property
+  // assignment together, including the checked/defaultChecked reset contract.
   if (
-    (key === 'checked' || key === 'defaultChecked') &&
+    (key === 'checked' || key === 'defaultChecked' || key === 'indeterminate') &&
     el.tagName === 'INPUT' &&
     el.namespaceURI === XHTML_NS
   ) {
-    applyCheckedProp(el, key, value)
+    applyInputBooleanProp(el, key, value)
     return
   }
 
