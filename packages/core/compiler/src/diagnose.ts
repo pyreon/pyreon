@@ -1088,6 +1088,16 @@ function Body({ html }) {
     }),
   },
   {
+    pattern:
+      /(?:checkbox|radio).*(?:stays?|remains?).*checked.*(?:reset|signal)|(?:checkbox|radio).*(?:reset|signal).*stays? checked/i,
+    diagnose: () => ({
+      cause:
+        'Older runtime-dom h() bindings update the checked attribute instead of live checkedness after a user click. That attribute controls defaultChecked, the form-reset target.',
+      fix: 'Upgrade @pyreon/runtime-dom. Keep checked reactive through an accessor; use defaultChecked for an explicit reset default.',
+      fixCode: `h('input', { type: 'checkbox', checked: () => checked() })`,
+    }),
+  },
+  {
     // PZ-02 — a VNode String()-coerced into a text binding renders the
     // literal "[object Object]". Historical shapes: a JSX-returning helper
     // called inline in a text position (`<td>{cell(row.status)}</td>`), a

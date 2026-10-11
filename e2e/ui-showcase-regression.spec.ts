@@ -921,3 +921,16 @@ test.describe('ui-showcase — SSR styler CSS emission', () => {
     expect(css.indexOf('@layer elements, rocketstyle;')).toBe(0)
   })
 })
+
+
+test('native checkbox h() binding follows a user click and model reset', async ({ page }) => {
+  await page.goto('/checkbox')
+  await waitForHydration(page)
+  const form = page.getByRole('form', { name: 'Native checkbox reset' })
+  const checkbox = form.getByRole('checkbox', { name: 'Native checkbox' })
+  await checkbox.check()
+  await expect(form.locator('output')).toHaveText('true')
+  await form.getByRole('button', { name: 'Reset checkbox' }).click()
+  await expect(form.locator('output')).toHaveText('false')
+  await expect(checkbox).not.toBeChecked()
+})

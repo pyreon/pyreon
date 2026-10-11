@@ -83,6 +83,7 @@ Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, w
 ## Runtime-DOM specifics
 
 - SVG and MathML elements (tracked by `SVG_TAGS`/`MATHML_TAGS` plus a depth counter in `mount.ts`) are created with `createElementNS` and always receive attributes via `setAttribute` (namespace-aware for `xlink:href`), because many of their properties are read-only `SVGAnimated*` getters.
+- The `h()` input `checked` binding writes live checkedness after user interaction. Its initial value establishes `defaultChecked` once; later updates keep that form-reset default. An explicit `defaultChecked` prop owns the default regardless of prop order. ARIA/SVG remain attribute-based. Locked by `checked-prop.browser.test.tsx`.
 - Custom elements (hyphenated tags) receive props as properties, except `data-*`/`aria-*`, which are always attributes on every element.
 - `Transition`/`TransitionGroup` finish via a 5s safety timeout if no `transitionend` arrives. Subpath exports `@pyreon/runtime-dom/transition`, `/keep-alive` and `/sanitizer` keep a `mount`-only import small.
 - A 10k-row `<For>` allocates ~10k signals; virtualize with `@pyreon/virtual`.

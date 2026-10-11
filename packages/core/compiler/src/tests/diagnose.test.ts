@@ -377,3 +377,15 @@ describe('diagnoseError — exports moved off the @pyreon/compiler main entry', 
     expect(diagnoseError(`Module '"@pyreon/compiler"' has no exported member 'transformJSX'.`)?.cause ?? '').not.toContain('moved')
   })
 })
+
+describe('controlled checkbox reset diagnosis', () => {
+  it('explains stale checked state after a signal reset', () => {
+    for (const symptom of [
+      'checkbox remains checked after signal reset',
+      'radio signal reset stays checked',
+    ]) {
+      expect(diagnoseError(symptom)?.cause).toContain('defaultChecked')
+    }
+    expect(diagnoseError('checkbox reset works correctly')).toBeNull()
+  })
+})

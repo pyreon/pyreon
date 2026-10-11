@@ -841,6 +841,26 @@ export function applyValueProp(el: Element, value: unknown): void {
   node.defaultValue = node.value
 }
 
+// Like DEFAULT_VALUE_INIT, this marker is owned by the element and dies with it.
+const DEFAULT_CHECKED_INIT = Symbol('pyreon.defaultCheckedInit')
+
+function applyCheckedProp(el: Element, key: 'checked' | 'defaultChecked', value: unknown): void {
+  const node = el as HTMLInputElement
+  const seen = el as unknown as Record<symbol, unknown>
+  if (key === 'defaultChecked') {
+    node.defaultChecked = Boolean(value)
+    seen[DEFAULT_CHECKED_INIT] = true
+    return
+  }
+
+  // The attribute controls the form-reset default, not a dirty input's live
+  // state. Assign the property even for nullish values, which clear the input.
+  node.checked = Boolean(value)
+  if (seen[DEFAULT_CHECKED_INIT]) return
+  seen[DEFAULT_CHECKED_INIT] = true
+  node.defaultChecked = node.checked
+}
+
 /**
  * The url-guard predicate shared by `setStaticProp` (h() path) and
  * `applyAttrProp` (`_setAttr`, compiled path): true when `key` is a URL-bearing
@@ -923,6 +943,18 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
 
   if (key === 'style') {
     applyStyleProp(el as HTMLElement, value)
+    return
+  }
+
+  // Input checkedness must bypass boolean-presence and nullish attribute
+  // handling. Establish the reset default once; explicit defaultChecked owns
+  // it thereafter, regardless of its order relative to checked in the props.
+  if (
+    (key === 'checked' || key === 'defaultChecked') &&
+    el.tagName === 'INPUT' &&
+    el.namespaceURI === XHTML_NS
+  ) {
+    applyCheckedProp(el, key, value)
     return
   }
 
