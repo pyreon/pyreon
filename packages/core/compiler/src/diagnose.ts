@@ -47,6 +47,13 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
+    diagnose: (m) => ({
+      cause: `The signal's value is being used as its API object: \`${m[1]}().${m[2]}\` reads the value first, then looks for a signal method on it. Older compiler versions could introduce this extra call when optional chaining, bracket access or a TypeScript cast surrounded the method call.`,
+      fix: `Call \`${m[1]}.${m[2]}(...)\` on the signal itself. If the source already calls the signal method correctly, upgrade @pyreon/compiler and its matching native binary.`,
+    }),
+  },
+  {
     // Before #3815 the compiler's name-keyed registries (prop-derived aliases,
     // `props` names, signal variables) outlived the function that declared
     // them, so an alias in one component was inlined as `props.x` into a

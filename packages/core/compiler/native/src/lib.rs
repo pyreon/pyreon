@@ -3729,43 +3729,8 @@ fn collect_signal_idents(
         return;
     }
 
-    // Skip callee position (already being called)
     if let Expression::CallExpression(call) = expr {
-        // Don't collect the callee if it's the signal being called
-        for arg in &call.arguments {
-            if let Some(e) = arg.as_expression() {
-                collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
-            } else if let Argument::SpreadElement(sp) = arg {
-                collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
-            }
-        }
-        // Callee handling:
-        match &call.callee {
-            // `signal()` — already-called, don't double-call
-            Expression::Identifier(id) if is_active_signal(id.name.as_str(), ctx) => {}
-            // `signal.method(...)` — the user is invoking a method on the
-            // signal OBJECT. Auto-calling the bare signal would produce
-            // `signal().method(...)` — calls the signal, gets its value,
-            // then `.method` on the value is undefined → TypeError. Every
-            // event handler that did `signal.set(x)` was silently broken.
-            // Skip the entire MemberExpression callee — neither object
-            // nor property gets auto-called.
-            Expression::StaticMemberExpression(m) => {
-                if let Expression::Identifier(id) = &m.object {
-                    if is_active_signal(id.name.as_str(), ctx) {
-                        // Skip — don't auto-call the signal in `signal.method()`
-                    } else {
-                        // Non-signal object — recurse normally
-                        collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
-                    }
-                } else {
-                    collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
-                }
-            }
-            _ => {
-                collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
-            }
-        }
+        collect_signal_call_idents(call, ctx, out, range_start, range_end, shadows);
         return;
     }
 
@@ -3853,14 +3818,7 @@ fn collect_signal_idents(
         }
         Expression::ChainExpression(c) => match &c.expression {
             ChainElement::CallExpression(call) => {
-                for arg in &call.arguments {
-                    if let Some(e) = arg.as_expression() {
-                        collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
-                    } else if let Argument::SpreadElement(sp) = arg {
-                        collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
-                    }
-                }
-                collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
+                collect_signal_call_idents(call, ctx, out, range_start, range_end, shadows);
             }
             ChainElement::StaticMemberExpression(m) => {
                 collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
@@ -3902,6 +3860,51 @@ fn collect_signal_idents(
             collect_signal_idents(&e.expression, ctx, out, range_start, range_end, shadows);
         }
         _ => {}
+    }
+}
+
+/// Preserve a call's signal/function reference; rewrite its keys and arguments.
+/// Shared by ordinary and optional calls so neither can double-call a signal.
+fn collect_signal_call_idents(
+    call: &CallExpression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    for arg in &call.arguments {
+        if let Some(e) = arg.as_expression() {
+            collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
+        } else if let Argument::SpreadElement(sp) = arg {
+            collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
+        }
+    }
+    collect_signal_callee_idents(&call.callee, ctx, out, range_start, range_end, shadows);
+}
+
+fn collect_signal_callee_idents(
+    callee: &Expression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    match unwrap_type_layers(callee) {
+        Expression::Identifier(id) if is_active_signal(id.name.as_str(), ctx) => {}
+        Expression::StaticMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {}
+        Expression::ComputedMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {
+            collect_signal_idents(&m.expression, ctx, out, range_start, range_end, shadows);
+        }
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::StaticMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {}
+            ChainElement::ComputedMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {
+                collect_signal_idents(&m.expression, ctx, out, range_start, range_end, shadows);
+            }
+            _ => collect_signal_idents(callee, ctx, out, range_start, range_end, shadows),
+        },
+        _ => collect_signal_idents(callee, ctx, out, range_start, range_end, shadows),
     }
 }
 

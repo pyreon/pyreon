@@ -377,3 +377,12 @@ describe('diagnoseError — exports moved off the @pyreon/compiler main entry', 
     expect(diagnoseError(`Module '"@pyreon/compiler"' has no exported member 'transformJSX'.`)?.cause ?? '').not.toContain('moved')
   })
 })
+
+describe('signal method called on its value', () => {
+  it('explains the accidental extra signal call', () => {
+    const result = diagnoseError('TypeError: count(...).set is not a function')
+    expect(result?.cause).toContain('signal method')
+    expect(result?.fix).toContain('count.set(...)')
+    expect(result?.fix).toContain('native binary')
+  })
+})
