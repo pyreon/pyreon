@@ -294,7 +294,9 @@ export function comparisonManifestReader(repoRoot: string): (path: string) => st
 
 if (import.meta.main) {
   const self = process.argv.find((a) => a.startsWith('--self='))?.slice('--self='.length)
-  const files = readFileSync('/dev/stdin', 'utf8')
+  // Read the inherited descriptor: reopening /dev/stdin fails for socket-backed
+  // child-process stdin on Linux (ENXIO), even though descriptor 0 is readable.
+  const files = readFileSync(0, 'utf8')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
