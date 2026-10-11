@@ -19,9 +19,10 @@
 // emitter actually emits, which is a fixed-and-growing surface.
 
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
-import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
+import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
+import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
+import { pluginItemType, findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -74,19 +75,10 @@ export interface InferenceCtx {
    * need not construct it.
    */
   extDecls?: Map<string, ExtDecl> | undefined
+  /** File-scope item bindings, supplied by the compiler instance that owns their plugins. */
+  moduleItems?: ReadonlyMap<string, ExtModuleItem> | undefined
   /** Service-container binding name → decl kind (`geo` → `geolocation`). */
   services: Map<string, string>
-  /**
-   * Store hook name → field name → declared field type. Lets the
-   * store-read chain `useApp().store.tasks()` infer the field's type
-   * the same way a local `tasks()` signal read does — without this, a
-   * computed over store state degraded to `Any`
-   * (`private var remaining: Any { PyreonStore_app.shared.tasks
-   * .filter({...}).count }`), which compiles for interpolation-only
-   * consumers but breaks the moment the value feeds arithmetic or a
-   * typed position.
-   */
-  stores: Map<string, Map<string, TypeIR>>
   /**
    * Declared struct / type-alias name → field name → field type. Filled
    * from the module's `type X = { ... }` declarations. Lets member
@@ -167,7 +159,7 @@ export function buildModuleConstTypes(
   helperReturns?: Map<string, TypeIR> | undefined,
 ): Map<string, TypeIR> {
   const out = new Map<string, TypeIR>()
-  const ctx = buildInferenceCtx([], [], structDefs, [], undefined, helperReturns, out)
+  const ctx = buildInferenceCtx([], structDefs, [], undefined, helperReturns, out)
   for (const md of moduleDecls) {
     const t = moduleConstType(md, ctx)
     if (t !== undefined) out.set(md.name, t)
@@ -206,7 +198,6 @@ export function emptyInferenceCtx(): InferenceCtx {
     locals: new Map(),
     objectLocals: new Map(),
     services: new Map(),
-    stores: new Map(),
     structs: new Map(),
   }
 }
@@ -239,15 +230,15 @@ export function emptyInferenceCtx(): InferenceCtx {
  */
 export function widenFloatSignals(
   c: ComponentIR,
-  storeDefs: StoreDefnIR[] = [],
   structDefs: StructIR[] = [],
   // File-scope binding types. Without them `x.set(x() + RATE)` over a
   // file-scope `const RATE = 0.5` read RATE as `unknown`, the write never
   // proved fractional, and `x` stayed an Int receiving a Double on both
   // targets — while the same source with RATE inside the component widened.
   moduleConsts?: Map<string, TypeIR> | undefined,
+  moduleItems: readonly ExtModuleItem[] = [],
 ): void {
-  widenFloatSignalDecls(c, storeDefs, structDefs, moduleConsts)
+  widenFloatSignalDecls(c, structDefs, moduleConsts, moduleItems)
   markIntegerWritesToFloatSignals(c)
 }
 
@@ -303,13 +294,13 @@ function markIntegerWritesToFloatSignals(c: ComponentIR): void {
 
 function widenFloatSignalDecls(
   c: ComponentIR,
-  storeDefs: StoreDefnIR[],
   structDefs: StructIR[],
   moduleConsts: Map<string, TypeIR> | undefined,
+  moduleItems: readonly ExtModuleItem[],
 ): void {
   const maxPasses = 8
   for (let pass = 0; pass < maxPasses; pass++) {
-    const ctx = buildInferenceCtx(c.decls, storeDefs, structDefs, [], undefined, undefined, moduleConsts)
+    const ctx = buildInferenceCtx(c.decls, structDefs, [], undefined, undefined, moduleConsts, moduleItems)
     const candidates = new Map<string, Extract<DeclIR, { kind: 'signal' }>>()
     for (const d of c.decls) {
       if (d.kind === 'signal' && d.type.kind === 'number' && d.type.float !== true) {
@@ -439,17 +430,20 @@ export function registerComponentFnReturns(decls: DeclIR[], ctx: InferenceCtx): 
 
 export function buildInferenceCtx(
   decls: DeclIR[],
-  storeDefs: StoreDefnIR[] = [],
   structDefs: StructIR[] = [],
   props: { name: string; type: TypeIR }[] = [],
   propsParamName?: string,
   helperReturns?: Map<string, TypeIR> | undefined,
   moduleConsts?: Map<string, TypeIR> | undefined,
+  moduleItems: readonly ExtModuleItem[] = [],
+  signalReceiver?: string | undefined,
 ): InferenceCtx {
   const ctx: InferenceCtx = {
+    signalReceiver,
     // Before Pass 1.5/2 below, so a component const or computed over a
     // file-scope const (`computed(() => NAMES.length)`) types on first read.
     moduleConsts,
+    moduleItems: new Map(moduleItems.map((item) => [item.name, item])),
     signals: new Map(),
     computeds: new Map(),
     valueConsts: new Map(),
@@ -484,40 +478,7 @@ export function buildInferenceCtx(
         return key === undefined ? [] : [[(d as { name: string }).name, key] as const]
       }),
     ),
-    stores: new Map(
-      storeDefs.map((s) => {
-        const perHook = new Map(s.fields.map((f) => [f.name, f.type]))
-        // v2 — store computeds: infer each one's type against the
-        // store's OWN fields so a COMPONENT computed reading
-        // `useApp().store.remaining()` resolves it like a field.
-        if (s.computeds !== undefined && s.computeds.length > 0) {
-          const storeCtx: InferenceCtx = {
-            // A store computed over a file-scope const reads it like any other
-            // body does.
-            moduleConsts,
-            signals: new Map(s.fields.map((f) => [f.name, f.type])),
-            computeds: new Map(),
-            valueConsts: new Map(),
-            locals: new Map(),
-            objectLocals: new Map(),
-            services: new Map(),
-            stores: new Map(),
-            structs: new Map(
-              structDefs.map((sd) => [
-                sd.name,
-                new Map(sd.fields.map((f) => [f.name, f.type])),
-              ]),
-            ),
-          }
-          for (const c of s.computeds) {
-            const t = inferType(c.expr, storeCtx)
-            storeCtx.computeds.set(c.name, t)
-            perHook.set(c.name, t)
-          }
-        }
-        return [s.hookName, perHook]
-      }),
-    ),
+
   }
   // Pass 1: collect signals. Their types come from `signal<T>(...)`
   // generics, which `parse.ts` already extracted.
@@ -661,34 +622,6 @@ export function inferReturnType(
   for (const p of params) scratch.locals.set(p.name, p.type)
   const ret = findFirstReturnExpr(body, scratch)
   return ret ? inferType(ret, scratch) : { kind: 'unknown' }
-}
-
-/**
- * Match the store-read chain shape `useX().store.FIELD()` (zero args at
- * both call sites) against the ctx's store registry. Returns the
- * field's declared type, or undefined when the expression isn't a
- * store read / the hook or field is unknown.
- */
-function resolveStoreReadType(
-  expr: Extract<ExprIR, { kind: 'call' }>,
-  ctx: InferenceCtx,
-): TypeIR | undefined {
-  if (expr.args.length !== 0) return undefined
-  const fieldMember = expr.callee
-  if (fieldMember.kind !== 'member') return undefined
-  const storeMember = fieldMember.object
-  if (storeMember.kind !== 'member' || storeMember.property !== 'store') {
-    return undefined
-  }
-  const hookCall = storeMember.object
-  if (
-    hookCall.kind !== 'call' ||
-    hookCall.args.length !== 0 ||
-    hookCall.callee.kind !== 'identifier'
-  ) {
-    return undefined
-  }
-  return ctx.stores.get(hookCall.callee.name)?.get(fieldMember.property)
 }
 
 /**
@@ -1323,6 +1256,21 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
 
 /** The declared property type before optional-chain short-circuiting. */
 export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
+  if (ctx.moduleItems?.size && (expr.kind === 'call' || expr.kind === 'member')) {
+    const root = rootReceiverName(expr)
+    if (root !== undefined && !ctx.locals.has(root) && !ctx.signals.has(root) &&
+      !ctx.computeds.has(root) && !ctx.valueConsts.has(root) && !ctx.extDecls?.has(root) &&
+      !ctx.props?.has(root) && root !== ctx.propsParamName) {
+      const item = ctx.moduleItems.get(root)
+      const type = item === undefined ? undefined : pluginItemType(item, expr, (value, scope) => {
+        if (scope === undefined) return inferType(value, ctx)
+        const structs = [...ctx.structs].map(([name, fields]) => ({ name, fields: [...fields].map(([fieldName, fieldType]) => ({ name: fieldName, type: fieldType })) }))
+        const scoped = buildInferenceCtx([...scope.declarations], structs, [], undefined, ctx.helperReturns, ctx.moduleConsts, [...(ctx.moduleItems?.values() ?? [])], scope.receiver)
+        return inferType(value, scoped)
+      })
+      if (type !== undefined) return type
+    }
+  }
   switch (expr.kind) {
     // A plugin's own expression: typed by its owner (`ExprEmitter.typing.type`), `unknown` without one.
     case 'ext-expr':
@@ -1550,12 +1498,6 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const typed = ext === undefined ? undefined : pluginCallReadType(ext, expr.callee.property)
         if (typed !== undefined) return typed
       }
-      // Store-read chain: `useApp().store.tasks()` — zero-arg call on a
-      // field of `.store` on a zero-arg store-hook call. Resolves to
-      // the store field's declared type so method chains over store
-      // state (`.filter(...).length`) infer like local signal reads.
-      const storeRead = resolveStoreReadType(expr, ctx)
-      if (storeRead !== undefined) return storeRead
       // Phase 2 follow-up — method calls on known-typed objects. Lets
       // computed-property return types flow through common TS method
       // chains like `arr.filter(...).length` (→ number) and

@@ -11,7 +11,7 @@
 // half-emitted store would be the same failure wearing a diagnostic). The
 // paired positive shape proves the recognizer still accepts what it should.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+import { transform } from './first-party-plugins'
 
 const P = '@pyreon/primitives'
 

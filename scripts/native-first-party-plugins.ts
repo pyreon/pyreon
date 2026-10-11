@@ -39,6 +39,10 @@ import { tableStubs } from '../packages/fundamentals/table/src/native-plugin/stu
 import { dndPlugin } from '../packages/fundamentals/dnd/src/native-plugin/plugin'
 import { dndStubs } from '../packages/fundamentals/dnd/src/native-plugin/stubs'
 import { kineticPlugin } from '../packages/ui-system/kinetic/src/native-plugin/plugin'
+import { storePlugin } from '../packages/fundamentals/store/src/native-plugin/plugin'
+import { storeStubs } from '../packages/fundamentals/store/src/native-plugin/stubs'
+import { stateTreePlugin } from '../packages/fundamentals/state-tree/src/native-plugin/plugin'
+import { modelStubs } from '../packages/fundamentals/state-tree/src/native-plugin/stubs'
 import hooksPlugin from '../packages/fundamentals/hooks/src/native-plugin'
 import { featurePlugin } from '../packages/fundamentals/feature/src/native-plugin/plugin'
 import { rxPlugin } from '../packages/fundamentals/rx/src/native-plugin/plugin'
@@ -54,10 +58,10 @@ import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
 
-export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, storagePlugin, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, kineticPlugin, elementsPlugin, coolgridPlugin])
+export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([stateTreePlugin, storePlugin, chartsPlugin, flowPlugin, httpPlugin, machinePlugin, queryPlugin, validatePlugin, validationPlugin, i18nPlugin, toastPlugin, a11yPlugin, tablePlugin, dndPlugin, syncPlugin, permissionsPlugin, urlStatePlugin, storagePlugin, sizedMapPlugin, rxPlugin, featurePlugin, hooksPlugin, kineticPlugin, elementsPlugin, coolgridPlugin])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */
-export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs, storageStubs, sizedMapStubs] })
+export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({ augment: [modelStubs, storeStubs, chartsStubs, flowStubs, machineStubs, queryStubs, i18nStubs, toastStubs, a11yStubs, tableStubs, dndStubs, syncStubs, permissionsStubs, storageStubs, sizedMapStubs] })
 
 const compiler = createCompiler({ discovered: FIRST_PARTY_PLUGINS })
 

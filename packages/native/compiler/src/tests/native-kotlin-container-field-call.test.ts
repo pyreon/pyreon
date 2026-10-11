@@ -6,8 +6,8 @@
 // emits `.value`; the CALL form (with parens) was the gap.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, validateKotlin } from '../validate'
+import { transform, validateKotlin } from './first-party-plugins'
+import { isKotlincAvailable } from '../validate'
 
 const app = (body: string) =>
   `import { useWebSocket } from '@pyreon/hooks'
@@ -19,19 +19,17 @@ export function App() {
 
 describe('Kotlin: native-container reactive-field CALL read → `.value` (not `.value()`)', () => {
   it('`ws.lastMessage()` → `ws.lastMessage.value` (parens dropped)', () => {
-    const out = transform(
-      app(`return (<Stack><Text>{ws.lastMessage()}</Text></Stack>)`),
-      { target: 'kotlin' },
-    ).code
+    const out = transform(app(`return (<Stack><Text>{ws.lastMessage()}</Text></Stack>)`), {
+      target: 'kotlin',
+    }).code
     expect(out).toContain('ws.lastMessage.value')
     expect(out).not.toContain('ws.lastMessage.value()')
   })
 
   it('the bare-member read `ws.isConnected` keeps its `.value` byte-shape', () => {
-    const out = transform(
-      app(`return (<Stack><Text>{String(ws.isConnected)}</Text></Stack>)`),
-      { target: 'kotlin' },
-    ).code
+    const out = transform(app(`return (<Stack><Text>{String(ws.isConnected)}</Text></Stack>)`), {
+      target: 'kotlin',
+    }).code
     expect(out).toContain('ws.isConnected.value')
   })
 
@@ -44,10 +42,9 @@ describe('Kotlin: native-container reactive-field CALL read → `.value` (not `.
   })
 
   it.skipIf(!isKotlincAvailable())('the field-call read compiles via kotlinc', () => {
-    const out = transform(
-      app(`return (<Stack><Text>{ws.lastMessage()}</Text></Stack>)`),
-      { target: 'kotlin' },
-    ).code
+    const out = transform(app(`return (<Stack><Text>{ws.lastMessage()}</Text></Stack>)`), {
+      target: 'kotlin',
+    }).code
     const r = validateKotlin(out)
     expect(r.ok, r.error ?? '').toBe(true)
   })

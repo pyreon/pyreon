@@ -6,8 +6,8 @@
 // level; constraints NOT enforced in v1 (shape only).
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isSwiftcAvailable, validateSwiftWithStubs } from '../validate'
+import { transform, validateSwiftWithStubs } from './first-party-plugins'
+import { isSwiftcAvailable } from '../validate'
 
 const SRC = `
 import { zodSchema } from '@pyreon/validation'
@@ -74,9 +74,7 @@ export const userSchema = zodSchema(z.object({
     const r = transform(src, { target: 'swift' })
     expect(r.code).toContain('var name: String = ""')
     expect(r.code).not.toContain('var meta')
-    const recordW = r.warnings.find(
-      (w) => w.includes('meta') && w.includes('z.record'),
-    )
+    const recordW = r.warnings.find((w) => w.includes('meta') && w.includes('z.record'))
     expect(recordW).toBeDefined()
   })
 

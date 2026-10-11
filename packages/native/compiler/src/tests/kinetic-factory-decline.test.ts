@@ -20,13 +20,8 @@
 // binding" specs AND both toolchain specs, with the real compiler errors.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import {
-  isKotlincAvailable,
-  isSwiftcAvailable,
-  validateKotlin,
-  validateSwiftWithStubs,
-} from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SRC = `
 import { kinetic } from '@pyreon/kinetic'
@@ -71,9 +66,7 @@ describe('kinetic() factory declines observably instead of emitting a broken bin
   it('warns BY NAME, and points at the animation that does cross', () => {
     // The package-level "is WEB-ONLY" line is too blunt to act on: it names the
     // package, not the binding, and does not say what happened to the element.
-    const w = transform(SRC, { target: 'swift' }).warnings.filter(
-      (x) => !x.includes('is WEB-ONLY'),
-    )
+    const w = transform(SRC, { target: 'swift' }).warnings.filter((x) => !x.includes('is WEB-ONLY'))
     expect(w).toHaveLength(1)
     expect(w[0]).toContain('`Box`')
     expect(w[0]).toContain('plain container')

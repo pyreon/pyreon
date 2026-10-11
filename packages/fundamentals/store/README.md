@@ -319,3 +319,9 @@ Full docs: [pyreon.dev/docs/store](https://pyreon.dev/docs/store) (or `docs/src/
 ## License
 
 MIT
+
+### Native compiler plugin
+
+The package owns its store recognition, member typing and Swift/Kotlin singleton emission. The native CLI discovers `@pyreon/store/native-plugin` through the package manifest when your app imports `@pyreon/store`. Direct compiler users must load the package plugin; the bare compiler has no built-in store lowering.
+
+The native scope retains the existing limitations: unsupported setup/factory shapes report diagnostics, and native state lives on the generated singleton. The plugin subpath is optional compiler tooling and is separate from the runtime entry.

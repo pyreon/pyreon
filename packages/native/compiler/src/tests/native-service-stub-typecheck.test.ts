@@ -18,8 +18,8 @@
 // noise.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isSwiftcAvailable, validateSwiftWithStubs } from '../validate'
+import { transform, validateSwiftWithStubs } from './first-party-plugins'
+import { isSwiftcAvailable } from '../validate'
 
 const WEBSOCKET = `import { useWebSocket } from '@pyreon/hooks'
 import { Stack, Text, Button } from '@pyreon/primitives'

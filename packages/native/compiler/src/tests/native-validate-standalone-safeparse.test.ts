@@ -16,8 +16,8 @@
 // runtime map the way the web `safeParse(unknown)` does.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
-import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const SCALAR = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
@@ -45,8 +45,12 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     // The web-faithful result shape + the call it lowers to.
     // The result type is the runtime's (`PyreonSchema.swift`), never per file.
     expect(code).not.toMatch(/struct PyreonParseResult\b/)
-    expect(code).toContain('static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self>')
-    expect(code).toContain('PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success')
+    expect(code).toContain(
+      'static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self>',
+    )
+    expect(code).toContain(
+      'PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success',
+    )
     // An INLINE schema has NO module-scope instance binding.
     expect(code).not.toContain('let Inline0 = PyreonZodSchema_Inline0()')
     // `.success` infers Bool, not Any.
@@ -59,8 +63,12 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     expect(code).toContain('data class PyreonZodSchema_Inline0')
     expect(code).toContain('var n: Long')
     expect(code).not.toMatch(/data class PyreonParseResult\b/)
-    expect(code).toContain('fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Inline0>')
-    expect(code).toContain('PyreonZodSchema_Inline0.safeParseResult(mapOf<String, Any?>("n" to 1L)).success')
+    expect(code).toContain(
+      'fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Inline0>',
+    )
+    expect(code).toContain(
+      'PyreonZodSchema_Inline0.safeParseResult(mapOf<String, Any?>("n" to 1L)).success',
+    )
     expect(code).not.toContain('val Inline0 = PyreonZodSchema_Inline0()')
   })
 
@@ -71,7 +79,9 @@ export function App() {
   const ok = computed(() => v.object({ n: v.number() }).safeParse({ n: 1 }).success)
   return <Text>{ok() ? 'y' : 'n'}</Text>
 }`
-    expect(transform(src, { target: 'swift' }).code).toContain('PyreonZodSchema_Inline0.safeParseResult')
+    expect(transform(src, { target: 'swift' }).code).toContain(
+      'PyreonZodSchema_Inline0.safeParseResult',
+    )
   })
 
   it('DEDUPS two byte-identical inline schemas to ONE struct', () => {
@@ -105,7 +115,9 @@ export function App() { return null }`
     const parseInline = `import { s } from '@pyreon/validate'
 export function App() { const ok = s.string().parse('x'); return null }`
     expect(
-      transform(parseInline, { target: 'swift' }).warnings.some((w) => w.includes('@pyreon/validate')),
+      transform(parseInline, { target: 'swift' }).warnings.some((w) =>
+        w.includes('@pyreon/validate'),
+      ),
     ).toBe(true)
 
     const nonLiteral = `import { s } from '@pyreon/validate'
