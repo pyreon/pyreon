@@ -155,3 +155,9 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 - `data-pyreon-html`: accept any server children (no string comparison); `_setHtml` (`applyDangerousHtml`) skips its first write to a marked element (the `h()` path marks in `hydrateElement`). A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.
 
 Expression rewrites that share AST offsets must compose against the original source: collect prop substitutions and signal auto-calls before emitting either. A later pass must not slice original source using the length of an already-expanded expression. Static hoist declarations include their own semicolon so a following JSX statement cannot continue the initializer.
+
+Live boolean DOM state needs browser assertions on the property. An input's
+`indeterminate` has no content attribute, and media `muted` attributes reflect
+`defaultMuted` instead of current audio state. Keep h()/spread and compiled
+attribute sinks aligned, including nullish clearing. A native checkbox click
+clears its mixed state; a signal-driven restore must set the live property.

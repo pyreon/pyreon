@@ -389,3 +389,35 @@ describe('controlled checkbox reset diagnosis', () => {
     expect(diagnoseError('checkbox reset works correctly')).toBeNull()
   })
 })
+
+describe('live boolean state diagnostics', () => {
+  it.each(['indeterminate attribute changes but checkbox is not mixed', 'video stays audible after muted becomes true'])('diagnoses %s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('live state')
+    expect(result?.fix).toContain('@pyreon/runtime-dom')
+    expect(result?.fixCode).toContain('indeterminate')
+  })
+
+  it('does not claim DOM defaultValue is unsupported', () => {
+    const result = diagnoseError('<textarea default-value="hello"></textarea>')
+    expect(result?.cause).toContain('DOM supports `defaultValue`')
+    expect(result?.fix).toContain('SSR initial content')
+  })
+
+  it('does not match unrelated checkbox or media reports', () => {
+    expect(diagnoseError('video network connection interrupted')).toBeNull()
+    expect(diagnoseError('checkbox border color is blue')).toBeNull()
+  })
+})
+
+
+describe('generic boolean attribute diagnosis retains normalization guidance', () => {
+  it.each(['aria-disabled="undefined"', 'hidden="false"', 'screen reader announces wrong checked state'])('%s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('setAttribute')
+    expect(result?.cause).toContain('hydration')
+    expect(result?.fix).toContain('_setAttr')
+    expect(result?.fix).toContain('ARIA booleans stringify')
+    expect(result?.fixCode).toContain('aria-disabled')
+  })
+})

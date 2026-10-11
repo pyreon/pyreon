@@ -2,6 +2,7 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { state } from '@pyreon/core/plain'
 import { Checkbox, Title } from '@pyreon/ui-components'
+import { MixedCheckboxDemo } from './MixedCheckboxDemo'
 
 function CheckboxIndicator(props: { checked: boolean }) {
   return (
@@ -55,6 +56,7 @@ export function CheckboxDemo() {
       </div>
 
       <NativeCheckboxReset />
+      <MixedCheckboxDemo />
 
       <p style="font-size: 13px; color: #6b7280;">
         Agreed: {agreed} | Newsletter: {newsletter}

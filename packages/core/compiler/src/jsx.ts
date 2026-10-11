@@ -4740,6 +4740,9 @@ export function transformJSX_JS(
       // runtime setAttribute (JS) or being dropped entirely (the historical
       // Rust behavior — silent attribute loss, fuzz-found).
       exprNode = unwrapTypeLayers(exprNode)
+      // `indeterminate` is property-only even when literal: the HTML parser
+      // ignores a baked attribute. Use the existing property setter at mount.
+      if (tag === 'input' && htmlAttrName === 'indeterminate') return null
       // `<select value>` (PZ-09): <select> has NO `value` CONTENT attribute —
       // the HTML parser ignores `value="…"` on <select> entirely, so baking
       // it into the template HTML is a DEAD attribute (the select silently
@@ -5271,7 +5274,13 @@ export function transformJSX_JS(
       varName: string,
       tag: string,
     ): string {
-      if (!attr.value) return ` ${htmlAttrName}`
+      if (!attr.value) {
+        if (tag === 'input' && htmlAttrName === 'indeterminate') {
+          bindLines.push(attrSetter(htmlAttrName, varName, 'true', tag))
+          return ''
+        }
+        return ` ${htmlAttrName}`
+      }
       // JSX string attribute: class="foo"
       if (
         attr.value.type === 'StringLiteral' ||
@@ -5286,7 +5295,8 @@ export function transformJSX_JS(
         // `.value` the bake path reads.
         // `<textarea value="0">` is the same dead-attribute class (its value is
         // its text content): a baked attribute mounted an EMPTY textarea.
-        if ((tag === 'select' || tag === 'textarea') && htmlAttrName === 'value') {
+        if (((tag === 'select' || tag === 'textarea') && htmlAttrName === 'value') ||
+          (tag === 'input' && htmlAttrName === 'indeterminate')) {
           bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag))
           return ''
         }

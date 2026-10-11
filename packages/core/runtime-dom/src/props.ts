@@ -710,7 +710,8 @@ function setAttrNsAware(el: Element, key: string, value: string): void {
  *
  * The compiler routes class → `_setClass`, style → `_setStyle`, and the
  * DOM_PROPS set (`value`/`checked`/…) to a property assignment BEFORE a
- * value reaches this helper, so it deliberately omits those branches AND
+ * value reaches this helper. Media `muted` needs both a live property write
+ * and its existing attribute reflection here. This omits other DOM_PROPS AND
  * the `key in el` property routing — it mirrors ONLY `setStaticProp`'s
  * `value == null` / boolean-aria / boolean tail. Keep those three
  * branches byte-identical to `setStaticProp`'s (same ARIA charCode probe)
@@ -718,6 +719,15 @@ function setAttrNsAware(el: Element, key: string, value: string): void {
  * class. Mirrors the `applyStyleProp`→`_setStyle` /
  * `applyClassProp`→`_setClass` extractions.
  */
+// A media element's `muted` attribute controls defaultMuted, not its live audio
+// state. Both the template attribute sink and h()/spreads must write the live
+// property as well. Keep the existing attribute reflection for SSR parity.
+function applyMediaMutedProp(el: Element, value: unknown): void {
+  if (el.namespaceURI === XHTML_NS && (el.tagName === 'AUDIO' || el.tagName === 'VIDEO')) {
+    ;(el as HTMLMediaElement).muted = Boolean(value)
+  }
+}
+
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
   // Event-handler NAMES first — BEFORE the accessor resolution below, which is
   // the load-bearing ordering. `_setAttr` is the compiled sink for every generic
@@ -751,6 +761,7 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
   // past it. A blocked write leaves the attribute untouched (the last SAFE
   // value stays), mirroring `setStaticProp`'s early return.
   if (isBlockedUrl(el, key, value)) return
+  if (key === 'muted') applyMediaMutedProp(el, value)
   if (value == null) {
     el.removeAttribute(key)
     return
@@ -935,6 +946,14 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // `EventHandler` IDL property is a no-op (WebIDL treats a non-object as null),
   // so nothing that worked stops working.
   if (isBlockedHandlerAttr(el, key, value)) return
+
+  // `indeterminate` has no content attribute: a mixed checkbox is live state
+  // only. Native clicks clear it, and a later signal write must restore it.
+  if (key === 'indeterminate' && el.namespaceURI === XHTML_NS && el.tagName === 'INPUT') {
+    ;(el as HTMLInputElement).indeterminate = Boolean(value)
+    return
+  }
+  if (key === 'muted') applyMediaMutedProp(el, value)
 
   if (key === 'class' || key === 'className') {
     applyClassProp(el, value)

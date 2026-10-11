@@ -400,6 +400,7 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   defaultValue?: string | number | undefined
   checked?: boolean | (() => boolean) | undefined
   defaultChecked?: boolean | undefined
+  indeterminate?: boolean | (() => boolean) | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
   // `readOnly` is paired with `disabled` semantically — both accept a
