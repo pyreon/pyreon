@@ -421,6 +421,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
+        id: uitest-todomvc
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
         # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
         # install the app, run an XCUITest that asserts the root view
@@ -508,6 +509,7 @@ jobs:
           echo "appearance: light"
 
       - name: Emit + xcodegen + UITest — native-counter-ios
+        id: uitest-counter
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' counter ')
         working-directory: examples/native-counter-ios
         run: |
@@ -537,6 +539,7 @@ jobs:
       # not (SwiftUI's LocalizedStringKey grouping shows below 1000 as-is,
       # so the counter's "Count: 0" never surfaced it; a 2700 balance did).
       - name: Emit + xcodegen + UITest — native-finance-ios (real-app gate)
+        id: uitest-finance
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' finance ')
         working-directory: examples/native-finance-ios
         run: |
@@ -583,6 +586,7 @@ jobs:
           fi
 
       - name: Emit + xcodegen + UITest — native-router-demo-ios
+        id: uitest-router
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' router-demo ')
         working-directory: examples/native-router-demo-ios
         # POLICY (enforced by scripts/check-ios-signing-policy.ts): a step that
@@ -656,6 +660,7 @@ jobs:
           i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
 
       - name: Emit + xcodegen + UITest — native-tasks-ios
+        id: uitest-tasks
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' tasks ')
         working-directory: examples/native-tasks-ios
         run: |
@@ -676,12 +681,23 @@ jobs:
             -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
 
       - name: Upload iOS test results
-        if: ${{ !cancelled() }}
+        # A selected test step must leave diagnostic evidence, including on failure.
+        # Skipped app lanes have no result bundle to upload.
+        if: >-
+          ${{ !cancelled() && (
+            steps.uitest-todomvc.outcome == 'success' || steps.uitest-todomvc.outcome == 'failure' ||
+            steps.uitest-counter.outcome == 'success' || steps.uitest-counter.outcome == 'failure' ||
+            steps.uitest-finance.outcome == 'success' || steps.uitest-finance.outcome == 'failure' ||
+            steps.uitest-router.outcome == 'success' || steps.uitest-router.outcome == 'failure' ||
+            steps.uitest-tasks.outcome == 'success' || steps.uitest-tasks.outcome == 'failure'
+          ) }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-test-results
           path: .ci-ios-results/*.xcresult
-          if-no-files-found: ignore
+          # The result root is intentionally hidden; the action excludes it by default.
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 7
 
       # ── Release & distribution: the iOS ARCHIVE lane ──

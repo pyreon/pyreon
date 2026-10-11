@@ -75,53 +75,112 @@ final class PyreonTasksUITests: XCTestCase {
     /// somewhere else entirely and reports a MISS, which reads as a broken hit
     /// test rather than a test that never touched the chart. That is exactly
     /// how the boxplot band assertion first failed on the simulator.
-    @discardableResult
-    /** Pixels within a few units of #cccccc — the visualMap's inactive colour. */
-    /** Scroll the gallery until the WHOLE element is inside the window: a gesture on an off-screen part lands on nothing. */
-    private func scrollFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+    /// Coordinate gestures and screenshots need the whole canvas; layout-only
+    /// checks need a visible, hittable portion. Both use the same bounded scroll.
+    private func scrollGalleryOnScreen(_ element: XCUIElement, in app: XCUIApplication, fullyVisible: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
         let scroll = app.scrollViews["gal-scroll"].firstMatch
-        // Down the LEFT GUTTER, outside every chart, never the centre. The
+        let window = app.windows.firstMatch.frame
+        let top = window.minY + 100
+        let bottom = window.maxY - 80
+        // Start in the LEFT GUTTER, outside every chart. The
         // gallery's charts claim drags (dataZoom, brush, the roaming map, the
         // toolbox band), so a scroll that started over one panned or zoomed
         // that chart instead of scrolling the page. Which chart sat under the
         // centre depended on the scroll position, so the damage moved around:
         // the box zoom, map pan and trail checks each failed intermittently.
+        let viewport = scroll.frame.intersection(window)
+        var frames: [CGRect] = []
         for _ in 0..<16 {
-            let window = app.windows.firstMatch.frame
-            if element.frame.minY < window.minY + 100 {
-                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.4)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65)))
-            } else if element.frame.maxY > window.maxY - 80 {
-                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.4)))
-            } else {
-                waitForScrollToSettle(element)
-                return
+            let frame = element.frame
+            frames.append(frame)
+            let visible = fullyVisible
+                ? window.contains(frame)
+                : frame.intersects(window) && element.isHittable
+            if !frame.isEmpty && visible { break }
+            // Aim at the viewport centre rather than fling a fixed distance.
+            // Far-away charts make useful progress; nearby charts do not overshoot.
+            let delta = (top + bottom) / 2 - frame.midY
+            let distance = min(abs(delta), viewport.height * 0.6)
+            var drag = delta > 0 ? distance : -distance
+            var start = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: viewport.minX + viewport.width * 0.02, dy: viewport.midY - drag / 2))
+            // Blank padding is not hit-testable at every scroll offset. If the
+            // gutter did not move, drag actual noninteractive content instead.
+            if frames.count > 1 && frame == frames[frames.count - 2],
+               let origin = galleryScrollOrigin(scroll, viewport: viewport, down: drag > 0) {
+                start = origin.point
+                drag = (drag > 0 ? 1 : -1) * min(abs(drag), origin.room)
+            }
+            let end = start.withOffset(CGVector(dx: 0, dy: drag))
+            assertPointsOnScreen([start, end], in: app, file: file, line: line)
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+            waitForScrollToSettle(element, file: file, line: line)
+        }
+        waitForScrollToSettle(element, file: file, line: line)
+        let visible = fullyVisible ? window.contains(element.frame) : element.frame.intersects(window) && element.isHittable
+        XCTAssertTrue(element.exists && !element.frame.isEmpty && visible, "gallery target never reached required visibility (fullFrame=\(fullyVisible)): frame=\(element.frame), window=\(window), attempts=\(frames)", file: file, line: line)
+    }
+
+    /// Prefer ordinary Text nodes. The early gallery has only canvases, so
+    /// passive fixtures without drag gestures are also safe scroll origins.
+    /// Interactive charts, buttons and embedded WebViews are never candidates.
+    private func galleryScrollOrigin(_ scroll: XCUIElement, viewport: CGRect, down: Bool) -> (point: XCUICoordinate, room: CGFloat)? {
+        let ids = [
+            "gal-grammar-pick", "gal-color-mode", "gal-toolbox-zoom", "gal-brush-count",
+            "gal-series-select-datum", "gal-growth-count", "gal-flow-webview-event",
+            "gal-flow-webview-events", "gal-flow-webview-selected", "gal-flow-webview-failure",
+            "gal-flow-webview-reload-status", "gal-saved"
+        ]
+        // These GalleryPage fixtures have neither roam/zoom/brush nor a drag
+        // callback. Keep this allowlist aligned with their emitted gestures.
+        let passiveCharts = [
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-geo-trail",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree"
+        ]
+        let groups = [
+            scroll.staticTexts.matching(NSPredicate(format: "identifier IN %@", ids)),
+            scroll.descendants(matching: .any).matching(NSPredicate(format: "identifier IN %@", passiveCharts))
+        ]
+        for group in groups {
+            var best: XCUIElement?
+            var bestRoom: CGFloat = 40
+            for candidate in group.allElementsBoundByIndex {
+                let frame = candidate.frame
+                let room = down ? viewport.maxY - 80 - frame.midY : frame.midY - viewport.minY - 100
+                if !frame.isEmpty && viewport.contains(frame) && room > bestRoom && candidate.isHittable {
+                    best = candidate
+                    bestRoom = room
+                }
+            }
+            if let origin = best {
+                return (origin.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)), bestRoom)
             }
         }
-        waitForScrollToSettle(element)
+        return nil
+    }
+
+    /// Point checks also cover gestures that only need a visible portion of a canvas.
+    /// A brush at y=60 remains reachable when its unused bottom edge is clipped.
+    private func assertPointsOnScreen(_ points: [XCUICoordinate], in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let window = app.windows.firstMatch.frame
+        for point in points {
+            XCTAssertTrue(window.contains(point.screenPoint), "gesture coordinate is off screen: point=\(point.screenPoint), window=\(window)", file: file, line: line)
+        }
     }
 
     /// A drag leaves the scroll view coasting, and a tap during that coast only
     /// stops it: the tap never reaches the control. Wait until the element has
     /// held still for two reads before anything taps or drags on it.
-    private func waitForScrollToSettle(_ element: XCUIElement) {
-        var last = element.frame
+    private func waitForScrollToSettle(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let initial = element.frame
+        var last = initial
         for _ in 0..<20 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
             let now = element.frame
             if now == last { return }
             last = now
         }
-    }
-
-    /// Tap `point` until `label` reads `expected`: a tap that lands while the gallery's scroll is still
-    /// decelerating only stops the fling, so one retry absorbs that — a tap that hits the WRONG part
-    /// still fails, because the label then reads something else.
-    private func tapUntilLabel(_ point: XCUICoordinate, _ label: XCUIElement, _ expected: String) -> Bool {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
-        point.tap()
-        if waitForLabel(label, expected, timeout: 3) { return true }
-        point.tap()
-        return waitForLabel(label, expected, timeout: 3)
+        XCTFail("scroll did not settle: initial=\(initial), final=\(last)", file: file, line: line)
     }
 
     private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
@@ -408,6 +467,58 @@ final class PyreonTasksUITests: XCTestCase {
             brandTitle.waitForExistence(timeout: 15),
             "Branded title missing — the custom-font Text did not render"
         )
+    }
+
+    /// A canvas can be hittable while the requested coordinate is below the screen.
+    /// Exercise that geometry explicitly instead of depending on a swipe's final offset.
+    func test_grammarBarSelectionAfterPartialVisibility() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30))
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        let gallery = app.buttons["tasks-gallery"].firstMatch
+        XCTAssertTrue(gallery.waitForExistence(timeout: 20))
+        gallery.tap()
+
+        let chart = app.descendants(matching: .any).matching(identifier: "gal-grammar-bars").firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 15))
+        scrollIntoView(chart, in: app, maxSwipes: 16)
+        let scroll = app.scrollViews["gal-scroll"].firstMatch
+        let window = app.windows.firstMatch.frame
+        // Leave only the top 50 points visible. XCUITest reports the canvas as
+        // hittable, but its 60%-height selection coordinate lies off screen.
+        for _ in 0..<6 {
+            let point = chart.coordinate(withNormalizedOffset: CGVector(dx: 0.26, dy: 0.6))
+            if chart.isHittable && !window.contains(point.screenPoint) { break }
+            let delta = window.maxY - 50 - chart.frame.minY
+            let distance = min(abs(delta), scroll.frame.height * 0.4)
+            let direction: CGFloat = delta > 0 ? 1 : -1
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+                .withOffset(CGVector(dx: 0, dy: -direction * distance / 2))
+            // Hold before lifting so scroll inertia cannot overshoot the clipped fixture.
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: direction * distance)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            waitForScrollToSettle(chart)
+        }
+        let clippedPoint = chart.coordinate(withNormalizedOffset: CGVector(dx: 0.26, dy: 0.6))
+        XCTAssertTrue(chart.isHittable, "clipped fixture must remain hittable: frame=\(chart.frame)")
+        XCTAssertFalse(window.contains(clippedPoint.screenPoint), "fixture must put the selection coordinate off screen: frame=\(chart.frame), point=\(clippedPoint.screenPoint), window=\(window)")
+        selectFirstGrammarBar(chart, in: app)
+    }
+
+    private func selectFirstGrammarBar(_ chart: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        // isHittable only guarantees that SOME part of the canvas is visible.
+        // Keep the entire frame on screen and let scrolling settle before a single tap.
+        scrollGalleryOnScreen(chart, in: app, file: file, line: line)
+        let window = app.windows.firstMatch.frame
+        let point = chart.coordinate(withNormalizedOffset: CGVector(dx: 0.26, dy: 0.6))
+        XCTAssertTrue(window.contains(chart.frame), "grammar chart must be fully visible before a coordinate tap: frame=\(chart.frame), point=\(point.screenPoint), window=\(window)", file: file, line: line)
+        point.tap()
+        let picked = app.staticTexts["gal-grammar-pick"].firstMatch
+        XCTAssertTrue(waitForLabel(picked, "0", timeout: 3), "grammar first-bar selection: label=\(picked.label), frame=\(chart.frame), point=\(point.screenPoint)", file: file, line: line)
     }
 
     func test_authGateStoreMutationAndTypedParamsDetail() throws {
@@ -845,7 +956,9 @@ final class PyreonTasksUITests: XCTestCase {
         let flowPick = app.staticTexts["stats-flow-pick"].firstMatch
         XCTAssertTrue(flowPick.waitForExistence(timeout: 10), "flow pick text missing")
         XCTAssertEqual(flowPick.label, "-1", "no tap yet, pick should be -1")
-        statsFlow.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 88, dy: 80)).tap()
+        let flowPoint = statsFlow.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 88, dy: 80))
+        assertPointsOnScreen([flowPoint], in: app)
+        flowPoint.tap()
         XCTAssertTrue(
             waitForLabel(flowPick, "0", timeout: 10),
             "tap on the first Sankey band did not bind node 0 (label: \(flowPick.label))"
@@ -876,6 +989,7 @@ final class PyreonTasksUITests: XCTestCase {
         let barPick = app.staticTexts["stats-bars-pick"].firstMatch
         XCTAssertTrue(barPick.waitForExistence(timeout: 10), "bar pick text missing")
         XCTAssertEqual(barPick.label, "-1", "no tap yet, bar pick should be -1")
+        XCTAssertTrue(app.windows.firstMatch.frame.contains(statsBars.frame), "bar gestures require the whole canvas on screen: \(statsBars.frame)")
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "0", timeout: 10),
@@ -981,12 +1095,16 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(brushSel.waitForExistence(timeout: 10), "brush selection text missing")
         XCTAssertEqual(brushSel.label, "none", "no brush yet, selection should be none")
         let brushOrigin = statsBrush.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        brushOrigin.withOffset(CGVector(dx: 50, dy: 60)).press(forDuration: 0.2, thenDragTo: brushOrigin.withOffset(CGVector(dx: statsBrush.frame.width - 30, dy: 60)))
+        let brushStart = brushOrigin.withOffset(CGVector(dx: 50, dy: 60))
+        let brushEnd = brushOrigin.withOffset(CGVector(dx: statsBrush.frame.width - 30, dy: 60))
+        let brushClear = brushOrigin.withOffset(CGVector(dx: 60, dy: 60))
+        assertPointsOnScreen([brushStart, brushEnd, brushClear], in: app)
+        brushStart.press(forDuration: 0.2, thenDragTo: brushEnd)
         XCTAssertTrue(
             waitForLabel(brushSel, "0-2", timeout: 10),
             "a drag across the plot did not brush every row (label: \(brushSel.label))"
         )
-        brushOrigin.withOffset(CGVector(dx: 60, dy: 60)).tap()
+        brushClear.tap()
         XCTAssertTrue(
             waitForLabel(brushSel, "none", timeout: 10),
             "a tap did not clear the brush (label: \(brushSel.label))"
@@ -1013,9 +1131,11 @@ final class PyreonTasksUITests: XCTestCase {
         let dashStage = app.staticTexts["dash-stage"].firstMatch
         XCTAssertEqual(dashStage.label, "none", "no funnel tap yet")
         let funnelTop = dashFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 30))
+        assertPointsOnScreen([funnelTop], in: app)
         funnelTop.tap()
         XCTAssertTrue(waitForLabel(dashStage, "Leads", timeout: 10), "tap on the top slab did not select Leads (label: \(dashStage.label))")
         app.buttons["dash-drop"].firstMatch.tap()
+        assertPointsOnScreen([funnelTop], in: app)
         funnelTop.tap()
         XCTAssertTrue(waitForLabel(dashStage, "Qualified", timeout: 10), "after dropping the first stage, the same tap did not select Qualified — the funnel did not repaint (label: \(dashStage.label))")
         let dashLoad = app.staticTexts["dash-load"].firstMatch
@@ -1033,10 +1153,13 @@ final class PyreonTasksUITests: XCTestCase {
         let radarHit = app.staticTexts["dash-radar-hit"].firstMatch
         XCTAssertEqual(radarHit.label, "none", "no radar tap yet")
         // A coordinate tap is relative to the element, so the element has to be
-        // ON SCREEN first — see `scrollIntoView`.
+        // ON SCREEN first, then the exact vertex must also be visible.
         scrollIntoView(dashRadar, in: app)
+        waitForScrollToSettle(dashRadar)
         XCTAssertTrue(dashRadar.isHittable, "radar canvas never became hittable")
-        dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46)).tap()
+        let radarPoint = dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46))
+        assertPointsOnScreen([radarPoint], in: app)
+        radarPoint.tap()
         XCTAssertTrue(waitForLabel(radarHit, "S0A0", timeout: 10), "tap on the radar's first vertex did not report series 0 / axis 0 (label: \(radarHit.label))")
         // The boxplot host crossed: two bands, a tap in the left third is box 0, in the right third box 1.
         let dashBox = app.descendants(matching: .any).matching(identifier: "dash-box").firstMatch
@@ -1046,10 +1169,14 @@ final class PyreonTasksUITests: XCTestCase {
         // the first version of this assertion tapped an off-screen coordinate
         // and read the resulting -1 as a failed hit test.
         scrollIntoView(dashBox, in: app)
+        waitForScrollToSettle(dashBox)
         XCTAssertTrue(dashBox.isHittable, "boxplot canvas never became hittable")
-        dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5)).tap()
+        let boxPoint = dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
+        let boxRightPoint = dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        assertPointsOnScreen([boxPoint, boxRightPoint], in: app)
+        boxPoint.tap()
         XCTAssertTrue(waitForLabel(boxPick, "0", timeout: 10), "tap on the left band did not select box 0 (label: \(boxPick.label))")
-        dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        boxRightPoint.tap()
         XCTAssertTrue(waitForLabel(boxPick, "1", timeout: 10), "tap on the right band did not select box 1 (label: \(boxPick.label))")
         app.buttons["dash-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
@@ -1059,9 +1186,9 @@ final class PyreonTasksUITests: XCTestCase {
         // this; the other ten rested on stub typechecking, which catches a
         // type error and cannot catch a chart that paints nothing.
         //
-        // Existence, not coordinates: these assert that each family LAYS OUT
-        // AND PAINTS from shared source. The dashboard above proves
-        // interaction, and its taps are tuned to ITS layout — which is why
+        // These assert that each family lays out a visible canvas from shared
+        // source. The dashboard above proves interaction, and its taps are
+        // tuned to ITS layout — which is why
         // these live on their own page rather than as more rows there.
         let galleryBtn = app.buttons["tasks-gallery"].firstMatch
         XCTAssertTrue(galleryBtn.exists, "Chart gallery button missing on tasks page")
@@ -1079,15 +1206,14 @@ final class PyreonTasksUITests: XCTestCase {
             // an off-screen element's `exists` is true while its frame is not
             // meaningful — the same trap that made the boxplot assertion read
             // an off-screen tap as a failed hit test.
-            scrollIntoView(canvas, in: app)
             XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
+            scrollGalleryOnScreen(canvas, in: app, fullyVisible: false)
             XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
         }
         // The stable `<Chart>` grammar on device: a tap on the first bar
         // reaches the chart's `onSelect` with index 0, through the same host
         // the grammar desugars to at compile time.
         let grammarBars = app.descendants(matching: .any).matching(identifier: "gal-grammar-bars").firstMatch
-        scrollIntoView(grammarBars, in: app)
         // (Checked before the chart tap below: it needs no gesture, so a flaky
         // tap cannot hide it.)
         // The framework-wide colour mode: under <ColorModeProvider mode="dark"> a
@@ -1097,23 +1223,11 @@ final class PyreonTasksUITests: XCTestCase {
         let colorMode = app.staticTexts["gal-color-mode"].firstMatch
         XCTAssertTrue(colorMode.waitForExistence(timeout: 10), "gal-color-mode missing on the gallery")
         XCTAssertEqual(colorMode.label, "dark", "useColorMode() under a pinned provider")
-        let grammarPick = app.staticTexts["gal-grammar-pick"].firstMatch
-        XCTAssertTrue(
-            tapUntilLabel(grammarBars.coordinate(withNormalizedOffset: CGVector(dx: 0.26, dy: 0.6)), grammarPick, "0"),
-            "a tap on the grammar chart's first bar did not select it (label: \(grammarPick.label))"
-        )
+        selectFirstGrammarBar(grammarBars, in: app)
         // The map ROAMS: a horizontal drag pans it, so its canvas differs.
         let roamMap = app.descendants(matching: .any).matching(identifier: "gal-map").firstMatch
         XCTAssertTrue(roamMap.waitForExistence(timeout: 10), "gal-map canvas missing on the gallery")
-        // The gallery loop above left the page scrolled PAST the map (its frame
-        // sits above the window), and a drag at off-screen coordinates lands on
-        // nothing — so scroll back up until the map is fully on screen.
-        let galScroll = app.scrollViews["gal-scroll"].firstMatch
-        var upTries = 0
-        while roamMap.frame.minY < app.windows.firstMatch.frame.minY + 120 && upTries < 12 {
-            galScroll.swipeDown()
-            upTries += 1
-        }
+        scrollGalleryOnScreen(roamMap, in: app)
         let mapBefore = roamMap.screenshot().pngRepresentation
         let mapGrab = roamMap.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
         mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
@@ -1122,7 +1236,7 @@ final class PyreonTasksUITests: XCTestCase {
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
         let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
         XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
-        scrollFullyOnScreen(toolbox, in: app)
+        scrollGalleryOnScreen(toolbox, in: app)
         let tbOrigin = toolbox.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let tool = { (i: Int) -> XCUICoordinate in tbOrigin.withOffset(CGVector(dx: toolbox.frame.width - 9.5 - 25.0 * Double(5 - i), dy: 9.5)) }
         let tbZoom = app.staticTexts["gal-toolbox-zoom"].firstMatch
@@ -1140,23 +1254,23 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the data view did not close")
         // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
         let hZoom = app.buttons["gal-h-zoom"].firstMatch
-        scrollFullyOnScreen(hZoom, in: app)
+        scrollGalleryOnScreen(hZoom, in: app)
         hZoom.tap()
         XCTAssertTrue(waitForLabel(tbZoom, "0-50", timeout: 5), "the handle's dataZoom did not move the window (label: \(tbZoom.label))")
         let hReset = app.buttons["gal-h-reset"].firstMatch
-        scrollFullyOnScreen(hReset, in: app)
+        scrollGalleryOnScreen(hReset, in: app)
         hReset.tap()
         XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "the handle's restore did not reset the window (label: \(tbZoom.label))")
         // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
         let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
         XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")
-        scrollFullyOnScreen(saveChart, in: app)
+        scrollGalleryOnScreen(saveChart, in: app)
         app.buttons["pyreon-save-image"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 15), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
         // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
         let areaChart = app.descendants(matching: .any).matching(identifier: "gal-brush").firstMatch
         XCTAssertTrue(areaChart.waitForExistence(timeout: 10), "gal-brush missing on the gallery")
-        scrollFullyOnScreen(areaChart, in: app)
+        scrollGalleryOnScreen(areaChart, in: app)
         let areaOrigin = areaChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let areaCount = app.staticTexts["gal-brush-count"].firstMatch
         areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.4, dy: areaChart.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.66, dy: areaChart.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
@@ -1167,7 +1281,7 @@ final class PyreonTasksUITests: XCTestCase {
         // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
         let seriesChart = app.descendants(matching: .any).matching(identifier: "gal-series-select").firstMatch
         XCTAssertTrue(seriesChart.waitForExistence(timeout: 10), "gal-series-select missing on the gallery")
-        scrollFullyOnScreen(seriesChart, in: app)
+        scrollGalleryOnScreen(seriesChart, in: app)
         let seriesOrigin = seriesChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let seriesDatum = app.staticTexts["gal-series-select-datum"].firstMatch
         seriesOrigin.withOffset(CGVector(dx: seriesChart.frame.width * 0.15, dy: seriesChart.frame.height * 0.82)).tap()
@@ -1176,7 +1290,7 @@ final class PyreonTasksUITests: XCTestCase {
         // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
         let growthChart = app.descendants(matching: .any).matching(identifier: "gal-growth").firstMatch
         XCTAssertTrue(growthChart.waitForExistence(timeout: 10), "gal-growth missing on the gallery")
-        scrollFullyOnScreen(app.buttons["gal-growth-toggle"].firstMatch, in: app)
+        scrollGalleryOnScreen(app.buttons["gal-growth-toggle"].firstMatch, in: app)
         app.buttons["gal-growth-toggle"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "5", timeout: 5), "universalTransition row-count toggle did not settle on 5 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
         app.buttons["gal-growth-toggle"].firstMatch.tap()
@@ -1184,33 +1298,12 @@ final class PyreonTasksUITests: XCTestCase {
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
-        var trailTries = 0
-        // On screen in either direction: an off-screen element's screenshot never changes. This step revisits an
-        // EARLY chart from near the page's bottom (every later chart's own scrollFullyOnScreen ran first), so it
-        // needs many more iterations than a one-chart-at-a-time scroll — but the SAME proven gesture shape (a
-        // 0.05s press, the margin so an interactive chart's own drag never intercepts it).
-        while trailTries < 80 {
-            let window = app.windows.firstMatch.frame
-            // Down the left margin, outside every chart. A chart's TAP no longer takes the page's scroll (it is a
-            // SpatialTapGesture, not a zero-distance drag), but one that also carries a DRAG — dataZoom, brush,
-            // navigator — still claims a swipe that starts on it.
-            let gutter = app.scrollViews["gal-scroll"].firstMatch
-            if geoTrail.frame.minY < window.minY + 120 {
-                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)))
-            } else if geoTrail.frame.maxY > window.maxY - 60 {
-                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)))
-            } else {
-                break
-            }
-            trailTries += 1
-        }
+        // The animated chart must be visible before either screenshot. Reuse
+        // the same bounded scroll path as gestures, including its safe label origin.
+        scrollGalleryOnScreen(geoTrail, in: app)
         let geoTrailBefore = geoTrail.screenshot().pngRepresentation
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
-        // Runs AFTER the moving-canvas check on purpose: the hosted flow is a full-width
-        // pannable canvas, so once it is on screen a gutter swipe that starts on it PANS the
-        // graph instead of scrolling the page, and the geo-trail scroll-back loop above never
-        // brings its chart back into view (device-found: 80 futile tries, frame y -1829).
         // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
         // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
         // BACK over the reverse bridge into native Text — page→host proven without
@@ -1225,7 +1318,7 @@ final class PyreonTasksUITests: XCTestCase {
         // A baseline, not a fixed "1": the WebView is tall enough now that the
         // swipes scrolling the gallery can cross it, and a drag over the hosted
         // flow is a pan that legitimately reports its own viewport-change.
-        scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        scrollGalleryOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         let eventsBeforeFit = Int(flowWebEvents.label) ?? 0
         XCTAssertGreaterThanOrEqual(eventsBeforeFit, 1, "the initial fit-view never reported (label: \(flowWebEvents.label))")
@@ -1238,7 +1331,7 @@ final class PyreonTasksUITests: XCTestCase {
         // WebView's centre hits it on every device.
         let flowWebSelected = app.staticTexts["gal-flow-webview-selected"].firstMatch
         XCTAssertEqual(flowWebSelected.label, "none")
-        scrollFullyOnScreen(flowWebView, in: app)
+        scrollGalleryOnScreen(flowWebView, in: app)
         // An unsized WebView used to collapse to a sliver, leaving the fitted graph
         // no room and the centre tap nowhere to land. It now takes the web
         // `<iframe>`'s 150pt default.
@@ -1247,9 +1340,9 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(flowWebSelected, "transform", timeout: 10), "tapping the hosted flow's middle node did not reach onSelect (label: \(flowWebSelected.label), frame: \(flowWebView.frame))")
         // Swapping the graph re-renders IN PLACE: the same tap now lands on the new
         // middle node, so the update reached the page and its handlers.
-        scrollFullyOnScreen(app.buttons["gal-flow-webview-swap"].firstMatch, in: app)
+        scrollGalleryOnScreen(app.buttons["gal-flow-webview-swap"].firstMatch, in: app)
         app.buttons["gal-flow-webview-swap"].firstMatch.tap()
-        scrollFullyOnScreen(flowWebView, in: app)
+        scrollGalleryOnScreen(flowWebView, in: app)
         // The swapped graph crosses the JSON bridge asynchronously and the host
         // reports nothing when it has rendered, so a single tap after a fixed
         // wait can land on the OLD graph and select `transform` again (seen
@@ -1272,14 +1365,14 @@ final class PyreonTasksUITests: XCTestCase {
         let flowReloadStatus = app.staticTexts["gal-flow-webview-reload-status"].firstMatch
         XCTAssertTrue(waitForLabel(flowReloadStatus, "a:3", timeout: 20), "the first hosted page never reported the pushed graph (label: \(flowReloadStatus.label))")
         let flowReloadSwap = app.buttons["gal-flow-webview-reload-swap"].firstMatch
-        scrollFullyOnScreen(flowReloadSwap, in: app)
+        scrollGalleryOnScreen(flowReloadSwap, in: app)
         flowReloadSwap.tap()
         XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
         // gal-back is the LAST element on the gallery; the checks above leave the page
         // scrolled wherever their subject sat, so a bare tap can land off-screen on
         // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
         let galBack = app.buttons["gal-back"].firstMatch
-        scrollFullyOnScreen(galBack, in: app)
+        scrollGalleryOnScreen(galBack, in: app)
         galBack.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 

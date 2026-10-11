@@ -63,6 +63,8 @@ On web, `@pyreon/primitives` runs the real DOM implementation. On iOS/Android PM
 
 ## Device-only gotchas
 
+XCUITest `isHittable` can be true for a partly clipped canvas. Before a coordinate gesture, bring the whole canvas (or the exact intended point) into the visible window, wait for scrolling to settle, and assert the bounds with frame/point/window diagnostics. Scroll outside interactive chart regions so navigation does not change the chart. Blank padding can stop receiving touches at particular offsets; when a measured drag makes no progress, use a verified visible noninteractive Text node as the origin, or an explicitly reviewed passive fixture without drag gestures when no Text is available; keep the same attempt bound, and report the attempted frames on exhaustion. Share that bounded helper with pre-screenshot navigation rather than keeping separate scroll loops. Layout-only checks need a visible portion, while coordinate gestures and whole-canvas screenshots require their intended points or frame. A selection assertion should follow one deliberate tap; retrying an off-screen coordinate does not repair its geometry.
+
 Compile-time checks cannot catch these:
 
 1. `<Suspense>` / `<ErrorBoundary>` compile to an inline conditional read in the component body. The `@Observable` / recomposition read must be in `body` to be tracked; passing it through a wrapper struct argument does not track.
