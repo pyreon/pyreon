@@ -61,6 +61,7 @@ if [ "$1" = '-version' ]; then
     if [ -f "$FIXTURE_PROBED" ]; then exit 1; fi
     printf 'probed\n' > "$FIXTURE_PROBED"
   fi
+  printf "%s\n" "\${FIXTURE_JAVA_VERSION:-fixture java}" >&2
   exit "\${FIXTURE_JAVA_EXIT:-0}"
 fi
 printf 'ran\n' >> "$FIXTURE_SMOKES"
@@ -125,6 +126,21 @@ exit "\${FIXTURE_SMOKE_EXIT:-0}"
 }
 
 describe('Kotlin service runner cache honesty', () => {
+  it('reexecutes full smokes when the PATH Java version changes independently of kotlinc', () => {
+    const f = fixture()
+    try {
+      expect(f.run(true, true, { FIXTURE_JAVA_VERSION: 'jdk21' }).status).toBe(0)
+      expect(f.run(true, true, { FIXTURE_JAVA_VERSION: 'jdk26' }).status).toBe(0)
+      expect(f.count('compiles')).toBe(2)
+      expect(f.count('smokes')).toBe(2)
+      expect(f.run(true, true, { FIXTURE_JAVA_VERSION: 'jdk26' }).status).toBe(0)
+      expect(f.count('compiles')).toBe(2)
+      expect(f.count('smokes')).toBe(2)
+    } finally {
+      rmSync(f.root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects strict validation before accepting a warm Java-less compile', () => {
     const f = fixture()
     try {
@@ -182,6 +198,8 @@ describe('Kotlin service runner cache honesty', () => {
         const args = declared ? [] : ['--mode=typecheck']
         expect(f.run(true, false, {}, args).status).toBe(0)
         expect(f.run(true, false, {}, args).status).toBe(0)
+        expect(f.run(true, true, { FIXTURE_JAVA_VERSION: 'jdk21' }, args).status).toBe(0)
+        expect(f.run(true, true, { FIXTURE_JAVA_VERSION: 'jdk26' }, args).status).toBe(0)
         expect(f.count('compiles')).toBe(1)
         expect(f.count('smokes')).toBe(0)
       } finally {

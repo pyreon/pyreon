@@ -95,7 +95,11 @@ if (import.meta.main) {
 
   // Availability is a precondition, including on a cache hit. A prior local
   // compile-only success cannot satisfy a request to RUN the smoke tests.
-  const javaRuns = spawnSync('java', ['-version'], { encoding: 'utf8' }).status === 0
+  const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
+  const javaRuns = javaProbe.status === 0
+  // kotlinc can use JAVA_HOME while smoke execution uses a different PATH
+  // java. Its runtime version is an independent input to a behaviour verdict.
+  const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
   const smokeCount = plan.filter(({ typecheckOnly }) => !typecheckOnly).length
   if (smokeCount > 0 && !javaRuns) {
     if (required) {
@@ -146,7 +150,7 @@ if (import.meta.main) {
       const { name, typecheckOnly } = plan[next++]!
       const key = verdictKey({
         compilerVersion,
-        harness,
+        harness: typecheckOnly ? harness : `${harness}\0java\0${javaVersion}`,
         source: read(join(SOURCE_DIR, `${name}.kt`)),
         test: read(join(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${name}Test.kt`)),
         typecheckOnly,
