@@ -88,6 +88,7 @@ When CI fails on a gate not listed here, add a row in the same PR.
 | Gate | When it trips | Fix |
 |---|---|---|
 | `Test (browser)` / e2e: apt timeout followed by a dpkg lock failure | A runner-owned timeout left Playwright's root-owned apt process alive | Use `scripts/install-playwright.sh`: root-owned group timeout with SIGKILL, bounded dpkg repair, then retry. Do not delete lock files. |
+| HTTP upload-init browser check fails only in Firefox | A test assumed every native `Request` consumes a `ReadableStream`; some engines stringify it | Compare with an independently constructed native request, while asserting original body identity and half-duplex init in every engine. Bisect the transport fix in all three engines; do not skip engines or infer support from user-agent strings. |
 
 ### Native
 
