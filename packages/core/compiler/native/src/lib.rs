@@ -2401,7 +2401,11 @@ fn expr_children_any_accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
                 })
         }
         Expression::ObjectExpression(obj) => obj.properties.iter().any(|p| match p {
-            ObjectPropertyKind::ObjectProperty(prop) => accesses_props(&prop.value, ctx),
+            ObjectPropertyKind::ObjectProperty(prop) => {
+                accesses_props(&prop.value, ctx)
+                    || (prop.computed
+                        && prop.key.as_expression().is_some_and(|e| accesses_props(e, ctx)))
+            }
             ObjectPropertyKind::SpreadProperty(s) => accesses_props(&s.argument, ctx),
         }),
         Expression::ArrayExpression(arr) => arr.elements.iter().any(|el| match el {
@@ -3637,6 +3641,239 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
     result
 }
 
+/// Function names and parameters shadow defaults and bodies. Hoisted `var`s
+/// shadow only the body; block, loop and catch bindings stay within their scope.
+fn slice_signal_function_shadows(
+    params: &FormalParameters,
+    id: Option<&BindingIdentifier>,
+    ctx: &Ctx,
+) -> Vec<String> {
+    let mut names = Vec::new();
+    if let Some(id) = id {
+        names.push(id.name.to_string());
+    }
+    for p in &params.items {
+        collect_pattern_names(&p.pattern, &mut names);
+    }
+    if let Some(rest) = &params.rest {
+        collect_pattern_names(&rest.rest.argument, &mut names);
+    }
+    names.retain(|n| ctx.signal_vars.contains(n));
+    names
+}
+
+fn collect_hoisted_var_names(body: &[Statement]) -> Vec<String> {
+    struct Vars {
+        names: Vec<String>,
+    }
+    impl<'a> Visit<'a> for Vars {
+        fn visit_variable_declaration(&mut self, decl: &VariableDeclaration<'a>) {
+            if decl.kind == VariableDeclarationKind::Var {
+                for d in &decl.declarations {
+                    collect_pattern_names(&d.id, &mut self.names);
+                }
+            }
+        }
+        fn visit_function(&mut self, _: &Function<'a>, _: oxc_syntax::scope::ScopeFlags) {}
+        fn visit_arrow_function_expression(&mut self, _: &ArrowFunctionExpression<'a>) {}
+        fn visit_class(&mut self, _: &Class<'a>) {}
+    }
+    let mut vars = Vars { names: Vec::new() };
+    for stmt in body {
+        vars.visit_statement(stmt);
+    }
+    vars.names
+}
+
+fn push_signal_pattern_shadows(pattern: &BindingPattern, ctx: &Ctx, shadows: &mut Vec<String>) {
+    let mut names = Vec::new();
+    collect_pattern_names(pattern, &mut names);
+    for name in names {
+        if ctx.signal_vars.contains(&name) && !shadows.contains(&name) {
+            shadows.push(name);
+        }
+    }
+}
+
+/// Binding names stay untouched; defaults and computed pattern keys are reads.
+fn collect_signal_pattern_reads(
+    pattern: &BindingPattern,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    start: u32,
+    end: u32,
+    shadows: &mut Vec<String>,
+) {
+    match pattern {
+        BindingPattern::AssignmentPattern(p) => {
+            collect_signal_pattern_reads(&p.left, ctx, out, start, end, shadows);
+            collect_signal_idents(&p.right, ctx, out, start, end, shadows);
+        }
+        BindingPattern::ObjectPattern(p) => {
+            for prop in &p.properties {
+                if prop.computed {
+                    if let Some(key) = prop.key.as_expression() {
+                        collect_signal_idents(key, ctx, out, start, end, shadows);
+                    }
+                }
+                collect_signal_pattern_reads(&prop.value, ctx, out, start, end, shadows);
+            }
+            if let Some(rest) = &p.rest {
+                collect_signal_pattern_reads(&rest.argument, ctx, out, start, end, shadows);
+            }
+        }
+        BindingPattern::ArrayPattern(p) => {
+            for el in p.elements.iter().flatten() {
+                collect_signal_pattern_reads(el, ctx, out, start, end, shadows);
+            }
+            if let Some(rest) = &p.rest {
+                collect_signal_pattern_reads(&rest.argument, ctx, out, start, end, shadows);
+            }
+        }
+        BindingPattern::BindingIdentifier(_) => {}
+    }
+}
+
+fn collect_signal_body_idents(
+    body: &[Statement],
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    start: u32,
+    end: u32,
+    shadows: &mut Vec<String>,
+    hoisted: bool,
+) {
+    let mark = shadows.len();
+    if hoisted {
+        for name in collect_hoisted_var_names(body) {
+            if ctx.signal_vars.contains(&name) && !shadows.contains(&name) {
+                shadows.push(name);
+            }
+        }
+    }
+    push_signal_body_shadows(body, ctx, shadows);
+    for stmt in body {
+        collect_signal_idents_stmt(stmt, ctx, out, start, end, shadows);
+    }
+    shadows.truncate(mark);
+}
+
+fn push_signal_body_shadows(body: &[Statement], ctx: &Ctx, shadows: &mut Vec<String>) {
+    let mut bindings = Vec::new();
+    for stmt in body {
+        match stmt {
+            Statement::VariableDeclaration(decl) => {
+                collect_variable_declaration(decl, &mut bindings)
+            }
+            Statement::FunctionDeclaration(_) | Statement::ClassDeclaration(_) => {
+                collect_statement_binding(stmt, &mut bindings)
+            }
+            _ => {}
+        }
+    }
+    for name in shadowing_signal_names(bindings, ctx) {
+        if !shadows.contains(&name) {
+            shadows.push(name);
+        }
+    }
+}
+
+fn collect_signal_function_idents(
+    func: &Function,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    start: u32,
+    end: u32,
+    shadows: &mut Vec<String>,
+) {
+    let mark = shadows.len();
+    for name in slice_signal_function_shadows(&func.params, func.id.as_ref(), ctx) {
+        if !shadows.contains(&name) {
+            shadows.push(name);
+        }
+    }
+    for p in &func.params.items {
+        collect_signal_pattern_reads(&p.pattern, ctx, out, start, end, shadows);
+        if let Some(init) = &p.initializer {
+            collect_signal_idents(init, ctx, out, start, end, shadows);
+        }
+    }
+    if let Some(body) = &func.body {
+        collect_signal_body_idents(&body.statements, ctx, out, start, end, shadows, true);
+    }
+    shadows.truncate(mark);
+}
+
+fn collect_signal_class_idents(
+    class: &Class,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    start: u32,
+    end: u32,
+    shadows: &mut Vec<String>,
+) {
+    let mark = shadows.len();
+    if let Some(id) = &class.id {
+        if ctx.signal_vars.contains(id.name.as_str())
+            && !shadows.iter().any(|n| n == id.name.as_str())
+        {
+            shadows.push(id.name.to_string());
+        }
+    }
+    if let Some(heritage) = &class.heritage {
+        collect_signal_idents(&heritage.expression, ctx, out, start, end, shadows);
+    }
+    for d in &class.decorators {
+        collect_signal_idents(&d.expression, ctx, out, start, end, shadows);
+    }
+    for element in &class.body.body {
+        match element {
+            ClassElement::MethodDefinition(m) => {
+                if m.computed {
+                    if let Some(e) = m.key.as_expression() {
+                        collect_signal_idents(e, ctx, out, start, end, shadows);
+                    }
+                }
+                for d in &m.decorators {
+                    collect_signal_idents(&d.expression, ctx, out, start, end, shadows);
+                }
+                collect_signal_function_idents(&m.value, ctx, out, start, end, shadows);
+            }
+            ClassElement::PropertyDefinition(p) => {
+                if p.computed {
+                    if let Some(e) = p.key.as_expression() {
+                        collect_signal_idents(e, ctx, out, start, end, shadows);
+                    }
+                }
+                for d in &p.decorators {
+                    collect_signal_idents(&d.expression, ctx, out, start, end, shadows);
+                }
+                if let Some(e) = &p.value {
+                    collect_signal_idents(e, ctx, out, start, end, shadows);
+                }
+            }
+            ClassElement::AccessorProperty(p) => {
+                if p.computed {
+                    if let Some(e) = p.key.as_expression() {
+                        collect_signal_idents(e, ctx, out, start, end, shadows);
+                    }
+                }
+                for d in &p.decorators {
+                    collect_signal_idents(&d.expression, ctx, out, start, end, shadows);
+                }
+                if let Some(e) = &p.value {
+                    collect_signal_idents(e, ctx, out, start, end, shadows);
+                }
+            }
+            ClassElement::StaticBlock(b) => {
+                collect_signal_body_idents(&b.body, ctx, out, start, end, shadows, true)
+            }
+            _ => {}
+        }
+    }
+    shadows.truncate(mark);
+}
+
 /// Collect Identifier positions that need auto-calling.
 ///
 /// Reachability mirrors the JS backend's `findSignalIdents` exactly:
@@ -3648,8 +3885,8 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
 /// bare — both runtimes treat a callable attr/child as a reactive accessor
 /// (runtime-dom `applyProp` wraps functions in `renderEffect`;
 /// `renderProp` unwraps on the server; `mountChild` → `mountReactive`), so
-/// the bare form is the FINE-GRAINED binding. Class bodies are deliberately
-/// NOT walked (mirrored by an explicit ClassBody skip in the JS backend).
+/// the bare form is the FINE-GRAINED binding. Class field/method values and
+/// computed keys are walked with the class name and method parameter shadows.
 fn collect_signal_idents(
     expr: &Expression,
     ctx: &Ctx,
@@ -3664,7 +3901,8 @@ fn collect_signal_idents(
     }
 
     if let Expression::Identifier(id) = expr {
-        if is_active_signal(id.name.as_str(), ctx) && !shadows.iter().any(|n| n == id.name.as_str()) {
+        if is_active_signal(id.name.as_str(), ctx) && !shadows.iter().any(|n| n == id.name.as_str())
+        {
             out.push((id.span.start, id.span.end));
         }
         return;
@@ -3675,45 +3913,41 @@ fn collect_signal_idents(
     // shadowing for the subtree. Mirrors the JS walk + `scopeBoundSignals`.
     if let Expression::ArrowFunctionExpression(arrow) = expr {
         let mark = shadows.len();
-        for name in find_shadowing_names_arrow(arrow, ctx) {
+        for name in slice_signal_function_shadows(&arrow.params, None, ctx) {
             if !shadows.contains(&name) {
                 shadows.push(name);
             }
         }
         // Param default values evaluate inside the function scope.
         for param in &arrow.params.items {
-            if let BindingPattern::AssignmentPattern(ap) = &param.pattern {
-                collect_signal_idents(&ap.right, ctx, out, range_start, range_end, shadows);
+            collect_signal_pattern_reads(&param.pattern, ctx, out, range_start, range_end, shadows);
+            if let Some(init) = &param.initializer {
+                collect_signal_idents(init, ctx, out, range_start, range_end, shadows);
             }
         }
         if let Some(e) = arrow.get_expression() {
             // Concise body — 0.126's synthetic ExpressionStatement recursed here.
             collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
         }
-        for stmt in arrow.get_function_body().map_or(&[][..], |b| &b.statements) {
-            collect_signal_idents_stmt(stmt, ctx, out, range_start, range_end, shadows);
-        }
+        collect_signal_body_idents(
+            arrow.get_function_body().map_or(&[][..], |b| &b.statements),
+            ctx,
+            out,
+            range_start,
+            range_end,
+            shadows,
+            true,
+        );
         shadows.truncate(mark);
         return;
     }
     if let Expression::FunctionExpression(func) = expr {
-        let mark = shadows.len();
-        for name in find_shadowing_names(func, ctx) {
-            if !shadows.contains(&name) {
-                shadows.push(name);
-            }
-        }
-        for param in &func.params.items {
-            if let BindingPattern::AssignmentPattern(ap) = &param.pattern {
-                collect_signal_idents(&ap.right, ctx, out, range_start, range_end, shadows);
-            }
-        }
-        if let Some(body) = &func.body {
-            for stmt in &body.statements {
-                collect_signal_idents_stmt(stmt, ctx, out, range_start, range_end, shadows);
-            }
-        }
-        shadows.truncate(mark);
+        collect_signal_function_idents(func, ctx, out, range_start, range_end, shadows);
+        return;
+    }
+
+    if let Expression::ClassExpression(class) = expr {
+        collect_signal_class_idents(class, ctx, out, range_start, range_end, shadows);
         return;
     }
 
@@ -3729,43 +3963,8 @@ fn collect_signal_idents(
         return;
     }
 
-    // Skip callee position (already being called)
     if let Expression::CallExpression(call) = expr {
-        // Don't collect the callee if it's the signal being called
-        for arg in &call.arguments {
-            if let Some(e) = arg.as_expression() {
-                collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
-            } else if let Argument::SpreadElement(sp) = arg {
-                collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
-            }
-        }
-        // Callee handling:
-        match &call.callee {
-            // `signal()` — already-called, don't double-call
-            Expression::Identifier(id) if is_active_signal(id.name.as_str(), ctx) => {}
-            // `signal.method(...)` — the user is invoking a method on the
-            // signal OBJECT. Auto-calling the bare signal would produce
-            // `signal().method(...)` — calls the signal, gets its value,
-            // then `.method` on the value is undefined → TypeError. Every
-            // event handler that did `signal.set(x)` was silently broken.
-            // Skip the entire MemberExpression callee — neither object
-            // nor property gets auto-called.
-            Expression::StaticMemberExpression(m) => {
-                if let Expression::Identifier(id) = &m.object {
-                    if is_active_signal(id.name.as_str(), ctx) {
-                        // Skip — don't auto-call the signal in `signal.method()`
-                    } else {
-                        // Non-signal object — recurse normally
-                        collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
-                    }
-                } else {
-                    collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
-                }
-            }
-            _ => {
-                collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
-            }
-        }
+        collect_signal_call_idents(call, ctx, out, range_start, range_end, shadows);
         return;
     }
 
@@ -3853,14 +4052,7 @@ fn collect_signal_idents(
         }
         Expression::ChainExpression(c) => match &c.expression {
             ChainElement::CallExpression(call) => {
-                for arg in &call.arguments {
-                    if let Some(e) = arg.as_expression() {
-                        collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
-                    } else if let Argument::SpreadElement(sp) = arg {
-                        collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
-                    }
-                }
-                collect_signal_idents(&call.callee, ctx, out, range_start, range_end, shadows);
+                collect_signal_call_idents(call, ctx, out, range_start, range_end, shadows);
             }
             ChainElement::StaticMemberExpression(m) => {
                 collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
@@ -3905,6 +4097,51 @@ fn collect_signal_idents(
     }
 }
 
+/// Preserve a call's signal/function reference; rewrite its keys and arguments.
+/// Shared by ordinary and optional calls so neither can double-call a signal.
+fn collect_signal_call_idents(
+    call: &CallExpression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    for arg in &call.arguments {
+        if let Some(e) = arg.as_expression() {
+            collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
+        } else if let Argument::SpreadElement(sp) = arg {
+            collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
+        }
+    }
+    collect_signal_callee_idents(&call.callee, ctx, out, range_start, range_end, shadows);
+}
+
+fn collect_signal_callee_idents(
+    callee: &Expression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    match unwrap_type_layers(callee) {
+        Expression::Identifier(id) if is_active_signal(id.name.as_str(), ctx) => {}
+        Expression::StaticMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {}
+        Expression::ComputedMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {
+            collect_signal_idents(&m.expression, ctx, out, range_start, range_end, shadows);
+        }
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::StaticMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {}
+            ChainElement::ComputedMemberExpression(m) if is_bare_active_signal(&m.object, ctx, shadows) => {
+                collect_signal_idents(&m.expression, ctx, out, range_start, range_end, shadows);
+            }
+            _ => collect_signal_idents(callee, ctx, out, range_start, range_end, shadows),
+        },
+        _ => collect_signal_idents(callee, ctx, out, range_start, range_end, shadows),
+    }
+}
+
 /// Statement walker for function bodies reached inside a sliced expression.
 /// Mirrors the JS generic child walk over statements; block-level shadow
 /// names are installed by the enclosing function via `find_shadowing_names*`.
@@ -3922,6 +4159,7 @@ fn collect_signal_idents_stmt(
         }
         Statement::VariableDeclaration(d) => {
             for decl in &d.declarations {
+                collect_signal_pattern_reads(&decl.id, ctx, out, range_start, range_end, shadows);
                 if let Some(init) = &decl.init {
                     collect_signal_idents(init, ctx, out, range_start, range_end, shadows);
                 }
@@ -3940,26 +4178,7 @@ fn collect_signal_idents_stmt(
             }
         }
         Statement::BlockStatement(b) => {
-            let mark = shadows.len();
-            for st in &b.body {
-                if let Statement::VariableDeclaration(d) = st {
-                    for decl in &d.declarations {
-                        if let BindingPattern::BindingIdentifier(id) = &decl.id {
-                            if ctx.signal_vars.contains(id.name.as_str()) {
-                                let is_signal_redecl =
-                                    decl.init.as_ref().is_some_and(is_signal_call_expr);
-                                if !is_signal_redecl && !shadows.iter().any(|n| n == id.name.as_str()) {
-                                    shadows.push(id.name.to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            for st in &b.body {
-                collect_signal_idents_stmt(st, ctx, out, range_start, range_end, shadows);
-            }
-            shadows.truncate(mark);
+            collect_signal_body_idents(&b.body, ctx, out, range_start, range_end, shadows, false);
         }
         Statement::ForStatement(f) => {
             let mark = shadows.len();
@@ -3967,15 +4186,24 @@ fn collect_signal_idents_stmt(
                 match init {
                     ForStatementInit::VariableDeclaration(d) => {
                         for decl in &d.declarations {
-                            if let BindingPattern::BindingIdentifier(id) = &decl.id {
-                                if ctx.signal_vars.contains(id.name.as_str())
-                                    && !shadows.iter().any(|n| n == id.name.as_str())
-                                {
-                                    shadows.push(id.name.to_string());
-                                }
-                            }
+                            push_signal_pattern_shadows(&decl.id, ctx, shadows);
+                            collect_signal_pattern_reads(
+                                &decl.id,
+                                ctx,
+                                out,
+                                range_start,
+                                range_end,
+                                shadows,
+                            );
                             if let Some(ie) = &decl.init {
-                                collect_signal_idents(ie, ctx, out, range_start, range_end, shadows);
+                                collect_signal_idents(
+                                    ie,
+                                    ctx,
+                                    out,
+                                    range_start,
+                                    range_end,
+                                    shadows,
+                                );
                             }
                         }
                     }
@@ -3999,13 +4227,15 @@ fn collect_signal_idents_stmt(
             let mark = shadows.len();
             if let ForStatementLeft::VariableDeclaration(d) = &f.left {
                 for decl in &d.declarations {
-                    if let BindingPattern::BindingIdentifier(id) = &decl.id {
-                        if ctx.signal_vars.contains(id.name.as_str())
-                            && !shadows.iter().any(|n| n == id.name.as_str())
-                        {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
+                    push_signal_pattern_shadows(&decl.id, ctx, shadows);
+                    collect_signal_pattern_reads(
+                        &decl.id,
+                        ctx,
+                        out,
+                        range_start,
+                        range_end,
+                        shadows,
+                    );
                 }
             }
             collect_signal_idents(&f.right, ctx, out, range_start, range_end, shadows);
@@ -4016,13 +4246,15 @@ fn collect_signal_idents_stmt(
             let mark = shadows.len();
             if let ForStatementLeft::VariableDeclaration(d) = &f.left {
                 for decl in &d.declarations {
-                    if let BindingPattern::BindingIdentifier(id) = &decl.id {
-                        if ctx.signal_vars.contains(id.name.as_str())
-                            && !shadows.iter().any(|n| n == id.name.as_str())
-                        {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
+                    push_signal_pattern_shadows(&decl.id, ctx, shadows);
+                    collect_signal_pattern_reads(
+                        &decl.id,
+                        ctx,
+                        out,
+                        range_start,
+                        range_end,
+                        shadows,
+                    );
                 }
             }
             collect_signal_idents(&f.right, ctx, out, range_start, range_end, shadows);
@@ -4039,6 +4271,10 @@ fn collect_signal_idents_stmt(
         }
         Statement::SwitchStatement(sw) => {
             collect_signal_idents(&sw.discriminant, ctx, out, range_start, range_end, shadows);
+            let mark = shadows.len();
+            for case in &sw.cases {
+                push_signal_body_shadows(&case.consequent, ctx, shadows);
+            }
             for case in &sw.cases {
                 if let Some(test) = &case.test {
                     collect_signal_idents(test, ctx, out, range_start, range_end, shadows);
@@ -4047,32 +4283,56 @@ fn collect_signal_idents_stmt(
                     collect_signal_idents_stmt(st, ctx, out, range_start, range_end, shadows);
                 }
             }
+            shadows.truncate(mark);
         }
         Statement::TryStatement(t) => {
-            for st in &t.block.body {
-                collect_signal_idents_stmt(st, ctx, out, range_start, range_end, shadows);
-            }
+            collect_signal_body_idents(
+                &t.block.body,
+                ctx,
+                out,
+                range_start,
+                range_end,
+                shadows,
+                false,
+            );
             if let Some(handler) = &t.handler {
                 let mark = shadows.len();
                 if let Some(param) = &handler.param {
-                    if let BindingPattern::BindingIdentifier(id) = &param.pattern {
-                        if ctx.signal_vars.contains(id.name.as_str())
-                            && !shadows.iter().any(|n| n == id.name.as_str())
-                        {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
+                    push_signal_pattern_shadows(&param.pattern, ctx, shadows);
+                    collect_signal_pattern_reads(
+                        &param.pattern,
+                        ctx,
+                        out,
+                        range_start,
+                        range_end,
+                        shadows,
+                    );
                 }
-                for st in &handler.body.body {
-                    collect_signal_idents_stmt(st, ctx, out, range_start, range_end, shadows);
-                }
+                collect_signal_body_idents(
+                    &handler.body.body,
+                    ctx,
+                    out,
+                    range_start,
+                    range_end,
+                    shadows,
+                    false,
+                );
                 shadows.truncate(mark);
             }
             if let Some(finalizer) = &t.finalizer {
-                for st in &finalizer.body {
-                    collect_signal_idents_stmt(st, ctx, out, range_start, range_end, shadows);
-                }
+                collect_signal_body_idents(
+                    &finalizer.body,
+                    ctx,
+                    out,
+                    range_start,
+                    range_end,
+                    shadows,
+                    false,
+                );
             }
+        }
+        Statement::ClassDeclaration(class) => {
+            collect_signal_class_idents(class, ctx, out, range_start, range_end, shadows);
         }
         Statement::ThrowStatement(t) => {
             collect_signal_idents(&t.argument, ctx, out, range_start, range_end, shadows);
@@ -4081,18 +4341,7 @@ fn collect_signal_idents_stmt(
             collect_signal_idents_stmt(&l.body, ctx, out, range_start, range_end, shadows);
         }
         Statement::FunctionDeclaration(func) => {
-            let mark = shadows.len();
-            for name in find_shadowing_names(func, ctx) {
-                if !shadows.contains(&name) {
-                    shadows.push(name);
-                }
-            }
-            if let Some(body) = &func.body {
-                for st in &body.statements {
-                    collect_signal_idents_stmt(st, ctx, out, range_start, range_end, shadows);
-                }
-            }
-            shadows.truncate(mark);
+            collect_signal_function_idents(func, ctx, out, range_start, range_end, shadows);
         }
         _ => {}
     }

@@ -396,6 +396,19 @@ export function rocketstyleCollapseKey(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any // ESTree node — untyped for speed, matches the lint package approach
 
+// Type references are not value reads. Traversing `typeof count` in a cast
+// would turn its type into `typeof count()` during signal auto-calling.
+const TYPE_ONLY_CHILD_KEYS = new Set([
+  'typeAnnotation',
+  'typeArguments',
+  'typeParameters',
+  'returnType',
+  'superTypeArguments',
+  'superTypeParameters',
+  'implements',
+  'predicate',
+])
+
 function getLang(filename: string): 'tsx' | 'jsx' {
   if (filename.endsWith('.jsx')) return 'jsx'
   // Default to tsx so JSX is always parsed — matches the original TypeScript
@@ -428,7 +441,7 @@ function forEachChild(node: N, cb: (child: N) => void): void {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]!
     // Skip metadata fields for speed
-    if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range')
+    if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range' || TYPE_ONLY_CHILD_KEYS.has(key))
       continue
     const val = node[key]
     if (Array.isArray(val)) {
@@ -1292,7 +1305,7 @@ export function transformJSX_JS(
     const keys = Object.keys(node)
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]!
-      if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range')
+      if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range' || TYPE_ONLY_CHILD_KEYS.has(key))
         continue
       const val = node[key]
       if (Array.isArray(val)) {
@@ -6238,15 +6251,32 @@ export function transformJSX_JS(
       t === 'FunctionExpression' ||
       t === 'FunctionDeclaration'
     ) {
+      if (node.id?.type === 'Identifier') out.push(node.id.name)
       for (const p of node.params ?? []) sigPatternNames(p, out)
+    } else if (t === 'ClassExpression' || t === 'ClassDeclaration') {
+      if (node.id?.type === 'Identifier') out.push(node.id.name)
     } else if (t === 'CatchClause') {
       sigPatternNames(node.param, out)
     } else if (t === 'ForStatement') {
       if (node.init?.type === 'VariableDeclaration') declNames(node.init)
     } else if (t === 'ForInStatement' || t === 'ForOfStatement') {
       if (node.left?.type === 'VariableDeclaration') declNames(node.left)
-    } else if (t === 'BlockStatement' || t === 'StaticBlock') {
-      const stmts = node.body ?? node.statements
+    } else if (t === 'BlockStatement' || t === 'StaticBlock' || t === 'SwitchStatement') {
+      const parent = findParent(node)
+      if (
+        t === 'StaticBlock' ||
+        (t === 'BlockStatement' &&
+          parent?.body === node &&
+          (parent.type === 'FunctionExpression' ||
+            parent.type === 'FunctionDeclaration' ||
+            parent.type === 'ArrowFunctionExpression'))
+      ) {
+        collectHoistedVarNames(node, out)
+      }
+      const stmts =
+        t === 'SwitchStatement'
+          ? node.cases.flatMap((c: N) => c.consequent)
+          : node.body ?? node.statements
       if (Array.isArray(stmts)) {
         for (const s of stmts) {
           if (s.type === 'VariableDeclaration') declNames(s)
@@ -6330,6 +6360,7 @@ export function transformJSX_JS(
 
     function findSignalIdents(node: N): void {
       if ((node.start as number) >= end || (node.end as number) <= start) return
+      if (node.type === 'SwitchStatement') findSignalIdents(node.discriminant)
       const introduced: string[] = []
       for (const n of scopeBoundSignals(node)) {
         if (!shadowed.has(n)) {
@@ -6347,25 +6378,9 @@ export function transformJSX_JS(
           !parent.computed
         )
           return
-        // Skip when the identifier is the OBJECT of a member access AND
-        // the result is being CALLED (signal.set(...), signal.peek(),
-        // signal.update(...)). The user is invoking a method on the
-        // signal OBJECT — auto-calling would produce `signal().set(...)`
-        // which calls the signal, gets its value (string/number/etc),
-        // then `.set` on the value is undefined → TypeError. Every event
-        // handler that did `signal.set(x)` was silently broken.
-        //
-        // Note: bare `signal.value` (member access NOT followed by call)
-        // STILL auto-calls — keeps the existing convention where
-        // `signal({a:1})` followed by `signal.a` reads the signal's
-        // value's property (see "signal as member expression object IS
-        // auto-called" test).
-        if (parent && parent.type === 'MemberExpression' && parent.object === node) {
-          const grand = findParent(parent)
-          if (grand && grand.type === 'CallExpression' && grand.callee === parent) return
-        }
-        // Skip if already being called: signal()
-        if (parent && parent.type === 'CallExpression' && parent.callee === node) return
+        // Preserve called signal references through type and optional-chain
+        // wrappers; computed keys and call arguments still read signal values.
+        if (isSignalCallTarget(node)) return
         // Skip declaration positions
         if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
         // Skip object property keys and shorthand properties ({ name } or { name: val })
@@ -6374,16 +6389,53 @@ export function transformJSX_JS(
           if (parent.shorthand) return // { name } — can't auto-call without breaking syntax
           if (parent.key === node && !parent.computed) return // { name: val } — key position
         }
+        if (
+          parent &&
+          (parent.type === 'MethodDefinition' ||
+            parent.type === 'PropertyDefinition' ||
+            parent.type === 'AccessorProperty') &&
+          parent.key === node &&
+          !parent.computed
+        ) return
         // Exactly-bare DOM attr/child — leave bare for the runtimes'
         // fine-grained accessor treatment (see isBareDomBinding).
         if (isBareDomBinding(node, start, end)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
-      forEachChildFast(node, findSignalIdents)
+      if (node.type === 'SwitchStatement') {
+        for (const branch of node.cases) findSignalIdents(branch)
+      } else forEachChildFast(node, findSignalIdents)
       for (const n of introduced) shadowed.delete(n)
     }
     findSignalIdents(expr)
     return idents
+  }
+
+  function isSignalCallTarget(node: N): boolean {
+    function outsideTypeLayers(inner: N): N {
+      let outer = inner
+      let parent = findParent(outer)
+      while (
+        parent &&
+        (parent.type === 'ParenthesizedExpression' ||
+          parent.type === 'TSAsExpression' ||
+          parent.type === 'TSSatisfiesExpression' ||
+          parent.type === 'TSNonNullExpression' ||
+          parent.type === 'TSTypeAssertion' ||
+          parent.type === 'ChainExpression')
+      ) {
+        outer = parent
+        parent = findParent(outer)
+      }
+      return outer
+    }
+    let target = outsideTypeLayers(node)
+    let parent = findParent(target)
+    if (parent?.type === 'MemberExpression' && parent.object === target) {
+      target = outsideTypeLayers(parent)
+      parent = findParent(target)
+    }
+    return parent?.type === 'CallExpression' && parent.callee === target
   }
 
   function autoCallSignals(text: string, expr: N): string {
@@ -6595,6 +6647,22 @@ function collectPatternNames(p: N | null | undefined, out: string[]): void {
     default:
       return
   }
+}
+
+/** `var` belongs to the enclosing function even when declared in a block. */
+function collectHoistedVarNames(node: N | undefined, out: string[]): void {
+  if (!node) return
+  if (
+    node.type === 'FunctionDeclaration' ||
+    node.type === 'FunctionExpression' ||
+    node.type === 'ArrowFunctionExpression' ||
+    node.type === 'ClassDeclaration' ||
+    node.type === 'ClassExpression'
+  ) return
+  if (node.type === 'VariableDeclaration' && node.kind === 'var') {
+    for (const decl of node.declarations ?? []) collectPatternNames(decl.id, out)
+  }
+  forEachChild(node, (child) => collectHoistedVarNames(child, out))
 }
 
 interface FunctionBinding {
