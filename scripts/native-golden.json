@@ -5652,13 +5652,13 @@
       "warnings": 0
     },
     "golden-fixture:store-module-declines.tsx|swift": {
-      "sha": "548815d0937c5d4578cda33efe4e22bd21956f501f555c07c4ae1eebf5ab37dd",
-      "bytes": 1307,
+      "sha": "8f4fa52173aa8a57f484527f84d25aac40dd0e39e63185a2e07539c15069930a",
+      "bytes": 1309,
       "warnings": 10
     },
     "golden-fixture:store-module-declines.tsx|kotlin": {
-      "sha": "3a2334a12667be19b752a6af66b51a886c81079945443daacdee96fb0e0c800b",
-      "bytes": 995,
+      "sha": "1d418c8c53e9f9ff65004fa5ce39f6591acac38a0512c206ed71fc653914c812",
+      "bytes": 996,
       "warnings": 18
     },
     "golden-fixture:store-module-members.tsx|swift": {
