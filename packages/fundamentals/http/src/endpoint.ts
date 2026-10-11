@@ -346,7 +346,11 @@ export interface Endpoint<
   readonly method: MethodOf<S>
   /** The declared path, placeholders intact — `'/users/:id'`. */
   readonly path: PathOf<S>
-  /** Build the cache key for these arguments; `.prefix` matches them all. */
+  /**
+   * Cache key from scope/method/path/params/query; `.prefix` matches them all.
+   * Headers and bodies are excluded. If they vary the response, extend the
+   * queryKey with a non-secret discriminator; never put credentials in it.
+   */
   readonly key: ((...args: CallArgs<I & EndpointCallOptions>) => EndpointKey) & {
     readonly prefix: EndpointKey
   }
