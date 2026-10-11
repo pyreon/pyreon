@@ -1,5 +1,6 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { _setAttr } from '../index'
 
@@ -24,12 +25,12 @@ describe('live boolean property normalization', () => {
     }
   })
 
-  for (const tag of ['audio', 'video']) {
+  for (const tag of ['audio', 'video'] as const) {
     it(`sets ${tag} live mute state through both prop sinks`, () => {
       const value = signal<boolean | null | undefined>(false)
       const { container, unmount } = mountInBrowser(h(tag, { muted: () => value() }))
       try {
-        const media = container.querySelector(tag) as HTMLMediaElement
+        const media = query(container, tag)
         for (const off of [false, null, undefined]) {
           value.set(true)
           expect(media.muted).toBe(true)

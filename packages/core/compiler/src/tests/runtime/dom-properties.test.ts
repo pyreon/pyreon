@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 /// <reference lib="dom" />
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { flush } from '@pyreon/test-utils/browser'
 import { compileAndMount } from './harness'
@@ -138,12 +139,12 @@ describe('compiler-runtime — DOM properties', () => {
 })
 
 describe('compiler-runtime — dynamic media muting', () => {
-  for (const tag of ['audio', 'video']) {
+  for (const tag of ['audio', 'video'] as const) {
     it(`updates ${tag}.muted as its signal changes`, () => {
       const muted = signal<boolean | null>(false)
       const { container, unmount } = compileAndMount(`<div><${tag} muted={() => muted()} /></div>`, { muted })
       try {
-        const media = container.querySelector(tag) as HTMLMediaElement
+        const media = query(container, tag)
         muted.set(true)
         expect(media.muted).toBe(true)
         expect(media.hasAttribute('muted')).toBe(true)
