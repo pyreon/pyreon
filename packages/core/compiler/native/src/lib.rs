@@ -8211,6 +8211,10 @@ fn emit_event_listener(
 }
 
 fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Option<String> {
+    // Property-only, including literals; mirrors staticAttrToHtml in jsx.ts.
+    if tag == "input" && html_attr_name == "indeterminate" {
+        return None;
+    }
     // Parens + TS type layers are value-transparent: `id={("a")}` /
     // `id={"a" as const}` IS the static literal — unwrap before classifying.
     // No `is_static` pre-gate and NO silent catch-all: the arms below are
@@ -8664,7 +8668,14 @@ fn attr_initializer_to_html(
     ctx: &mut Ctx,
 ) -> String {
     match &attr.value {
-        None => format!(" {}", html_attr_name),
+        None => {
+            if tag == "input" && html_attr_name == "indeterminate" {
+                let line = attr_setter(html_attr_name, var_name, "true", tag, tb);
+                tb.bind_lines.push(line);
+                return String::new();
+            }
+            format!(" {}", html_attr_name)
+        }
         Some(JSXAttributeValue::StringLiteral(s)) => {
             // `<select value="b">` (plain string form, PZ-09): never baked —
             // the value CONTENT attribute is dead on <select> (see
@@ -8674,7 +8685,9 @@ fn attr_initializer_to_html(
             // double-quoted JS literal (quote/backslash/control-safe,
             // independent of the JSX quote style). Mirrors jsx.ts.
             // `<textarea value="…">`: same dead-attribute class — see jsx.ts.
-            if (tag == "select" || tag == "textarea") && html_attr_name == "value" {
+            if ((tag == "select" || tag == "textarea") && html_attr_name == "value")
+                || (tag == "input" && html_attr_name == "indeterminate")
+            {
                 let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tag, tb);
                 tb.bind_lines.push(line);
                 return String::new();

@@ -171,15 +171,19 @@ describe('#ref-in-dom-spread — spread ref on a bare element is wired (compiled
   it('CALL spread — _bindSpread disposes the per-run bindings + ref on unmount', () => {
     const label = signal('x')
     let refEl: Element | null = 'unset' as never
-    // A call spread (`{...make()}`) routes through the reactive `_bind` +
-    // `onCleanup` path — distinct codegen from the identifier spread.
+    // A call spread (`{...make()}`) routes through `_bindSpread`, which
+    // owns the per-run subscriptions and ref cleanup.
     const make = () => makeReactiveProps({
       'data-label': _rp(() => label()),
       ref: (el: Element | null) => {
         refEl = el
       },
     })
-    const App = compileApp(`const App = () => <div {...make()} class="cs">x</div>`, { make })
+    // A static attribute AFTER a spread deliberately bails to h(). Keep it
+    // before the spread so this fixture exercises the compiler's bind helper.
+    const source = `const App = () => <div class="cs" {...make()}>x</div>`
+    expect(transformJSX(source, 'test.tsx').code).toContain('_bindSpread(')
+    const App = compileApp(source, { make })
     const container = document.createElement('div')
     document.body.appendChild(container)
     const cleanup = mountChild(h(App as never, null), container)!

@@ -2808,3 +2808,10 @@ describe('namespaced attribute names — both backends emit identically', () => 
     }
   })
 })
+
+
+describe('JS syntax and optional native parity — static mixed checkbox state', () => {
+  for (const attr of ['indeterminate', 'indeterminate={true}', 'indeterminate={false}', 'indeterminate={null}', 'indeterminate="true"']) {
+    test(attr, () => compare(`<div><input type="checkbox" ${attr} /></div>`))
+  }
+})

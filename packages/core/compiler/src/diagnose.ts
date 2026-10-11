@@ -599,23 +599,21 @@ const s = useStore(props.id)`,
     }),
   },
   {
-    // The residual footgun left by the <textarea value> SSR fix. `value` now
-    // serializes correctly, but the React habit `defaultValue` still emits a
-    // nonsense `default-value=""` attribute and a BLANK control -- silently,
-    // since a dead attribute never errors. Same for <select>, whose value is
-    // also not an attribute.
-    //
-    // Keyed on the rendered attribute rather than an exception, because this
-    // shape has no exception: the diagnosis is reachable from a snapshot diff
-    // or a copy-pasted line of markup, which is where an author actually meets
-    // it.
+    // A dead serialized attribute is distinct from the DOM's defaultValue.
     pattern: /default-value=|defaultValue.*(textarea|select|input)/i,
     diagnose: () => ({
-      cause:
-        'Pyreon has no `defaultValue` prop. It is forwarded verbatim, so it renders as a dead `default-value="..."` attribute and the control comes back EMPTY — no error, because an unknown attribute is legal HTML.',
-      fix: 'Use `value`. Pyreon controls are not React-style controlled/uncontrolled pairs: `value` sets the initial content and stays writable, and for <textarea>/<select> — whose value is NOT an HTML attribute — SSR emits it as text content / a `selected` option respectively.',
-      fixCode: '<textarea value={bio} />   // not defaultValue',
+      cause: '`default-value` is not an HTML initial-value attribute. The DOM supports `defaultValue` on input/textarea, but serialized markup needs the control-specific representation.',
+      fix: 'Use `value` for SSR initial content: input uses an attribute, textarea uses text, and select marks its matching option selected. A later live value update preserves the initial input/textarea reset default.',
+      fixCode: '<textarea value={bio} />',
       related: 'https://pyreon.dev/docs/forms#initial-values',
+    }),
+  },
+  {
+    pattern: /(?:indeterminate|muted).*(?:not|never|stuck|reset|attribute|live)|(?:checkbox|audio|video).*(?:mixed state|not muted|stays audible)/i,
+    diagnose: () => ({
+      cause: 'Some boolean DOM properties are live state: input.indeterminate has no attribute, and a media muted attribute controls defaultMuted instead of the current audio state.',
+      fix: 'Upgrade @pyreon/runtime-dom and @pyreon/compiler. Bind indeterminate or muted to the state accessor; static mixed inputs, h()/spreads and dynamic media now set the live property. Test a native click that clears indeterminate.',
+      fixCode: 'h("input", { type: "checkbox", indeterminate: () => mixed() })',
     }),
   },
   {
@@ -1074,8 +1072,8 @@ function Body({ html }) {
       /aria-[\w-]+="?undefined"?|(hidden|disabled|checked|draggable|selected|expanded)="(false|undefined)"|(attribute|attr|aria).*(renders?|shows?|set to|value).*("undefined"|=undefined|"false")|(screen ?reader|assistive|a11y|voiceover|nvda).*(wrong|opposite|reversed|ignore).*(state|announce|disabled|checked)/i,
     diagnose: () => ({
       cause:
-        'On `@pyreon/compiler` versions before this fix, a DYNAMIC generic attribute on an element the compiler lowered into a `_tpl()` template fell through to a raw `setAttribute(name, value)` with no null/boolean normalization. A nullish value ToString-coerced to the literal string "undefined" (so the recommended ARIA shape `aria-disabled={x ? "true" : undefined}` rendered `aria-disabled="undefined"` — an INVALID aria value that assistive tech reads as the opposite / default state), and a boolean `false` rendered as a PRESENT attribute (`hidden={cond}` with `cond===false` → `hidden="false"`, still hidden). The runtime `h()`/spread path (`applyStaticProp`) was always correct — only the template fast path diverged, so SSR (also correct) disagreed with the client → a latent hydration mismatch too.',
-      fix: 'Upgrade `@pyreon/compiler` + `@pyreon/runtime-dom` — the template fast path now routes generic dynamic attributes through the runtime `_setAttr` normalizer (= `applyAttrProp`), mirroring `applyStaticProp` in both JS + Rust backends: null/undefined → removeAttribute, boolean `aria-*` → "true"/"false", boolean → presence/absence. No app code change needed. If you cannot upgrade, drop the nullish branch (`aria-disabled={String(!!x)}` always emits "true"/"false") or set the attribute imperatively in `onMount` via a `ref`.',
+        'Older @pyreon/compiler templates used raw setAttribute(name, value): nullish values became "undefined" and false stayed present (hidden="false" still hides). Invalid ARIA strings can announce the wrong state. The h()/spread and SSR paths normalized these values, so templates also caused hydration mismatches.',
+      fix: 'Upgrade @pyreon/compiler + @pyreon/runtime-dom. Both JS and Rust templates use _setAttr (applyAttrProp): null/undefined remove the attribute, ARIA booleans stringify, and other booleans set presence. Before upgrading, use explicit ARIA "true"/"false" or assign the attribute in onMount via a ref.',
       fixCode: `// All of these now normalize correctly (template + runtime + SSR agree):
 <button aria-disabled={busy() ? 'true' : undefined}>Save</button>  // undefined -> ABSENT
 <div hidden={collapsed()}>panel</div>                              // false -> ABSENT
@@ -1083,8 +1081,17 @@ function Body({ html }) {
 
 // Pre-upgrade workaround — avoid the nullish branch for ARIA state:
 <button aria-disabled={busy() ? 'true' : 'false'}>Save</button>`,
-      related:
-        'Sibling of the template-path `dangerouslySetInnerHTML` and class/style (`_setClass`/`_setStyle`) fixes — all are cases where the compiler template fast path had to be taught to mirror the runtime `applyStaticProp` value-normalization instead of assigning the raw value. Locked by the native-equivalence oracle + a real-transform mount regression.',
+      related: 'The class/style/innerHTML template fixes share this rule: compiled sinks must preserve runtime normalization. Native parity and real-transform mount tests cover it.',
+    }),
+  },
+  {
+    pattern:
+      /(?:checkbox|radio).*(?:stays?|remains?).*checked.*(?:reset|signal)|(?:checkbox|radio).*(?:reset|signal).*stays? checked/i,
+    diagnose: () => ({
+      cause:
+        'Older runtime-dom h() bindings update the checked attribute instead of live checkedness after a user click. That attribute controls defaultChecked, the form-reset target.',
+      fix: 'Upgrade @pyreon/runtime-dom. Keep checked reactive through an accessor; use defaultChecked for an explicit reset default.',
+      fixCode: `h('input', { type: 'checkbox', checked: () => checked() })`,
     }),
   },
   {
