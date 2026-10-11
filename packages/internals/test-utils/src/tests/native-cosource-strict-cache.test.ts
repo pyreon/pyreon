@@ -69,7 +69,11 @@ console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : proce
     '#!/bin/sh\nprintf "fixture kotlinc\\n"\nexit "${FIXTURE_COMPILER_EXIT:-0}"\n',
     0o755,
   )
-  write('bin/java', '#!/bin/sh\nexit "${FIXTURE_JAVA_EXIT:-1}"\n', 0o755)
+  write(
+    'bin/java',
+    '#!/bin/sh\nprintf "%s\\n" "${FIXTURE_JAVA_VERSION:-fixture java}" >&2\nexit "${FIXTURE_JAVA_EXIT:-1}"\n',
+    0o755,
+  )
   symlinkSync(bun, join(root, 'bin/bun'))
   const cache = join(root, 'cache')
   const calls = join(root, 'calls')
@@ -105,6 +109,20 @@ console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : proce
 
 for (const grouped of [false, true]) {
   describe(grouped ? 'per-service Kotlin cache' : 'whole-directory Kotlin cache', () => {
+    it('reexecutes a full smoke on a different PATH Java version while kotlinc stays unchanged', () => {
+      const f = fixture(grouped)
+      try {
+        const tools = { FIXTURE_JAVA_EXIT: '0', FIXTURE_CHILD_SKIP: '0' }
+        expect(f.run(true, { ...tools, FIXTURE_JAVA_VERSION: 'jdk21' }).status).toBe(0)
+        expect(f.run(true, { ...tools, FIXTURE_JAVA_VERSION: 'jdk26' }).status).toBe(0)
+        expect(f.calls()).toBe('verified\nverified\n')
+        expect(f.run(true, { ...tools, FIXTURE_JAVA_VERSION: 'jdk26' }).status).toBe(0)
+        expect(f.calls()).toBe('verified\nverified\n')
+      } finally {
+        rmSync(f.root, { recursive: true, force: true })
+      }
+    })
+
     it('never caches a child skip under a key claiming Java could run', () => {
       const f = fixture(grouped)
       try {
@@ -165,6 +183,12 @@ for (const grouped of [false, true]) {
         const warm = f.run(true)
         expect(warm.status, warm.stderr).toBe(0)
         expect(warm.stdout).toContain('cached verdict')
+        expect(f.run(true, { FIXTURE_JAVA_EXIT: '0', FIXTURE_JAVA_VERSION: 'jdk21' }).status).toBe(
+          0,
+        )
+        expect(f.run(true, { FIXTURE_JAVA_EXIT: '0', FIXTURE_JAVA_VERSION: 'jdk26' }).status).toBe(
+          0,
+        )
         expect(f.calls()).toBe('verified\n')
       } finally {
         rmSync(f.root, { recursive: true, force: true })

@@ -237,13 +237,11 @@ const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
  * macOS ships a `/usr/bin/java` stub that satisfies `command -v` and then fails
  * with an install prompt, so the probe has to EXECUTE it, not just find it.
  */
-const javaRuns = (() => {
-  try {
-    return spawnSync('java', ['-version'], { encoding: 'utf8' }).status === 0
-  } catch {
-    return false
-  }
-})()
+const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
+const javaRuns = javaProbe.status === 0
+// kotlinc may use JAVA_HOME; the PATH java that executes the smoke is a
+// separate runtime and its version must also determine the verdict key.
+const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
 
 /** A skipped smoke is a broken runner under the same flag the toolchains use. */
 const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
@@ -252,6 +250,7 @@ const swiftcVersion = swiftc ? toolVersion('swiftc', '--version') : ''
 // Runner semantics also determine whether an exit-0 child actually ran its
 // smoke. Invalidate older records that could mislabel a child skip as a run.
 const kotlinHarness = [readOr(verifyKotlin), readOr(join(ROOT, 'scripts/check-native-cosource.ts'))].join('\0')
+const kotlinSmokeHarness = `${kotlinHarness}\0java\0${javaVersion}`
 const swiftHarness = readOr(join(ROOT, 'scripts', 'swift-cosource-smoke.ts'))
 let cacheHits = 0
 /** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
@@ -376,7 +375,7 @@ for (const pkg of pkgs) {
           const testFile = run.extra.find((e) => e.startsWith('--test='))?.slice('--test='.length)
           const key = verdictKey({
             compilerVersion: kotlincVersion,
-            harness: kotlinHarness,
+            harness: typecheckOnly ? kotlinHarness : kotlinSmokeHarness,
             source: bytesOf(abs),
             test: testFile ? bytesOf([testFile]) : '',
             typecheckOnly,
@@ -423,7 +422,7 @@ for (const pkg of pkgs) {
       else args.push('--typecheck-only')
       const key = verdictKey({
         compilerVersion: kotlincVersion,
-        harness: kotlinHarness,
+        harness: test ? kotlinSmokeHarness : kotlinHarness,
         source: bytesOf(ktFiles),
         test: test ? bytesOf([test]) : '',
         typecheckOnly: !test,
