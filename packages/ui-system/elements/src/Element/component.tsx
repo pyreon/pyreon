@@ -46,6 +46,10 @@ const defaultContentDirection = 'rows'
 const defaultAlignX = 'left'
 const defaultAlignY = 'center'
 
+// Numeric zero is content; only absent, false and empty-string slots are empty.
+const hasSlotContent = (value: unknown): boolean =>
+  value != null && value !== false && value !== ''
+
 const SLOT_KEYS = ['beforeContent', 'afterContent'] as const
 
 // Layout / css keys that feed the styled-layer bundles (Wrapper / Content
@@ -178,7 +182,11 @@ const Component: PyreonElement = (props) => {
 
   // MOUNT-TIME feature gate (reads the slot getters once for the decision;
   // the equalize() body itself re-reads own.direction live per resize).
-  if (own.equalBeforeAfter && own.beforeContent && own.afterContent) {
+  if (
+    own.equalBeforeAfter &&
+    hasSlotContent(own.beforeContent) &&
+    hasSlotContent(own.afterContent)
+  ) {
     // Run once on mount AND continue equalizing as the element resizes —
     // catches async slot content (font swaps, lazy text, viewport resize)
     // that a one-shot measurement would miss. Mirrors vitus-labs's Element
@@ -214,7 +222,7 @@ const Component: PyreonElement = (props) => {
     // --------------------------------------------------------
     // Under `slotsReactive` this body re-runs per slot flip, so the branch
     // selection below is re-evaluated with fresh slot reads.
-    const isSimpleElement = !own.beforeContent && !own.afterContent
+    const isSimpleElement = !hasSlotContent(own.beforeContent) && !hasSlotContent(own.afterContent)
 
     // --------------------------------------------------------
     // common wrapper props (LAZY)
@@ -369,7 +377,7 @@ const Component: PyreonElement = (props) => {
     }
 
     const compoundChildren: VNodeChildAtom[] = []
-    if (own.beforeContent) {
+    if (hasSlotContent(own.beforeContent)) {
       compoundChildren.push(
         contentVNode(
           'before',
@@ -396,7 +404,7 @@ const Component: PyreonElement = (props) => {
         () => resolveSlot(getChildren()),
       ),
     )
-    if (own.afterContent) {
+    if (hasSlotContent(own.afterContent)) {
       compoundChildren.push(
         contentVNode(
           'after',

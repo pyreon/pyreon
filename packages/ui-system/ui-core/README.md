@@ -81,6 +81,7 @@ Handles components, primitives, arrays, null. Useful when authoring helper compo
 
 ```ts
 render('hello')           // 'hello'
+render(0)                 // 0 (numeric zero stays visible in slots)
 render(MyComponent)       // MyComponent({})
 render(null)              // null
 ```

@@ -112,12 +112,12 @@ describe('render — component fn + key extraction', () => {
     expect(vnode).toBeTruthy()
   })
 
-  it('returns null for falsy content', () => {
+  it('normalizes absent content without dropping numeric zero', () => {
     expect(render(null)).toBeNull()
     expect(render(undefined)).toBeNull()
     expect(render(false)).toBeNull()
     expect(render('')).toBeNull()
-    expect(render(0)).toBeNull()
+    expect(render(0)).toBe(0)
   })
 
   it('passes through string/number/boolean content as-is', () => {

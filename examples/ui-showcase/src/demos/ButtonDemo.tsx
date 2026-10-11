@@ -1,3 +1,4 @@
+import { Element } from '@pyreon/elements'
 import { state } from '@pyreon/core/plain'
 import { Button, CloseButton, IconButton, Title } from '@pyreon/ui-components'
 
@@ -41,6 +42,8 @@ export function ButtonDemo() {
           Reset
         </Button>
       </div>
+
+      <Element tag="output" aria-label="Numeric count" label={count} />
 
       <Title size="h3" style="margin-bottom: 12px">Icon Buttons</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">

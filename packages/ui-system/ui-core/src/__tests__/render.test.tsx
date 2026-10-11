@@ -8,7 +8,7 @@ const TestComponent = (props: { label?: string }) => {
 }
 
 describe('render', () => {
-  it('should return null for falsy content', () => {
+  it('should return null for absent and empty content', () => {
     expect(renderFn(null)).toBeNull()
     expect(renderFn(undefined)).toBeNull()
     expect(renderFn(false as any)).toBeNull()
