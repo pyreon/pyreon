@@ -249,10 +249,27 @@ const kotlinHarness = readOr(verifyKotlin)
 const swiftHarness = readOr(join(ROOT, 'scripts', 'swift-cosource-smoke.ts'))
 let cacheHits = 0
 /** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
-function cached(key: string, label: string, compute: () => boolean): boolean {
+function cachedKotlin(
+  key: string,
+  label: string,
+  hasTest: boolean,
+  compute: () => boolean,
+): boolean {
+  // Environment requirements precede cache acceptance. A non-strict run can
+  // cache a typecheck-only verdict with smokeRuns=false; the same broken JDK
+  // environment must not turn that weaker verdict into a strict success.
+  if (hasTest && !javaRuns && requireNativeValidate) {
+    console.error(
+      `  ✗ ${label}: the behaviour test cannot run — no working JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.`,
+    )
+    return false
+  }
   if (readVerdict(key)?.ok === true) {
     cacheHits++
-    console.log(`  ✓ ${label} (cached verdict)`)
+    console.log(
+      `  ✓ ${label} (cached verdict)` +
+        (hasTest && !javaRuns ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
+    )
     return true
   }
   const ok = compute()
@@ -264,7 +281,12 @@ for (const pkg of pkgs) {
   // --- Kotlin ---
   if (pkg.kotlinDir) {
     if (!kotlinc) {
-      console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
+      if (requireNativeValidate) {
+        failures++
+        console.error(`  ✗ ${pkg.name} [kotlin]: kotlinc absent, and PYREON_REQUIRE_NATIVE_VALIDATE=1.`)
+      } else {
+        console.log(`  ${pkg.name} [kotlin]: kotlinc absent — skipped`)
+      }
     } else if (pkg.kotlinServices) {
       // PER-SERVICE-GROUP: a package whose Kotlin runtime is SEVERAL independent
       // services, each needing a DIFFERENT stub bundle (two `package
@@ -354,7 +376,7 @@ for (const pkg of pkgs) {
             // caches an "ok" that every later run (JDK or not) reuses.
             smokeRuns: typecheckOnly ? false : javaRuns,
           })
-          const ok = cached(key, `${pkg.name} [kotlin ${svc} · ${run.label}]`, () => {
+          const ok = cachedKotlin(key, `${pkg.name} [kotlin ${svc} · ${run.label}]`, !typecheckOnly, () => {
             const r = spawnSync('bun', args, { encoding: 'utf8' })
             if (r.status !== 0) {
               console.error(
@@ -400,7 +422,7 @@ for (const pkg of pkgs) {
         // behaviour pass must not share a cache key.
         smokeRuns: test ? javaRuns : false,
       })
-      const ok = cached(key, `${pkg.name} [kotlin]`, () => {
+      const ok = cachedKotlin(key, `${pkg.name} [kotlin]`, Boolean(test), () => {
         const r = spawnSync('bun', args, { encoding: 'utf8' })
         if (r.status !== 0) {
           console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
