@@ -29,6 +29,8 @@ export interface ModuleScan {
   readonly body: readonly AstNode[]
   /** The file's source text (for messages that quote a span). */
   readonly source: string
+  /** Whether this identifier reference resolves to the named value import, accounting for lexical shadows. */
+  isImportedReference(node: AstNode, module: string, imported: string): boolean
   /** The statically-known string an argument denotes — a literal, or a module-scope `const` holding one — else `null`. */
   staticString(node: AstNode | null | undefined): string | null
   /** A named import owned by a constant provider, including unresolved vocabulary entries. */

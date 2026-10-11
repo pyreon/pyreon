@@ -25,6 +25,7 @@ import {
   isElementLoweringTag,
   pluginExprReduce,
 } from './registry-lookup'
+import { createImportReferenceQuery } from './import-reference'
 import type { UnloweredModule } from './unlowered-modules'
 import {
   isJson,
@@ -3504,12 +3505,15 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
         constants.set(spec.local.name as string, { module, name, value: resolve(name) })
     }
   }
+  let importReference: ReturnType<typeof createImportReferenceQuery> | undefined
   const scan: ModuleScan = {
     program: program as AstNode,
     constant: (node) =>
       node.type === 'Identifier' ? constants.get(node.name as string) : undefined,
     body: body as readonly AstNode[],
     source,
+    isImportedReference: (node, module, imported) =>
+      (importReference ??= createImportReferenceQuery(program as AstNode))(node, module, imported),
     staticString: (node) => staticStringArg(node as AnyNode | null | undefined, ctx),
     fileState: <T>(key: string, init: () => T): T => {
       if (!ctx.pluginState.has(key)) ctx.pluginState.set(key, init())
