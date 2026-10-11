@@ -62,6 +62,7 @@ When CI fails on a gate not listed here, add a row in the same PR.
 
 | Gate | When it trips | Fix |
 |---|---|---|
+| Native device / real-SDK checks report successful skips for owner-plugin edits | Lowering moved out of `packages/native` but the selector still recognizes only the old directories | Derive the declared plugin source import closure before installation, including shared helpers and resolution manifests. Selector edits and uncertain/deleted dependencies must run every lane. Keep real-checkout owner tests and web-only/Rust skip controls. |
 | `Lint Ratchet (oxlint warn baseline)` | An oxlint `warn` count exceeded `lint-baseline.json` | `bunx oxlint .`, fix or scope with rationale. After reducing counts: `bun run check-lint-ratchet -- --update`. Never raise a count to absorb a finding. |
 | `Lint Ratchet (pyreon-lint advisory baseline)` | An `@pyreon/lint` advisory count over framework `src` exceeded `pyreon-lint-baseline.json` | `bun run lint:pyreon`; fix, or scope the rule off in `.pyreonlintrc.json` with rationale when it does not apply to that framework package. Tighten with `bun run check-pyreon-lint-ratchet -- --update`. |
 | `Pyreon Lint Gate` fails after a green local fast run | The advisory ratchet deliberately excludes error-severity findings | `validate-fast` must run `lint:pyreon` as well as the advisory ratchet; keep both tiers enforced before pushing. |

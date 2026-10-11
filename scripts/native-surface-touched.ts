@@ -31,7 +31,9 @@
  */
 
 import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize, relative } from 'node:path'
+import { deriveNativePluginSurface } from './native-plugin-surface'
 
 export interface Decision {
   run: boolean
@@ -44,6 +46,15 @@ const JSX_COMPILER_CRATE = 'packages/core/compiler/native/'
 
 const PACKAGE_JSON = /^packages\/[^/]+\/[^/]+\/package\.json$/
 
+function declaresNative(content: string | null): boolean {
+  if (content === null) return true
+  const value: unknown = JSON.parse(content)
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('invalid package manifest')
+  const json = value as { pyreon?: { native?: unknown }; exports?: Record<string, unknown> }
+  return json.pyreon?.native !== undefined || json.exports?.['./native-plugin'] !== undefined
+}
+
 /**
  * `read(path)` returns the file's content at the PR head, or null when it does
  * not exist there (deleted). It is injected so the rule is unit-testable
@@ -53,15 +64,26 @@ export function classifyNativeSurface(
   files: readonly string[],
   read: (path: string) => string | null,
   selfWorkflow?: string,
+  pluginSurface?: ReadonlySet<string> | Error,
+  readBase?: (path: string) => string | null,
 ): Decision {
   const reasons: string[] = []
   if (files.length === 0) return { run: true, reasons: ['empty file list — running (fail-closed)'] }
+  if (pluginSurface instanceof Error)
+    return {
+      run: true,
+      reasons: ['plugin surface unreadable (fail-closed): ' + pluginSurface.message],
+    }
   for (const f of files) {
     if (f.startsWith('packages/native/')) reasons.push(f + ' — PMTC stack')
     else if (f.startsWith('examples/native-')) reasons.push(f + ' — native example')
     else if (/^packages\/[^/]+\/[^/]+\/native\//.test(f) && !f.startsWith(JSX_COMPILER_CRATE))
       reasons.push(f + ' — co-located native source')
-    else if (f.startsWith('scripts/check-native-')) reasons.push(f + ' — native gate script')
+    else if (/^packages\/[^/]+\/[^/]+\/src\/native-plugin(?:\.[cm]?[jt]sx?$|\/)/.test(f))
+      reasons.push(f + ' — package-owned native lowering')
+    else if (f.startsWith('scripts/check-native-') || f.startsWith('scripts/native-'))
+      reasons.push(f + ' — native gate script')
+    else if (pluginSurface?.has(f)) reasons.push(f + ' — native plugin dependency')
     else if (f === 'bun.lock' || f === '.bun-version') reasons.push(f + ' — toolchain/lockfile')
     else if (selfWorkflow && f === selfWorkflow) reasons.push(f + ' — this workflow')
     else if (PACKAGE_JSON.test(f)) {
@@ -75,14 +97,36 @@ export function classifyNativeSurface(
         reasons.push(f + ' — manifest unreadable at head (fail-closed)')
         continue
       }
-      let declaresNative = false
+      let nativeManifest = false
       try {
-        const json = JSON.parse(content) as { pyreon?: { native?: unknown } }
-        declaresNative = json.pyreon?.native !== undefined
+        nativeManifest = declaresNative(content)
       } catch {
-        declaresNative = true
+        nativeManifest = true
       }
-      if (declaresNative) reasons.push(f + ' — declares pyreon.native')
+      // A removed/renamed custom plugin export need not leave a conventional
+      // filename behind. Prove the base manifest was web-only before skipping.
+      if (!nativeManifest && readBase) {
+        try {
+          nativeManifest = declaresNative(readBase(f))
+        } catch {
+          nativeManifest = true
+        }
+      }
+      // Removing a declaration must still verify the previously owned lowering.
+      // If the source is deleted too, the changed native-plugin path above fires.
+      if (!nativeManifest) {
+        try {
+          nativeManifest = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'].some(
+            (extension) =>
+              ['src/native-plugin.', 'src/native-plugin/index.'].some(
+                (entry) => read(f.replace(/package\.json$/, entry + extension)) !== null,
+              ),
+          )
+        } catch {
+          nativeManifest = true
+        }
+      }
+      if (nativeManifest) reasons.push(f + ' — native package manifest')
     }
   }
   return { run: reasons.length > 0, reasons }
@@ -186,7 +230,10 @@ export interface AppSelection {
  * files `classifyNativeSurface` already counted (its `reasons`), so a web-only
  * file can never widen the selection.
  */
-export function selectApps(files: readonly string[], surfaces: readonly AppSurface[]): AppSelection {
+export function selectApps(
+  files: readonly string[],
+  surfaces: readonly AppSurface[],
+): AppSelection {
   const picked = { ios: new Set<string>(), android: new Set<string>() }
   const reasons: string[] = []
   for (const f of files) {
@@ -218,13 +265,52 @@ function readAtHead(path: string): string | null {
   }
 }
 
+/** Lazily read the actual merge checkout's base, or the local main merge-base. */
+export function comparisonManifestReader(repoRoot: string): (path: string) => string | null {
+  let base: string | undefined
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+  )
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+  return (path) => {
+    if (!base) {
+      if (/^refs\/pull\/\d+\/merge$/.test(process.env.GITHUB_REF ?? '')) {
+        // Both parents must exist. A head-only/shallow checkout is uncertainty,
+        // not evidence that the package used to be web-only.
+        git('rev-parse', '--verify', 'HEAD^2^{commit}')
+        base = git('rev-parse', '--verify', 'HEAD^1^{commit}')
+      } else base = git('merge-base', 'origin/main', 'HEAD')
+      if (!/^[\da-f]{40}$/.test(base)) throw new Error('native comparison base unavailable')
+    }
+    return git('show', base + ':' + path)
+  }
+}
+
 if (import.meta.main) {
   const self = process.argv.find((a) => a.startsWith('--self='))?.slice('--self='.length)
   const files = readFileSync('/dev/stdin', 'utf8')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-  const d = classifyNativeSurface(files, readAtHead, self)
+  let pluginSurface: ReadonlySet<string> | Error
+  try {
+    pluginSurface = deriveNativePluginSurface(process.cwd()).files
+  } catch (error) {
+    pluginSurface = error instanceof Error ? error : new Error(String(error))
+  }
+  const d = classifyNativeSurface(
+    files,
+    readAtHead,
+    self,
+    pluginSurface,
+    comparisonManifestReader(process.cwd()),
+  )
   for (const r of d.reasons) console.log('  ' + r)
   console.log(
     d.run
@@ -246,7 +332,11 @@ if (import.meta.main) {
           : { ios: 'all', android: 'all', reasons: ['fail-closed run (no file list) — every lane'] }
         : { ios: 'none', android: 'none', reasons: [] }
     } catch (err) {
-      sel = { ios: 'all', android: 'all', reasons: ['app derivation failed (' + String(err) + ') — every lane'] }
+      sel = {
+        ios: 'all',
+        android: 'all',
+        reasons: ['app derivation failed (' + String(err) + ') — every lane'],
+      }
     }
     for (const r of sel.reasons) console.log('  lanes: ' + r)
     console.log('iOS apps: ' + formatApps(sel.ios) + ' | Android apps: ' + formatApps(sel.android))
