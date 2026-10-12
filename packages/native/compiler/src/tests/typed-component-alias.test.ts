@@ -2,7 +2,8 @@
 // fixes a component's type argument. It compiles to the component itself, so
 // on native it must lower exactly like the component it names.
 import { describe, expect, it } from 'vitest'
-import { transform } from '../index'
+// Charts lower through the @pyreon/charts plugin; without it every import is (correctly) reported as unloaded.
+import { transform } from './first-party-plugins'
 
 const header = `import { Bar, Chart, Line } from '@pyreon/charts'
 interface Row { month: string; revenue: number; target: number }

@@ -62,6 +62,10 @@ export const COMPILERS: readonly CompilerSpec[] = [
       // stays in sync. It is data the compiler carries so a standalone `transform()` can name a web-only import, not
       // lowering code, and the manifests (not this file) are the single place a package states its tier.
       'web-only-packages.ts',
+      // The plugin-owning package list: data mirroring every manifest's `pyreon.native.plugin` declaration (kept
+      // equal to them by `tests/plugin-packages.test.ts`), so the parser can name the package whose plugin is not
+      // loaded instead of emitting its imports silently. It names packages; it lowers none of them.
+      'plugin-packages.ts',
     ],
   },
   {

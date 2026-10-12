@@ -5,6 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { forEachExpr } from './expr-walk'
+import { CORE_LOWERED_SURFACE, PLUGIN_OWNED_MODULES } from './plugin-packages'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
 import { activeRegistries, withRegistries, type CompilerRegistries } from './active-registries'
 import {
@@ -410,6 +411,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // declarations carry (an `@pyreon/http` client and its endpoints) before any hook that reads
   // them is parsed, regardless of where the declaration sits relative to the component.
   runModuleScanners(ast.program as AnyNode, source, ctx)
+  warnUnloadedPluginImports(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonHooks(ast.program.body as AnyNode[], ctx)
   warnUnloweredControlFlow(ast.program.body as AnyNode[], ctx)
   warnUnloweredPyreonModules(ast.program.body as AnyNode[], ctx)
@@ -1110,6 +1112,69 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
   }
 }
 
+/**
+ * The plugin-owned module a `@pyreon/*` import specifier belongs to, when that
+ * module's plugin is NOT loaded in this compile; `undefined` otherwise.
+ * Longest match wins, so `@pyreon/core/plain` is not mistaken for `@pyreon/core`.
+ */
+function unloadedPluginModule(src: string): string | undefined {
+  if (!src.startsWith('@pyreon/')) return undefined
+  // The `/webview` subpath is the documented native bridge, not a lowering.
+  if (src.slice('@pyreon/'.length).split('/')[1] === 'webview') return undefined
+  let match: string | undefined
+  for (const module of PLUGIN_OWNED_MODULES) {
+    if (
+      (src === module || src.startsWith(`${module}/`)) &&
+      (match === undefined || module.length > match.length)
+    ) {
+      match = module
+    }
+  }
+  if (match === undefined) return undefined
+  const loaded = activeRegistries().loadedModules
+  return loaded.has(match) || loaded.has(src) ? undefined : match
+}
+
+/**
+ * Warn when a `@pyreon/*` package that owns a native compiler plugin is
+ * imported but its plugin is not loaded. Since the package-owned lowering
+ * migration the compiler knows no library, so without the plugin those imports
+ * are emitted VERBATIM and the native build fails with "cannot find … in scope",
+ * far from the cause. One warning per package, naming the imports and the fix.
+ *
+ * Packages whose non-hook surface lowers in the core (`CORE_LOWERED_SURFACE`)
+ * are left to the unlowered-hook warning. Type-only imports name nothing the
+ * emit sees and never count.
+ */
+function warnUnloadedPluginImports(body: AnyNode[], ctx: ParseCtx): void {
+  const names = new Map<string, string[]>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if ((node as { importKind?: string }).importKind === 'type') continue
+    const src = node.source?.value
+    if (typeof src !== 'string') continue
+    const module = unloadedPluginModule(src)
+    if (module === undefined || CORE_LOWERED_SURFACE.has(module)) continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if ((spec as { importKind?: string }).importKind === 'type') continue
+      const name =
+        spec.type === 'ImportSpecifier'
+          ? (spec.imported?.name ?? spec.imported?.value)
+          : spec.local?.name
+      if (typeof name !== 'string') continue
+      const list = names.get(module) ?? []
+      if (!list.includes(name)) list.push(name)
+      names.set(module, list)
+    }
+  }
+  for (const [module, imported] of names) {
+    if (imported.length === 0) continue
+    ctx.warnings.push(
+      `${imported.join(', ')} (from ${module}) has NO native lowering in this compile: ${module} lowers through its own native compiler plugin, and that plugin is not loaded, so the imports are reproduced verbatim and the native build fails with "cannot find '${imported[0]}' in scope". Declare ${module} in the app's package.json dependencies (the native CLI loads plugins only from declared dependencies), or pass its plugin to createCompiler({ plugins }).`,
+    )
+  }
+}
+
 function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
   const seen = new Set<string>()
   for (const node of body) {
@@ -1122,6 +1187,10 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       if (typeof imported !== 'string') continue
       if (!/^use[A-Z]/.test(imported)) continue
       if (nativeLoweredHooks().has(imported)) continue
+      // Its package's plugin is not loaded: warnUnloadedPluginImports already
+      // named the package and the fix, which is the actual cause.
+      const unloaded = unloadedPluginModule(src)
+      if (unloaded !== undefined && !CORE_LOWERED_SURFACE.has(unloaded)) continue
       if (seen.has(imported)) continue
       seen.add(imported)
       // Prefer the package's OWN advice when it has one. The generic tail
