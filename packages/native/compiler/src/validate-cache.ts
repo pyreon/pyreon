@@ -295,8 +295,9 @@ function writeDisk(key: string, verdict: CachedVerdict): void {
  * JVM — measured at 1.36s on an M3 Max, and the package's own notes put a cold
  * CI start at 10-20s. Vitest isolates modules per test FILE, so the
  * once-per-process memo fires once per file: 123 JVM startups to answer a
- * yes/no question. Keying on size+mtime means a toolchain upgrade or a PATH
- * change re-probes, while a stable install answers from a single file read.
+ * yes/no question. Keying on the resolved binary's size+mtime plus the PATH
+ * and JAVA_HOME it answered under means a toolchain upgrade OR a different
+ * environment re-probes, while a stable install answers from a single file read.
  *
  * Returns null on a cache miss; the caller then probes and calls
  * `writeToolProbe`.
@@ -363,6 +364,17 @@ function toolProbeKey(bin: string, variant = ''): string | null {
       .update(String(st.mtimeMs))
       .update('\0')
       .update(variant)
+      .update('\0')
+      // The environment the probe answered in. `kotlinc` and `swiftc` are
+      // launcher scripts that need other tools (`uname`, `dirname`, a JDK):
+      // the same binary on a PATH missing those cannot start at all. A probe
+      // answer reused across environments let such a process reach the
+      // compile step, and its launcher failure (a numeric exit, so not
+      // transient) was then cached as a REJECTION and served to every later
+      // run, including ones with a healthy PATH.
+      .update(process.env.PATH ?? '')
+      .update('\0')
+      .update(process.env.JAVA_HOME ?? '')
       .digest('hex')
       .slice(0, 32)
   } catch {
