@@ -5360,6 +5360,52 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
   // <gen-docs:api-reference:end @pyreon/machine>
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/auth
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/auth>
+
+  'auth/beginAuthorization': {
+    signature: '(meta: OidcMetadata, client: ClientConfig, now?: number) => Promise<{ url: string; flow: PendingFlow }>',
+    example: `const meta = await discover('https://accounts.example')
+const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' })
+// store \`flow\`, then redirect the user to \`url\``,
+    notes: 'Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive the round trip. Persist the flow server-side or in a short-lived HttpOnly cookie — never in localStorage — and delete it after the callback whether or not it succeeded. See also: parseCallback, exchangeCode, discover.',
+    mistakes: `- Storing the PendingFlow in localStorage — it holds the PKCE verifier; keep it server-side or in an HttpOnly cookie
+- Reusing a flow for a second callback — it is single-use; delete it after the first attempt`,
+  },
+
+  'auth/parseCallback': {
+    signature: '(callback: string | URL, flow: PendingFlow, meta: OidcMetadata, now?: number) => { code: string }',
+    example: 'const { code } = parseCallback(req.url, flow, meta)',
+    notes: 'Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then the code — and throws an `AuthError` with a stable `code` on any failure. See also: beginAuthorization, exchangeCode.',
+    mistakes: '- Catching AuthError and continuing — every failure means the attempt is untrusted',
+  },
+
+  'auth/exchangeCode': {
+    signature: '(meta: OidcMetadata, client: ClientConfig, flow: PendingFlow, code: string, fetchImpl?: FetchLike) => Promise<TokenResponse>',
+    example: 'const tokens = await exchangeCode(meta, client, flow, code)',
+    notes: 'Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a bearer token response. Redirects from the token endpoint are refused. See also: parseCallback.',
+    mistakes: '- Sending a client secret from a browser or native app — public clients rely on PKCE',
+  },
+
+  'auth/discover': {
+    signature: '(issuer: string, fetchImpl?: FetchLike) => Promise<OidcMetadata>',
+    example: `const meta = await discover('https://accounts.example')`,
+    notes: 'Fetches OIDC discovery and validates it: https-only (loopback http allowed for dev), the document issuer must equal the issuer you asked for (OIDC Discovery §4.3), and the authorization and token endpoints must be https. Never pass a user-supplied issuer without an allowlist — discovery is an SSRF vector. See also: beginAuthorization.',
+    mistakes: '- Passing a user-controlled issuer URL — allowlist issuers on the server',
+  },
+
+  'auth/createGuard': {
+    signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
+    example: `const guard = createGuard({ session: () => user(), loginPath: '/login' })
+guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }`,
+    notes: 'Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `returnTo`. Adapt it to a router `beforeEnter`. See also: safeReturnTo.',
+    mistakes: '- Trusting a `returnTo` query param directly — run it through `safeReturnTo`',
+  },
+  // <gen-docs:api-reference:end @pyreon/auth>
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storage
   // ═══════════════════════════════════════════════════════════════════════════
 

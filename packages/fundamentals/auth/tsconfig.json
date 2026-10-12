@@ -1,0 +1,9 @@
+{
+  "extends": "@pyreon/tsconfig/lib-jsx.json",
+  "compilerOptions": {
+    "types": [
+      "vitest/globals",
+      "bun-types"
+    ]
+  }
+}

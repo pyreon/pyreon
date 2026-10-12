@@ -17,6 +17,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/attrs"
       },
       {
+        "text": "auth",
+        "slug": "reference/auth"
+      },
+      {
         "text": "compiler",
         "slug": "reference/compiler"
       },

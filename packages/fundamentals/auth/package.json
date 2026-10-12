@@ -1,0 +1,43 @@
+{
+  "name": "@pyreon/auth",
+  "version": "0.52.0",
+  "description": "Multiplatform authentication for Pyreon — OIDC/OAuth2 authorization-code + PKCE, route guards, secure defaults",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/auth#readme",
+  "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/auth"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "files": ["lib", "!lib/analysis", "src", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "bun-types": "^1.4.2"
+  },
+  "publishConfig": { "access": "public" }
+}
