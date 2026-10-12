@@ -38,6 +38,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`verifyIdToken`](#verifyidtoken-function) | function | Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refuse |
 | [`runStrategy`](#runstrategy-function) | function | Passport bridge (`@pyreon/auth/passport`, server only). |
 | [`verifyTotp`](#verifytotp-function) | function | RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compati |
+| [`verifyAssertion`](#verifyassertion-function) | function | Server-side WebAuthn sign-in (passkey assertion) verification for ES256 credentials on Web Crypto. |
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
@@ -276,6 +277,32 @@ if (r.ok) await save({ lastTotpStep: r.step })
 - Rate-limiting nothing: six digits is brute-forceable, so limit attempts per account before calling this
 
 **See also:** `signSession`
+
+---
+
+### `verifyAssertion` `function`
+
+```ts
+(a: AssertionInput, e: AssertionExpectations) => Promise<AssertionResult>
+```
+
+Server-side WebAuthn sign-in (passkey assertion) verification for ES256 credentials on Web Crypto. Checks ceremony type, the single-use challenge from passkeyChallenge(), exact origin, the rpId hash, user presence, user verification (required by default), a strictly increasing signCount (cloned-authenticator signal) and the ECDSA signature over authenticatorData || SHA-256(clientDataJSON), converting the authenticator DER signature to the raw form WebCrypto expects. Returns &#123; ok: false, reason &#125; instead of throwing. Registration and attestation parsing are a later phase: today you supply the stored P-256 JWK.
+
+**Example**
+
+```tsx
+const challenge = passkeyChallenge() // store server-side, single use
+const r = await verifyAssertion(body, { challenge, origin: 'https://app.example', rpId: 'app.example', publicKey: cred.jwk, signCount: cred.signCount })
+if (r.ok) await save({ signCount: r.signCount })
+```
+
+**Common mistakes**
+
+- Reusing a challenge: it must be generated per attempt and deleted after verification
+- Skipping the stored signCount update: it is what detects a cloned authenticator
+- Verifying against a wrong or wildcard origin: it must equal your exact origin
+
+**See also:** `verifyTotp` · `signSession`
 
 ---
 
