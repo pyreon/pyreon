@@ -69,6 +69,14 @@ export interface CompilerRegistries {
   readonly persistence: RegisteredPersistence | undefined
   /** File-scope item recognizers and emitters, method-call recognizers, `ext-expr` emitters, struct refinements and module finishers. */
   readonly items: ItemRegistry
+  /**
+   * Every import specifier a loaded plugin serves: its name (a package-owned
+   * plugin is named after its package) plus `CompilerPlugin.modules`.
+   * The parser compares a `@pyreon/*` import against it to tell a package whose
+   * plugin is simply NOT LOADED (warn: declare the dependency) from one that
+   * lowers in the core.
+   */
+  readonly loadedModules: ReadonlySet<string>
 }
 
 /**
@@ -117,6 +125,9 @@ export function createRegistries(ordered: readonly CompilerPlugin[]): CompilerRe
     scan: createScanRegistry(ordered),
     items: createItemRegistry(ordered),
     persistence: createPersistenceRegistry(ordered),
+    // A package-owned plugin is named after its package (`@pyreon/charts`), and
+    // `modules` lists any further specifiers it serves.
+    loadedModules: new Set(ordered.flatMap((p) => [p.name, ...(p.modules ?? [])])),
   })
 }
 
