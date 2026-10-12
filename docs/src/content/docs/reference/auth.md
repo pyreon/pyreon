@@ -39,6 +39,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`runStrategy`](#runstrategy-function) | function | Passport bridge (`@pyreon/auth/passport`, server only). |
 | [`verifyTotp`](#verifytotp-function) | function | RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compati |
 | [`verifyAssertion`](#verifyassertion-function) | function | Server-side WebAuthn sign-in (passkey assertion) verification for ES256 credentials on Web Crypto. |
+| [`verifyRegistration`](#verifyregistration-function) | function | Server-side WebAuthn passkey registration for ES256 credentials with none attestation, which is what passkey providers s |
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
@@ -303,6 +304,30 @@ if (r.ok) await save({ signCount: r.signCount })
 - Verifying against a wrong or wildcard origin: it must equal your exact origin
 
 **See also:** `verifyTotp` · `signSession`
+
+---
+
+### `verifyRegistration` `function`
+
+```ts
+(r: RegistrationInput, e: RegistrationExpectations) => Promise<RegistrationResult>
+```
+
+Server-side WebAuthn passkey registration for ES256 credentials with none attestation, which is what passkey providers send by default. Decodes the attestation object with a built-in minimal CBOR reader, checks ceremony type, single-use challenge, exact origin, rpId hash, user presence/verification and attested-credential data, and converts the COSE key to a P-256 JWK (validated on the curve) that verifyAssertion accepts directly. Any other attestation format or algorithm is refused with a reason rather than silently trusted.
+
+**Example**
+
+```tsx
+const r = await verifyRegistration(body, { challenge, origin: 'https://app.example', rpId: 'app.example' })
+if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, signCount: r.signCount })
+```
+
+**Common mistakes**
+
+- Accepting packed/tpm attestation without verifying the statement: this function refuses them instead of trusting them
+- Storing the credential id and key without the user id: bind the credential to the signed-in account before saving
+
+**See also:** `verifyAssertion` · `passkeyChallenge`
 
 ---
 

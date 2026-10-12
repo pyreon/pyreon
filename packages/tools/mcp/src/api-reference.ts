@@ -5463,6 +5463,15 @@ if (r.ok) await save({ signCount: r.signCount })`,
 - Verifying against a wrong or wildcard origin: it must equal your exact origin`,
   },
 
+  'auth/verifyRegistration': {
+    signature: '(r: RegistrationInput, e: RegistrationExpectations) => Promise<RegistrationResult>',
+    example: `const r = await verifyRegistration(body, { challenge, origin: 'https://app.example', rpId: 'app.example' })
+if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, signCount: r.signCount })`,
+    notes: 'Server-side WebAuthn passkey registration for ES256 credentials with none attestation, which is what passkey providers send by default. Decodes the attestation object with a built-in minimal CBOR reader, checks ceremony type, single-use challenge, exact origin, rpId hash, user presence/verification and attested-credential data, and converts the COSE key to a P-256 JWK (validated on the curve) that verifyAssertion accepts directly. Any other attestation format or algorithm is refused with a reason rather than silently trusted. See also: verifyAssertion, passkeyChallenge.',
+    mistakes: `- Accepting packed/tpm attestation without verifying the statement: this function refuses them instead of trusting them
+- Storing the credential id and key without the user id: bind the credential to the signed-in account before saving`,
+  },
+
   'auth/createGuard': {
     signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
     example: `const guard = createGuard({ session: () => user(), loginPath: '/login' })

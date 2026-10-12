@@ -1821,6 +1821,9 @@ const challenge = passkeyChallenge() // store server-side, single use
 const r = await verifyAssertion(body, { challenge, origin: 'https://app.example', rpId: 'app.example', publicKey: cred.jwk, signCount: cred.signCount })
 if (r.ok) await save({ signCount: r.signCount })
 
+const r = await verifyRegistration(body, { challenge, origin: 'https://app.example', rpId: 'app.example' })
+if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, signCount: r.signCount })
+
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
 ```
