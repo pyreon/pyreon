@@ -32,6 +32,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`parseCallback`](#parsecallback-function) | function | Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then t |
 | [`exchangeCode`](#exchangecode-function) | function | Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a b |
 | [`discover`](#discover-function) | function | Fetches OIDC discovery and validates it: https-only (loopback http allowed for dev), the document issuer must equal the  |
+| [`createAuth`](#createauth-function) | function | Reactive auth state machine over the OIDC primitives. |
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
@@ -124,6 +125,32 @@ const meta = await discover('https://accounts.example')
 - Passing a user-controlled issuer URL — allowlist issuers on the server
 
 **See also:** `beginAuthorization`
+
+---
+
+### `createAuth` `function`
+
+```ts
+(opts: AuthOptions) => Auth
+```
+
+Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens` and `error` as signals plus `signIn`, `handleCallback` and `signOut`. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are read-and-deleted from the `FlowStore` so a callback URL cannot be replayed.
+
+**Example**
+
+```tsx
+const auth = createAuth({ issuer: google.issuer, client, flows, redirect: (u) => location.assign(u) })
+await auth.signIn()
+// on the callback route:
+await auth.handleCallback(location.href)
+```
+
+**Common mistakes**
+
+- Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie
+- Reading `auth.status` without calling it — it is a signal
+
+**See also:** `beginAuthorization` · `google` · `keycloak`
 
 ---
 

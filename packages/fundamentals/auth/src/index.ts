@@ -22,3 +22,7 @@ export {
 export type { ClientConfig, FetchLike, OidcMetadata, PendingFlow, TokenResponse } from './oidc'
 export { createGuard, safeReturnTo } from './guard'
 export type { GuardOptions, GuardResult } from './guard'
+export { createAuth, memoryFlowStore } from './auth'
+export type { Auth, AuthOptions, AuthStatus, FlowStore } from './auth'
+export { google, keycloak, withPreset } from './presets'
+export type { Preset } from './presets'

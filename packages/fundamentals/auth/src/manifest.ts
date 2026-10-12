@@ -62,6 +62,22 @@ const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirect
       seeAlso: ['beginAuthorization'],
     },
     {
+      name: 'createAuth',
+      kind: 'function',
+      signature: '(opts: AuthOptions) => Auth',
+      summary:
+        'Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens` and `error` as signals plus `signIn`, `handleCallback` and `signOut`. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are read-and-deleted from the `FlowStore` so a callback URL cannot be replayed.',
+      example: `const auth = createAuth({ issuer: google.issuer, client, flows, redirect: (u) => location.assign(u) })
+await auth.signIn()
+// on the callback route:
+await auth.handleCallback(location.href)`,
+      mistakes: [
+        'Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie',
+        'Reading `auth.status` without calling it — it is a signal',
+      ],
+      seeAlso: ['beginAuthorization', 'google', 'keycloak'],
+    },
+    {
       name: 'createGuard',
       kind: 'function',
       signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',

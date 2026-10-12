@@ -2,8 +2,8 @@
 
 Authentication primitives for Pyreon — OIDC/OAuth2 authorization-code + PKCE, route guards, secure by default.
 
-> **Status: phase 1a.** The framework-neutral core only. Reactive session state, cookie sessions, provider presets,
-> the Passport bridge and the native (Swift/Kotlin) runtime are later phases.
+> **Status: phase 1b.** OIDC core, reactive `createAuth` state machine, `google`/`keycloak` presets. Cookie sessions,
+> GitHub/Facebook (non-OIDC) presets, the Passport bridge and the native (Swift/Kotlin) runtime are later phases.
 
 ```ts
 import { discover, beginAuthorization, parseCallback, exchangeCode } from '@pyreon/auth'

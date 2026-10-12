@@ -1797,6 +1797,11 @@ const tokens = await exchangeCode(meta, client, flow, code)
 
 const meta = await discover('https://accounts.example')
 
+const auth = createAuth({ issuer: google.issuer, client, flows, redirect: (u) => location.assign(u) })
+await auth.signIn()
+// on the callback route:
+await auth.handleCallback(location.href)
+
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
 ```
