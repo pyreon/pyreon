@@ -4,6 +4,7 @@
 // run the lanes; everything genuinely native, and every uncertainty, MUST.
 
 import { describe, expect, it } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   type AppSurface,
@@ -45,6 +46,11 @@ describe('classifyNativeSurface — runs', () => {
     ['packages/fundamentals/flow/native/swift/PyreonFlowState.swift'],
     ['examples/native-tasks/src/TasksApp.tsx'],
     ['scripts/check-native-coverage.ts'],
+    ['scripts/native-surface-touched.ts'],
+    ['scripts/native-plugin-surface.ts'],
+    ['scripts/native-first-party-plugins.ts'],
+    ['packages/fundamentals/form/src/native-plugin/emit.ts'],
+    ['packages/core/reactivity/src/native-plugin.ts'],
     ['bun.lock'],
     ['.bun-version'],
   ])('%s forces the lanes', (file) => {
@@ -60,6 +66,17 @@ describe('classifyNativeSurface — runs', () => {
       }),
     )
     expect(d.run).toBe(true)
+  })
+  it('runs for a plugin export even when its native metadata is removed', () => {
+    expect(classifyNativeSurface(['packages/a/b/package.json'], withManifests({
+      'packages/a/b/package.json': '{"exports":{"./native-plugin":{"bun":"./src/native-plugin.ts"}}}',
+    })).run).toBe(true)
+  })
+  it('runs when both manifest declarations are removed but lowering source remains', () => {
+    expect(classifyNativeSurface(['packages/a/b/package.json'], withManifests({
+      'packages/a/b/package.json': '{"name":"@pyreon/b"}',
+      'packages/a/b/src/native-plugin.ts': 'export default {}',
+    })).run).toBe(true)
   })
   it('runs for the workflow file itself', () => {
     expect(
@@ -92,11 +109,35 @@ describe('classifyNativeSurface — fail-closed', () => {
     })
     expect(d.run).toBe(true)
   })
+  it('runs when reading the previous owner source fails', () => {
+    const d = classifyNativeSurface(['packages/a/b/package.json'], (path) => {
+      if (path.endsWith('package.json')) return '{"name":"@pyreon/b"}'
+      throw new Error('EACCES')
+    })
+    expect(d.run).toBe(true)
+  })
 })
 
 // ── Per-app device-lane selection (native-device.yml `--apps`) ──────────────
 
 const REPO = resolve(__dirname, '../../../../..')
+
+const owners = readdirSync(resolve(REPO, 'packages')).flatMap((category) =>
+  readdirSync(resolve(REPO, 'packages', category)).flatMap((pkg) => {
+    const root = 'packages/' + category + '/' + pkg
+    const manifest = JSON.parse(readFileSync(resolve(REPO, root, 'package.json'), 'utf8'))
+    return manifest.pyreon?.native?.plugin ? [root] : []
+  }),
+)
+
+describe('classifyNativeSurface — all declared owners', () => {
+  it('keeps the full migrated owner set in the regression matrix', () => {
+    expect(owners).toHaveLength(36)
+  })
+  it.each(owners)('%s source entry runs native validation', (root) => {
+    expect(classifyNativeSurface([root + '/src/native-plugin.ts'], noFs).run).toBe(true)
+  })
+})
 
 describe('selectApps — synthetic surfaces', () => {
   const S: AppSurface[] = [

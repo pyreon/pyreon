@@ -99,9 +99,12 @@ jobs:
       graph: ${{ steps.diff.outputs.graph }}
     steps:
       # The classifier reads changed package.json manifests at the PR head, so
-      # it needs the merge-ref checkout (default depth is enough).
+      # it needs the merge-ref checkout and both parents to inspect removed
+      # native plugin declarations without treating web-only manifests as native.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:

@@ -69,6 +69,16 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `pr-gates.yml` — `Changeset` and `Diagnose Catalog`. These are label-sensitive (`skip-changeset`, `skip-diagnose-catalog`), so they live apart from `ci.yml`, whose `pull_request` trigger excludes `labeled` (a label would cancel the in-flight run).
 - `native-validate.yml` — `Validate emitted Swift + Kotlin`, `Validate emitted Swift (real-SDK typecheck, macOS)`.
 - `native-device.yml` — `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`.
+- Native lane selection follows package-owned lowering as well as the PMTC
+  directories. `native-surface-touched.ts` recognizes plugin source and its own
+  selector scripts; `native-plugin-surface.ts` derives the runtime import closure
+  from declared plugin exports using Bun alone, before installation. Shared
+  helpers and their resolution manifests select every device app. Deleted,
+  unreadable or unresolved dependencies, computed imports and CommonJS loads
+  fail closed. Ordinary unrelated web source and the JSX compiler's Rust crate
+  remain outside this native surface. A changed manifest skips only when both
+  current and comparison-base metadata are web-only; PR merge checkouts retain
+  both parents so removing a custom plugin declaration still selects the lanes.
 - `codeql.yml` — `Analyze (javascript-typescript)`.
 - `cancel-conflicting-ci.yml` (push to main + every 30 min):
   - cancels in-flight runs of PRs that became conflicting. GitHub never dispatches for a conflicting PR, but does not stop a run already in flight. Only a definitive `CONFLICTING` is acted on; `UNKNOWN` is skipped; a failed listing aborts.
