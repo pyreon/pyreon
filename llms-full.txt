@@ -1807,6 +1807,9 @@ const session = await verifySession(value, { secrets: [process.env.SESSION_SECRE
 
 const auth = createAuth({ metadata: github, client, flows, redirect })
 
+const keys = await fetchJwks(meta)
+const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })
+
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
 ```

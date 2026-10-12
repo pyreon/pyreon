@@ -5423,6 +5423,16 @@ const session = await verifySession(value, { secrets: [process.env.SESSION_SECRE
     mistakes: '- Expecting an `id_token` from a non-OIDC provider — fetch the profile with the access token instead',
   },
 
+  'auth/verifyIdToken': {
+    signature: '(token: string, keys: readonly Jwk[], meta: OidcMetadata, opts: VerifyOptions) => Promise<IdTokenClaims>',
+    example: `const keys = await fetchJwks(meta)
+const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })`,
+    notes: 'Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refused to rule out algorithm confusion), signature against the provider JWKS key chosen by `kid` and the header alg, then `iss`, `aud` (+ `azp` for multi-audience tokens), `exp` with 60 s skew, `sub` and the `nonce` you stored in the pending flow. Fetch keys with `fetchJwks(meta)` and cache them server-side; call this on the server, never trust an unverified `id_token`. See also: fetchJwks, exchangeCode.',
+    mistakes: `- Decoding the id_token payload without verifying the signature — anyone can forge it
+- Skipping the nonce — it binds the token to this login attempt and defeats replay
+- Refetching the JWKS on every request — cache it and refresh only on an unknown \`kid\``,
+  },
+
   'auth/createGuard': {
     signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
     example: `const guard = createGuard({ session: () => user(), loginPath: '/login' })

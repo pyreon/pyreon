@@ -35,6 +35,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`createAuth`](#createauth-function) | function | Reactive auth state machine over the OIDC primitives. |
 | [`signSession`](#signsession-function) | function | Signs a session into a cookie-safe `body.signature` string (HMAC-SHA256 over Web Crypto). |
 | [`github`](#github-constant) | constant | Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). |
+| [`verifyIdToken`](#verifyidtoken-function) | function | Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refuse |
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
@@ -199,6 +200,31 @@ const auth = createAuth({ metadata: github, client, flows, redirect })
 - Expecting an `id_token` from a non-OIDC provider — fetch the profile with the access token instead
 
 **See also:** `createAuth` · `google` · `keycloak`
+
+---
+
+### `verifyIdToken` `function`
+
+```ts
+(token: string, keys: readonly Jwk[], meta: OidcMetadata, opts: VerifyOptions) => Promise<IdTokenClaims>
+```
+
+Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refused to rule out algorithm confusion), signature against the provider JWKS key chosen by `kid` and the header alg, then `iss`, `aud` (+ `azp` for multi-audience tokens), `exp` with 60 s skew, `sub` and the `nonce` you stored in the pending flow. Fetch keys with `fetchJwks(meta)` and cache them server-side; call this on the server, never trust an unverified `id_token`.
+
+**Example**
+
+```tsx
+const keys = await fetchJwks(meta)
+const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })
+```
+
+**Common mistakes**
+
+- Decoding the id_token payload without verifying the signature — anyone can forge it
+- Skipping the nonce — it binds the token to this login attempt and defeats replay
+- Refetching the JWKS on every request — cache it and refresh only on an unknown `kid`
+
+**See also:** `fetchJwks` · `exchangeCode`
 
 ---
 

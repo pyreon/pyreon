@@ -28,3 +28,5 @@ export { facebook, github, google, keycloak, oauth2, withPreset } from './preset
 export type { Preset } from './presets'
 export { sessionCookie, signSession, verifySession } from './session'
 export type { SessionOptions, SessionPayload } from './session'
+export { fetchJwks, verifyIdToken } from './jwt'
+export type { IdTokenClaims, Jwk, VerifyOptions } from './jwt'
