@@ -320,6 +320,37 @@ describe('tool-availability probe cache', () => {
     process.env.PYREON_VALIDATE_NO_CACHE = '1'
     expect(readToolProbe('sh')).toBeNull()
   })
+
+  // The same binary can start in one environment and not in another: Homebrew's
+  // `kotlinc` is a bash launcher that needs `uname`/`dirname` from /usr/bin and
+  // a JDK. A probe answered with a full PATH, replayed in a PATH without
+  // /usr/bin, let the compile step run, fail at launch, and that failure was
+  // cached as a REJECTION that every later run (healthy PATH included) served.
+  it('re-probes when PATH changes, even when the binary resolves to the same file', () => {
+    const prevPath = process.env.PATH
+    try {
+      process.env.PATH = '/bin:/usr/bin'
+      writeToolProbe('sh', { available: true, version: 'full-path' })
+      expect(readToolProbe('sh')?.version).toBe('full-path')
+      process.env.PATH = '/bin'
+      expect(readToolProbe('sh')).toBeNull()
+    } finally {
+      process.env.PATH = prevPath
+    }
+  })
+
+  it('re-probes when JAVA_HOME changes (a JVM toolchain answers through it)', () => {
+    const prevJava = process.env.JAVA_HOME
+    try {
+      process.env.JAVA_HOME = '/opt/jdk-a'
+      writeToolProbe('sh', { available: true, version: 'jdk-a' })
+      process.env.JAVA_HOME = '/opt/jdk-b'
+      expect(readToolProbe('sh')).toBeNull()
+    } finally {
+      if (prevJava === undefined) delete process.env.JAVA_HOME
+      else process.env.JAVA_HOME = prevJava
+    }
+  })
 })
 
 
