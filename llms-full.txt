@@ -1802,6 +1802,11 @@ await auth.signIn()
 // on the callback route:
 await auth.handleCallback(location.href)
 
+const cookie = sessionCookie('session', await signSession({ sub: user.id }, { secrets: [process.env.SESSION_SECRET!] }))
+const session = await verifySession(value, { secrets: [process.env.SESSION_SECRET!] })
+
+const auth = createAuth({ metadata: github, client, flows, redirect })
+
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
 ```

@@ -19,7 +19,10 @@ export interface FlowStore {
 }
 
 export interface AuthOptions {
-  issuer: string
+  /** OIDC issuer (discovery). Omit when passing `metadata`. */
+  issuer?: string
+  /** Explicit endpoints for non-OIDC OAuth2 providers (github, facebook). */
+  metadata?: OidcMetadata
   client: ClientConfig
   flows: FlowStore
   /** Navigate the user agent to the provider. */
@@ -44,7 +47,7 @@ export function createAuth(opts: AuthOptions): Auth {
   // Bumped by signOut/new attempts so a late async result can never resurrect a session.
   let epoch = 0
   let metaPromise: Promise<OidcMetadata> | undefined
-  const meta = () => (metaPromise ??= discover(opts.issuer, opts.fetch).catch((e) => {
+  const meta = () => (metaPromise ??= (opts.metadata ? Promise.resolve(opts.metadata) : discover(opts.issuer ?? '', opts.fetch)).catch((e) => {
     metaPromise = undefined
     throw e
   }))

@@ -33,6 +33,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`exchangeCode`](#exchangecode-function) | function | Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a b |
 | [`discover`](#discover-function) | function | Fetches OIDC discovery and validates it: https-only (loopback http allowed for dev), the document issuer must equal the  |
 | [`createAuth`](#createauth-function) | function | Reactive auth state machine over the OIDC primitives. |
+| [`signSession`](#signsession-function) | function | Signs a session into a cookie-safe `body.signature` string (HMAC-SHA256 over Web Crypto). |
+| [`github`](#github-constant) | constant | Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). |
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
@@ -151,6 +153,52 @@ await auth.handleCallback(location.href)
 - Reading `auth.status` without calling it — it is a signal
 
 **See also:** `beginAuthorization` · `google` · `keycloak`
+
+---
+
+### `signSession` `function`
+
+```ts
+(payload: SessionPayload, opts: SessionOptions, now?: number) => Promise<string>
+```
+
+Signs a session into a cookie-safe `body.signature` string (HMAC-SHA256 over Web Crypto). Expiry lives inside the signed body, secrets must be at least 32 characters and rotate via a list (first signs, all verify), and values over 4096 bytes are refused. `verifySession` returns null — never throws — for tampered, expired or malformed input. Pair with `sessionCookie` for HttpOnly + Secure + SameSite=Lax + `__Host-` attributes.
+
+**Example**
+
+```tsx
+const cookie = sessionCookie('session', await signSession({ sub: user.id }, { secrets: [process.env.SESSION_SECRET!] }))
+const session = await verifySession(value, { secrets: [process.env.SESSION_SECRET!] })
+```
+
+**Common mistakes**
+
+- Putting the whole user profile in the cookie — it is capped at 4096 bytes; store a session id and look the rest up
+- Replacing the secret instead of prepending it — existing sessions are invalidated; rotate by putting the new secret first
+
+**See also:** `verifySession` · `sessionCookie`
+
+---
+
+### `github` `constant`
+
+```ts
+OidcMetadata
+```
+
+Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Pin the Facebook Graph version you have tested.
+
+**Example**
+
+```tsx
+const auth = createAuth({ metadata: github, client, flows, redirect })
+```
+
+**Common mistakes**
+
+- Expecting an `id_token` from a non-OIDC provider — fetch the profile with the access token instead
+
+**See also:** `createAuth` · `google` · `keycloak`
 
 ---
 

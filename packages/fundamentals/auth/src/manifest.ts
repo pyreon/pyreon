@@ -78,6 +78,30 @@ await auth.handleCallback(location.href)`,
       seeAlso: ['beginAuthorization', 'google', 'keycloak'],
     },
     {
+      name: 'signSession',
+      kind: 'function',
+      signature: '(payload: SessionPayload, opts: SessionOptions, now?: number) => Promise<string>',
+      summary:
+        'Signs a session into a cookie-safe `body.signature` string (HMAC-SHA256 over Web Crypto). Expiry lives inside the signed body, secrets must be at least 32 characters and rotate via a list (first signs, all verify), and values over 4096 bytes are refused. `verifySession` returns null — never throws — for tampered, expired or malformed input. Pair with `sessionCookie` for HttpOnly + Secure + SameSite=Lax + `__Host-` attributes.',
+      example: `const cookie = sessionCookie('session', await signSession({ sub: user.id }, { secrets: [process.env.SESSION_SECRET!] }))
+const session = await verifySession(value, { secrets: [process.env.SESSION_SECRET!] })`,
+      mistakes: [
+        'Putting the whole user profile in the cookie — it is capped at 4096 bytes; store a session id and look the rest up',
+        'Replacing the secret instead of prepending it — existing sessions are invalidated; rotate by putting the new secret first',
+      ],
+      seeAlso: ['verifySession', 'sessionCookie'],
+    },
+    {
+      name: 'github',
+      kind: 'constant',
+      signature: 'OidcMetadata',
+      summary:
+        'Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). `facebook(version)` and `oauth2(issuer, authorize, token)` cover other plain OAuth2 providers. Pass as `createAuth({ metadata })` to skip discovery. Pin the Facebook Graph version you have tested.',
+      example: `const auth = createAuth({ metadata: github, client, flows, redirect })`,
+      mistakes: ['Expecting an `id_token` from a non-OIDC provider — fetch the profile with the access token instead'],
+      seeAlso: ['createAuth', 'google', 'keycloak'],
+    },
+    {
       name: 'createGuard',
       kind: 'function',
       signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
