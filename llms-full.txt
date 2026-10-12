@@ -1814,6 +1814,9 @@ import { runStrategy } from '@pyreon/auth/passport'
 const out = await runStrategy(new LocalStrategy(verify), { method: 'POST', url: '/login', body })
 if (out.type === 'success') startSession(out.user)
 
+const r = await verifyTotp(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
+if (r.ok) await save({ lastTotpStep: r.step })
+
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
 ```

@@ -37,6 +37,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`github`](#github-constant) | constant | Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). |
 | [`verifyIdToken`](#verifyidtoken-function) | function | Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refuse |
 | [`runStrategy`](#runstrategy-function) | function | Passport bridge (`@pyreon/auth/passport`, server only). |
+| [`verifyTotp`](#verifytotp-function) | function | RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compati |
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
@@ -251,6 +252,30 @@ if (out.type === 'success') startSession(out.user)
 - Treating `fail` as an exception — it is a normal outcome (bad credentials); only `error` rejects
 
 **See also:** `createAuth` · `signSession`
+
+---
+
+### `verifyTotp` `function`
+
+```ts
+(secret: string, code: string, opts?: { now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number } | { ok: false }>
+```
+
+RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code.
+
+**Example**
+
+```tsx
+const r = await verifyTotp(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
+if (r.ok) await save({ lastTotpStep: r.step })
+```
+
+**Common mistakes**
+
+- Not storing the returned step: without lastUsedStep a captured code can be replayed for up to 90 s
+- Rate-limiting nothing: six digits is brute-forceable, so limit attempts per account before calling this
+
+**See also:** `signSession`
 
 ---
 

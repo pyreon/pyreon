@@ -5443,6 +5443,15 @@ if (out.type === 'success') startSession(out.user)`,
 - Treating \`fail\` as an exception — it is a normal outcome (bad credentials); only \`error\` rejects`,
   },
 
+  'auth/verifyTotp': {
+    signature: '(secret: string, code: string, opts?: { now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number } | { ok: false }>',
+    example: `const r = await verifyTotp(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
+if (r.ok) await save({ lastTotpStep: r.step })`,
+    notes: 'RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code. See also: signSession.',
+    mistakes: `- Not storing the returned step: without lastUsedStep a captured code can be replayed for up to 90 s
+- Rate-limiting nothing: six digits is brute-forceable, so limit attempts per account before calling this`,
+  },
+
   'auth/createGuard': {
     signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
     example: `const guard = createGuard({ session: () => user(), loginPath: '/login' })
