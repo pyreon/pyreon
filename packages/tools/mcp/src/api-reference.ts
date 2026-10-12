@@ -5433,6 +5433,16 @@ const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: cli
 - Refetching the JWKS on every request — cache it and refresh only on an unknown \`kid\``,
   },
 
+  'auth/runStrategy': {
+    signature: '(strategy: PassportStrategyLike, input: PassportInput, options?: Record<string, unknown>) => Promise<PassportOutcome>',
+    example: `import { runStrategy } from '@pyreon/auth/passport'
+const out = await runStrategy(new LocalStrategy(verify), { method: 'POST', url: '/login', body })
+if (out.type === 'success') startSession(out.user)`,
+    notes: 'Passport bridge (`@pyreon/auth/passport`, server only). Runs any Passport strategy — passport-local, passport-oauth2, Keycloak, SAML — without Express or the `passport` package: the strategy is cloned, its `success/fail/redirect/pass/error` hooks are bound to a promise, and the result is a discriminated outcome. Strategies that keep OAuth state in `req.session` write it into the `session` object you pass, so back that with the pending-flow store. Rejects only when the strategy calls `error()` or throws. See also: createAuth, signSession.',
+    mistakes: `- Passing a shared \`session\` object across users — create one per attempt, it carries OAuth state/verifier
+- Treating \`fail\` as an exception — it is a normal outcome (bad credentials); only \`error\` rejects`,
+  },
+
   'auth/createGuard': {
     signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
     example: `const guard = createGuard({ session: () => user(), loginPath: '/login' })

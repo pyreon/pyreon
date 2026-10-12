@@ -1810,6 +1810,10 @@ const auth = createAuth({ metadata: github, client, flows, redirect })
 const keys = await fetchJwks(meta)
 const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })
 
+import { runStrategy } from '@pyreon/auth/passport'
+const out = await runStrategy(new LocalStrategy(verify), { method: 'POST', url: '/login', body })
+if (out.type === 'success') startSession(out.user)
+
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
 ```
