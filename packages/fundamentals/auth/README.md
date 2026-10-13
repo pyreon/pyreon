@@ -25,7 +25,17 @@ App-facing auth state on native is the existing `useAuth` container from `@pyreo
 three targets. This package ships the *mechanism* that drives it: `native/swift/PyreonOidc.swift` and
 `native/kotlin/.../PyreonOidc.kt` (PKCE S256, state/nonce, RFC 9207 `iss`, 10-minute single-use flow persisted through a
 `PyreonAuthFlowStore` so a login survives process death in the system browser). Both are compiled and run by
-`check-native-cosource`. Not yet built: the system-browser session (`ASWebAuthenticationSession` / Custom Tabs) and a
-compiler recognizer that lowers the web API to these cores, so the package stays declared web-only.
+`check-native-cosource`.
+
+**Sign-in composition (no new SDK code).** The system browser is the existing `useLinking().openUrl` (lowers to
+`UIApplication.open` / `Intent.ACTION_VIEW`, the RFC 8252 default-browser path); the redirect comes back as a deep link
+through the router to your callback route, which hands the URL to the core. Drive the `useAuth` container from there:
+`beginSignIn()` -> `openUrl(authUrl)` -> (callback route) `complete(...)` -> token exchange over `fetch` ->
+`signInSucceeded(user)` / `signInFailed(...)`. Use an HTTPS claimed redirect (universal link / App Link) rather than a
+custom scheme where you can, since a custom scheme can be claimed by another app.
+
+**Not built, and why.** A compiler recognizer that lowers `beginAuthorization` / `parseCallback` to these cores, so the
+package stays declared web-only. It changes `@pyreon/native-compiler` and its Swift/Kotlin validation suite, which is a
+separate, heavier PR. The end-to-end browser round trip on a simulator/emulator is likewise unverified.
 
 MIT
