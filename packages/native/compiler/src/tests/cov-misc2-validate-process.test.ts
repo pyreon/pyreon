@@ -34,8 +34,26 @@ const execFileSyncMock = vi.fn((file: string, args: readonly string[] = []) => {
   return b.out ?? ''
 })
 
+/** The same routing seen through `spawnSync`, which the kotlinc version probe
+ *  uses because kotlinc prints its version on STDERR (and exits 0). A routed
+ *  error maps to the result shape spawnSync returns instead of throwing. */
+const spawnSyncMock = vi.fn((file: string, args: readonly string[] = []) => {
+  const b = route(file, args)
+  if (!b.err) return { status: 0, signal: null, stdout: b.out ?? '', stderr: '' }
+  const e = b.err
+  const spawnFailed = e.status === undefined && e.signal === undefined
+  return {
+    status: spawnFailed ? null : (e.status ?? null),
+    signal: e.signal ?? null,
+    stdout: e.stdout?.toString() ?? '',
+    stderr: e.stderr?.toString() ?? '',
+    ...(spawnFailed || e.code !== undefined ? { error: { code: e.code ?? 'ENOENT' } } : {}),
+  }
+})
+
 vi.mock('node:child_process', () => ({
   execFileSync: (file: string, args: readonly string[]) => execFileSyncMock(file, args),
+  spawnSync: (file: string, args: readonly string[]) => spawnSyncMock(file, args),
 }))
 
 const {
@@ -44,6 +62,7 @@ const {
   _resetSwiftUICache,
   _resetSwiftcCache,
   isKotlincAvailable,
+  kotlincVersionForDaemon,
   isObservationAvailable,
   isSwiftUIAvailable,
   isSwiftcAvailable,
@@ -99,6 +118,7 @@ function resetProbes(): void {
 beforeEach(() => {
   resetProbes()
   execFileSyncMock.mockClear()
+  spawnSyncMock.mockClear()
   route = () => ({})
 })
 afterEach(() => {
@@ -158,6 +178,18 @@ describe('validate — tool probing', () => {
         ? { err: { status: 0, stderr: Buffer.from('info: kotlinc-jvm 2.0.0\n') } }
         : {}
     expect(isKotlincAvailable()).toBe(true)
+  })
+
+  it('keys Kotlin verdicts on the kotlinc version it prints to STDERR', () => {
+    // The version is part of every Kotlin verdict-cache key. Read from stdout it
+    // was always '' (kotlinc prints nothing there), so a kotlinc upgrade never
+    // invalidated a stored verdict.
+    route = (f, a) =>
+      f === 'kotlinc' && a[0] === '-version'
+        ? { err: { status: 0, stdout: '', stderr: 'info: kotlinc-jvm 2.3.21 (JRE 26.0.1)\n' } }
+        : {}
+    expect(isKotlincAvailable()).toBe(true)
+    expect(kotlincVersionForDaemon()).toBe('info: kotlinc-jvm 2.3.21 (JRE 26.0.1)')
   })
 
   it('treats a kotlinc probe throwing with a NON-zero status as absent', () => {

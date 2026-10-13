@@ -15,7 +15,7 @@
 // where the toolchain SHOULD be installed.
 
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -771,28 +771,31 @@ export function isKotlincAvailable(): boolean {
     _kotlincVersion = cached.version
     return _kotlincAvailable
   }
-  try {
-    // `kotlinc -version` writes to STDERR and starts a JVM (~1.4s warm, 10-20s
-    // cold under CI load). That is why the result is disk-cached above: with
-    // vitest isolating modules per file, this ran 123 times per suite.
-    _kotlincVersion = execFileSync('kotlinc', ['-version'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      encoding: 'utf8',
-      timeout: PROBE_TIMEOUT_MS,
-    }).trim()
+  // `kotlinc -version` prints its version on STDERR and exits 0, and starts a
+  // JVM (~1.4s warm, 10-20s cold under CI load) — hence the disk cache above:
+  // with vitest isolating modules per file, this ran 123 times per suite.
+  // Both streams are read: the version is a VERDICT-CACHE KEY component, and
+  // reading stdout alone left it empty, so a kotlinc upgrade never invalidated
+  // a single stored Kotlin verdict.
+  const probe = spawnSync('kotlinc', ['-version'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    timeout: PROBE_TIMEOUT_MS,
+  })
+  if (probe.status === 0) {
+    _kotlincVersion = `${probe.stdout ?? ''}${probe.stderr ?? ''}`.trim()
     _kotlincAvailable = true
-  } catch (err) {
-    // A non-zero exit means absent; but kotlinc reports its version on stderr
-    // and still exits 0, so only a genuine spawn failure lands here.
-    const e = err as { stderr?: string | Buffer; status?: number }
-    if (e.status === 0) {
-      const stderr = typeof e.stderr === 'string' ? e.stderr : (e.stderr?.toString('utf8') ?? '')
-      _kotlincVersion = stderr.trim()
-      _kotlincAvailable = true
-    } else {
-      _kotlincAvailable = isTransientProcessFailure(err) ? undefined : false
-      _kotlincVersion = ''
+  } else {
+    // Same shape classification as a thrown execFileSync error: a spawn
+    // failure (errno code), a signal or a timeout means "ask again"; a numeric
+    // non-zero exit means the toolchain cannot run here.
+    const shape = {
+      status: probe.status,
+      signal: probe.signal,
+      code: (probe.error as { code?: unknown } | undefined)?.code,
     }
+    _kotlincAvailable = isTransientProcessFailure(shape) ? undefined : false
+    _kotlincVersion = ''
   }
   if (_kotlincAvailable === true)
     writeToolProbe('kotlinc', { available: true, version: _kotlincVersion })
