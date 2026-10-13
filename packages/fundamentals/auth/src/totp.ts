@@ -5,7 +5,9 @@ import { timingSafeEqual } from './oidc'
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 
 export function base32Decode(s: string): Uint8Array<ArrayBuffer> {
-  const clean = s.replace(/=+$/, '').replace(/\s/g, '').toUpperCase()
+  let end = s.length
+  while (end > 0 && s[end - 1] === '=') end--
+  const clean = s.slice(0, end).replace(/\s/g, '').toUpperCase()
   let bits = 0
   let value = 0
   const out: number[] = []
