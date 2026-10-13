@@ -36,7 +36,8 @@
     "README.md",
     "LICENSE",
     "native/swift",
-    "native/kotlin"
+    "native/kotlin",
+    "native/tests"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -56,5 +57,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }

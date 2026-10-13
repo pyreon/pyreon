@@ -9,8 +9,9 @@ import java.util.Base64
 
 // Pyreon auth — native OIDC/PKCE core (Kotlin twin of PyreonAuth.swift and @pyreon/auth's web logic).
 // JVM-only on purpose: no androidx, no org.json, so the same file compiles in the stub gate and on device.
-// The pending flow is persisted through a PyreonSecureBackend so it survives process death while the
-// user is in the system browser.
+// The pending flow is persisted through a PyreonAuthFlowStore so it survives process death while the
+// user is in the system browser. App-facing state is the existing `useAuth` container (PyreonAuth in
+// @pyreon/hooks); this file is the mechanism that drives it.
 
 public data class PyreonAuthFlow(
     val state: String,
@@ -30,6 +31,23 @@ public sealed class PyreonAuthError(message: String) : Exception("[Pyreon] auth:
     public object IssuerMissing : PyreonAuthError("provider advertises iss but callback omitted it")
     public object MissingCode : PyreonAuthError("callback has no code")
     public object UnknownFlow : PyreonAuthError("no pending authorization for this state")
+}
+
+/**
+ * Where the pending flow lives across the redirect. Same shape as `PyreonSecureBackend`
+ * (`@pyreon/storage`), so an Android Keystore-backed backend adapts with a one-line delegate.
+ */
+public interface PyreonAuthFlowStore {
+    public fun write(key: String, value: String): Boolean
+    public fun read(key: String): String?
+    public fun remove(key: String): Boolean
+}
+
+public class InMemoryAuthFlowStore : PyreonAuthFlowStore {
+    private val store = HashMap<String, String>()
+    override fun write(key: String, value: String): Boolean { store[key] = value; return true }
+    override fun read(key: String): String? = store[key]
+    override fun remove(key: String): Boolean = store.remove(key) != null
 }
 
 public object PyreonPKCE {
@@ -53,7 +71,7 @@ public object PyreonPKCE {
         MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
 }
 
-public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
+public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
     public companion object {
         public const val FLOW_TTL_MS: Long = 10 * 60 * 1000
         private fun key(state: String) = "pyreon.auth.flow.$state"

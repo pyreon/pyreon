@@ -3,7 +3,9 @@ import CryptoKit
 
 // Pyreon auth — native OIDC/PKCE core. Mirrors @pyreon/auth's web logic (S256 only, state + nonce,
 // RFC 9207 `iss` check, 10-minute single-use flows). The pending flow is persisted through a
-// PyreonSecureBackend so a flow survives process death during the system-browser round trip.
+// PyreonAuthFlowStore so a flow survives process death during the system-browser round trip.
+// App-facing state is the existing `useAuth` container (@pyreon/hooks `PyreonAuth`); this file is the
+// MECHANISM that drives it (begin -> system browser -> complete -> signInSucceeded).
 
 public struct PyreonAuthFlow: Codable, Equatable {
     public let state: String
@@ -23,6 +25,23 @@ public enum PyreonAuthError: Error, Equatable {
     case issuerMissing
     case missingCode
     case unknownFlow
+}
+
+/// Where the pending flow lives across the redirect. The shape matches `PyreonSecureBackend`
+/// (`@pyreon/storage`), so a Keychain backend conforms with one line:
+/// `extension KeychainSecureBackend: PyreonAuthFlowStore {}`. Never back it with UserDefaults.
+public protocol PyreonAuthFlowStore {
+    @discardableResult func write(key: String, value: String) -> Bool
+    func read(key: String) -> String?
+    @discardableResult func remove(key: String) -> Bool
+}
+
+public final class InMemoryAuthFlowStore: PyreonAuthFlowStore {
+    private var store: [String: String] = [:]
+    public init() {}
+    public func write(key: String, value: String) -> Bool { store[key] = value; return true }
+    public func read(key: String) -> String? { store[key] }
+    public func remove(key: String) -> Bool { store.removeValue(forKey: key) != nil }
 }
 
 public enum PyreonPKCE {
@@ -56,9 +75,9 @@ public enum PyreonPKCE {
 
 public final class PyreonAuthCore {
     public static let flowTtl: TimeInterval = 10 * 60
-    private let backend: PyreonSecureBackend
+    private let backend: PyreonAuthFlowStore
 
-    public init(backend: PyreonSecureBackend) { self.backend = backend }
+    public init(backend: PyreonAuthFlowStore) { self.backend = backend }
 
     private func key(_ state: String) -> String { "pyreon.auth.flow.\(state)" }
 

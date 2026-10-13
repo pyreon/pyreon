@@ -19,4 +19,13 @@ Secure defaults: S256-only PKCE, `state` + `nonce`, RFC 9207 `iss` check, https-
 single-use flows that expire after 10 minutes, and a guard whose `returnTo` only accepts same-origin paths.
 Not offered, on purpose: the implicit flow, the password grant, PKCE `plain`.
 
+## Native (iOS / Android)
+
+App-facing auth state on native is the existing `useAuth` container from `@pyreon/hooks` (`PyreonAuth`) — one source,
+three targets. This package ships the *mechanism* that drives it: `native/swift/PyreonOidc.swift` and
+`native/kotlin/.../PyreonOidc.kt` (PKCE S256, state/nonce, RFC 9207 `iss`, 10-minute single-use flow persisted through a
+`PyreonAuthFlowStore` so a login survives process death in the system browser). Both are compiled and run by
+`check-native-cosource`. Not yet built: the system-browser session (`ASWebAuthenticationSession` / Custom Tabs) and a
+compiler recognizer that lowers the web API to these cores, so the package stays declared web-only.
+
 MIT

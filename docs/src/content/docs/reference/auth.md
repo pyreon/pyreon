@@ -13,7 +13,7 @@ Authentication primitives for Pyreon. Phase 1a ships the framework-neutral core:
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-phase 1a is the TypeScript core only; the Swift/Kotlin runtime service containers (secure storage, system-browser round trip) land in phase 2 per the auth package plan
+the native OIDC/PKCE mechanism (PyreonOidc.swift/.kt) is co-sourced and device-tested in isolation, but no PMTC recognizer lowers the web API yet; native apps use the existing useAuth container from @pyreon/hooks for state, and this package supplies the sign-in mechanism that drives it
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
