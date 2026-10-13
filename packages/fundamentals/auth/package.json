@@ -34,7 +34,8 @@
     "!lib/analysis",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
