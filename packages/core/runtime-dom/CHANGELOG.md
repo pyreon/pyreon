@@ -1,5 +1,18 @@
 # @pyreon/runtime-dom
 
+## 0.53.0
+
+### Patch Changes
+
+- [#3866](https://github.com/pyreon/pyreon/pull/3866) [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix controlled checkbox and radio inputs rendered through `h()` so signal resets update live checked state after user interaction. Preserve the initial form-reset default and honor explicit `defaultChecked` props. Add guidance for diagnosing stale controlled input state.
+
+- [#3836](https://github.com/pyreon/pyreon/pull/3836) [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration now adopts an explicitly rendered whitespace-only text child (`<First />{' '}<span/>`) instead of skipping the server's space and inserting a duplicate (plus a `Hydration mismatch (text): expected TextNode, got 1` warning). The whitespace decision is made by the client VNode walk — a whitespace text vnode claims the whitespace node the cursor skipped behind it — never by the DOM alone, since explicit and formatting whitespace are the same bytes. The SSR↔hydration parity fuzzers now generate whitespace-only text children. Adds a diagnose-catalog entry for the mismatch shape.
+
+- [#3866](https://github.com/pyreon/pyreon/pull/3866) [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Apply compiled static mixed-checkbox props as live DOM state. Expose indeterminate in input JSX types. Apply mixed-checkbox and media-muted props to their live DOM properties. Preserve media attribute defaults and add diagnosis guidance for live boolean state and serialized form defaults.
+- Updated dependencies [[`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d)]:
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

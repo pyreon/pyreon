@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-runtime-kotlin",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Kotlin runtime that compiler-emitted Jetpack Compose code links against on Android.",
   "license": "MIT",
   "repository": {

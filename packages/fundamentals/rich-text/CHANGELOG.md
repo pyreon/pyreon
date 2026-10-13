@@ -1,5 +1,15 @@
 # @pyreon/rich-text
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [[`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d)]:
+  - @pyreon/primitives@0.53.0
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

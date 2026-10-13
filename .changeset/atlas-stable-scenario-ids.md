@@ -1,5 +1,0 @@
----
-"@pyreon/atlas": patch
----
-
-Scenario identity no longer depends on how the project was scanned (#3823). Same-named components in different directories were qualified from `source`, which is cwd-relative for `atlas scan` but absolute for the dev server `verify-browser` boots, so the Node and browser catalogs derived different scenario ids and no browser verdict merged (both scenarios silently landed in `notDriven`). Discovery now stamps a scan-root-relative POSIX `scanPath` and every qualifier is derived from it, so ids are identical across machines, checkouts, `--cwd` forms and Windows separators. Also loud now: a browser result matching no catalog scenario makes `verify-browser` exit non-zero (`unmatched` in the summary), and duplicate scenario ids fail the scan and the browser run. Only ids of same-named (colliding) components change — `src/one` becomes `one` — so baselines kept for those under the old ids need regenerating; the catalog version is unchanged (additive optional `scanPath` field).
