@@ -41,15 +41,15 @@ const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
 
 /** DER ECDSA signature -> raw r||s (64 bytes) as WebCrypto expects. */
 export function derToRaw(der: Uint8Array): Uint8Array<ArrayBuffer> {
-  if (der[0] !== 0x30) throw new Error('bad DER')
+  if (der[0] !== 0x30) throw new Error('[Pyreon] auth: bad DER signature')
   let o = 2 + (der[1]! & 0x80 ? der[1]! & 0x7f : 0)
   const read = () => {
-    if (der[o] !== 0x02) throw new Error('bad DER')
+    if (der[o] !== 0x02) throw new Error('[Pyreon] auth: bad DER signature')
     const len = der[o + 1]!
     let v = der.slice(o + 2, o + 2 + len)
     o += 2 + len
     while (v.length > 32 && v[0] === 0) v = v.slice(1)
-    if (v.length > 32) throw new Error('bad DER')
+    if (v.length > 32) throw new Error('[Pyreon] auth: bad DER signature')
     const out = new Uint8Array(32)
     out.set(v, 32 - v.length)
     return out

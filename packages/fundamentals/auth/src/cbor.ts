@@ -4,19 +4,19 @@ export type Cbor = number | bigint | string | Uint8Array | Cbor[] | Map<Cbor, Cb
 export function decodeCbor(bytes: Uint8Array): { value: Cbor; end: number } {
   let o = 0
   const need = (n: number) => {
-    if (o + n > bytes.length) throw new Error('cbor: truncated')
+    if (o + n > bytes.length) throw new Error('[Pyreon] auth: cbor: truncated')
   }
   const uint = (info: number): number => {
     if (info < 24) return info
     const n = info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : 0
-    if (!n) throw new Error('cbor: unsupported length')
+    if (!n) throw new Error('[Pyreon] auth: cbor: unsupported length')
     need(n)
     let v = 0
     for (let i = 0; i < n; i++) v = v * 256 + bytes[o++]!
     return v
   }
   const item = (depth: number): Cbor => {
-    if (depth > 8) throw new Error('cbor: too deep')
+    if (depth > 8) throw new Error('[Pyreon] auth: cbor: too deep')
     need(1)
     const b = bytes[o++]!
     const major = b >> 5
@@ -32,14 +32,14 @@ export function decodeCbor(bytes: Uint8Array): { value: Cbor; end: number } {
     }
     if (major === 4) {
       const n = uint(info)
-      if (n > 1024) throw new Error('cbor: too large')
+      if (n > 1024) throw new Error('[Pyreon] auth: cbor: too large')
       const a: Cbor[] = []
       for (let i = 0; i < n; i++) a.push(item(depth + 1))
       return a
     }
     if (major === 5) {
       const n = uint(info)
-      if (n > 1024) throw new Error('cbor: too large')
+      if (n > 1024) throw new Error('[Pyreon] auth: cbor: too large')
       const m = new Map<Cbor, Cbor>()
       for (let i = 0; i < n; i++) m.set(item(depth + 1), item(depth + 1))
       return m
@@ -49,7 +49,7 @@ export function decodeCbor(bytes: Uint8Array): { value: Cbor; end: number } {
       if (info === 21) return true
       if (info === 22) return null
     }
-    throw new Error('cbor: unsupported item')
+    throw new Error('[Pyreon] auth: cbor: unsupported item')
   }
   const value = item(0)
   return { value, end: o }

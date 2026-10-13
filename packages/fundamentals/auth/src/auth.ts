@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 import {
   AuthError,
@@ -53,9 +53,11 @@ export function createAuth(opts: AuthOptions): Auth {
   }))
 
   const fail = (e: unknown) => {
-    error.set(e instanceof AuthError ? e : new AuthError('unknown', String(e)))
-    tokens.set(null)
-    status.set('error')
+    batch(() => {
+      error.set(e instanceof AuthError ? e : new AuthError('unknown', String(e)))
+      tokens.set(null)
+      status.set('error')
+    })
   }
 
   return {
@@ -86,17 +88,21 @@ export function createAuth(opts: AuthOptions): Auth {
         const { code } = parseCallback(url, flow, m)
         const t = await exchangeCode(m, opts.client, flow, code, opts.fetch)
         if (my !== epoch) return
-        tokens.set(t)
-        status.set('signedIn')
+        batch(() => {
+          tokens.set(t)
+          status.set('signedIn')
+        })
       } catch (e) {
         if (my === epoch) fail(e)
       }
     },
     signOut() {
       epoch++
-      tokens.set(null)
-      error.set(null)
-      status.set('signedOut')
+      batch(() => {
+        tokens.set(null)
+        error.set(null)
+        status.set('signedOut')
+      })
     },
   }
 }
