@@ -1,5 +1,15 @@
 # @pyreon/example-native-finance
 
+## 0.50.3
+
+### Patch Changes
+
+- Updated dependencies [[`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3), [`ffef09a`](https://github.com/pyreon/pyreon/commit/ffef09a6e7b3074db97c49113a15e25cc3712700), [`e16926f`](https://github.com/pyreon/pyreon/commit/e16926f03de3a7366b97817b95aab72d71580613), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`199f2e5`](https://github.com/pyreon/pyreon/commit/199f2e59125a310c60ae289c2e1b6baf5343489a), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`c253ae2`](https://github.com/pyreon/pyreon/commit/c253ae23978b06904768d171f3eb7e2b7114e273), [`6df4450`](https://github.com/pyreon/pyreon/commit/6df4450bb57c834997796f8f37c59bae3e743d74), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d)]:
+  - @pyreon/hooks@0.53.0
+  - @pyreon/charts@0.53.0
+  - @pyreon/http@0.53.0
+  - @pyreon/query@0.53.0
+
 ## 0.50.2
 
 ### Patch Changes

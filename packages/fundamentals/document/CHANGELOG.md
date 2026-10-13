@@ -1,5 +1,13 @@
 # @pyreon/document
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [[`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d)]:
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

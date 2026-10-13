@@ -1,5 +1,21 @@
 # @pyreon/testing
 
+## 0.53.0
+
+### Patch Changes
+
+- Updated dependencies [[`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`6df4450`](https://github.com/pyreon/pyreon/commit/6df4450bb57c834997796f8f37c59bae3e743d74), [`a110468`](https://github.com/pyreon/pyreon/commit/a1104680b3cf44b9d062ee4906b76a3ff09b2634), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`2edea31`](https://github.com/pyreon/pyreon/commit/2edea31efd113364eebbd8fcc3150d730acd44a0), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`a346a44`](https://github.com/pyreon/pyreon/commit/a346a44570955f23cd6ce385f0d26c8c8e340d4d)]:
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/form@0.53.0
+  - @pyreon/i18n@0.53.0
+  - @pyreon/query@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/store@0.53.0
+  - @pyreon/toast@0.53.0
+  - @pyreon/ui-core@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes
