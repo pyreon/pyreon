@@ -34,8 +34,19 @@ through the router to your callback route, which hands the URL to the core. Driv
 `signInSucceeded(user)` / `signInFailed(...)`. Use an HTTPS claimed redirect (universal link / App Link) rather than a
 custom scheme where you can, since a custom scheme can be claimed by another app.
 
-**Not built, and why.** A compiler recognizer that lowers `beginAuthorization` / `parseCallback` to these cores, so the
-package stays declared web-only. It changes `@pyreon/native-compiler` and its Swift/Kotlin validation suite, which is a
-separate, heavier PR. The end-to-end browser round trip on a simulator/emulator is likewise unverified.
+**Not built: lowering the web API to the native cores (design notes).** PMTC lowers hooks it recognizes by name, so an
+`@pyreon/auth` import in shared source would need a native plugin (recognizer, declaration emit, Swift/Kotlin container, stub
+and golden registration). Three decisions make it a separate piece of work rather than a lowering table:
+
+1. **Sync vs async.** The web core is async (`crypto.subtle`); the native cores are synchronous. One source needs either a
+   synchronous SHA-256 on web or `await` lowering over the container methods.
+2. **A durable flow store per platform.** The pending flow must survive process death while the system browser is open.
+   iOS can use the Keychain; Android needs Keystore code that imports the real Android SDK, which the stub gates cannot
+   verify, so it is covered only by the device gate.
+3. **No second state container.** The container must drive the existing `useAuth` rather than add another one.
+
+Until that lands, compose the lowered hooks as described above (`useSecureStorage`, `useLinking`, `useFetch`, `useAuth`).
+The package stays declared web-only so the compiler warns on import instead of miscompiling. The end-to-end browser round trip
+on a simulator or emulator is likewise unverified.
 
 MIT
