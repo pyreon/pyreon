@@ -35,7 +35,8 @@
     "src",
     "README.md",
     "LICENSE",
-    "native/swift"
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
