@@ -323,4 +323,27 @@ jobs:
           # silently break a release — keep in sync with `NPM_PIN` in
           # scripts/publish.ts. bunx installs the pinned npm's bundled deps
           # (incl. sigstore) correctly, unlike `npm install -g`.
-          bunx npm@11.16.0 publish --provenance --access public
+          #
+          # IDEMPOTENT: two publishing runs can exist for one tag (the tag
+          # push triggers one; heal-release-chain dispatches another when
+          # GitHub's run listing lags behind the push — observed on 0.53.0,
+          # where the duplicate went red on every target). A version already
+          # on npm is skipped, and an E409 for THIS exact version (the other
+          # run won the race mid-publish) is a no-op, not a failure. Any other
+          # error still fails the job.
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$(bunx npm@11.16.0 view "$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "::notice::$NAME@$VERSION is already on npm — skipping publish"
+            exit 0
+          fi
+          set +e
+          OUT=$(bunx npm@11.16.0 publish --provenance --access public 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUT"
+          if [ "$CODE" -ne 0 ] && echo "$OUT" | grep -qE "previously (staged|published) version[s]?:? \"?$VERSION"; then
+            echo "::notice::$NAME@$VERSION was published concurrently by another run — treating as success"
+            exit 0
+          fi
+          exit "$CODE"

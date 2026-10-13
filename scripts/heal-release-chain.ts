@@ -63,6 +63,8 @@ const ANCHOR_PKG = '@pyreon/core'
 const ANCHOR_PATH = 'packages/core/core/package.json'
 const NATIVE_SENTINEL = '@pyreon/compiler-darwin-arm64'
 const NATIVE_WORKFLOW = 'release-native.yml'
+const NATIVE_RUN_POLL_MS = 10_000
+const NATIVE_RUN_WAIT_MS = 90_000
 
 // ── pure decision logic (unit-tested) ─────────────────────────────────────
 
@@ -319,23 +321,30 @@ async function ensureUmbrellaTag(tag: string, target: string): Promise<void> {
  * republishing the same versions.
  */
 async function ensureNativeRun(tag: string): Promise<void> {
-  await new Promise((r) => setTimeout(r, 20_000))
-  const again = sh(
-    ['gh', 'run', 'list', '--workflow', NATIVE_WORKFLOW, '--branch', tag, '--limit', '1', '--json', 'databaseId'],
-    { allowFail: true },
-  )
-  if (!again.ok) {
-    // "No run" and "cannot SEE runs" are different facts. Dispatching blind on
-    // a failed listing could start a SECOND publishing run on top of one the
-    // tag push already triggered — refuse to act on unverifiable state.
-    console.error(
-      `[heal-release-chain] cannot list ${NATIVE_WORKFLOW} runs — refusing to dispatch blind:\n${again.out}`,
+  // Poll rather than check once: GitHub's run listing lags the push. On
+  // 0.53.0 a single check 20s after the tag push saw no run although the
+  // push-triggered one had been created 20s earlier, and the dispatch started
+  // a duplicate publishing run. release-native's publish step is idempotent,
+  // so a duplicate is now harmless — this keeps it from happening at all.
+  for (let waited = 0; waited < NATIVE_RUN_WAIT_MS; waited += NATIVE_RUN_POLL_MS) {
+    await new Promise((r) => setTimeout(r, NATIVE_RUN_POLL_MS))
+    const again = sh(
+      ['gh', 'run', 'list', '--workflow', NATIVE_WORKFLOW, '--branch', tag, '--limit', '1', '--json', 'databaseId'],
+      { allowFail: true },
     )
-    process.exit(2)
-  }
-  if (again.out.includes('databaseId')) {
-    console.log(`[heal-release-chain] tag push triggered ${NATIVE_WORKFLOW} on its own — no dispatch needed`)
-    return
+    if (!again.ok) {
+      // "No run" and "cannot SEE runs" are different facts. Dispatching blind on
+      // a failed listing could start a SECOND publishing run on top of one the
+      // tag push already triggered — refuse to act on unverifiable state.
+      console.error(
+        `[heal-release-chain] cannot list ${NATIVE_WORKFLOW} runs — refusing to dispatch blind:\n${again.out}`,
+      )
+      process.exit(2)
+    }
+    if (again.out.includes('databaseId')) {
+      console.log(`[heal-release-chain] tag push triggered ${NATIVE_WORKFLOW} on its own — no dispatch needed`)
+      return
+    }
   }
   console.log(`[heal-release-chain] dispatching ${NATIVE_WORKFLOW} for ${tag} (publish=true)`)
   const d = sh(
