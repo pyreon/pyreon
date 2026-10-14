@@ -4899,11 +4899,26 @@ export function transformJSX_JS(
       // computed access. Root identifier must NOT be a tracked active
       // signal (would imply a method call on a signal, e.g. `count.peek()`).
       if (callee.type === 'MemberExpression') {
-        let cur: N = callee
+        // The outermost link names the signal itself and stays a plain
+        // property (`.elapsed`). Inner links may also be a LITERAL index
+        // (`row.queries[0]`) — as stable as a named property, which this fast
+        // path already assumes — and any link may sit under a TS type layer
+        // (`(row.cell as Cell).elapsed()`), which is erased at runtime. Both
+        // used to bail to a fully tracked `bindPolymorphicText` / `renderEffect`
+        // per binding. A computed key that is not a literal (`row[k]`) still
+        // bails: the key is dynamic.
+        if (callee.computed || callee.property?.type !== 'Identifier') return null
+        let cur: N = unwrapTypeLayers(callee.object)
         while (cur.type === 'MemberExpression') {
-          if (cur.computed) return null
-          if (cur.property?.type !== 'Identifier') return null
-          cur = cur.object
+          if (cur.computed) {
+            const k = cur.property
+            const literalKey =
+              k?.type === 'NumericLiteral' ||
+              k?.type === 'StringLiteral' ||
+              (k?.type === 'Literal' && (typeof k.value === 'number' || typeof k.value === 'string'))
+            if (!literalKey) return null
+          } else if (cur.property?.type !== 'Identifier') return null
+          cur = unwrapTypeLayers(cur.object)
         }
         if (cur.type !== 'Identifier') return null
         if (isActiveSignal(cur.name)) return null

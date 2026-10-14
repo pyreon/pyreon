@@ -310,6 +310,12 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('one-time set for variable', () => compare('<div title={someVar}><span /></div>'))
   test('benchmark-like row', () =>
     compare('<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>'))
+  test('direct ref through a literal index', () =>
+    compare('<tr><td class={row.q[0].cls()}>{row.q[0].elapsed()}</td><td>{row.q["a"].v()}</td></tr>'))
+  test('direct ref through TS type layers', () =>
+    compare('<tr><td>{(row.c as C).v()}</td><td>{row.c!.v()}</td><td class={(row.q[1] as C).cls()}>x</td></tr>'))
+  test('direct ref with a dynamic index stays general', () =>
+    compare('<tr><td>{row.q[i].v()}</td><td class={row.q[i].cls()}>x</td></tr>'))
 })
 
 describe('JS syntax and optional native parity — hoisting', () => {

@@ -8624,14 +8624,23 @@ fn try_direct_signal_ref(
         // Non-computed MemberExpression chain: row.label(), data.user.name().
         // Walk the chain, bail on any computed access. Root identifier must
         // NOT be a tracked active signal (would imply count.peek() etc).
-        if let Expression::StaticMemberExpression(_) = &call.callee {
-            let mut cur: &Expression = &call.callee;
+        // The outermost link names the signal and stays a static property;
+        // inner links may also be a LITERAL index (`row.queries[0]`) and any
+        // link may sit under a TS type layer (`(row.cell as Cell).elapsed()`).
+        // A non-literal computed key still bails. Mirrors the JS twin.
+        if let Expression::StaticMemberExpression(outer) = &call.callee {
+            let mut cur: &Expression = unwrap_type_layers(&outer.object);
             loop {
                 match cur {
                     Expression::StaticMemberExpression(m) => {
-                        cur = &m.object;
+                        cur = unwrap_type_layers(&m.object);
                     }
-                    Expression::ComputedMemberExpression(_) => return None,
+                    Expression::ComputedMemberExpression(m) => match &m.expression {
+                        Expression::NumericLiteral(_) | Expression::StringLiteral(_) => {
+                            cur = unwrap_type_layers(&m.object);
+                        }
+                        _ => return None,
+                    },
                     _ => break,
                 }
             }
