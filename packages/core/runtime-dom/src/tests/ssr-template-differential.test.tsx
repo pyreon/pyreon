@@ -95,6 +95,30 @@ const rows = () => [
 
 const cases: DiffCase[] = [
   {
+    // A conditional between two string literals bakes BOTH renderings at
+    // compile time; every branch must still match renderProp byte for byte —
+    // incl. style's empty-string omission, URL attrs and escaping.
+    name: 'conditional-literal attrs bake both branches (class/style/href/title, escaped)',
+    src: `const Node = <ul><For each={data} by={(r) => r.id}>{(r) => <li class={r.id % 2 === 0 ? 'even row' : 'odd row'} style={r.id === 1 ? '' : 'color:red'} title={r.id === 1 ? 'a "q" <b>' : 'x & y'}><a href={r.id === 1 ? '/one' : '/two'}>{r.name}</a></li>}</For></ul>`,
+    deps: { data: rows() },
+    oracle: (deps) =>
+      h(
+        'ul',
+        null,
+        h(For as unknown as (props: unknown) => VNode, { each: deps.data, by: (r: { id: number }) => r.id } as never, ((r: { id: number; name: string }) =>
+          h(
+            'li',
+            {
+              class: r.id % 2 === 0 ? 'even row' : 'odd row',
+              style: r.id === 1 ? '' : 'color:red',
+              title: r.id === 1 ? 'a "q" <b>' : 'x & y',
+            },
+            h('a', { href: r.id === 1 ? '/one' : '/two' }, r.name),
+          )) as never,
+        ),
+      ),
+  },
+  {
     name: 'fused keyed <For> child — parent skeleton compiles (_ssrForKeyed)',
     src: `const Node = <ul class="list"><For each={data} by={(r) => r.id}>{(r) => <li class="row" data-id={r.id}><span>{r.name}</span><span class={r.id % 2 === 0 ? 'a' : 'b'}>{r.tag}</span></li>}</For></ul>`,
     deps: { data: rows() },
@@ -1079,5 +1103,26 @@ describe('SSR fast path — attribute seams that diverged from renderProp (round
     const html = await renderToString(node as VNode)
     expect(html).toBe(await renderToString(h('div', { 'data-a': data.xs.join(',') }, 'x')))
     expect(html).not.toContain('data-a')
+  })
+})
+
+describe('SSR fast path — a conditional between two string literals is baked', () => {
+  it('emits both attribute strings and no runtime attr helper', () => {
+    const { code } = transformJSX_JS(
+      `const A = (p) => <span class={p.on ? 'price even' : 'price odd'}>x</span>`,
+      'a.tsx',
+      { ssr: true, ssrTemplate: true },
+    )
+    expect(code).toContain(`(p.on ? " class=\\"price even\\"" : " class=\\"price odd\\"")`)
+    expect(code).not.toContain('_ssrAttr(')
+  })
+
+  it('keeps the runtime path when a branch cannot be baked (unsafe URL)', () => {
+    const { code } = transformJSX_JS(
+      `const A = (p) => <a href={p.on ? '/ok' : 'javascript:alert(1)'}>x</a>`,
+      'a.tsx',
+      { ssr: true, ssrTemplate: true },
+    )
+    expect(code).toContain('_ssrAttrUrl(')
   })
 })

@@ -6343,28 +6343,45 @@ fn ssr_try_bake_dynamic_attr(
 /// Mirrors JS `ssrBakeStringAttr`. Returns false (bail) only for an unsafe
 /// URL literal.
 fn ssr_bake_string_attr(buf: &mut SsrBuf, name: &str, value: &str) -> bool {
+    match ssr_bake_string_attr_text(name, value) {
+        None => false,
+        Some(text) => {
+            if !text.is_empty() {
+                buf.emit_static(&text);
+            }
+            true
+        }
+    }
+}
+
+/// The baked text of a static string attribute (` name="…"`), `""` when the
+/// runtime would omit it, or `None` when it cannot be baked. Mirrors JS
+/// `ssrBakeStringAttrText`.
+fn ssr_bake_string_attr_text(name: &str, value: &str) -> Option<String> {
     if name == "class" {
         // Empty string EMITS class="" (CSR parity — mirrors JS ssrBakeStringAttr
         // + runtime-server renderPropValue).
-        buf.emit_static(&format!(" class=\"{}\"", escape_html_ssr(value)));
-        return true;
+        return Some(format!(" class=\"{}\"", escape_html_ssr(value)));
     }
     if name == "style" {
         if value.is_empty() {
-            return true;
+            return Some(String::new());
         }
-        buf.emit_static(&format!(" style=\"{}\"", escape_html_ssr(value)));
-        return true;
+        return Some(format!(" style=\"{}\"", escape_html_ssr(value)));
     }
-    if ssr_is_url_attr(name) {
-        if ssr_unsafe_url(value) {
-            return false;
-        }
-        buf.emit_static(&format!(" {}=\"{}\"", name, escape_html_ssr(value)));
-        return true;
+    if ssr_is_url_attr(name) && ssr_unsafe_url(value) {
+        return None;
     }
-    buf.emit_static(&format!(" {}=\"{}\"", name, escape_html_ssr(value)));
-    true
+    Some(format!(" {}=\"{}\"", name, escape_html_ssr(value)))
+}
+
+/// The value of a string literal (through type layers), else `None`. Mirrors
+/// JS `ssrStaticStringValue`.
+fn ssr_static_string_value(expr: &Expression) -> Option<String> {
+    if let Expression::StringLiteral(s) = unwrap_type_layers(expr) {
+        return Some(s.value.to_string());
+    }
+    None
 }
 
 /// Serialize one attribute. Returns false to BAIL the whole element. Mirrors JS
@@ -6480,6 +6497,26 @@ fn ssr_serialize_attr(
                         return true;
                     }
                     _ => {}
+                }
+            }
+            // A conditional between two string literals: bake both renderings and
+            // let the test pick one. Mirrors the JS twin.
+            if !has_upper {
+                if let Expression::ConditionalExpression(c) = expr {
+                    if let (Some(a), Some(b)) =
+                        (ssr_static_string_value(&c.consequent), ssr_static_string_value(&c.alternate))
+                    {
+                        if let (Some(ta), Some(tb)) =
+                            (ssr_bake_string_attr_text(name, &a), ssr_bake_string_attr_text(name, &b))
+                        {
+                            let test = slice_expr(&c.test, ctx);
+                            buf.emit_hole_kind(
+                                format!("({} ? {} : {})", test, json_string(&ta), json_string(&tb)),
+                                true,
+                            );
+                            return true;
+                        }
+                    }
                 }
             }
             // DYNAMIC value.

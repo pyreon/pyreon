@@ -1260,6 +1260,16 @@ describe('JS syntax and optional native parity — select value binding (PZ-09)'
 // JS↔Rust with the flag ON; bail shapes (where the compiler falls to h()) must
 // ALSO agree — so the h() output for those matches between backends too.
 describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional native parity', () => {
+  test('conditional between two string literals bakes both attribute renderings', () => {
+    compareSsrTemplate(
+      `const A = (p) => <a class={p.on ? 'even row' : 'odd row'} style={p.on ? '' : 'color:red'} title={p.on ? 'a "q" <b>' : 'x & y'} href={p.on ? '/one' : '/two'}>x</a>`,
+    )
+  })
+  test('conditional bake declines an unsafe URL branch, a camelCase name and a non-literal branch', () => {
+    compareSsrTemplate(
+      `const A = (p) => <a href={p.on ? '/ok' : 'javascript:x'} tabIndex={p.on ? '1' : '2'} title={p.on ? 'a' : p.t}>x</a>`,
+    )
+  })
   test('fully static element (no holes)', () => {
     compareSsrTemplate(`const A = <div class="x" id="y">hello</div>`)
   })
