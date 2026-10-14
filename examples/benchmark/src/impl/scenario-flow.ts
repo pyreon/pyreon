@@ -47,6 +47,7 @@ import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import {
   ReactFlow,
   ReactFlowProvider,
+  Position,
   type Edge as RfEdge,
   type Node as RfNode,
   type ReactFlowInstance,
@@ -186,6 +187,18 @@ function reactFlowTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): Flow
     data: { label: n.label },
     width: 150,
     height: 40,
+    // Declared handle positions put React Flow on its synchronous edge path.
+    // Without them it draws edges only after a ResizeObserver measures each
+    // node's handles, a frame after mount, so the timed `mount` window held
+    // 500 nodes and ZERO edges for React Flow but the complete graph for
+    // Pyreon (measured: edges at mount 0 vs 499). This is React Flow's own
+    // documented way to render without measuring (as for SSR), so it is its
+    // fastest path, and both arms now time the same finished graph. Verified:
+    // 499 edges present at the end of the synchronous mount, for both arms.
+    handles: [
+      { type: 'target', position: Position.Top, x: 72, y: -3, width: 6, height: 6 },
+      { type: 'source', position: Position.Bottom, x: 72, y: 37, width: 6, height: 6 },
+    ],
   })
   const toEdge = (e: GraphEdge): RfEdge => ({ id: e.id, source: e.source, target: e.target })
   return {
