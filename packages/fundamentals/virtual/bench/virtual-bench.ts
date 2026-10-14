@@ -562,29 +562,31 @@ async function compileApp(
     })
   ).code
   const body = stage2.replace(/^import\s+.*$/gm, '').trim()
-  const deps: Record<string, unknown> = {
-    _tpl: (rd as any)._tpl,
-    _bind: (reactivity as any)._bind,
-    _bindText: (rd as any)._bindText,
-    _bindDirect: (rd as any)._bindDirect,
-    _setChild: (rd as any)._setChild,
-    _setChildAt: (rd as any)._setChildAt,
-    _mountSlot: (rd as any)._mountSlot,
-    bindPolymorphicText: (rd as any).bindPolymorphicText,
-    _applyProps: (rd as any)._applyProps,
-    _setStyle: (rd as any)._setStyle,
-    _setClass: (rd as any)._setClass,
-    _setAttr: (rd as any)._setAttr,
-    _rp: (core as any)._rp,
-    _cx: (core as any).cx,
-    _wrapSpread: (core as any)._wrapSpread,
-    h: core.h,
-    Fragment: core.Fragment,
-    jsx: (jsxRuntime as any).jsx,
-    jsxs: (jsxRuntime as any).jsxs,
-    document,
-    ...closure,
+  // Inject exactly what the compiled code IMPORTS, resolved from the real
+  // modules — never a hand-maintained helper list. A list drifts the moment
+  // the compiler changes its emit: #3794 began emitting `renderEffect` from
+  // @pyreon/reactivity, the old list lacked it, and every pyreon-tpl cell died
+  // with `renderEffect is not defined`. An import that cannot be resolved
+  // fails loudly here instead of surfacing as a ReferenceError mid-mount.
+  const modules: Record<string, Record<string, unknown>> = {
+    '@pyreon/core': core as Record<string, unknown>,
+    '@pyreon/reactivity': reactivity as Record<string, unknown>,
+    '@pyreon/runtime-dom': rd as Record<string, unknown>,
+    '@pyreon/core/jsx-runtime': jsxRuntime as Record<string, unknown>,
   }
+  const deps: Record<string, unknown> = { document }
+  for (const m of stage2.matchAll(/^import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["'];?\s*$/gm)) {
+    const mod = modules[m[2]!]
+    if (!mod) throw new Error(`[compileApp] compiled code imports from unmapped module "${m[2]}"`)
+    for (const spec of m[1]!.split(',').map((s) => s.trim()).filter(Boolean)) {
+      const [imported, local = imported] = spec.split(/\s+as\s+/).map((s) => s.trim()) as [string, string?]
+      if (!(imported in mod)) throw new Error(`[compileApp] "${m[2]}" has no export "${imported}"`)
+      deps[local] = mod[imported]
+    }
+  }
+  const leftover = stage2.match(/^import\s.*$/gm)?.filter((l) => !/^import\s*\{[^}]*\}\s*from/.test(l))
+  if (leftover?.length) throw new Error(`[compileApp] unsupported import form: ${leftover.join(' | ')}`)
+  Object.assign(deps, closure)
   const fn = new Function(...Object.keys(deps), `${body}\nreturn App`)
   return fn(...Object.values(deps)) as () => unknown
 }
