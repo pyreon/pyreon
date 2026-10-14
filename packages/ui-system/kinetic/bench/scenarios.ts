@@ -157,6 +157,16 @@ const kineticStagger: Impl = {
 }
 
 // ─── Motion One (vanilla `animate`) ──────────────────────────────────────────
+// Peer arm = Motion's main `animate`, called per element for `enter` and once
+// over the element array for `stagger` (its documented stagger form).
+// Checked on motion 14.2.0, real Chromium, same harness: a single
+// `animate(els, …)` call for enter is within noise of the per-element loop
+// (enter 500: 10.96 vs 11.49ms) and slower for stagger; `motion/mini` (the
+// WAAPI-only animate) is 6–9% faster on enter and 20–50% slower on stagger.
+// Neither changes the verdict, so the arm keeps the main API. Note that
+// motion 14 itself measured roughly 2x slower than 13.4.6 on enter here
+// (enter 500: ~11.5ms vs ~5.3ms) — the wider margin against 14 is partly
+// Motion's own regression, not a kinetic change.
 
 function makeRawRows(container: HTMLElement, n: number): HTMLElement[] {
   const els: HTMLElement[] = []

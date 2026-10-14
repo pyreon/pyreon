@@ -49,7 +49,7 @@
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/url-state": "workspace:*",
     "@pyreon/validation": "workspace:*",
-    "zod": "^4.5.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
