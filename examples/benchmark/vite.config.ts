@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 import { compile as compileVueTemplate } from '@vue/compiler-dom'
 import { octane } from '@octanejs/vite-plugin'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
@@ -125,6 +127,134 @@ const ISOLATION_HEADERS =
         'Cross-Origin-Embedder-Policy': 'require-corp',
       }
 
+
+/**
+ * Vue 3.6 Vapor (release candidate) for the row board — see impl/vue-vapor.ts.
+ *
+ * `virtual:rows-vue-vapor` is a real `<script setup vapor>` SFC compiled at
+ * build time by the RC's `compiler-sfc` in production inline-template mode, the
+ * output a Vapor app ships. Its `vue` imports are pointed at
+ * `virtual:vue-vapor-runtime`, which re-exports the RC's self-contained
+ * `vue.runtime-with-vapor` ESM build, so the stable Vue 3 arm keeps its own
+ * copy of Vue and the two cannot mix.
+ */
+const ROWS_VUE_VAPOR_SFC = `<script setup vapor>
+import { ref, shallowRef } from 'vue'
+import { publishRowsVapor } from 'virtual:rows-vue-vapor-handles'
+const rows = shallowRef([])
+const selectedId = ref(null)
+publishRowsVapor({ rows, selectedId })
+</script>
+<template>${ROWS_VUE_TEMPLATE}</template>`
+
+function vueVaporPlugin(): Plugin {
+  const RUNTIME = 'virtual:vue-vapor-runtime'
+  const ROWS = 'virtual:rows-vue-vapor'
+  const HANDLES = 'virtual:rows-vue-vapor-handles'
+  return {
+    name: 'vue-vapor-rc',
+    resolveId(id) {
+      if (id === RUNTIME || id === ROWS || id === HANDLES) return `\0${id}`
+      return null
+    },
+    async load(id) {
+      if (id === `\0${RUNTIME}`) {
+        const path = createRequire(import.meta.url).resolve('vue-rc/dist/vue.runtime-with-vapor.esm-browser.prod.js')
+        return `export * from ${JSON.stringify(path)}`
+      }
+      if (id === `\0${HANDLES}`) {
+        return [
+          'let waiting = null',
+          'let published = null',
+          'export function publishRowsVapor(h) { published = h; if (waiting) waiting(h) }',
+          'export function onRowsVaporReady(cb) { if (published) cb(published); else waiting = cb }',
+        ].join('\n')
+      }
+      if (id === `\0${ROWS}`) {
+        const { parse, compileScript } = await import('vue-rc/compiler-sfc')
+        const { descriptor, errors } = parse(ROWS_VUE_VAPOR_SFC, { filename: 'RowsVapor.vue' })
+        if (errors.length) throw new Error(`[vue-vapor-rc] ${errors[0]}`)
+        const out = compileScript(descriptor, { id: 'rows-vapor', inlineTemplate: true, isProd: true })
+        const code = out.content.replace(/from 'vue'/g, `from '${RUNTIME}'`)
+        return `${code}\nexport { onRowsVaporReady } from '${HANDLES}'`
+      }
+      return null
+    },
+  }
+}
+
+/**
+ * SolidJS 2.0 (release candidate) for the row board — see impl/solid2.ts.
+ *
+ * `virtual:solid2-rows` is idiomatic Solid 2 JSX compiled at build time by
+ * `babel-preset-solid@2.0.0-rc` (aliased `babel-preset-solid-rc`). Solid 2 is
+ * installed as `solid-js-rc` beside the stable 1.9; `@solidjs/web` declares
+ * `solid-js` as a peer, so every `solid-js` import made by `@solidjs/web` or by
+ * this arm is resolved to the ONE `solid-js-rc` copy. Without that, the
+ * renderer and the arm could load different Solid instances and their
+ * reactive graphs would never connect.
+ */
+const SOLID2_ROWS_JSX = `
+import { For, createProjection } from 'solid-js'
+export function Rows(props) {
+  // Keyed selection: only the previous and the new key change, so only those
+  // two rows' class effects re-run (Solid 2's replacement for createSelector).
+  const selected = createProjection((draft) => {
+    const id = props.selectedId()
+    if (draft.prev != null) draft[draft.prev] = false
+    if (id != null) draft[id] = true
+    draft.prev = id
+  }, {})
+  return (
+    <table>
+      <tbody>
+        <For each={props.rows()}>
+          {(row) => (
+            <tr class={selected[row.id] ? 'selected' : ''}>
+              <td>{row.id}</td>
+              <td>{row.label()}</td>
+            </tr>
+          )}
+        </For>
+      </tbody>
+    </table>
+  )
+}`
+
+function solid2Plugin(): Plugin {
+  const ROWS = 'virtual:solid2-rows'
+  const SELF = fileURLToPath(import.meta.url)
+  return {
+    name: 'solid2-rc',
+    // Runs before Vite's resolver, which would otherwise hand @solidjs/web the
+    // stable solid-js 1.9 first.
+    enforce: 'pre',
+    async resolveId(id, importer) {
+      if (id === ROWS) return `\0${ROWS}`
+      const fromRc =
+        importer !== undefined && (importer.includes('/@solidjs/web/') || importer === `\0${ROWS}` || importer.endsWith('/impl/solid2.ts'))
+      if (fromRc && (id === 'solid-js' || id.startsWith('solid-js/'))) {
+        // Resolve from THIS package, which declares the `solid-js-rc` alias;
+        // @solidjs/web's own folder only sees the stable copy.
+        return this.resolve(id.replace(/^solid-js/, 'solid-js-rc'), SELF, { skipSelf: true })
+      }
+      return null
+    },
+    async load(id) {
+      if (id !== `\0${ROWS}`) return null
+      const { transformAsync } = await import('@babel/core')
+      const preset = (await import('babel-preset-solid-rc')).default
+      const out = await transformAsync(SOLID2_ROWS_JSX, {
+        filename: 'solid2-rows.jsx',
+        presets: [[preset, { generate: 'dom' }]],
+        babelrc: false,
+        configFile: false,
+      })
+      return out?.code ?? null
+    },
+  }
+}
+
 export default defineConfig({
   server: { headers: ISOLATION_HEADERS },
   preview: { headers: ISOLATION_HEADERS },
@@ -135,6 +265,8 @@ export default defineConfig({
       : {}),
   plugins: [
     vueTemplatesPlugin(),
+    vueVaporPlugin(),
+    solid2Plugin(),
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`
     // is LOAD-BEARING, not a preference: with the default `false`, Octane's

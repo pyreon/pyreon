@@ -1,4 +1,6 @@
 import { runOctane } from './impl/octane.tsrx'
+import { runVueVapor } from './impl/vue-vapor'
+import { runSolid2 } from './impl/solid2'
 import { runPreact } from './impl/preact'
 import { runPyreon } from './impl/pyreon'
 import { runReact } from './impl/react'
@@ -136,7 +138,9 @@ const ALL_FRAMEWORKS = [
   { name: 'Preact', run: runPreact },
   { name: 'React 19', run: runReact },
   { name: 'Vue 3', run: runVue },
+  { name: 'Vue 3.6 Vapor (RC)', run: runVueVapor },
   { name: 'SolidJS', run: runSolid },
+  { name: 'SolidJS 2.0 (RC)', run: runSolid2 },
   { name: 'Svelte 5', run: runSvelte },
   { name: 'Octane', run: runOctane },
   { name: 'Pyreon', run: runPyreon },
