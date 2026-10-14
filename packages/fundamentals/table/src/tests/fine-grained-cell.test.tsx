@@ -618,3 +618,41 @@ describe('visibleCells — fine-grained cells-list invalidation', () => {
   })
 })
 
+
+describe('flexRenderCell — the context a cell renderer receives', () => {
+  it('carries every table-core context key, survives a spread, and reads the value', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown }) => {
+            // `{ ...info }` is the common forwarding idiom (`<MyCell {...info} />`):
+            // every key the renderer was given must survive it.
+            seen.push({ ...info })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    expect(t.cellText(0, 'a')).toBe('a0|a0')
+    const ctx = seen[0]!
+    for (const key of ['table', 'column', 'row', 'cell', 'getValue', 'renderValue']) {
+      expect(ctx, key).toHaveProperty(key)
+    }
+    expect((ctx.cell as { column: { id: string } }).column.id).toBe('a')
+    expect(typeof ctx.getValue).toBe('function')
+
+    // The renderer's value reads stay untracked: a data edit re-runs only the
+    // edited row's cell, not every cell.
+    t.cellRuns[0] = 0
+    data.set(editCell(data(), 1, 'a', 'Z'))
+    await flush()
+    expect(t.cellText(1, 'a')).toBe('Z|Z')
+    expect(t.cellText(0, 'a')).toBe('a0|a0')
+    expect(t.cellRuns[0]).toBe(1)
+    t.unmount()
+  })
+})
