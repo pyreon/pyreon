@@ -72,6 +72,8 @@ export interface BodyLink {
   release(): void
   /** The typed error for an abort observed during the body read. */
   abortError(): Error
+  /** Run `cb` when the request's link aborts; returns a remover. */
+  onAbort(cb: () => void): () => void
 }
 
 const noop = (): void => {}
@@ -96,18 +98,17 @@ function readUnderSignal<T>(
     return Promise.reject(link.abortError())
   }
   return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => {
+    const unwatch = link.onAbort(() => {
       void response.raw.body?.cancel().catch(noop)
       reject(link.abortError())
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
+    })
     read().then(
       (value) => {
-        signal.removeEventListener('abort', onAbort)
+        unwatch()
         resolve(value)
       },
       (error: unknown) => {
-        signal.removeEventListener('abort', onAbort)
+        unwatch()
         // The stream erroring BECAUSE the signal fired surfaces as a
         // ParseError wrapping a DOM abort — report it as the abort it is.
         reject(signal.aborted ? link.abortError() : error)
