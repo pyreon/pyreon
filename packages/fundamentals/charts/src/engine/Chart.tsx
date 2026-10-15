@@ -923,7 +923,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
-    return {
+    const spec: ChartSpec = {
     width: w,
     height: hgt,
     // Accessors receive the GLOBAL index — an accessor keyed on position
@@ -964,6 +964,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => visibleIndexOf(g - off, keep)).filter((i) => i >= 0 && i < rows.length) } }
       : {}),
     }
+    // Resolve the value domain ONCE per frame. Unpinned, `resolveYDomain` is a
+    // full scan of every series (stack totals included), and a frame asks for
+    // it from layout, every series' geometry, markers and hit-testing — ten
+    // passes over a 100,000-point line. Filling it in returns the same Domain
+    // each later call computes. Not for a log axis: there a set `yDomain` reads
+    // as an author-pinned range (`logBounds`).
+    if (spec.yDomain === undefined && spec.yScale !== 'log') spec.yDomain = resolveYDomain(spec)
+    return spec
   }
 
   const draw = (): void => {
