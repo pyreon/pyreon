@@ -340,11 +340,18 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Recreated per validation cycle so the signal stays usable across
   // multiple submit calls (AbortController is one-shot: once aborted,
   // signal.aborted stays true forever).
-  let abortController = new AbortController()
+  // Created on first use: most forms never run a field validator, and an
+  // AbortController per form was a measurable share of setup. `null` means
+  // "no controller yet / the last one was retired"; the next validator run
+  // creates a fresh one.
+  let abortController: AbortController | null = null
+  const abortSignal = (): AbortSignal => (abortController ??= new AbortController()).signal
 
   // Debounce timers per field — stored in Set for better tracking
   const debounceTimers: Partial<Record<keyof TValues, ReturnType<typeof setTimeout>>> = {}
-  const allTimers = new Set<ReturnType<typeof setTimeout>>()
+  // Created on the first debounced validation; a form without `debounceMs`
+  // never needs it.
+  let allTimers: Set<ReturnType<typeof setTimeout>> | null = null
 
   // Validation version per field — used to discard stale async results
   const validationVersions: Partial<Record<keyof TValues, number>> = {}
@@ -513,7 +520,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       clearTimeout(debounceTimers[key as keyof TValues])
       delete debounceTimers[key as keyof TValues]
     }
-    allTimers.clear()
+    allTimers?.clear()
   }
 
   const isValidating = signal(false)
@@ -668,7 +675,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         validationVersions[name] = ++_versionCounter
         const currentVersion = validationVersions[name]
         try {
-          const result = await fieldValidator(value, getValues(), abortController.signal)
+          const result = await fieldValidator(value, getValues(), abortSignal())
           // Only apply result if this is still the latest validation and not disposed
           if (!disposed && validationVersions[name] === currentVersion) {
             getError().set(result)
@@ -698,7 +705,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           clearTimeout(debounceTimers[name])
           return new Promise<ValidationError>((resolve) => {
             const timer = setTimeout(async () => {
-              allTimers.delete(timer)
+              allTimers?.delete(timer)
               try {
                 resolve(await runValidation(value))
               } catch (err) {
@@ -708,7 +715,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
               }
             }, debounceMs)
             debounceTimers[name] = timer
-            allTimers.add(timer)
+            ;(allTimers ??= new Set()).add(timer)
           })
         }
       : runValidation
@@ -722,11 +729,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       ? () => {
           clearTimeout(debounceTimers[name])
           const timer = setTimeout(() => {
-            allTimers.delete(timer)
+            allTimers?.delete(timer)
             void runSchemaForField(name)
           }, debounceMs)
           debounceTimers[name] = timer
-          allTimers.add(timer)
+          ;(allTimers ??= new Set()).add(timer)
         }
       : () => {
           void runSchemaForField(name)
@@ -893,7 +900,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   onUnmount(() => {
     disposed = true
     clearAllTimers()
-    abortController.abort()
+    // Kept (and created if needed) in the aborted state, so a validator that
+    // still starts after unmount sees an aborted signal, as it always did.
+    ;(abortController ??= new AbortController()).abort()
   })
 
   const isSubmitting = signal(false)
@@ -948,8 +957,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const validate = async (): Promise<boolean> => {
     // Cancel any pending debounced validations and in-flight validators
     clearAllTimers()
-    abortController.abort()
-    abortController = new AbortController()
+    abortController?.abort()
+    abortController = null
 
     isValidating.set(true)
 
@@ -984,7 +993,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
               const error = await fieldValidator(
                 fields[name].value.peek(),
                 allValues,
-                abortController.signal,
+                abortSignal(),
               )
               if (validationVersions[name] === currentVersion) {
                 fields[name].error.set(error)
@@ -1201,8 +1210,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // `field.reset` / `setInitialValues` already DISCARD their results; the
     // abort lets a signal-aware validator stop doing the work). A fresh
     // controller keeps the signal usable for validation after the reset.
-    abortController.abort()
-    abortController = new AbortController()
+    abortController?.abort()
+    abortController = null
     // Snapshot any state the caller asked to preserve, BEFORE the reset wipes it.
     const keepErrors = resetOptions?.keepErrors ? { ...getErrors() } : undefined
     const keepTouched = resetOptions?.keepTouched ? { ...touchedFields() } : undefined
