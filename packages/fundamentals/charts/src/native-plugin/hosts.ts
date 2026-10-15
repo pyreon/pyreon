@@ -2022,6 +2022,7 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   onDoubleClick: 'it reports a DOM double-click by datum; the native canvas has the tap gesture only',
   onContextMenu: 'it reports a DOM context-menu gesture by datum; the native canvas has the tap gesture only',
   onRendered: 'it follows a canvas paint; the SwiftUI / Compose canvas draws with no paint callback to hand back',
+  density: 'it picks the M4 decimation density from the browser\'s `devicePixelRatio`; the engine\'s `ChartSpec.m4Density` crosses, but no native host feeds it the screen scale (`UIScreen.scale` / display density) yet, so native decimates at the 2-per-pixel default',
   onHighlight: 'it reports the HOVERED datum and -1 when the pointer leaves, so a touch target has nothing to report — a tap is a pick, which is `onSelect`. Firing this on tap would report a hover that did not happen',
 }
 
