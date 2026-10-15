@@ -310,6 +310,12 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('one-time set for variable', () => compare('<div title={someVar}><span /></div>'))
   test('benchmark-like row', () =>
     compare('<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>'))
+  test('direct ref through a literal index', () =>
+    compare('<tr><td class={row.q[0].cls()}>{row.q[0].elapsed()}</td><td>{row.q["a"].v()}</td></tr>'))
+  test('direct ref through TS type layers', () =>
+    compare('<tr><td>{(row.c as C).v()}</td><td>{row.c!.v()}</td><td class={(row.q[1] as C).cls()}>x</td></tr>'))
+  test('direct ref with a dynamic index stays general', () =>
+    compare('<tr><td>{row.q[i].v()}</td><td class={row.q[i].cls()}>x</td></tr>'))
 })
 
 describe('JS syntax and optional native parity — hoisting', () => {
@@ -1254,6 +1260,16 @@ describe('JS syntax and optional native parity — select value binding (PZ-09)'
 // JS↔Rust with the flag ON; bail shapes (where the compiler falls to h()) must
 // ALSO agree — so the h() output for those matches between backends too.
 describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional native parity', () => {
+  test('conditional between two string literals bakes both attribute renderings', () => {
+    compareSsrTemplate(
+      `const A = (p) => <a class={p.on ? 'even row' : 'odd row'} style={p.on ? '' : 'color:red'} title={p.on ? 'a "q" <b>' : 'x & y'} href={p.on ? '/one' : '/two'}>x</a>`,
+    )
+  })
+  test('conditional bake declines an unsafe URL branch, a camelCase name and a non-literal branch', () => {
+    compareSsrTemplate(
+      `const A = (p) => <a href={p.on ? '/ok' : 'javascript:x'} tabIndex={p.on ? '1' : '2'} title={p.on ? 'a' : p.t}>x</a>`,
+    )
+  })
   test('fully static element (no holes)', () => {
     compareSsrTemplate(`const A = <div class="x" id="y">hello</div>`)
   })

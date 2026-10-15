@@ -547,6 +547,43 @@ describe('JSX transform — edge cases', () => {
     expect(result).toContain('bindPolymorphicText(')
   })
 
+  test('member-expression _bindText: a LITERAL index link takes the fast path (row.queries[0].elapsed())', () => {
+    // A literal key is as stable as a named property; only the signal at the
+    // end of the chain changes. Used to fall to a fully tracked binding per cell.
+    const num = t('const a = () => <div>{row.queries[0].elapsed()}</div>')
+    expect(num).toContain('_bindText(row.queries[0].elapsed,')
+    expect(num).not.toContain('bindPolymorphicText(')
+    const str = t("const a = () => <div>{row.q['a'].elapsed()}</div>")
+    expect(str).toContain("_bindText(row.q['a'].elapsed,")
+  })
+
+  test('member-expression _bindText: a TS type layer in the chain is transparent', () => {
+    // Casts and non-null assertions are erased at runtime, so they must not
+    // change which binding tier a cell gets.
+    for (const src of [
+      'const a = () => <div>{(row.cell as Cell).elapsed()}</div>',
+      'const a = () => <div>{row.cell!.elapsed()}</div>',
+      'const a = () => <div>{(row.queries[0] as Cell).elapsed()}</div>',
+      'const a = () => <div>{(row.cell satisfies Cell).elapsed()}</div>',
+    ]) {
+      const out = t(src)
+      expect(out, src).toContain('_bindText(')
+      expect(out, src).not.toContain('bindPolymorphicText(')
+    }
+  })
+
+  test('member-expression fast path: a DYNAMIC index link still bails (row.queries[i].elapsed())', () => {
+    const out = t('const a = () => <div>{row.queries[i].elapsed()}</div>')
+    expect(out).not.toContain('_bindText(')
+    expect(out).toContain('bindPolymorphicText(')
+  })
+
+  test('member-expression _bindDirect: a literal index link in an attribute takes the fast path', () => {
+    const out = t('const a = () => <div class={row.queries[0].cls()}>x</div>')
+    expect(out).toContain('_bindDirect(row.queries[0].cls,')
+    expect(out).not.toContain('renderEffect(')
+  })
+
   test('member-expression _bindText: bails when root identifier IS a tracked signal (count.peek())', () => {
     // count.peek() is intentionally untracked; emitting _bindText would
     // create a tracking subscription contradicting user intent.

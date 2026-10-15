@@ -323,7 +323,7 @@ describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
       const out = ssrFast(FOR_SRC)
       // Temps preserve the call's left-to-right hole evaluation order.
       expect(out).toContain(
-        '{ const _h0 = _ssrAttrGen("data-id", r.id), _h1 = _escSole(r.id), _h2 = _ssrAttr("span", "class", r.id % 2 === 0 ? \'a\' : \'b\'), _h3 = _escSole(\'$\' + r.price);',
+        '{ const _h0 = _ssrAttrGen("data-id", r.id), _h1 = _escSole(r.id), _h2 = (r.id % 2 === 0 ? " class=\\"a\\"" : " class=\\"b\\""), _h3 = _escSole(\'$\' + r.price);',
       )
       // Statics are ordinary quoted literals (NOT a template literal) so the
       // emit reuses the existing static quoting — no second escaping path.
@@ -337,7 +337,7 @@ describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
       const out = ssrFast(FOR_SRC)
       // _h1 / _h3 are `_esc` (MaybeAsync) → guarded.
       expect(out).toContain('typeof _h1 === "string" && typeof _h3 === "string" ?')
-      // _h0 / _h2 are `_ssrAttrGen` / `_ssrAttr`, both declared `: string` → no
+      // _h0 is `_ssrAttrGen` (declared `: string`) and _h2 a baked literal ternary → no
       // guard. A spurious guard here would be a correctness no-op but pure cost
       // on every row, so it is worth pinning.
       expect(out).not.toContain('typeof _h0 === "string"')

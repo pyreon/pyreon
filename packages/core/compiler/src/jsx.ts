@@ -2221,6 +2221,23 @@ export function transformJSX_JS(
           return true
         }
       }
+      // A conditional between two string literals (`class={on ? 'a' : 'b'}`):
+      // both possible attributes are known at compile time, so bake both and
+      // let the test pick one. Each branch goes through the same static bake as
+      // a lone literal, so the bytes match `renderProp` exactly; a branch that
+      // cannot bake (an unsafe URL) keeps the runtime path for the whole attr.
+      if (!hasUpper && expr.type === 'ConditionalExpression') {
+        const a = ssrStaticStringValue(expr.consequent)
+        const b = ssrStaticStringValue(expr.alternate)
+        if (a !== null && b !== null) {
+          const ta = ssrBakeStringAttrText(name, a)
+          const tb = ssrBakeStringAttrText(name, b)
+          if (ta !== null && tb !== null) {
+            ssrEmitHole(buf, `(${sliceExpr(expr.test)} ? ${JSON.stringify(ta)} : ${JSON.stringify(tb)})`, true)
+            return true
+          }
+        }
+      }
       // DYNAMIC value. A syntactically-proven non-null-non-boolean (and, for a
       // url attr, proven-safe) value BAKES ` name="` + `_esc(v)` + `"` — Solid-
       // style template baking, byte-identical because renderProp's null-omit /
@@ -2234,19 +2251,35 @@ export function transformJSX_JS(
     return false
   }
 
+  /** The value of a string literal (through type layers), else `null`. */
+  function ssrStaticStringValue(node: N): string | null {
+    const n = unwrapTypeLayers(node)
+    if ((n.type === 'StringLiteral' || n.type === 'Literal') && typeof n.value === 'string') return n.value
+    return null
+  }
+
   /** Bake a static string-valued attribute, mirroring `renderPropValue`. */
   function ssrBakeStringAttr(buf: SsrBuf, name: string, value: string): boolean {
+    const text = ssrBakeStringAttrText(name, value)
+    if (text === null) return false
+    if (text !== '') ssrEmitStatic(buf, text)
+    return true
+  }
+
+  /**
+   * The baked text of a static string attribute (` name="…"`), `''` when the
+   * runtime would omit it, or `null` when it cannot be baked at compile time.
+   */
+  function ssrBakeStringAttrText(name: string, value: string): string | null {
     if (name === 'class') {
       // cx(string) === string. Empty string EMITS class="" (CSR parity — the
       // client materializes it; renderPropValue mirrors this).
-      ssrEmitStatic(buf, ` class="${escapeHtmlSsr(value)}"`)
-      return true
+      return ` class="${escapeHtmlSsr(value)}"`
     }
     if (name === 'style') {
       // normalizeStyle(string) === string; empty → omit.
-      if (value === '') return true
-      ssrEmitStatic(buf, ` style="${escapeHtmlSsr(value)}"`)
-      return true
+      if (value === '') return ''
+      return ` style="${escapeHtmlSsr(value)}"`
     }
     if (SSR_URL_ATTRS.has(name)) {
       // Unsafe (`javascript:`/`data:`) → renderProp drops it (or keeps it only
@@ -2258,12 +2291,10 @@ export function transformJSX_JS(
       // static lint rule was stronger than the runtime guard. Reachable with a
       // static literal because `@pyreon/lathe` generates JSX from OpenAPI specs.
       if (SSR_UNSAFE_URL_RE.test(value) || SSR_UNSAFE_URL_RE.test(stripUrlSchemeNoise(value)))
-        return false
-      ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
-      return true
+        return null
+      return ` ${name}="${escapeHtmlSsr(value)}"`
     }
-    ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
-    return true
+    return ` ${name}="${escapeHtmlSsr(value)}"`
   }
 
   /**
@@ -4899,11 +4930,26 @@ export function transformJSX_JS(
       // computed access. Root identifier must NOT be a tracked active
       // signal (would imply a method call on a signal, e.g. `count.peek()`).
       if (callee.type === 'MemberExpression') {
-        let cur: N = callee
+        // The outermost link names the signal itself and stays a plain
+        // property (`.elapsed`). Inner links may also be a LITERAL index
+        // (`row.queries[0]`) — as stable as a named property, which this fast
+        // path already assumes — and any link may sit under a TS type layer
+        // (`(row.cell as Cell).elapsed()`), which is erased at runtime. Both
+        // used to bail to a fully tracked `bindPolymorphicText` / `renderEffect`
+        // per binding. A computed key that is not a literal (`row[k]`) still
+        // bails: the key is dynamic.
+        if (callee.computed || callee.property?.type !== 'Identifier') return null
+        let cur: N = unwrapTypeLayers(callee.object)
         while (cur.type === 'MemberExpression') {
-          if (cur.computed) return null
-          if (cur.property?.type !== 'Identifier') return null
-          cur = cur.object
+          if (cur.computed) {
+            const k = cur.property
+            const literalKey =
+              k?.type === 'NumericLiteral' ||
+              k?.type === 'StringLiteral' ||
+              (k?.type === 'Literal' && (typeof k.value === 'number' || typeof k.value === 'string'))
+            if (!literalKey) return null
+          } else if (cur.property?.type !== 'Identifier') return null
+          cur = unwrapTypeLayers(cur.object)
         }
         if (cur.type !== 'Identifier') return null
         if (isActiveSignal(cur.name)) return null
