@@ -41,7 +41,12 @@
     "solid-js": "^1.9.15",
     "svelte": "^5.57.1",
     "uplot": "1.6.32",
-    "vue": "^3.5.43"
+    "vue": "^3.5.43",
+    "vue-rc": "npm:vue@3.6.0-rc.11",
+    "solid-js-rc": "npm:solid-js@2.0.0-rc.15",
+    "@solidjs/web": "2.0.0-rc.15",
+    "babel-preset-solid-rc": "npm:babel-preset-solid@2.0.0-rc.2",
+    "@babel/core": "^7.28.0"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
