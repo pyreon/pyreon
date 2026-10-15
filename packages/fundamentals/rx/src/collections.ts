@@ -266,7 +266,16 @@ export function find<T>(
 ): ReturnType<typeof computed<T | undefined>>
 export function find<T>(source: T[], predicate: (item: T) => boolean): T | undefined
 export function find<T>(source: ReadableSignal<T[]> | T[], predicate: (item: T) => boolean): any {
-  return reactive(source, (arr: T[]) => arr.find(predicate))
+  return reactive(source, (arr: T[]) => {
+    // Unlike filter/some/every, Array.prototype.find visits holes (as
+    // `undefined`), so this loop does too.
+    const fn = predicate as (item: T, index: number, array: T[]) => boolean
+    for (let i = 0; i < arr.length; i++) {
+      const item = arr[i] as T
+      if (fn(item, i, arr)) return item
+    }
+    return undefined
+  })
 }
 
 /** Skip the first n items. */
