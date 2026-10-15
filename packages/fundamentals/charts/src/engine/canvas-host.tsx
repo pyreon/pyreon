@@ -42,8 +42,8 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 export const A11Y_TABLE_MAX = 1000
 /** Rows per `<tbody>` block of the accessible table (see `a11yTableNode`). */
 const TABLE_CHUNK = 50
-/** Above this many rows the accessible table fills after the first paint (see `a11yTableNode`). */
-const DEFER_ROWS = 200
+/** Above this many rows the accessible table fills after the first paint (see `a11yTableNode`), and the spoken description waits for it too. */
+export const DEFER_ROWS = 200
 const OFFSCREEN = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0'
 
 /** Make `parent` hold exactly `n` `tag` children, reusing the ones it has; returns them. */
@@ -197,7 +197,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
 }
 
 /** Run `fn` after the next frame has painted: rAF runs BEFORE paint, so the timeout inside it lands after. */
-function afterPaint(fn: () => void): void {
+export function afterPaint(fn: () => void): void {
   if (typeof requestAnimationFrame !== 'function') {
     fn()
     return

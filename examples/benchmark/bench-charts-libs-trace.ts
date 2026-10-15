@@ -41,7 +41,7 @@ const bucketOf = (name: string): string => BUCKETS.find(([, re]) => re.test(name
 
 const preview = spawn('bunx', ['vite', 'preview', '--port', PORT, '--strictPort'], { cwd: import.meta.dir, stdio: 'ignore' })
 await new Promise((r) => setTimeout(r, 2500))
-const browser = await chromium.launch({ args: ['--js-flags=--expose-gc'] })
+const browser = await chromium.launch({ args: [`--js-flags=--expose-gc ${process.env.EXTRA_JS_FLAGS ?? ''}`] })
 try {
   const dir = `${import.meta.dir}/dist/assets`
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.js'))) {
@@ -136,6 +136,23 @@ try {
     }
     while (stack.length) flush(stack.pop()!)
     totals.set('untraced', (totals.get('untraced') ?? 0) + (w1 - w0 - covered))
+    // PER_WINDOW=1: each window's length and its top raw events by self time,
+    // for telling a fast sample from a slow one (the pooled shares average
+    // the two away).
+    if (process.env.PER_WINDOW === '1') {
+      const self = new Map<string, number>()
+      const st: { name: string; e: number; self: number }[] = []
+      const add = (x: { name: string; self: number }) => self.set(x.name, (self.get(x.name) ?? 0) + x.self)
+      for (const ev of inWin) {
+        while (st.length && st.at(-1)!.e <= ev.s) add(st.pop()!)
+        const parent = st.at(-1)
+        if (parent) parent.self -= ev.e - ev.s
+        st.push({ name: ev.name, e: ev.e, self: ev.e - ev.s })
+      }
+      while (st.length) add(st.pop()!)
+      const top = [...self].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, v]) => `${n} ${(v / 1000).toFixed(2)}`)
+      console.log(`[window] ${((w1 - w0) / 1000).toFixed(2)}ms  ${top.join(' · ')}`)
+    }
   }
   const ms = (us: number): string => (us / 1000 / K).toFixed(3).padStart(8)
   const idle = totals.get('untraced') ?? 0

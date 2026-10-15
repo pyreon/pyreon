@@ -65,4 +65,25 @@ describe('the accessible table is built after first paint', () => {
     un()
     root.remove()
   })
+
+  it('the spoken description of a large chart also waits for the first paint', async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const un = mount(h(PlotChart<Row>, { data: rowsOf(1000), x: (d: Row) => d.i, marks: [line((d: Row) => d.v)], title: 'Load', width: 600, height: 300, animate: false }), root)
+    const canvas = root.querySelector('canvas')!
+    expect(canvas.getAttribute('aria-label')).toBe('Load')
+    await afterPaint()
+    expect(canvas.getAttribute('aria-label')).toContain('rising')
+    un()
+    root.remove()
+  })
+
+  it('a small chart is described at mount', () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const un = mount(h(PlotChart<Row>, { data: rowsOf(20), x: (d: Row) => d.i, marks: [line((d: Row) => d.v)], title: 'Load', width: 600, height: 300, animate: false }), root)
+    expect(root.querySelector('canvas')!.getAttribute('aria-label')).toContain('rising')
+    un()
+    root.remove()
+  })
 })

@@ -6041,22 +6041,32 @@ public func extendSpan(_ span: ExtentSpan, _ values: [Double]) -> ExtentSpan {
     var seen = span.seen
     var lo = span.lo
     var hi = span.hi
-    for i in 0..<values.count {
-      let v = values[i]
-      if isFiniteValue(v) {
-        if !seen {
+    let n = values.count
+    var i = 0
+    if !seen {
+      while i < n {
+        let v = values[i]
+        i = i + 1
+        if v - v == 0.0 {
           lo = v
           hi = v
           seen = true
+          break
+        }
+      }
+    }
+    while i < n {
+      let v = values[i]
+      if v - v == 0.0 {
+        if v < lo {
+          lo = v
         } else {
-          if v < lo {
-            lo = v
-          }
           if v > hi {
             hi = v
           }
         }
       }
+      i = i + 1
     }
     return ExtentSpan(seen: seen, lo: lo, hi: hi)
   }

@@ -3410,22 +3410,32 @@ fun extendSpan(span: ExtentSpan, values: List<Double>): ExtentSpan {
     var seen = span.seen
     var lo = span.lo
     var hi = span.hi
-    for (i in 0L until values.length) {
-      val v = values[(i).toInt()]
-      if (isFiniteValue(v)) {
-        if (!seen) {
+    val n = values.length
+    var i = 0L
+    if (!seen) {
+      while (i < n) {
+        val v = values[(i).toInt()]
+        i = i + 1L
+        if (v - v == 0.0) {
           lo = v
           hi = v
           seen = true
+          break
+        }
+      }
+    }
+    while (i < n) {
+      val v = values[(i).toInt()]
+      if (v - v == 0.0) {
+        if (v < lo) {
+          lo = v
         } else {
-          if (v < lo) {
-            lo = v
-          }
           if (v > hi) {
             hi = v
           }
         }
       }
+      i = i + 1L
     }
     return ExtentSpan(seen = seen, lo = lo, hi = hi)
   }

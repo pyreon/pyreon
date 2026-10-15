@@ -6,7 +6,7 @@
 // full ECharts feature set for the long tail.
 
 import { createUniqueId, h } from '@pyreon/core'
-import { a11yTableNode, A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
+import { a11yTableNode, A11Y_TABLE_MAX, afterPaint, DEFER_ROWS, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
 import { lttbIndices, minMaxBuckets } from './decimate-values'
 import { warnOnce } from './dev-warn'
@@ -2010,12 +2010,22 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     },
   })
 
+  const labelReady = signal(isServer)
   const canvasNode = h('canvas', {
     class: props.class,
     // `img` + a label is what makes the canvas announce as a single described
     // thing rather than being skipped over entirely.
     role: 'img',
-    'aria-label': () => describeChart(a11yInput()),
+    // A LARGE chart's spoken description waits for the first paint, like its
+    // table: it is a full scan of every series (~3ms at 1M points) for an
+    // attribute assistive tech reads on focus, not during the first frame.
+    // Until then the canvas carries its title. A server render describes in
+    // full — `labelReady` starts true there.
+    'aria-label': () => {
+      const input = a11yInput()
+      if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? 'Chart'
+      return describeChart(input)
+    },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
     // The box the client will paint into, as SSR attributes: `prepareCanvas`
     // never runs on the server, and a server-rendered canvas with no size is
@@ -2024,6 +2034,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     ...canvasSizeAttrs(props.width, props.height ?? 200, props.dataZoom === true || props.brush === true || props.navigator === true),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
+      if (el !== null && !labelReady.peek()) afterPaint(() => labelReady.set(true))
       sizeObserver?.disconnect()
       sizeObserver = null
       stopDprWatch()

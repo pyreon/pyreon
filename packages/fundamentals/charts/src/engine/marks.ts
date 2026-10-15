@@ -369,28 +369,25 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     if (!KNOWN_KINDS.has(m.kind)) {
       warnOnce(`kind:${String(m.kind)}`, `unknown mark kind "${String(m.kind)}" — expected one of ${[...KNOWN_KINDS].join(', ')}. It will not be drawn.`)
     }
-    let raw: Double[] = []
+    const raw: Double[] = []
     const col = m.column
     if (col !== undefined) {
       // The columnar path: an indexed read per point, no call. `v - v === 0`
       // is false exactly for NaN and ±Infinity — the same gap rule `toNumber`
       // applies — and an index past the column's end is a gap too.
       //
-      // PRESIZED, unlike the accessor loop below: with no call per element the
-      // growth of a pushed array dominates (V8: 73 → 38µs at 10k). `.fill(0)`
-      // is load-bearing: a bare `new Array(n)` is HOLEY on V8, and every
-      // consumer of `values` (M4, the extent scan, the spoken summary) then
-      // pays a hole check per read — measured +4ms on a 1M-point mount, more
-      // than the copy saved. Filled, the array is packed. The accessor loop
-      // keeps `push`, where presizing measured 2.4× SLOWER on JSC.
+      // `push`, NOT a presized array. `new Array(n).fill(0)` measured faster in
+      // isolation (V8 73 → 38µs at 10k) and SLOWER in the real mount: at 1M
+      // the up-front 8MB allocation took the benchmark's slow samples from
+      // ~29ms to ~38ms. (A bare `new Array(n)` is worse again — holey, so every
+      // later reader of `values` pays a hole check.)
       const n = data.length
       const m1 = col.length < n ? col.length : n
-      raw = new Array<Double>(n).fill(0)
       for (let i = 0; i < m1; i++) {
         const v = col[i] as Double
-        raw[i] = v - v === 0 ? v : Number.NaN
+        raw.push(v - v === 0 ? v : Number.NaN)
       }
-      for (let i = m1; i < n; i++) raw[i] = Number.NaN
+      for (let i = m1; i < n; i++) raw.push(Number.NaN)
     } else {
       for (let i = 0; i < data.length; i++) {
         raw.push(toNumber(m.y(data[i]!, i), name))
