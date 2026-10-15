@@ -18,7 +18,7 @@
 import { query } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { applyStyleProp } from '../props'
+import { applyStyleOnce, applyStyleProp } from '../props'
 import { mount } from '../index'
 
 /**
@@ -180,3 +180,54 @@ describe('applyStyleProp — string skip-if-equal (reactive h() mount)', () => {
     spy.restore()
   })
 })
+
+describe('applyStyleOnce (`_setStyleOnce`) — the compiler\'s write-once style sink', () => {
+  let el: HTMLDivElement
+  beforeEach(() => {
+    el = document.createElement('div')
+    document.body.appendChild(el)
+  })
+  afterEach(() => el.remove())
+
+  it('writes a string declaration with a single cssText write and no readback', () => {
+    const style = el.style
+    let proto: object | null = Object.getPrototypeOf(style)
+    let desc: PropertyDescriptor | undefined
+    while (proto !== null && !(desc = Object.getOwnPropertyDescriptor(proto, 'cssText')))
+      proto = Object.getPrototypeOf(proto)
+    let reads = 0
+    let writes = 0
+    Object.defineProperty(style, 'cssText', {
+      configurable: true,
+      get() {
+        reads++
+        return desc!.get!.call(this)
+      },
+      set(v: string) {
+        writes++
+        desc!.set!.call(this, v)
+      },
+    })
+    applyStyleOnce(el, 'color: red; transform: translateY(40px)')
+    expect(writes).toBe(1)
+    expect(reads).toBe(0)
+    delete (style as unknown as Record<string, unknown>).cssText
+    expect(el.style.color).toBe('red')
+    expect(el.style.transform).toBe('translateY(40px)')
+  })
+
+  it('delegates an object style to the normal path (number → px, kebab-case)', () => {
+    applyStyleOnce(el, { marginTop: 4, backgroundColor: 'blue' })
+    expect(el.style.marginTop).toBe('4px')
+    expect(el.style.backgroundColor).toBe('blue')
+  })
+
+  it('a later reactive write to the same element still applies', () => {
+    applyStyleOnce(el, 'color: red')
+    applyStyleProp(el, 'color: blue')
+    expect(el.style.color).toBe('blue')
+    applyStyleProp(el, undefined)
+    expect(el.style.color).toBe('')
+  })
+})
+

@@ -41,6 +41,7 @@ import {
   _setAttr,
   _setClass,
   _setStyle,
+  _setStyleOnce,
   _tpl,
   mount,
 } from '../index'
@@ -55,6 +56,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setAttr,
   _setClass,
   _mountSlot,

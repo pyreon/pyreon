@@ -24,6 +24,7 @@ import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChi
 import {
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   bindPolymorphicText,
   hydrateRoot,
   mountChild,
@@ -52,6 +53,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _mountSlot,
   _textSlot,
   _setChild,

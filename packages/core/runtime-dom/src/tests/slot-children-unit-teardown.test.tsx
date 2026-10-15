@@ -20,7 +20,7 @@ import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   _applyProps, _bindDirect, _bindText, _bindProp, _mountSlot, _textSlot, _setChild, _setChildAt, _mountChild,
-  _setHtml, _setAttr, _setClass, _setStyle, _tpl, mount,
+  _setHtml, _setAttr, _setClass, _setStyle, _setStyleOnce, _tpl, mount,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
 
@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setAttr, _setClass, _mountSlot, _textSlot,
+  _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass, _mountSlot, _textSlot,
   _setChild, _setChildAt, _mountChild, _setHtml, bindPolymorphicText, h, Fragment, For, Show, _lc, _rp, _rpd,
   _wrapSpread, signal, effect,
 }

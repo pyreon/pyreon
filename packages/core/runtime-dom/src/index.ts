@@ -47,6 +47,7 @@ export {
   // assert the table against the real HTML parser rather than restate it.
   foreignAttrNamespace,
   applyStyleProp as _setStyle,
+  applyStyleOnce as _setStyleOnce,
   // `<input>`/`<textarea>` `value`: property assignment plus a first-time
   // `defaultValue` reflection, so a client-mounted form resets like a hydrated
   // one. Emitted by the compiler for those two tags only.

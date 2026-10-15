@@ -20,7 +20,7 @@ import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, test } from 'vitest'
-import { _applyProps, _setAttr, _setClass, _setStyle, bindPolymorphicText, mountChild } from '../index'
+import { _applyProps, _setAttr, _setClass, _setStyle, _setStyleOnce, bindPolymorphicText, mountChild } from '../index'
 import { _bindDirect, _bindText, _mountSlot, _textSlot, _tpl } from '../template'
 
 const RUNTIME_DEPS = {
@@ -31,6 +31,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setClass,
   _setAttr,
   _mountSlot,

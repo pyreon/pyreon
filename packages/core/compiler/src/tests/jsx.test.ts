@@ -1661,6 +1661,22 @@ describe('JSX transform — style attribute in templates', () => {
     expect(result).not.toContain('cssText')
   })
 
+  test('a non-reactive computed style string is written once via _setStyleOnce', () => {
+    // A <For> item param is static, so this style can never re-run: it skips the
+    // skip-if-equal cache (and its cssText readback) that _setStyle keeps.
+    const result = t(
+      '<ul><For each={() => xs()} by={(it) => it.id}>{(it) => <li style={`top:${it.y}px`}>x</li>}</For></ul>',
+    )
+    expect(result).toContain('_setStyleOnce(__root, `top:${it.y}px`)')
+    expect(result).not.toContain('_setStyle(__root')
+  })
+
+  test('a reactive style keeps _setStyle (the cached, re-runnable path)', () => {
+    const result = t('<div style={`top:${y()}px`}>x</div>')
+    expect(result).toContain('_setStyle(__root,')
+    expect(result).not.toContain('_setStyleOnce')
+  })
+
   test('reactive style delegates to _setStyle', () => {
     const result = t('<div style={() => getStyle()}>text</div>')
     expect(result).toContain('_tpl(')

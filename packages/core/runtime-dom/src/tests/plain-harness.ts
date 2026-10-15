@@ -21,6 +21,7 @@ import {
   _setAttr,
   _setClass,
   _setStyle,
+  _setStyleOnce,
   _setValue,
   bindPolymorphicText,
   mountChild, _bindProp,} from '../index'
@@ -49,6 +50,7 @@ export const RUNTIME_DEPS = {
   bindPolymorphicText,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setClass,
   _setAttr,
   _setValue,

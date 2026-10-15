@@ -26,7 +26,7 @@ import { query } from '@pyreon/test-utils'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, mountChild, _mountSlot, _textSlot, _bindProp} from '../index'
+import { _applyProps, _setStyle, _setStyleOnce, mountChild, _mountSlot, _textSlot, _bindProp} from '../index'
 
 function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
@@ -50,6 +50,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _mountSlot,
   _textSlot,
   _rp,

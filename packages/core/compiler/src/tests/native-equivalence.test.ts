@@ -154,6 +154,10 @@ describe('JS syntax and optional native parity — class/style binding fidelity'
   test('class string ternary', () =>
     compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
   test('class non-reactive', () => compare(`export const X = () => <div class={someVar}>y</div>`))
+  test('style non-reactive → _setStyleOnce, reactive sibling keeps _setStyle', () =>
+    compare(
+      `${sig}export const X = (p) => <ul><For each={() => xs()} by={(it) => it.id}>{(it) => <li style={\`top:\${it.y}px\`}><b style={t}>y</b></li>}</For></ul>`,
+    ))
   test('class direct signal ref', () =>
     compare(`${sig}export const X = () => <div class={t}>y</div>`))
   // single-disposer fast path: `return __d0` (no wrapper closure) — JS + Rust
