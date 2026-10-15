@@ -73,7 +73,7 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "i18next": "^26.4.2"
+    "i18next": "^26.4.5"
   },
   "publishConfig": {
     "access": "public"
