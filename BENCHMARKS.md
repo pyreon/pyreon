@@ -292,7 +292,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 | charts engine | ECharts 6.1 SSR | spec → SVG 7.5× (bars 1k), 7.6× (bars 10k), 8.0× (line 10k) | — |
 | charts wrapper ⚠ happy-dom | echarts-for-react | update 10.0×, dispose 1.9× | mount 🤝 |
 | hooks | Solid / Preact counters | counter 1.20× / 1.23× | wrapper overhead vs raw signal: 0–6% |
-| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count) | **per-op, `@pyreon/rx` is slower than a plain computed** (filter 3.6 vs 2.3 µs, map 2.9 vs 1.5 µs) |
+| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count); per-op `filter` 2.14 µs and `map` 1.43 µs, ahead of a hand computed (2.34 / 1.49) and Solid memo (2.47 / 1.75) — were 3.6 / 2.7 µs before the builtins became plain loops | **`pipe` of three stages 1.06× behind a hand computed** (29.5 vs 27.8 µs), `sortBy` 1.03× |
 | dnd ⚠ happy-dom | raw pragmatic-drag-and-drop | row-enter fan-out 24× | mount/unmount 🤝; dispatch +6 ns |
 | validation (wrapper tax) | raw zod / valibot / arktype | — | tax −20 to +278 ns over raw (largest: arktype invalid, zod invalid 173 ns) |
 
@@ -319,7 +319,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 5. **Hydration** — Vue 1.02× ahead on the total, 1.05× on the walk.
 6. **Bundle size** — 16.6 KB vs Solid 7.5 KB and Preact 10.6 KB for the same app (2026-09-24).
 7. **Router at 10 routes** (Hono), **validate** invalid-string (zod 1.19×) and several zod-c/arktype protocol cells (2026-09-24).
-8. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **http client creation**, **url-state integer parse** (1.14×), **form store setup** (1.4×), **rx per-op**, **table/virtual mount under happy-dom**.
+8. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **http client creation**, **url-state integer parse** (1.14×), **form store setup** (1.4×), **table/virtual mount under happy-dom**.
 9. **Unbundled Node** — any process importing `lib/` without a bundler pays ~145 ns per dev-gate read.
 
 ## 13. Defects (open)
