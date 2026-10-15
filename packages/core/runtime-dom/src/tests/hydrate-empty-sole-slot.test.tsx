@@ -42,6 +42,7 @@ import {
   _setAttr,
   _setClass,
   _setStyle,
+  _setStyleOnce,
   _tpl,
   hydrateRoot,
 } from '../index'
@@ -53,7 +54,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, renderEffect, _bindText, _bindDirect, _applyProps, _setStyle, _setAttr, _setClass,
+  _tpl, _bind, renderEffect, _bindText, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass,
   _mountSlot, _textSlot, _setChild, _setChildAt, _mountChild, _setHtml,
   bindPolymorphicText, h, Fragment, For, signal,
 }

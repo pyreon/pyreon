@@ -24,7 +24,7 @@ import { Fragment, h, _fuse, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
-import { _applyProps, _setAttr, _setClass, _setStyle, mountChild, _bindProp} from '../index'
+import { _applyProps, _setAttr, _setClass, _setStyle, _setStyleOnce, mountChild, _bindProp} from '../index'
 
 const RUNTIME_DEPS = {
   _tpl,
@@ -35,6 +35,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setAttr,
   _setClass,
   _setChild,

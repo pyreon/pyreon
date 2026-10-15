@@ -508,6 +508,23 @@ const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
 const _prevStyleText: WeakMap<HTMLElement, { raw: string; css: string }> = new WeakMap()
 
 /**
+ * A style write the compiler proved runs ONCE (outside any reactive binding),
+ * exported as `_setStyleOnce`. A string goes straight to `cssText`: the
+ * skip-if-equal cache in `applyStyleProp` exists to let a RE-RUN skip, and
+ * recording it costs a full `cssText` readback (a serialization of the whole
+ * declaration) on every element — paid at mount by every templated element
+ * with a computed static style, for a write that can never be repeated. Any
+ * other value takes the normal path.
+ */
+export function applyStyleOnce(el: HTMLElement, value: unknown): void {
+  if (typeof value === 'string') {
+    el.style.cssText = value
+    return
+  }
+  applyStyleProp(el, value)
+}
+
+/**
  * Apply a style prop (string or object). Exported as `_setStyle` for the
  * compiler's template fast path so a compiled style binding normalizes
  * values identically to the `applyProp` path (string → cssText; object →

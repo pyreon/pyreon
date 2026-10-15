@@ -618,6 +618,7 @@ struct Ctx<'a> {
     needs_wrap_spread_import: bool,
     needs_cx_import: bool,
     needs_set_style_import: bool,
+    needs_set_style_once_import: bool,
     needs_set_class_import: bool,
     needs_set_attr_import: bool,
     needs_set_value_import: bool,
@@ -840,6 +841,7 @@ impl<'a> Ctx<'a> {
             needs_wrap_spread_import: false,
             needs_cx_import: false,
             needs_set_style_import: false,
+            needs_set_style_once_import: false,
             needs_set_class_import: false,
             needs_set_attr_import: false,
             needs_set_value_import: false,
@@ -1002,6 +1004,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_style_import {
                 imports.push("_setStyle");
+            }
+            if self.needs_set_style_once_import {
+                imports.push("_setStyleOnce");
             }
             if self.needs_set_class_import {
                 imports.push("_setClass");
@@ -7811,6 +7816,7 @@ struct TemplateBuilder {
     needs_set_child_at: bool,
     needs_cx: bool,
     needs_set_style: bool,
+    needs_set_style_once: bool,
     needs_set_class: bool,
     needs_set_attr: bool,
     needs_set_value: bool,
@@ -7849,6 +7855,7 @@ impl TemplateBuilder {
             needs_set_child_at: false,
             needs_cx: false,
             needs_set_style: false,
+            needs_set_style_once: false,
             needs_set_class: false,
             needs_set_attr: false,
             needs_set_value: false,
@@ -7981,6 +7988,9 @@ fn build_template_call(
     }
     if tb.needs_cx {
         ctx.needs_cx_import = true;
+    }
+    if tb.needs_set_style_once {
+        ctx.needs_set_style_once_import = true;
     }
     if tb.needs_set_style {
         ctx.needs_set_style_import = true;
@@ -8835,10 +8845,17 @@ fn emit_dynamic_attr(
     if html_attr_name == "class" {
         tb.needs_set_class = true;
     }
+    let (expr_text, is_reactive) = unwrap_accessor(expr_node, ctx);
     if html_attr_name == "style" {
+        if !is_reactive {
+            // Runs exactly once — see the JS backend's emitDynamicAttr.
+            tb.needs_set_style_once = true;
+            tb.bind_lines
+                .push(format!("_setStyleOnce({}, {})", var_name, expr_text));
+            return;
+        }
         tb.needs_set_style = true;
     }
-    let (expr_text, is_reactive) = unwrap_accessor(expr_node, ctx);
     if !is_reactive {
         let line = attr_setter(html_attr_name, var_name, &expr_text, tag, tb);
         tb.bind_lines.push(line);

@@ -26,7 +26,7 @@ import { signal, _bind } from '@pyreon/reactivity'
 import { transformJSX } from '@pyreon/compiler'
 import { h, Fragment, _rp, _rpd, cx } from '@pyreon/core'
 import { mountChild } from '../mount'
-import { _tpl, _bindText, _bindProp, _bindDirect, _setStyle, _setClass, _applyProps } from '../index'
+import { _tpl, _bindText, _bindProp, _bindDirect, _setStyle, _setStyleOnce, _setClass, _applyProps } from '../index'
 
 const RUNTIME_DEPS = {
   _tpl,
@@ -36,6 +36,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setClass,
   _rp,
   _rpd,

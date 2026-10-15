@@ -29,7 +29,7 @@ import { Fragment, h, _rp, _rpd, cx, type ComponentFn } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, mount, mountChild, _bindProp} from '../index'
+import { _applyProps, _setStyle, _setStyleOnce, mount, mountChild, _bindProp} from '../index'
 
 // ─── Compile-and-mount helpers (precedent: compiler-integration.test.tsx) ────
 
@@ -45,6 +45,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _rp,
   _rpd,
   _cx: cx,

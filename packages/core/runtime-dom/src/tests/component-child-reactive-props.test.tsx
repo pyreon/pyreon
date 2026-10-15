@@ -26,7 +26,7 @@ import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
-import { _applyProps, _setAttr, _setStyle, bindPolymorphicText, mountChild, _bindProp} from '../index'
+import { _applyProps, _setAttr, _setStyle, _setStyleOnce, bindPolymorphicText, mountChild, _bindProp} from '../index'
 
 function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
@@ -50,6 +50,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setAttr,
   _mountSlot,
   _textSlot,

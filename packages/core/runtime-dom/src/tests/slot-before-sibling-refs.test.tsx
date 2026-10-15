@@ -36,6 +36,7 @@ import {
   _applyProps,
   _setAttr,
   _setStyle,
+  _setStyleOnce,
   disableHydrationWarnings,
   hydrateRoot,
   mountChild, _bindProp,} from '../index'
@@ -70,6 +71,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setAttr,
   _mountSlot,
   _textSlot,

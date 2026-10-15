@@ -1361,6 +1361,7 @@ export function transformJSX_JS(
   let needsMountComponentImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
+  let needsSetStyleOnceImportGlobal = false
   let needsSetClassImportGlobal = false
   let needsSetAttrImportGlobal = false
   let needsSetValueImportGlobal = false
@@ -4318,6 +4319,7 @@ export function transformJSX_JS(
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
     if (needsSetChildAtImportGlobal) runtimeDomImports.push('_setChildAt')
     if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
+    if (needsSetStyleOnceImportGlobal) runtimeDomImports.push('_setStyleOnce')
     if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
     if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
     if (needsSetValueImportGlobal) runtimeDomImports.push('_setValue')
@@ -4608,6 +4610,7 @@ export function transformJSX_JS(
     let needsMountComponentImport = false
     let needsCxImport = false
     let needsSetStyle = false
+    let needsSetStyleOnce = false
     let needsSetClass = false
     let needsSetAttr = false
     let needsSetValue = false
@@ -5214,6 +5217,15 @@ export function transformJSX_JS(
     ): void {
       const { expr, isReactive } = unwrapAccessor(exprNode)
       if (!isReactive) {
+        // A style written outside any reactive binding runs exactly once, so it
+        // goes through `_setStyleOnce`, which skips the skip-if-equal cache
+        // (and the `cssText` readback that cache needs) — pure mount cost for
+        // a write that can never re-run.
+        if (htmlAttrName === 'style') {
+          needsSetStyleOnce = true
+          bindLines.push(`_setStyleOnce(${varName}, ${expr})`)
+          return
+        }
         bindLines.push(attrSetter(htmlAttrName, varName, expr, tag))
         return
       }
@@ -6131,6 +6143,7 @@ export function transformJSX_JS(
     if (needsMountComponentImport) needsMountComponentImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true
+    if (needsSetStyleOnce) needsSetStyleOnceImportGlobal = true
     if (needsSetClass) needsSetClassImportGlobal = true
     if (needsSetAttr) needsSetAttrImportGlobal = true
     if (needsSetValue) needsSetValueImportGlobal = true
