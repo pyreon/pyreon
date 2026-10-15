@@ -105,7 +105,7 @@ try {
   const buf = await browser.stopTracing()
   if (minMass < 400) throw new Error(`[charts-trace] ${FW}: min series mass ${minMass} — nothing drawn`)
 
-  type Ev = { name: string; ph: string; ts: number; dur?: number; pid: number; tid: number; cat: string }
+  type Ev = { name: string; ph: string; ts: number; dur?: number; pid: number; tid: number; cat: string; args?: { data?: { functionName?: string; url?: string; lineNumber?: number } } }
   const events = (JSON.parse(buf.toString('utf8')) as { traceEvents: Ev[] }).traceEvents
   const marks = events.filter((e) => e.cat.includes('blink.user_timing') && (e.name === 'cl-w0' || e.name === 'cl-w1')).sort((a, b) => a.ts - b.ts)
   if (marks.length === 0) throw new Error('[charts-trace] no cl-w0/cl-w1 marks in the trace')
@@ -121,7 +121,7 @@ try {
     windowSum += w1 - w0
     // Clip events to the window, then compute self time by nesting.
     const inWin = main
-      .map((e) => ({ name: e.name, s: Math.max(e.ts, w0), e: Math.min(e.ts + e.dur!, w1) }))
+      .map((e) => ({ name: e.name, label: process.env.PER_WINDOW === '1' && e.args?.data?.functionName !== undefined ? `${e.name}:${e.args.data.functionName || '(anon)'}@${(e.args.data.url ?? '').split('/').pop()}:${e.args.data.lineNumber ?? ''}` : e.name, s: Math.max(e.ts, w0), e: Math.min(e.ts + e.dur!, w1) }))
       .filter((e) => e.e > e.s)
       .sort((a, b) => a.s - b.s || b.e - a.e)
     const stack: { name: string; e: number; self: number }[] = []
@@ -147,10 +147,10 @@ try {
         while (st.length && st.at(-1)!.e <= ev.s) add(st.pop()!)
         const parent = st.at(-1)
         if (parent) parent.self -= ev.e - ev.s
-        st.push({ name: ev.name, e: ev.e, self: ev.e - ev.s })
+        st.push({ name: ev.label, e: ev.e, self: ev.e - ev.s })
       }
       while (st.length) add(st.pop()!)
-      const top = [...self].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, v]) => `${n} ${(v / 1000).toFixed(2)}`)
+      const top = [...self].sort((a, b) => b[1] - a[1]).slice(0, Number(process.env.PER_WINDOW_TOP ?? 5)).map(([n, v]) => `${n} ${(v / 1000).toFixed(2)}`)
       console.log(`[window] ${((w1 - w0) / 1000).toFixed(2)}ms  ${top.join(' · ')}`)
     }
   }
