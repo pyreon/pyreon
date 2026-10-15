@@ -135,6 +135,11 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
   const rowVersions = new Map<string, Signal<number>>()
   let prevOriginals = new Map<string, unknown>()
   let prevRowObjects = new Map<string, unknown>()
+  // Sub-row id order per row that HAS sub-rows. A sort that reorders only the
+  // sub-rows leaves the top-level ids and every `original` unchanged, so this is
+  // the one signal that such a row's cells (e.g. one reading `row.subRows`)
+  // must refresh.
+  let prevSubRowOrder = new Map<string, string>()
   let firstSync = true
 
   const getRowSignal = (rowId: string): Signal<number> => {
@@ -203,9 +208,11 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
     const currentIds = rows.map((r) => r.id)
     const nextOriginals = new Map<string, unknown>()
     const nextRowObjects = new Map<string, unknown>()
+    const nextSubRowOrder = new Map<string, string>()
     for (const row of rows) {
       nextOriginals.set(row.id, row.original)
       nextRowObjects.set(row.id, row)
+      if (row.subRows.length > 0) nextSubRowOrder.set(row.id, row.subRows.map((r) => r.id).join('\u0001'))
     }
 
     if (!firstSync) {
@@ -265,7 +272,10 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
           // a fallback fires on a spurious re-run and coarse-invalidates the
           // whole table (measured: 20 cell re-runs where 2 are correct).
           for (const [id, original] of nextOriginals) {
-            if (prevOriginals.has(id) && prevOriginals.get(id) !== original) {
+            if (
+              prevOriginals.has(id) &&
+              (prevOriginals.get(id) !== original || prevSubRowOrder.get(id) !== nextSubRowOrder.get(id))
+            ) {
               rowVersions.get(id)?.update((n) => n + 1)
             }
           }
@@ -276,6 +286,7 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
     prevRowIds = currentIds
     prevOriginals = nextOriginals
     prevRowObjects = nextRowObjects
+    prevSubRowOrder = nextSubRowOrder
     prevColumns = columns
   })
 

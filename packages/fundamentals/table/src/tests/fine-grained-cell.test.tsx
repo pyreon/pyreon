@@ -917,4 +917,43 @@ describe('reorders (sort) — rows move, cells re-run only where content changed
     expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b0', 'b1'])
     t.unmount()
   })
+
+  it('a sort that reorders sub-rows refreshes cells that read them', async () => {
+    type Node = { id: string; a: string; children?: Node[] }
+    const data = signal<Node[]>([
+      { id: 'p', a: 'p', children: [{ id: 'p.z', a: 'z' }, { id: 'p.y', a: 'y' }] },
+      { id: 'q', a: 'q' },
+    ])
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    let table!: any
+    const App = () => {
+      table = useTable(() => ({
+        data: data(),
+        columns: [
+          { accessorKey: 'a', id: 'a' },
+          // Reads the row's sub-rows: their order changes when sorting.
+          { id: 'kids', cell: (info: any) => info.row.subRows.map((s: any) => s.original.a).join(',') },
+        ],
+        features: allFeatures,
+        getRowId: (r: Node) => r.id,
+        getSubRows: (r: Node) => r.children,
+      }))
+      return h('table', {}, h('tbody', {}, () =>
+        hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+          const rowId = row.id
+          return h('tr', { 'data-rowid': rowId },
+            h('td', { class: 'col-kids' }, () => String(flexRenderCell(table, rowId, 'kids'))),
+          )
+        }),
+      ))
+    }
+    const dispose = mount(hAny(App), el)
+    expect(el.querySelector('[data-rowid="p"] .col-kids')?.textContent).toBe('z,y')
+    table.getColumn('a').toggleSorting(false)
+    await flush()
+    expect(el.querySelector('[data-rowid="p"] .col-kids')?.textContent).toBe('y,z')
+    if (typeof dispose === 'function') dispose()
+    el.remove()
+  })
 })
