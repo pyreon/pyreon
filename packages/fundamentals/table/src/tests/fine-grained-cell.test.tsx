@@ -14,7 +14,7 @@ import { effect, signal, untrack } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { constructTable } from '@tanstack/table-core'
-import { flexRenderCell, pyreonReactivity, useTable, visibleCells } from '../index'
+import { flexRenderCell, pyreonReactivity, tableFeatures, useTable, visibleCells } from '../index'
 import { allFeatures } from './fixtures'
 
 const flush = async () => {
@@ -655,4 +655,97 @@ describe('flexRenderCell — the context a cell renderer receives', () => {
     expect(t.cellRuns[0]).toBe(1)
     t.unmount()
   })
+
+  it('keeps a non-plain context prototype (descriptor-copy fallback) and still untracks the value', async () => {
+    const seen: Array<{ inherited?: unknown; proto: unknown }> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown; inherited?: unknown }) => {
+            seen.push({ inherited: info.inherited, proto: Object.getPrototypeOf(info) })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    // table-core always returns a plain-object context; a feature or wrapper
+    // may not. Give every cell context an inherited member, then re-render.
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    const base = { inherited: 'from-proto' }
+    owner.getContext = function (this: unknown) {
+      return Object.assign(Object.create(base), original.call(this))
+    }
+    try {
+      data.set(editCell(data(), 0, 'a', 'P'))
+      await flush()
+      expect(t.cellText(0, 'a')).toBe('P|P')
+      const last = seen[seen.length - 1]!
+      expect(last.inherited).toBe('from-proto')
+      expect(last.proto).toBe(base)
+
+      // Value reads on the wrapped context stay untracked.
+      t.cellRuns[0] = 0
+      data.set(editCell(data(), 1, 'a', 'Q'))
+      await flush()
+      expect(t.cellText(1, 'a')).toBe('Q|Q')
+      expect(t.cellRuns[0]).toBe(1)
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
 })
+
+describe('visibleCells — edges', () => {
+  const mountWith = (opts: () => object) => {
+    let table!: any
+    const el = document.createElement('div')
+    const App = () => {
+      table = useTable(() => ({ getRowId: (r: Row) => String(r.id), ...opts() }) as never)
+      return null
+    }
+    const dispose = mount(hAny(App), el)
+    return { table: () => table, unmount: () => (typeof dispose === 'function' ? dispose() : undefined) }
+  }
+
+  it('returns an empty list for a row that is not in the current model', () => {
+    const t = mountWith(() => ({ data: makeData(2), columns: cols, features: allFeatures }))
+    expect(visibleCells(t.table(), 'no-such-row')).toEqual([])
+    expect(visibleCells(t.table(), '0').map((c: any) => c.column.id)).toEqual(['a', 'b'])
+    t.unmount()
+  })
+
+  it('falls back to every cell when column visibility is not registered', () => {
+    const t = mountWith(() => ({ data: makeData(1), columns: cols, features: tableFeatures({}) }))
+    expect(visibleCells(t.table(), '0').map((c: any) => c.column.id)).toEqual(['a', 'b'])
+    t.unmount()
+  })
+
+  it('re-lists a row\'s cells when groupedColumnMode changes', async () => {
+    const mode = signal<false | 'reorder' | 'remove'>('remove')
+    const t = mountWith(() => ({
+      data: makeData(2),
+      columns: cols,
+      features: allFeatures,
+      groupedColumnMode: mode(),
+      initialState: { grouping: ['b'] },
+    }))
+    const seen: string[][] = []
+    const stop = effect(() => {
+      seen.push(visibleCells(t.table(), '0').map((c: any) => c.column.id))
+    })
+    const before = seen.length
+    mode.set(false)
+    await flush()
+    expect(seen.length).toBeGreaterThan(before)
+    expect(seen.at(-1)).not.toEqual(seen[before - 1])
+    stop.dispose()
+    t.unmount()
+  })
+})
+
