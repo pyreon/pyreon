@@ -96,6 +96,12 @@ const DEFAULT_TIMEOUT = 30_000
 
 type PathOfSpec<S extends string> = S extends `${string} ${infer P}` ? P : never
 
+// Shared empties for a client that sets no middleware / meta — both are only
+// ever read (a request copies meta before adding to it), so one frozen value
+// serves every client instead of a fresh array and object per creation.
+const NO_MIDDLEWARE: readonly HttpMiddleware[] = Object.freeze([])
+const NO_META: Record<string, unknown> = Object.freeze({})
+
 function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedConfig {
   // Called through the codec object, so a codec written as a class keeps `this`.
   const codec = config.json
@@ -105,12 +111,14 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
   return {
     baseUrl: config.baseUrl ?? base?.baseUrl,
     headerSources,
-    middleware: [...(base?.middleware ?? []), ...(config.use ?? [])],
+    middleware: config.use?.length
+      ? [...(base?.middleware ?? []), ...config.use]
+      : (base?.middleware ?? NO_MIDDLEWARE),
     transport: config.transport ?? base?.transport ?? fetchTransport,
     timeout: config.timeout ?? base?.timeout ?? DEFAULT_TIMEOUT,
     credentials: config.credentials ?? base?.credentials ?? 'same-origin',
     throwHttpErrors: config.throwHttpErrors ?? base?.throwHttpErrors ?? true,
-    meta: { ...base?.meta, ...config.meta },
+    meta: config.meta ? { ...base?.meta, ...config.meta } : (base?.meta ?? NO_META),
     keyScope: config.keyScope ?? base?.keyScope,
     parse: {
       validate:
