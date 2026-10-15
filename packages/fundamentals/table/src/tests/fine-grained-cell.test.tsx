@@ -455,7 +455,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
 /** Mount a table whose cells-LIST accessor is `visibleCells` (the recommended
  *  fine-grained inner loop) and count BOTH the cells-list accessor runs and the
  *  cell-accessor runs, so the per-edit invalidation shape is fully asserted. */
-function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>) {
+function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>, onTable?: (table: any) => void) {
   const cellRuns: number[] = [0]
   const listRuns: number[] = [0]
   const el = document.createElement('div')
@@ -469,6 +469,7 @@ function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>) {
       getRowId: (r: Row) => String(r.id),
     }))
     tableAccessor = table
+    onTable?.(table)
     return h('table', {}, h('tbody', {}, () =>
       hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
         const rowId = row.id
@@ -749,3 +750,68 @@ describe('visibleCells — edges', () => {
   })
 })
 
+describe('flexRenderCell reuses the cells its row just looked up', () => {
+  /** Count `table.getRowModel()` calls — the walk every uncached cell repeats. */
+  const counting = () => {
+    const calls = [0]
+    const wrap = (table: any): void => {
+      const orig = table.getRowModel.bind(table)
+      table.getRowModel = () => {
+        calls[0]!++
+        return orig()
+      }
+    }
+    return { calls, wrap }
+  }
+
+  it('a mount walks the row model once per row, not once per cell', async () => {
+    const c = counting()
+    const t = mountVisibleCellsTable(signal(makeData(10)), c.wrap)
+    await flush()
+    expect(t.cellText(9, 'b')).toBe('b9')
+    // The outer list + one `visibleCells` per row; the 20 cells add none.
+    // Without the reuse every cell walks it again: 1 + 10 + 20.
+    expect(c.calls[0]).toBeLessThanOrEqual(1 + 10 + 2)
+    t.unmount()
+  })
+
+  it('an edit, a sort and a column toggle never serve a stale cell', async () => {
+    const data = signal(makeData(3))
+    const t = mountVisibleCellsTable(data)
+    data.set(editCell(data(), 1, 'a', 'EDITED'))
+    await flush()
+    expect(t.cellText(1, 'a')).toBe('EDITED')
+    t.table().getColumn('a').toggleSorting(true)
+    await flush()
+    expect(t.cellText(1, 'a')).toBe('EDITED')
+    expect(t.cellText(2, 'b')).toBe('b2')
+    data.set(editCell(data(), 2, 'b', 'AGAIN'))
+    await flush()
+    expect(t.cellText(2, 'b')).toBe('AGAIN')
+    t.table().getColumn('b').toggleVisibility(false)
+    await flush()
+    t.table().getColumn('b').toggleVisibility(true)
+    await flush()
+    expect(t.cellText(2, 'b')).toBe('AGAIN')
+    expect(t.cellText(0, 'b')).toBe('b0')
+    t.unmount()
+  })
+
+  it('a cell read after its row changed, before the row re-listed, is fresh', async () => {
+    // Notification order normally re-lists a row before its cells re-run, which
+    // re-seeds the reuse. This reads a cell DIRECTLY after an edit, with the
+    // seed still from before it: the row-version tag is what refuses the stale
+    // cell.
+    // `mountFineTable` lists cells with `row.getVisibleCells()`, so nothing
+    // re-seeds the reuse on an edit: the one seed below is all there is.
+    const data = signal(makeData(3))
+    const t = mountFineTable(data)
+    const table = t.table()
+    visibleCells(table, '1')
+    data.set(editCell(data(), 1, 'a', 'FRESH'))
+    await flush()
+    expect(String(flexRenderCell(table, '1', 'a'))).toBe('FRESH')
+    expect(t.el.querySelector('[data-rowid="1"] .col-a')?.textContent).toBe('FRESH')
+    t.unmount()
+  })
+})

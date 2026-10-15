@@ -114,14 +114,36 @@ export function flexRenderCell<TFeatures extends TableFeatures, TData extends Ro
     const cell = lookupCellByColumnId(table, rowId, columnId)
     return cell == null ? null : flexRender(cell.column.columnDef.cell, cell.getContext())
   }
-  bridge.rowSignal(rowId)()
+  const sig = bridge.rowSignal(rowId)
+  const version = sig()
+  // The row's `visibleCells` call just fetched exactly these cells; reuse them
+  // while the row's version has not moved, instead of walking the row model and
+  // the column map again for every cell of the row (measured ~640ns a cell).
+  // Any data, column or structural change bumps the version (see `useTable`),
+  // which forces a fresh lookup — so a cached cell is never a stale one.
+  const entry = rowCellsCache.get(sig)
+  const cached =
+    entry !== undefined && entry.version === version
+      ? (entry.byColumnId[columnId] as Cell<TFeatures, TData, unknown> | undefined)
+      : undefined
   const found = untrack(() => {
-    const cell = lookupCellByColumnId(table, rowId, columnId)
+    const cell = cached ?? lookupCellByColumnId(table, rowId, columnId)
     return cell == null ? undefined : { cell, context: untrackedValueContext(cell.getContext()) }
   })
   if (found === undefined) return null
   return flexRender(found.cell.column.columnDef.cell, found.context)
 }
+
+/**
+ * A row's visible cells by column id, as its last `visibleCells` call found
+ * them, tagged with the row-signal version they were read at. Keyed by the row
+ * signal (a `WeakMap`), so an entry is collected with the signal when the row
+ * leaves the model — no eviction to manage.
+ */
+// The values are each table's own `Cell` type; one module-level map serves
+// every table, so it stores `unknown` and the single read site narrows it back
+// (the entry was written by `visibleCells` for this same table and row).
+const rowCellsCache = new WeakMap<object, { version: number; byColumnId: Record<string, unknown> }>()
 
 /** A cell context whose value readers do not subscribe (see `flexRenderCell`).
  *  Same prototype + own properties as the original; only `getValue` and
@@ -254,7 +276,16 @@ export function visibleCells<TFeatures extends TableFeatures, TData extends RowD
 ): VisibleCells<TFeatures, TData> {
   const bridge = _getRowSignalBridge(table)
   if (!bridge) return lookupVisibleCells(table, rowId)
-  bridge.rowSignal(rowId)()
+  const sig = bridge.rowSignal(rowId)
+  const version = sig()
   trackColumnGeometry(table)
-  return untrack(() => lookupVisibleCells(table, rowId))
+  return untrack(() => {
+    const cells = lookupVisibleCells(table, rowId)
+    // Hand the row's cells to `flexRenderCell`, keyed by the row's signal so the
+    // entry dies with it when the row leaves the model.
+    const byColumnId: Record<string, unknown> = Object.create(null)
+    for (const c of cells) byColumnId[c.column.id] = c
+    rowCellsCache.set(sig, { version, byColumnId })
+    return cells
+  })
 }
