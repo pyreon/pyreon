@@ -657,6 +657,45 @@ describe('flexRenderCell — the context a cell renderer receives', () => {
     t.unmount()
   })
 
+  it('builds the core context directly: getContext runs once to sample its shape, not once per cell', async () => {
+    const data = signal(makeData(4))
+    const seen: Array<{ table: unknown; row: unknown; column: { id: string }; cell: { row: unknown } }> = []
+    const t = mountFineTable(data, {
+      columns: [
+        { accessorKey: 'a', id: 'a', cell: (info: any) => (seen.push(info), String(info.getValue())) },
+        { accessorKey: 'b', id: 'b', cell: (info: any) => (seen.push(info), String(info.getValue())) },
+      ],
+    })
+    // Count getContext calls on a fresh render of every cell.
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    let calls = 0
+    const counted = function (this: unknown) {
+      calls++
+      return original.call(this)
+    }
+    owner.getContext = counted
+    try {
+      seen.length = 0
+      data.set(makeData(4).map((r) => ({ ...r, a: `${r.a}!`, b: `${r.b}!` })))
+      await flush()
+      expect(t.cellText(3, 'b')).toBe('b3!')
+      expect(seen).toHaveLength(8)
+      // One call samples the shape of this getContext; the other 7 contexts
+      // are built directly.
+      expect(calls).toBe(1)
+      for (const info of seen) {
+        expect(info.table).toBe(t.table())
+        expect(info.row).toBe(info.cell.row)
+      }
+      expect(seen.map((i) => i.column.id).sort()).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b'])
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+
   it('keeps a non-plain context prototype (descriptor-copy fallback) and still untracks the value', async () => {
     const seen: Array<{ inherited?: unknown; proto: unknown }> = []
     const data = signal(makeData(2))
