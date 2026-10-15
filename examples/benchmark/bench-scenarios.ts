@@ -179,6 +179,7 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     frameworks: [
       'Pyreon (PlotChart)',
       'Pyreon (PlotChart columns)',
+      'Pyreon (PlotChart columns, density device)',
       'uPlot 1.6',
       'Chart.js 4 (min-max decimation)',
       'Recharts 3',
@@ -212,6 +213,10 @@ const NON_RANKING = new Set([
   'Pyreon (tpl append)',
   // Prices Pyreon's default offscreen data table, which ECharts does not ship.
   'Pyreon (PlotChart, no a11y table)',
+  // An OPT-IN density (one M4 column per device pixel, uPlot's trade): faster,
+  // and measurably coarser on a noisy line than the default. Shown so the
+  // trade is priced; the ranked Pyreon arms are the defaults.
+  'Pyreon (PlotChart columns, density device)',
   // charts-libs: Chart.js WITHOUT its documented large-data config. The ranked
   // Chart.js arm is the one with min-max decimation, because Pyreon and uPlot
   // both reduce points per pixel by default.

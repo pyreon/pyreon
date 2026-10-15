@@ -240,6 +240,13 @@ export interface Emphasis {
 export interface ChartSpec {
   width: Double
   height: Double
+  /**
+   * M4 decimation columns per CSS pixel for a dense line. Unset is 2 — finer
+   * than a 1× display's pixels, so a noisy line keeps more of its detail. A
+   * host trading fidelity for speed (`density: 'device'`) passes the device
+   * pixel ratio; below 1 is treated as 1.
+   */
+  m4Density?: Double
   series: Series[]
   categories: string[]
   theme: ChartTheme
@@ -651,6 +658,12 @@ function rawExtentOver(series: Series[]): Domain {
   return hasBars
     ? { min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max }
     : e
+}
+
+/** M4 columns per CSS pixel (see `ChartSpec.m4Density`). */
+function m4Density(spec: ChartSpec): Double {
+  const d = spec.m4Density ?? 2.0
+  return d > 1.0 ? d : 1.0
 }
 
 /** A running extent: the finite values seen so far. */
@@ -1380,7 +1393,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // A dense category line with the default curve reduces straight from its
       // values (identical output, no per-datum point objects); anything else
       // places, then reduces.
-      const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
+      const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) : []
       const useDirect = direct.length > 0
       const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
       // Each run is a maximal stretch of finite values, so the rows it draws
@@ -1397,7 +1410,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         }
         runFrom = runFrom + run.length
         // M4: more points than pixel columns draw the same pixels from four per column.
-        const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
+        const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)), m4Density(spec))
         if (pts.length > 1) {
           // Keyed only when the drawn points ARE the run's rows, one to one
           // (M4 drops points, a curve adds them). The series label keys the

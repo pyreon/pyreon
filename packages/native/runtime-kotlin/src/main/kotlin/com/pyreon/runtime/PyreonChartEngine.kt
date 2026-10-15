@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Long, var selected: List<Long>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var rowKeys: List<String>? = null)
+data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var rowKeys: List<String>? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -3406,6 +3406,11 @@ fun rawExtentOver(series: List<Series>): Domain {
     return if (hasBars) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
   }
 
+fun m4Density(spec: ChartSpec): Double {
+    val d = (spec.m4Density ?: 2.0)
+    return if (d > 1.0) d else 1.0
+  }
+
 fun extendSpan(span: ExtentSpan, values: List<Double>): ExtentSpan {
     var seen = span.seen
     var lo = span.lo
@@ -3925,7 +3930,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
         } else {
           if (s.kind == "line") {
-            val direct = if (s.curve == null && xs.length == 0L) m4CategoryPoints(s.values, plot, sDomain) else listOf()
+            val direct = if (s.curve == null && xs.length == 0L) m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) else listOf()
             val useDirect = direct.length > 0L
             val runs = if (useDirect) listOf(direct) else splitRuns(s.values, place)
             val keyedLine = rowKeys.length == s.values.length && s.curve == null
@@ -3943,7 +3948,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                 }
               }
               runFrom = runFrom + run.length
-              val pts = if (useDirect) reveal(run) else m4Pixels(reveal(curveFn(run)))
+              val pts = if (useDirect) reveal(run) else m4Pixels(reveal(curveFn(run)), m4Density(spec))
               if (pts.length > 1L) {
                 val oneToOne = keyedLine && runKeys.length == pts.length
                 out.add(if (oneToOne) PyreonDrawCmd(kind = "polyline", key = s.label, stroke = s.color, width = s.width, dash = s.dash, points = pts, pointKeys = runKeys) else PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))

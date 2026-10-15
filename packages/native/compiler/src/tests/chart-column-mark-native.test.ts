@@ -38,4 +38,9 @@ describe('<PlotChart> column mark on native', () => {
     expect(text).toContain('only a single-expression arrow')
     expect(text).not.toContain('column')
   })
+
+  it.each(['swift', 'kotlin'] as const)('%s: density is a web-only prop and says so', (target) => {
+    const r = transform(src('data={ROWS} marks={[line((d: Row) => d.v)]} density="device"'), { target })
+    expect(r.warnings.join('\n')).toContain('density')
+  })
 })

@@ -2038,7 +2038,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['density', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
 
 /**
  * A host's `visualMap` at COMPILE time — the web `VisualMapSpec` literal, or a

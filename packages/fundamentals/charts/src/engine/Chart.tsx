@@ -245,6 +245,14 @@ export interface PlotChartProps<T> {
    * GLOBAL index of the row actually drawn.
    */
   maxPoints?: number
+  /**
+   * How finely a dense line is decimated. `'fine'` (the default) keeps two
+   * M4 columns per CSS pixel — more of a noisy line's detail than a 1×
+   * display has pixels for. `'device'` keeps one per DEVICE pixel, as uPlot
+   * does: about half the points on a 1× display, so a faster mount, at the
+   * cost of a measurably coarser noisy line. Web only.
+   */
+  density?: 'fine' | 'device'
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -958,6 +966,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const spec: ChartSpec = {
     width: w,
     height: hgt,
+    ...(props.density === 'device' ? { m4Density: typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1.0 } : {}),
     // Accessors receive the GLOBAL index — an accessor keyed on position
     // (striping, ids) must not see its data renumbered by a zoom.
     series: hideHidden(resolved),

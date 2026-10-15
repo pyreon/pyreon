@@ -655,6 +655,15 @@ grouped segments keep only their mark radii.
 
 ### Big data
 
+A dense line is decimated before it is stroked: M4 keeps the first, lowest,
+highest and last point of each column. By default there are two columns per
+CSS pixel, finer than a 1× display has pixels, so a noisy line keeps more of
+its detail. `density="device"` keeps one column per DEVICE pixel instead, as
+uPlot does: about half the points on a 1× display and a faster mount, at the
+cost of a coarser noisy line. Measured against drawing every point (real
+Chromium, a noisy 20k-point line), the default's error is 2.2M and
+`'device'`'s 3.6M. `density` is web-only.
+
 `maxPoints` caps what one paint draws: past it the visible slice is thinned with
 LTTB on the first mark — rows stay aligned across marks, so a line and its area
 never disagree — and a 100k-point series paints as a 1k-point one. Hits,

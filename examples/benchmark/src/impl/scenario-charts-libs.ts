@@ -116,6 +116,7 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 export const CHARTS_LIBS_FRAMEWORKS = [
   'Pyreon (PlotChart)',
   'Pyreon (PlotChart columns)',
+  'Pyreon (PlotChart columns, density device)',
   'uPlot 1.6',
   'Chart.js 4 (min-max decimation)',
   'Recharts 3',
@@ -189,7 +190,7 @@ const asBarRows = (ys: Float64Array): BarRow[] =>
 
 /** Build the arm's own input shape OUTSIDE every window (an app holds its data). */
 function prebuild(fw: string, ys: Float64Array, kind: 'line' | 'bars'): void {
-  if (fw === 'Pyreon (PlotChart columns)') return void asArr(ys)
+  if (fw.startsWith('Pyreon (PlotChart columns')) return void asArr(ys)
   if (fw.startsWith('Pyreon')) void (kind === 'line' ? asRows(ys) : asBarRows(ys))
   else if (fw.startsWith('uPlot')) void asCols(ys)
   else if (fw.startsWith('Chart.js')) void (kind === 'line' ? asXY(ys) : asBarRows(ys))
@@ -211,7 +212,7 @@ interface Target {
  * input is columnar too, so this is the like-for-like comparison of the
  * engines; the row arm above measures the row-object API.
  */
-function pyreonColumnsTarget(): Target {
+function pyreonColumnsTarget(density: 'fine' | 'device' = 'fine'): Target {
   let marks: ReturnType<typeof signal<ReturnType<typeof pline>[]>> | null = null
   let unmount: (() => void) | null = null
   // A plain `number[]`, built outside the window like every arm's input —
@@ -227,6 +228,7 @@ function pyreonColumnsTarget(): Target {
           get marks() {
             return m()
           },
+          density,
           width: W,
           height: H,
           animate: false,
@@ -243,6 +245,7 @@ function pyreonColumnsTarget(): Target {
       unmount = pyreonMount(
         ph(PlotChart, {
           marks: [pbars(asArr(ys), { color: COLOR })],
+          density,
           width: W,
           height: H,
           animate: false,
@@ -488,6 +491,8 @@ function makeTarget(fw: string): Target {
       return pyreonTarget(true)
     case 'Pyreon (PlotChart columns)':
       return pyreonColumnsTarget()
+    case 'Pyreon (PlotChart columns, density device)':
+      return pyreonColumnsTarget('device')
     case 'Pyreon (PlotChart, no a11y table)':
       return pyreonTarget(false)
     case 'uPlot 1.6':
