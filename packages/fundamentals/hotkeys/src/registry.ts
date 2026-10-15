@@ -1,6 +1,6 @@
 import type { Signal } from '@pyreon/reactivity'
 import { isServer, signal } from '@pyreon/reactivity'
-import { matchesComboWithKey, normalizeEventKey, parseShortcut, splitShortcutList } from './parse'
+import { isMac, matchesComboWithKey, normalizeEventKey, parseShortcut, splitShortcutList } from './parse'
 import type { HotkeyEntry, HotkeyOptions, InputKind, KeyCombo } from './types'
 
 // ─── Per-target registry state ──────────────────────────────────────────────
@@ -40,7 +40,9 @@ interface TargetState {
 
 const targetStates = new Map<EventTarget, TargetState>()
 /** Insertion-ordered list of ALL entries — drives help panels + conflict scan. */
-const allEntries: HotkeyEntry[] = []
+// A Set, not an array: unregistering is an O(1) delete instead of indexOf +
+// splice, and iteration keeps registration order.
+const allEntries = new Set<HotkeyEntry>()
 
 const activeScopes = signal<Set<string>>(new Set(['global']))
 
@@ -250,23 +252,28 @@ function unregisterEntry(entry: HotkeyEntry, state: TargetState): void {
       if (bucket.length === 0) state.buckets[entry.options.event].delete(entry.combo.key)
     }
   }
-  const all = allEntries.indexOf(entry)
-  if (all !== -1) allEntries.splice(all, 1)
+  allEntries.delete(entry)
   teardownTargetIfEmpty(state)
 }
 
 // ─── Registration ────────────────────────────────────────────────────────────
 
-function registerOne(
-  shortcut: string,
-  handler: (event: KeyboardEvent) => void,
-  options: HotkeyOptions | undefined,
-): () => void {
-  // Defensive SSR guard — registerHotkey's own isServer bail precedes every
-  // call, but the guard here makes the `window` default below provably
-  // SSR-safe at its use site (and keeps the no-window-in-ssr rule honest).
-  /* v8 ignore next */
-  if (isServer) return () => {}
+/**
+ * Parsed shortcuts, keyed by the exact string passed to `registerOne`.
+ * Registration is repeated with the same strings (every remount of a component
+ * that binds shortcuts), and parsing lower-cases, trims and splits each time.
+ * Results are FROZEN and only ever read — entries share them. `mod` resolves
+ * per platform, so those keys carry the platform; everything else is
+ * platform-independent. Bounded: an app that builds shortcut strings
+ * dynamically clears the cache instead of growing it.
+ */
+const _parsed = new Map<string, { first: KeyCombo; rest: KeyCombo[] }>()
+const PARSE_CACHE_MAX = 256
+
+function parseForRegister(shortcut: string): { first: KeyCombo; rest: KeyCombo[] } {
+  const key = shortcut.includes('mod') ? `${shortcut}\u0001${isMac() ? 'm' : 'o'}` : shortcut
+  const hit = _parsed.get(key)
+  if (hit !== undefined) return hit
   // Sequential combo support: space-separated combos like `'g t'` are ordered
   // sequences — press `g`, then `t` within `SEQUENCE_TIMEOUT_MS`. Each
   // sub-combo goes through `parseShortcut` (so `'ctrl+k p'` works).
@@ -282,16 +289,61 @@ function registerOne(
   if (subShortcuts.length === 0) {
     throw new Error(`[@pyreon/hotkeys] empty shortcut: ${JSON.stringify(shortcut)}`)
   }
-  const combos = subShortcuts.map(parseShortcut)
-  const firstCombo = combos[0]
-  // Unreachable given the length check above (combos is 1:1 with the
-  // non-empty subShortcuts), but the index access is typed `T | undefined`.
+  const combos = subShortcuts.map((s) => Object.freeze(parseShortcut(s)))
+  const first = combos[0]
   /* v8 ignore start */
-  if (!firstCombo) {
+  if (!first) {
     throw new Error(`[@pyreon/hotkeys] invalid shortcut: ${JSON.stringify(shortcut)}`)
   }
   /* v8 ignore stop */
-  const rest = combos.slice(1)
+  const parsed = Object.freeze({ first, rest: Object.freeze(combos.slice(1)) as KeyCombo[] })
+  if (_parsed.size >= PARSE_CACHE_MAX) _parsed.clear()
+  _parsed.set(key, parsed)
+  return parsed
+}
+
+const DEFAULT_OPTIONS: HotkeyEntry['options'] = Object.freeze({
+  scope: 'global',
+  preventDefault: true,
+  stopPropagation: false,
+  enableOnInputs: false,
+  enabled: true,
+  event: 'keydown',
+  ignoreRepeat: false,
+  once: false,
+})
+
+function resolveOptions(
+  options: HotkeyOptions,
+  eventType: 'keydown' | 'keyup',
+): HotkeyEntry['options'] {
+  const resolved: HotkeyEntry['options'] = {
+    scope: options.scope ?? 'global',
+    preventDefault: options.preventDefault !== false,
+    stopPropagation: options.stopPropagation === true,
+    enableOnInputs: options.enableOnInputs ?? false,
+    enabled: options.enabled ?? true,
+    event: eventType,
+    ignoreRepeat: options.ignoreRepeat === true,
+    once: options.once === true,
+  }
+  // Assigned, not spread: a conditional object spread copies through a
+  // temporary object on every registration.
+  if (options.description != null) resolved.description = options.description
+  return resolved
+}
+
+function registerOne(
+  shortcut: string,
+  handler: (event: KeyboardEvent) => void,
+  options: HotkeyOptions | undefined,
+): () => void {
+  // Defensive SSR guard — registerHotkey's own isServer bail precedes every
+  // call, but the guard here makes the `window` default below provably
+  // SSR-safe at its use site (and keeps the no-window-in-ssr rule honest).
+  /* v8 ignore next */
+  if (isServer) return () => {}
+  const { first: firstCombo, rest } = parseForRegister(shortcut)
   const eventType = options?.event ?? 'keydown'
   if (eventType === 'keyup' && rest.length > 0) {
     throw new Error(
@@ -304,17 +356,9 @@ function registerOne(
     combo: firstCombo,
     sequence: rest,
     handler,
-    options: {
-      scope: options?.scope ?? 'global',
-      preventDefault: options?.preventDefault !== false,
-      stopPropagation: options?.stopPropagation === true,
-      enableOnInputs: options?.enableOnInputs ?? false,
-      enabled: options?.enabled ?? true,
-      event: eventType,
-      ignoreRepeat: options?.ignoreRepeat === true,
-      once: options?.once === true,
-      ...(options?.description != null ? { description: options.description } : {}),
-    },
+    // Entries never mutate their options, so a registration that passes none
+    // shares one frozen default instead of allocating eight fields.
+    options: options === undefined ? DEFAULT_OPTIONS : resolveOptions(options, eventType),
   }
 
   const state = getTargetState(options?.target ?? window)
@@ -324,7 +368,7 @@ function registerOne(
   if (bucket) bucket.push(entry)
   else buckets.set(firstCombo.key, [entry])
   state.entryCount++
-  allEntries.push(entry)
+  allEntries.add(entry)
 
   let unregistered = false
   return () => {
@@ -364,6 +408,8 @@ export function registerHotkey(
   // build SSR help panels from a static config, not the live registry.
   if (isServer) return () => {}
 
+  // No comma (the common case): skip building a one-element list.
+  if (!shortcut.includes(',')) return registerOne(shortcut, handler, options)
   const shortcuts = splitShortcutList(shortcut)
   if (shortcuts.length === 1) return registerOne(shortcuts[0]!, handler, options)
   const uns = shortcuts.map((s) => registerOne(s, handler, options))
@@ -583,7 +629,7 @@ export function getRegisteredHotkeys(): ReadonlyArray<{
   scope: string
   description?: string
 }> {
-  return allEntries.map((e) => ({
+  return Array.from(allEntries, (e) => ({
     shortcut: e.shortcut,
     scope: e.options.scope,
     ...(e.options.description != null ? { description: e.options.description } : {}),
@@ -672,7 +718,7 @@ export function _resetHotkeys(): void {
     teardownTargetIfEmpty(state)
   }
   targetStates.clear()
-  allEntries.length = 0
+  allEntries.clear()
   activeScopes.set(new Set(['global']))
   scopeRefcounts.clear()
   if (pressedHandlers && !isServer) {

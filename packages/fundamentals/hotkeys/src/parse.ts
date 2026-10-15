@@ -196,7 +196,8 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function isMac(): boolean {
+/** @internal — exported for the registry's parse cache key. */
+export function isMac(): boolean {
   if (typeof navigator === 'undefined') return false
   return /mac|iphone|ipad|ipod/i.test(navigator.userAgent)
 }
