@@ -33,7 +33,7 @@ import {
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
-import { _takePendingForAdoption, mountFor, mountKeyedList, mountReactive } from './nodes'
+import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 import { attachSuspenseBoundary } from './suspense-boundary'
 
@@ -124,10 +124,7 @@ export function mountChild(
     // a noop there ORPHANS the text node (`() => cond ? <>a b</> : 'x'` rendered
     // "abx"). Mirrors the reactive-text fast path's own `_elementDepth` gate.
     if (_elementDepth > 0) return noop
-    return () => {
-      const p = tn.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(tn)
-    }
+    return () => detachNode(tn)
   }
 
   // NativeItem — pre-built DOM element from _tpl() or createTemplate().
@@ -136,16 +133,12 @@ export function mountChild(
     parent.insertBefore(native.el, anchor)
     if (!native.cleanup) {
       if (_elementDepth > 0) return noop
-      return () => {
-        const p = native.el.parentNode
-        if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
-      }
+      return () => detachNode(native.el)
     }
     if (_elementDepth > 0) return native.cleanup
     return () => {
       native.cleanup?.()
-      const p = native.el.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
+      detachNode(native.el)
     }
   }
 
@@ -179,6 +172,9 @@ export function mountChild(
       // One-shot hydration-adoption handoff — non-null only when hydrate.ts
       // set it synchronously before dispatching this <For> vnode.
       _takePendingForAdoption(),
+      // Inside a freshly built element, the element's removal takes the rows
+      // with it — so the For's teardown may skip its own (see `detachNode`).
+      prevDepth > 0,
     )
     _elementDepth = prevDepth
     return cleanup
@@ -415,10 +411,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
   if (!propCleanup && childCleanup === noop && !ref) {
     if (_elementDepth > 0) return noop
-    return () => {
-      const p = el.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(el)
-    }
+    return () => detachNode(el)
   }
 
   if (_elementDepth > 0) {
@@ -446,8 +439,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     }
     if (propCleanup) propCleanup()
     childCleanup()
-    const p = el.parentNode
-    if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(el)
+    detachNode(el)
   }
 }
 

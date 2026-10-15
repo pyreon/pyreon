@@ -143,11 +143,16 @@ describe('mountFor — owns-parent bulk clear (handleFastClear)', () => {
     cleanup()
   })
 
-  it('unmount after a fast clear removes the markers cleanly', () => {
-    const { items, cleanup, ul } = setupOwned([1, 2])
+  it('unmount after a fast clear leaves nothing in the document', () => {
+    const { items, cleanup, ul, container } = setupOwned([1, 2])
     items.set([])
     cleanup() // unmounts the whole tree — the <ul> detaches with it
-    expect(ul.childNodes.length).toBe(0) // both markers removed by the For dispose
+    // The <ul> leaves as a unit, markers and all: a <For> mounted inside a
+    // freshly built element skips its own removals (bulk detach), exactly as
+    // every other child of a removed element does. What must hold is that
+    // nothing is left behind in the LIVE tree.
+    expect(ul.isConnected).toBe(false)
+    expect(container.childNodes.length).toBe(0)
   })
 })
 
