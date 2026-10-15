@@ -505,7 +505,17 @@ const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
 // deliberately untouched — a stale entry left behind by a string→object
 // transition is self-correcting, because the object writes change the
 // declaration and the `css` readback compare then fails.
-const _prevStyleText: WeakMap<HTMLElement, { raw: string; css: string }> = new WeakMap()
+//
+// The readback is LAZY (`css: null` until needed). Serializing the declaration
+// is the expensive half of a style write, and most writes never consult it: a
+// style set once at mount is never re-emitted, and a reactive style whose value
+// changes (a list row's `transform`) is written again regardless. So a write
+// records only `raw`; the first re-emit of an UNCHANGED string writes once more
+// (exactly what happened before whenever the compare failed) and records the
+// serialization, and later identical re-emits skip as before. Measured in real
+// Chromium on a virtual list's scroll jump: this readback was most of
+// `applyStyleProp`'s ~21% share of the op.
+const _prevStyleText: WeakMap<HTMLElement, { raw: string; css: string | null }> = new WeakMap()
 
 /**
  * A style write the compiler proved runs ONCE (outside any reactive binding),
@@ -538,16 +548,23 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
     // even when nothing changed. See `_prevStyleText` above for why the
     // guard compares a cached last-written pair instead of readback alone.
     const cached = _prevStyleText.get(el)
-    if (cached !== undefined && cached.raw === value && el.style.cssText === cached.css) {
+    if (cached !== undefined && cached.raw === value) {
+      if (cached.css !== null && el.style.cssText === cached.css) return
+      // Same source string, no verified serialization yet (or an external
+      // mutation since): write it again and record what it serializes to, so
+      // the next identical emit can skip.
+      el.style.cssText = value
+      cached.css = el.style.cssText
+      _prevStyleKeys.delete(el)
       return
     }
     // cssText replaces everything — drop any tracked object-mode keys.
     el.style.cssText = value
     if (cached !== undefined) {
       cached.raw = value
-      cached.css = el.style.cssText
+      cached.css = null
     } else {
-      _prevStyleText.set(el, { raw: value, css: el.style.cssText })
+      _prevStyleText.set(el, { raw: value, css: null })
     }
     _prevStyleKeys.delete(el)
     return

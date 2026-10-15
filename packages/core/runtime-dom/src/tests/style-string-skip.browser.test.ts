@@ -22,6 +22,9 @@ describe('applyStyleProp string skip-if-equal (real browser)', () => {
       const input = 'color:red;font-size:14px'
       applyStyleProp(el, input)
       expect(el.style.cssText).not.toBe(input) // premise: readback normalized
+      // The first repeat writes once more and records the serialization;
+      // repeats after it are the ones that skip.
+      applyStyleProp(el, input)
       const afterFirst = el.style.cssText
 
       // Shadow the prototype accessor per-instance to count setter calls.
