@@ -62,13 +62,13 @@
  *    result and it is exact (a count, not a timing).
  *  - PER-OP: Pyreon `computed` re-derivation is dead-even with Solid `createMemo`
  *    and RxJS for this shape — the signal engine is competitive with the
- *    canonical fine-grained libraries. @pyreon/rx's convenience wrapper is
- *    slightly slower than a hand `computed` doing identical work: a JSC tight-
- *    loop artifact (a predicate passed THROUGH rx's function-parameter boundary
- *    into the `Array.prototype.filter`/`map` builtin can't be monomorphized at
- *    that callsite, whereas a directly-visible const can). Real apps recompute
- *    infrequently over usually-small collections where a few hundred ns is
- *    invisible — but it is real and measured, so it is reported, not hidden.
+ *    canonical fine-grained libraries. @pyreon/rx's `filter`/`map` used to be
+ *    ~1.5-1.9x slower than a hand `computed`: a callback passed THROUGH rx's
+ *    parameter into the `Array.prototype.filter`/`map` builtin could not be
+ *    specialized at that call site on JSC. They now run their own loops (same
+ *    observable behaviour: index, array argument, holes) and sit at or ahead of
+ *    the hand `computed`. `pipe` still trails by a few percent: its stages are
+ *    called through one loop site, and unrolling short chains measured no gain.
  */
 process.env.NODE_ENV = 'production'
 
