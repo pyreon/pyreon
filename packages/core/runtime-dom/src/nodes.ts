@@ -658,6 +658,62 @@ function trySmallKReorder(
   return true
 }
 
+/**
+ * Same-length update that only PERMUTES a few positions (the krausest `swap`
+ * op): `newKeys` differs from `currentKeys` at ≤ SMALL_K indices, and the keys
+ * at those indices are the same multiset before and after. Nothing is added and
+ * nothing goes stale, so the cache is already exact and the update is just the
+ * small-k placement. Recognizing that from the ≤k differing keys skips the
+ * general path's two full `cache.has` passes in `mountNewForEntries` (2n Map
+ * probes to learn that nothing was added).
+ *
+ * Returns `'done'` when it applied the update, `'many'` when more than SMALL_K
+ * positions differ (so `trySmallKReorder` would fail too and can be skipped),
+ * and `'no'` otherwise (an add or removal hides among the differences — the
+ * general path handles it). Never mutates anything unless it returns `'done'`.
+ */
+function trySmallKPermutation(
+  n: number,
+  newKeys: (string | number)[],
+  currentKeys: (string | number)[],
+  cache: Map<string | number, ForEntry>,
+  liveParent: Node,
+  tailMarker: Comment,
+): 'done' | 'many' | 'no' {
+  if (n !== currentKeys.length) return 'no'
+  const diffs: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (newKeys[i] !== currentKeys[i]) {
+      diffs.push(i)
+      if (diffs.length > SMALL_K) return 'many'
+    }
+  }
+  const k = diffs.length
+  // One-to-one match of the new keys at the differing positions against the old
+  // keys at those positions. k ≤ SMALL_K, so the quadratic match is a handful of
+  // compares. Bitmask of old positions already matched.
+  let used = 0
+  for (let a = 0; a < k; a++) {
+    const key = newKeys[diffs[a] as number]
+    let found = false
+    for (let b = 0; b < k; b++) {
+      if ((used & (1 << b)) === 0 && currentKeys[diffs[b] as number] === key) {
+        used |= 1 << b
+        found = true
+        break
+      }
+    }
+    if (!found) return 'no'
+  }
+  if (k > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
+  for (let a = 0; a < k; a++) {
+    const i = diffs[a] as number
+    const cached = cache.get(newKeys[i] as string | number)
+    if (cached) cached.pos = i
+  }
+  return 'done'
+}
+
 function computeForLis(lis: LisState, n: number): number {
   const { tails, tailIdx, pred, entries } = lis
   let lisLen = 0
@@ -1320,6 +1376,14 @@ export function mountFor<T>(
       return
     }
 
+    // Fast path: a few positions permuted, nothing added or removed (swap).
+    const perm = trySmallKPermutation(n, newKeys, currentKeys, cache, liveParent, tailMarker)
+    if (perm === 'done') {
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.mountFor.permFast')
+      currentKeys = newKeys
+      return
+    }
+
     // Mount new entries FIRST and count them. If nothing was added AND the cache
     // now holds exactly `n`, every newKey was already cached — a PURE REORDER
     // (swap / reverse / sort) with nothing stale — so skip the O(n) newKey-Set
@@ -1334,7 +1398,7 @@ export function mountFor<T>(
       removeStaleForEntries(_reusableKeySet)
     }
 
-    if (trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {
+    if (perm !== 'many' && trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {
       currentKeys = newKeys
       return
     }
