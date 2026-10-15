@@ -59,7 +59,9 @@ describe('text bindings do not read node.data back on update', () => {
     const node = textIn('')
     const counts = instrument(node)
     const s = signal(0)
-    const dispose = _bindText(() => s() * 2, node)
+    // A bare callable is the compiled slow-path shape; the parameter type only
+    // models the signal shape, so the test casts.
+    const dispose = _bindText((() => s() * 2) as unknown as Parameters<typeof _bindText>[0], node)
     for (let i = 1; i <= 10; i++) s.set(i)
     expect(node.textContent).toBe('20')
     expect(counts.reads).toBe(1)
