@@ -12,6 +12,7 @@ import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
 import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
 import { FLOW_FRAMEWORKS, runFlow } from './scenario-flow'
 import { TABLE_FRAMEWORKS, runTable } from './scenario-table'
+import { VIRTUAL_FRAMEWORKS, runVirtual } from './scenario-virtual'
 import { MEMO_FRAMEWORKS, runMemo } from './scenario-memo'
 import { runTree, TREE_FRAMEWORKS } from './scenario-tree'
 
@@ -52,6 +53,12 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes)',
     frameworks: FLOW_FRAMEWORKS,
     run: runFlow,
+  },
+  {
+    id: 'virtual',
+    label: 'virtual list — @pyreon/virtual vs @tanstack/react-virtual (10,000 rows)',
+    frameworks: VIRTUAL_FRAMEWORKS,
+    run: runVirtual,
   },
   {
     id: 'table',
