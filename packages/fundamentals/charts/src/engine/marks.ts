@@ -213,7 +213,8 @@ function mark<T>(kind: Series['kind'], y: YChannel<T>, options: ErrorOptions<T>)
 function isGapNormal(col: readonly number[]): boolean {
   for (let i = 0; i < col.length; i++) {
     const v = col[i]!
-    if (v === v && v - v !== 0) return false
+    // NaN is a valid gap; an infinity, a hole (`undefined`) or a non-number is not.
+    if (!Number.isFinite(v) && !Number.isNaN(v)) return false
   }
   return true
 }
@@ -383,9 +384,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     let raw: Double[] = []
     const col = m.column
     if (col !== undefined) {
-      // The columnar path: an indexed read per point, no call. `v - v === 0`
-      // is false exactly for NaN and ±Infinity — the same gap rule `toNumber`
-      // applies — and an index past the column's end is a gap too.
+      // The columnar path: an indexed read per point, no call. A non-finite
+      // value (NaN, ±Infinity) is a gap — the same rule `toNumber` applies —
+      // and an index past the column's end is a gap too.
       //
       // `push`, NOT a presized array. `new Array(n).fill(0)` measured faster in
       // isolation (V8 73 → 38µs at 10k) and SLOWER in the real mount: at 1M
@@ -399,15 +400,14 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       // `values`, and the engine never writes into `values`. Skipping the copy
       // is what lets a 1M-point series mount without allocating a second 8MB
       // array per series (uPlot reads its input the same way). One read-only
-      // scan decides: an infinity, a hole or a non-number (`v === v` but
-      // `v - v !== 0`) falls back to the normalizing copy below, so the gap
-      // rule is unchanged.
+      // scan decides: an infinity, a hole or a non-number falls back to the
+      // normalizing copy below, so the gap rule is unchanged.
       if (Array.isArray(col) && col.length === n && isGapNormal(col)) {
         raw = col
       } else {
         for (let i = 0; i < m1; i++) {
           const v = col[i] as Double
-          raw.push(v - v === 0 ? v : Number.NaN)
+          raw.push(Number.isFinite(v) ? v : Number.NaN)
         }
         for (let i = m1; i < n; i++) raw.push(Number.NaN)
       }

@@ -3421,7 +3421,7 @@ fun extendSpan(span: ExtentSpan, values: List<Double>): ExtentSpan {
       while (i < n) {
         val v = values[(i).toInt()]
         i = i + 1L
-        if (v - v == 0.0) {
+        if (isFiniteNumber(v)) {
           lo = v
           hi = v
           seen = true
@@ -3431,7 +3431,7 @@ fun extendSpan(span: ExtentSpan, values: List<Double>): ExtentSpan {
     }
     while (i < n) {
       val v = values[(i).toInt()]
-      if (v - v == 0.0) {
+      if (isFiniteNumber(v)) {
         if (v < lo) {
           lo = v
         } else {

@@ -681,16 +681,17 @@ function extendSpan(span: ExtentSpan, values: Double[]): ExtentSpan {
   const n = values.length
   let i = 0
   // Two phases instead of one loop branching on `seen` per value: the first
-  // finite value seeds the span, then the hot loop is a bare min/max. `v - v`
-  // is 0 exactly for a finite v (NaN and ±Infinity give NaN) — `isFiniteNumber`
-  // inlined. `else if` is sound because lo <= hi. Measured over 1M values:
-  // V8 1.48 → 0.53ms, JSC 1.73 → 1.48ms (a one-loop `else if` form was SLOWER
-  // on JSC, 2.1ms).
+  // finite value seeds the span, then the hot loop is a bare min/max. `else
+  // if` is sound because lo <= hi. Measured over 1M values: V8 1.48 → 0.67ms,
+  // JSC unchanged (a one-loop `else if` form was SLOWER on JSC). Inlining the
+  // finite test as `v - v === 0` shaved V8 to 0.53ms but reads as a typo to
+  // static analysis; `Number.isFinite` has no native lowering, so this file
+  // keeps the engine's own `isFiniteNumber`.
   if (!seen) {
     while (i < n) {
       const v = values[i]!
       i = i + 1
-      if (v - v === 0.0) {
+      if (isFiniteNumber(v)) {
         lo = v
         hi = v
         seen = true
@@ -700,7 +701,7 @@ function extendSpan(span: ExtentSpan, values: Double[]): ExtentSpan {
   }
   while (i < n) {
     const v = values[i]!
-    if (v - v === 0.0) {
+    if (isFiniteNumber(v)) {
       if (v < lo) lo = v
       else if (v > hi) hi = v
     }

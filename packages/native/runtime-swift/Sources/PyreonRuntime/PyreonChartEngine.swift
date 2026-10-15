@@ -6054,7 +6054,7 @@ public func extendSpan(_ span: ExtentSpan, _ values: [Double]) -> ExtentSpan {
       while i < n {
         let v = values[i]
         i = i + 1
-        if v - v == 0.0 {
+        if isFiniteNumber(v) {
           lo = v
           hi = v
           seen = true
@@ -6064,7 +6064,7 @@ public func extendSpan(_ span: ExtentSpan, _ values: [Double]) -> ExtentSpan {
     }
     while i < n {
       let v = values[i]
-      if v - v == 0.0 {
+      if isFiniteNumber(v) {
         if v < lo {
           lo = v
         } else {
