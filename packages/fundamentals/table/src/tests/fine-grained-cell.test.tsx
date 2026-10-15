@@ -696,6 +696,45 @@ describe('flexRenderCell — the context a cell renderer receives', () => {
     }
   })
 
+  it('a plain context with an extra key (a feature-added field) keeps that key and stays untracked', async () => {
+    const seen: Array<{ extra?: unknown }> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown; extra?: unknown }) => {
+            seen.push({ extra: info.extra })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    owner.getContext = function (this: unknown) {
+      return { ...original.call(this), extra: 'from-feature' }
+    }
+    try {
+      data.set(editCell(data(), 0, 'a', 'P'))
+      await flush()
+      expect(t.cellText(0, 'a')).toBe('P|P')
+      expect(seen[seen.length - 1]!.extra).toBe('from-feature')
+      // A second render through the same getContext takes the cached answer.
+      t.cellRuns[0] = 0
+      data.set(editCell(data(), 1, 'a', 'Q'))
+      await flush()
+      expect(t.cellText(1, 'a')).toBe('Q|Q')
+      expect(seen[seen.length - 1]!.extra).toBe('from-feature')
+      expect(t.cellRuns[0]).toBe(1)
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+
   it('keeps a non-plain context prototype (descriptor-copy fallback) and still untracks the value', async () => {
     const seen: Array<{ inherited?: unknown; proto: unknown }> = []
     const data = signal(makeData(2))
