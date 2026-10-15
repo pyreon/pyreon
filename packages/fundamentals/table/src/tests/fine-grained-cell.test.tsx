@@ -126,7 +126,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.unmount()
   })
 
-  it('a SORT (state change) re-runs all cells AND re-orders correctly', async () => {
+  it('a SORT re-orders the rows without re-running any cell', async () => {
     // reverse-sorted `a` so ascending sort actually re-orders
     const data = signal([
       { id: 0, a: 'z', b: 'b0' },
@@ -137,11 +137,13 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.cellRuns[0] = 0
     t.table().getColumn('a').toggleSorting(false) // ascending
     await flush()
-    // all 3×2 = 6 cells re-ran (coarse on state change)
-    expect(t.cellRuns[0]).toBe(6)
-    // order in DOM is now a, m, z
-    const firstRow = t.el.querySelector('tbody [data-rowid]')
-    expect(firstRow?.querySelector('.col-a')?.textContent).toBe('a')
+    // A sort moves rows; no cell's content changed, so no cell re-runs.
+    expect(t.cellRuns[0]).toBe(0)
+    // Order and content in the DOM: a, m, z — every cell still matches its row.
+    const rows = [...t.el.querySelectorAll('tbody [data-rowid]')]
+    expect(rows.map((r) => r.getAttribute('data-rowid'))).toEqual(['2', '1', '0'])
+    expect(rows.map((r) => r.querySelector('.col-a')?.textContent)).toEqual(['a', 'm', 'z'])
+    expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b1', 'b0'])
     t.unmount()
   })
 
@@ -297,7 +299,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     el.remove()
   })
 
-  it('sort asc → desc (array-state slice, same length) re-runs cells; a value edit while sorted stays fine', async () => {
+  it('sort asc → desc re-runs no cells; a value edit while sorted stays fine-grained', async () => {
     const data = signal(makeData(4))
     const t = mountFineTable(data)
     t.table().getColumn('a').toggleSorting(false) // sorting: [{id:'a',desc:false}]
@@ -305,7 +307,9 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.cellRuns[0] = 0
     t.table().getColumn('a').toggleSorting(true) // sorting: [{id:'a',desc:true}] — same length, differ
     await flush()
-    expect(t.cellRuns[0]).toBe(8) // coarse: all 4×2 cells re-run on the sort-direction change
+    expect(t.cellRuns[0]).toBe(0) // a reorder moves rows, it re-runs no cell
+    expect(t.cellText(0, 'a')).toBe('a0')
+    expect(t.cellText(3, 'a')).toBe('a3')
     // a subsequent value edit (structure/state unchanged) is fine-grained again
     t.cellRuns[0] = 0
     data.set(editCell(data(), 0, 'b', 'Z'))
@@ -546,7 +550,7 @@ describe('visibleCells — fine-grained cells-list invalidation', () => {
     t.unmount()
   })
 
-  it('a SORT still re-runs all cells (the coarse-but-correct state contract is unchanged)', async () => {
+  it('a SORT re-orders the rows without re-running any cell (visibleCells)', async () => {
     const data = signal([
       { id: 0, a: 'z', b: 'b0' },
       { id: 1, a: 'm', b: 'b1' },
@@ -556,9 +560,10 @@ describe('visibleCells — fine-grained cells-list invalidation', () => {
     t.cellRuns[0] = 0
     t.table().getColumn('a').toggleSorting(false)
     await flush()
-    expect(t.cellRuns[0]).toBe(6) // 3×2 — bump-every-row on a structure change
-    const firstRow = t.el.querySelector('tbody [data-rowid]')
-    expect(firstRow?.querySelector('.col-a')?.textContent).toBe('a')
+    expect(t.cellRuns[0]).toBe(0) // a reorder moves rows, it re-runs no cell
+    const rows = [...t.el.querySelectorAll('tbody [data-rowid]')]
+    expect(rows.map((r) => r.querySelector('.col-a')?.textContent)).toEqual(['a', 'm', 'z'])
+    expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b1', 'b0'])
     t.unmount()
   })
 
@@ -812,6 +817,26 @@ describe('flexRenderCell reuses the cells its row just looked up', () => {
     await flush()
     expect(String(flexRenderCell(table, '1', 'a'))).toBe('FRESH')
     expect(t.el.querySelector('[data-rowid="1"] .col-a')?.textContent).toBe('FRESH')
+    t.unmount()
+  })
+})
+
+describe('reorders (sort) — rows move, cells re-run only where content changed', () => {
+  it('an edit that moves a row in a sorted table updates its content and order', async () => {
+    const data = signal([
+      { id: 0, a: 'b', b: 'b0' },
+      { id: 1, a: 'c', b: 'b1' },
+      { id: 2, a: 'd', b: 'b2' },
+    ])
+    const t = mountFineTable(data)
+    t.table().getColumn('a').toggleSorting(false)
+    await flush()
+    // Row 2 jumps from last to first.
+    data.set(data().map((r) => (r.id === 2 ? { ...r, a: 'a' } : r)))
+    await flush()
+    const rows = [...t.el.querySelectorAll('tbody [data-rowid]')]
+    expect(rows.map((r) => r.querySelector('.col-a')?.textContent)).toEqual(['a', 'b', 'c'])
+    expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b0', 'b1'])
     t.unmount()
   })
 })

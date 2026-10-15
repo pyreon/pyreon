@@ -134,6 +134,7 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
   // ── Fine-grained per-row invalidation ──────────────────────────────────────
   const rowVersions = new Map<string, Signal<number>>()
   let prevOriginals = new Map<string, unknown>()
+  let prevRowObjects = new Map<string, unknown>()
   let firstSync = true
 
   const getRowSignal = (rowId: string): Signal<number> => {
@@ -201,29 +202,58 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
 
     const currentIds = rows.map((r) => r.id)
     const nextOriginals = new Map<string, unknown>()
-    for (const row of rows) nextOriginals.set(row.id, row.original)
+    const nextRowObjects = new Map<string, unknown>()
+    for (const row of rows) {
+      nextOriginals.set(row.id, row.original)
+      nextRowObjects.set(row.id, row)
+    }
 
     if (!firstSync) {
       const columnsChanged = columns !== prevColumns
       let structureChanged = currentIds.length !== prevRowIds.length
+      let orderChanged = false
       if (!structureChanged) {
         for (let i = 0; i < currentIds.length; i++) {
           if (currentIds[i] !== prevRowIds[i]) {
-            structureChanged = true
+            orderChanged = true
             break
+          }
+        }
+        // Same length, different order: a REORDER (sort) if every id was
+        // already rendered, otherwise rows were swapped in and out.
+        if (orderChanged) {
+          for (const id of currentIds) {
+            if (!prevOriginals.has(id)) {
+              structureChanged = true
+              break
+            }
           }
         }
       }
 
       untrack(() => {
-        if (structureChanged) {
+        if (orderChanged && !structureChanged && !columnsChanged) {
+          // A pure reorder (sort): the same rows in a new order. `<For>` moves
+          // the rows; no cell's content changed, so bump only rows whose data
+          // OR row object changed. Table-core keeps a flat row's object across
+          // a sort and clones a row only when it reorders that row's sub-rows,
+          // so a flat sort bumps nothing and a cloned parent still refreshes
+          // the cells cached against its old object.
+          for (const [id, row] of nextRowObjects) {
+            if (prevRowObjects.get(id) !== row || prevOriginals.get(id) !== nextOriginals.get(id)) {
+              rowVersions.get(id)?.update((n) => n + 1)
+            }
+          }
+          return
+        }
+        if (structureChanged || orderChanged) {
           // Evict signals for rows no longer rendered (Class-C leak safety).
           const live = new Set(currentIds)
           for (const id of rowVersions.keys()) {
             if (!live.has(id)) rowVersions.delete(id)
           }
         }
-        if (structureChanged || columnsChanged) {
+        if (structureChanged || orderChanged || columnsChanged) {
           for (const s of rowVersions.values()) s.update((n) => n + 1)
         } else {
           // A pure in-place data edit: bump ONLY the rows whose object changed.
@@ -245,6 +275,7 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
     firstSync = false
     prevRowIds = currentIds
     prevOriginals = nextOriginals
+    prevRowObjects = nextRowObjects
     prevColumns = columns
   })
 

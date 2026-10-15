@@ -489,8 +489,10 @@ Three rules make it fine-grained:
   when a cell value changes in place. `flexRenderCell` re-navigates to the live cell each
   read.
 
-A table-**state** change (sort, filter, selection, column visibility) re-runs all cells
-(coarse — correct by default for cells that render state, e.g. a selection checkbox). An
+A **sort** re-runs no cells: the same rows move, and only rows whose data or row object
+changed are refreshed. Other table-**state** changes (filter, selection, column visibility)
+re-run all cells (coarse — correct by default for cells that render state, e.g. a selection
+checkbox). An
 in-place **data** edit is the fine-grained path.
 
 :::warning[Reorder-on-data-edit limitation]
