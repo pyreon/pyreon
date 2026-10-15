@@ -144,6 +144,10 @@ function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
 
 /** The dispatch half of {@link propagateEagerChange} — factored out so its
  * subscriber/direct branch sides exist ONCE, shared by both window arms. */
+/** A lazy computed's notify callback carries a back-ref to its read fn (`_c`,
+ *  stamped by `_markRecompute`); effects and eager computeds do not. */
+type LazyNotifyFn = (() => void) & { _c?: { _dirty: boolean; _disposed: boolean } }
+
 function dispatchEagerChange(read: ComputedFn<unknown>): void {
   if (read._s1 !== null || read._s !== null) propagateLazyDirty(read)
   if (read._d1) enqueuePendingNotification(read._d1)
@@ -160,6 +164,18 @@ function dispatchEagerChange(read: ComputedFn<unknown>): void {
  * opens its own. Module-level so eager computeds allocate nothing extra.
  */
 function propagateEagerChange(read: ComputedFn<unknown>): void {
+  // Nothing to propagate when there are no direct updaters and the only
+  // subscriber is a lazy computed that is already dirty (or disposed) — the
+  // exact case `propagateLazyDirty` returns from on its first check. It is the
+  // common one on a PULL: a dirty computed is re-evaluated because its reader,
+  // itself dirty, is evaluating right now. Skipping here also skips opening and
+  // closing a batch window per hop, which a 50-deep chain paid 50 times a read.
+  if (read._d1 === null && read._d === null && read._s === null) {
+    const s1 = read._s1 as (LazyNotifyFn | null)
+    if (s1 === null) return
+    const c = s1._c
+    if (c !== undefined && (c._dirty || c._disposed)) return
+  }
   if (isBatching()) {
     dispatchEagerChange(read)
   } else {
