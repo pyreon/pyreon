@@ -33,11 +33,11 @@ interface QueuedRefresh {
 }
 const recomputeQueue: QueuedRefresh[] = []
 
-// Effect-queue intrusive fields, created LAZILY on first enqueue (NOT at effect
-// creation) so an effect that never re-fires stays a bare closure with zero
-// added retained bytes — the dominant "create, run once, never notified again"
-// shape. Every effect that HAS fired then shares one hidden class, so the
-// per-enqueue flag reads stay monomorphic in steady state.
+// Effect-queue intrusive fields. `effect()` creates them up front (see the
+// comment there: lazily created, V8 dispatched queued runs measurably slower);
+// everything else that can be enqueued — `renderEffect` runs, `direct`
+// updaters, raw `subscribe` listeners — gets them on first enqueue, so a
+// binding that is never queued stays a bare closure.
 //   `_eq` — queue membership. Cur/Next are mutually exclusive in time (an effect
 //           leaves `curEffects` before it can enter `nextEffects`), so one
 //           tri-state field dedups BOTH queues.
