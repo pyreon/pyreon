@@ -41,7 +41,7 @@
  * of this suite. Ratios are the portable signal; absolute ms are machine- and
  * load-dependent. Stamp `uptime` and discard anything measured above load ~8.
  *
- * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|charts] [--wait-quiet [maxLoad]]
+ * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|table|virtual|charts] [--wait-quiet [maxLoad]]
  */
 import { execSync, spawn } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -164,6 +164,16 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     id: 'flow',
     label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes / 499 edges)',
     frameworks: ['Pyreon', 'React Flow 12'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
+  {
+    id: 'virtual',
+    label: 'virtual list — @pyreon/virtual vs @tanstack/react-virtual (10,000 rows)',
+    frameworks: ['Pyreon', 'React 19 (react-virtual, memo rows)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
+  {
+    id: 'table',
+    label: 'data table — @pyreon/table vs @tanstack/react-table (1,000 rows × 6 cols)',
+    frameworks: ['Pyreon', 'React 19 (react-table, memo rows)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
   {
     id: 'charts',
