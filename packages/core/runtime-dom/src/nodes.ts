@@ -4,6 +4,30 @@ type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
 import { effect, getContextOwner, runUntracked, runWithContextOwner } from '@pyreon/reactivity'
 
+
+/**
+ * BULK DETACH. While a `<For>` whose parent element is removed as a unit tears
+ * down, every node it would remove one at a time is about to leave the
+ * document with that parent anyway. On a 1,000-row × 6-column table that was
+ * ~9,000 `removeChild` calls for a subtree detached once. Inside the window
+ * `detachNode` skips the removal; cleanups still run, so effects are disposed
+ * and refs cleared.
+ *
+ * Only `mountFor` opens the window, and only when it was mounted inside a
+ * freshly built element (`_elementDepth > 0` at mount) — the same contract that
+ * lets `mountChild` return a no-op remover there. A `<Portal>` inside the
+ * subtree removes its own bracketed range directly, never through
+ * `detachNode`, so a portaled node in a live target is still removed.
+ */
+let bulkDetachDepth = 0
+
+/** Remove `node` from its parent, unless a bulk detach makes it redundant. */
+export function detachNode(node: Node): void {
+  if (bulkDetachDepth > 0) return
+  const p = node.parentNode
+  if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(node)
+}
+
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -822,6 +846,7 @@ export function mountFor<T>(
   anchor: Node | null,
   mountChild: MountFn,
   adoption?: ForAdoption | null,
+  parentRemovesUnit = false,
 ): Cleanup {
   let startMarker: Comment
   let tailMarker: Comment
@@ -1379,6 +1404,26 @@ export function mountFor<T>(
 
   return () => {
     e.dispose()
+    if (parentRemovesUnit) {
+      // The parent element leaves the document as a unit right after this, so
+      // the rows' own removals are redundant (see `detachNode`).
+      bulkDetachDepth++
+      try {
+        if (cleanupCount > 0) {
+          for (const entry of cache.values()) {
+            if (entry.cleanup) {
+              _emitCleanup()
+              entry.cleanup()
+            }
+          }
+        }
+      } finally {
+        bulkDetachDepth--
+      }
+      cache = new Map()
+      cleanupCount = 0
+      return
+    }
     for (const entry of cache.values()) {
       if (cleanupCount > 0 && entry.cleanup) {
         _emitCleanup()
