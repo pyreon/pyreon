@@ -240,6 +240,13 @@ export interface Emphasis {
 export interface ChartSpec {
   width: Double
   height: Double
+  /**
+   * M4 decimation columns per CSS pixel for a dense line. Unset is 2 — finer
+   * than a 1× display's pixels, so a noisy line keeps more of its detail. A
+   * host trading fidelity for speed (`density: 'device'`) passes the device
+   * pixel ratio; below 1 is treated as 1.
+   */
+  m4Density?: Double
   series: Series[]
   categories: string[]
   theme: ChartTheme
@@ -653,6 +660,12 @@ function rawExtentOver(series: Series[]): Domain {
     : e
 }
 
+/** M4 columns per CSS pixel (see `ChartSpec.m4Density`). */
+function m4Density(spec: ChartSpec): Double {
+  const d = spec.m4Density ?? 2.0
+  return d > 1.0 ? d : 1.0
+}
+
 /** A running extent: the finite values seen so far. */
 interface ExtentSpan {
   seen: boolean
@@ -665,18 +678,34 @@ function extendSpan(span: ExtentSpan, values: Double[]): ExtentSpan {
   let seen = span.seen
   let lo = span.lo
   let hi = span.hi
-  for (let i = 0; i < values.length; i++) {
-    const v = values[i]!
-    if (isFiniteValue(v)) {
-      if (!seen) {
+  const n = values.length
+  let i = 0
+  // Two phases instead of one loop branching on `seen` per value: the first
+  // finite value seeds the span, then the hot loop is a bare min/max. `else
+  // if` is sound because lo <= hi. Measured over 1M values: V8 1.48 → 0.67ms,
+  // JSC unchanged (a one-loop `else if` form was SLOWER on JSC). Inlining the
+  // finite test as `v - v === 0` shaved V8 to 0.53ms but reads as a typo to
+  // static analysis; `Number.isFinite` has no native lowering, so this file
+  // keeps the engine's own `isFiniteNumber`.
+  if (!seen) {
+    while (i < n) {
+      const v = values[i]!
+      i = i + 1
+      if (isFiniteNumber(v)) {
         lo = v
         hi = v
         seen = true
-      } else {
-        if (v < lo) lo = v
-        if (v > hi) hi = v
+        break
       }
     }
+  }
+  while (i < n) {
+    const v = values[i]!
+    if (isFiniteNumber(v)) {
+      if (v < lo) lo = v
+      else if (v > hi) hi = v
+    }
+    i = i + 1
   }
   return { seen, lo, hi }
 }
@@ -1365,7 +1394,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // A dense category line with the default curve reduces straight from its
       // values (identical output, no per-datum point objects); anything else
       // places, then reduces.
-      const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
+      const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) : []
       const useDirect = direct.length > 0
       const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
       // Each run is a maximal stretch of finite values, so the rows it draws
@@ -1382,7 +1411,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         }
         runFrom = runFrom + run.length
         // M4: more points than pixel columns draw the same pixels from four per column.
-        const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
+        const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)), m4Density(spec))
         if (pts.length > 1) {
           // Keyed only when the drawn points ARE the run's rows, one to one
           // (M4 drops points, a curve adds them). The series label keys the

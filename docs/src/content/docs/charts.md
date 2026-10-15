@@ -655,6 +655,15 @@ grouped segments keep only their mark radii.
 
 ### Big data
 
+A dense line is decimated before it is stroked: M4 keeps the first, lowest,
+highest and last point of each column. By default there are two columns per
+CSS pixel, finer than a 1× display has pixels, so a noisy line keeps more of
+its detail. `density="device"` keeps one column per DEVICE pixel instead, as
+uPlot does: about half the points on a 1× display and a faster mount, at the
+cost of a coarser noisy line. Measured against drawing every point (real
+Chromium, a noisy 20k-point line), the default's error is 2.2M and
+`'device'`'s 3.6M. `density` is web-only.
+
 `maxPoints` caps what one paint draws: past it the visible slice is thinned with
 LTTB on the first mark — rows stay aligned across marks, so a line and its area
 never disagree — and a 100k-point series paints as a 1k-point one. Hits,
@@ -662,6 +671,31 @@ tooltips and selection report the GLOBAL index of the row actually drawn. The
 engine's throughput is measured, not asserted: `bun run
 --filter=@pyreon/charts bench:engine` (layout + render, 1k–100k points, treemap,
 sankey, LTTB; single machine, author-run — treat magnitudes as the signal).
+
+A mark also takes a COLUMN instead of an accessor: hand it the array the app
+already holds — a `Float64Array` or a `number[]` — and value `i` belongs to row
+`i`. Resolving a column is an indexed read per point rather than a function call
+per row, and when every mark is a column `<PlotChart>` needs no `data` at all:
+the chart has one row per index of the longest column. A non-finite value, or an
+index past a column's end, is a gap.
+
+```tsx
+const prices = new Float64Array(1_000_000) // filled by the app
+
+<PlotChart marks={[line(prices)]} maxPoints={1000} />
+```
+
+Row callbacks (`x`, `by`, tooltips) still run, receiving `undefined` and the
+index. A plain `number[]` of exactly the chart's length is used AS the series —
+no copy — when every entry is a number or `NaN`; the chart never writes into
+it, so don't mutate it in place either (pass a new array to update). A typed
+array, a shorter array, or one holding an infinity is copied once. Measured
+against uPlot 1.6 with the same `number[]` input: a 1M-point line mounts in a
+statistical tie (14.9ms each) and updates 2.5× faster at 100k points.
+
+Columns are a web path for now: the native lowering reads marks as
+inline arrows and warns on a column, so shared multiplatform source should keep
+the accessor form.
 
 ## Locales
 

@@ -508,6 +508,8 @@ export interface ChartProps<T> {
   universalTransition?: boolean
   showGrid?: boolean
   maxPoints?: number
+  /** See `PlotChartProps.density`. */
+  density?: 'fine' | 'device'
   /**
    * A click or tap on a datum, with the index of the drawn item: the row for
    * the cartesian marks, `<Arc>`, `<Stage>` and `<Candle>`, the cell for
@@ -928,7 +930,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   plotProps.onSelect = reactiveProp(() => props.onSelect)

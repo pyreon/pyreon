@@ -1,4 +1,4 @@
-import { plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig } from './hosts'
+import { plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
 import { kotlinIdent, kotlinStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_HANDLE_TYPE, CHARTS_PLUGIN_NAME } from './names'
 import { host } from './kotlin-facade'
@@ -102,7 +102,10 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const dataV = chartAttrExprKotlin(e, 'data')
   const marksV = chartAttrExprKotlin(e, 'marks')
   if (dataV === undefined || marksV === undefined) {
-    host.warn(`<${tag}>: needs \`data\` and \`marks\` attributes on native; emitting an empty Box().`)
+    // The web accepts a column-only chart with no \`data\` (\`line(prices)\`);
+    // say so, or the missing attribute reads as a typo.
+    const noData = dataV === undefined && marksV !== undefined && marksAreColumns(marksV) ? ' A column-only chart (marks given arrays, no `data`) is web-only; pass `data` and arrow accessors in shared source.' : ''
+    host.warn(`<${tag}>: needs \`data\` and \`marks\` attributes on native; emitting an empty Box().${noData}`)
     return 'Box {}'
   }
   if (marksV.kind !== 'array') {
