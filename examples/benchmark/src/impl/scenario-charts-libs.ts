@@ -183,12 +183,13 @@ const asXY = (ys: Float64Array): XY[] =>
   cached(ys, 'xy', () => Array.from(ys, (y, x) => ({ x, y })))
 const asCols = (ys: Float64Array): [number[], number[]] =>
   cached(ys, 'cols', () => [Array.from(ys, (_, i) => i), Array.from(ys)])
+const asArr = (ys: Float64Array): number[] => cached(ys, 'arr', () => Array.from(ys))
 const asBarRows = (ys: Float64Array): BarRow[] =>
   cached(ys, 'bars', () => Array.from(ys, (v, i) => ({ label: String(i), v })))
 
 /** Build the arm's own input shape OUTSIDE every window (an app holds its data). */
 function prebuild(fw: string, ys: Float64Array, kind: 'line' | 'bars'): void {
-  if (fw === 'Pyreon (PlotChart columns)') return
+  if (fw === 'Pyreon (PlotChart columns)') return void asArr(ys)
   if (fw.startsWith('Pyreon')) void (kind === 'line' ? asRows(ys) : asBarRows(ys))
   else if (fw.startsWith('uPlot')) void asCols(ys)
   else if (fw.startsWith('Chart.js')) void (kind === 'line' ? asXY(ys) : asBarRows(ys))
@@ -213,7 +214,10 @@ interface Target {
 function pyreonColumnsTarget(): Target {
   let marks: ReturnType<typeof signal<ReturnType<typeof pline>[]>> | null = null
   let unmount: (() => void) | null = null
-  const lineMarks = (ys: Float64Array) => [pline(ys, { color: COLOR, width: 1 })]
+  // A plain `number[]`, built outside the window like every arm's input —
+  // the same input type uPlot's arm gets (`asCols`), and the one Pyreon can
+  // read without copying.
+  const lineMarks = (ys: Float64Array) => [pline(asArr(ys), { color: COLOR, width: 1 })]
   return {
     mountLine(host, ys) {
       const m = signal(lineMarks(ys))
@@ -238,7 +242,7 @@ function pyreonColumnsTarget(): Target {
     mountBars(host, ys) {
       unmount = pyreonMount(
         ph(PlotChart, {
-          marks: [pbars(ys, { color: COLOR })],
+          marks: [pbars(asArr(ys), { color: COLOR })],
           width: W,
           height: H,
           animate: false,

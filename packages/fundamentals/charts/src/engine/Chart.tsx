@@ -60,9 +60,8 @@ export interface PlotChartProps<T> {
    * Optional when every mark is a COLUMN (`line(values)` with a
    * `Float64Array` or `number[]`): the chart then has one row per index of
    * the longest column, and row callbacks (`x`, `by`, `tooltip`, …) receive
-   * `undefined` with the index. A column-only chart still builds one
-   * placeholder row per index, so a column speeds up resolving and updates,
-   * not the allocation a mount makes.
+   * `undefined` with the index. A plain `number[]` column is used as the
+   * series without a copy — the fast path for large series.
    */
   data?: T[] | (() => T[])
   /** The marks to draw, in paint order. */

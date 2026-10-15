@@ -32,7 +32,9 @@ export type Accessor<T> = (d: T, index: number) => Double
  * The columnar alternative to an accessor for large series: resolving it is a
  * plain indexed read per point instead of a function call per row, and the
  * chart needs no row objects at all (`<PlotChart>` may omit `data` when every
- * mark is a column).
+ * mark is a column). A plain `number[]` of the chart's length is used AS the
+ * series, without a copy, when it holds only numbers and `NaN` — so treat it
+ * as immutable once charted and pass a new array to update.
  */
 export type Column = ArrayLike<number>
 
@@ -207,6 +209,15 @@ function mark<T>(kind: Series['kind'], y: YChannel<T>, options: ErrorOptions<T>)
   }
 }
 
+/** Every entry a finite number or NaN — a column that is already a valid `values`. */
+function isGapNormal(col: readonly number[]): boolean {
+  for (let i = 0; i < col.length; i++) {
+    const v = col[i]!
+    if (v === v && v - v !== 0) return false
+  }
+  return true
+}
+
 /** Whether a mark's values come from a column — no row objects needed. */
 export function isColumnMark<T>(m: Mark<T>): boolean {
   return m.column !== undefined
@@ -369,7 +380,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     if (!KNOWN_KINDS.has(m.kind)) {
       warnOnce(`kind:${String(m.kind)}`, `unknown mark kind "${String(m.kind)}" — expected one of ${[...KNOWN_KINDS].join(', ')}. It will not be drawn.`)
     }
-    const raw: Double[] = []
+    let raw: Double[] = []
     const col = m.column
     if (col !== undefined) {
       // The columnar path: an indexed read per point, no call. `v - v === 0`
@@ -383,11 +394,23 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       // later reader of `values` pays a hole check.)
       const n = data.length
       const m1 = col.length < n ? col.length : n
-      for (let i = 0; i < m1; i++) {
-        const v = col[i] as Double
-        raw.push(v - v === 0 ? v : Number.NaN)
+      // ZERO-COPY when the column is already a plain array of exactly the
+      // chart's length whose every entry is a number or NaN: it IS a valid
+      // `values`, and the engine never writes into `values`. Skipping the copy
+      // is what lets a 1M-point series mount without allocating a second 8MB
+      // array per series (uPlot reads its input the same way). One read-only
+      // scan decides: an infinity, a hole or a non-number (`v === v` but
+      // `v - v !== 0`) falls back to the normalizing copy below, so the gap
+      // rule is unchanged.
+      if (Array.isArray(col) && col.length === n && isGapNormal(col)) {
+        raw = col
+      } else {
+        for (let i = 0; i < m1; i++) {
+          const v = col[i] as Double
+          raw.push(v - v === 0 ? v : Number.NaN)
+        }
+        for (let i = m1; i < n; i++) raw.push(Number.NaN)
       }
-      for (let i = m1; i < n; i++) raw.push(Number.NaN)
     } else {
       for (let i = 0; i < data.length; i++) {
         raw.push(toNumber(m.y(data[i]!, i), name))

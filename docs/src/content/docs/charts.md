@@ -677,10 +677,14 @@ const prices = new Float64Array(1_000_000) // filled by the app
 ```
 
 Row callbacks (`x`, `by`, tooltips) still run, receiving `undefined` and the
-index. What a column saves is the per-row call: measured on a line chart,
-updates get 7–15% faster and a 100k-point mount ties uPlot. A column-only chart
-still builds one placeholder row per index, so a 1M-point mount is no faster
-than the row form. Columns are a web path for now: the native lowering reads marks as
+index. A plain `number[]` of exactly the chart's length is used AS the series —
+no copy — when every entry is a number or `NaN`; the chart never writes into
+it, so don't mutate it in place either (pass a new array to update). A typed
+array, a shorter array, or one holding an infinity is copied once. Measured
+against uPlot 1.6 with the same `number[]` input: a 1M-point line mounts in a
+statistical tie (14.9ms each) and updates 2.5× faster at 100k points.
+
+Columns are a web path for now: the native lowering reads marks as
 inline arrows and warns on a column, so shared multiplatform source should keep
 the accessor form.
 

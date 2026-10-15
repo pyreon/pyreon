@@ -40,4 +40,19 @@ describe('column marks', () => {
     expect(columnLength([a, b])).toBe(7)
     expect(columnLength([c])).toBe(0)
   })
+
+  it('shares a plain number[] that is already a valid series, and copies one that is not', () => {
+    const clean = [1, Number.NaN, 3]
+    expect(resolveMarks(rowsOf(3), [line(clean)])[0]!.values).toBe(clean)
+    const withInf = [1, Number.POSITIVE_INFINITY, 3]
+    const v = resolveMarks(rowsOf(3), [line(withInf)])[0]!.values
+    expect(v).not.toBe(withInf)
+    expect(Number.isNaN(v[1])).toBe(true)
+    expect(withInf[1]).toBe(Number.POSITIVE_INFINITY)
+    // A short column is padded, never shared.
+    const short = [1, 2]
+    expect(resolveMarks(rowsOf(3), [line(short)])[0]!.values).not.toBe(short)
+    // A typed array is always copied into a plain array.
+    expect(Array.isArray(resolveMarks(rowsOf(2), [line(new Float64Array([1, 2]))])[0]!.values)).toBe(true)
+  })
 })
