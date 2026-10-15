@@ -11,6 +11,7 @@ import { CHARTS_LIBS_FRAMEWORKS, runChartsLibs } from './scenario-charts-libs'
 import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
 import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
 import { FLOW_FRAMEWORKS, runFlow } from './scenario-flow'
+import { TABLE_FRAMEWORKS, runTable } from './scenario-table'
 import { MEMO_FRAMEWORKS, runMemo } from './scenario-memo'
 import { runTree, TREE_FRAMEWORKS } from './scenario-tree'
 
@@ -51,6 +52,12 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes)',
     frameworks: FLOW_FRAMEWORKS,
     run: runFlow,
+  },
+  {
+    id: 'table',
+    label: 'data table — @pyreon/table vs @tanstack/react-table (1,000 rows × 6 cols)',
+    frameworks: TABLE_FRAMEWORKS,
+    run: runTable,
   },
   {
     id: 'charts',
