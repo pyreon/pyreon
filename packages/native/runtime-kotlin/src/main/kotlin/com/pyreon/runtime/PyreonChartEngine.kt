@@ -11204,12 +11204,7 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
     if (!(n > span * perPx * 4.0 + 8.0)) {
       return out
     }
-    for (i in 0L until n) {
-      val v = values[(i).toInt()]
-      if (!isFiniteChartNumber(v)) {
-        return out
-      }
-    }
+    val none: List<PyreonChartPt> = listOf()
     val top = plot.y + plot.h
     val px = plot.x
     val dmin = dom.min
@@ -11220,16 +11215,35 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
     val diff = if (inv) top - plot.y else plot.y - top
     val flatY = ((top + plot.y)).toDouble() / (2.0).toDouble()
     var i = 0L
+    var prevLen = 1L
     while (i < n) {
       val col = Math.floor((bandCenter(px, band, i)) * perPx)
+      var end = i + prevLen
+      if (end > n) {
+        end = n
+      }
+      while (end > i + 1L && Math.floor((bandCenter(px, band, end - 1L)) * perPx) != col) {
+        end = end - 1L
+      }
+      while (end < n && Math.floor((bandCenter(px, band, end)) * perPx) == col) {
+        end = end + 1L
+      }
+      prevLen = end - i
       val first = i
+      val v0 = values[(i).toInt()]
+      if (!isFiniteChartNumber(v0)) {
+        return none
+      }
       var lo = i
       var hi = i
-      var loY = scaleLinear(dom, top, plot.y, values[(i).toInt()])
+      var loY = scaleLinear(dom, top, plot.y, v0)
       var hiY = loY
       var j = i + 1L
-      while (j < n && Math.floor((bandCenter(px, band, j)) * perPx) == col) {
+      while (j < end) {
         val v = values[(j).toInt()]
+        if (!isFiniteChartNumber(v)) {
+          return none
+        }
         val y = if (flat) flatY else r0 + (((v - dmin)).toDouble() / (dspan).toDouble()) * diff
         if (y < loY) {
           lo = j

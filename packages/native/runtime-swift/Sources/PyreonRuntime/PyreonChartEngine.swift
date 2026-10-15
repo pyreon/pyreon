@@ -13829,12 +13829,7 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
     if !(Double(n) > span * perPx * 4.0 + 8.0) {
       return out
     }
-    for i in 0..<n {
-      let v = values[i]
-      if !isFiniteChartNumber(v) {
-        return out
-      }
-    }
+    let none: [PyreonChartPt] = []
     let top = plot.y + plot.h
     let px = plot.x
     let dmin = dom.min
@@ -13845,16 +13840,35 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
     let diff = inv ? top - plot.y : plot.y - top
     let flatY = (top + plot.y) / 2.0
     var i = 0
+    var prevLen = 1
     while i < n {
       let col = floor(Double((bandCenter(px, band, i)) * perPx))
+      var end = i + prevLen
+      if end > n {
+        end = n
+      }
+      while end > i + 1 && floor(Double((bandCenter(px, band, end - 1)) * perPx)) != col {
+        end = end - 1
+      }
+      while end < n && floor(Double((bandCenter(px, band, end)) * perPx)) == col {
+        end = end + 1
+      }
+      prevLen = end - i
       let first = i
+      let v0 = values[i]
+      if !isFiniteChartNumber(v0) {
+        return none
+      }
       var lo = i
       var hi = i
-      var loY = scaleLinear(dom, top, plot.y, values[i])
+      var loY = scaleLinear(dom, top, plot.y, v0)
       var hiY = loY
       var j = i + 1
-      while j < n && floor(Double((bandCenter(px, band, j)) * perPx)) == col {
+      while j < end {
         let v = values[j]
+        if !isFiniteChartNumber(v) {
+          return none
+        }
         let y = flat ? flatY : r0 + ((v - dmin) / dspan) * diff
         if y < loY {
           lo = j
