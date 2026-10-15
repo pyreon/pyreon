@@ -305,6 +305,15 @@ export function effect(
       options?.__sourceLocation ?? _captureCallerLocation(1),
     )
 
+  // Create the batch queue's intrusive flags (`_eq`, `_vg` — see batch.ts) up
+  // front. Created lazily on first enqueue they cost the same bytes once an
+  // effect has been queued, but V8 dispatched the queued runs measurably slower
+  // (wide fan-out, 1 signal → 100 effects: ~2,090 → ~1,790 ns per write; either
+  // flag alone recovers only half). The price is ~40 B on an effect that is
+  // never queued — one whose signal writes all run it directly, outside a batch.
+  ;(run as { _eq?: number; _vg?: number })._eq = 0
+  ;(run as { _eq?: number; _vg?: number })._vg = 0
+
   run()
 
   const e: Effect = {
