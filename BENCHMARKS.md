@@ -30,7 +30,7 @@ Sections §1, §2 (scenarios, flow, charts), §4, §5, §8, §10 (hotkeys, url-s
 | SSR 100 rows vs Vue | 🤝 | **Pyreon 1.13× faster** |
 | reactivity, V8: diamond / wide fan-out / batch | 8,853 / 2,859 / 735 ns | 6,542 / 2,181 / 626 ns |
 | reactivity, JSC: diamond | Preact 1.20× faster | 🤝 tie with Preact |
-| hotkeys register + teardown | 4.3× slower than tinykeys | 2.3× slower |
+| hotkeys register + teardown | 4.3× slower than tinykeys | 1.07–1.32× faster (2.3× slower before the registration-list change) |
 | url-state integer parse / round-trip | 1.6× / 1.2× slower than nuqs | 1.14× slower / Pyreon 1.08× faster |
 | table mount 1,000 rows (happy-dom) | 2.1× slower than memoized react-table | 2.0× slower; replace and sort 1,000 rows now 1.2× and 2.2× (were 1.9× and 3.3×) |
 
@@ -278,7 +278,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 | i18n | i18next | t 18.2×, interpolation 6.3×, plural 4.5×, number 3.3×, date 2.6× | — |
 | permissions | CASL | fair resolver race 1.7–2.0× | exact deny: 🤝. Memo-hit rows (3.4–14.1×) are a cache read, not a race |
 | http | ky, ofetch, redaxios, axios | 1.4–7.7× vs ky/ofetch/redaxios, 12.8–19.4× vs axios | **creating a client is slower than ofetch (0.84×) and redaxios (0.46×)** |
-| hotkeys | tinykeys, hotkeys-js, mousetrap | dispatch hit 1.5–7.8×, miss 6.1–18× vs tinykeys/hotkeys-js; register + teardown 3.2–5.0× vs hotkeys-js/mousetrap | **register + teardown 2.3× slower than tinykeys** (was 4.3×; #3893); dispatch miss 1.17× slower than mousetrap (77 vs 66 ns) |
+| hotkeys | tinykeys, hotkeys-js, mousetrap | dispatch hit 1.5–7.8×, miss 6.1–18× vs tinykeys/hotkeys-js; register + teardown 3.2–5.0× vs hotkeys-js/mousetrap | register + teardown 1.07–1.32× faster than tinykeys (≈930 vs 1000–1160 ns, four interleaved rounds; was 4.3× slower before #3893, 2.3× after); dispatch miss 6–7× faster than mousetrap (≈10 vs 58–69 ns; was 1.17× slower, 77 vs 66 ns) |
 | url-state | nuqs | boolean 1.8×, array parse 2.1×, array serialize 1.2×, float 1.7×, round-trip 1.08× | **integer parse 1.14× slower** (was 1.6×; #3894) |
 | form (headless store) | TanStack form-core | update 62.6×, reset 5.4× | **setup 1.4× slower** |
 | form (re-render count) | RHF, Formik | 0 re-renders / 10 keystrokes (RHF 0, Formik 10) | — |
@@ -316,7 +316,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 5. **Hydration** — Vue 1.02× ahead on the total, 1.05× on the walk.
 6. **Bundle size** — 16.6 KB vs Solid 7.5 KB and Preact 10.6 KB for the same app (2026-09-24).
 7. **Router at 10 routes** (Hono), **validate** invalid-string (zod 1.19×) and several zod-c/arktype protocol cells (2026-09-24).
-8. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **hotkeys register/teardown** (2.3× vs tinykeys), **http client creation**, **url-state integer parse** (1.14×), **form store setup** (1.4×), **rx per-op**, **table/virtual mount under happy-dom**.
+8. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **http client creation**, **url-state integer parse** (1.14×), **form store setup** (1.4×), **rx per-op**, **table/virtual mount under happy-dom**.
 9. **Unbundled Node** — any process importing `lib/` without a bundler pays ~145 ns per dev-gate read.
 
 ## 13. Defects (open)

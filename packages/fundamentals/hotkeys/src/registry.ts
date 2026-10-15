@@ -22,7 +22,7 @@ import type { HotkeyEntry, HotkeyOptions, InputKind, KeyCombo } from './types'
 
 interface PendingSequence {
   /** The entry whose remaining keys we're tracking. */
-  entry: HotkeyEntry
+  entry: RegEntry
   /** Index of the NEXT combo we expect to match in `entry.sequence`. */
   next: number
 }
@@ -30,7 +30,7 @@ interface PendingSequence {
 interface TargetState {
   target: EventTarget
   /** First-combo key → entries, per event type. */
-  buckets: { keydown: Map<string, HotkeyEntry[]>; keyup: Map<string, HotkeyEntry[]> }
+  buckets: { keydown: Map<string, RegEntry[]>; keyup: Map<string, RegEntry[]> }
   entryCount: number
   listeners: { keydown: ((e: Event) => void) | null; keyup: ((e: Event) => void) | null }
   /** Sequence tracking (keydown-only). */
@@ -39,10 +39,46 @@ interface TargetState {
 }
 
 const targetStates = new Map<EventTarget, TargetState>()
-/** Insertion-ordered list of ALL entries — drives help panels + conflict scan. */
-// A Set, not an array: unregistering is an O(1) delete instead of indexOf +
-// splice, and iteration keeps registration order.
-const allEntries = new Set<HotkeyEntry>()
+/**
+ * A registered entry plus its links in the global registration-order list.
+ * The links are internal: `HotkeyEntry` is the public shape and entries are
+ * never handed to user code (`getRegisteredHotkeys` maps them).
+ */
+interface RegEntry extends HotkeyEntry {
+  prev: RegEntry | null
+  next: RegEntry | null
+}
+
+/**
+ * Insertion-ordered list of ALL entries — drives help panels + conflict scan.
+ * An intrusive doubly-linked list rather than a Set: register and unregister
+ * are field writes instead of a hashed add + delete, which profiled as ~30% of
+ * a mount/unmount cycle. Iteration keeps registration order.
+ */
+let headEntry: RegEntry | null = null
+let tailEntry: RegEntry | null = null
+
+function linkEntry(entry: RegEntry): void {
+  entry.prev = tailEntry
+  if (tailEntry) tailEntry.next = entry
+  else headEntry = entry
+  tailEntry = entry
+}
+
+function unlinkEntry(entry: RegEntry): void {
+  const { prev, next } = entry
+  if (prev) prev.next = next
+  else if (headEntry === entry) headEntry = next
+  else return // not linked (already removed)
+  if (next) next.prev = prev
+  else tailEntry = prev
+  entry.prev = null
+  entry.next = null
+}
+
+function forEachEntry(fn: (entry: RegEntry) => void): void {
+  for (let e = headEntry; e !== null; e = e.next) fn(e)
+}
 
 const activeScopes = signal<Set<string>>(new Set(['global']))
 
@@ -123,10 +159,6 @@ function makeDispatch(state: TargetState, eventType: 'keydown' | 'keyup') {
     const event = raw as KeyboardEvent
     const eventKey = normalizeEventKey(event)
     if (eventKey === null) return
-    const scopes = activeScopes.peek()
-    // Per-dispatch constants hoisted out of all entry loops: the lower-cased
-    // key and the focused-editable kind are identical for every entry.
-    const inputKind = focusedInputKind(event)
 
     // ─── Stage 1 (keydown only): advance pending sequences ────────────────
     // If we're mid-sequence, this keystroke must match the NEXT combo of at
@@ -168,6 +200,12 @@ function makeDispatch(state: TargetState, eventType: 'keydown' | 'keyup') {
     // registered entries never touches an entry at all.
     const bucket = state.buckets[eventType].get(eventKey)
     if (!bucket || bucket.length === 0) return
+
+    // Per-dispatch constants hoisted out of the entry loop, and read only once
+    // a bucket exists: `focusedInputKind` calls `composedPath()`, which a miss
+    // (the common keystroke) never needs.
+    const scopes = activeScopes.peek()
+    const inputKind = focusedInputKind(event)
 
     let newPending: PendingSequence[] | null = null
     // Iterate over a snapshot only when a `once` entry could splice the
@@ -242,17 +280,23 @@ function teardownTargetIfEmpty(state: TargetState): void {
   targetStates.delete(state.target)
 }
 
-function unregisterEntry(entry: HotkeyEntry, state: TargetState): void {
-  const bucket = state.buckets[entry.options.event].get(entry.combo.key)
-  if (bucket) {
-    const idx = bucket.indexOf(entry)
-    if (idx !== -1) {
-      bucket.splice(idx, 1)
-      state.entryCount--
-      if (bucket.length === 0) state.buckets[entry.options.event].delete(entry.combo.key)
-    }
+function unregisterEntry(entry: RegEntry, state: TargetState): void {
+  // Always present: a bucket is never removed from its state once created (an
+  // emptied one stays for the next mount — a remount registers the same keys
+  // again, so keeping the array spares a Map delete + set + allocation per
+  // shortcut per cycle; bounded by the keys this target has ever bound, and
+  // released with the whole state when an element target empties, see
+  // teardownTargetIfEmpty). The entry captured its state at registration.
+  const bucket = state.buckets[entry.options.event].get(entry.combo.key)!
+  const idx = bucket.indexOf(entry)
+  if (idx !== -1) {
+    // The usual removal is the bucket's last (often only) entry: pop it
+    // rather than splice, which allocates the array of removed items.
+    if (idx === bucket.length - 1) bucket.pop()
+    else bucket.splice(idx, 1)
+    state.entryCount--
   }
-  allEntries.delete(entry)
+  unlinkEntry(entry)
   teardownTargetIfEmpty(state)
 }
 
@@ -267,12 +311,32 @@ function unregisterEntry(entry: HotkeyEntry, state: TargetState): void {
  * platform-independent. Bounded: an app that builds shortcut strings
  * dynamically clears the cache instead of growing it.
  */
-const _parsed = new Map<string, { first: KeyCombo; rest: KeyCombo[] }>()
+interface ParsedShortcut {
+  first: KeyCombo
+  rest: KeyCombo[]
+  /** Platform a `mod` shortcut was resolved for; null when it has no `mod`. */
+  mac: boolean | null
+}
+const _parsed = new Map<string, ParsedShortcut>()
 const PARSE_CACHE_MAX = 256
 
-function parseForRegister(shortcut: string): { first: KeyCombo; rest: KeyCombo[] } {
-  const key = shortcut.includes('mod') ? `${shortcut}\u0001${isMac() ? 'm' : 'o'}` : shortcut
-  const hit = _parsed.get(key)
+/**
+ * The cached parse for this exact string, or undefined. Keyed on the raw
+ * string so a hit costs one lookup — the platform is checked only for the
+ * `mod` shortcuts that depend on it.
+ *
+ * Only strings that `registerOne` received are ever cached, and every one of
+ * them splits to itself (`splitShortcutList(k)` is `[k]`), so `registerHotkey`
+ * may take a hit without checking for a comma list first.
+ */
+function cachedParse(shortcut: string): ParsedShortcut | undefined {
+  const hit = _parsed.get(shortcut)
+  if (hit === undefined || (hit.mac !== null && hit.mac !== isMac())) return undefined
+  return hit
+}
+
+function parseForRegister(shortcut: string): ParsedShortcut {
+  const hit = cachedParse(shortcut)
   if (hit !== undefined) return hit
   // Sequential combo support: space-separated combos like `'g t'` are ordered
   // sequences — press `g`, then `t` within `SEQUENCE_TIMEOUT_MS`. Each
@@ -296,9 +360,13 @@ function parseForRegister(shortcut: string): { first: KeyCombo; rest: KeyCombo[]
     throw new Error(`[@pyreon/hotkeys] invalid shortcut: ${JSON.stringify(shortcut)}`)
   }
   /* v8 ignore stop */
-  const parsed = Object.freeze({ first, rest: Object.freeze(combos.slice(1)) as KeyCombo[] })
+  const parsed: ParsedShortcut = Object.freeze({
+    first,
+    rest: Object.freeze(combos.slice(1)) as KeyCombo[],
+    mac: shortcut.includes('mod') ? isMac() : null,
+  })
   if (_parsed.size >= PARSE_CACHE_MAX) _parsed.clear()
-  _parsed.set(key, parsed)
+  _parsed.set(shortcut, parsed)
   return parsed
 }
 
@@ -335,6 +403,7 @@ function resolveOptions(
 
 function registerOne(
   shortcut: string,
+  parsed: ParsedShortcut,
   handler: (event: KeyboardEvent) => void,
   options: HotkeyOptions | undefined,
 ): () => void {
@@ -343,7 +412,8 @@ function registerOne(
   // SSR-safe at its use site (and keeps the no-window-in-ssr rule honest).
   /* v8 ignore next */
   if (isServer) return () => {}
-  const { first: firstCombo, rest } = parseForRegister(shortcut)
+  const firstCombo = parsed.first
+  const rest = parsed.rest
   const eventType = options?.event ?? 'keydown'
   if (eventType === 'keyup' && rest.length > 0) {
     throw new Error(
@@ -351,7 +421,7 @@ function registerOne(
     )
   }
 
-  const entry: HotkeyEntry = {
+  const entry: RegEntry = {
     shortcut,
     combo: firstCombo,
     sequence: rest,
@@ -359,6 +429,8 @@ function registerOne(
     // Entries never mutate their options, so a registration that passes none
     // shares one frozen default instead of allocating eight fields.
     options: options === undefined ? DEFAULT_OPTIONS : resolveOptions(options, eventType),
+    prev: null,
+    next: null,
   }
 
   const state = getTargetState(options?.target ?? window)
@@ -368,7 +440,7 @@ function registerOne(
   if (bucket) bucket.push(entry)
   else buckets.set(firstCombo.key, [entry])
   state.entryCount++
-  allEntries.add(entry)
+  linkEntry(entry)
 
   let unregistered = false
   return () => {
@@ -408,11 +480,17 @@ export function registerHotkey(
   // build SSR help panels from a static config, not the live registry.
   if (isServer) return () => {}
 
+  // A string registered before (every remount) is one cache lookup — no scan
+  // for a comma list. See cachedParse for why a hit is never a list.
+  const hit = cachedParse(shortcut)
+  if (hit !== undefined) return registerOne(shortcut, hit, handler, options)
   // No comma (the common case): skip building a one-element list.
-  if (!shortcut.includes(',')) return registerOne(shortcut, handler, options)
+  if (!shortcut.includes(',')) {
+    return registerOne(shortcut, parseForRegister(shortcut), handler, options)
+  }
   const shortcuts = splitShortcutList(shortcut)
-  if (shortcuts.length === 1) return registerOne(shortcuts[0]!, handler, options)
-  const uns = shortcuts.map((s) => registerOne(s, handler, options))
+  const uns = shortcuts.map((s) => registerOne(s, parseForRegister(s), handler, options))
+  if (uns.length === 1) return uns[0]!
   return () => {
     for (const u of uns) u()
   }
@@ -480,8 +558,9 @@ function sameSequence(a: KeyCombo[], b: KeyCombo[]): boolean {
   return true
 }
 
+/** The final combo of a SEQUENTIAL entry (only called when it has a sequence). */
 function lastCombo(entry: HotkeyEntry): KeyCombo {
-  return entry.sequence.length > 0 ? entry.sequence[entry.sequence.length - 1]! : entry.combo
+  return entry.sequence[entry.sequence.length - 1]!
 }
 
 // ─── Pressed-key introspection ──────────────────────────────────────────────
@@ -629,11 +708,15 @@ export function getRegisteredHotkeys(): ReadonlyArray<{
   scope: string
   description?: string
 }> {
-  return Array.from(allEntries, (e) => ({
-    shortcut: e.shortcut,
-    scope: e.options.scope,
-    ...(e.options.description != null ? { description: e.options.description } : {}),
-  }))
+  const out: Array<{ shortcut: string; scope: string; description?: string }> = []
+  forEachEntry((e) => {
+    out.push({
+      shortcut: e.shortcut,
+      scope: e.options.scope,
+      ...(e.options.description != null ? { description: e.options.description } : {}),
+    })
+  })
+  return out
 }
 
 // ─── Conflict detection ──────────────────────────────────────────────────────
@@ -688,12 +771,12 @@ export function getHotkeyConflicts(): ReadonlyArray<{
   descriptions: Array<string | undefined>
 }> {
   const groups = new Map<string, HotkeyEntry[]>()
-  for (const e of allEntries) {
+  forEachEntry((e) => {
     const key = e.options.scope + CONFLICT_SEP + e.options.event + CONFLICT_SEP + entrySignature(e)
     const g = groups.get(key)
     if (g) g.push(e)
     else groups.set(key, [e])
-  }
+  })
   const conflicts: {
     scope: string
     shortcuts: string[]
@@ -718,7 +801,16 @@ export function _resetHotkeys(): void {
     teardownTargetIfEmpty(state)
   }
   targetStates.clear()
-  allEntries.clear()
+  // Unlink every entry so a stale unregister closure held across a reset
+  // cannot splice the fresh list.
+  for (let e = headEntry; e !== null; ) {
+    const next = e.next
+    e.prev = null
+    e.next = null
+    e = next
+  }
+  headEntry = null
+  tailEntry = null
   activeScopes.set(new Set(['global']))
   scopeRefcounts.clear()
   if (pressedHandlers && !isServer) {
