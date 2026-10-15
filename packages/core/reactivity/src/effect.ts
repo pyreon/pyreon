@@ -256,7 +256,8 @@ export function effect(
       _countSink.__pyreon_count__?.('reactivity.effectRun')
       _rdRecordFire(run)
     }
-    runCleanup()
+    // Most effects hold nothing to tear down between runs; skip the call.
+    if (innerEffects !== null || cleanups !== undefined || cleanup !== undefined) runCleanup()
     // Open LAZY inner-effect + onCleanup windows (nothing allocated until
     // actually used), saved/restored so nested runs can't clobber this one.
     const outerCollector = getInnerEffectCollector()
