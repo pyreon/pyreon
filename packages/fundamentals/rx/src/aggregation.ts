@@ -30,7 +30,14 @@ export function sum<T>(
 export function sum<T>(source: T[], key?: KeyOf<T>): number
 export function sum<T>(source: ReadableSignal<T[]> | T[], key?: KeyOf<T>): any {
   const getVal = key ? resolveKey(key) : (item: T) => item as unknown as number
-  return reactive(source, (arr: T[]) => arr.reduce((acc, item) => acc + Number(getVal(item)), 0))
+  return reactive(source, (arr: T[]) => {
+    // A plain loop, not `reduce`: see `filter` in collections.ts for why.
+    let acc = 0
+    for (let i = 0; i < arr.length; i++) {
+      if (i in arr) acc += Number(getVal(arr[i] as T))
+    }
+    return acc
+  })
 }
 
 /** Find minimum item. Optionally by key. */
@@ -103,7 +110,16 @@ export function reduce<T, U>(
   reducer: (acc: U, item: T, index: number) => U,
   initial: U,
 ): any {
-  return reactive(source, (arr: T[]) => arr.reduce(reducer, initial))
+  return reactive(source, (arr: T[]) => {
+    // Plain loops throughout this file, not the Array builtins: see `filter`
+    // in collections.ts. Each keeps its builtin's arguments and hole handling.
+    const fn = reducer as (acc: U, item: T, index: number, array: T[]) => U
+    let acc = initial
+    for (let i = 0; i < arr.length; i++) {
+      if (i in arr) acc = fn(acc, arr[i] as T, i, arr)
+    }
+    return acc
+  })
 }
 
 /**
@@ -124,7 +140,13 @@ export function every<T>(
   source: ReadableSignal<T[]> | T[],
   predicate: (item: T, index: number) => boolean,
 ): any {
-  return reactive(source, (arr: T[]) => arr.every(predicate))
+  return reactive(source, (arr: T[]) => {
+    const fn = predicate as (item: T, index: number, array: T[]) => boolean
+    for (let i = 0; i < arr.length; i++) {
+      if (i in arr && !fn(arr[i] as T, i, arr)) return false
+    }
+    return true
+  })
 }
 
 /**
@@ -145,7 +167,13 @@ export function some<T>(
   source: ReadableSignal<T[]> | T[],
   predicate: (item: T, index: number) => boolean,
 ): any {
-  return reactive(source, (arr: T[]) => arr.some(predicate))
+  return reactive(source, (arr: T[]) => {
+    const fn = predicate as (item: T, index: number, array: T[]) => boolean
+    for (let i = 0; i < arr.length; i++) {
+      if (i in arr && fn(arr[i] as T, i, arr)) return true
+    }
+    return false
+  })
 }
 
 /** Average of numeric values. Optionally by key. */
@@ -158,6 +186,10 @@ export function average<T>(source: ReadableSignal<T[]> | T[], key?: KeyOf<T>): a
   const getVal = key ? resolveKey(key) : (item: T) => item as unknown as number
   return reactive(source, (arr: T[]) => {
     if (arr.length === 0) return 0
-    return arr.reduce((acc, item) => acc + Number(getVal(item)), 0) / arr.length
+    let acc = 0
+    for (let i = 0; i < arr.length; i++) {
+      if (i in arr) acc += Number(getVal(arr[i] as T))
+    }
+    return acc / arr.length
   })
 }

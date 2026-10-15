@@ -292,7 +292,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 | charts engine | ECharts 6.1 SSR | spec → SVG 7.5× (bars 1k), 7.6× (bars 10k), 8.0× (line 10k) | — |
 | charts wrapper ⚠ happy-dom | echarts-for-react | update 10.0×, dispose 1.9× | mount 🤝 |
 | hooks | Solid / Preact counters | counter 1.20× / 1.23× | wrapper overhead vs raw signal: 0–6% |
-| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count); per-op `filter` 2.14 µs and `map` 1.43 µs, ahead of a hand computed (2.34 / 1.49) and Solid memo (2.47 / 1.75) — were 3.6 / 2.7 µs before the builtins became plain loops | **`pipe` of three stages 1.06× behind a hand computed** (29.5 vs 27.8 µs), `sortBy` 1.03× |
+| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count); per-op `filter` 2.1–2.2 µs, `map` 1.4–1.5 µs and `sum` 0.86 µs, level with or ahead of a hand computed (2.3–2.4 / 1.5 / 2.2) and Solid memo (2.5 / 1.6–1.7 / 0.98) — were 3.6 / 2.7 / 2.2 µs before the Array builtins became plain loops | **`pipe` of three stages 1.06× behind a hand computed** (29.5 vs 27.8 µs), `sortBy` 1.03× |
 | dnd ⚠ happy-dom | raw pragmatic-drag-and-drop | row-enter fan-out 24× | mount/unmount 🤝; dispatch +6 ns |
 | validation (wrapper tax) | raw zod / valibot / arktype | — | tax −20 to +278 ns over raw (largest: arktype invalid, zod invalid 173 ns) |
 
