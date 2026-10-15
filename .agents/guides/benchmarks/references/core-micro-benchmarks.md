@@ -47,6 +47,7 @@ Mechanisms in place (all in `packages/core/reactivity/src/`):
 - `_set` inline-batch direct dispatch, and a no-subscriber write fast path that skips the batch window.
 - Verify-mode dep reuse (`tracking.ts:runVerify`): a steady-state effect/computed re-run verifies its previous deps positionally instead of rebuilding them — zero Set ops and zero allocations per re-run.
 - Effect queue (`batch.ts`): an array + intrusive per-effect membership flag (`_eq`) + pass-generation counter (`_vg`), instead of Sets.
+- Computed-notify discrimination (`batch.ts`): an own `_rc` flag stamped by `_markRecompute`, not a `WeakSet`. Every notify an enqueue or dirty walk sees is checked; for an effect the answer is "no", and an absent-property read on effects that all share one shape is an inline-cache hit where `WeakSet.has` is a hash lookup. Measured on V8: wide fan-out −13%, batch-50 −14%, diamond −9%; JSC neutral (effect propagation is bimodal in both arms, chain within 1%).
 - Lazy computeds propagate dirtiness inline during the write's notify phase (`propagateLazyDirty`). Single-subscriber chains are walked iteratively via the `notify._c` back-ref stamped by `_markRecompute` — no closure call or WeakSet lookup per hop, no stack growth at any depth. Eager `{ equals }` computeds settle in the tier-1 queue before effects.
 
 Declined micro-optimizations (measured on JSC; the current code was already fastest):
