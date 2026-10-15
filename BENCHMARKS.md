@@ -278,7 +278,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 | i18n | i18next | t 18.2×, interpolation 6.3×, plural 4.5×, number 3.3×, date 2.6× | — |
 | permissions | CASL | fair resolver race 1.7–2.0× | exact deny: 🤝. Memo-hit rows (3.4–14.1×) are a cache read, not a race |
 | http | ky, ofetch, redaxios, axios | 1.4–7.7× vs ky/ofetch/redaxios, 12.8–19.4× vs axios | **creating a client is slower than ofetch (0.84×) and redaxios (0.46×)** |
-| hotkeys | tinykeys, hotkeys-js, mousetrap | dispatch hit 1.5–7.8×, miss 6.1–18× vs tinykeys/hotkeys-js; register + teardown 3.2–5.0× vs hotkeys-js/mousetrap | register + teardown 1.07–1.32× faster than tinykeys (≈930 vs 1000–1160 ns, four interleaved rounds; was 4.3× slower before #3893, 2.3× after); **dispatch miss 1.17× slower than mousetrap** (77 vs 66 ns) |
+| hotkeys | tinykeys, hotkeys-js, mousetrap | dispatch hit 1.5–7.8×, miss 6.1–18× vs tinykeys/hotkeys-js; register + teardown 3.2–5.0× vs hotkeys-js/mousetrap | register + teardown 1.07–1.32× faster than tinykeys (≈930 vs 1000–1160 ns, four interleaved rounds; was 4.3× slower before #3893, 2.3× after); dispatch miss 6–7× faster than mousetrap (≈10 vs 58–69 ns; was 1.17× slower, 77 vs 66 ns) |
 | url-state | nuqs | boolean 1.8×, array parse 2.1×, array serialize 1.2×, float 1.7×, round-trip 1.08× | **integer parse 1.14× slower** (was 1.6×; #3894) |
 | form (headless store) | TanStack form-core | update 62.6×, reset 5.4× | **setup 1.4× slower** |
 | form (re-render count) | RHF, Formik | 0 re-renders / 10 keystrokes (RHF 0, Formik 10) | — |

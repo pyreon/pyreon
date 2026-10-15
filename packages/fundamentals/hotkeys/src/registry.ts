@@ -159,10 +159,6 @@ function makeDispatch(state: TargetState, eventType: 'keydown' | 'keyup') {
     const event = raw as KeyboardEvent
     const eventKey = normalizeEventKey(event)
     if (eventKey === null) return
-    const scopes = activeScopes.peek()
-    // Per-dispatch constants hoisted out of all entry loops: the lower-cased
-    // key and the focused-editable kind are identical for every entry.
-    const inputKind = focusedInputKind(event)
 
     // ─── Stage 1 (keydown only): advance pending sequences ────────────────
     // If we're mid-sequence, this keystroke must match the NEXT combo of at
@@ -204,6 +200,12 @@ function makeDispatch(state: TargetState, eventType: 'keydown' | 'keyup') {
     // registered entries never touches an entry at all.
     const bucket = state.buckets[eventType].get(eventKey)
     if (!bucket || bucket.length === 0) return
+
+    // Per-dispatch constants hoisted out of the entry loop, and read only once
+    // a bucket exists: `focusedInputKind` calls `composedPath()`, which a miss
+    // (the common keystroke) never needs.
+    const scopes = activeScopes.peek()
+    const inputKind = focusedInputKind(event)
 
     let newPending: PendingSequence[] | null = null
     // Iterate over a snapshot only when a `once` entry could splice the
