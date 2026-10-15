@@ -2,7 +2,8 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import { effect, getContextOwner, runUntracked, runWithContextOwner } from '@pyreon/reactivity'
+import type { EffectScope } from '@pyreon/reactivity'
+import { effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -902,7 +903,7 @@ export function mountFor<T>(
     container: Node,
     before: Node | null,
   ) => {
-    const result = renderItem(item)
+    const { result, scope: rowScope } = runRowCallback(() => renderItem(item))
     // Optional-chained: `renderItem` may legitimately return null/undefined —
     // `{(r) => r.visible ? <Row/> : null}` is how a row is conditionally
     // hidden, and the empty-entry branch below exists precisely to give such a
@@ -915,12 +916,14 @@ export function mountFor<T>(
     if ((result as import('@pyreon/core').NativeItem | null | undefined)?.__isNative === true) {
       const native = result as import('@pyreon/core').NativeItem
       container.insertBefore(native.el, before)
-      cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos, end: null })
-      if (native.cleanup) cleanupCount++
+      const nativeCleanup = withRowScope(rowScope, native.cleanup ?? null)
+      cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null })
+      if (nativeCleanup) cleanupCount++
       return
     }
     const priorLast = before ? before.previousSibling : container.lastChild
-    const cl = mountChild(result as import('@pyreon/core').VNode, container, before)
+    const mounted = mountChild(result as import('@pyreon/core').VNode, container, before)
+    const cl = withRowScope(rowScope, mounted) as Cleanup
     const firstMounted = priorLast ? priorLast.nextSibling : container.firstChild
     if (!firstMounted || firstMounted === before) {
       const ph = document.createComment('')
@@ -1390,6 +1393,48 @@ export function mountFor<T>(
     cleanupCount = 0
     startMarker.parentNode?.removeChild(startMarker)
     tailMarker.parentNode?.removeChild(tailMarker)
+  }
+}
+
+/**
+ * A `<For>` row callback is a component-like body that runs outside any
+ * component, so an `effect()` or `computed()` created in it had no owner: it
+ * registered with whatever scope was current (none, after the surrounding
+ * component's setup) and was never disposed — a removed row kept running its
+ * effects, and so did every row once the list unmounted. Each row callback now
+ * runs under a collector scope that the row keeps, and stops on removal, ONLY
+ * when something registered with it; a row that registers nothing (no binding,
+ * no effect) costs no allocation. One collector is pooled across rows.
+ */
+let rowCollector: EffectScope | null = null
+
+function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
+  const prev = getCurrentScope()
+  const collector = rowCollector ?? (rowCollector = effectScope())
+  setCurrentScope(collector)
+  let result: R
+  try {
+    result = fn()
+  } catch (err) {
+    // A half-filled collector must never be handed to the next row.
+    collector.stop()
+    rowCollector = null
+    throw err
+  } finally {
+    setCurrentScope(prev)
+  }
+  if (collector._isEmpty()) return { result, scope: null }
+  rowCollector = null
+  return { result, scope: collector }
+}
+
+/** Chain a row scope's stop in front of the row's own cleanup. */
+function withRowScope(scope: EffectScope | null, cleanup: Cleanup | null): Cleanup | null {
+  if (scope === null) return cleanup
+  if (cleanup === null) return () => scope.stop()
+  return () => {
+    scope.stop()
+    cleanup()
   }
 }
 

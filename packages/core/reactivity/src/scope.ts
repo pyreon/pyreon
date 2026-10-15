@@ -35,6 +35,15 @@ export class EffectScope {
     return { found: false, value: undefined }
   }
 
+  /**
+   * @internal Whether nothing has registered with this scope yet. Lets a caller
+   * run code under a pooled collector scope and keep it only when something
+   * actually registered (see `@pyreon/runtime-dom`'s `<For>` rows).
+   */
+  _isEmpty(): boolean {
+    return this._effects === null
+  }
+
   /** Register an effect/computed to be disposed when this scope stops. */
   add(e: { dispose(): void }): void {
     if (!this._active) return
