@@ -282,3 +282,18 @@ describe('createTableState — reactivity', () => {
     expect(ids.at(-1)).toEqual([3, 2]) // Grace(3), Linus(2) on page 1 after case-insensitive asc name sort
   })
 })
+
+describe('createTableState — sort ties', () => {
+  it('keeps the input order of values that differ only by case', () => {
+    const rows: Row[] = [
+      { id: 1, name: 'bob', age: 1 },
+      { id: 2, name: 'Bob', age: 2 },
+      { id: 3, name: 'BOB', age: 3 },
+      { id: 4, name: 'ann', age: 4 },
+    ]
+    const t = makeTable(rows)
+    t.toggleSort('name')
+    expect(t.rows().map((r) => r.id)).toEqual([4, 1, 2, 3])
+  })
+})
+

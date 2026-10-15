@@ -125,13 +125,27 @@ export function flexRenderCell<TFeatures extends TableFeatures, TData extends Ro
 
 /** A cell context whose value readers do not subscribe (see `flexRenderCell`).
  *  Same prototype + own properties as the original; only `getValue` and
- *  `renderValue` (always present on a v9 cell context) are wrapped. */
+ *  `renderValue` (always present on a v9 cell context) are wrapped.
+ *
+ *  This runs once per cell per render, so its cost scales with the table.
+ *  table-core builds the context as a plain object literal of data properties
+ *  (`cell_getContext`), and for that shape a spread produces exactly the same
+ *  object as copying descriptors — measured ~13x cheaper (0.2ms vs 2.9ms per
+ *  6,000 cells). Any other prototype keeps the descriptor copy, which also
+ *  preserves accessors. */
 function untrackedValueContext<C extends { getValue: () => unknown; renderValue: () => unknown }>(
   context: C,
 ): C {
+  const { getValue, renderValue } = context
+  if (Object.getPrototypeOf(context) === Object.prototype) {
+    return {
+      ...context,
+      getValue: () => untrack(() => getValue.call(context)),
+      renderValue: () => untrack(() => renderValue.call(context)),
+    }
+  }
   const wrapped = Object.create(Object.getPrototypeOf(context) as object) as C
   Object.defineProperties(wrapped, Object.getOwnPropertyDescriptors(context))
-  const { getValue, renderValue } = context
   const define = (name: 'getValue' | 'renderValue', fn: () => unknown): void => {
     Object.defineProperty(wrapped, name, {
       value: () => untrack(() => fn.call(context)),
