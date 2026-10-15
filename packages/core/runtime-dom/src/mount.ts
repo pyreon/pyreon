@@ -811,6 +811,11 @@ export function createPolyTextCore(
   let marker: Comment | null = null
   let mode: 'text' | 'sub' = 'text'
   let subCleanup: Cleanup = noop
+  // The string this core last wrote to `text`. Comparing against it instead of
+  // reading `text.data` back saves a DOM read per update; `null` until the
+  // first text write, which reads the node once (an adopted SSR node whose
+  // text already matches is left untouched).
+  let written: string | null = null
 
   return {
     apply(v: VNodeChild): void {
@@ -827,7 +832,11 @@ export function createPolyTextCore(
           mode = 'text'
         }
         const next = v == null || v === false ? '' : String(v as string | number | boolean)
-        if (next !== text.data) text.data = next
+        if (written === null) written = text.data
+        if (next !== written) {
+          text.data = next
+          written = next
+        }
         return
       }
       // Non-text value — mount it as a subtree at this binding's position.
