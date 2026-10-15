@@ -27,7 +27,11 @@ import { mount } from '../index'
  * real browsers alike) — shadow it per-instance with a counting forwarder
  * so reads (the guard's readback compare) still hit the real getter.
  */
-function spyCssTextWrites(el: HTMLElement): { count: () => number; restore: () => void } {
+function spyCssTextWrites(el: HTMLElement): {
+  count: () => number
+  reads: () => number
+  restore: () => void
+} {
   const style = el.style
   let proto: object | null = Object.getPrototypeOf(style)
   let desc: PropertyDescriptor | undefined
@@ -41,9 +45,11 @@ function spyCssTextWrites(el: HTMLElement): { count: () => number; restore: () =
   }
   const { get, set } = desc
   let writes = 0
+  let reads = 0
   Object.defineProperty(style, 'cssText', {
     configurable: true,
     get() {
+      reads++
       return get.call(this)
     },
     set(v: string) {
@@ -53,6 +59,7 @@ function spyCssTextWrites(el: HTMLElement): { count: () => number; restore: () =
   })
   return {
     count: () => writes,
+    reads: () => reads,
     restore: () => {
       delete (style as unknown as Record<string, unknown>).cssText
     },
@@ -71,11 +78,15 @@ describe('applyStyleProp — string skip-if-equal (direct calls)', () => {
     el.remove()
   })
 
-  it('writes cssText exactly ONCE for two identical string emits', () => {
+  it('stops writing once an identical string has been verified', () => {
     const spy = spyCssTextWrites(el)
     applyStyleProp(el, 'color: red; font-size: 14px')
+    // The first repeat writes once more and records the serialization; every
+    // repeat after that is skipped.
     applyStyleProp(el, 'color: red; font-size: 14px')
-    expect(spy.count()).toBe(1)
+    applyStyleProp(el, 'color: red; font-size: 14px')
+    applyStyleProp(el, 'color: red; font-size: 14px')
+    expect(spy.count()).toBe(2)
     expect(el.style.color).toBe('red')
     expect(el.style.fontSize).toBe('14px')
     spy.restore()
@@ -87,6 +98,18 @@ describe('applyStyleProp — string skip-if-equal (direct calls)', () => {
     applyStyleProp(el, 'color: blue')
     expect(spy.count()).toBe(2)
     expect(el.style.color).toBe('blue')
+    spy.restore()
+  })
+
+  it('does not read the declaration back when a string is first written or changes', () => {
+    // Serializing cssText is the expensive half of a write; it is only needed
+    // to verify a REPEAT of the same string.
+    const spy = spyCssTextWrites(el)
+    applyStyleProp(el, 'color: red')
+    applyStyleProp(el, 'color: blue')
+    applyStyleProp(el, 'color: green')
+    expect(spy.reads()).toBe(0)
+    expect(el.style.color).toBe('green')
     spy.restore()
   })
 
@@ -128,8 +151,9 @@ describe('applyStyleProp — string skip-if-equal (direct calls)', () => {
     const spy = spyCssTextWrites(el)
     applyStyleProp(el, '')
     expect(el.style.color).toBe('')
-    applyStyleProp(el, '')
-    expect(spy.count()).toBe(1)
+    applyStyleProp(el, '') // verifying write
+    applyStyleProp(el, '') // skipped
+    expect(spy.count()).toBe(2)
     spy.restore()
   })
 })
@@ -146,7 +170,7 @@ describe('applyStyleProp — string skip-if-equal (reactive h() mount)', () => {
     container.remove()
   })
 
-  it('a reactive style thunk re-emitting the SAME string performs exactly one cssText write', () => {
+  it('a reactive style thunk re-emitting the SAME string stops writing after one verifying write', () => {
     const tick = signal(0)
     mount(
       h('div', {
@@ -159,12 +183,13 @@ describe('applyStyleProp — string skip-if-equal (reactive h() mount)', () => {
     )
     const el = query<HTMLDivElement>(container, 'div')
     const spy = spyCssTextWrites(el)
-    // spy attached AFTER mount — the initial write already happened; every
-    // re-emit below is byte-identical, so ZERO further writes are expected.
+    // spy attached AFTER mount — the initial write already happened. Every
+    // re-emit below is byte-identical: the first writes once more to record
+    // the serialization, the rest are skipped.
     tick.set(1)
     tick.set(2)
     tick.set(3)
-    expect(spy.count()).toBe(0)
+    expect(spy.count()).toBe(1)
     expect(el.style.color).toBe('red')
     spy.restore()
   })

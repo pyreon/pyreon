@@ -760,10 +760,12 @@ describe('Compiler integration — class/style binding fidelity', () => {
         set!.call(this, v)
       },
     })
-    // Byte-identical re-emits after the initial (pre-spy) write: zero writes.
+    // Byte-identical re-emits after the initial (pre-spy) write: the first
+    // writes once more to record the serialization, the rest are skipped.
     tick.set(1)
     tick.set(2)
-    expect(writes).toBe(0)
+    tick.set(3)
+    expect(writes).toBe(1)
     expect(div.style.color).toBe('red')
     delete (div.style as unknown as Record<string, unknown>).cssText
   })
