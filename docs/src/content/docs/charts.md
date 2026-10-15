@@ -663,6 +663,27 @@ engine's throughput is measured, not asserted: `bun run
 --filter=@pyreon/charts bench:engine` (layout + render, 1k–100k points, treemap,
 sankey, LTTB; single machine, author-run — treat magnitudes as the signal).
 
+A mark also takes a COLUMN instead of an accessor: hand it the array the app
+already holds — a `Float64Array` or a `number[]` — and value `i` belongs to row
+`i`. Resolving a column is an indexed read per point rather than a function call
+per row, and when every mark is a column `<PlotChart>` needs no `data` at all:
+the chart has one row per index of the longest column. A non-finite value, or an
+index past a column's end, is a gap.
+
+```tsx
+const prices = new Float64Array(1_000_000) // filled by the app
+
+<PlotChart marks={[line(prices)]} maxPoints={1000} />
+```
+
+Row callbacks (`x`, `by`, tooltips) still run, receiving `undefined` and the
+index. What a column saves is the per-row call: measured on a line chart,
+updates get 7–15% faster and a 100k-point mount ties uPlot. A column-only chart
+still builds one placeholder row per index, so a 1M-point mount is no faster
+than the row form. Columns are a web path for now: the native lowering reads marks as
+inline arrows and warns on a column, so shared multiplatform source should keep
+the accessor form.
+
 ## Locales
 
 `registerLocale(tag, pack)` registers a locale pack over `Intl`; a chart's

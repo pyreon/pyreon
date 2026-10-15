@@ -32,7 +32,7 @@ import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
-import { markLabel, resolveCategories, resolveMarks } from './marks'
+import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
 import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum } from './a11y'
@@ -54,8 +54,17 @@ function cancelFrame(frame: Double): void {
 }
 
 export interface PlotChartProps<T> {
-  /** The rows. An accessor makes it reactive; a plain array is static. */
-  data: T[] | (() => T[])
+  /**
+   * The rows. An accessor makes it reactive; a plain array is static.
+   *
+   * Optional when every mark is a COLUMN (`line(values)` with a
+   * `Float64Array` or `number[]`): the chart then has one row per index of
+   * the longest column, and row callbacks (`x`, `by`, `tooltip`, …) receive
+   * `undefined` with the index. A column-only chart still builds one
+   * placeholder row per index, so a column speeds up resolving and updates,
+   * not the allocation a mount makes.
+   */
+  data?: T[] | (() => T[])
   /** The marks to draw, in paint order. */
   marks: Mark<T>[]
   /** Category labels for the x axis. Omit for a numeric axis. */
@@ -801,9 +810,29 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    */
   const hideHidden = (series: Series[]): Series[] => hideHiddenSeries(series, hiddenSeries())
 
+  // Column-only charts synthesize their rows: one `undefined` per index of
+  // the longest column, cached by (marks, length) so every memo keyed on row
+  // identity stays stable across reads.
+  let colRows: { marks: Mark<T>[]; n: number; rows: T[] } | null = null
   const readData = (): T[] => {
     const d = props.data
-    return typeof d === 'function' ? (d as () => T[])() : d
+    if (d !== undefined) return typeof d === 'function' ? (d as () => T[])() : d
+    const marks = props.marks
+    if (colRows !== null && colRows.marks === marks) {
+      const n = columnLength(marks)
+      if (colRows.n === n) return colRows.rows
+    }
+    if (process.env.NODE_ENV !== 'production' && !marks.every(isColumnMark)) {
+      warnOnce(
+        'plot:no-data',
+        '<PlotChart> has no `data`, but a mark reads rows through an accessor, which will receive `undefined` for every row. Pass `data`, or give every mark a column (line(values)).',
+      )
+    }
+    const n = columnLength(marks)
+    // `fill` makes the array packed rather than holey, so `.map` visits it.
+    const rows = new Array<T>(n).fill(undefined as T)
+    colRows = { marks, n, rows }
+    return rows
   }
   // The theme in scope (provider → system scheme) with the prop merged over
   // it. Read inside the draw effect so a mode flip repaints.
@@ -919,6 +948,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // magicType: a line/bar switch retypes the INDEPENDENT marks only —
       // stacked/grouped/points keep their geometry (a stack is not a line).
       kind: m.kind,
+      // A column is indexed GLOBALLY too: drop it so `resolveMarks` reads
+      // through `y`, which already remaps — a zoomed or thinned frame is
+      // small, so the call per kept row is cheap.
+      column: undefined,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)
@@ -2144,7 +2177,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // from the accessibility tree along with the visual layout.
   // A real table rather than a longer label (see `a11yTableNode`), capped and
   // updated in place.
-  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data')
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data', () => chartRowCount(a11yInput()))
   const table = (): VNode => tableNode
 
 

@@ -115,6 +115,7 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 
 export const CHARTS_LIBS_FRAMEWORKS = [
   'Pyreon (PlotChart)',
+  'Pyreon (PlotChart columns)',
   'uPlot 1.6',
   'Chart.js 4 (min-max decimation)',
   'Recharts 3',
@@ -187,6 +188,7 @@ const asBarRows = (ys: Float64Array): BarRow[] =>
 
 /** Build the arm's own input shape OUTSIDE every window (an app holds its data). */
 function prebuild(fw: string, ys: Float64Array, kind: 'line' | 'bars'): void {
+  if (fw === 'Pyreon (PlotChart columns)') return
   if (fw.startsWith('Pyreon')) void (kind === 'line' ? asRows(ys) : asBarRows(ys))
   else if (fw.startsWith('uPlot')) void asCols(ys)
   else if (fw.startsWith('Chart.js')) void (kind === 'line' ? asXY(ys) : asBarRows(ys))
@@ -200,6 +202,58 @@ interface Target {
   updateLine(ys: Float64Array): void
   mountBars(host: HTMLElement, ys: Float64Array): void
   dispose(): void
+}
+
+/**
+ * The COLUMNAR input: the series handed over as the Float64Array the app
+ * already holds, no row objects and no accessor call per point. uPlot's
+ * input is columnar too, so this is the like-for-like comparison of the
+ * engines; the row arm above measures the row-object API.
+ */
+function pyreonColumnsTarget(): Target {
+  let marks: ReturnType<typeof signal<ReturnType<typeof pline>[]>> | null = null
+  let unmount: (() => void) | null = null
+  const lineMarks = (ys: Float64Array) => [pline(ys, { color: COLOR, width: 1 })]
+  return {
+    mountLine(host, ys) {
+      const m = signal(lineMarks(ys))
+      marks = m
+      unmount = pyreonMount(
+        ph(PlotChart, {
+          get marks() {
+            return m()
+          },
+          width: W,
+          height: H,
+          animate: false,
+          updateAnimation: false,
+          accessibleTable: true,
+        }),
+        host,
+      )
+    },
+    updateLine(ys) {
+      marks?.set(lineMarks(ys))
+    },
+    mountBars(host, ys) {
+      unmount = pyreonMount(
+        ph(PlotChart, {
+          marks: [pbars(ys, { color: COLOR })],
+          width: W,
+          height: H,
+          animate: false,
+          updateAnimation: false,
+          accessibleTable: true,
+        }),
+        host,
+      )
+    },
+    dispose() {
+      unmount?.()
+      unmount = null
+      marks = null
+    },
+  }
 }
 
 function pyreonTarget(accessibleTable: boolean): Target {
@@ -428,6 +482,8 @@ function makeTarget(fw: string): Target {
   switch (fw) {
     case 'Pyreon (PlotChart)':
       return pyreonTarget(true)
+    case 'Pyreon (PlotChart columns)':
+      return pyreonColumnsTarget()
     case 'Pyreon (PlotChart, no a11y table)':
       return pyreonTarget(false)
     case 'uPlot 1.6':

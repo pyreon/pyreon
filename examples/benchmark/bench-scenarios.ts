@@ -92,7 +92,9 @@ const POOL_FILES = argVal('--pool')?.split(',').filter((f) => f.length > 0)
  */
 const NARROW = (() => {
   const i = argv.indexOf('--only')
-  return i >= 0 ? argv[i + 1]!.split(',').map((s) => s.trim()) : undefined
+  // Split on commas OUTSIDE parentheses: arm names like
+  // 'Pyreon (PlotChart, no a11y table)' contain one.
+  return i >= 0 ? argv[i + 1]!.split(/,(?![^()]*\))/).map((s) => s.trim()) : undefined
 })()
 
 // Kept in sync with src/impl/scenarios.ts. Duplicated rather than imported
@@ -176,6 +178,7 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     label: 'charts — @pyreon/charts vs uPlot 1.6, Chart.js 4, Recharts 3 (800×300, first painted frame)',
     frameworks: [
       'Pyreon (PlotChart)',
+      'Pyreon (PlotChart columns)',
       'uPlot 1.6',
       'Chart.js 4 (min-max decimation)',
       'Recharts 3',

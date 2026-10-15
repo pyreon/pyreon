@@ -13819,17 +13819,26 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
       }
     }
     let top = plot.y + plot.h
+    let px = plot.x
+    let dmin = dom.min
+    let dspan = dom.max - dom.min
+    let flat = dspan == 0.0
+    let inv = dom.inverse == true
+    let r0 = inv ? plot.y : top
+    let diff = inv ? top - plot.y : plot.y - top
+    let flatY = (top + plot.y) / 2.0
     var i = 0
     while i < n {
-      let col = floor(Double((bandCenter(plot.x, band, i)) * perPx))
+      let col = floor(Double((bandCenter(px, band, i)) * perPx))
       let first = i
       var lo = i
       var hi = i
       var loY = scaleLinear(dom, top, plot.y, values[i])
       var hiY = loY
-      var j = i
-      while j < n && floor(Double((bandCenter(plot.x, band, j)) * perPx)) == col {
-        let y = scaleLinear(dom, top, plot.y, values[j])
+      var j = i + 1
+      while j < n && floor(Double((bandCenter(px, band, j)) * perPx)) == col {
+        let v = values[j]
+        let y = flat ? flatY : r0 + ((v - dmin) / dspan) * diff
         if y < loY {
           lo = j
           loY = y

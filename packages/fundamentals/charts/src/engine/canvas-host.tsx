@@ -17,7 +17,7 @@
 
 import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, computed, effect, isClient, isServer, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
 import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput, A11yTable } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
@@ -74,7 +74,7 @@ function setCell(el: Element, text: string): void {
  * The clip styles go on a WRAPPER, not the table: a `<table>` uses auto layout
  * and expands to its content regardless of `width: 1px`.
  */
-export function a11yTableNode(read: () => A11yTable, id: string, title: () => string): VNode {
+export function a11yTableNode(read: () => A11yTable, id: string, title: () => string, rowCount?: () => number): VNode {
   const host = signal<HTMLTableElement | null>(null)
   // A LARGE table is filled after the chart's first paint, not before it. At
   // 1k rows its layout was ~9ms of a ~10.5ms first frame — the reason a plain
@@ -91,22 +91,37 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // the first mount: a data update used to refill 1,000 rows inside the
   // update's own frame (measured: 6.0ms vs 1.4ms without the table on a 10k
   // update). Coalesced — a burst of updates writes the latest table once.
-  let pending: A11yTable | null = null
+  let pending: (() => A11yTable) | null = null
+  const schedule = (el: HTMLTableElement, build: () => A11yTable): void => {
+    const scheduled = pending !== null
+    pending = build
+    if (!scheduled) {
+      afterPaint(() => {
+        const next = pending
+        pending = null
+        if (next !== null && el.isConnected) writeTable(el, next())
+      })
+    }
+  }
   effect(() => {
     const el = host()
     if (el === null) return
+    // With a row count the effect can tell a LARGE table apart before
+    // building it, and defer the BUILD too, not only the DOM write. Building
+    // the 1,000 rows of formatted strings was ~100µs of a 10k-point line
+    // chart's first frame for a table written a frame later anyway. The count
+    // reads the same memoized input the table does, so it subscribes to every
+    // change the table depends on; `title` is read for the same reason.
+    if (rowCount !== undefined && rowCount() > DEFER_ROWS) {
+      title()
+      if (!ready()) return
+      schedule(el, () => untrack(read))
+      return
+    }
     const t = read()
     if (t.rows.length > DEFER_ROWS) {
       if (!ready()) return
-      const scheduled = pending !== null
-      pending = t
-      if (!scheduled) {
-        afterPaint(() => {
-          const next = pending
-          pending = null
-          if (next !== null && el.isConnected) writeTable(el, next)
-        })
-      }
+      schedule(el, () => t)
       return
     }
     writeTable(el, t)
@@ -1222,7 +1237,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   // Derived booleans keep these children mounted across data-only updates.
   // The table owns its effects in a component scope, so disabling it disposes them.
-  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption)
+  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption, () => chartRowCount(a11yNow()))
   const extras: (VNode | (() => VNode | null))[] = [ssrFrameNode, tipNode, liveNode, () => tableOn() ? h(AccessibleTable, null) : null]
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
 }

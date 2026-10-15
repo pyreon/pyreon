@@ -2185,3 +2185,19 @@ export function chartActionFields(arg: ExprIR | undefined): Partial<Record<'type
   }
   return out.type === undefined ? null : out
 }
+
+/**
+ * Whether every mark in a `marks={[…]}` literal was handed an ARRAY-shaped
+ * channel (`line(prices)`, `bars([1, 2])`) rather than an arrow — the web's
+ * column-only chart, which needs no `data`. Only then does a missing `data`
+ * warning name the column case; an arrow mark with no `data` is a plain
+ * omission and must not be told it is a column.
+ */
+export function marksAreColumns(marks: ExprIR): boolean {
+  if (marks.kind !== 'array' || marks.elements.length === 0) return false
+  return marks.elements.every((m) => {
+    if (m.kind !== 'call') return false
+    const first = m.args[0]
+    return first !== undefined && (first.kind === 'identifier' || first.kind === 'array' || first.kind === 'member' || first.kind === 'new-collection')
+  })
+}
