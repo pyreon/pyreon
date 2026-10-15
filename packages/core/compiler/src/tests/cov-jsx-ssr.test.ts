@@ -183,7 +183,8 @@ describe('jsx.ts (SSR) — proven-non-null dynamic attrs bake `name="` + `_esc(v
   })
 
   it('bakes a ternary whose BOTH arms are provable', () => {
-    expect(s('<div id={c ? "a" : "b"}>x</div>')).toContain('_esc(c ? "a" : "b")')
+    // Two string literals: both attribute renderings are escaped at compile time.
+    expect(s('<div id={c ? "a" : "b"}>x</div>')).toContain('(c ? " id=\\"a\\"" : " id=\\"b\\"")')
   })
 
   it('does NOT bake a ternary with ONE unprovable arm', () => {
@@ -232,7 +233,7 @@ describe('jsx.ts (SSR) — URL attrs additionally require a provably-SAFE start'
   })
 
   it('bakes a ternary URL when BOTH arms start safe, and declines when one does not', () => {
-    expect(s('<div><a href={c ? "/a" : "/b"}>l</a></div>')).toContain('_esc(c ? "/a" : "/b")')
+    expect(s('<div><a href={c ? "/a" : "/b"}>l</a></div>')).toContain('(c ? " href=\\"/a\\"" : " href=\\"/b\\"")')
     expect(s('<div><a href={c ? "/a" : "data:x"}>l</a></div>')).toContain('_ssrAttrUrl')
   })
 
