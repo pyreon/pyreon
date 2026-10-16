@@ -214,7 +214,7 @@ table.toggleSort('name'); table.setFilter('li')
     },
     {
       label: 'Fine-grained cells',
-      note: 'For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor, and drive the inner cells loop with `visibleCells(table, row.id)` — NOT the captured `row.getVisibleCells()`, whose tracked memo-dep reads subscribe every row to the options atom (a data edit then re-runs ALL N cells-list accessors; measured ~3× a memoized react-table update at N=1000). With both, an in-place data edit re-runs ONLY the changed rows\' bindings and patches ONE cell — no memo boilerplate, matching (and on wall-clock beating) a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).',
+      note: 'For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor, and drive the inner cells loop with `visibleCells(table, row.id)` — NOT the captured `row.getVisibleCells()`, whose tracked memo-dep reads subscribe every row to the options atom (a data edit then re-runs ALL N cells-list accessors; measured ~3× a memoized react-table update at N=1000). With both, an in-place data edit re-runs ONLY the changed rows\' bindings and patches ONE cell — no memo boilerplate, matching (and on wall-clock beating) a hand-optimized react-table. A SORT re-runs no cells: the same rows move, and only rows whose data or row object changed are refreshed. Other table-STATE changes (filter/selection/column visibility) re-run all cells (coarse, correct-by-default for state-reading cells).',
     },
     {
       label: 'reorder-on-data-edit limitation',
