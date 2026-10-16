@@ -240,7 +240,7 @@ function _warnTextCoercion(v: unknown, node: Text): void {
  * to a subtree mount at the text node's position (the swap core shared with
  * `bindPolymorphicText`) — matching what SSR already renders for the same
  * shape. The string hot path stays byte-identical until a VNode is actually
- * seen: the no-change bail (`next !== node.data`) is untouched, and the
+ * seen: the no-change bail (against the last string written) is untouched, and the
  * detection is ONE `typeof v === 'object'` short-circuit on the
  * value-actually-changed branch only.
  *
@@ -324,10 +324,16 @@ export function _bindText(
     // an upgrade, the combined cleanup after one. The returned disposer reads it
     // late so ONE stable function survives the subscriber swap.
     let disposer: (() => void) | null = null
+    // The string this binding last wrote. Comparing against it instead of
+    // reading `node.data` back saves a DOM read (and the string it returns) on
+    // every update. `null` until the first call, which reads the node once so a
+    // hydration-adopted node whose server text already matches is not rewritten.
+    let written: string | null = null
     const textUpdate = () => {
       const v = source._v
       const next = v == null || v === false ? '' : String(v as string | number)
-      if (next !== node.data) {
+      if (written === null) written = node.data
+      if (next !== written) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
         if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
@@ -352,6 +358,7 @@ export function _bindText(
         }
         if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
         node.data = next
+        written = next
       }
     }
     textUpdate()
@@ -374,6 +381,8 @@ export function _bindText(
   // child mounts are untracked.
   const fn = resolveSlowCaller(source, caller, receiver)
   let core: PolyTextCore | null = null
+  // Last string written — same read-back saving as the fast path above.
+  let written: string | null = null
   const disposeEffect = renderEffect(() => {
     const v = fn()
     if (core !== null) {
@@ -381,7 +390,8 @@ export function _bindText(
       return
     }
     const next = v == null || v === false ? '' : String(v as string | number)
-    if (next !== node.data) {
+    if (written === null) written = node.data
+    if (next !== written) {
       if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
         const parent = node.parentNode
         if (parent !== null) {
@@ -392,6 +402,7 @@ export function _bindText(
       }
       if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
       node.data = next
+      written = next
     }
   })
   return () => {
