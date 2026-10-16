@@ -662,6 +662,84 @@ describe('flexRenderCell — the context a cell renderer receives', () => {
     t.unmount()
   })
 
+  it('builds the core context directly: getContext runs once to sample its shape, not once per cell', async () => {
+    const data = signal(makeData(4))
+    const seen: Array<{ table: unknown; row: unknown; column: { id: string }; cell: { row: unknown } }> = []
+    const t = mountFineTable(data, {
+      columns: [
+        { accessorKey: 'a', id: 'a', cell: (info: any) => (seen.push(info), String(info.getValue())) },
+        { accessorKey: 'b', id: 'b', cell: (info: any) => (seen.push(info), String(info.getValue())) },
+      ],
+    })
+    // Count getContext calls on a fresh render of every cell.
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    let calls = 0
+    const counted = function (this: unknown) {
+      calls++
+      return original.call(this)
+    }
+    owner.getContext = counted
+    try {
+      seen.length = 0
+      data.set(makeData(4).map((r) => ({ ...r, a: `${r.a}!`, b: `${r.b}!` })))
+      await flush()
+      expect(t.cellText(3, 'b')).toBe('b3!')
+      expect(seen).toHaveLength(8)
+      // One call samples the shape of this getContext; the other 7 contexts
+      // are built directly.
+      expect(calls).toBe(1)
+      for (const info of seen) {
+        expect(info.table).toBe(t.table())
+        expect(info.row).toBe(info.cell.row)
+      }
+      expect(seen.map((i) => i.column.id).sort()).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b'])
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+
+  it('a plain context with an extra key (a feature-added field) keeps that key and stays untracked', async () => {
+    const seen: Array<{ extra?: unknown }> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown; extra?: unknown }) => {
+            seen.push({ extra: info.extra })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    owner.getContext = function (this: unknown) {
+      return { ...original.call(this), extra: 'from-feature' }
+    }
+    try {
+      data.set(editCell(data(), 0, 'a', 'P'))
+      await flush()
+      expect(t.cellText(0, 'a')).toBe('P|P')
+      expect(seen[seen.length - 1]!.extra).toBe('from-feature')
+      // A second render through the same getContext takes the cached answer.
+      t.cellRuns[0] = 0
+      data.set(editCell(data(), 1, 'a', 'Q'))
+      await flush()
+      expect(t.cellText(1, 'a')).toBe('Q|Q')
+      expect(seen[seen.length - 1]!.extra).toBe('from-feature')
+      expect(t.cellRuns[0]).toBe(1)
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+
   it('keeps a non-plain context prototype (descriptor-copy fallback) and still untracks the value', async () => {
     const seen: Array<{ inherited?: unknown; proto: unknown }> = []
     const data = signal(makeData(2))

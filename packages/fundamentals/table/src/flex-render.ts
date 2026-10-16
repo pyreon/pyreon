@@ -1,6 +1,6 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { untrack } from '@pyreon/reactivity'
-import type { Cell, RowData, Table, TableFeatures } from '@tanstack/table-core'
+import type { Cell, CellContext, RowData, Table, TableFeatures } from '@tanstack/table-core'
 import { _getRowSignalBridge } from './use-table'
 
 /** Resolved renderable content — deliberately NOT the full `VNodeChild`.
@@ -128,7 +128,7 @@ export function flexRenderCell<TFeatures extends TableFeatures, TData extends Ro
       : undefined
   const found = untrack(() => {
     const cell = cached ?? lookupCellByColumnId(table, rowId, columnId)
-    return cell == null ? undefined : { cell, context: untrackedValueContext(cell.getContext()) }
+    return cell == null ? undefined : { cell, context: cellContext(cell) }
   })
   if (found === undefined) return null
   return flexRender(found.cell.column.columnDef.cell, found.context)
@@ -144,6 +144,55 @@ export function flexRenderCell<TFeatures extends TableFeatures, TData extends Ro
 // every table, so it stores `unknown` and the single read site narrows it back
 // (the entry was written by `visibleCells` for this same table and row).
 const rowCellsCache = new WeakMap<object, { version: number; byColumnId: Record<string, unknown> }>()
+
+/**
+ * Does this `getContext` return exactly table-core's core context (a plain
+ * object with these six keys)? Decided once per `getContext` FUNCTION, from the
+ * first context it produces: a feature that overrides it, or code that patches
+ * it, is a different function and gets its own answer. Keyed weakly, so an
+ * entry dies with its function.
+ */
+const CORE_CONTEXT_KEYS = ['table', 'column', 'row', 'cell', 'getValue', 'renderValue']
+const coreContextShape = new WeakMap<object, boolean>()
+function isCoreContext(context: object): boolean {
+  const keys = Object.keys(context)
+  return (
+    Object.getPrototypeOf(context) === Object.prototype &&
+    keys.length === CORE_CONTEXT_KEYS.length &&
+    CORE_CONTEXT_KEYS.every((k) => keys.includes(k))
+  )
+}
+
+/**
+ * The context handed to a cell renderer, with `getValue` / `renderValue`
+ * untracked (see `flexRenderCell`). For the core context shape it is built
+ * directly — the same six keys `cell_getContext` produces — instead of
+ * building table-core's context and then copying it: one object and two
+ * closures per cell instead of two objects and four (measured ~2 ms less per
+ * 6,000 cells). Any other shape takes `untrackedValueContext`.
+ */
+function cellContext<TFeatures extends TableFeatures, TData extends RowData>(
+  cell: Cell<TFeatures, TData, unknown>,
+): CellContext<TFeatures, TData, unknown> {
+  const getContext = cell.getContext
+  let core = coreContextShape.get(getContext)
+  if (core === undefined) {
+    const sample = cell.getContext()
+    core = isCoreContext(sample)
+    coreContextShape.set(getContext, core)
+    if (!core) return untrackedValueContext(sample)
+  } else if (!core) {
+    return untrackedValueContext(cell.getContext())
+  }
+  return {
+    table: (cell as unknown as { table: Table<TFeatures, TData> }).table,
+    column: cell.column,
+    row: cell.row,
+    cell,
+    getValue: () => untrack(() => cell.getValue()),
+    renderValue: () => untrack(() => cell.renderValue()),
+  } as CellContext<TFeatures, TData, unknown>
+}
 
 /** A cell context whose value readers do not subscribe (see `flexRenderCell`).
  *  Same prototype + own properties as the original; only `getValue` and
