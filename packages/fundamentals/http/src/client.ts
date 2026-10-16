@@ -47,6 +47,9 @@ import type {
 } from './types'
 import { buildUrl } from './url'
 
+/** Remover for a body read with no abort link (nothing to watch). */
+const noopRemover = (): void => {}
+
 type HeaderSource = HeadersInit | (() => HeadersInit)
 
 /** Config after `extend()` folding — header/middleware sources accumulate. */
@@ -283,6 +286,9 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       release() {
         claims--
         if (claims <= 0 && settled) releaseLink()
+      },
+      onAbort(cb) {
+        return link ? link.onAbort(cb) : noopRemover
       },
       abortError() {
         return link?.timedOut()
