@@ -126,7 +126,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master — pinned (OpenSSF Pinned-Dependencies)
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
@@ -198,7 +198,7 @@ jobs:
           echo "Built ${{ matrix.target }}: $SIZE bytes"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pyreon-compiler-${{ matrix.target }}
           path: packages/core/compiler/native/pyreon-compiler-${{ matrix.target }}.node
@@ -246,7 +246,7 @@ jobs:
           # published the stub package.json VERSION of main around a binary
           # built at the tag.
           ref: ${{ inputs.ref || github.ref }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           # NO `registry-url:` — that makes setup-node write an
@@ -279,7 +279,7 @@ jobs:
         # No prior release exercised this code path (every previous
         # release-native run was workflow_dispatch with the default
         # `publish: 'false'` input, which skips the publish matrix).
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: pyreon-compiler-${{ matrix.target }}
           path: packages/core/compiler/npm/${{ matrix.npm }}
