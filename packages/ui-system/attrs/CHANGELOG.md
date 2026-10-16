@@ -1,5 +1,14 @@
 # @pyreon/attrs
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/ui-core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes

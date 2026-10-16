@@ -1,5 +1,21 @@
 # @pyreon/reactivity
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3906](https://github.com/pyreon/pyreon/pull/3906) [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `effect()` now creates its batch-queue flags when the effect is created instead of on first enqueue. V8 runs queued effects measurably faster that way: one signal driving 100 effects goes from ~2,210 to ~1,900 ns per write, and a 50-signal batch from ~637 to ~592 ns. An effect that is never queued costs about 40 bytes more.
+
+- [#3903](https://github.com/pyreon/pyreon/pull/3903) [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: an `effect()` or `computed()` created directly in a `<For>` row callback is now disposed when its row is removed and when the list unmounts. It previously had no owner, so a removed row kept running its effects indefinitely. Rows that create nothing pay no allocation; the fair benchmark shows no measurable cost.
+
+- [#3895](https://github.com/pyreon/pyreon/pull/3895) [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Notifying effects is faster on V8 (Chrome, Node): telling a computed's notify apart from an effect's is now a field check instead of a `WeakSet` lookup. One signal driving many effects is 13% faster, batched writes 14% and computed diamonds 9%; JavaScriptCore is unchanged.
+
+- [#3892](https://github.com/pyreon/pyreon/pull/3892) [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reading through a chain or diamond of computeds is faster. When a computed re-evaluates during a read and its only subscriber is another computed that is already marked dirty, there is nothing to propagate, and it no longer opens and closes a batch window to find that out. Deep computed chains are 12–17% faster and diamonds 18–22% faster, on both V8 and JavaScriptCore.
+
+- [#3896](https://github.com/pyreon/pyreon/pull/3896) [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Re-running an effect that has nothing to clean up skips the cleanup step. One signal driving 100 effects is 11% faster on V8 and 8% faster on JavaScriptCore.
+- Updated dependencies []:
+  - @pyreon/native-compiler@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes

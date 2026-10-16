@@ -1,5 +1,24 @@
 # @pyreon/runtime-dom
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3891](https://github.com/pyreon/pyreon/pull/3891) [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A compiled style that can never re-run (one computed from a `<For>` item, or any non-reactive expression) is now written with the new `_setStyleOnce`, which skips the skip-if-equal cache that reactive styles keep. Recording that cache read `cssText` back after every write, a full serialization of the declaration, on every templated element with a computed style. Reactive styles are unchanged. Mounting a 10,000-item virtual list is about 8% faster.
+
+- [#3902](https://github.com/pyreon/pyreon/pull/3902) [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster teardown of lists inside elements. A `<For>` mounted inside a freshly built element no longer removes its rows from the DOM one at a time when it is torn down: the element leaves the document as a unit right after, so those removals were redundant. Every row's cleanup still runs, so effects are disposed and refs cleared. Unmounting a 1,000-row × 6-column table goes from 2.83ms to 1.36ms in Chromium, ahead of memoized react-table (1.88ms).
+
+- [#3903](https://github.com/pyreon/pyreon/pull/3903) [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: an `effect()` or `computed()` created directly in a `<For>` row callback is now disposed when its row is removed and when the list unmounts. It previously had no owner, so a removed row kept running its effects indefinitely. Rows that create nothing pay no allocation; the fair benchmark shows no measurable cost.
+
+- [#3907](https://github.com/pyreon/pyreon/pull/3907) [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A `<For>` update that only swaps or rotates a few rows (up to 8 positions, nothing added or removed) now goes straight to moving those rows, without first looking every key up in the row cache twice. About 10 µs less JavaScript per swap on a 1,000-row list.
+
+- [#3905](https://github.com/pyreon/pyreon/pull/3905) [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A string `style` write no longer reads the declaration back. The readback, which serializes the whole declaration, is now taken only the first time the same string is written again, which is the only case where the skip-if-unchanged check needs it. Elements whose style is set once, or whose style changes on every run (a virtual-list row's `transform`), stop paying it: a virtual list scrolls about 8% faster and mounts about 5% faster.
+
+- [#3913](https://github.com/pyreon/pyreon/pull/3913) [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reactive text bindings no longer read `node.data` back from the DOM on every update. They compare against the string they last wrote, and read the node only on their first run, so a hydrated node whose server text already matches is still left alone. This covers the signal fast path of `_bindText`, its callable path, and the shared core behind `bindPolymorphicText`. On the dbmon scenario (600 text cells changing per tick) the tick drops about 5%, from 1.85–1.90 ms to 1.70–1.81 ms.
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes

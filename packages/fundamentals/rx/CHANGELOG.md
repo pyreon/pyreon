@@ -1,5 +1,16 @@
 # @pyreon/rx
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3911](https://github.com/pyreon/pyreon/pull/3911) [`5a881d1`](https://github.com/pyreon/pyreon/commit/5a881d14630f0cd4fdc037f259e4cfc4dedec9dc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `find`, `reduce`, `every`, `some`, `sum` and `average` run their own loops instead of the matching `Array.prototype` methods, as `filter` and `map` already do. `sum` over 1,000 rows goes from 2.2 to 0.86 µs, ahead of a native `reduce`. Callbacks still get the index and the array, and holes in sparse arrays behave as each builtin's do (`find` visits them as `undefined`; the others skip them).
+
+- [#3908](https://github.com/pyreon/pyreon/pull/3908) [`58fcee6`](https://github.com/pyreon/pyreon/commit/58fcee6a4b549e48c214235bce82c33b5dbe97c9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `filter` and `map` run their own loops instead of `Array.prototype.filter` / `map`. On JavaScriptCore the callback could not be specialized through the builtin, so both were ~1.5–1.9× slower than writing the same `computed` by hand. They are now at or ahead of it (1,000 rows: filter 3.6 → 2.1 µs, map 2.7 → 1.4 µs). Behaviour is unchanged: the callback still gets the index and the array, and holes in sparse arrays are skipped (`filter`) or kept (`map`).
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/native-compiler@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes

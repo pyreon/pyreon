@@ -1,5 +1,16 @@
 # @pyreon/http
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3916](https://github.com/pyreon/pyreon/pull/3916) [`84d95f8`](https://github.com/pyreon/pyreon/commit/84d95f86cd0239bb77ce96c2108e05bcbf02c4b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A request with a timeout or a caller `signal` no longer registers and removes an `abort` event listener for each body read. The client watches its own abort link with a plain callback instead, since every abort of that signal goes through the client (the timer or the forwarded caller abort). This saves ~190 ns per read: the `GET with 5s timeout` benchmark row went from 1.72–1.94 µs to 1.57–1.58 µs, which ties ofetch where it was 1.1–1.2× ahead.
+
+- [#3909](https://github.com/pyreon/pyreon/pull/3909) [`d8cacf8`](https://github.com/pyreon/pyreon/commit/d8cacf879dd4a61fe0cd4f46141e6d511a6b27cb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Creating a client without `use` or `meta` no longer allocates an empty middleware array and meta object for it; those are shared, read-only values. `createHttp({ baseUrl, headers })` measured ~153 → ~118 ns, level with ofetch.
+- Updated dependencies []:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/validation@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes

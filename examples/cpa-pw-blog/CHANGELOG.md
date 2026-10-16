@@ -1,5 +1,20 @@
 # cpa-pw-blog
 
+## 0.50.4
+
+### Patch Changes
+
+- Updated dependencies [[`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957)]:
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/meta@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/router@0.54.0
+  - @pyreon/head@0.54.0
+  - @pyreon/runtime-server@0.54.0
+  - @pyreon/server@0.54.0
+  - @pyreon/zero@0.54.0
+
 ## 0.50.3
 
 ### Patch Changes

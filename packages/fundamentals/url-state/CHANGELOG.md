@@ -1,5 +1,14 @@
 # @pyreon/url-state
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3894](https://github.com/pyreon/pyreon/pull/3894) [`44d39e7`](https://github.com/pyreon/pyreon/commit/44d39e7f421a6f619a4349cb2cd34467df43d5b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Number params parse about 40% faster. A short all-digit value (`?page=2`, `?id=12345`) is now summed directly instead of going through `trim()` and string-to-number conversion; any other value takes the existing path, and the result is identical in every case.
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/native-compiler@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes

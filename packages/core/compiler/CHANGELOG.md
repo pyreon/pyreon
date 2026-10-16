@@ -1,5 +1,15 @@
 # @pyreon/compiler
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3885](https://github.com/pyreon/pyreon/pull/3885) [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Signal reads through a literal index or a TypeScript type layer now get the direct binding tier. `{row.queries[0].elapsed()}`, `{(row.cell as Cell).elapsed()}` and `{row.cell!.elapsed()}` used to compile to a fully tracked binding (one effect re-run per update) instead of `_bindText` / `_bindDirect`. A literal key is as stable as a named property and a cast is erased at runtime, so both now bind the signal directly. A dynamic index (`row.queries[i]`) still takes the general path. Measured on the dbmon benchmark (600 cells updating per tick): Pyreon goes from about 1.09× behind Svelte to a statistical tie.
+
+- [#3891](https://github.com/pyreon/pyreon/pull/3891) [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A compiled style that can never re-run (one computed from a `<For>` item, or any non-reactive expression) is now written with the new `_setStyleOnce`, which skips the skip-if-equal cache that reactive styles keep. Recording that cache read `cssText` back after every write, a full serialization of the declaration, on every templated element with a computed style. Reactive styles are unchanged. Mounting a 10,000-item virtual list is about 8% faster.
+
+- [#3890](https://github.com/pyreon/pyreon/pull/3890) [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR compile-to-string: an attribute whose value is a conditional between two string literals (`class={selected ? 'row on' : 'row'}`) is now baked at compile time. Both renderings are escaped when the page is compiled and the test picks one, instead of calling a runtime attribute helper on every render. Output is byte-identical; server rendering of a 1,000-row table is about 20% faster.
+
 ## 0.53.0
 
 ### Minor Changes
