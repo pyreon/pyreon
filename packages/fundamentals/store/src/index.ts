@@ -58,6 +58,7 @@ import {
   batch,
   type Computed,
   effectScope,
+  type EffectScope,
   registerSingleton,
   signal as createSignal,
   type Signal,
@@ -793,699 +794,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // so the counter measures FRESH store creations, not registry lookups.
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.defineStore')
 
-    // Store-owned effect scope. `setup()` (and plugin bodies below) run inside
-    // it so every `computed()`/`effect()` they create is owned by the STORE:
-    //  - SHIELDING: without this, a store first created inside a component
-    //    body (the dominant lazy-creation shape — mount.ts sets the
-    //    component's scope as current during setup) registered its computeds
-    //    with THAT component's scope; the component's unmount then DISPOSED
-    //    the singleton store's computeds, freezing them stale for every other
-    //    consumer. `runInScope` swaps the ambient scope for the store's own.
-    //  - DISPOSAL: `api.dispose()` stops the scope, disposing setup-created
-    //    effects/computeds — without it, an effect reading an EXTERNAL signal
-    //    kept firing (and retained the store's object graph) forever.
-    // Matches Pinia: setup stores run in an effectScope; $dispose stops it.
-    // Regression locks: src/tests/scope-ownership.test.ts (bisect-verified).
-    const scope = effectScope()
-    const raw = scope.runInScope(setup)
-
-    // Classify + build the user store in ONE pass (was two: classify, then a
-    // second keys loop with an O(actions) `includes` per key).
-    const signalKeys: string[] = []
-    // Signal refs cached in a DENSE array parallel to `signalKeys`. Every hot
-    // path (`getState`, change-detection, `patch`, `reset`) reaches a field's
-    // signal by INDEX (`signalObjs[i]`) instead of a dynamic `raw[key]` string-
-    // keyed property lookup on the mixed signals+actions object — an array load
-    // is materially cheaper than a megamorphic object property access, and the
-    // patch/notify paths touch each signal several times per call.
-    const signalObjs: SignalLike[] = []
-    // Initial values captured at creation for `reset()`, kept as a parallel
-    // array aligned with `signalKeys` (both pushed in the same iteration below).
-    // An array is cheaper to build than a `Map` on the setup path, and `reset()`
-    // — the sole consumer — zips the two by index. (The snapshot MUST happen at
-    // creation, so this can't be deferred like `keyIndex`/`subscribers`.)
-    const initialVals: unknown[] = []
-
-    // O(1) membership AND key→index resolution for the `patch` hot path (vs an
-    // O(signalKeys) array scan per patched key). A single `Map<key, index>`
-    // serves both: `.has(key)` is the membership check the no-subscriber patch
-    // uses, `.get(key)` is the index the with-subscriber patch uses to reach a
-    // field's change-detector + prevValues slot. LAZY: built on the first
-    // `patch()` object-form call and reused thereafter — most stores mutate via
-    // `store.x.set()` / actions and never call `patch()`, so it's pure setup
-    // overhead for them. Mirrors the lazy `subscribers` Set below.
-    let keyIndex: Map<string, number> | null = null
-    function getKeyIndex(): Map<string, number> {
-      if (keyIndex === null) {
-        keyIndex = new Map()
-        for (let i = 0; i < signalKeys.length; i++) keyIndex.set(signalKeys[i] as string, i)
-      }
-      return keyIndex
-    }
-
-    // ─── subscribe infrastructure ───────────────────────────────────────
-    // Lazy Set allocation: most stores never get a user subscribe() call.
-    // Initialise as null and allocate only on first add — for a 1k-store
-    // mount that's 1000 fewer Set allocations per page boot.
-    let subscribers: Set<SubscribeCallback> | null = null
-    let patchInProgress = false
-    // Nesting depth of the subscribed-patch window. A re-entrant `patch()` (a
-    // user effect fired by the outer patch's batch drain calling `patch()`
-    // again) must NOT close a window it did not open: only the OUTERMOST patch
-    // clears `patchInProgress`, merges `patchEvents`, and emits the ONE
-    // notification. A nested patch decrements without emitting and hands its own
-    // writes to the shared buffer, so they merge into the outermost's single
-    // emit — same as a re-entrant DIRECT write already does. Without this the
-    // nested `finally` reset the flag + stole/cleared the outer's buffer,
-    // producing two notifications with reversed order/attribution.
-    let patchDepth = 0
-    // Starts at the shared frozen empty array — a fresh buffer is assigned at
-    // the top of every subscribed patch, and `notifyDirect` only pushes while
-    // `patchInProgress` (which implies the fresh buffer). Saves one array
-    // allocation per store at setup + one per subscribed patch at the end.
-    let patchEvents: MutationInfo['events'] = EMPTY_EVENTS
-
-    function getState(): Record<string, unknown> {
-      const state: Record<string, unknown> = {}
-      for (let i = 0; i < signalKeys.length; i++) {
-        state[signalKeys[i] as string] = (signalObjs[i] as SignalLike).peek()
-      }
-      return state
-    }
-
-    // Dev-only diagnostic for the #1 documented patch footgun — a key that
-    // isn't a signal field (typo / computed / action) is silently dropped.
-    // Shared by both object-patch paths so the message lives in one place; the
-    // whole body tree-shakes out of production builds.
-    function warnUnknownPatchKey(key: string) {
-      if (process.env.NODE_ENV !== 'production') {
-        // oxlint-disable-next-line no-console
-        console.warn(
-          `[Pyreon] patch("${id}"): key "${key}" is not a signal field — ignored. ` +
-            `Patchable fields: [${signalKeys.join(', ')}]. Computeds/actions are not ` +
-            `patchable; use the functional form patch(s => …) for direct signal access.`,
-        )
-      }
-    }
-
-    // Fan out ONE mutation + state snapshot to every store subscriber. Shared
-    // by the direct-write path and both patch emit paths so the notify loop +
-    // its fan-out counter live in exactly one place.
-    function emitToSubscribers(mutation: MutationInfo, state: Record<string, unknown>) {
-      for (const cb of subscribers as Set<SubscribeCallback>) {
-        // Fan-out per notification × subscriber. High count under stress means
-        // user code is over-subscribing — collapse with a selector pattern or
-        // move state into a dedicated store.
-        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
-        cb(mutation, state)
-      }
-    }
-
-    function notifyDirect(key: string, oldValue: unknown, newValue: unknown) {
-      if (patchInProgress) {
-        // A subscriber is guaranteed here: `patchInProgress` is set only by a
-        // subscribed patch (both paths gate on ≥1 subscriber) and a detector
-        // only fires while subscribed — so no null/size guard is needed.
-        // `patchEvents` starts as the shared frozen EMPTY buffer and is
-        // allocated LAZILY on first push, so a patch whose detectors never fire
-        // (the detach path's common case: patched fields are written with their
-        // detectors suspended, so only a re-entrant effect writing ANOTHER store
-        // field during the drain lands here) pays no buffer allocation at all.
-        if (patchEvents === EMPTY_EVENTS) patchEvents = []
-        patchEvents.push({ key, newValue, oldValue })
-        return
-      }
-      if (subscribers === null || subscribers.size === 0) return
-      const mutation: MutationInfo = {
-        storeId: id,
-        type: 'direct',
-        events: [{ key, newValue, oldValue }],
-      }
-      emitToSubscribers(mutation, getState())
-    }
-
-    // Lazy change-detection subscriptions. The per-signal subscribers exist
-    // ONLY to feed `notifyDirect` → store-level `subscribe()` callbacks (and the
-    // `patch()` mutation event). Most stores never call `.subscribe()`, so
-    // subscribing eagerly was pure overhead — AND it forced every signal write
-    // onto the slow batched-notify path: a SUBSCRIBED signal written inside the
-    // `patch()` / `reset()` batch round-trips the reactivity pending queue
-    // (~10× a direct write), whereas an UNSUBSCRIBED write hits the inline
-    // fast path. We now subscribe only while ≥1 store subscriber is attached;
-    // a no-subscriber store's `patch()` writes its signals unsubscribed + fast.
-    // Lazy arrays — most stores never get a `subscribe()` call, so don't pay
-    // the allocation at setup (same rationale as `subscribers`). All three are
-    // parallel to `signalKeys` by index: `signalUnsubs[i]` disposes the
-    // detector for field `i`, `detectors[i]` is that detector's callback (kept
-    // so the with-subscriber `patch()` can detach it during its own writes then
-    // re-subscribe it), and `prevValues[i]` holds the last-seen value the
-    // detector diffs against. `prev` is shared state (not a per-detector
-    // closure local) precisely so `patch()` — which writes the signal while its
-    // detector is detached — can keep it in sync (`prevValues[i] = newValue`)
-    // without the detector ever running.
-    let signalUnsubs: (() => void)[] | null = null
-    let detectors: (() => void)[] | null = null
-    let prevValues: unknown[] | null = null
-    // Detector-wiring generation. Bumped whenever the per-field detectors are
-    // (re)attached or torn down. The with-subscriber patch loop captures it at
-    // entry and only takes the O(1) sole-subscriber suspend fast path while it
-    // is UNCHANGED — an exotic synchronous side-effect mid-patch (a wrapped
-    // signal's `set` — or a hostile patch-object getter — unsubscribing the
-    // last store subscriber, which deactivates the detectors) would otherwise
-    // break the fast path's "the sole `_s` entry IS our detector" precondition
-    // and wholesale-suspend a USER listener for that write. Epoch mismatch ⇒
-    // fall back to the per-listener suspend (current-behavior-identical).
-    let detectorEpoch = 0
-    function activateSignalSubs(): void {
-      if (signalUnsubs !== null && signalUnsubs.length > 0) return // already active (idempotent)
-      detectorEpoch++
-      if (signalUnsubs === null) {
-        signalUnsubs = []
-        detectors = []
-        prevValues = []
-      }
-      const uns = signalUnsubs
-      const dets = detectors as (() => void)[]
-      const prevs = prevValues as unknown[]
-      for (let i = 0; i < signalKeys.length; i++) {
-        const key = signalKeys[i] as string
-        const sig = signalObjs[i] as SignalLike
-        const idx = i
-        prevs[idx] = sig.peek()
-        const detector = () => {
-          const next = sig.peek()
-          const old = prevs[idx]
-          prevs[idx] = next
-          notifyDirect(key, old, next)
-        }
-        dets[idx] = detector
-        uns[idx] = sig.subscribe(detector)
-      }
-    }
-    function deactivateSignalSubs(): void {
-      if (signalUnsubs === null) return
-      detectorEpoch++
-      for (const unsub of signalUnsubs) unsub()
-      signalUnsubs.length = 0
-    }
-
-    // ─── onAction infrastructure ────────────────────────────────────────
-    // Lazy Set allocation — most stores never get a user onAction() call.
-    // The action wrapper still pays the null-check on every action call,
-    // but the empty-listener case skips both Set allocation AND iteration.
-    let actionListeners: Set<OnActionCallback> | null = null
-
-    // Wrap actions
-    function wrapAction(key: string, original: (...args: any[]) => unknown) {
-      return (...args: unknown[]) => {
-        // Per wrapped-action invocation. Pair with `store.actionListenerNotify`
-        // for the listener fan-out ratio. Fires on BOTH fast path and slow
-        // path so the action-count denominator stays correct.
-        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.actionCall')
-
-        // Fast path: no listeners attached → skip ActionContext allocation
-        // and the after/onError callback arrays entirely. Exceptions
-        // propagate naturally to the caller.
-        if (actionListeners === null || actionListeners.size === 0) {
-          return original(...args)
-        }
-
-        const afterCbs: ((result: unknown) => void)[] = []
-        const errorCbs: ((error: unknown) => void)[] = []
-
-        const context: ActionContext = {
-          name: key,
-          storeId: id,
-          args,
-          after: (cb) => afterCbs.push(cb),
-          onError: (cb) => errorCbs.push(cb),
-        }
-
-        for (const listener of actionListeners) {
-          // Fires BEFORE the action body runs. Ratio = listener count.
-          // Diverging from `actionCall` ratio across runs = listeners
-          // attaching/detaching (likely a leak).
-          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.actionListenerNotify')
-          listener(context)
-        }
-
-        try {
-          const result = original(...args)
-
-          // Handle async actions: if the result is a thenable, wait for
-          // resolution before calling after/onError callbacks.
-          if (result != null && typeof (result as Record<string, unknown>).then === 'function') {
-            return (result as Promise<unknown>).then(
-              (resolved) => {
-                for (const cb of afterCbs) cb(resolved)
-                return resolved
-              },
-              (err) => {
-                for (const cb of errorCbs) cb(err)
-                throw err
-              },
-            )
-          }
-
-          for (const cb of afterCbs) cb(result)
-          return result
-        } catch (err) {
-          for (const cb of errorCbs) cb(err)
-          throw err
-        }
-      }
-    }
-
-    // ─── Classify + build user store object (single pass) ──────────────
-    const userStore: Record<string, unknown> = {}
-
-    for (const key of Object.keys(raw)) {
-      const val = raw[key]
-      if (isSignalLike(val)) {
-        signalKeys.push(key)
-        signalObjs.push(val)
-        initialVals.push(val.peek())
-        userStore[key] = val
-      } else if (typeof val === 'function') {
-        // Not signal-like (checked above), so `isComputedLike` reduces to the
-        // `.dispose` duck-check: a computed passes through, everything else
-        // callable becomes a wrapped action.
-        if (typeof (val as unknown as Record<string, unknown>).dispose === 'function') {
-          userStore[key] = val // computed — pass through
-        } else {
-          userStore[key] = wrapAction(key, val as (...args: any[]) => unknown)
-        }
-      } else {
-        userStore[key] = val // plain value — pass through, inert
-      }
-    }
-
-    // Plugin-returned cleanup functions — run on `dispose()`. Lazy (most
-    // plugins return nothing; most apps register zero plugins).
-    let pluginCleanups: (() => void)[] | null = null
-
-    // Per-call state for the object/functional `patch` forms. The apply
-    // closure is created ONCE on first patch and reused (by EVERY patch path —
-    // functional, no-subscriber object, AND the with-subscriber detach path) —
-    // the previous shape allocated a fresh batch-callback closure per call.
-    // `patchArg` hands the argument across; the closure reads it into a local
-    // FIRST so a re-entrant patch (from a user effect during the batch drain)
-    // can't clobber it mid-apply.
-    let patchArg: Record<string, unknown> | ((state: Record<string, any>) => void) | null = null
-    let applyPatchFn: (() => void) | null = null
-    // Cached functional-form signal map — the signals never change identity
-    // after creation, so build it once on the first functional patch.
-    let signalMap: Record<string, unknown> | null = null
-    // Lazily build + return the shared per-store batched-write closure. It
-    // reads `patchArg`: a function → functional form (writes via `signalMap`),
-    // an object → object form (writes each signal field by index, warns on an
-    // unknown key). The with-subscriber detach path calls this AFTER suspending
-    // the field detectors, so its writes don't round-trip the notify machinery.
-    function ensureApply(): () => void {
-      if (applyPatchFn === null) {
-        applyPatchFn = () => {
-          // Read the handed-across argument into a local FIRST — a re-entrant
-          // patch (user effect during the batch drain) reassigns `patchArg`
-          // and must not clobber this invocation's argument.
-          const arg = patchArg as
-            | Record<string, unknown>
-            | ((state: Record<string, any>) => void)
-          if (typeof arg === 'function') {
-            // Functional form: pass an object with the actual signals so user
-            // calls .set(). Map built once — signal identities are fixed.
-            if (signalMap === null) {
-              signalMap = {}
-              for (const key of signalKeys) {
-                signalMap[key] = raw[key]
-              }
-            }
-            arg(signalMap as Record<string, any>)
-          } else {
-            // Object form: `keyIndex` resolves key→index; a hit reaches the
-            // signal by array index (`signalObjs[idx]`) instead of a dynamic
-            // `raw[key]` lookup, and an unknown key (`undefined`) is the
-            // silent-drop footgun surfaced in dev.
-            const kidx = getKeyIndex()
-            for (const key of Object.keys(arg)) {
-              const idx = kidx.get(key)
-              if (idx !== undefined) {
-                if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
-                ;(signalObjs[idx] as SignalLike).set(arg[key])
-              } else {
-                warnUnknownPatchKey(key)
-              }
-            }
-          }
-        }
-      }
-      return applyPatchFn
-    }
-
-    // Per-call state + cached apply closure for the with-subscriber DETACH
-    // path (mirrors `patchArg`/`ensureApply` above — the previous shape
-    // allocated a fresh batch-callback closure per subscribed patch). `patch()`
-    // hands the argument across via `patchArg` and the per-patch event buffer
-    // via `detachEvents`; the closure reads BOTH into locals FIRST so a
-    // re-entrant with-subscriber patch (from a user effect during the batch
-    // drain) can't clobber them mid-apply — the outer invocation keeps its own
-    // references, exactly like `ensureApply`'s `patchArg` discipline.
-    let detachEvents: MutationInfo['events'] | null = null
-    let detachApplyFn: (() => void) | null = null
-    function ensureDetachApply(): () => void {
-      if (detachApplyFn === null) {
-        detachApplyFn = () => {
-          // Re-entrancy: locals first (see the slot comment above).
-          const arg = patchArg as Record<string, unknown>
-          const events = detachEvents as MutationInfo['events']
-          // Hoist every field read into a LOCAL up front. In the hot loop these
-          // are read repeatedly; a closure-captured (context) variable costs a
-          // scope-chain walk per read, a local doesn't — measured ~35% of this
-          // path's cost was closure-scope access before hoisting.
-          const kidx = getKeyIndex()
-          const so = signalObjs
-          const dets = detectors as (() => void)[]
-          const prevs = prevValues as unknown[]
-          // Capture the detector-wiring generation BEFORE any user code
-          // (patch-object getters, wrapped-signal set side-effects) can run —
-          // the sole-subscriber fast path below is only valid while unchanged.
-          const epoch0 = detectorEpoch
-          // ONE pass over the patched keys: per key, suspend that field's
-          // detector, write, then re-attach immediately. Only OUR detector is
-          // silenced for that write; any USER computed/effect reading the field
-          // is still subscribed and (because we're inside `batch`) recomputes
-          // exactly ONCE after all writes. Suspension takes the O(1)
-          // `_suspendSoleSubscriber` Set-swap when our detector is the sole
-          // `subscribe()` listener (the dominant case — measured the function-
-          // key Set delete/add pairs as the single largest component of this
-          // path, ~25% of the whole patch), falling back to the per-listener
-          // `_suspendSubscriber` delete/add when user listeners/effects share
-          // the signal's subscriber set — or when `epoch0` no longer matches
-          // (detectors re-wired by a mid-patch side-effect; see detectorEpoch).
-          //
-          // Exception safety (a suspend/mutate/resume window over shared
-          // subscriber state MUST leave the set consistent on ANY throw path):
-          //  - `arg[key]` is read BEFORE suspending — a throwing getter/Proxy
-          //    then aborts with the detector still ATTACHED (a detach-then-
-          //    throw would silently un-notify every later direct write to that
-          //    field until the next patch re-attached it).
-          //  - `sig.set` runs in `try { … } finally { resume }` — a write that
-          //    throws (a wrapped signal whose write side-effect fails) still
-          //    re-attaches the detector (restoring the swapped Set on the fast
-          //    path) before propagating.
-          //  - `patchInProgress` + the event merge + the emit are handled by
-          //    the CALLER's `finally` around the whole drain (see `patch()`).
-          for (const key of Object.keys(arg)) {
-            const idx = kidx.get(key)
-            if (idx === undefined) {
-              warnUnknownPatchKey(key)
-              continue
-            }
-            // Read the value FIRST — before suspending — so a throwing
-            // getter leaves the detector attached (see the block comment).
-            const newValue = arg[key]
-            const sig = so[idx] as SignalLike
-            const det = dets[idx] as () => void
-            const rsig = sig as unknown as Signal<unknown>
-            const saved = detectorEpoch === epoch0 ? _suspendSoleSubscriber(rsig) : null
-            if (saved === null) _suspendSubscriber(rsig, det)
-            const oldValue = sig.peek()
-            if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
-            try {
-              sig.set(newValue)
-            } finally {
-              if (saved !== null) _resumeSoleSubscriber(rsig, saved, det)
-              else _resumeSubscriber(rsig, det)
-            }
-            if (!Object.is(oldValue, newValue)) {
-              events.push({ key, newValue, oldValue })
-              prevs[idx] = newValue
-            }
-          }
-        }
-      }
-      return detachApplyFn
-    }
-
-    // ─── Build StoreApi ─────────────────────────────────────────────────
-    const api: StoreApi<T> = {
-      store: userStore as T,
-
-      id,
-
-      get state() {
-        return getState()
-      },
-
-      patch(partialOrFn: Record<string, unknown> | ((state: Record<string, any>) => void)) {
-        const hasSubs = subscribers !== null && subscribers.size > 0
-
-        // ── Object form + subscribers: fast DETACH path ─────────────────────
-        // Writing our OWN signals while their store change-detectors are
-        // attached would round-trip every write through the reactivity batch
-        // queue (enqueue + drain the detector effect) purely to rebuild change
-        // info we ALREADY have — the patched keys and their old/new values. So
-        // we detach each patched field's detector, write the fields in a single
-        // batch (any USER computed/effect reading those fields still fires,
-        // batched — only OUR internal detector is silenced), then re-attach and
-        // emit ONE store notification built directly from the values we just
-        // wrote. This removes the per-signal detector round-trip that made bulk
-        // `patch()` lose to a shallow-merge store on the realistic
-        // with-subscriber path (the round-trip alone exceeds a single merge).
-        if (hasSubs && typeof partialOrFn !== 'function') {
-          const events: MutationInfo['events'] = []
-          // Keep the ONE-notification contract even under re-entrancy: if a USER
-          // effect/computed fired by our batch writes ANOTHER store field during
-          // the drain, that field's (attached) detector runs `notifyDirect`
-          // which — because `patchInProgress` is set — BUFFERS into `patchEvents`
-          // (lazily allocated) instead of emitting its own notification; we then
-          // merge those into this patch's single emit. The common case never
-          // touches `patchEvents` (stays the frozen EMPTY buffer, zero alloc).
-          patchInProgress = true
-          patchDepth++
-          // The suspend/write/resume loop lives in the CACHED `ensureDetachApply`
-          // closure (zero per-patch closure allocation — the argument + event
-          // buffer are handed across via `patchArg`/`detachEvents`, read into
-          // locals at closure entry for re-entrancy safety). This removes the
-          // per-signal detector round-trip that made bulk `patch()` lose to a
-          // shallow-merge store — with no scratch arrays and no per-call
-          // closures, matching the theoretical minimum for a signal-per-field
-          // store. Full suspension-design + exception-safety notes live on
-          // `ensureDetachApply`.
-          //
-          // Exception safety at THIS level: `patchInProgress = false` + the
-          // slot resets + the event merge + the emit run in a `finally` around
-          // the whole drain — a raw `field.subscribe` listener that throws
-          // straight past the batch queue can't wedge the flag (which would
-          // buffer + drop every later direct write's event) or drop the
-          // notification for the fields that WERE written.
-          patchArg = partialOrFn
-          detachEvents = events
-          try {
-            batch(ensureDetachApply())
-          } finally {
-            patchArg = null
-            detachEvents = null
-            // Decrement FIRST (and set the flag before the emit) so a raw
-            // subscriber that THROWS inside the emit below cannot wedge either
-            // the depth or `patchInProgress` — same exception-safety contract.
-            patchDepth--
-            if (patchDepth === 0) {
-              // Outermost patch — close the window, merge the buffer, emit ONE.
-              patchInProgress = false
-              // Merge any events a re-entrant effect buffered during the drain
-              // (empty in the common case → no concat, no alloc). When `patchEvents`
-              // is non-EMPTY a re-entrant write occurred, which means a patched
-              // signal must have changed to trigger it, so `events` is already
-              // non-empty — `concat` (never a bare swap) is always correct.
-              let finalEvents = events
-              if (patchEvents !== EMPTY_EVENTS) {
-                finalEvents = events.concat(patchEvents)
-                patchEvents = EMPTY_EVENTS
-              }
-              // Emit ONE store notification with the events we built directly.
-              if (finalEvents.length > 0) {
-                // Build the state snapshot inline off hoisted locals rather
-                // than calling `getState()` (a closure hop that re-reads the same
-                // captured arrays) — the snapshot IS a hot-path allocation.
-                const sk = signalKeys
-                const so = signalObjs
-                const state: Record<string, unknown> = {}
-                for (let j = 0; j < sk.length; j++) {
-                  state[sk[j] as string] = (so[j] as SignalLike).peek()
-                }
-                emitToSubscribers({ storeId: id, type: 'patch', events: finalEvents }, state)
-              }
-            } else if (events.length > 0) {
-              // NESTED patch: do NOT close the outer's still-open window. Hand our
-              // own (detached) writes to the shared buffer so the OUTERMOST patch
-              // merges + emits them in its single notification — the same place a
-              // re-entrant DIRECT write already buffers (notifyDirect).
-              if (patchEvents === EMPTY_EVENTS) patchEvents = []
-              for (let j = 0; j < events.length; j++) patchEvents.push(events[j]!)
-            }
-          }
-          return
-        }
-
-        // ── Functional form (any), or object form with NO subscribers ───────
-        // The `patchInProgress` flag + `patchEvents` buffer feed store-level
-        // `subscribe()` callbacks for the FUNCTIONAL form (where we can't know
-        // the touched keys ahead of time, so the detectors collect the events
-        // as they fire). With no subscriber the whole machinery is dead weight,
-        // so a no-subscriber patch (the common case) skips both `patchEvents`
-        // allocations + the flag dance entirely.
-        if (hasSubs) {
-          // Only reachable for the functional form here (the object form with
-          // subs returned above). `patchEvents` stays the frozen EMPTY buffer
-          // until a detector fires (lazily allocated in `notifyDirect`).
-          patchInProgress = true
-          patchDepth++
-        }
-
-        patchArg = partialOrFn
-        // Exception safety (functional form): a throwing patch body — or a raw
-        // subscriber firing during the drain — must not leave `patchInProgress`
-        // wedged (which buffers + drops every later direct write's event) nor
-        // drop the notification for the writes that DID land before the throw.
-        // `patchArg` reset + flag reset + emit all run in a `finally`.
-        try {
-          batch(ensureApply())
-        } finally {
-          patchArg = null
-          if (hasSubs) {
-            // Decrement FIRST + set the flag before the emit, so a throwing
-            // subscriber in the emit can't wedge the depth or `patchInProgress`.
-            patchDepth--
-            if (patchDepth === 0) {
-              // Outermost patch — close the window + emit ONE. The functional
-              // form's own writes are already in `patchEvents` (detectors were
-              // attached, so `notifyDirect` buffered them), so a NESTED functional
-              // patch needs no push here — the outermost emits the accumulated
-              // buffer.
-              patchInProgress = false
-              // Emit a single notification for the patch.
-              if (patchEvents.length > 0) {
-                emitToSubscribers({ storeId: id, type: 'patch', events: patchEvents }, getState())
-              }
-              // Release the emitted buffer to its subscribers; the shared frozen
-              // empty array stands in until the next subscribed patch.
-              patchEvents = EMPTY_EVENTS
-            }
-          }
-        }
-      },
-
-      subscribe(callback: SubscribeCallback, options?: { immediate?: boolean }): () => void {
-        // Bring change-detection live before the first subscriber so it sees
-        // every subsequent mutation (idempotent for additional subscribers).
-        activateSignalSubs()
-        ;(subscribers ??= new Set()).add(callback)
-        if (options?.immediate) {
-          const mutation: MutationInfo = {
-            storeId: id,
-            type: 'direct',
-            events: [],
-          }
-          callback(mutation, getState())
-        }
-        return () => {
-          subscribers?.delete(callback)
-          // Tear the per-signal subscriptions back down once the last store
-          // subscriber leaves, restoring the fast unsubscribed-write path.
-          if (subscribers === null || subscribers.size === 0) deactivateSignalSubs()
-        }
-      },
-
-      onAction(callback: OnActionCallback): () => void {
-        ;(actionListeners ??= new Set()).add(callback)
-        return () => {
-          actionListeners?.delete(callback)
-        }
-      },
-
-      reset() {
-        // With subscribers, route through the object-form `patch` so a
-        // multi-field reset emits ONE mutation (type 'patch') carrying every
-        // changed field — the plain batch below notified once PER field.
-        if (subscribers !== null && subscribers.size > 0) {
-          const initial: Record<string, unknown> = {}
-          for (let i = 0; i < signalKeys.length; i++) initial[signalKeys[i] as string] = initialVals[i]
-          api.patch(initial)
-          return
-        }
-        batch(() => {
-          for (let i = 0; i < signalKeys.length; i++) {
-            ;(signalObjs[i] as SignalLike).set(initialVals[i])
-          }
-        })
-      },
-
-      dispose() {
-        // Plugin-returned cleanups first (they may still read state), nulled
-        // after so a second dispose() is a no-op for them.
-        if (pluginCleanups !== null) {
-          const cleanups = pluginCleanups
-          pluginCleanups = null
-          for (const cleanup of cleanups) {
-            try {
-              cleanup()
-            } catch (err) {
-              if (process.env.NODE_ENV !== 'production') {
-                // oxlint-disable-next-line no-console
-                console.warn(`[Pyreon] Store plugin cleanup error for "${id}":`, err)
-              }
-            }
-          }
-        }
-        deactivateSignalSubs()
-        subscribers?.clear()
-        actionListeners?.clear()
-        // Stop the store-owned scope — disposes every computed/effect created
-        // inside setup() and plugin bodies (idempotent; see scope-ownership
-        // regression tests).
-        scope.stop()
-        // Identity-checked: after `resetStore(id)` + a re-create, the registry
-        // entry for `id` is a DIFFERENT, live store. A stale handle's
-        // `dispose()` must not evict it (the next `useStore()` would silently
-        // rebuild from setup and drop the live state).
-        const reg = getRegistry()
-        if (reg.get(id) === api) reg.delete(id)
-      },
-    }
-
-    // Run plugins — errors in one plugin should not break store creation,
-    // but they must be visible in dev mode so developers can diagnose.
-    // Fast path: most apps register zero plugins. Skipping the loop entirely
-    // saves the iteration + try/catch frame allocation for every fresh
-    // store creation in the common case.
-    if (_plugins.length > 0) {
-      // Plugins run inside the store's scope too: effects/computeds a plugin
-      // creates are disposed with the store, and a plugin-returned cleanup
-      // function runs on `dispose()`.
-      scope.runInScope(() => {
-        for (const plugin of _plugins) {
-          // O(stores × plugins) is INHERENT, not an optimization target:
-          // plugins are side-effecting per-instance initializers (they
-          // attach behavior to THIS api object), so each fresh store must
-          // run each plugin — there is no semantics-preserving cache. The
-          // earlier "cache the plugin-init result per store-id" note was
-          // measured + rejected (2026-06): a noop plugin costs ~0.2µs here
-          // and the loop already skips entirely for the zero-plugin common
-          // case. storePluginScale-1000's pluginRun ∝ stores×plugins is the
-          // CORRECT signature for this contract.
-          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.pluginRun')
-          try {
-            const cleanup = plugin(api as StoreApi<Record<string, unknown>>)
-            if (typeof cleanup === 'function') (pluginCleanups ??= []).push(cleanup)
-          } catch (err) {
-            if (process.env.NODE_ENV !== 'production') {
-              // oxlint-disable-next-line no-console
-              console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
-            }
-          }
-        }
-      })
-    }
+    const api = new SetupStore<T>(id, setup)
 
     if (process.env.NODE_ENV !== 'production') {
       // Non-enumerable dev-only stamp powering the redefinition diagnostic on
@@ -1503,6 +812,552 @@ function defineSetupStore<T extends Record<string, unknown>>(
     consumeHydration(id, api as { state: Record<string, unknown>; patch(p: Record<string, unknown>): void })
     _notifyChange()
     return api
+  }
+}
+
+/**
+ * One setup store: the object `useStore()` returns.
+ *
+ * WHY A CLASS. This used to be one large closure: every store allocated its
+ * API methods and ~10 internal helpers as fresh closures over a shared scope.
+ * A CPU profile of store creation put ~38% of the time in that body and ~36%
+ * in garbage collection of what it allocated — ~880 ns per store against
+ * ~80 ns for the user's own setup. Here the helpers are prototype methods, and
+ * the per-store state is fields on the instance.
+ *
+ * THE PUBLIC METHODS STAY OWN PROPERTIES. `patch` / `subscribe` / `onAction` /
+ * `reset` / `dispose` are bound once in the constructor and stored on the
+ * instance, so destructuring (`const { patch } = useStore()`), detached use
+ * (`onClick={api.reset}`) and spreading (`{ ...api }` — the schema-store
+ * wrapper does exactly this) all keep working. Lazy prototype getters were
+ * measured too: the same speed, but a spread silently dropped every method.
+ * `state` is a prototype getter, so a spread no longer copies a `state`
+ * snapshot — read `api.state` (it was a one-time snapshot even before).
+ */
+class SetupStore<T extends Record<string, unknown>> {
+  store: T
+  id: string
+
+  // Store-owned effect scope. `setup()` (and plugin bodies below) run inside
+  // it so every `computed()`/`effect()` they create is owned by the STORE:
+  //  - SHIELDING: without this, a store first created inside a component
+  //    body (the dominant lazy-creation shape — mount.ts sets the
+  //    component's scope as current during setup) registered its computeds
+  //    with THAT component's scope; the component's unmount then DISPOSED
+  //    the singleton store's computeds, freezing them stale for every other
+  //    consumer. `runInScope` swaps the ambient scope for the store's own.
+  //  - DISPOSAL: `api.dispose()` stops the scope, disposing setup-created
+  //    effects/computeds — without it, an effect reading an EXTERNAL signal
+  //    kept firing (and retained the store's object graph) forever.
+  // Matches Pinia: setup stores run in an effectScope; $dispose stops it.
+  // Regression locks: src/tests/scope-ownership.test.ts (bisect-verified).
+  _scope: EffectScope
+  _raw: T
+
+  // Signal fields, parallel arrays by index. Every hot path (`getState`,
+  // change-detection, `patch`, `reset`) reaches a field's signal by INDEX
+  // instead of a dynamic `raw[key]` lookup on the mixed signals+actions object.
+  // `_initialVals` is the creation-time snapshot `reset()` restores.
+  _signalKeys: string[] = []
+  _signalObjs: SignalLike[] = []
+  _initialVals: unknown[] = []
+
+  // Key → index for `patch`; LAZY — most stores never call object-form patch.
+  _keyIndex: Map<string, number> | null = null
+
+  // ─── subscribe infrastructure (all lazy) ────────────────────────────────
+  _subscribers: Set<SubscribeCallback> | null = null
+  _patchInProgress = false
+  // Nesting depth of the subscribed-patch window. A re-entrant `patch()` (a
+  // user effect fired by the outer patch's batch drain calling `patch()`
+  // again) must NOT close a window it did not open: only the OUTERMOST patch
+  // clears `_patchInProgress`, merges `_patchEvents`, and emits the ONE
+  // notification.
+  _patchDepth = 0
+  // Starts at the shared frozen empty array; allocated lazily on first push.
+  _patchEvents: MutationInfo['events'] = EMPTY_EVENTS
+
+  // Lazy change-detection subscriptions. The per-signal subscribers exist
+  // ONLY to feed `_notifyDirect` → store-level `subscribe()` callbacks. They
+  // are attached only while ≥1 store subscriber exists, so a no-subscriber
+  // store's writes stay on the fast unsubscribed path. Parallel to
+  // `_signalKeys`: `_signalUnsubs[i]` disposes field i's detector,
+  // `_detectors[i]` is that detector (kept so the with-subscriber `patch()` can
+  // detach it during its own writes), `_prevValues[i]` the last-seen value.
+  _signalUnsubs: (() => void)[] | null = null
+  _detectors: (() => void)[] | null = null
+  _prevValues: unknown[] | null = null
+  // Detector-wiring generation. Bumped whenever the detectors are (re)attached
+  // or torn down. The with-subscriber patch only takes the O(1)
+  // sole-subscriber suspend fast path while it is UNCHANGED — a mid-patch side
+  // effect that rewires the detectors falls back to the per-listener suspend.
+  _detectorEpoch = 0
+
+  _actionListeners: Set<OnActionCallback> | null = null
+  _pluginCleanups: (() => void)[] | null = null
+
+  // Cached batch callbacks for `patch` — zero per-call closure allocation; the
+  // argument and event buffer are handed across through these slots.
+  _patchArg: Record<string, unknown> | ((state: Record<string, any>) => void) | null = null
+  _applyPatchFn: (() => void) | null = null
+  _signalMap: Record<string, unknown> | null = null
+  _detachEvents: MutationInfo['events'] | null = null
+  _detachApplyFn: (() => void) | null = null
+
+  // The public methods: own properties bound to this store (see the class comment).
+  patch: StoreApi<T>['patch']
+  subscribe: StoreApi<T>['subscribe']
+  onAction: StoreApi<T>['onAction']
+  reset: StoreApi<T>['reset']
+  dispose: StoreApi<T>['dispose']
+
+  constructor(id: string, setup: () => T) {
+    this.id = id
+    this.patch = this._patch.bind(this) as StoreApi<T>['patch']
+    this.subscribe = this._subscribe.bind(this)
+    this.onAction = this._onAction.bind(this)
+    this.reset = this._reset.bind(this)
+    this.dispose = this._dispose.bind(this)
+    const scope = effectScope()
+    this._scope = scope
+    const raw = scope.runInScope(setup)
+    this._raw = raw
+
+    // Classify + build the user store in ONE pass.
+    const userStore: Record<string, unknown> = {}
+    for (const key of Object.keys(raw)) {
+      const val = raw[key]
+      if (isSignalLike(val)) {
+        this._signalKeys.push(key)
+        this._signalObjs.push(val)
+        this._initialVals.push(val.peek())
+        userStore[key] = val
+      } else if (typeof val === 'function') {
+        if (typeof (val as unknown as Record<string, unknown>).dispose === 'function') {
+          userStore[key] = val // computed — pass through
+        } else {
+          userStore[key] = this._wrapAction(key, val as (...args: any[]) => unknown)
+        }
+      } else {
+        userStore[key] = val // plain value — pass through, inert
+      }
+    }
+    this.store = userStore as T
+
+    // Run plugins — errors in one plugin should not break store creation,
+    // but they must be visible in dev mode so developers can diagnose.
+    // Fast path: most apps register zero plugins.
+    if (_plugins.length > 0) {
+      // Plugins run inside the store's scope too: effects/computeds a plugin
+      // creates are disposed with the store, and a plugin-returned cleanup
+      // function runs on `dispose()`.
+      scope.runInScope(() => {
+        for (const plugin of _plugins) {
+          // O(stores × plugins) is INHERENT: plugins are side-effecting
+          // per-instance initializers (they attach behavior to THIS api
+          // object), so each fresh store must run each plugin.
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.pluginRun')
+          try {
+            const cleanup = plugin(this as unknown as StoreApi<Record<string, unknown>>)
+            if (typeof cleanup === 'function') (this._pluginCleanups ??= []).push(cleanup)
+          } catch (err) {
+            if (process.env.NODE_ENV !== 'production') {
+              // oxlint-disable-next-line no-console
+              console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
+            }
+          }
+        }
+      })
+    }
+  }
+
+  get state(): Record<string, unknown> {
+    return this._getState()
+  }
+
+  _getKeyIndex(): Map<string, number> {
+    if (this._keyIndex === null) {
+      const keyIndex = new Map<string, number>()
+      const sk = this._signalKeys
+      for (let i = 0; i < sk.length; i++) keyIndex.set(sk[i] as string, i)
+      this._keyIndex = keyIndex
+    }
+    return this._keyIndex
+  }
+
+  _getState(): Record<string, unknown> {
+    const sk = this._signalKeys
+    const so = this._signalObjs
+    const state: Record<string, unknown> = {}
+    for (let i = 0; i < sk.length; i++) {
+      state[sk[i] as string] = (so[i] as SignalLike).peek()
+    }
+    return state
+  }
+
+  // Dev-only diagnostic for the #1 documented patch footgun — a key that
+  // isn't a signal field (typo / computed / action) is silently dropped.
+  _warnUnknownPatchKey(key: string): void {
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[Pyreon] patch("${this.id}"): key "${key}" is not a signal field — ignored. ` +
+          `Patchable fields: [${this._signalKeys.join(', ')}]. Computeds/actions are not ` +
+          `patchable; use the functional form patch(s => …) for direct signal access.`,
+      )
+    }
+  }
+
+  // Fan out ONE mutation + state snapshot to every store subscriber.
+  _emitToSubscribers(mutation: MutationInfo, state: Record<string, unknown>): void {
+    for (const cb of this._subscribers as Set<SubscribeCallback>) {
+      // Fan-out per notification × subscriber. High count under stress means
+      // user code is over-subscribing.
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
+      cb(mutation, state)
+    }
+  }
+
+  _notifyDirect(key: string, oldValue: unknown, newValue: unknown): void {
+    if (this._patchInProgress) {
+      // A subscriber is guaranteed here: `_patchInProgress` is set only by a
+      // subscribed patch, and a detector only fires while subscribed.
+      // `_patchEvents` is allocated LAZILY on first push.
+      if (this._patchEvents === EMPTY_EVENTS) this._patchEvents = []
+      this._patchEvents.push({ key, newValue, oldValue })
+      return
+    }
+    const subscribers = this._subscribers
+    if (subscribers === null || subscribers.size === 0) return
+    const mutation: MutationInfo = {
+      storeId: this.id,
+      type: 'direct',
+      events: [{ key, newValue, oldValue }],
+    }
+    this._emitToSubscribers(mutation, this._getState())
+  }
+
+  _activateSignalSubs(): void {
+    if (this._signalUnsubs !== null && this._signalUnsubs.length > 0) return // already active
+    this._detectorEpoch++
+    if (this._signalUnsubs === null) {
+      this._signalUnsubs = []
+      this._detectors = []
+      this._prevValues = []
+    }
+    const uns = this._signalUnsubs
+    const dets = this._detectors as (() => void)[]
+    const prevs = this._prevValues as unknown[]
+    const sk = this._signalKeys
+    const so = this._signalObjs
+    for (let i = 0; i < sk.length; i++) {
+      const key = sk[i] as string
+      const sig = so[i] as SignalLike
+      const idx = i
+      prevs[idx] = sig.peek()
+      const detector = () => {
+        const next = sig.peek()
+        const old = prevs[idx]
+        prevs[idx] = next
+        this._notifyDirect(key, old, next)
+      }
+      dets[idx] = detector
+      uns[idx] = sig.subscribe(detector)
+    }
+  }
+
+  _deactivateSignalSubs(): void {
+    if (this._signalUnsubs === null) return
+    this._detectorEpoch++
+    for (const unsub of this._signalUnsubs) unsub()
+    this._signalUnsubs.length = 0
+  }
+
+  _wrapAction(key: string, original: (...args: any[]) => unknown): (...args: unknown[]) => unknown {
+    return (...args: unknown[]) => {
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.actionCall')
+
+      const actionListeners = this._actionListeners
+      if (actionListeners === null || actionListeners.size === 0) {
+        return original(...args)
+      }
+
+      const afterCbs: ((result: unknown) => void)[] = []
+      const errorCbs: ((error: unknown) => void)[] = []
+
+      const context: ActionContext = {
+        name: key,
+        storeId: this.id,
+        args,
+        after: (cb) => afterCbs.push(cb),
+        onError: (cb) => errorCbs.push(cb),
+      }
+
+      for (const listener of actionListeners) {
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.actionListenerNotify')
+        listener(context)
+      }
+
+      try {
+        const result = original(...args)
+
+        if (result != null && typeof (result as Record<string, unknown>).then === 'function') {
+          return (result as Promise<unknown>).then(
+            (resolved) => {
+              for (const cb of afterCbs) cb(resolved)
+              return resolved
+            },
+            (err) => {
+              for (const cb of errorCbs) cb(err)
+              throw err
+            },
+          )
+        }
+
+        for (const cb of afterCbs) cb(result)
+        return result
+      } catch (err) {
+        for (const cb of errorCbs) cb(err)
+        throw err
+      }
+    }
+  }
+
+  _ensureApply(): () => void {
+    if (this._applyPatchFn === null) {
+      this._applyPatchFn = () => {
+        const arg = this._patchArg as
+          | Record<string, unknown>
+          | ((state: Record<string, any>) => void)
+        if (typeof arg === 'function') {
+          if (this._signalMap === null) {
+            const signalMap: Record<string, unknown> = {}
+            for (const key of this._signalKeys) {
+              signalMap[key] = this._raw[key]
+            }
+            this._signalMap = signalMap
+          }
+          arg(this._signalMap as Record<string, any>)
+        } else {
+          const kidx = this._getKeyIndex()
+          const so = this._signalObjs
+          for (const key of Object.keys(arg)) {
+            const idx = kidx.get(key)
+            if (idx !== undefined) {
+              if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
+              ;(so[idx] as SignalLike).set(arg[key])
+            } else {
+              this._warnUnknownPatchKey(key)
+            }
+          }
+        }
+      }
+    }
+    return this._applyPatchFn
+  }
+
+  // The with-subscriber object-form write loop. Each patched field's detector
+  // is suspended while it is written (so the write does not round-trip the
+  // batch queue just to rebuild change info we already have), then resumed in
+  // a `finally` — a throwing write or getter can never leave a detector
+  // detached. The patched value is read BEFORE suspending, so a throwing
+  // getter on the patch object leaves the detector attached.
+  _ensureDetachApply(): () => void {
+    if (this._detachApplyFn === null) {
+      this._detachApplyFn = () => {
+        const arg = this._patchArg as Record<string, unknown>
+        const events = this._detachEvents as MutationInfo['events']
+        const kidx = this._getKeyIndex()
+        const so = this._signalObjs
+        const dets = this._detectors as (() => void)[]
+        const prevs = this._prevValues as unknown[]
+        const epoch0 = this._detectorEpoch
+        for (const key of Object.keys(arg)) {
+          const idx = kidx.get(key)
+          if (idx === undefined) {
+            this._warnUnknownPatchKey(key)
+            continue
+          }
+          const newValue = arg[key]
+          const sig = so[idx] as SignalLike
+          const det = dets[idx] as () => void
+          const rsig = sig as unknown as Signal<unknown>
+          const saved = this._detectorEpoch === epoch0 ? _suspendSoleSubscriber(rsig) : null
+          if (saved === null) _suspendSubscriber(rsig, det)
+          const oldValue = sig.peek()
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
+          try {
+            sig.set(newValue)
+          } finally {
+            if (saved !== null) _resumeSoleSubscriber(rsig, saved, det)
+            else _resumeSubscriber(rsig, det)
+          }
+          if (!Object.is(oldValue, newValue)) {
+            events.push({ key, newValue, oldValue })
+            prevs[idx] = newValue
+          }
+        }
+      }
+    }
+    return this._detachApplyFn
+  }
+
+  _patch(partialOrFn: Record<string, unknown> | ((state: Record<string, any>) => void)): void {
+    const subscribers = this._subscribers
+    const hasSubs = subscribers !== null && subscribers.size > 0
+
+    // ── Object form + subscribers: fast DETACH path ─────────────────────
+    // Detach each patched field's detector, write the fields in one batch
+    // (user computeds/effects reading them still fire), re-attach, and emit ONE
+    // store notification built from the values just written. Re-entrant writes
+    // during the drain buffer into `_patchEvents` (see `_notifyDirect`) and are
+    // merged into this patch's single emit.
+    if (hasSubs && typeof partialOrFn !== 'function') {
+      const events: MutationInfo['events'] = []
+      this._patchInProgress = true
+      this._patchDepth++
+      this._patchArg = partialOrFn
+      this._detachEvents = events
+      // Exception safety: the flag reset, slot resets, event merge and emit all
+      // run in a `finally`, so a raw listener throwing past the batch queue
+      // cannot wedge `_patchInProgress` or drop the notification.
+      try {
+        batch(this._ensureDetachApply())
+      } finally {
+        this._patchArg = null
+        this._detachEvents = null
+        // Decrement FIRST (and clear the flag before the emit) so a throwing
+        // subscriber in the emit cannot wedge either.
+        this._patchDepth--
+        if (this._patchDepth === 0) {
+          // Outermost patch — close the window, merge the buffer, emit ONE.
+          this._patchInProgress = false
+          let finalEvents = events
+          if (this._patchEvents !== EMPTY_EVENTS) {
+            finalEvents = events.concat(this._patchEvents)
+            this._patchEvents = EMPTY_EVENTS
+          }
+          if (finalEvents.length > 0) {
+            this._emitToSubscribers({ storeId: this.id, type: 'patch', events: finalEvents }, this._getState())
+          }
+        } else if (events.length > 0) {
+          // NESTED patch: hand our writes to the shared buffer so the OUTERMOST
+          // patch merges + emits them in its single notification.
+          if (this._patchEvents === EMPTY_EVENTS) this._patchEvents = []
+          for (let j = 0; j < events.length; j++) this._patchEvents.push(events[j]!)
+        }
+      }
+      return
+    }
+
+    // ── Functional form (any), or object form with NO subscribers ───────
+    // With no subscriber the flag + buffer machinery is dead weight, so a
+    // no-subscriber patch (the common case) skips it entirely.
+    if (hasSubs) {
+      // Only the functional form reaches here with subscribers; its writes are
+      // collected by the attached detectors into `_patchEvents`.
+      this._patchInProgress = true
+      this._patchDepth++
+    }
+
+    this._patchArg = partialOrFn
+    // Exception safety (functional form): a throwing patch body — or a raw
+    // subscriber firing during the drain — must not leave `_patchInProgress`
+    // wedged nor drop the notification for writes that DID land.
+    try {
+      batch(this._ensureApply())
+    } finally {
+      this._patchArg = null
+      if (hasSubs) {
+        this._patchDepth--
+        if (this._patchDepth === 0) {
+          this._patchInProgress = false
+          if (this._patchEvents.length > 0) {
+            this._emitToSubscribers({ storeId: this.id, type: 'patch', events: this._patchEvents }, this._getState())
+          }
+          this._patchEvents = EMPTY_EVENTS
+        }
+      }
+    }
+  }
+
+  _subscribe(callback: SubscribeCallback, options?: { immediate?: boolean }): () => void {
+    // Bring change-detection live before the first subscriber so it sees every
+    // subsequent mutation (idempotent for additional subscribers).
+    this._activateSignalSubs()
+    ;(this._subscribers ??= new Set()).add(callback)
+    if (options?.immediate) {
+      const mutation: MutationInfo = {
+        storeId: this.id,
+        type: 'direct',
+        events: [],
+      }
+      callback(mutation, this._getState())
+    }
+    return () => {
+      const subscribers = this._subscribers
+      subscribers?.delete(callback)
+      // Tear the per-signal subscriptions back down once the last store
+      // subscriber leaves, restoring the fast unsubscribed-write path.
+      if (subscribers === null || subscribers.size === 0) this._deactivateSignalSubs()
+    }
+  }
+
+  _onAction(callback: OnActionCallback): () => void {
+    ;(this._actionListeners ??= new Set()).add(callback)
+    return () => {
+      this._actionListeners?.delete(callback)
+    }
+  }
+
+  _reset(): void {
+    const sk = this._signalKeys
+    const iv = this._initialVals
+    // With subscribers, route through the object-form `patch` so a multi-field
+    // reset emits ONE mutation (type 'patch') carrying every changed field.
+    const subscribers = this._subscribers
+    if (subscribers !== null && subscribers.size > 0) {
+      const initial: Record<string, unknown> = {}
+      for (let i = 0; i < sk.length; i++) initial[sk[i] as string] = iv[i]
+      this._patch(initial)
+      return
+    }
+    const so = this._signalObjs
+    batch(() => {
+      for (let i = 0; i < sk.length; i++) {
+        ;(so[i] as SignalLike).set(iv[i])
+      }
+    })
+  }
+
+  _dispose(): void {
+    // Plugin-returned cleanups first (they may still read state), nulled after
+    // so a second dispose() is a no-op for them.
+    if (this._pluginCleanups !== null) {
+      const cleanups = this._pluginCleanups
+      this._pluginCleanups = null
+      for (const cleanup of cleanups) {
+        try {
+          cleanup()
+        } catch (err) {
+          if (process.env.NODE_ENV !== 'production') {
+            // oxlint-disable-next-line no-console
+            console.warn(`[Pyreon] Store plugin cleanup error for "${this.id}":`, err)
+          }
+        }
+      }
+    }
+    this._deactivateSignalSubs()
+    this._subscribers?.clear()
+    this._actionListeners?.clear()
+    // Stop the store-owned scope — disposes every computed/effect created
+    // inside setup() and plugin bodies (idempotent).
+    this._scope.stop()
+    // Identity-checked: after `resetStore(id)` + a re-create, the registry
+    // entry for `id` is a DIFFERENT, live store. A stale handle's `dispose()`
+    // must not evict it.
+    const reg = getRegistry()
+    if (reg.get(this.id) === this) reg.delete(this.id)
   }
 }
 
