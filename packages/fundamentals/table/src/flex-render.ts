@@ -1,6 +1,6 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { untrack } from '@pyreon/reactivity'
-import type { Cell, CellContext, RowData, Table, TableFeatures } from '@tanstack/table-core'
+import type { Cell, CellContext, Row, RowData, Table, TableFeatures } from '@tanstack/table-core'
 import { _getRowSignalBridge } from './use-table'
 
 /** Resolved renderable content — deliberately NOT the full `VNodeChild`.
@@ -236,12 +236,40 @@ function untrackedValueContext<C extends { getValue: () => unknown; renderValue:
  *  columnVisibility feature is registered; else an O(C) scan. This replaces a
  *  per-cell `getVisibleCells().find(...)`, which was O(C²) per row (O(N·C²) on a
  *  full render). Returns `undefined` when the row or column is absent. */
+/**
+ * The row object for `rowId` in the CURRENT row model.
+ *
+ * `rowsById` is not always that object: table-core's sorted model passes the
+ * PRE-sort `rowsById` through, while it clones any row whose sub-rows it
+ * reorders. Looking such a row up by id returns the original, so a cell reading
+ * `row.subRows` would show the unsorted order. A row without sub-rows is never
+ * cloned, so the common case returns straight from `rowsById`; only rows with
+ * sub-rows consult the model's own `flatRows`, indexed once per row model (a
+ * WeakMap keyed by the model, so an index dies with its model).
+ */
+const flatRowIndex = new WeakMap<object, Map<string, unknown>>()
+function liveRow<TFeatures extends TableFeatures, TData extends RowData>(
+  table: Table<TFeatures, TData>,
+  rowId: string,
+): Row<TFeatures, TData> | undefined {
+  const model = table.getRowModel()
+  const row = model.rowsById[rowId]
+  if (row == null || !(row.subRows?.length > 0)) return row ?? undefined
+  let index = flatRowIndex.get(model)
+  if (index === undefined) {
+    index = new Map()
+    for (const r of model.flatRows) index.set(r.id, r)
+    flatRowIndex.set(model, index)
+  }
+  return (index.get(rowId) as Row<TFeatures, TData> | undefined) ?? row
+}
+
 function lookupCellByColumnId<TFeatures extends TableFeatures, TData extends RowData>(
   table: Table<TFeatures, TData>,
   rowId: string,
   columnId: string,
 ): Cell<TFeatures, TData, unknown> | undefined {
-  const row = table.getRowModel().rowsById[rowId]
+  const row = liveRow(table, rowId)
   if (row == null) return undefined
   const byId = (
     row as { getVisibleCellsByColumnId?: () => Record<string, Cell<TFeatures, TData, unknown>> }
@@ -261,7 +289,7 @@ function lookupVisibleCells<TFeatures extends TableFeatures, TData extends RowDa
   table: Table<TFeatures, TData>,
   rowId: string,
 ): VisibleCells<TFeatures, TData> {
-  const row = table.getRowModel().rowsById[rowId]
+  const row = liveRow(table, rowId)
   if (row == null) return []
   const withVisible = row as { getVisibleCells?: () => VisibleCells<TFeatures, TData> }
   return typeof withVisible.getVisibleCells === 'function' ? withVisible.getVisibleCells() : row.getAllCells()
