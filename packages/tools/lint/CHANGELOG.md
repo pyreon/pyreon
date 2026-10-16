@@ -1,5 +1,13 @@
 # @pyreon/lint
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8)]:
+  - @pyreon/compiler@0.54.0
+  - @pyreon/sized-map@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes

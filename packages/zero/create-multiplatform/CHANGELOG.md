@@ -1,5 +1,9 @@
 # @pyreon/create-multiplatform
 
+## 0.54.0
+
+No changes in this release.
+
 ## 0.53.0
 
 ### Patch Changes

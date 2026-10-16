@@ -1,5 +1,14 @@
 # @pyreon/i18n
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes

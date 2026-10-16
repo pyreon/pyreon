@@ -1,5 +1,15 @@
 # @pyreon/example-native-finance
 
+## 0.50.4
+
+### Patch Changes
+
+- Updated dependencies [[`597cdf7`](https://github.com/pyreon/pyreon/commit/597cdf7d050ea8782625e360054787aaf5addb3e), [`550ab23`](https://github.com/pyreon/pyreon/commit/550ab230b1e96bb8a5af6a418450df622d961ba6), [`305a5b9`](https://github.com/pyreon/pyreon/commit/305a5b90404a0819b3d9670b1e49fd4d47c12e80), [`550ab23`](https://github.com/pyreon/pyreon/commit/550ab230b1e96bb8a5af6a418450df622d961ba6), [`84d95f8`](https://github.com/pyreon/pyreon/commit/84d95f86cd0239bb77ce96c2108e05bcbf02c4b6), [`d8cacf8`](https://github.com/pyreon/pyreon/commit/d8cacf879dd4a61fe0cd4f46141e6d511a6b27cb)]:
+  - @pyreon/charts@0.54.0
+  - @pyreon/http@0.54.0
+  - @pyreon/hooks@0.54.0
+  - @pyreon/query@0.54.0
+
 ## 0.50.3
 
 ### Patch Changes

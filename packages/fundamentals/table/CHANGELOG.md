@@ -1,5 +1,23 @@
 # @pyreon/table
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3886](https://github.com/pyreon/pyreon/pull/3886) [`68f34cf`](https://github.com/pyreon/pyreon/commit/68f34cffff172460caddc244245ab886bd3a339d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Cell rendering is cheaper. `flexRenderCell` builds an untracked copy of each cell's context on every render, and it copied every property descriptor to do it. table-core builds that context as a plain object of data properties, so a spread gives the same object about 13× faster. Measured on the table benchmark at 1,000 rows: mount 53.5ms → 48.2ms, single-cell update 0.237ms → 0.225ms. A context with any other prototype keeps the descriptor copy.
+
+- [#3917](https://github.com/pyreon/pyreon/pull/3917) [`31c7220`](https://github.com/pyreon/pyreon/commit/31c7220e3781cb2cdedf51ffbd6374da1d34a301) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `flexRenderCell` builds a cell renderer's context directly instead of asking table-core for one and then copying it. When a cell's `getContext` returns table-core's core context (checked once per `getContext` function), each cell now costs one object and two closures instead of two objects and four. Other context shapes keep the copying path. In real Chromium, mounting a 1,000 × 6 table went from 31.7 ms to 29.5–29.8 ms (react-table with memoized rows: 28.5–29.4 ms), and replacing all rows from 26.4 ms to 24.7–24.8 ms.
+
+- [#3900](https://github.com/pyreon/pyreon/pull/3900) [`cc6f3b6`](https://github.com/pyreon/pyreon/commit/cc6f3b6cfcf2bc6b9e995edfe39216562f9ce5b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `flexRenderCell` reuses the cells its row's `visibleCells` call just looked up, instead of walking the row model and the column map again for every cell. The reuse is tagged with the row's version signal, so any data, column or structural change (a sort included) forces a fresh lookup. Measured against @tanstack/react-table with memoized rows (happy-dom, 1,000 rows): mount 47.8 → 43.2ms, replace 9.5 → 7.9ms (now a tie), sort 8.6 → 7.3ms, single-cell update now 1.2× faster.
+
+- [#3914](https://github.com/pyreon/pyreon/pull/3914) [`9172b13`](https://github.com/pyreon/pyreon/commit/9172b130f1bcefe7be9e3201d6b236f1f127932e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Sorting a table no longer re-runs every cell. A sort moves the same rows into a new order, and `<For>` moves their DOM, so `useTable` now bumps only rows whose data or row object changed instead of every row. A flat sort re-runs no cells. In real Chromium, sorting 1,000 rows × 6 columns went from 23.0–23.5 ms to 19.2–19.3 ms, which puts it ahead of react-table with memoized rows (20.8 ms) instead of 1.07–1.13× behind.
+
+- [#3915](https://github.com/pyreon/pyreon/pull/3915) [`d169cbd`](https://github.com/pyreon/pyreon/commit/d169cbd73129fa55fc35ec9ea9d788e914ec94ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: a cell that reads `row.subRows` now shows the sorted order when a sort reorders only a row's sub-rows. `flexRenderCell` and `visibleCells` looked rows up through `getRowModel().rowsById`, which table-core's sorted model takes from the pre-sort model, so they got the unsorted row. They now use the row object from the current model, and `useTable` refreshes a row whose sub-rows changed order.
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes

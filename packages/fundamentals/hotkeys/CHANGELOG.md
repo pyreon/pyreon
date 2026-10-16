@@ -1,5 +1,20 @@
 # @pyreon/hotkeys
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3893](https://github.com/pyreon/pyreon/pull/3893) [`4833854`](https://github.com/pyreon/pyreon/commit/483385439bcf6619915e0938344a446cbc9b1972) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Registering and unregistering shortcuts is about 40% faster. Parsed shortcut strings are cached, since a component that binds shortcuts re-registers the same strings every time it mounts (`mod` still resolves for the current platform). Unregistering is now constant-time, and a registration that passes no options shares one default options object.
+
+- [#3904](https://github.com/pyreon/pyreon/pull/3904) [`00601aa`](https://github.com/pyreon/pyreon/commit/00601aa9af04a2119d2dcd1c9a83e731887f6c54) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Registering and unregistering a hotkey is about 2.9× faster: the registration-order list is now a linked list instead of a Set, a previously registered shortcut string resolves with one cache lookup, and emptied key buckets are kept for the next mount. A mount/unmount cycle of 12 shortcuts now beats tinykeys.
+
+  A keystroke that matches no registered shortcut is about 7× cheaper to dispatch: the event's `composedPath()` (needed only to tell whether focus is in an input) is now read after the key lookup instead of before it.
+
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
