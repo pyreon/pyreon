@@ -19,6 +19,7 @@ export const PACKAGE_GROUPS = [
     "category": "fundamentals",
     "packages": [
       "@pyreon/a11y",
+      "@pyreon/auth",
       "@pyreon/charts",
       "@pyreon/code",
       "@pyreon/dnd",

@@ -1599,6 +1599,19 @@
         "@pyreon/router",
       ],
     },
+    "packages/fundamentals/auth": {
+      "name": "@pyreon/auth",
+      "version": "0.52.0",
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "bun-types": "^1.4.2",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
     "packages/fundamentals/charts": {
       "name": "@pyreon/charts",
       "version": "0.53.0",
@@ -4072,6 +4085,8 @@
     "@pyreon/atlas": ["@pyreon/atlas@workspace:packages/tools/atlas"],
 
     "@pyreon/attrs": ["@pyreon/attrs@workspace:packages/ui-system/attrs"],
+
+    "@pyreon/auth": ["@pyreon/auth@workspace:packages/fundamentals/auth"],
 
     "@pyreon/charts": ["@pyreon/charts@workspace:packages/fundamentals/charts"],
 

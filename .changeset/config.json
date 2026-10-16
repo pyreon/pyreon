@@ -72,6 +72,7 @@
       "@pyreon/solid-compat",
       "@pyreon/state-tree",
       "@pyreon/storage",
+      "@pyreon/auth",
       "@pyreon/store",
       "@pyreon/storybook",
       "@pyreon/styler",
