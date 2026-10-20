@@ -2657,232 +2657,56 @@ fn is_children_expression(expr: &Expression, expr_text: &str) -> bool {
 
 // ─── Prop-derived variable resolution ────────────────────────────────────────
 
-/// Walk a statement looking for a VariableDeclarator whose init span matches.
-/// Descend into an expression's nested function body (arrow / function
-/// expression) looking for a declarator init matching `target`.
+/// Locate the prop-derived declarator whose INITIALIZER has span `target` and
+/// return the identifier references to other prop-derived vars inside it.
 ///
-/// A component is `const X = (props) => { … }` (or `export const X = …`), so the
-/// prop-derived declarations — registered at `callback_depth == 0` INSIDE that
-/// body — live one function level below the top-level statement. Without this
-/// descent, `find_init_expression_by_span` never reaches them and
-/// `resolve_var_to_string` falls back to the raw (unresolved) source, breaking
-/// TRANSITIVE prop-derived inlining: `const a = props.x; const b = a + 1` left
-/// `b` as `(a + 1)` (a unresolved) instead of `((props.x) + 1)` — a JS↔Rust
-/// parity gap that also silently dropped reactivity on the native path.
-fn find_init_in_expression<'a>(
-    expr: &'a Expression<'a>,
+/// A generic `oxc_ast_visit::Visit` walk, not a hand-rolled arm-by-arm match:
+/// the initializer can sit in ANY container a component can live in (object
+/// literal methods and properties, higher-order wrappers, class fields, array
+/// elements, ternary branches, `export default {…}`), and a hand-enumerated
+/// walk misses some of them. A miss used to fall through to the raw source and
+/// close over a captured const, silently losing reactivity (native emitted
+/// `_rp(() => (a + 1))` where JS emitted `_rp(() => ((props.s) + 1))`).
+///
+/// Subtrees that cannot contain the target are pruned by span. Returning the
+/// init expression itself would need a `'a` lifetime the visitor's `&mut self`
+/// methods do not carry, so the visitor computes what the caller needs.
+fn find_init_prop_derived_idents(
+    program: &Program,
     target: Span,
-) -> Option<&'a Expression<'a>> {
-    match expr {
-        Expression::ArrowFunctionExpression(arrow) => {
-            for s in arrow.get_function_body().map_or(&[][..], |b| &b.statements) {
-                if let Some(e) = find_init_in_statement(s, target) {
-                    return Some(e);
-                }
-            }
-            None
-        }
-        Expression::FunctionExpression(func) => {
-            if let Some(body) = &func.body {
-                for s in &body.statements {
-                    if let Some(e) = find_init_in_statement(s, target) {
-                        return Some(e);
-                    }
-                }
-            }
-            None
-        }
-        Expression::ParenthesizedExpression(p) => find_init_in_expression(&p.expression, target),
-        _ => None,
+    prop_derived_vars: &FxHashMap<String, Span>,
+) -> Option<Vec<(u32, u32, String, bool)>> {
+    struct InitFinder<'b> {
+        target: Span,
+        vars: &'b FxHashMap<String, Span>,
+        out: Option<Vec<(u32, u32, String, bool)>>,
     }
-}
-
-fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&'a Expression<'a>> {
-    match stmt {
-        Statement::VariableDeclaration(decl) => {
-            for d in &decl.declarations {
-                if let Some(init) = &d.init {
-                    if init.span() == target {
-                        return Some(init);
-                    }
-                    // Component bodies are arrow/function expressions assigned to
-                    // a const — descend to reach their prop-derived declarations.
-                    if let Some(e) = find_init_in_expression(init, target) {
-                        return Some(e);
-                    }
+    impl<'a, 'b> Visit<'a> for InitFinder<'b> {
+        fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+            if let Some(init) = &it.init {
+                if init.span() == self.target {
+                    let mut idents = Vec::new();
+                    collect_prop_derived_idents(init, self.vars, &mut idents);
+                    self.out = Some(idents);
+                    return;
                 }
             }
-            None
+            oxc_ast_visit::walk::walk_variable_declarator(self, it);
         }
-        Statement::FunctionDeclaration(f) => {
-            if let Some(body) = &f.body {
-                for s in &body.statements {
-                    if let Some(e) = find_init_in_statement(s, target) {
-                        return Some(e);
-                    }
-                }
+        fn visit_statement(&mut self, it: &Statement<'a>) {
+            if self.out.is_none() && it.span().contains_inclusive(self.target) {
+                oxc_ast_visit::walk::walk_statement(self, it);
             }
-            None
         }
-        Statement::BlockStatement(b) => {
-            for s in &b.body {
-                if let Some(e) = find_init_in_statement(s, target) {
-                    return Some(e);
-                }
+        fn visit_expression(&mut self, it: &Expression<'a>) {
+            if self.out.is_none() && it.span().contains_inclusive(self.target) {
+                oxc_ast_visit::walk::walk_expression(self, it);
             }
-            None
-        }
-        Statement::IfStatement(if_stmt) => {
-            if let Some(e) = find_init_in_statement(&if_stmt.consequent, target) {
-                return Some(e);
-            }
-            if let Some(alt) = &if_stmt.alternate {
-                if let Some(e) = find_init_in_statement(alt, target) {
-                    return Some(e);
-                }
-            }
-            None
-        }
-        Statement::ForStatement(f) => {
-            if let Some(init) = &f.init {
-                if let ForStatementInit::VariableDeclaration(decl) = init {
-                    for d in &decl.declarations {
-                        if let Some(init_expr) = &d.init {
-                            if init_expr.span() == target {
-                                return Some(init_expr);
-                            }
-                        }
-                    }
-                }
-            }
-            find_init_in_statement(&f.body, target)
-        }
-        Statement::ForInStatement(f) => find_init_in_statement(&f.body, target),
-        Statement::ForOfStatement(f) => find_init_in_statement(&f.body, target),
-        Statement::WhileStatement(w) => find_init_in_statement(&w.body, target),
-        Statement::DoWhileStatement(d) => find_init_in_statement(&d.body, target),
-        Statement::SwitchStatement(s) => {
-            for case in &s.cases {
-                for stmt in &case.consequent {
-                    if let Some(e) = find_init_in_statement(stmt, target) {
-                        return Some(e);
-                    }
-                }
-            }
-            None
-        }
-        Statement::TryStatement(t) => {
-            for s in &t.block.body {
-                if let Some(e) = find_init_in_statement(s, target) {
-                    return Some(e);
-                }
-            }
-            if let Some(handler) = &t.handler {
-                for s in &handler.body.body {
-                    if let Some(e) = find_init_in_statement(s, target) {
-                        return Some(e);
-                    }
-                }
-            }
-            if let Some(finalizer) = &t.finalizer {
-                for s in &finalizer.body {
-                    if let Some(e) = find_init_in_statement(s, target) {
-                        return Some(e);
-                    }
-                }
-            }
-            None
-        }
-        Statement::LabeledStatement(l) => find_init_in_statement(&l.body, target),
-        Statement::WithStatement(w) => find_init_in_statement(&w.body, target),
-        Statement::ExportDefaultDeclaration(exp) => {
-            if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &exp.declaration {
-                if let Some(body) = &func.body {
-                    for s in &body.statements {
-                        if let Some(e) = find_init_in_statement(s, target) {
-                            return Some(e);
-                        }
-                    }
-                }
-            } else if let Some(expr) = exp.declaration.as_expression() {
-                // `export default (props) => { … }` — descend into the arrow /
-                // function-expression body for prop-derived declarations.
-                if let Some(e) = find_init_in_expression(expr, target) {
-                    return Some(e);
-                }
-            }
-            None
-        }
-        Statement::ExportDeclaration(exp) => {
-            {
-                match &exp.declaration {
-                    Declaration::VariableDeclaration(vd) => {
-                        for d in &vd.declarations {
-                            if let Some(init) = &d.init {
-                                if init.span() == target {
-                                    return Some(init);
-                                }
-                                // `export const X = (props) => { … }` — descend
-                                // into the component body for prop-derived decls.
-                                if let Some(e) = find_init_in_expression(init, target) {
-                                    return Some(e);
-                                }
-                            }
-                        }
-                    }
-                    Declaration::FunctionDeclaration(func) => {
-                        if let Some(body) = &func.body {
-                            for s in &body.statements {
-                                if let Some(e) = find_init_in_statement(s, target) {
-                                    return Some(e);
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            None
-        }
-        Statement::ClassDeclaration(class) => {
-            for element in &class.body.body {
-                match element {
-                    ClassElement::MethodDefinition(method) => {
-                        if let Some(body) = &method.value.body {
-                            for s in &body.statements {
-                                if let Some(e) = find_init_in_statement(s, target) {
-                                    return Some(e);
-                                }
-                            }
-                        }
-                    }
-                    ClassElement::StaticBlock(block) => {
-                        for s in &block.body {
-                            if let Some(e) = find_init_in_statement(s, target) {
-                                return Some(e);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Find the initializer expression in the program AST by its span.
-fn find_init_expression_by_span<'a>(
-    program: &'a Program<'a>,
-    target: Span,
-) -> Option<&'a Expression<'a>> {
-    for stmt in &program.body {
-        if let Some(expr) = find_init_in_statement(stmt, target) {
-            return Some(expr);
         }
     }
-    None
+    let mut finder = InitFinder { target, vars: prop_derived_vars, out: None };
+    finder.visit_program(program);
+    finder.out
 }
 
 /// Resolve prop-derived var to its inlined text (with transitive resolution).
@@ -2926,11 +2750,10 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
 
     // Copy the shared program reference before mutable operations
     let program = ctx.program;
-    let resolved = if let Some(init_expr) = find_init_expression_by_span(program, span) {
-        // AST-based resolution: find identifier references to prop-derived vars
-        let mut idents: Vec<(u32, u32, String, bool)> = Vec::new();
-        collect_prop_derived_idents(init_expr, &ctx.prop_derived_vars, &mut idents);
-
+    let found = find_init_prop_derived_idents(program, span, &ctx.prop_derived_vars);
+    let resolved = if let Some(mut idents) = found {
+        // AST-based resolution: `idents` are the prop-derived references
+        // inside the initializer (collected by the span-matching visitor).
         if idents.is_empty() {
             ctx.source[span.start as usize..span.end as usize].to_string()
         } else {
@@ -3886,6 +3709,135 @@ fn collect_signal_class_idents(
     shadows.truncate(mark);
 }
 
+/// Walk an assignment / update / destructuring TARGET for signal reads.
+///
+/// The identifier that IS the target is a write, never an auto-called read
+/// (`i = 2` must not become `i() = 2`, and `i++` must not become `i()++`), so
+/// it is skipped. Everything else in the target is a read and IS walked: a
+/// member target's object and computed key (`a[i] = 1` reads `i`), default
+/// initializers, and computed destructuring keys. Mirrors the JS backend's
+/// `findSignalIdents` target handling exactly.
+fn collect_signal_assign_target_idents(
+    target: &AssignmentTarget,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    if let Some(simple) = target.as_simple_assignment_target() {
+        collect_signal_simple_target_idents(simple, ctx, out, range_start, range_end, shadows);
+        return;
+    }
+    match target {
+        AssignmentTarget::ArrayAssignmentTarget(arr) => {
+            for el in arr.elements.iter().flatten() {
+                collect_signal_maybe_default_target_idents(el, ctx, out, range_start, range_end, shadows);
+            }
+            if let Some(rest) = &arr.rest {
+                collect_signal_assign_target_idents(&rest.target, ctx, out, range_start, range_end, shadows);
+            }
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj) => {
+            for prop in &obj.properties {
+                match prop {
+                    AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(p) => {
+                        // `{ i }` binds `i` (a write); `{ i = x }` reads `x`.
+                        if let Some(init) = &p.init {
+                            collect_signal_idents(init, ctx, out, range_start, range_end, shadows);
+                        }
+                    }
+                    AssignmentTargetProperty::AssignmentTargetPropertyProperty(p) => {
+                        if p.computed {
+                            if let Some(e) = p.name.as_expression() {
+                                collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
+                            }
+                        }
+                        collect_signal_maybe_default_target_idents(&p.binding, ctx, out, range_start, range_end, shadows);
+                    }
+                }
+            }
+            if let Some(rest) = &obj.rest {
+                collect_signal_assign_target_idents(&rest.target, ctx, out, range_start, range_end, shadows);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A simple (non-pattern) assignment target: `x`, `o.p`, `o[k]`, `o.#p`, or a
+/// TS-wrapped form of one. The bare identifier is the write and is skipped.
+fn collect_signal_simple_target_idents(
+    target: &SimpleAssignmentTarget,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    match target {
+        SimpleAssignmentTarget::AssignmentTargetIdentifier(_) => {}
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
+            collect_signal_idents(&m.expression, ctx, out, range_start, range_end, shadows);
+        }
+        SimpleAssignmentTarget::PrivateFieldExpression(p) => {
+            collect_signal_idents(&p.object, ctx, out, range_start, range_end, shadows);
+        }
+        SimpleAssignmentTarget::TSAsExpression(e) => {
+            collect_signal_target_wrapped_idents(&e.expression, ctx, out, range_start, range_end, shadows);
+        }
+        SimpleAssignmentTarget::TSSatisfiesExpression(e) => {
+            collect_signal_target_wrapped_idents(&e.expression, ctx, out, range_start, range_end, shadows);
+        }
+        SimpleAssignmentTarget::TSNonNullExpression(e) => {
+            collect_signal_target_wrapped_idents(&e.expression, ctx, out, range_start, range_end, shadows);
+        }
+        SimpleAssignmentTarget::TSTypeAssertion(e) => {
+            collect_signal_target_wrapped_idents(&e.expression, ctx, out, range_start, range_end, shadows);
+        }
+    }
+}
+
+/// The expression inside a TS type wrapper on an assignment target: an
+/// identifier there is still the write target (`(i as T) = 1`), anything else
+/// is an ordinary read.
+fn collect_signal_target_wrapped_idents(
+    expr: &Expression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    if matches!(expr, Expression::Identifier(_)) {
+        return;
+    }
+    collect_signal_idents(expr, ctx, out, range_start, range_end, shadows);
+}
+
+/// An element of an array / object destructuring target: `t`, `t = default`.
+fn collect_signal_maybe_default_target_idents(
+    el: &AssignmentTargetMaybeDefault,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
+    if let AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) = el {
+        collect_signal_assign_target_idents(&d.binding, ctx, out, range_start, range_end, shadows);
+        collect_signal_idents(&d.init, ctx, out, range_start, range_end, shadows);
+        return;
+    }
+    if let Some(t) = el.as_assignment_target() {
+        collect_signal_assign_target_idents(t, ctx, out, range_start, range_end, shadows);
+    }
+}
+
 /// Collect Identifier positions that need auto-calling.
 ///
 /// Reachability mirrors the JS backend's `findSignalIdents` exactly:
@@ -4060,7 +4012,11 @@ fn collect_signal_idents(
             collect_signal_idents(&m.expression, ctx, out, range_start, range_end, shadows);
         }
         Expression::AssignmentExpression(a) => {
+            collect_signal_assign_target_idents(&a.left, ctx, out, range_start, range_end, shadows);
             collect_signal_idents(&a.right, ctx, out, range_start, range_end, shadows);
+        }
+        Expression::UpdateExpression(u) => {
+            collect_signal_simple_target_idents(&u.argument, ctx, out, range_start, range_end, shadows);
         }
         Expression::ChainExpression(c) => match &c.expression {
             ChainElement::CallExpression(call) => {
@@ -4250,6 +4206,9 @@ fn collect_signal_idents_stmt(
                     );
                 }
             }
+            if let Some(t) = f.left.as_assignment_target() {
+                collect_signal_assign_target_idents(t, ctx, out, range_start, range_end, shadows);
+            }
             collect_signal_idents(&f.right, ctx, out, range_start, range_end, shadows);
             collect_signal_idents_stmt(&f.body, ctx, out, range_start, range_end, shadows);
             shadows.truncate(mark);
@@ -4268,6 +4227,9 @@ fn collect_signal_idents_stmt(
                         shadows,
                     );
                 }
+            }
+            if let Some(t) = f.left.as_assignment_target() {
+                collect_signal_assign_target_idents(t, ctx, out, range_start, range_end, shadows);
             }
             collect_signal_idents(&f.right, ctx, out, range_start, range_end, shadows);
             collect_signal_idents_stmt(&f.body, ctx, out, range_start, range_end, shadows);
@@ -5437,7 +5399,8 @@ fn handle_jsx_attribute(
         // Wrap with _rp() if dynamic
         if should_wrap(expr, ctx) {
             let sliced = slice_expr(expr, ctx);
-            let inner = if matches!(expr, Expression::ObjectExpression(_)) {
+            // Parenthesize an expression that STARTS with `{` (see jsx.ts wrap).
+            let inner = if sliced.starts_with('{') {
                 format!("({})", sliced)
             } else {
                 sliced
@@ -5712,7 +5675,8 @@ fn unwrap_type_layers<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 
 fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
     let sliced = slice_expr(expr, ctx);
-    let text = if matches!(expr, Expression::ObjectExpression(_)) {
+    // Parenthesize an expression that STARTS with `{` (see jsx.ts wrap).
+    let text = if sliced.starts_with('{') {
         format!("() => ({})", sliced)
     } else {
         format!("() => {}", sliced)

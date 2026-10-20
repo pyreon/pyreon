@@ -1665,7 +1665,11 @@ export function transformJSX_JS(
     const start = expr.start as number
     const end = expr.end as number
     const sliced = sliceExpr(expr)
-    const text = expr.type === 'ObjectExpression' ? `() => (${sliced})` : `() => ${sliced}`
+    // An expression that STARTS with `{` (a literal, or `{…}.key` / `{…}[k]`)
+    // must be parenthesized: `() => { a: s() }.a` parses as a block. Keyed on
+    // the emitted text, which is exact: the leading token is `{` iff the
+    // expression starts with an object literal (a leading `(` is user parens).
+    const text = sliced.startsWith('{') ? `() => (${sliced})` : `() => ${sliced}`
     replacements.push({ start, end, text })
     lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
   }
@@ -3039,7 +3043,7 @@ export function transformJSX_JS(
         const start = expr.start as number
         const end = expr.end as number
         const sliced = sliceExpr(expr)
-        const inner = expr.type === 'ObjectExpression' ? `(${sliced})` : sliced
+        const inner = sliced.startsWith('{') ? `(${sliced})` : sliced
         // A bare signal/computed call — `value={sig()}` — wraps with `_rpd`,
         // which carries the signal's direct-tier surface so a `_bindProp`
         // consumer can skip the tracked effect (see core `_rpd`). Same
@@ -3642,7 +3646,13 @@ export function transformJSX_JS(
         if (grandparent && (grandparent.type === 'JSXElement' || grandparent.type === 'JSXFragment'))
           return
       }
-      const firstParam = node.params[0]
+      // A defaulted props param (`function C(props = {})`) is an
+      // AssignmentPattern in ESTree; the identifier is its `.left`. The Rust
+      // backend (oxc) keeps the BindingIdentifier and an initializer, so the
+      // two backends agree only if both unwrap here.
+      const rawFirstParam = node.params[0]
+      const firstParam =
+        rawFirstParam?.type === 'AssignmentPattern' ? rawFirstParam.left : rawFirstParam
       if (firstParam?.type === 'Identifier') {
         let hasJSX = false
         function checkJSX(n: N): void {
@@ -3887,6 +3897,24 @@ export function transformJSX_JS(
     return result
   }
 
+  /** An identifier in a non-computed object/class member KEY position is a name,
+   *  not a reference. Shorthand `{ name }` is EXCLUDED — it evaluates the binding
+   *  and must keep counting as a read (same contract as referencesSignalVar). */
+  function isNonComputedKeyPosition(node: N, parent: N | null | undefined): boolean {
+    if (!parent) return false
+    if (parent.type === 'Property' || parent.type === 'ObjectProperty') {
+      return parent.key === node && !parent.computed && !parent.shorthand
+    }
+    if (
+      parent.type === 'MethodDefinition' ||
+      parent.type === 'PropertyDefinition' ||
+      parent.type === 'AccessorProperty'
+    ) {
+      return parent.key === node && !parent.computed
+    }
+    return false
+  }
+
   function _isDynamicImpl(node: N): boolean {
     // Call expression (non-pure)
     if (node.type === 'CallExpression') {
@@ -3919,6 +3947,8 @@ export function transformJSX_JS(
         !parent.computed
       ) {
         // This is a property name position, not a reference — fall through
+      } else if (isNonComputedKeyPosition(node, parent)) {
+        // `{ r: 1 }` / `{ r() {} }` — the key names a property, it is not a read
       } else {
         return true
       }
@@ -3935,6 +3965,8 @@ export function transformJSX_JS(
         // Property name position — not a reference
       } else if (parent && parent.type === 'CallExpression' && parent.callee === node) {
         // Already being called: signal() — don't double-flag
+      } else if (isNonComputedKeyPosition(node, parent)) {
+        // `{ source: 1 }` / `class { source = 1 }` — a NAME, not a read
       } else {
         return true
       }
@@ -6294,6 +6326,22 @@ export function transformJSX_JS(
         if (grand && grand.type === 'CallExpression' && grand.callee === parent) return false
       }
       if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
+      // Object-literal / class member KEY named like a signal (`{ source: 1 }`,
+      // `class { source = 1 }`) is a name, not a read. Mirrors the key skips in
+      // findSignalIdents below. Shorthand `{ source }` stays a READ: it
+      // evaluates the binding, so it must still count.
+      if (parent && (parent.type === 'Property' || parent.type === 'ObjectProperty')) {
+        if (parent.key === node && !parent.computed && !parent.shorthand) return false
+      }
+      if (
+        parent &&
+        (parent.type === 'MethodDefinition' ||
+          parent.type === 'PropertyDefinition' ||
+          parent.type === 'AccessorProperty') &&
+        parent.key === node &&
+        !parent.computed
+      )
+        return false
       return true
     }
     const kids = childrenMap.get(node)
@@ -6462,6 +6510,43 @@ export function transformJSX_JS(
     // signal and must not get `()` (R11: scope-blind rewrite emitted
     // `({x}) => <li>{x()}</li>` → `1()` runtime crash).
     const shadowed = new Set<string>()
+    // Identifier nodes that are the WRITE target of an assignment, update or
+    // for-in/of head (`i = 2`, `i++`, `[i] = arr`). A target identifier is
+    // written, never read: auto-calling it emits `i() = 2` / `i()++`, a syntax
+    // error. Member-target objects and computed keys (`a[i] = 1`) stay reads.
+    const assignTargets = new Set<N>()
+    const markAssignTarget = (t: N | null | undefined): void => {
+      if (!t) return
+      switch (t.type) {
+        case 'Identifier':
+          assignTargets.add(t)
+          return
+        case 'TSAsExpression':
+        case 'TSSatisfiesExpression':
+        case 'TSNonNullExpression':
+        case 'TSTypeAssertion':
+        case 'ParenthesizedExpression':
+          markAssignTarget(t.expression)
+          return
+        case 'AssignmentPattern':
+          markAssignTarget(t.left)
+          return
+        case 'RestElement':
+          markAssignTarget(t.argument)
+          return
+        case 'ArrayPattern':
+          for (const el of t.elements ?? []) markAssignTarget(el)
+          return
+        case 'ObjectPattern':
+          for (const pr of t.properties ?? []) {
+            if (pr.type === 'RestElement') markAssignTarget(pr.argument)
+            else markAssignTarget(pr.value)
+          }
+          return
+        // MemberExpression targets: the object and computed key are reads and
+        // are walked by the generic recursion; nothing to mark here.
+      }
+    }
 
     function findSignalIdents(node: N): void {
       if ((node.start as number) >= end || (node.end as number) <= start) return
@@ -6473,7 +6558,19 @@ export function transformJSX_JS(
           introduced.push(n)
         }
       }
-      if (node.type === 'Identifier' && isActiveSignal(node.name) && !shadowed.has(node.name)) {
+      if (node.type === 'AssignmentExpression') markAssignTarget(node.left)
+      else if (node.type === 'UpdateExpression') markAssignTarget(node.argument)
+      else if (
+        (node.type === 'ForInStatement' || node.type === 'ForOfStatement') &&
+        node.left.type !== 'VariableDeclaration'
+      )
+        markAssignTarget(node.left)
+      if (
+        node.type === 'Identifier' &&
+        isActiveSignal(node.name) &&
+        !shadowed.has(node.name) &&
+        !assignTargets.has(node)
+      ) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (
