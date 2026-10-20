@@ -2256,6 +2256,22 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
   return out
 }
 
+/** Characters a masker branch can start on: comment slash, quotes, backtick. */
+const MASK_TRIGGER_RE = /[/"'`]/g
+
+/** Index of the next masker trigger at or after `from`, or `code.length`. */
+function _nextMaskTrigger(code: string, from: number): number {
+  MASK_TRIGGER_RE.lastIndex = from
+  const m = MASK_TRIGGER_RE.exec(code)
+  return m === null ? code.length : m.index
+}
+
+/** `code.indexOf(ch, from)`, with "not found" mapped to `code.length`. */
+function _indexOrEnd(code: string, ch: string, from: number): number {
+  const at = code.indexOf(ch, from)
+  return at < 0 ? code.length : at
+}
+
 /**
  * Mask string-literal / template-literal / comment regions in `code` by
  * replacing their content with spaces. Returns a SAME-LENGTH string so
@@ -2382,7 +2398,9 @@ export function _maskStringsAndComments(code: string): string {
       mask(start, i)
       continue
     }
-    i++
+    // Every branch above starts on `/`, a quote or a backtick; jump to the
+    // next one rather than stepping through plain code (see `_maskSource`).
+    i = _nextMaskTrigger(code, i + 1)
   }
   if (last < n) parts.push(code.slice(last))
   return parts.join('')
@@ -2816,7 +2834,10 @@ function _maskSource(code: string, maskStrings: boolean): string {
       continue
     }
 
-    i++
+    // Nothing above starts at this character, and nothing CAN start before the
+    // next `/` (or quote / backtick, when strings are masked): jump there
+    // instead of stepping one character at a time through plain code.
+    i = maskStrings ? _nextMaskTrigger(code, i + 1) : _indexOrEnd(code, '/', i + 1)
   }
   if (last < n) parts.push(code.slice(last))
   return parts.join('')
