@@ -316,7 +316,36 @@ const App = () => (
     const server = h(
       'ul',
       { class: 'rows' },
-      h(For as never, { each: rows, by: (r: { id: number }) => r.id, children: (r: { n: string }) => h('li', { class: 'r' }, 'Item ', () => r.n, '!') } as never),
+      // The trailing `<b>` keeps this a genuine MID slot: an all-text row now
+      // fuses into one `_setChild` (see the static-row spec below), which has
+      // no placeholder to adopt.
+      h(For as never, { each: rows, by: (r: { id: number }) => r.id, children: (r: { n: string }) => h('li', { class: 'r' }, 'Item ', () => r.n, '!', h('b', null)) } as never),
+    )
+    const html = await renderToString(server as never)
+    const host = document.createElement('div')
+    host.innerHTML = html
+    document.body.appendChild(host)
+    const before = snapshot(host)
+    const App = compileApp(
+      `const App = () => <ul class="rows"><For each={rows} by={(r) => r.id}>{(r) => <li class="r">Item {r.n}!<b></b></li>}</For></ul>`,
+      { rows },
+    )
+    const dispose = hydrateRoot(host, h(App as never, null))
+    const text = host.innerHTML.replace(/<!--[^>]*-->/g, '')
+    expect(text).toBe('<ul class="rows"><li class="r">Item a!<b></b></li><li class="r">Item b!<b></b></li><li class="r">Item c!<b></b></li></ul>')
+    expect(retained(before, host)).toBe(before.length)
+    expect(counts['runtime.tpl.adoptPlanReplay'] ?? 0).toBe(0)
+    expect((counts['runtime.tpl.adopt'] ?? 0) + (counts['runtime.mountFor.hydrateAdopt'] ?? 0)).toBeGreaterThan(0)
+    dispose()
+  })
+  it('an all-text row (`Item {r.n}!`) fuses statically and adopts the server text node in place', async () => {
+    const rows = [{ id: 1, n: 'a' }, { id: 2, n: 'b' }, { id: 3, n: 'c' }]
+    // The server shape the real SSR compile produces for this row: the For
+    // param read is static, so the text is one marker-free run.
+    const server = h(
+      'ul',
+      { class: 'rows' },
+      h(For as never, { each: rows, by: (r: { id: number }) => r.id, children: (r: { n: string }) => h('li', { class: 'r' }, 'Item ', r.n, '!') } as never),
     )
     const html = await renderToString(server as never)
     const host = document.createElement('div')
@@ -331,8 +360,6 @@ const App = () => (
     const text = host.innerHTML.replace(/<!--[^>]*-->/g, '')
     expect(text).toBe('<ul class="rows"><li class="r">Item a!</li><li class="r">Item b!</li><li class="r">Item c!</li></ul>')
     expect(retained(before, host)).toBe(before.length)
-    expect(counts['runtime.tpl.adoptPlanReplay'] ?? 0).toBe(0)
-    expect((counts['runtime.tpl.adopt'] ?? 0) + (counts['runtime.mountFor.hydrateAdopt'] ?? 0)).toBeGreaterThan(0)
     dispose()
   })
 })

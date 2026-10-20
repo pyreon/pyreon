@@ -456,6 +456,14 @@ const __d0 = bindPolymorphicText(() => _fuse("Count: ", count(), " items"), __t0
 
 `_fuse` joins the parts into a single string when every part is text-ish (`null`/`undefined`/`false` contribute nothing, everything else stringifies) — but the moment ANY part is a VNode/array/NativeItem/function, it returns the **parts array instead**, and `bindPolymorphicText` mounts that as a subtree. So `{sig()}` holding a VNode inside a fused run still mounts correctly; nothing gets coerced to `[object Object]`. Fusion is declined (falling back to the placeholder mechanism below) when a text run contains an HTML entity (`&nbsp;`, `&amp;`, …) — JSX decodes entities at parse time into the baked HTML string, but a fused run assigns `Text.data` directly, which never decodes anything, so the compiler bails rather than risk emitting the literal escaped text.
 
+**All-static text runs fuse too.** When no part is reactive (`<li>Row {it.index}</li>` inside a `<For>` row, where the row parameter is static), the client template is an empty element and the run is set once with `_setChild`. That gives one text node, with no placeholder and no `replaceChild`. It is the same shape as a lone static `{x}` child, and on hydration it adopts the server's single text node in place:
+
+```tsx
+// Input (in a <For> row): <li class="row">Row {it.index}</li>
+// template HTML: "<li class=\"row\"></li>"
+_setChild(__root, _fuse("Row ", it.index))
+```
+
 **Text/expression mixed with an ELEMENT sibling** (`<div><span>1</span>{count()}</div>`) — fusion requires every child to be text or an expression; an element in the mix breaks that, so this falls back to the older placeholder mechanism: the template bakes a `<!>` comment at the expression's position, and the bind function resolves a real text node over it via the runtime's `_textSlot(parent, placeholder)` helper (which also knows how to adopt an already-hydrated server text node in place, rather than rebuilding it — see [Hydration](/docs/runtime-dom#hydration)):
 
 ```tsx

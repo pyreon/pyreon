@@ -18,7 +18,6 @@ import {
   propagateError,
   reportError,
   runWithHooks,
-  Suspense,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
@@ -35,7 +34,7 @@ import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
-import { attachSuspenseBoundary } from './suspense-boundary'
+import { suspenseAttachOf } from './suspense-boundary'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -691,7 +690,8 @@ function mountComponent(
   let subtreeCleanup: Cleanup = noop
   // A `<Suspense>` delimits its output so it can move it off-screen while a
   // descendant loads (see `attachSuspenseBoundary`).
-  const boundaryEnd = vnode.type === Suspense ? document.createComment('/suspense') : null
+  const suspenseAttach = suspenseAttachOf(vnode.type)
+  const boundaryEnd = suspenseAttach !== undefined ? document.createComment('/suspense') : null
   const boundaryStart = boundaryEnd !== null ? document.createComment('suspense') : null
   if (boundaryEnd !== null) {
     parent.insertBefore(boundaryStart!, anchor)
@@ -702,7 +702,7 @@ function mountComponent(
     if (boundaryEnd !== null) {
       const boundary = useContext(SuspenseBoundaryContext)
       if (boundary !== null) {
-        const detach = attachSuspenseBoundary(boundary, boundaryStart!, boundaryEnd, mountChild)
+        const detach = suspenseAttach!(boundary, boundaryStart!, boundaryEnd, mountChild)
         const inner = subtreeCleanup
         subtreeCleanup = () => {
           inner()

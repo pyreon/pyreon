@@ -1,8 +1,13 @@
 import { isServer, signal } from '@pyreon/reactivity'
 import { nativeCompat } from './compat-marker'
-import { createContext, provide } from './context'
+import { provide } from './context'
 import { Fragment, h } from './h'
+import { attachSuspenseBoundary } from './suspense-attach'
+import { SUSPENSE_ATTACH, type SuspenseBoundary, SuspenseBoundaryContext } from './suspense-context'
 import type { Props, VNode, VNodeChild } from './types'
+
+export { SuspenseBoundaryContext }
+export type { SuspenseBoundary }
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -46,32 +51,7 @@ export function _setSuspenseHydrating(v: boolean): boolean {
 }
 
 // ─── Boundary registration (the React / Vue model) ───────────────────────────
-/**
- * The nearest `<Suspense>`, as seen by an async DESCENDANT. A still-loading
- * `lazy()` (or async component) anywhere below the boundary — not only its
- * direct child — registers its settle promise here, and the boundary shows its
- * fallback until every registered load has settled.
- *
- * `pending()` is a signal (the number of unsettled registrations). Only the
- * DOM renderer acts on it: it keeps the boundary's content MOUNTED but moves it
- * off-screen and shows the fallback in its place, so a descendant that suspends
- * costs neither its siblings' state nor a second mount. The server needs none
- * of this — both renderers already wait for every lazy / async component
- * before rendering it.
- *
- * @internal Consumed by `lazy()`, the compat lazies and `@pyreon/runtime-dom`.
- */
-export interface SuspenseBoundary {
-  /** Register a load; the fallback shows until it settles. A promise that rejects counts as settled. */
-  register(settled: Promise<unknown>): void
-  /** Number of registered loads that have not settled. */
-  readonly pending: () => number
-  /** The boundary's `fallback` prop, resolved. */
-  readonly fallback: () => VNodeChild
-}
-
-/** @internal See {@link SuspenseBoundary}. */
-export const SuspenseBoundaryContext = createContext<SuspenseBoundary | null>(null)
+// The boundary type and context live in `suspense-context.ts`.
 
 function createSuspenseBoundary(fallback: () => VNodeChild): SuspenseBoundary {
   const count = signal(0)
@@ -158,5 +138,18 @@ function Suspense(props: { fallback: VNodeChild; children?: VNodeChild }): VNode
 // frame. solid/svelte-compat already hard-code Suspense as native; this makes
 // the other three agree. PURE assignment form for the same tree-shake reason
 // as ErrorBoundary: returns the SAME function with the marker applied.
-const _Suspense = /* @__PURE__ */ nativeCompat(Suspense)
+// The renderer finds the boundary's DOM handler on the component itself, so the
+// handler ships only with apps that import `Suspense` (the assignment is PURE:
+// unused, the whole module tree-shakes away).
+const _Suspense = /* @__PURE__ */ withSuspenseAttach(/* @__PURE__ */ nativeCompat(Suspense))
+
+// A plain call with identifier arguments, not `Object.assign(fn, { [KEY]: … })`:
+// Bun keeps an object literal with a COMPUTED key as possibly side-effecting
+// and so never drops the PURE call — measured, the handler then shipped in
+// every bundle that imported anything from `@pyreon/core` (+582 B gz on the
+// `h`/`createContext` minimal import).
+function withSuspenseAttach<T extends object>(component: T): T {
+  ;(component as Record<symbol, unknown>)[SUSPENSE_ATTACH] = attachSuspenseBoundary
+  return component
+}
 export { _Suspense as Suspense }

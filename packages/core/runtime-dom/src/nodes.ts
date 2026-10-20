@@ -238,6 +238,26 @@ interface LisState {
   entries: (ForEntry | undefined)[]
 }
 
+/**
+ * The zero-capacity reorder state every keyed list starts from.
+ *
+ * The LIS buffers are needed only when a list REORDERS, but they used to be
+ * allocated eagerly — four typed arrays per list instance. A list of lists (a
+ * table row's cells, a tree level's children) mounted one inner list per row,
+ * so a 1,000-row table paid 4,000 typed-array allocations that nothing ever
+ * read. Every reorder path calls `growLisArrays` before touching the buffers,
+ * and that returns a FRESH state whenever `n` exceeds the capacity (here 0),
+ * so this shared object is never written: for `n === 0` the fills and the
+ * entries loop are empty ranges.
+ */
+const EMPTY_LIS: LisState = {
+  tails: new Int32Array(0),
+  tailIdx: new Int32Array(0),
+  pred: new Int32Array(0),
+  stay: new Uint8Array(0),
+  entries: [],
+}
+
 function growLisArrays(lis: LisState, n: number): LisState {
   if (n <= lis.pred.length) return lis
   return {
@@ -346,13 +366,9 @@ export function mountKeyedList(
   const curPos = new Map<string | number, number>()
   let currentKeyOrder: (string | number)[] = []
 
-  let lis: LisState = {
-    tails: new Int32Array(16),
-    tailIdx: new Int32Array(16),
-    pred: new Int32Array(16),
-    stay: new Uint8Array(16),
-    entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
-  }
+  // Starts as the shared zero-capacity state: the first reorder's
+  // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
+  let lis: LisState = EMPTY_LIS
 
   /**
    * The key sequence this update actually reconciles, DEDUPED first-wins, plus
@@ -924,19 +940,16 @@ export function mountFor<T>(
 
   let cache = new Map<string | number, ForEntry>()
   let currentKeys: (string | number)[] = []
-  const _reusableKeySet = new Set<string | number>()
+  // Allocated on the first update that removes keys — most lists never do.
+  let _reusableKeySet: Set<string | number> | null = null
   let cleanupCount = 0
   // Per-update stamp + distinct-survivor count (see `mountNewForEntries`).
   let updateGen = 0
   let keptDistinct = 0
 
-  let lis: LisState = {
-    tails: new Int32Array(16),
-    tailIdx: new Int32Array(16),
-    pred: new Int32Array(16),
-    stay: new Uint8Array(16),
-    entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
-  }
+  // Starts as the shared zero-capacity state: the first reorder's
+  // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
+  let lis: LisState = EMPTY_LIS
 
   const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
     if (!seen) return
@@ -1419,9 +1432,10 @@ export function mountFor<T>(
     // disjoint, and `removeStaleForEntries` skips any key in the newKey Set.
     const added = mountNewForEntries(items, n, newKeys, liveParent)
     if (added !== 0 || keptDistinct !== cache.size) {
-      _reusableKeySet.clear()
-      for (let i = 0; i < newKeys.length; i++) _reusableKeySet.add(newKeys[i] as string | number)
-      removeStaleForEntries(_reusableKeySet)
+      const keySet = (_reusableKeySet ??= new Set<string | number>())
+      keySet.clear()
+      for (let i = 0; i < newKeys.length; i++) keySet.add(newKeys[i] as string | number)
+      removeStaleForEntries(keySet)
     }
 
     if (perm !== 'many' && trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {

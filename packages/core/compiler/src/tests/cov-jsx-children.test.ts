@@ -100,9 +100,11 @@ describe('jsx.ts — empty expression containers', () => {
   })
 
   it('a NON-empty expression child in the same position DOES emit a child set', () => {
+    // An all-static text run fuses into one `_setChild` (see `fuseTextChildren`'s
+    // `allowStatic`) — still a child set, never a dropped expression.
     const out = t('<div>a{x}b</div>')
-    expect(out).toContain('_setChildAt(__root, __p0, x)')
-    expect(out).toContain('<!>')
+    expect(out).toContain('_setChild(__root, _fuse("a", x, "b"))')
+    expect(out).not.toContain('<!>')
   })
 })
 

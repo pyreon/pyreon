@@ -5310,7 +5310,7 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     // Text fusion on the h() path (see `fuse_text_children`): the whole child
     // span becomes ONE accessor child. DOM elements only. Mirrors JS.
     if !is_component && !tag.is_empty() && !is_self_closing(el) {
-        if let Some(fused) = fuse_text_children(el, ctx) {
+        if let Some(fused) = fuse_text_children(el, ctx, false) {
             let start = el.opening_element.span.end;
             let end = el.closing_element.as_ref().map(|c| c.span.start).unwrap_or(start);
             ctx.add_replacement(start, end, format!("{{() => {}}}", fused));
@@ -6699,7 +6699,9 @@ fn is_ident_text(s: &str) -> bool {
 /// `_mountSlot` shape (a `children` read, an element-valued const, an in-file
 /// JSX helper call, inline JSX); at least two parts after literal folding and
 /// at least one reactive one. DOM elements only.
-fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
+/// `allow_static` (template path only) also fuses an all-static mix — see the
+/// JS twin's `allowStatic` for the measured reason. Mirrors JS.
+fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx, allow_static: bool) -> Option<String> {
     if el.children.len() < 2 {
         return None;
     }
@@ -6781,7 +6783,7 @@ fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
             _ => return None,
         }
     }
-    if !any_reactive || parts.len() < 2 {
+    if (!any_reactive && !allow_static) || parts.len() < 2 {
         return None;
     }
     for (start, end, reactive) in spans {
@@ -7095,7 +7097,7 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     if !self_closing {
         // Text fusion (see `fuse_text_children`): ONE sole accessor child →
         // the `_escSole` shape, no markers on either side. Mirrors JS.
-        if let Some(fused) = fuse_text_children(el, ctx) {
+        if let Some(fused) = fuse_text_children(el, ctx, false) {
             emit_esc_sole_hole(buf, fused, ctx);
         } else {
             let sole = ssr_sole_child(el);
@@ -9568,10 +9570,17 @@ fn process_children(
 ) -> Option<(String, bool)> {
     // Text fusion (see `fuse_text_children`): ONE accessor child in the
     // sole-dynamic-text form — `' '` baked, `.firstChild` bound. Mirrors JS.
-    if let Some(fused) = fuse_text_children(el, ctx) {
+    if let Some(fused) = fuse_text_children(el, ctx, false) {
         let parent_ref = if accessor == "__root" { "__root" } else { var_name };
         let html = emit_fused_text_child(&fused, var_name, parent_ref, tb);
         return Some((html, false));
+    }
+    // All-static mix: the sole static child shape — empty element, one
+    // `_setChild`. Mirrors JS.
+    if let Some(fused) = fuse_text_children(el, ctx, true) {
+        tb.needs_set_child = true;
+        tb.bind_lines.push(format!("_setChild({}, {})", var_name, fused));
+        return Some((String::new(), false));
     }
     let flat = flatten_children(&el.children, ctx.templatize_component_children);
     let has_component = flat.iter().any(|c| matches!(c, FlatChild::Component(_)));
