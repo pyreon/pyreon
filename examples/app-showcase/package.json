@@ -53,10 +53,10 @@
     "@pyreon/compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
-    "@types/bun": "^1.4.2",
+    "@types/bun": "^1.4.3",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1",
-    "docx": "^9.8.1",
+    "vite": "^8.3.4",
+    "docx": "^9.13.0",
     "pdfmake": "^0.3.11"
   }
 }

@@ -66,7 +66,7 @@
     "@pyreon/primitives": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
@@ -74,7 +74,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.2"
+    "@vitest/browser-playwright": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"
