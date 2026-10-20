@@ -192,3 +192,32 @@ describe('PyreonUI', () => {
     expect(modeGetter()).toBe('dark') // dark + not inversed → dark again
   })
 })
+
+describe('PyreonUI core context value — built once', () => {
+  const theme = { rootSize: 16, breakpoints: { xs: 0 }, colors: {} }
+
+  it('returns the SAME object on every accessor call, still reading live values', async () => {
+    const { provide } = await import('@pyreon/core')
+    const spy = vi.mocked(provide)
+    spy.mockClear()
+    const mode = signal<'light' | 'dark'>('light')
+    PyreonUI({
+      theme,
+      get mode() {
+        return mode()
+      },
+      children: null,
+    } as PyreonUIProps)
+    const getter = spy.mock.calls[1]![1] as () => { mode: string; isDark: boolean }
+    const first = getter()
+    // Consumers (rocketstyle's ThemeAttrs) call the accessor on every
+    // property read; a fresh getter literal per call is ~0.4µs on V8.
+    expect(getter()).toBe(first)
+    expect(first.mode).toBe('light')
+    mode.set('dark')
+    // Same object, live getter — the read reflects the new mode.
+    expect(getter()).toBe(first)
+    expect(first.mode).toBe('dark')
+    expect(first.isDark).toBe(true)
+  })
+})

@@ -1,3 +1,4 @@
+import { isServer } from '@pyreon/reactivity'
 import { sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getInlineRuns, getTextContent, hasLinkRun, warnUnknownNodeType } from '../nodes'
@@ -322,33 +323,79 @@ function renderHeaderFooter(node: DocNode | undefined): PdfContent | undefined {
   return { text: content, margin: [40, 10, 40, 0] }
 }
 
+/**
+ * Whether this runtime has Node's built-ins (Node, Bun, Deno). There pdfmake's
+ * own Node entry is the right build: since pdfmake 0.3.12 the BROWSER build
+ * decodes PNG images through fflate's async path, which spawns a Web `Worker`
+ * — absent on the server, so any server-side PDF containing a PNG threw
+ * `Worker is not defined`. The Node entry decodes with `zlib` instead.
+ */
+const hasNodeBuiltins = (): boolean =>
+  typeof process !== 'undefined' &&
+  typeof process.versions?.node === 'string' &&
+  // A DOM shim in a server process (happy-dom/jsdom test environments) makes
+  // pdfkit's Node build resolve its own location from `document.currentScript`
+  // — an http URL that `createRequire` rejects. With a DOM present, use the
+  // browser build as a browser would.
+  isServer
+
+/** The pdfmake instance, configured once — the module is a singleton. */
+let pdfMakeInstance: Promise<any> | undefined
+
+function loadPdfMake(): Promise<any> {
+  pdfMakeInstance ??= loadPdfMakeUncached().catch((err: unknown) => {
+    // A failed load (pdfmake not installed) must not be cached, or a later
+    // install in the same process would keep failing.
+    pdfMakeInstance = undefined
+    throw err
+  })
+  return pdfMakeInstance
+}
+
+async function loadPdfMakeUncached(): Promise<any> {
+  const server = hasNodeBuiltins()
+  let pdfMakeModule: any
+  let pdfFontsModule: any
+  try {
+    pdfMakeModule = server ? await import('pdfmake') : await import('pdfmake/build/pdfmake')
+    pdfFontsModule = await import('pdfmake/build/vfs_fonts')
+  } catch {
+    throw new Error(
+      '[@pyreon/document] PDF renderer requires "pdfmake" package. Install it: bun add pdfmake',
+    )
+  }
+
+  // Resolve the actual exports (handle .default for ESM wrappers). Both
+  // builds export a singleton instance; ESM interop may wrap it in an extra
+  // `.default` layer.
+  let pdfMake: any = pdfMakeModule.default ?? pdfMakeModule
+  if (pdfMake.default && typeof pdfMake.default.createPdf === 'function') {
+    pdfMake = pdfMake.default
+  }
+  const pdfFonts: any = pdfFontsModule.default ?? pdfFontsModule
+  const vfs: Record<string, string> = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs ?? pdfFonts
+
+  if (server) {
+    // The Node entry reads fonts from its own virtual filesystem (base64).
+    for (const name of Object.keys(vfs)) {
+      if (!pdfMake.virtualfs.existsSync(name))
+        pdfMake.virtualfs.writeFileSync(name, vfs[name], 'base64')
+    }
+    // Without explicit policies the Node entry warns on every render. Images
+    // reach pdfmake only as `data:` URIs (see `resolveImageSrc`), and the
+    // browser build never had local file access, so deny it. Custom fonts are
+    // documented as VFS names or URLs, so remote fetches stay allowed.
+    pdfMake.setUrlAccessPolicy(() => true)
+    pdfMake.setLocalAccessPolicy(() => false)
+  } else if (pdfMake.vfs == null) {
+    pdfMake.vfs = vfs
+  }
+  return pdfMake
+}
+
 export const pdfRenderer: DocumentRenderer = {
   async render(node: DocNode, options?: RenderOptions): Promise<Uint8Array> {
-    // Lazy-load pdfmake — handle ESM/CJS interop
-    let pdfMakeModule: any
-    let pdfFontsModule: any
-    try {
-      pdfMakeModule = await import('pdfmake/build/pdfmake')
-      pdfFontsModule = await import('pdfmake/build/vfs_fonts')
-    } catch {
-      throw new Error(
-        '[@pyreon/document] PDF renderer requires "pdfmake" package. Install it: bun add pdfmake',
-      )
-    }
-
-    // Resolve the actual exports (handle .default for ESM wrappers).
-    // pdfmake's default export is a singleton instance of browser_extensions_pdfmake.
-    // ESM interop may wrap it in an extra .default layer.
-    let pdfMake: any = pdfMakeModule.default ?? pdfMakeModule
-    if (pdfMake.default && typeof pdfMake.default.createPdf === 'function') {
-      pdfMake = pdfMake.default
-    }
-    const pdfFonts: any = pdfFontsModule.default ?? pdfFontsModule
-
-    // Assign virtual filesystem for fonts
-    if (pdfMake.vfs == null) {
-      pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs
-    }
+    const pdfMake = await loadPdfMake()
 
     // Find page config
     const pageNode = node.children.find(

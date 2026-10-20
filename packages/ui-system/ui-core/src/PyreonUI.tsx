@@ -89,9 +89,7 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
   // statically verifiable as protecting the `matchMedia` access — same
   // runtime value (`false` on the server), SSR-safe + analyzer-clear.
   /* v8 ignore next 3 — `_isBrowser` is always true in tests (happy-dom + matchMedia); SSR branch covered by typeof guard */
-  const prefersDark = _isBrowser
-    ? matchMedia('(prefers-color-scheme: dark)').matches
-    : false
+  const prefersDark = _isBrowser ? matchMedia('(prefers-color-scheme: dark)').matches : false
   _systemMode = signal<ThemeMode>(prefersDark ? 'dark' : 'light')
 
   /* v8 ignore next 5 — same SSR/typeof gate as above */
@@ -295,7 +293,14 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
   //    reads only `.theme` subscribes only to `enrichedTheme` (stable on flip
   //    → no re-run); classic-mode resolution that reads `.mode` still
   //    subscribes to `modeComputed` (re-runs on flip → correct).
-  provide(coreContext, () => ({
+  //
+  //    Built ONCE and returned by identity: the getters already read the
+  //    computeds lazily, so a fresh object per read bought nothing — and a
+  //    getter object literal costs ~0.4µs to create on V8. Consumers call
+  //    this accessor on every theme/mode property read (rocketstyle's
+  //    `ThemeAttrs`), so the per-read allocation was paid many times per
+  //    component.
+  const coreValue = {
     get theme() {
       return enrichedTheme()
     },
@@ -308,7 +313,8 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
     get isLight() {
       return modeComputed() === 'light'
     },
-  }))
+  }
+  provide(coreContext, () => coreValue)
 
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())
