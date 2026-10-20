@@ -4672,9 +4672,9 @@ export function transformJSX_JS(
     // answers "what is the full walk this name stands for?" (so a chained or
     // var-rooted parentRef still composes a stable key), and `capturedRefs`
     // answers "does a const already hold that walk?".
-    /** Ref var / accessor string -> its fully-expanded walk from `__root`. */
+    /** Ref var / accessor string -> its compact walk key (see `canonicalWalk`). */
     const canonicalOf = new Map<string, string>()
-    /** Fully-expanded walk -> the phase-1 const that already holds that node. */
+    /** Compact walk key -> the phase-1 const that already holds that node. */
     const capturedRefs = new Map<string, string>()
 
     /** Resolve a `parentRef` (var name, chained string, or raw walk) to its full walk. */
@@ -4693,25 +4693,50 @@ export function transformJSX_JS(
     function chainFromCaptured(canonical: string): { expr: string; hops: number } {
       const exact = capturedRefs.get(canonical)
       if (exact !== undefined) return { expr: exact, hops: 0 }
-      for (
-        let dot = canonical.lastIndexOf('.');
-        dot > 0;
-        dot = canonical.lastIndexOf('.', dot - 1)
-      ) {
-        const held = capturedRefs.get(canonical.slice(0, dot))
-        if (held !== undefined) {
-          const suffix = canonical.slice(dot)
-          return { expr: held + suffix, hops: countSiblingHops(suffix) }
+      // `canonical` is a COMPACT walk (see `canonicalWalk`): `root/c0/e37`. The
+      // candidates are its structural prefixes, longest first — the same set and
+      // order the former dotted-string split produced: earlier siblings at the
+      // deepest level (nearest first), then that level's parent, then up.
+      // `levels` collects the walk below the scan point (outermost LAST) so the
+      // shortened expression can be rendered.
+      const levels: { mixed: boolean; k: number }[] = []
+      let cur = canonical
+      for (let slash = cur.lastIndexOf('/'); slash !== -1; slash = cur.lastIndexOf('/')) {
+        const parent = cur.slice(0, slash)
+        const mixed = cur.charCodeAt(slash + 1) === 99 // 'c'
+        const k = Number(cur.slice(slash + 2))
+        const tag = mixed ? '/c' : '/e'
+        for (let j = k - 1; j >= 0; j--) {
+          const held = capturedRefs.get(parent + tag + j)
+          if (held !== undefined) {
+            const next = mixed ? '.nextSibling' : '.nextElementSibling'
+            const expr = held + next.repeat(k - j)
+            const r = renderLevels(levels)
+            return { expr: expr + r.text, hops: k - j + r.hops }
+          }
         }
+        levels.push({ mixed, k })
+        const held = capturedRefs.get(parent)
+        if (held !== undefined) {
+          const r = renderLevels(levels)
+          return { expr: held + r.text, hops: r.hops }
+        }
+        cur = parent
       }
-      return { expr: canonical, hops: countSiblingHops(canonical) }
+      const r = renderLevels(levels)
+      return { expr: cur + r.text, hops: r.hops }
     }
 
-    /** Count `.nextSibling` / `.nextElementSibling` steps in a walk expression. */
-    function countSiblingHops(walk: string): number {
-      let n = 0
-      for (let i = walk.indexOf('.next'); i !== -1; i = walk.indexOf('.next', i + 1)) n++
-      return n
+    /** Dotted walk for `levels` (outermost LAST), plus the sibling hops it adds. */
+    function renderLevels(levels: { mixed: boolean; k: number }[]): { text: string; hops: number } {
+      let text = ''
+      let hops = 0
+      for (let i = levels.length - 1; i >= 0; i--) {
+        const { mixed, k } = levels[i]!
+        text += (mixed ? '.firstChild' : '.firstElementChild') + (mixed ? '.nextSibling' : '.nextElementSibling').repeat(k)
+        hops += k
+      }
+      return { text, hops }
     }
 
     /**
@@ -5844,11 +5869,13 @@ export function transformJSX_JS(
      * (run it through `canonicalBase` first).
      */
     function canonicalWalk(base: string, idx: number, mixed: boolean): string {
-      const first = mixed ? 'firstChild' : 'firstElementChild'
-      const next = mixed ? 'nextSibling' : 'nextElementSibling'
-      let s = `${base}.${first}`
-      for (let i = 0; i < idx; i++) s += `.${next}`
-      return s
+      // COMPACT key: one `/c<idx>` (childNodes walk) or `/e<idx>` (element walk)
+      // segment per tree level. The fully-expanded dotted walk grew by one
+      // segment per SIBLING, so building, hashing and prefix-splitting it cost
+      // O(position) per child and O(n^2) per template. `chainFromCaptured`
+      // renders the dotted form only for the part it emits. Mirrors the Rust
+      // `canonical_walk`.
+      return `${base}${mixed ? '/c' : '/e'}${idx}`
     }
 
     function childNodeAccessor(parentRef: string, idx: number, mixed: boolean): string {
@@ -5875,7 +5902,8 @@ export function transformJSX_JS(
       // Record what this (possibly shortened) expression stands for, so a caller
       // that turns it into a const (`resolveElementVar`) still keys on the
       // canonical walk rather than on the shortened text.
-      if (expr !== canonical) canonicalOf.set(expr, canonical)
+      // The compact key never equals an emitted expression, so always record it.
+      canonicalOf.set(expr, canonical)
       return expr
     }
 
