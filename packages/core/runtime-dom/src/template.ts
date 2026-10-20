@@ -476,6 +476,8 @@ export function _bindDirect(
 // app bundle for one line of eviction.)
 const TPL_CACHE_MAX = 1024
 const _tplCache = new Map<string, HTMLTemplateElement>()
+/** A cached template carrying its parsed root element (see `_tpl`). */
+type CachedTemplate = HTMLTemplateElement & { _root?: Element | null }
 
 /**
  * Compiler-emitted template instantiation.
@@ -791,6 +793,11 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     // bare valueless attribute and HTML_ATTR likewise, and neither string is
     // a substring of the other ("data-pyreon-hole" vs "data-pyreon-html").
     if (html.includes(HTML_ATTR)) stripMarkers(tpl.content, HTML_ATTR, _tplHtmlEls)
+    // Remember the root to clone. `buildTpl` runs once per ROW, and reading
+    // `tpl.content.firstElementChild` there costs two DOM getter calls per
+    // clone for a node that never changes once parsed (markers are stripped
+    // above, before this point). A JS field read replaces both.
+    ;(tpl as CachedTemplate)._root = tpl.content.firstElementChild
     // FIFO eviction — drop the oldest entry once we hit the cap. Map iteration
     // order is insertion order, so `keys().next()` is the oldest.
     if (_tplCache.size >= TPL_CACHE_MAX) _tplCache.delete(_tplCache.keys().next().value as string)
@@ -878,7 +885,10 @@ function buildTpl(
     }
   }
   // (adoption falls through to a normal clone on any verification bail)
-  const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
+  const root = (tpl as CachedTemplate)._root
+  const el = (root !== undefined ? root : tpl.content.firstElementChild)?.cloneNode(
+    true,
+  ) as HTMLElement
   const cleanup = bind(el)
   // A CLONE is not a consumption. Stated on this exit too so `_tplAdoptDidConsume()`
   // describes THIS call rather than whichever nested `_tpl` ran last inside
