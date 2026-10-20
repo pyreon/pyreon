@@ -35,6 +35,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Visitor } from 'oxc-parser'
 import { parseOxc } from './oxc-parse'
 import { foldNodeEnvProduction, islandCallOffsets, renameCompatJsxAttributes } from './ast-rewrite'
 import {
@@ -2223,7 +2224,7 @@ function injectSignalNames(code: string, moduleId: string): string {
  * @internal — exported for tests.
  */
 export function _reactiveCalleeStarts(code: string, moduleId: string): Set<number> | null {
-  let program: unknown
+  let program: ReturnType<typeof parseOxc>['program']
   try {
     const lang = /\.tsx?(?:$|\?)/.test(moduleId)
       ? moduleId.includes('.tsx')
@@ -2236,32 +2237,22 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
   } catch {
     return null
   }
+  // oxc's own Visitor walks only the fields its generated visitor keys name
+  // (no `Object.keys` per node), and dispatches on the one node type this
+  // needs. It also works on the default JSON-decoded AST, so the Bun / older
+  // Node path (no raw transfer) gets the same result.
   const out = new Set<number>()
-  const visit = (n: unknown): void => {
-    if (!n || typeof n !== 'object') return
-    if (Array.isArray(n)) {
-      for (const c of n) visit(c)
-      return
-    }
-    const node = n as { type?: unknown; callee?: { type?: string; name?: string; start?: number } }
-    if (typeof node.type !== 'string') return
-    if (
-      node.type === 'CallExpression' &&
-      node.callee?.type === 'Identifier' &&
-      (node.callee.name === 'signal' ||
-        node.callee.name === 'computed' ||
-        node.callee.name === 'effect') &&
-      typeof node.callee.start === 'number'
-    ) {
-      out.add(node.callee.start)
-    }
-    for (const key of Object.keys(node)) {
-      if (key === 'type' || key === 'start' || key === 'end') continue
-      const v = (node as Record<string, unknown>)[key]
-      if (v && typeof v === 'object') visit(v)
-    }
-  }
-  visit(program)
+  new Visitor({
+    CallExpression(node) {
+      const callee = node.callee
+      if (
+        callee.type === 'Identifier' &&
+        (callee.name === 'signal' || callee.name === 'computed' || callee.name === 'effect')
+      ) {
+        out.add(callee.start)
+      }
+    },
+  }).visit(program)
   return out
 }
 
