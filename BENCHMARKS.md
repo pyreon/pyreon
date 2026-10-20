@@ -227,7 +227,7 @@ Retained heap: **Pyreon 2.28 MB** · Solid 2.33 · Vue 2.95 · Svelte 2.98 · RH
 
 ## 7. Bundle size — the same keyed-table app per framework (gzip -9)
 
-Vanilla 3.6 KB · **Solid 7.5 KB 🥇** · Preact 10.6 · Svelte 16.0 · **Pyreon 16.6 (2.22×)** · Vue 27.0 · Octane 65.8 · React 69.6. Unchanged from yesterday. Pyreon packages alone: reactivity 7.6 KB · core 8.4 · runtime-dom 23.7 · router 15.9 (gzipped main entry).
+Vanilla 3.6 KB · **Solid 7.5 KB 🥇** · Preact 10.1 · Svelte 16.1 · **Pyreon 16.6 (2.21×)** · Vue 27.5 · Octane 53.9 · React 69.6 (2026-10-20, after #3920 made `<Suspense>` pay-per-use; the 2026-10-20 full run measured Pyreon 17.0 before it). Pyreon packages alone: reactivity 7.6 KB · core 8.4 · runtime-dom 23.7 · router 15.9 (gzipped main entry).
 
 ## 8. Reactivity core — vs Preact Signals and Solid
 
@@ -255,7 +255,7 @@ Median ns/op, one process per cell, 3 rounds × 10 windows, order reshuffled per
 | deep chain | 142,060 | 137,393 | **120,490 🥇** | 303,014 |
 | wide fan-out | 1,813 | **1,793 🥇** | 2,197 | 3,022 |
 
-**Honest read:** since 2026-09-24, #3892 (skip propagation with nothing to reach), #3895 (computed notifies marked with a field) and #3896 (skip empty effect cleanup) moved V8 diamond −26%, wide fan-out −24%, batch −15% and deep chain −17%. On V8 Pyreon wins effect propagation (1.32× vs Preact) and batching (1.42×) and still loses create (~5×), deep chains (1.89×), wide fan-out (1.38×) and diamond (1.13×). On JSC the diamond is now a tie with Preact and Pyreon wins fan-out (1.23×), batching (2.0×) and effect propagation (2.7×); it loses create and deep chains (1.14×). Signal creation stays bound by `Object.setPrototypeOf` (~47 of ~57 ns on V8); per-instance methods (+72 B per signal, ~40% slower `.set()` dispatch) and a bound-function variant (slower reads on JSC) were measured and declined on 2026-10-15. The **unbundled** column is still 10–20× slower on V8 because each dev-gate `process.env` read costs ~145 ns there.
+**Honest read:** since 2026-09-24, #3892 (skip propagation with nothing to reach), #3895 (computed notifies marked with a field) and #3896 (skip empty effect cleanup) moved V8 diamond −26%, wide fan-out −24%, batch −15% and deep chain −17%. On V8 Pyreon wins effect propagation (1.32× vs Preact) and batching (1.42×) and still loses create (~5×), deep chains (1.89×), wide fan-out (1.38×) and diamond (1.13×). On JSC the diamond is now a tie with Preact and Pyreon wins fan-out (1.23×), batching (2.0×) and effect propagation (2.7×); it loses create and deep chains (1.14×). **Deep chains, decomposed (2026-10-20):** the published row reads an UNOBSERVED chain (no effect at the tail). There Pyreon's write costs 256 ns per update against Preact's 28 ns, because Preact leaves unobserved computeds unsubscribed and validates them by version on read, while Pyreon keeps every computed subscribed and dirty-marks the whole chain. The read-side pull is close (918 vs 791 ns). With an effect at the tail, the shape apps actually render, both cascade and the gap is 1.44× (163 vs 113 µs per 100 updates). Reading through a `.value` prototype getter instead of `count()` was prototyped and measured at 139 vs 143 µs, so the callable API is not the cause. Signal creation stays bound by `Object.setPrototypeOf` (~47 of ~57 ns on V8); per-instance methods (+72 B per signal, ~40% slower `.set()` dispatch) and a bound-function variant (slower reads on JSC) were measured and declined on 2026-10-15. The **unbundled** column is still 10–20× slower on V8 because each dev-gate `process.env` read costs ~145 ns there.
 
 Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns) is slower than unbundled (172 ns); the fold should be neutral there.
 
@@ -317,7 +317,7 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 3. **Signal creation** — ~5× slower than Preact on both engines; on V8 also deep chains 1.89×, fan-out 1.38×, diamond 1.13×; on JSC deep chains 1.14×.
 4. **Charts line mounts vs uPlot** — 1.08–1.55× slower for 1k–100k points (main-thread time ties; the gap is outside JS); Chart.js with decimation leads at 1M points and 100k updates.
 5. **Hydration** — Vue 1.02× ahead on the total, 1.05× on the walk.
-6. **Bundle size** — 16.6 KB vs Solid 7.5 KB and Preact 10.6 KB for the same app (2026-09-24).
+6. **Bundle size** — 16.6 KB vs Solid 7.5 KB and Preact 10.1 KB for the same app (2026-10-20).
 7. **Router at 10 routes** (Hono), **validate** invalid-string (zod 1.19×) and several zod-c/arktype protocol cells (2026-09-24).
 8. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **http client creation**, **url-state integer parse** (1.14×), **form store setup** (1.4×), **table/virtual mount under happy-dom**.
 9. **Unbundled Node** — any process importing `lib/` without a bundler pays ~145 ns per dev-gate read.
