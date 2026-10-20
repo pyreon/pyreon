@@ -2289,7 +2289,18 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
  * @internal — exported for tests.
  */
 export function _maskStringsAndComments(code: string): string {
-  const out: string[] = []
+  // Built from SLICES (see `_maskSource`): the traversal is unchanged, but each
+  // masked run is emitted as one newline-preserving blank instead of one array
+  // entry per character. Every masked character follows the same rule —
+  // newline stays a newline, anything else becomes a space — so the output is
+  // identical; `${...}` interpolation bodies are copied through as code.
+  const parts: string[] = []
+  let last = 0
+  const mask = (from: number, to: number): void => {
+    if (from > last) parts.push(code.slice(last, from))
+    if (to > from) parts.push(code.slice(from, to).replace(/[^\n]/g, ' '))
+    last = to
+  }
   let i = 0
   const n = code.length
   while (i < n) {
@@ -2298,106 +2309,92 @@ export function _maskStringsAndComments(code: string): string {
 
     // Line comment `// ...`
     if (c === '/' && c1 === '/') {
-      while (i < n && code[i] !== '\n') {
-        out.push(' ')
-        i++
-      }
+      const start = i
+      while (i < n && code[i] !== '\n') i++
+      mask(start, i)
       continue
     }
-    // Block comment `/* ... */`
+    // Block comment `/* ... */` — newlines preserved so line numbers don't shift
     if (c === '/' && c1 === '*') {
-      out.push(' ', ' ')
+      const start = i
       i += 2
       while (i < n) {
         if (code[i] === '*' && code[i + 1] === '/') {
-          out.push(' ', ' ')
           i += 2
           break
         }
-        // Preserve newlines so line numbers don't shift
-        out.push(code[i] === '\n' ? '\n' : ' ')
         i++
       }
+      mask(start, i)
       continue
     }
     // String literal "..." or '...'
     if (c === '"' || c === "'") {
+      const start = i
       const quote = c
-      out.push(' ')
       i++
       while (i < n && code[i] !== quote) {
-        // Escape sequence — skip the next char too (handles `\"`, `\\`, etc.)
+        // Escape sequence — skip the next char too (handles `\"`, `\\`, and a
+        // line-continuation `\<LF>`, whose newline the mask preserves).
         if (code[i] === '\\' && i + 1 < n) {
-          // Preserve a newline (line-continuation `\<LF>`) as a newline.
-          out.push(' ', code[i + 1] === '\n' ? '\n' : ' ')
           i += 2
           continue
         }
         // Unterminated string (legacy parsers stop at newline) — break
         if (code[i] === '\n') break
-        out.push(' ')
         i++
       }
-      if (i < n && code[i] === quote) {
-        out.push(' ')
-        i++
-      }
+      if (i < n && code[i] === quote) i++
+      mask(start, i)
       continue
     }
     // Template literal `...` — preserve `${...}` interpolations as code
     if (c === '`') {
-      out.push(' ')
+      let start = i
       i++
       while (i < n && code[i] !== '`') {
         if (code[i] === '\\' && i + 1 < n) {
-          out.push(' ', code[i + 1] === '\n' ? '\n' : ' ')
           i += 2
           continue
         }
-        // `${...}` — keep the interpolation body as code (with nested
-        // brace tracking so we find the matching `}`).
+        // `${...}` — mask the template text up to and including `${`, keep the
+        // interpolation body as code (nested braces tracked), mask its `}`.
         if (code[i] === '$' && code[i + 1] === '{') {
-          out.push(' ', ' ')
           i += 2
+          mask(start, i)
           let depth = 1
           while (i < n && depth > 0) {
             if (code[i] === '{') {
               depth++
-              out.push(code[i] ?? ' ')
               i++
               continue
             }
             if (code[i] === '}') {
               depth--
               if (depth === 0) {
-                out.push(' ')
+                mask(i, i + 1)
                 i++
                 break
               }
-              out.push(code[i] ?? ' ')
               i++
               continue
             }
             // Inside `${}` — pass through as code (might contain `signal(` etc).
-            out.push(code[i] ?? ' ')
             i++
           }
+          start = i
           continue
         }
-        // Preserve newlines so line numbers don't shift.
-        out.push(code[i] === '\n' ? '\n' : ' ')
         i++
       }
-      if (i < n && code[i] === '`') {
-        out.push(' ')
-        i++
-      }
+      if (i < n && code[i] === '`') i++
+      mask(start, i)
       continue
     }
-    out.push(c ?? '')
     i++
   }
-  return out.join('')
+  if (last < n) parts.push(code.slice(last))
+  return parts.join('')
 }
 
 /**
@@ -2711,13 +2708,22 @@ function autoImportCanonicalPrimitives(
  *   - block comments `/* ... *​/`
  */
 function _maskSource(code: string, maskStrings: boolean): string {
-  const out: string[] = new Array(code.length)
+  // Built from SLICES: unmasked runs are copied whole and each masked run is
+  // blanked with one replace. The former shape wrote one single-character
+  // string per source character into an array and joined it — a full-source
+  // allocation storm on every masked file. Same output: a masked run keeps
+  // its newlines and turns every other UTF-16 unit into a space, so positions
+  // still align.
+  const parts: string[] = []
+  let last = 0
   let i = 0
   const n = code.length
 
   /** Blank out [from, to) while preserving newlines so positions still align. */
   const blank = (from: number, to: number): void => {
-    for (let j = from; j < to; j++) out[j] = code[j] === '\n' ? '\n' : ' '
+    if (from > last) parts.push(code.slice(last, from))
+    parts.push(code.slice(from, to).replace(/[^\n]/g, ' '))
+    last = to
   }
 
   while (i < n) {
@@ -2817,10 +2823,10 @@ function _maskSource(code: string, maskStrings: boolean): string {
       continue
     }
 
-    out[i] = c
     i++
   }
-  return out.join('')
+  if (last < n) parts.push(code.slice(last))
+  return parts.join('')
 }
 
 /**
