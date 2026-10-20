@@ -124,7 +124,9 @@ export function _setChild(node: Element, value: unknown): void {
     // short-circuits same-value data writes, so an adopted row whose SSR text
     // already matches pays nearly nothing. Fresh mounts have no children and
     // take the textContent branch unchanged.
-    const fc = node.firstChild
+    // On a fresh clone the compiled cell is empty, so the adoption probe is
+    // skipped (`textContent =` would replace any children regardless).
+    const fc = _freshBind ? null : node.firstChild
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
       ;(fc as Text).data = value as string
     } else {
@@ -336,11 +338,14 @@ export function _bindText(
     // reading `node.data` back saves a DOM read (and the string it returns) on
     // every update. `null` until the first call, which reads the node once so a
     // hydration-adopted node whose server text already matches is not rewritten.
-    let written: string | null = null
+    // `undefined` = the first call ran on a FRESH clone, where the current text
+    // is the template placeholder and nothing needs preserving: write
+    // unconditionally instead of reading the node back.
+    let written: string | null | undefined = null
     const textUpdate = () => {
       const v = source._v
       const next = v == null || v === false ? '' : String(v as string | number)
-      if (written === null) written = node.data
+      if (written === null) written = _freshBind ? undefined : node.data
       if (next !== written) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
@@ -390,7 +395,7 @@ export function _bindText(
   const fn = resolveSlowCaller(source, caller, receiver)
   let core: PolyTextCore | null = null
   // Last string written — same read-back saving as the fast path above.
-  let written: string | null = null
+  let written: string | null | undefined = null
   const disposeEffect = renderEffect(() => {
     const v = fn()
     if (core !== null) {
@@ -398,7 +403,7 @@ export function _bindText(
       return
     }
     const next = v == null || v === false ? '' : String(v as string | number)
-    if (written === null) written = node.data
+    if (written === null) written = _freshBind ? undefined : node.data
     if (next !== written) {
       if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
         const parent = node.parentNode
@@ -478,6 +483,16 @@ const TPL_CACHE_MAX = 1024
 const _tplCache = new Map<string, HTMLTemplateElement>()
 /** A cached template carrying its parsed root element (see `_tpl`). */
 type CachedTemplate = HTMLTemplateElement & { _root?: Element | null }
+
+// True ONLY while `buildTpl` runs a bind against a FRESH CLONE (never during an
+// adoption bind). Two per-row DOM reads exist purely so a hydration-ADOPTED
+// node is not rewritten — `_setChild`'s `firstChild` probe and a text
+// binding's first `node.data` read. On a fresh clone the answers are known
+// (the compiled cell is empty, the text is the template placeholder), so
+// those reads are skipped. Saved/restored around every bind (frame discipline
+// — binds nest through child templates), so it can never leak past the
+// synchronous bind into a later reactive re-run.
+let _freshBind = false
 
 /**
  * Compiler-emitted template instantiation.
@@ -870,12 +885,15 @@ function buildTpl(
         // remaining holes on the plain mount path.
         const prevHoles = _tplHoleCursors
         _tplHoleCursors = holes
+        const prevFresh = _freshBind
+        _freshBind = false // an ADOPTED node holds server content — keep every read
         let cleanup: (() => void) | null
         try {
           cleanup = bind(target as HTMLElement)
           if (holes !== null) sweepHoles(holes)
         } finally {
           _tplHoleCursors = prevHoles
+          _freshBind = prevFresh
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -889,7 +907,14 @@ function buildTpl(
   const el = (root !== undefined ? root : tpl.content.firstElementChild)?.cloneNode(
     true,
   ) as HTMLElement
-  const cleanup = bind(el)
+  const prevFresh = _freshBind
+  _freshBind = true
+  let cleanup: (() => void) | null
+  try {
+    cleanup = bind(el)
+  } finally {
+    _freshBind = prevFresh
+  }
   // A CLONE is not a consumption. Stated on this exit too so `_tplAdoptDidConsume()`
   // describes THIS call rather than whichever nested `_tpl` ran last inside
   // `bind` — the reading the `<For>` row loop makes. Skipped entirely when no
