@@ -17,25 +17,35 @@ import { sanitizeStyle } from '../sanitize'
  * `sanitizeNumber`, which cannot produce a quote at all.
  */
 
+/**
+ * ONE sanitized `prop:value` declaration, or `''` when the value is absent or
+ * nothing survives sanitization. `styleDecls` and `cssDecl` both go through
+ * it, so there is still exactly one sanitizing path.
+ *
+ * String values can be document-author / CMS controlled (column `width`,
+ * `align`, `gap`, …) and land inside a `style="…"` attribute. Without
+ * sanitization `width: 'x"><script>…'` breaks out of the attribute → XSS in
+ * the produced HTML (emailed / served). `sanitizeStyle` strips
+ * `" < > ; ( ) \ '` + css injection vectors. Numbers are structurally safe,
+ * EXCEPT that `NaN`/`Infinity` are numbers too and are not valid CSS — drop
+ * them.
+ */
+function declOf(k: string, v: string | number | undefined): string {
+  if (v == null || v === '') return ''
+  const safeV =
+    typeof v === 'number' ? (Number.isFinite(v) ? `${v}px` : '') : sanitizeStyle(String(v))
+  if (safeV === '') return ''
+  return `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${safeV}`
+}
+
 /** Raw `prop:value` declarations, semicolon-joined, with no attribute wrapper. */
 export function styleDecls(styles: Record<string, string | number | undefined>): string {
-  const parts: string[] = []
-  for (const [k, v] of Object.entries(styles)) {
-    if (v != null && v !== '') {
-      const prop = k.replace(/([A-Z])/g, '-$1').toLowerCase()
-      // String values can be document-author / CMS controlled (column
-      // `width`, `align`, `gap`, …) and land inside a `style="…"`
-      // attribute. Without sanitization `width: 'x"><script>…'` breaks
-      // out of the attribute → XSS in the produced HTML (emailed /
-      // served). `sanitizeStyle` strips `" < > ; ( ) \ '` + css injection
-      // vectors. Numbers are structurally safe, EXCEPT that `NaN`/`Infinity`
-      // are numbers too and are not valid CSS — drop them.
-      const safeV =
-        typeof v === 'number' ? (Number.isFinite(v) ? `${v}px` : '') : sanitizeStyle(String(v))
-      if (safeV !== '') parts.push(`${prop}:${safeV}`)
-    }
+  let out = ''
+  for (const k of Object.keys(styles)) {
+    const decl = declOf(k, styles[k])
+    if (decl !== '') out = out === '' ? decl : `${out};${decl}`
   }
-  return parts.join(';')
+  return out
 }
 
 /** A full ` style="…"` attribute, or `''` when nothing survived sanitization. */
@@ -51,7 +61,9 @@ export function styleStr(styles: Record<string, string | number | undefined>): s
  * survives sanitization, so it drops cleanly out of a template literal.
  */
 export function cssDecl(prop: string, value: string | number | undefined): string {
-  const decl = styleDecls({ [prop]: value })
+  // Called per table cell, usually with an unset value: compute the single
+  // declaration directly instead of building a one-key record for styleDecls.
+  const decl = declOf(prop, value)
   return decl === '' ? '' : `${decl};`
 }
 
