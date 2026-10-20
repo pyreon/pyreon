@@ -1512,7 +1512,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // needs no sanitizer. Each false positive pinned a ~1.9 kB gz
       // side-effect import into a module that never used the prop.
       // (`dangerouslySetInnerHTML` cannot match: its `I` is uppercase.)
-      if (/(?<![.\w$])innerHTML\s*(?:=(?!=)|:)/.test(_maskStringsAndComments(code))) {
+      // `includes` first: masking only blanks characters, so a module without
+      // the substring cannot match, and the mask is a full-source pass.
+      if (
+        code.includes('innerHTML') &&
+        /(?<![.\w$])innerHTML\s*(?:=(?!=)|:)/.test(_maskStringsAndComments(code))
+      ) {
         // APPENDED, not prepended: an ESM import is hoisted wherever it
         // sits, and a prepend shifted every line the compiler's source map
         // describes by one — a frame then resolved to the WRONG statement.
@@ -2103,15 +2108,29 @@ function injectSignalNames(code: string, moduleId: string): string {
   // Without this, user code like `const docs = \`effect(() => x)\`` would
   // get `, { __sourceLocation: ... }` injected INSIDE the template literal,
   // corrupting the help-text content at runtime.
+  // Both regexes below need a literal `signal(` / `computed(` / `effect(`, and
+  // masking only blanks characters — a module without any of them cannot
+  // match, so skip the full-source mask (and the AST confirmation below).
+  if (!code.includes('signal(') && !code.includes('computed(') && !code.includes('effect(')) {
+    return code
+  }
   const masked = _maskStringsAndComments(code)
   // The mask cannot see JSX TEXT (`<Code>effect()</Code>` in a demo), and a
   // character scanner cannot tell a JSX `<` from less-than reliably. So every
   // regex hit is CONFIRMED against the AST: only a real call whose callee is
   // the matched identifier gets the injection. `null` (the file did not parse)
   // keeps the regex-only behaviour — the pre-existing conservative default.
-  const realCallees = _reactiveCalleeStarts(code, moduleId)
-  const isRealCall = (tokenStart: number): boolean =>
-    realCallees === null || realCallees.has(tokenStart)
+  //
+  // The parse is LAZY: it runs on the first regex hit that needs confirming,
+  // so a module with no `signal(`/`computed(`/`effect(` text (~80% of a real
+  // app's .tsx files) never pays a second full parse. That parse cost about
+  // 3x the whole native JSX compile across a 775-file corpus; deferring it
+  // changes no output, because `isRealCall` is only ever asked about a hit.
+  let realCallees: Set<number> | null | undefined
+  const isRealCall = (tokenStart: number): boolean => {
+    if (realCallees === undefined) realCallees = _reactiveCalleeStarts(code, moduleId)
+    return realCallees === null || realCallees.has(tokenStart)
+  }
 
   // Pass 1: bound forms — `const X = (signal|computed|effect)(…)`.
   // Extract `X` as the debug name + the reactive primitive kind.
@@ -2420,7 +2439,8 @@ export function _offsetToLineCol(
 }
 
 function injectHmr(code: string, moduleId: string): string {
-  const hasSignals = SIGNAL_PREFIX_RE.test(code)
+  // `includes` first — the regex needs the literal `signal` and scans line by line.
+  const hasSignals = code.includes('signal') && SIGNAL_PREFIX_RE.test(code)
   SIGNAL_PREFIX_RE.lastIndex = 0
 
   const hasComponentExport = EXPORT_COMPONENT_RE.test(code)
@@ -2546,19 +2566,24 @@ function autoImportCanonicalPrimitives(
   // are strings. Masking them blinds `_collectImportedNames` and the
   // extend-existing-import path, so the pass re-injects names the file already
   // imports and emits a duplicate import line.
-  const maskedForUsage = _maskCommentsAndStrings(code)
-  const masked = _maskComments(code)
-
+  //
+  // Masking only BLANKS characters, so a tag the raw source does not contain
+  // cannot appear in the masked source either: test the raw text first and
+  // skip both masks for the (common) file that uses none of the names.
   // Build alternation matching all configured names — single regex pass.
   const allNames = Array.from(nameToSource.keys())
   const nameAlt = allNames.join('|')
   const jsxTagRe = new RegExp(`<(${nameAlt})(?=[\\s/>])`, 'g')
+  if (!jsxTagRe.test(code)) return code
+  jsxTagRe.lastIndex = 0
+  const maskedForUsage = _maskCommentsAndStrings(code)
   const used = new Set<string>()
   let m: RegExpExecArray | null
   while ((m = jsxTagRe.exec(maskedForUsage)) !== null) {
     used.add(m[1]!)
   }
   if (used.size === 0) return code
+  const masked = _maskComments(code)
 
   // Find names already imported (any source). The auto-import respects
   // existing imports — we don't shadow a user's local symbol or
@@ -3196,6 +3221,14 @@ function scanSignalExports(
   registry: Map<string, Set<string>>,
 ): void {
   const normalizedId = normalizeModuleId(moduleId)
+  // Every classic pattern below needs the literal `signal` or `computed`, and
+  // the Plain Mode ones only run for a plain module — so a module with none of
+  // them exports no signals. Same outcome as falling through: drop any stale
+  // registry entry (the module may have just been edited).
+  if (!code.includes('signal') && !code.includes('computed') && !detectPlain(code)) {
+    registry.delete(normalizedId)
+    return
+  }
   let match: RegExpExecArray | null
   const signals = new Set<string>()
 
