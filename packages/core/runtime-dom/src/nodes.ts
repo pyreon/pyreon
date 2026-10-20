@@ -861,7 +861,8 @@ function forLisReorder(
  */
 /**
  * SSR-block adoption context for a hydrating `<For>` — parsed from the
- * `<!--pyreon-for--> <!--k:KEY-->row… <!--/pyreon-for-->` markers by
+ * `<!--pyreon-for--> bare-row… <!--k:KEY-->row… <!--/pyreon-for:KEYS-->`
+ * block by
  * hydrate.ts and handed to `mountFor` via the one-shot slot below. When the
  * client's first items align 1:1 (same keys, same order) with the SSR rows,
  * each row's vnode is HYDRATED against its existing DOM range instead of
@@ -1029,16 +1030,33 @@ export function mountFor<T>(
       container.insertBefore(ph, before)
       cache.set(key, { anchor: ph, cleanup: cl, pos, end: null, seen: 0 })
     } else {
-      // Everything mounted for this entry sits in [firstMounted..lastMounted];
-      // end stays null for the dominant single-node case.
-      const lastMounted = before ? before.previousSibling : container.lastChild
-      cache.set(key, {
-        anchor: firstMounted,
-        cleanup: cl,
-        pos,
-        end: lastMounted && lastMounted !== firstMounted ? lastMounted : null,
-        seen: 0,
-      })
+      // Everything mounted for this entry sits in [firstMounted..lastMounted].
+      const lastMounted = (before ? before.previousSibling : container.lastChild) as ChildNode
+      if (lastMounted === firstMounted && firstMounted.nodeType === 1) {
+        // The dominant shape: a single element. Nothing inside a row can
+        // replace the row's own root element, so it is a stable anchor and the
+        // range needs no end.
+        cache.set(key, { anchor: firstMounted, cleanup: cl, pos, end: null, seen: 0 })
+      } else {
+        // Any other shape can REPLACE its own boundary nodes while mounted: a
+        // reactive accessor (`() => …`, or a component returning one — the
+        // documented reactive-conditional pattern) swaps its first node on
+        // every re-run, and a polymorphic text binding swaps its text node for
+        // a subtree. An anchor taken from the mounted content then goes stale,
+        // and the next reorder moves the DETACHED old node back into the list
+        // while the live content is stranded in place. So the range is
+        // delimited by nodes nothing inside it can replace: a start comment,
+        // plus an end comment when the row ends in a text node (every other
+        // boundary a reactive region leaves is its own stable trailing marker).
+        const start = document.createComment('')
+        container.insertBefore(start, firstMounted)
+        let end: Node = lastMounted
+        if (lastMounted.nodeType === 3) {
+          end = document.createComment('')
+          container.insertBefore(end, before)
+        }
+        cache.set(key, { anchor: start, cleanup: cl, pos, end, seen: 0 })
+      }
     }
     cleanupCount++
   }
@@ -1139,6 +1157,7 @@ export function mountFor<T>(
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
+      entry.end?.parentNode?.removeChild(entry.end)
       cache.delete(key)
     }
   }
@@ -1195,6 +1214,7 @@ export function mountFor<T>(
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
+      entry.end?.parentNode?.removeChild(entry.end)
       cache.delete(key)
     }
 
@@ -1537,6 +1557,7 @@ export function mountFor<T>(
         entry.cleanup()
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
+      entry.end?.parentNode?.removeChild(entry.end)
     }
     cache = new Map()
     cleanupCount = 0

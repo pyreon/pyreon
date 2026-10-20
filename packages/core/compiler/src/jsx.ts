@@ -2615,8 +2615,9 @@ export function transformJSX_JS(
    * by={B}>{(p) => <eligible-el>}</For>` child previously bailed the WHOLE
    * parent template to the h() walk (component child). It now emits ONE hole:
    * `_ssrForKeyed(E, B, (p) => <item _ssr>)` — the runtime helper produces the
-   * SAME `<!--pyreon-for-->` / per-item `<!--k:KEY-->` / `<!--/pyreon-for-->`
-   * bytes as `renderForItems`, and the item call is built by the SAME
+   * SAME `<!--pyreon-for-->` … `<!--/pyreon-for:KEYS-->` bytes as
+   * `renderForItems` (every fused row is a single element, so all keys ride
+   * on the closing marker), and the item call is built by the SAME
    * serializer (`buildSsrBuf`, recursed mode so wrapped exprs keep their
    * `<!--$-->` markers) that guarantees `_ssr(...)` ≡ `renderNode(<el>)`.
    * Conditions are EXACT — any other prop (`fallback`, spreads), a non-arrow

@@ -88,7 +88,7 @@ You do NOT need this call. `@pyreon/store` publishes its registry setter on a `g
 - **No reactivity.** Signal accessors are snapshotted at render time. No effects are created on the server. `useHead`, `useStore`, and similar APIs run their setup once and read the resulting value.
 - **HTML escape + URL sanitization.** All text content is escaped. URL attributes (`href`, `src`, `action`, `formaction`) reject `javascript:` and `data:` URIs by default.
 - **Event handlers omitted.** `on*` props are stripped from the output — the server can't bind them. Hydration on the client wires them up.
-- **`<For>` key markers** (`<!--k:KEY-->`) are URL-encoded so user-controlled keys cannot break out of the HTML comment. Companion `decodeKeyFromMarker(comment)` helper available for hydration / devtools consumers.
+- **`<For>` key markers** (the key list on `<!--/pyreon-for:k0 k1 …-->` for single-element rows, `<!--k:KEY-->` per row otherwise) are URL-encoded so user-controlled keys cannot break out of the HTML comment. Companion `decodeKeyFromMarker(comment)` helper available for hydration / devtools consumers.
 - **Compiler-emitted reactive props** are resolved via `makeReactiveProps` before each component invocation — parity with the CSR mount.ts path. SSR-rendered HTML matches what the client would render.
 
 ## When to use this directly

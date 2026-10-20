@@ -741,13 +741,31 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
     // when the For COMPONENT runs, which flips `props.each` to the resolved
     // array on the re-emitted ForSymbol vnode. Accept both forms.
     const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
+    // Same block shape as `renderForItems` (see `isSingleElementRow`) — the two
+    // must agree byte for byte, or a streamed page hydrates differently.
+    // Kept as a list (not one concatenated string) so the closing marker can
+    // be enqueued key by key — a single multi-KB write would blow through the
+    // stream's chunk cap on a large list.
+    const leadKeys: string[] = []
+    let marked = false
     for (const item of items) {
       const key = by(item)
-      _count('runtime-server.for.keyMarker')
-      enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
-      await streamNode(children(item) as VNodeChild, enqueue)
+      const row = children(item)
+      if (!marked && isSingleElementRow(row)) {
+        leadKeys.push(safeKeyForMarker(key))
+      } else {
+        marked = true
+        _count('runtime-server.for.keyMarker')
+        enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
+      }
+      await streamNode(row as VNodeChild, enqueue)
     }
-    enqueue('<!--/pyreon-for-->')
+    if (leadKeys.length === 0) enqueue('<!--/pyreon-for-->')
+    else {
+      enqueue(`<!--/pyreon-for:${leadKeys[0]}`)
+      for (let i = 1; i < leadKeys.length; i++) enqueue(` ${leadKeys[i]}`)
+      enqueue('-->')
+    }
     return
   }
 
@@ -1266,29 +1284,66 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
   return renderElement(vnode)
 }
 
-/** Sequential keyed-item walk for `<For>` — same continuation shape as renderChildList. */
+/**
+ * `<For>` SSR block shape. Rows that render exactly ONE element need no
+ * per-row marker — the element IS the row boundary — so a block's LEADING run
+ * of single-element rows is emitted bare and its keys travel once, on the
+ * CLOSING marker: `<!--/pyreon-for:k0 k1 …-->`. From the first row that is not
+ * a single element (component, fragment, accessor, text), that row and every
+ * later one keep the explicit `<!--k:KEY-->` marker hydration needs to find
+ * multi-node boundaries. Rows are still rendered one at a time in source order
+ * (row callback, then the row's own render), exactly as the client mounts
+ * them, and the string and stream renderers emit identical bytes.
+ *
+ * Hydration (`@pyreon/runtime-dom`) still verifies EVERY key before adopting
+ * anything. A typical keyed table becomes half as many DOM nodes to parse and
+ * walk and ~10% less HTML. Keys are `safeKeyForMarker`-encoded (`[\w.:]` or
+ * percent-escaped), so the space separator can never occur inside one.
+ */
+function isSingleElementRow(row: unknown): boolean {
+  return row !== null && typeof row === 'object' && typeof (row as VNode).type === 'string'
+}
+
+function forCloseMarker(leadKeys: string | null): string {
+  return leadKeys === null ? '<!--/pyreon-for-->' : `<!--/pyreon-for:${leadKeys}-->`
+}
+
+/** Sequential keyed-item walk for `<For>` — same continuation shape as renderChildList.
+ *  `leadKeys` accumulates the keys of the leading bare rows (null = none yet);
+ *  `marked` flips on the first row that needs an explicit marker. */
 function renderForItems(
   items: readonly unknown[],
   by: (item: unknown) => unknown,
   children: (item: unknown) => unknown,
   start: number,
   acc: string,
+  leadKeys: string | null = null,
+  marked = false,
 ): MaybeAsync {
   for (let i = start; i < items.length; i++) {
     const item = items[i]
     const key = by(item)
-    _count('runtime-server.for.keyMarker')
-    acc += `<!--k:${safeKeyForMarker(key)}-->`
-    const r = renderNode(children(item) as VNodeChild)
+    const row = children(item)
+    if (!marked && isSingleElementRow(row)) {
+      const k = safeKeyForMarker(key)
+      leadKeys = leadKeys === null ? k : `${leadKeys} ${k}`
+    } else {
+      marked = true
+      _count('runtime-server.for.keyMarker')
+      acc += `<!--k:${safeKeyForMarker(key)}-->`
+    }
+    const r = renderNode(row as VNodeChild)
     if (typeof r === 'string') {
       acc += r
     } else {
       const next = i + 1
       const soFar = acc
-      return r.then((s) => renderForItems(items, by, children, next, soFar + s))
+      const lk = leadKeys
+      const mk = marked
+      return r.then((s) => renderForItems(items, by, children, next, soFar + s, lk, mk))
     }
   }
-  return `${acc}<!--/pyreon-for-->`
+  return acc + forCloseMarker(leadKeys)
 }
 
 function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
@@ -1835,7 +1890,7 @@ export function _ssrItem(
  *
  * BYTE-IDENTICAL to the h() path's `renderNode(h(For, { each, by }, cb))` →
  * `renderForItems` route: same `<!--pyreon-for-->` / `<!--/pyreon-for-->`
- * brackets, same per-item `<!--k:KEY-->` markers (`safeKeyForMarker`), same
+ * brackets, same key list on the closing marker (`safeKeyForMarker`), same
  * item bytes (the compiler builds `item` from the SAME serializer that
  * guarantees `_ssr(...)` ≡ `renderNode(<el>)`; `holeToString` unwraps the
  * `RawHtml` exactly as `renderNode` would). `each` may be an accessor (the
@@ -1863,10 +1918,15 @@ function _ssrForKeyedFrom(
   item: (item: unknown) => unknown,
   start: number,
   acc: string,
+  keys: string | null = null,
 ): MaybeAsync {
+  // The compiler fuses ONLY a single eligible DOM element per row, so every row
+  // is a leading bare row in `renderForItems`' terms: no per-row marker, keys
+  // on the closing marker — byte-identical to the h() path.
   for (let i = start; i < items.length; i++) {
     const x = items[i]
-    acc += `<!--k:${safeKeyForMarker(by(x))}-->`
+    const k = safeKeyForMarker(by(x))
+    keys = keys === null ? k : `${keys} ${k}`
     const r = item(x)
     if (typeof r === 'string') {
       acc += r
@@ -1877,12 +1937,13 @@ function _ssrForKeyedFrom(
       // resume after it, mirroring `renderForItems`' continuation shape.
       const next = i + 1
       const soFar = acc
+      const ks = keys
       return (r as Promise<unknown>).then((s) =>
-        _ssrForKeyedFrom(items, by, item, next, soFar + holeToString(s)),
+        _ssrForKeyedFrom(items, by, item, next, soFar + holeToString(s), ks),
       )
     }
   }
-  return `${acc}<!--/pyreon-for-->`
+  return acc + forCloseMarker(keys)
 }
 
 /** Shared lean concat: `+=` over pre-stringified holes (string / RawHtml /

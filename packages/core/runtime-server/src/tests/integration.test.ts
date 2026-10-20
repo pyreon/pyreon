@@ -77,7 +77,7 @@ describe('SSR integration — renderToString', () => {
     })
     const html = await renderToString(vnode)
     expect(html).toContain('<!--pyreon-for-->')
-    expect(html).toContain('<!--/pyreon-for-->')
+    expect(html).toContain('<!--/pyreon-for:1 2 3-->')
     expect(html).toContain('<li>A</li>')
     expect(html).toContain('<li>B</li>')
     expect(html).toContain('<li>C</li>')
