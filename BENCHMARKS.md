@@ -285,9 +285,9 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 | form (re-render count) | RHF, Formik | 0 re-renders / 10 keystrokes (RHF 0, Formik 10) | — |
 | query ⚠ happy-dom | react-query (same core) | data change → DOM 5.3×; 1 vs 8 derivations | mount 🤝 |
 | virtual ⚠ happy-dom | react-virtual (same core) | scroll → DOM 1.2× | **mount 10k list 1.1× slower** (was 1.2×; #3891) |
-| virtual, real Chromium (`--scenario virtual`) | react-virtual (same core), memoized rows | **mount 10k list 1.09–1.13× faster**, unmount 1.8–2.1× faster | **jump to row 5,000 1.13–1.41× slower, 60 small scroll steps 1.03–1.08× slower** (range over four sessions) — happy-dom had the mount backwards |
+| virtual, real Chromium (`--scenario virtual`) | react-virtual (same core), memoized rows | **mount 10k list 1.13–1.17× faster**, **jump to row 5,000 1.09–1.15× faster**, **60 small scroll steps 1.11–1.12× faster**, unmount 2.4–2.8× faster (2026-10-20, after #3921's static text fusion — jump had been 1.13–1.41× slower, scroll 1.03–1.08× slower) | — happy-dom had the mount backwards |
 | table ⚠ happy-dom | react-table (same core) | single-cell update 1.6× vs memoized rows at 100 (🤝 at 1,000), 12.2–22.3× vs naive | **mount 1.5–2.0× slower, replace 1.2×, sort 2.2× slower than memoized rows** |
-| table, real Chromium | react-table (same core), memoized rows | single-cell update 1.07× | **mount 1.15×, replace 1.07×, sort 1.22×, unmount 1.44× slower** — sort re-renders every cell on purpose (a row-number cell must renumber); memoized React rows skip them |
+| table, real Chromium | react-table (same core), memoized rows | replace 1.14×, sort 1.08×, unmount 1.52× faster; single-cell update 🤝 (2026-10-20 full run, after #3913–#3917) | **mount 1.03× slower** |
 | toast | react-hot-toast, sonner | headless 2.1–3.1×; ⚠ happy-dom commit create/update/dismiss 18.6–27×; cold create 2.3× vs sonner | sonner excluded from commit rows (no render under happy-dom) |
 | charts engine | ECharts 6.1 SSR | spec → SVG 7.5× (bars 1k), 7.6× (bars 10k), 8.0× (line 10k) | — |
 | charts wrapper ⚠ happy-dom | echarts-for-react | update 10.0×, dispose 1.9× | mount 🤝 |
