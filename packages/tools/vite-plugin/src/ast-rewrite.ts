@@ -8,7 +8,7 @@
  * (zero's own define key) became `"(      "production")"` — invalid JavaScript.
  * The rule: find the node with the parser, replace by its [start, end) range.
  */
-import { parseSync } from 'oxc-parser'
+import { parseOxc } from './oxc-parse'
 
 type Lang = 'js' | 'jsx' | 'ts' | 'tsx'
 
@@ -29,7 +29,7 @@ interface Node {
 
 function parse(code: string, id: string, lang: Lang): Node | null {
   try {
-    const r = parseSync(id, code, { sourceType: 'module', lang, preserveParens: false })
+    const r = parseOxc(id, code, { sourceType: 'module', lang, preserveParens: false })
     return r.errors.length > 0 ? null : (r.program as unknown as Node)
   } /* v8 ignore next 3 -- oxc's parseSync reports problems via `errors` and does not throw; this is a defensive net so a parser crash can never fail a build. */ catch {
     return null

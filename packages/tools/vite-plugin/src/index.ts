@@ -35,7 +35,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseSync } from 'oxc-parser'
+import { parseOxc } from './oxc-parse'
 import { foldNodeEnvProduction, islandCallOffsets, renameCompatJsxAttributes } from './ast-rewrite'
 import {
   detectPlain,
@@ -2230,7 +2230,7 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
         ? 'tsx'
         : 'ts'
       : 'jsx'
-    const r = parseSync(moduleId, code, { sourceType: 'module', lang })
+    const r = parseOxc(moduleId, code, { sourceType: 'module', lang })
     if (r.errors.length > 0) return null
     program = r.program
   } catch {
