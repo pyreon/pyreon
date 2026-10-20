@@ -21,10 +21,15 @@ function resolveColumn(col: string | TableColumn): TableColumn {
  * line break `<br>` (the only line break a table cell supports).
  */
 function mdTableCell(value: string): string {
+  // Most cells are plain text — one test skips both replace passes.
+  if (!MD_CELL_SPECIAL_RE.test(value)) return value
   // Escape FIRST (covers `\`, `|`, raw HTML), then insert the only markup
   // we emit ourselves — the `<br>` line break.
   return mdEscapeInline(value).replace(/\r\n|\r|\n/g, '<br>')
 }
+
+/** Every character `mdTableCell` rewrites: the inline-escape set plus line breaks. */
+const MD_CELL_SPECIAL_RE = /[\\`*_~[\]<>&|\r\n]/
 
 /**
  * Escape user text for inline Markdown. Every ASCII character that can

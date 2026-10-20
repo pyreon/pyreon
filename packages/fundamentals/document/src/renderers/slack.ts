@@ -27,6 +27,8 @@ interface SlackBlock {
  * entity-encoded.
  */
 function mrkdwnEscape(text: string): string {
+  // Plain text (the common case) has none of the three — skip all passes.
+  if (!/[&<>]/.test(text)) return text
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
