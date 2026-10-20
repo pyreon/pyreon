@@ -7916,19 +7916,44 @@ impl TemplateBuilder {
         if let Some(exact) = self.captured_refs.get(canonical) {
             return (exact.clone(), 0);
         }
-        // Walk prefixes longest-first, splitting on '.' from the right.
-        let mut dot = canonical.rfind('.');
-        while let Some(d) = dot {
-            if d == 0 {
-                break;
+        // `canonical` is a COMPACT walk (see `canonical_walk`): `root/c0/e37`.
+        // The candidates are the walk's structural prefixes, longest first —
+        // the same set and order the former dotted string split produced:
+        // earlier siblings at the deepest level (nearest first), then that
+        // level's parent, then up. `levels` collects the walk below the
+        // current scan point so the shortened expression can be rendered.
+        let mut levels: Vec<(bool, usize)> = Vec::new();
+        let mut cur = canonical;
+        while let Some(slash) = cur.rfind('/') {
+            let parent = &cur[..slash];
+            let seg = &cur[slash + 1..];
+            let mixed = seg.as_bytes()[0] == b'c';
+            let k: usize = seg[1..].parse().unwrap_or(0);
+            let mut j = k;
+            while j > 0 {
+                j -= 1;
+                let key = format!("{}/{}{}", parent, if mixed { 'c' } else { 'e' }, j);
+                if let Some(held) = self.captured_refs.get(&key) {
+                    let mut out = held.clone();
+                    let next = if mixed { ".nextSibling" } else { ".nextElementSibling" };
+                    for _ in 0..(k - j) {
+                        out.push_str(next);
+                    }
+                    let hops = (k - j) + render_levels(&mut out, &levels);
+                    return (out, hops);
+                }
             }
-            if let Some(held) = self.captured_refs.get(&canonical[..d]) {
-                let suffix = &canonical[d..];
-                return (format!("{}{}", held, suffix), count_sibling_hops(suffix));
+            levels.push((mixed, k));
+            if let Some(held) = self.captured_refs.get(parent) {
+                let mut out = held.clone();
+                let hops = render_levels(&mut out, &levels);
+                return (out, hops);
             }
-            dot = canonical[..d].rfind('.');
+            cur = parent;
         }
-        (canonical.to_string(), count_sibling_hops(canonical))
+        let mut out = cur.to_string();
+        let hops = render_levels(&mut out, &levels);
+        (out, hops)
     }
 
     /// Emit a phase-1 capture: `const <var> = <expr>`, and record that the var
@@ -7952,12 +7977,6 @@ impl TemplateBuilder {
         let p = self.next_placeholder_var();
         self.capture_ref(p, &expr, canonical)
     }
-}
-
-/// Count `.nextSibling` / `.nextElementSibling` steps in a walk expression.
-/// Mirrors `jsx.ts:countSiblingHops`.
-fn count_sibling_hops(walk: &str) -> usize {
-    walk.matches(".next").count()
 }
 
 enum FlatChild<'a> {
@@ -9345,14 +9364,28 @@ fn emit_static_text_child(
 /// expression is ultimately emitted for it. `base` must already be canonical.
 /// Mirrors `jsx.ts:canonicalWalk`.
 fn canonical_walk(base: &str, idx: usize, mixed: bool) -> String {
-    let first = if mixed { "firstChild" } else { "firstElementChild" };
-    let next = if mixed { "nextSibling" } else { "nextElementSibling" };
-    let mut s = format!("{}.{}", base, first);
-    for _ in 0..idx {
-        s.push('.');
-        s.push_str(next);
+    // COMPACT key: one `/c<idx>` (childNodes walk) or `/e<idx>` (element walk)
+    // segment per tree level. The fully-expanded dotted walk grew by one
+    // segment per SIBLING, so building, hashing and prefix-splitting it cost
+    // O(position) per child and O(n^2) per template (an 800-row literal table
+    // compiled in 14ms). `chain_from_captured` renders the dotted form only for
+    // the part it actually emits.
+    format!("{}/{}{}", base, if mixed { 'c' } else { 'e' }, idx)
+}
+
+/// Append the dotted walk for `levels` (outermost LAST — they were collected
+/// while climbing) to `out`; returns the sibling hops it added.
+fn render_levels(out: &mut String, levels: &[(bool, usize)]) -> usize {
+    let mut hops = 0;
+    for &(mixed, k) in levels.iter().rev() {
+        out.push_str(if mixed { ".firstChild" } else { ".firstElementChild" });
+        let next = if mixed { ".nextSibling" } else { ".nextElementSibling" };
+        for _ in 0..k {
+            out.push_str(next);
+        }
+        hops += k;
     }
-    s
+    hops
 }
 
 /// Build the shortest expression for child `idx` of `parent_ref`, chaining off
@@ -9381,9 +9414,8 @@ fn child_node_accessor_tb(
         tb.canonical_of.insert(indexed.clone(), canonical);
         return indexed;
     }
-    if expr != canonical {
-        tb.canonical_of.insert(expr.clone(), canonical);
-    }
+    // The compact key never equals an emitted expression, so always record it.
+    tb.canonical_of.insert(expr.clone(), canonical);
     expr
 }
 
