@@ -194,3 +194,36 @@ describe('_mergePropsOmit ≡ omit(mergeProps(...), keys)', () => {
     expect(Object.getPrototypeOf(fused)).toBe(Object.prototype)
   })
 })
+
+describe('_pickProps / _mergePropsExcept ≡ splitProps + mergeProps(rest, ...)', () => {
+  const strip = (o: object) => {
+    const d = Object.getOwnPropertyDescriptors(o) as Record<string | symbol, PropertyDescriptor>
+    return Reflect.ownKeys(d).map((k) => {
+      const v = d[k as string]!
+      return [k, v.get ? { ...v, get: 'fn', set: v.set ? 'fn' : undefined } : v]
+    })
+  }
+
+  it('match for every descriptor shape, symbol keys and a re-supplied excluded key', async () => {
+    const { _pickProps, _mergePropsExcept } = await import('../props')
+    const src = makeSource()
+    src[Symbol.for('extra')] = 'sym'
+    const keys = ['plain', 'getter', 'locked', 'tag'] as const
+    Object.defineProperty(src, 'tag', {
+      value: 'div',
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+    const [picked, rest] = splitProps(src, keys as never)
+    const keySet = new Set<PropertyKey>(keys)
+    // A later source re-supplies an EXCLUDED key — it must still land.
+    const extra = { tag: 'section', added: 1 }
+    const reference = mergeProps(rest as never, extra as never)
+    const fused = _mergePropsExcept(keySet, src as never, extra)
+    expect(strip(_pickProps(src, keySet))).toEqual(strip(picked))
+    expect(strip(fused)).toEqual(strip(reference))
+    expect((fused as Record<string, unknown>).tag).toBe('section')
+    expect(Object.getPrototypeOf(fused)).toBe(Object.prototype)
+  })
+})

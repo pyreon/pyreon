@@ -4,7 +4,7 @@
  * fix (parent + child Styled) because these HTML elements do not natively
  * support `display: flex` consistently across browsers.
  */
-import { h, mergeProps, splitProps } from '@pyreon/core'
+import { _mergePropsExcept, _pickProps, h } from '@pyreon/core'
 import { getShouldBeEmpty } from '../../Element/utils'
 import { hasGetterProps, IS_DEVELOPMENT } from '../../utils'
 import { internElementBundle } from '../internElementBundle'
@@ -59,10 +59,23 @@ const OWN_KEYS: Array<keyof Props | 'ref'> = [
 // computed and swaps classList on change, on the SAME DOM element (no
 // remount). Static layout (the dominant case) keeps the interned plain
 // object — byte-identical resolution + elClassCache hits.
-const LAYOUT_KEYS = ['block', 'direction', 'alignX', 'alignY', 'equalCols', 'gap', 'extendCss'] as const
+const OWN_KEY_SET: ReadonlySet<PropertyKey> = /* @__PURE__ */ new Set(OWN_KEYS)
+
+const LAYOUT_KEYS = [
+  'block',
+  'direction',
+  'alignX',
+  'alignY',
+  'equalCols',
+  'gap',
+  'extendCss',
+] as const
 
 const Component = (props: Partial<Props> & { ref?: unknown }) => {
-  const [own, rest] = splitProps(props, OWN_KEYS)
+  // Only the OWN half is materialised; the merges below read `props`
+  // directly with OWN_KEYS excluded (`_mergePropsExcept`) instead of copying
+  // a `rest` object first — one full prop copy per render saved.
+  const own = _pickProps(props, OWN_KEY_SET)
 
   const layoutReactive = hasGetterProps(own, LAYOUT_KEYS)
 
@@ -72,9 +85,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   // static children (incl. the accessor-valued children Element already
   // passes, which are live by construction) keep today's zero-cost path
   // (no extra mountReactive hop per Wrapper).
-  const childrenSlot = hasGetterProps(own, ['children'])
-    ? () => own.children
-    : own.children
+  const childrenSlot = hasGetterProps(own, ['children']) ? () => own.children : own.children
 
   // Tag-derived gates are MOUNT-TIME by design (a reactive tag swap is
   // unsupported — it would mean unmounting one DOM element and mounting
@@ -120,7 +131,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
     if (isVoidTag) {
       return h(
         Styled,
-        mergeProps(rest as unknown as Record<string, unknown>, DEV_PROPS, {
+        _mergePropsExcept(OWN_KEY_SET, props as unknown as Record<string, unknown>, DEV_PROPS, {
           ref: own.ref,
           as: own.tag,
           $element: bundle,
@@ -130,7 +141,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
     if (innerHTML) {
       return h(
         Styled,
-        mergeProps(rest as unknown as Record<string, unknown>, DEV_PROPS, {
+        _mergePropsExcept(OWN_KEY_SET, props as unknown as Record<string, unknown>, DEV_PROPS, {
           ref: own.ref,
           as: own.tag,
           $element: bundle,
@@ -140,7 +151,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
     }
     return h(
       Styled,
-      mergeProps(rest as unknown as Record<string, unknown>, DEV_PROPS, {
+      _mergePropsExcept(OWN_KEY_SET, props as unknown as Record<string, unknown>, DEV_PROPS, {
         ref: own.ref,
         as: own.tag,
         $element: bundle,
@@ -196,7 +207,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   if (innerHTML) {
     return h(
       Styled,
-      mergeProps(rest as unknown as Record<string, unknown>, DEV_PROPS, {
+      _mergePropsExcept(OWN_KEY_SET, props as unknown as Record<string, unknown>, DEV_PROPS, {
         ref: own.ref,
         as: own.tag,
         $element: parentBundle,
@@ -213,7 +224,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
 
   return h(
     Styled,
-    mergeProps(rest as unknown as Record<string, unknown>, DEV_PROPS, {
+    _mergePropsExcept(OWN_KEY_SET, props as unknown as Record<string, unknown>, DEV_PROPS, {
       ref: own.ref,
       as: own.tag,
       $element: parentBundle,

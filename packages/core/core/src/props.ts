@@ -136,14 +136,6 @@ function mergeProperty(
 }
 
 /**
- * Merge default values with component props. Defaults are used when
- * the prop is `undefined`. Preserves getter reactivity.
- *
- * @example
- * const merged = mergeProps({ size: "md", variant: "primary" }, props)
- * // merged.size is reactive — falls back to "md" when props.size is undefined
- */
-/**
  * @internal `omit(mergeProps(...sources), omitKeys)` in ONE pass — the shape
  * every rocketstyle component runs on each render. Merging into a full copy
  * and then copying it again minus the reserved keys allocated every prop's
@@ -171,6 +163,65 @@ export function _mergePropsOmit<T extends Record<string, unknown>>(
   return result
 }
 
+/**
+ * @internal The `picked` half of `splitProps(props, keys)` alone, for callers
+ * that never use the `rest` copy (they merge from `props` with
+ * {@link _mergePropsExcept} instead). Same keys, order and descriptors.
+ * Takes a `Set` built once by the caller (a module constant), so membership
+ * is O(1) per prop — callers have long own-key lists.
+ */
+export function _pickProps<T extends object>(props: T, keys: ReadonlySet<PropertyKey>): Partial<T> {
+  const picked = {} as Partial<T>
+  for (const key of Reflect.ownKeys(props)) {
+    if (!keys.has(key)) continue
+    const desc = Object.getOwnPropertyDescriptor(props, key)
+    /* v8 ignore next */
+    if (!desc) continue
+    _copyProp(picked, key, desc)
+  }
+  return picked
+}
+
+/**
+ * @internal `mergeProps(rest, ...others)` where `rest` is the `rest` half of
+ * `splitProps(first, exclude)` — without building `rest`. Keys of `first`
+ * listed in `exclude` are skipped (symbol keys are kept, exactly as
+ * `splitProps` keeps them in `rest`); `others` merge in full, so a later
+ * source may still supply an excluded key. Identical result: `rest` held each
+ * descriptor with `configurable` forced, and every merge path forces it too.
+ */
+export function _mergePropsExcept<T extends Record<string, unknown>>(
+  exclude: ReadonlySet<PropertyKey>,
+  first: T,
+  ...others: Record<string, unknown>[]
+): T {
+  const result = {} as T
+  for (const key of Reflect.ownKeys(first)) {
+    if (exclude.has(key)) continue
+    const desc = Object.getOwnPropertyDescriptor(first, key)
+    /* v8 ignore next */
+    if (!desc) continue
+    mergeProperty(result, key as string, desc)
+  }
+  for (const source of others) {
+    for (const key of Reflect.ownKeys(source)) {
+      const desc = Object.getOwnPropertyDescriptor(source, key)
+      /* v8 ignore next */
+      if (!desc) continue
+      mergeProperty(result, key as string, desc)
+    }
+  }
+  return result
+}
+
+/**
+ * Merge default values with component props. Defaults are used when
+ * the prop is `undefined`. Preserves getter reactivity.
+ *
+ * @example
+ * const merged = mergeProps({ size: "md", variant: "primary" }, props)
+ * // merged.size is reactive — falls back to "md" when props.size is undefined
+ */
 export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): T {
   const result = {} as T
   for (const source of sources) {
