@@ -24,6 +24,8 @@ interface AdaptiveElement {
  * Code blocks are NOT escaped — fenced content renders verbatim.
  */
 function mdEscape(text: string): string {
+  // Plain text (the common case) has none of these — skip both passes.
+  if (!/[\\*_~[\]]/.test(text)) return text
   return text.replace(/\\/g, '\\\\').replace(/([*_~[\]])/g, '\\$1')
 }
 
