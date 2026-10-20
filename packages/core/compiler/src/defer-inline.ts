@@ -549,12 +549,21 @@ export function transformDeferInline(
   if (!code.includes('Defer')) {
     return { code, changed: false, warnings }
   }
+  // The rewrite only ever matches a JSX `<Defer>` element, and a module parsed
+  // as `ts` / `js` cannot contain one (oxc reports JSX there as a syntax error
+  // and builds no JSXElement). So a `.ts` / `.js` file that merely MENTIONS
+  // `Defer` — this compiler's own sources, a runtime that exports it, docs
+  // strings — is skipped without paying for a full parse it cannot use.
+  const lang = getLang(filename)
+  if (lang === 'ts' || lang === 'js') {
+    return { code, changed: false, warnings }
+  }
 
   let program: Node
   try {
     const result = parseSync(filename, code, {
       sourceType: 'module',
-      lang: getLang(filename),
+      lang,
     })
     program = result.program as Node
   } catch {
