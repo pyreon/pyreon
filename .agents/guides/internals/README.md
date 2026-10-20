@@ -19,7 +19,8 @@ Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallba
 An element whose children are only text and text-position expressions (≥2 parts, ≥1 reactive) lowers to one accessor: `() => _fuse("Hello ", name(), "!")`. On `_tpl` it binds via `bindPolymorphicText`, on SSR it emits `_escSole(_fuse(...))`, on the `h()` path it becomes `<p>{() => _fuse(...)}</p>`. The result is one adopted text node and no `<!--$-->` markers.
 
 - `_fuse` returns the joined string when all parts are text-like (same coercion as a lone `{x}`), else the parts array so a VNode part still mounts.
-- Not fused: a lone expression (`_bindText` direct tier), static-only mixes (`_setChildAt`), element/fragment/spread/component children, `props.children`, helper calls, inline JSX, element-valued consts, component parents.
+- Static-only mixes (`<li>Row {it.index}</li>` in a `<For>` row) fuse too, on the `_tpl` path only: an empty element plus one `_setChild(el, _fuse(...))`, i.e. one text node with no placeholder swap. SSR and `h()` are unchanged, since a static run is already one marker-free text there. `_setChild` mounts a parts array that holds a nested array or a function.
+- Not fused: a lone expression (`_bindText` direct tier), element/fragment/spread/component children, `props.children`, helper calls, inline JSX, element-valued consts, component parents.
 
 ### Child classification
 

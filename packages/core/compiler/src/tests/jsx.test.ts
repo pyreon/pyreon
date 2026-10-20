@@ -1213,11 +1213,11 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('_tpl(')
   })
 
-  test('static expression with multi-expression context uses placeholder', () => {
+  test('adjacent static expressions fuse into one child set (no placeholders)', () => {
     const result = t('<div><span>{label}{other}</span></div>')
-    expect(result).toContain('_tpl(')
-    expect(result).toContain('const __p0 = __e0.firstChild;')
-    expect(result).toContain('const __p1 = __p0.nextSibling;')
+    expect(result).toContain('_tpl("<div><span></span></div>"')
+    expect(result).toContain('_fuse(label, other)')
+    expect(result).not.toContain('__p0')
   })
 })
 

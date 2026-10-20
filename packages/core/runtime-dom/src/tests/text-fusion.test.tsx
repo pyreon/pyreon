@@ -178,10 +178,11 @@ describe('text fusion — what does NOT fuse', () => {
     expect(out).not.toContain('_fuse(')
   })
 
-  it('a static-only mix keeps its baked shape', () => {
+  it('a static-only mix fuses STATICALLY: one `_setChild` into an empty element, no binding', () => {
     const out = emit(`const x = 1; const v = <p>Hello {x}!</p>`)
-    expect(out).toContain('_setChildAt(')
-    expect(out).not.toContain('_fuse(')
+    expect(out).toContain('_setChild(__root, _fuse("Hello ", x, "!"))')
+    expect(out).not.toContain('_setChildAt(')
+    expect(out).not.toContain('bindPolymorphicText')
   })
 
   it('an element sibling keeps the run mixed (placeholders, `_textSlot`)', () => {

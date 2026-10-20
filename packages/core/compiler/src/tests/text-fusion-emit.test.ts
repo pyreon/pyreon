@@ -75,10 +75,14 @@ describe('text fusion — the boundary (what stays on its existing path)', () =>
     expect(client(`function C(props){ return <p>{props.x}</p> }`)).toContain('_bindProp(props, "x"')
   })
 
-  it('a static-only mix keeps the baked placeholder shape', () => {
+  it('a static-only mix fuses STATICALLY on the client: empty element + one `_setChild`, no binding', () => {
     const c = client(`const x = 1; const v = <p>Hello {x}!</p>`)
-    expect(c).toContain('_setChildAt(')
-    expect(c).not.toContain('_fuse(')
+    expect(c).toContain('_tpl("<p></p>"')
+    expect(c).toContain('_setChild(__root, _fuse("Hello ", x, "!"))')
+    expect(c).not.toContain('_setChildAt(')
+    expect(c).not.toContain('bindPolymorphicText')
+    // SSR and h() keep their (already marker-free) static shape.
+    expect(ssrH(`const x = 1; const v = <p>Hello {x}!</p>`)).not.toContain('_fuse(')
   })
 
   it('an element sibling keeps the run mixed', () => {

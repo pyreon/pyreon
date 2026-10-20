@@ -91,7 +91,15 @@ function _looksLikeVNode(v: unknown): boolean {
  *  containing at least one. Plain objects and plain-primitive arrays keep
  *  the historical String() coercion (consistent across all four sites). */
 function _isMountableTextValue(v: unknown): boolean {
-  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_looksLikeVNode))
+  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_isMountablePart))
+}
+
+// A part of an array child that must be MOUNTED rather than stringified: a
+// VNode, a nested array (`_fuse("a", items, "b")` returns its parts with
+// `items` still an array) or a function (a reactive part — mountChild binds
+// it, as the h() path does). Arrays of primitives keep the text path.
+function _isMountablePart(x: unknown): boolean {
+  return _looksLikeVNode(x) || Array.isArray(x) || typeof x === 'function'
 }
 
 /**
