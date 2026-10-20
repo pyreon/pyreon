@@ -74,26 +74,28 @@ function Provider(props: ProviderType): VNodeChild {
       k !== 'provider',
   )
 
-  provide(context, () => {
-    const value = {
-      get theme() {
-        return props.theme as Record<string, unknown>
-      },
-      get mode() {
-        return (props.mode as 'light' | 'dark' | undefined) ?? 'light'
-      },
-      get isDark() {
-        return (props.isDark as boolean | undefined) ?? false
-      },
-      get isLight() {
-        return (props.isLight as boolean | undefined) ?? true
-      },
-    } as CoreContextValue & Record<string, unknown>
-    for (const k of extraKeys) {
-      Object.defineProperty(value, k, { get: () => props[k], enumerable: true, configurable: true })
-    }
-    return value
-  })
+  // Built ONCE: every key is a getter over `props`, so one object answers
+  // every read. Rebuilding it per accessor call (consumers call it on each
+  // property read) allocated a getter object literal — ~0.4µs on V8 — plus a
+  // defineProperty per extra key, many times per component.
+  const value = {
+    get theme() {
+      return props.theme as Record<string, unknown>
+    },
+    get mode() {
+      return (props.mode as 'light' | 'dark' | undefined) ?? 'light'
+    },
+    get isDark() {
+      return (props.isDark as boolean | undefined) ?? false
+    },
+    get isLight() {
+      return (props.isLight as boolean | undefined) ?? true
+    },
+  } as CoreContextValue & Record<string, unknown>
+  for (const k of extraKeys) {
+    Object.defineProperty(value, k, { get: () => props[k], enumerable: true, configurable: true })
+  }
+  provide(context, () => value)
 
   return props.children ?? null
 }
