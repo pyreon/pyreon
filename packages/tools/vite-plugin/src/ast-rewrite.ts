@@ -8,7 +8,7 @@
  * (zero's own define key) became `"(      "production")"` — invalid JavaScript.
  * The rule: find the node with the parser, replace by its [start, end) range.
  */
-import { parseSync } from 'oxc-parser'
+import { parseOxc } from './oxc-parse'
 
 type Lang = 'js' | 'jsx' | 'ts' | 'tsx'
 
@@ -29,7 +29,7 @@ interface Node {
 
 function parse(code: string, id: string, lang: Lang): Node | null {
   try {
-    const r = parseSync(id, code, { sourceType: 'module', lang, preserveParens: false })
+    const r = parseOxc(id, code, { sourceType: 'module', lang, preserveParens: false })
     return r.errors.length > 0 ? null : (r.program as unknown as Node)
   } /* v8 ignore next 3 -- oxc's parseSync reports problems via `errors` and does not throw; this is a defensive net so a parser crash can never fail a build. */ catch {
     return null
@@ -109,6 +109,25 @@ function foldedText(original: string): string {
 
 const TS_WRAPPERS = new Set(['TSAsExpression', 'TSNonNullExpression', 'TSSatisfiesExpression', 'TSTypeAssertion'])
 
+/** Every start offset of `needle` in `code`, ascending. */
+function textOffsets(code: string, needle: string): number[] {
+  const out: number[] = []
+  for (let at = code.indexOf(needle); at >= 0; at = code.indexOf(needle, at + 1)) out.push(at)
+  return out
+}
+
+/** Whether any offset in the ascending `offsets` lies in [start, end). */
+function spanHasOffset(offsets: readonly number[], start: number, end: number): boolean {
+  let lo = 0
+  let hi = offsets.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (offsets[mid]! < start) lo = mid + 1
+    else hi = mid
+  }
+  return lo < offsets.length && offsets[lo]! < end
+}
+
 /**
  * Fold every real `process.env.NODE_ENV` read in `code` to `"production"`.
  * Assignment / update / delete targets are not reads and are left alone.
@@ -148,7 +167,16 @@ export function foldNodeEnvProduction(code: string, id: string): string | null {
     }
   }
 
+  // Every read and every write target is a member expression whose source
+  // text contains `NODE_ENV`, so a subtree whose span holds no occurrence of
+  // that text can contribute nothing — skip it rather than walk the whole AST.
+  // The one way to spell the key WITHOUT that text is an escape
+  // (`NODE\u005fENV` as an identifier or string key); a module containing any
+  // `\u` / `\x` escape keeps the full walk.
+  const hits = /\\[ux]/.test(code) ? null : textOffsets(code, 'NODE_ENV')
+
   walk(program, (n) => {
+    if (hits !== null && typeof n.start === 'number' && !spanHasOffset(hits, n.start, n.end)) return false
     switch (n.type) {
       case 'AssignmentExpression':
         markTarget(n.left)
