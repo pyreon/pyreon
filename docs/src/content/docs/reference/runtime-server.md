@@ -161,7 +161,7 @@ configureStoreIsolation(setStoreRegistryProvider)
 decodeKeyFromMarker(encoded: string): string
 ```
 
-Inverse of the internal For-list key encoder. `<For>` SSR emits per-item `<!--k:KEY-->` markers; the encoder URL-encodes the key and replaces every `-` with `%2D` so a user-supplied key can never form `-->` and break out of the HTML comment (an injection vector). `decodeKeyFromMarker` reverses that. Not used by the runtime today (hydration does not read per-item markers) — shipped alongside the encoder so future hydration or devtools consumers decode symmetrically without re-deriving the scheme.
+Inverse of the internal For-list key encoder. `<For>` SSR emits per-item `<!--k:KEY-->` markers; the encoder URL-encodes the key and replaces every `-` with `%2D` so a user-supplied key can never form `-->` and break out of the HTML comment (an injection vector). `decodeKeyFromMarker` reverses that. The markers are read at hydration: `<For>` adoption matches each server row to the client key before reusing its DOM, comparing the raw form and decoding only escaped keys, so it does not call this function — it is exported for devtools and other consumers that need the original key back.
 
 **Example**
 

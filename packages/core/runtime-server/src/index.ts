@@ -1562,6 +1562,10 @@ export function _ssrAttrGen(name: string, value: unknown): string {
   if (typeof value === 'function') return _ssrAttrGen(name, (value as () => unknown)())
   if (value == null || value === false) return ''
   if (value === true) return ` ${name}`
+  // A number's string form (digits, `.`, `-`, `e`, `+`, `Infinity`, `NaN`)
+  // never contains a character escapeHtml rewrites, so skip the scan: numeric
+  // ids / counts are the dominant generic-attribute value on list rows.
+  if (typeof value === 'number') return ` ${name}="${value}"`
   return ` ${name}="${escapeHtml(String(value))}"`
 }
 
@@ -2450,10 +2454,12 @@ function safeKeyForMarker(key: unknown): string {
 
 /**
  * Inverse of `safeKeyForMarker` — decode a marker-safe key back to the
- * original string. Not used by runtime today (hydration does not read
- * per-item `<!--k:KEY-->` markers) but shipped alongside the encoder so
- * future hydration or devtools consumers decode symmetrically without
- * having to re-derive the encoding from source.
+ * original string. The per-item `<!--k:KEY-->` markers ARE read at hydration:
+ * `<For>` adoption matches each server row to the client's key before reusing
+ * its DOM (`@pyreon/runtime-dom` hydrate). That path compares the raw encoded
+ * form in place and decodes only a key containing an escape, so it does not
+ * call this; it is exported for devtools and other consumers that need the
+ * original key back.
  */
 export function decodeKeyFromMarker(encoded: string): string {
   return decodeURIComponent(encoded.replace(/%2D/gi, '-'))
