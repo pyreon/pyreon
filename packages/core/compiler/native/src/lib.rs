@@ -515,23 +515,27 @@ fn clean_jsx_text(raw: &str) -> String {
         .filter(|(_, l)| l.bytes().any(|b| b != b' ' && b != b'\t'))
         .map(|(i, _)| i)
         .last();
-    let mut out = String::new();
+    // One output buffer, no per-line allocation: replacing tabs with spaces and
+    // then trimming spaces is the same as trimming spaces AND tabs, then
+    // mapping the remaining (interior) tabs to spaces as they are copied.
+    let mut out = String::with_capacity(raw.len());
     let line_count = lines.len();
+    let ws = |c: char| c == ' ' || c == '\t';
     for (i, line_raw) in lines.iter().enumerate() {
-        let mut line: String = line_raw.replace('\t', " ");
+        let mut line: &str = line_raw;
         if i != 0 {
-            let trimmed = line.trim_start_matches(' ').to_string();
-            line = trimmed;
+            line = line.trim_start_matches(ws);
         }
         if i != line_count - 1 {
-            let trimmed = line.trim_end_matches(' ').to_string();
-            line = trimmed;
+            line = line.trim_end_matches(ws);
         }
         if !line.is_empty() {
-            if Some(i) != last_non_empty {
-                line.push(' ');
+            for ch in line.chars() {
+                out.push(if ch == '\t' { ' ' } else { ch });
             }
-            out.push_str(&line);
+            if Some(i) != last_non_empty {
+                out.push(' ');
+            }
         }
     }
     out
@@ -591,8 +595,8 @@ struct Ctx<'a> {
     source: &'a str,
     program: &'a Program<'a>,
     /// `String` / `Number` are provably the globals (see `ssr_global_intact`).
-    string_global_intact: bool,
-    number_global_intact: bool,
+    string_global_intact: std::cell::OnceCell<bool>,
+    number_global_intact: std::cell::OnceCell<bool>,
     line_index: LineIndex,
     ssr: bool,
     /// Compile-to-string SSR fast path (`options.ssrTemplate`). Only true when
@@ -806,8 +810,11 @@ impl<'a> Ctx<'a> {
         Ctx {
             source,
             program,
-            string_global_intact: ssr_global_intact(source, "String"),
-            number_global_intact: ssr_global_intact(source, "Number"),
+            // LAZY (each is a whole-source scan): only the SSR template emit's
+            // `ssr_provably_*` checks read them, so a client transform never
+            // pays. Mirrors the JS twin's `ssrGlobalIntactMemo`.
+            string_global_intact: std::cell::OnceCell::new(),
+            number_global_intact: std::cell::OnceCell::new(),
             collapse,
             ssr_template,
             templatize_component_children,
@@ -6159,7 +6166,9 @@ fn ssr_provably_string(node: &Expression, ctx: &Ctx) -> bool {
         // `String(x)` — only while `String` is the global; a method call proves
         // nothing about an untyped receiver (see JS `ssrProvablyString`).
         Expression::CallExpression(call) => match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "String" => ctx.string_global_intact,
+            Expression::Identifier(id) if id.name.as_str() == "String" => {
+                *ctx.string_global_intact.get_or_init(|| ssr_global_intact(ctx.source, "String"))
+            }
             _ => false,
         },
         Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
@@ -6183,7 +6192,7 @@ fn ssr_provably_non_null_non_boolean(node: &Expression, ctx: &Ctx) -> bool {
         Expression::NumericLiteral(_) => true,
         Expression::CallExpression(call) => {
             matches!(&call.callee, Expression::Identifier(id) if id.name.as_str() == "Number")
-                && ctx.number_global_intact
+                && *ctx.number_global_intact.get_or_init(|| ssr_global_intact(ctx.source, "Number"))
         }
         Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
             ssr_provably_non_null_non_boolean(&b.left, ctx)

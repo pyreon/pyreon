@@ -13,3 +13,5 @@ Native backend, one large table template:
 | 800 | 14.3ms | 5.0ms |
 
 The JS fallback is up to 33% faster.
+
+Two smaller native-backend savings, on every client transform: the `String`/`Number` rebinding scans (two whole-source searches that only the SSR template path reads) are now computed lazily, as the JS backend already did, and `clean_jsx_text` no longer allocates per line. Compiling 775 real `.tsx` files is about 5% faster, with output byte-identical (2,325 compilations across client, SSR and SSR-template modes).
