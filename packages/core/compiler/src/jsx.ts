@@ -2412,8 +2412,18 @@ export function transformJSX_JS(
    * and a lone expression keeps its single-signal direct-tier fast path.
    * Applies to DOM elements only — a component's children are its props, and
    * their shape is the component's contract.
+   *
+   * `allowStatic` (template path only) also fuses an ALL-STATIC mix such as a
+   * `<For>` row's `Row {it.index}`. Unfused, that bakes `Row <!>` and swaps the
+   * placeholder for a fresh text node per row (`_setChildAt` — a createTextNode
+   * plus a replaceChild); fused, it is one `_setChild(el, _fuse("Row ", it.index))`
+   * into an empty element — the same single text node the sole static `{x}`
+   * child already gets, and the same `.data` adoption on hydration. Measured on
+   * the virtual-list `jump` (23 rows remounted): 1.14–1.39× behind react-virtual
+   * → tie / 1.21× ahead. The SSR and h() emits are unchanged: a static mix
+   * already serializes to one marker-free text run there.
    */
-  function fuseTextChildren(el: N): string | null {
+  function fuseTextChildren(el: N, allowStatic = false): string | null {
     const kids = jsxChildren(el)
     if (kids.length < 2) return null
     type Part = { lit: string } | { expr: string }
@@ -2484,7 +2494,7 @@ export function transformJSX_JS(
       spans.push({ start: u.start as number, end: u.end as number, reactive })
       if (reactive) anyReactive = true
     }
-    if (!anyReactive || parts.length < 2) return null
+    if ((!anyReactive && !allowStatic) || parts.length < 2) return null
     for (const sp of spans) {
       if (sp.reactive)
         lens(sp.start, sp.end, 'reactive', 'live — this text re-renders whenever its signals change')
@@ -6042,6 +6052,14 @@ export function transformJSX_JS(
       if (fused !== null) {
         const html = emitFusedTextChild(fused, varName, accessor === '__root' ? '__root' : varName)
         return { html, isHole: false }
+      }
+      // All-static mix (see `fuseTextChildren`'s `allowStatic`): the sole static
+      // child shape — empty element, one `_setChild`.
+      const fusedStatic = fuseTextChildren(el, true)
+      if (fusedStatic !== null) {
+        needsSetChildImportGlobal = true
+        bindLines.push(`_setChild(${varName}, ${fusedStatic})`)
+        return { html: '', isHole: false }
       }
       const flatChildren = flattenChildren(jsxChildren(el))
       const hasComponent = flatChildren.some((c) => c.kind === 'component')
