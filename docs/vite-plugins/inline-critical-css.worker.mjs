@@ -1,16 +1,24 @@
-// Worker for vite-plugins/inline-critical-css.ts — runs beasties over a
-// slice of the prerendered pages. Plain `.mjs` (not TS) because the plugin is
+// Worker for vite-plugins/inline-critical-css.ts — runs beasties over
+// prerendered pages, pulling the next page path from the parent until it
+// answers `null`. Plain `.mjs` (not TS) because the plugin is
 // bundled into Vite's `.vite-temp` config chunk, so the worker is located by
 // path from the project root and loaded by Node directly.
 import { readFile, writeFile } from 'node:fs/promises'
 import { parentPort, workerData } from 'node:worker_threads'
 
-const { files, outDir, base } = workerData
+const { outDir, base } = workerData
 const { default: Beasties } = await import('beasties')
 
 let done = 0
 const skipped = []
-for (const file of files) {
+/** Ask the parent for the next page; `null` means the queue is drained. */
+const nextFile = () =>
+  new Promise((resolve) => {
+    parentPort.once('message', resolve)
+    parentPort.postMessage({ type: 'next' })
+  })
+
+for (let file = await nextFile(); file !== null; file = await nextFile()) {
   try {
     const html = await readFile(file, 'utf8')
     // A fresh instance per page so critical sets never leak across pages;
@@ -33,4 +41,4 @@ for (const file of files) {
     skipped.push({ file, message: err instanceof Error ? err.message : String(err) })
   }
 }
-parentPort.postMessage({ done, skipped })
+parentPort.postMessage({ type: 'result', done, skipped })

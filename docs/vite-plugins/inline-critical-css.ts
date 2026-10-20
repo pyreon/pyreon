@@ -60,9 +60,7 @@ export default function inlineCriticalCss(): Plugin {
       // points at the sub-build dir — the real, page-bearing output is its
       // parent. (A normal build resolves to `outDir` unchanged.)
       const resolved = config.build.outDir
-      outDir = resolved.endsWith('.zero-ssg-server')
-        ? dirname(resolved)
-        : resolved
+      outDir = resolved.endsWith('.zero-ssg-server') ? dirname(resolved) : resolved
       base = config.base || '/'
       root = config.root
     },
@@ -84,26 +82,45 @@ export default function inlineCriticalCss(): Plugin {
           continue
         }
         if (html.includes(UNRENDERED_MARKER)) continue
-        if (!/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="[^"]*\.css"[^>]*>/i.test(html))
-          continue
+        if (!/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="[^"]*\.css"[^>]*>/i.test(html)) continue
         targets.push(file)
       }
       if (targets.length === 0) return
 
       // Pages are independent (a fresh beasties instance per page), so they
       // run across worker threads: beasties' per-page selector matching was
-      // ~17s of a ~37s docs build when done one page at a time.
+      // ~17s of a ~37s docs build when done one page at a time. Workers PULL
+      // the next page from a shared queue rather than taking a fixed slice:
+      // page cost varies a lot, and fixed slices left the step waiting on the
+      // slowest one while the other workers sat idle.
       const workers = Math.max(1, Math.min(availableParallelism() - 1, 8, targets.length))
-      const slices: string[][] = Array.from({ length: workers }, () => [])
-      targets.forEach((file, i) => slices[i % workers]!.push(file))
       const workerFile = join(root, 'vite-plugins', 'inline-critical-css.worker.mjs')
+      let next = 0
       const results = await Promise.all(
-        slices.map(
-          (files) =>
+        Array.from(
+          { length: workers },
+          () =>
             new Promise<{ done: number; skipped: Array<{ file: string; message: string }> }>(
               (resolve, reject) => {
-                const worker = new Worker(workerFile, { workerData: { files, outDir, base } })
-                worker.once('message', resolve)
+                const worker = new Worker(workerFile, { workerData: { outDir, base } })
+                worker.on(
+                  'message',
+                  (
+                    msg:
+                      | { type: 'next' }
+                      | {
+                          type: 'result'
+                          done: number
+                          skipped: Array<{ file: string; message: string }>
+                        },
+                  ) => {
+                    if (msg.type === 'next') {
+                      worker.postMessage(next < targets.length ? targets[next++] : null)
+                    } else {
+                      resolve(msg)
+                    }
+                  },
+                )
                 worker.once('error', reject)
                 worker.once('exit', (code) => {
                   if (code !== 0) reject(new Error(`critical-CSS worker exited with code ${code}`))
