@@ -34,8 +34,8 @@ function mulberry32(a: number): () => number {
   }
 }
 
-type Kind = 'el' | 'comp' | 'frag' | 'text' | 'nested' | 'acc'
-const KINDS: Kind[] = ['el', 'el', 'el', 'comp', 'frag', 'text', 'nested', 'acc']
+type Kind = 'el' | 'comp' | 'frag' | 'text' | 'nested' | 'acc' | 'poly' | 'fragpoly'
+const KINDS: Kind[] = ['el', 'el', 'el', 'comp', 'frag', 'text', 'nested', 'acc', 'poly', 'fragpoly']
 // Keys that exercise the escape path and the space separator.
 const ODD_KEYS = ['a b', 'x-->', '50%', 'é', '', '-', 'k:1', '/pyreon-for']
 
@@ -73,6 +73,18 @@ function row(item: Item): unknown {
           by: (n: number) => n,
           children: (n: number) => h('i', null, String(n)),
         } as never),
+      )
+    case 'poly':
+      // Text that becomes an element after a relabel — the binding swaps its
+      // own (only) node.
+      return () => (item.label().startsWith('R') ? h('b', null, item.label()) : item.label())
+    case 'fragpoly':
+      // Same, as the LAST node of a multi-node row.
+      return h(
+        Fragment,
+        null,
+        h('li', null, 'p'),
+        () => (item.label().startsWith('R') ? h('b', null, item.label()) : item.label()),
       )
     case 'acc':
       return () => (item.label().length % 2 ? h('li', null, item.label()) : h('em', null, item.label()))

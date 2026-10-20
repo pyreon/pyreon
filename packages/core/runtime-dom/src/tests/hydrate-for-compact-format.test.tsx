@@ -12,7 +12,7 @@
  *  - treat a key list that does not match the rows it describes as
  *    unadoptable and re-render, never adopt half a table or duplicate it.
  */
-import { For, h } from '@pyreon/core'
+import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
@@ -83,6 +83,36 @@ describe('<For> hydration — SSR marker formats', () => {
       const { host, dispose } = hydrateHtml(page, [1, 2, 3])
       // Exactly the client's rows — none adopted wrongly, none duplicated.
       expect(rowsText(host)).toEqual(['r1', 'r2', 'r3', 'tail'])
+      dispose()
+      host.remove()
+    })
+  }
+
+  // Hydration consumes the `<!--$-->…<!--/$-->` markers around a reactive text
+  // child, so the node the block scan recorded as a marked row's last node is
+  // gone by the time the row is registered. The end must be taken from the
+  // live DOM — and a text end gets its own comment, because a polymorphic text
+  // binding later swaps that node for a subtree.
+  for (const shape of ['text row', 'text-ending fragment row'] as const) {
+    it(`a hydrated ${shape} that upgrades to an element still moves correctly`, async () => {
+      disableHydrationWarnings()
+      type R = { k: number; l: ReturnType<typeof signal<string>> }
+      const mk = (): R[] => [1, 2, 3].map((k) => ({ k, l: signal(`L${k}`) }))
+      const cell = (x: R) => () => (x.l().startsWith('R') ? h('b', null, x.l()) : x.l())
+      const row = (x: R) => (shape === 'text row' ? cell(x) : h(Fragment, null, h('li', null, 'p'), cell(x)))
+      const view = (l: () => R[]) =>
+        h('ul', null, h(For, { each: l, by: (x: R) => x.k, children: row } as never), h('i', null, 't'))
+      const html = await renderToString(view(() => mk()) as never)
+      const host = document.createElement('div')
+      host.innerHTML = html
+      document.body.appendChild(host)
+      const list = signal(mk())
+      const dispose = hydrateRoot(host, view(() => list()) as never)
+      list()[2]!.l.set('R3')
+      list.set([...list()].reverse())
+      const text = host.innerHTML.replace(/<!--[\s\S]*?-->/g, '')
+      const p = shape === 'text row' ? '' : '<li>p</li>'
+      expect(text).toBe(`<ul>${p}<b>R3</b>${p}L2${p}L1<i>t</i></ul>`)
       dispose()
       host.remove()
     })

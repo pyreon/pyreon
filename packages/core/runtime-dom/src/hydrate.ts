@@ -1011,7 +1011,7 @@ function hydrateVNode(
               // Anchor on the row's k: MARKER (kept in the DOM) — the row range
               // is [marker .. last]; moves/removals carry the marker with the
               // row, so no per-row marker removal at adoption time.
-              let endNode: Node | null = rowLast !== (rowMarker as ChildNode) ? rowLast : null
+              let endNode: Node | null = rowLast !== rowMarker ? rowLast : null
               let rowAnchor: ChildNode = rowMarker
               if (tplAdopted) {
                 const native = rowVNode as { el: ChildNode; cleanup?: (() => void) | null }
@@ -1033,19 +1033,30 @@ function hydrateVNode(
                 cleanup =
                   (rowPlan ? replayRowPlan(rowPlan, rowVNode as VNodeChild, rowFirst) : null) ??
                   hydrateChild(rowVNode as VNodeChild, rowFirst, parent, rowAfter, `${path}.for`)[0]
-                // A NativeItem row that did NOT adopt was SWAPPED — re-derive
-                // the live end from the still-present neighbors.
-                if (!rowFirst.isConnected) {
-                  const lastLive = (rowAfter as ChildNode).previousSibling
-                  if (i < leadCount) {
-                    // A bare row IS its own anchor — the swap replaced it, so
-                    // the replacement (the node right before the next row) is
-                    // the new anchor of a single-node range.
-                    rowAnchor = lastLive as ChildNode
-                    endNode = null
-                  } else {
-                    endNode = lastLive && lastLive !== (rowMarker as ChildNode) ? lastLive : null
-                  }
+                // A bare row IS its own anchor. If it did NOT adopt it was
+                // SWAPPED, and the replacement (the node right before the next
+                // row) is the new anchor of a single-node range.
+                if (i < leadCount && !rowFirst.isConnected) {
+                  rowAnchor = (rowAfter as ChildNode).previousSibling as ChildNode
+                  endNode = null
+                }
+              }
+              if (i >= leadCount) {
+                // A marked row's end must come from the LIVE DOM, after the row
+                // hydrated: the node the scan saw last is often a hydration
+                // marker the walk has since consumed (`<!--/$-->` around a
+                // reactive text child), or a node a swapped row replaced. And a
+                // text end can itself be replaced later — a polymorphic text
+                // binding swaps its node for a subtree — so it gets a comment
+                // nothing inside the row can replace, exactly as a client-mounted
+                // row does (`mountFor`'s renderInto).
+                const lastLive = (rowAfter as ChildNode).previousSibling
+                if (lastLive && lastLive.nodeType === 3) {
+                  const endMark = document.createComment('')
+                  parent.insertBefore(endMark, rowAfter)
+                  endNode = endMark
+                } else {
+                  endNode = lastLive && lastLive !== (rowMarker as ChildNode) ? lastLive : null
                 }
               }
               setEntry(keys[i] as string | number, rowAnchor, cleanup, i, endNode)
