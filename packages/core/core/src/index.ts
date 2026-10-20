@@ -74,6 +74,7 @@ export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
 export {
   _copyProp,
+  _mergePropsOmit,
   _lc,
   _fuse,
   _rp,

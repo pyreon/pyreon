@@ -13,15 +13,50 @@ const setter = (_v: unknown) => {}
 /** One source object carrying every descriptor shape that can reach a copy. */
 function makeSource(): Record<PropertyKey, unknown> {
   const o: Record<PropertyKey, unknown> = {}
-  Object.defineProperty(o, 'plain', { value: 1, writable: true, enumerable: true, configurable: true })
-  Object.defineProperty(o, 'readonly', { value: 2, writable: false, enumerable: true, configurable: true })
-  Object.defineProperty(o, 'hidden', { value: 3, writable: true, enumerable: false, configurable: true })
-  Object.defineProperty(o, 'locked', { value: 4, writable: true, enumerable: true, configurable: false })
+  Object.defineProperty(o, 'plain', {
+    value: 1,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  })
+  Object.defineProperty(o, 'readonly', {
+    value: 2,
+    writable: false,
+    enumerable: true,
+    configurable: true,
+  })
+  Object.defineProperty(o, 'hidden', {
+    value: 3,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  })
+  Object.defineProperty(o, 'locked', {
+    value: 4,
+    writable: true,
+    enumerable: true,
+    configurable: false,
+  })
   Object.defineProperty(o, 'getter', { get: getter, enumerable: true, configurable: true })
-  Object.defineProperty(o, 'accessor', { get: getter, set: setter, enumerable: true, configurable: false })
+  Object.defineProperty(o, 'accessor', {
+    get: getter,
+    set: setter,
+    enumerable: true,
+    configurable: false,
+  })
   Object.defineProperty(o, 'setterOnly', { set: setter, enumerable: true, configurable: true })
-  Object.defineProperty(o, '__proto__', { value: { polluted: true }, writable: true, enumerable: true, configurable: true })
-  Object.defineProperty(o, Symbol.for('brand'), { value: 5, writable: true, enumerable: true, configurable: true })
+  Object.defineProperty(o, '__proto__', {
+    value: { polluted: true },
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  })
+  Object.defineProperty(o, Symbol.for('brand'), {
+    value: 5,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  })
   return o
 }
 
@@ -46,7 +81,12 @@ describe('_copyProp', () => {
 
   it('keeps a __proto__ own key as an own data property, never the prototype', () => {
     const target = {}
-    _copyProp(target, '__proto__', { value: { polluted: true }, writable: true, enumerable: true, configurable: true })
+    _copyProp(target, '__proto__', {
+      value: { polluted: true },
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
     expect(Object.getPrototypeOf(target)).toBe(Object.prototype)
     expect(Object.hasOwn(target, '__proto__')).toBe(true)
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
@@ -63,8 +103,12 @@ describe('prop helpers built on the fast path', () => {
       const d = Object.getOwnPropertyDescriptor(src, key)!
       oldCopy(key === 'plain' || key === 'getter' ? expectedPicked : expectedRest, key, d)
     }
-    expect(Object.getOwnPropertyDescriptors(picked)).toEqual(Object.getOwnPropertyDescriptors(expectedPicked))
-    expect(Object.getOwnPropertyDescriptors(rest)).toEqual(Object.getOwnPropertyDescriptors(expectedRest))
+    expect(Object.getOwnPropertyDescriptors(picked)).toEqual(
+      Object.getOwnPropertyDescriptors(expectedPicked),
+    )
+    expect(Object.getOwnPropertyDescriptors(rest)).toEqual(
+      Object.getOwnPropertyDescriptors(expectedRest),
+    )
     expect(Object.getPrototypeOf(rest)).toBe(Object.prototype)
   })
 
@@ -76,7 +120,12 @@ describe('prop helpers built on the fast path', () => {
     const m = mergeProps(a, b as never) as Record<string, unknown>
     expect(m.x).toBe(2)
     expect(m.y).toBe('a')
-    expect(Object.getOwnPropertyDescriptor(m, 'x')).toEqual({ value: 2, writable: true, enumerable: true, configurable: true })
+    expect(Object.getOwnPropertyDescriptor(m, 'x')).toEqual({
+      value: 2,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
     expect(typeof Object.getOwnPropertyDescriptor(m, 'live')!.get).toBe('function')
     expect(m.live).toBe(1)
     expect(m.live).toBe(2)
@@ -91,7 +140,57 @@ describe('prop helpers built on the fast path', () => {
       const d = Object.getOwnPropertyDescriptor(src, key)!
       if (d.get || d.value !== undefined) Object.defineProperty(expected, key, d)
     }
-    expect(Object.getOwnPropertyDescriptors(out)).toEqual(Object.getOwnPropertyDescriptors(expected))
+    expect(Object.getOwnPropertyDescriptors(out)).toEqual(
+      Object.getOwnPropertyDescriptors(expected),
+    )
     expect(Object.getPrototypeOf(out)).toBe(Object.prototype)
+  })
+})
+
+describe('_mergePropsOmit ≡ omit(mergeProps(...), keys)', () => {
+  // Reference `omit` with @pyreon/ui-core's semantics: own STRING keys
+  // (non-enumerable included), descriptors copied verbatim.
+  function refOmit(obj: object, keys: Set<string>): object {
+    const out = {}
+    for (const k of Object.getOwnPropertyNames(obj)) {
+      if (!keys.has(k)) Object.defineProperty(out, k, Object.getOwnPropertyDescriptor(obj, k)!)
+    }
+    return out
+  }
+
+  it('matches for every descriptor shape, overlapping keys and symbols', async () => {
+    const { _mergePropsOmit } = await import('../props')
+    let n = 0
+    const a: Record<PropertyKey, unknown> = { shared: 'a', onlyA: 1, pseudo: {}, drop1: 'x' }
+    const b = makeSource()
+    Object.defineProperty(b, 'shared', { get: () => ++n, enumerable: true, configurable: true })
+    Object.defineProperty(b, 'onlyA', {
+      value: undefined,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+    b.drop2 = 'y'
+    b[Symbol.for('sym')] = 1
+    const keys = new Set(['drop1', 'drop2', 'locked'])
+    const fused = _mergePropsOmit(keys, a as never, b as never) as object
+    const reference = refOmit(mergeProps(a as never, b as never), keys)
+    const strip = (o: object) => {
+      // Getter identity differs between two independent merges (each wraps a
+      // fresh closure); compare shape + values instead of function identity.
+      const d = Object.getOwnPropertyDescriptors(o) as Record<string, PropertyDescriptor>
+      return Object.fromEntries(
+        Object.entries(d).map(([k, v]) => [
+          k,
+          v.get ? { ...v, get: 'fn', set: v.set ? 'fn' : undefined } : v,
+        ]),
+      )
+    }
+    expect(Reflect.ownKeys(fused)).toEqual(Reflect.ownKeys(reference))
+    expect(strip(fused)).toEqual(strip(reference))
+    // The merged getter stays LIVE: each read re-runs the source getter.
+    const first = (fused as Record<string, unknown>).shared as number
+    expect((fused as Record<string, unknown>).shared).toBe(first + 1)
+    expect(Object.getPrototypeOf(fused)).toBe(Object.prototype)
   })
 })

@@ -143,6 +143,34 @@ function mergeProperty(
  * const merged = mergeProps({ size: "md", variant: "primary" }, props)
  * // merged.size is reactive — falls back to "md" when props.size is undefined
  */
+/**
+ * @internal `omit(mergeProps(...sources), omitKeys)` in ONE pass — the shape
+ * every rocketstyle component runs on each render. Merging into a full copy
+ * and then copying it again minus the reserved keys allocated every prop's
+ * descriptor twice; skipping omitted keys during the merge produces the
+ * identical object (each key merges independently, so dropping it before or
+ * after the merge is the same). Like `omit`, only STRING keys are kept —
+ * `omit` iterates `Object.getOwnPropertyNames` — so symbol keys are skipped
+ * here too. `omitKeys` must be non-empty: `omit` with an empty key set takes a
+ * different path that also copies symbol keys.
+ */
+export function _mergePropsOmit<T extends Record<string, unknown>>(
+  omitKeys: ReadonlySet<string>,
+  ...sources: T[]
+): T {
+  const result = {} as T
+  for (const source of sources) {
+    for (const key of Reflect.ownKeys(source)) {
+      if (typeof key !== 'string' || omitKeys.has(key)) continue
+      const desc = Object.getOwnPropertyDescriptor(source, key)
+      /* v8 ignore next */
+      if (!desc) continue
+      mergeProperty(result, key, desc)
+    }
+  }
+  return result
+}
+
 export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): T {
   const result = {} as T
   for (const source of sources) {
@@ -201,7 +229,12 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
       // Verbatim copy (no forced `configurable`): assignment reproduces the
       // descriptor exactly only when the source is a plain writable,
       // enumerable, configurable data property — the overwhelming case.
-      if (d.writable === true && d.enumerable === true && d.configurable === true && key !== '__proto__') {
+      if (
+        d.writable === true &&
+        d.enumerable === true &&
+        d.configurable === true &&
+        key !== '__proto__'
+      ) {
         result[key] = d.value
       } else {
         Object.defineProperty(result, key, d)
@@ -243,7 +276,9 @@ export function _rp<T>(fn: () => T): () => T {
  * shared object passed elsewhere as a plain value would then be misread as
  * a reactive prop); this allocates one thunk per prop, as `_rp` does.
  */
-export function _rpd<T>(sig: (() => T) & { direct?: unknown; _v?: unknown; peek?: unknown }): () => T {
+export function _rpd<T>(
+  sig: (() => T) & { direct?: unknown; _v?: unknown; peek?: unknown },
+): () => T {
   const t = (() => sig()) as (() => T) & Record<string | symbol, unknown>
   t[REACTIVE_PROP] = true
   // `direct`/`peek` are METHODS on the signal (they read `this`), so they are
@@ -410,9 +445,7 @@ export function _wrapSpread(
  *
  * Returns the same object if no reactive props found (fast path).
  */
-export function makeReactiveProps(
-  raw: Record<string, unknown>,
-): Record<string, unknown> {
+export function makeReactiveProps(raw: Record<string, unknown>): Record<string, unknown> {
   // SINGLE pass, copy-on-first-reactive-prop.
   //
   // All-static components (the majority — buttons, icons, layout) are unchanged:
