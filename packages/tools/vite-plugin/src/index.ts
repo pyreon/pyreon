@@ -2585,7 +2585,9 @@ function autoImportCanonicalPrimitives(
   // canonical names — `export function Stack(...)`, `function Stack`,
   // `const Stack = ...`. These are local symbols; auto-importing the
   // upstream package would shadow them.
-  for (const name of allNames) {
+  // Only names this file USES can be injected, so only those need the
+  // shadowing check; the loop builds two regexes per name it visits.
+  for (const name of used) {
     const declRe = new RegExp(
       `(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+${name}\\b|const\\s+${name}\\b|let\\s+${name}\\b|var\\s+${name}\\b|class\\s+${name}\\b)`,
     )
