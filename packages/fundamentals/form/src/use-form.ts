@@ -28,6 +28,88 @@ import type {
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
+ * One form field. A CLASS, not an object literal, because the four lazy signals
+ * (`error` / `touched` / `disabled` / `readOnly`) are prototype getters here.
+ * As object-literal getters they were the dominant per-field setup cost:
+ * creating a literal with four accessors (plus the four materializer closures
+ * behind them) measured ~387ns on V8 and ~107ns on JSC per field, against
+ * ~11 / ~19ns for this class — a 12-field form paid several microseconds of
+ * pure object-shape setup per mount.
+ *
+ * `setValue` / `setTouched` / `reset` stay OWN properties (closures from
+ * `createFieldState`), so destructuring a field keeps working. The lazy
+ * signals live in `#private` slots, so `Object.keys(field)` lists only the
+ * public data and methods. Note a `{ ...field }` spread no longer copies the
+ * four lazy signals (prototype getters are not own properties); read them off
+ * the field instead.
+ */
+class FieldStateImpl<T> implements FieldState<T> {
+  value: Signal<T>
+  dirty: Signal<boolean>
+  setValue: (value: T) => void
+  setTouched: () => void
+  reset: () => void
+  #newError: () => Signal<ValidationError>
+  #error: Signal<ValidationError> | undefined = undefined
+  #touched: Signal<boolean> | undefined = undefined
+  #disabled: Signal<boolean> | undefined = undefined
+  #readOnly: Signal<boolean> | undefined = undefined
+
+  constructor(
+    value: Signal<T>,
+    dirty: Signal<boolean>,
+    newError: () => Signal<ValidationError>,
+    setValue: (value: T) => void,
+    setTouched: () => void,
+    reset: () => void,
+  ) {
+    this.value = value
+    this.dirty = dirty
+    this.setValue = setValue
+    this.setTouched = setTouched
+    this.reset = reset
+    this.#newError = newError
+  }
+
+  // Lazy: the first read materializes the signal and every later read returns
+  // the SAME instance (identity stable — load-bearing for reactive tracking).
+  get error(): Signal<ValidationError> {
+    return (this.#error ??= this.#newError())
+  }
+
+  get touched(): Signal<boolean> {
+    if (this.#touched) return this.#touched
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+    return (this.#touched = signal(false))
+  }
+
+  get disabled(): Signal<boolean> {
+    if (this.#disabled) return this.#disabled
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+    return (this.#disabled = signal(false))
+  }
+
+  get readOnly(): Signal<boolean> {
+    if (this.#readOnly) return this.#readOnly
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+    return (this.#readOnly = signal(false))
+  }
+
+  /**
+   * Reset the lazy error/touched signals — only the ones ever materialized: an
+   * un-materialized one is already at its default, and creating it just to
+   * write that default would defeat the lazy allocation.
+   */
+  _resetLazy(): void {
+    this.#error?.set(undefined)
+    this.#touched?.set(false)
+  }
+}
+
+/**
  * Internal (NOT exported from the package entry): a signal on the form object
  * that bumps whenever the registered field SET changes (`registerField` /
  * `unregisterField`). `useWatch(form)` reads it so a watch-all computed
@@ -600,14 +682,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const dirtySig = signal(false)
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 2)
 
-    // LAZY materializers. Each `??=`-allocates on first access; `getError` also
-    // attaches its `_invalidCount` subscriber THEN (until the error signal
-    // exists the field has no error and contributes 0, so the count stays
-    // correct). `getError`/`getTouched` are used directly by the in-loop
-    // closures (runValidation / setTouched) to skip the property-getter hop.
-    let _errorSig: Signal<ValidationError> | undefined
-    const getError = (): Signal<ValidationError> => {
-      if (_errorSig) return _errorSig
+    // The error signal attaches its `_invalidCount` subscriber when it is
+    // created — until then the field has no error and contributes 0, so the
+    // count stays correct. The class getter calls this on first read.
+    const newError = (): Signal<ValidationError> => {
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       const s = signal<ValidationError>(undefined)
       if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
@@ -625,32 +703,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           prevHasError = hasError
         }
       })
-      _errorSig = s
       return s
-    }
-    let _touchedSig: Signal<boolean> | undefined
-    const getTouched = (): Signal<boolean> => {
-      if (_touchedSig) return _touchedSig
-      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-      _touchedSig = signal(false)
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
-      return _touchedSig
-    }
-    let _disabledSig: Signal<boolean> | undefined
-    const getDisabled = (): Signal<boolean> => {
-      if (_disabledSig) return _disabledSig
-      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-      _disabledSig = signal(false)
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
-      return _disabledSig
-    }
-    let _readOnlySig: Signal<boolean> | undefined
-    const getReadOnly = (): Signal<boolean> => {
-      if (_readOnlySig) return _readOnlySig
-      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-      _readOnlySig = signal(false)
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
-      return _readOnlySig
     }
 
     // Seed the validation version from the monotonic form-level counter —
@@ -659,7 +712,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // still-in-flight old async validator's captured version collide.
     validationVersions[name] = ++_versionCounter
 
-    // The 3 `getError().set(...)` calls below are in MUTUALLY EXCLUSIVE
+    // The 3 `field.error.set(...)` calls below are in MUTUALLY EXCLUSIVE
     // branches (validator success, validator threw, no validator
     // configured) — at most ONE fires per invocation. The lint rule
     // counts function-scope total writes, not per-branch fan-out, so
@@ -678,7 +731,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           const result = await fieldValidator(value, getValues(), abortSignal())
           // Only apply result if this is still the latest validation and not disposed
           if (!disposed && validationVersions[name] === currentVersion) {
-            getError().set(result)
+            field.error.set(result)
           }
           return result
         } catch (err) {
@@ -689,12 +742,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // Validator threw — treat as error string if possible
           if (!disposed && validationVersions[name] === currentVersion) {
             const message = err instanceof Error ? err.message : String(err)
-            getError().set(message)
+            field.error.set(message)
           }
           return err instanceof Error ? err.message : String(err)
         }
       }
-      getError().set(undefined)
+      field.error.set(undefined)
       return undefined
     }
     // Expose the non-debounced validator for `trigger(name)`.
@@ -762,7 +815,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // lightweight subscriber path: adds to the signal's `_s` Set with no
     // effect-framework overhead (no scope, no auto-track, no deps array).
     // The DIRTY subscriber is eager (dirty is allocated up front). The ERROR
-    // subscriber lives in `getError` and attaches when the error signal first
+    // subscriber lives in `newError` and attaches when the error signal first
     // materializes — until then the field has no error and contributes 0 to
     // `_invalidCount`, so the count is correct without an eager subscriber.
     let prevIsDirty = false
@@ -776,26 +829,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       }
     })
 
-    fields[name] = {
-      value: valueSig,
-      dirty: dirtySig,
-      // Lazy: accessing any of these materializes its signal on first read and
-      // returns the SAME instance thereafter (identity stable — load-bearing for
-      // reactive tracking). Off the keystroke hot path, so the getter hop never
-      // touches per-keystroke work.
-      get error() {
-        return getError()
-      },
-      get touched() {
-        return getTouched()
-      },
-      get disabled() {
-        return getDisabled()
-      },
-      get readOnly() {
-        return getReadOnly()
-      },
-      setValue: (value: TValues[typeof name]) => {
+    const setValue = (value: TValues[typeof name]): void => {
         valueSig.set(value)
         _valuesEpoch++ // invalidate the values() snapshot cache
         // Deep comparison for objects/arrays, reference for primitives —
@@ -810,7 +844,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // A schema-only field (no per-field validator) must re-run the form
           // SCHEMA here — exactly as the blur path (`setTouched`) does. Calling
           // `validateField` for a validator-less field only CLEARS the error
-          // (runValidation → getError().set(undefined)), so on a keystroke that
+          // (runValidation → field.error.set(undefined)), so on a keystroke that
           // is still invalid it blind-clears and `isValid` flips true while the
           // schema still rejects (submittable invalid data). Fields WITH a
           // per-field validator keep `validateField` (validator precedence).
@@ -820,9 +854,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
             validateField(value)
           }
         }
-      },
-      setTouched: () => {
-        getTouched().set(true)
+      }
+    const setTouched = (): void => {
+        field.touched.set(true)
         if (validateOn === 'blur') {
           // Run the per-field validator (matches `validators[name]`).
           validateField(valueSig.peek())
@@ -844,8 +878,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
             validateSchemaField()
           }
         }
-      },
-      reset: () => {
+      }
+    const reset = (): void => {
         // Invalidate every in-flight validation for this field. Without this a
         // pending async validator (a "username taken" server check) resolved
         // AFTER the reset and wrote its error onto the now-empty pristine
@@ -867,13 +901,20 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // un-materialized error/touched is already at its default, so there's
           // nothing to reset (and materializing one just to write its default
           // would defeat the lazy allocation).
-          _errorSig?.set(undefined)
-          _touchedSig?.set(false)
+          field._resetLazy()
         })
         _valuesEpoch++ // value reverted to initial → invalidate snapshot cache
         clearTimeout(debounceTimers[name])
-      },
-    } as FieldState<TValues[typeof name]>
+      }
+    const field = new FieldStateImpl<TValues[typeof name]>(
+      valueSig,
+      dirtySig,
+      newError,
+      setValue,
+      setTouched,
+      reset,
+    )
+    fields[name] = field
 
     // change-mode forms validate their INITIAL value once at setup — the
     // removed per-field effect ran once on creation; this preserves that
