@@ -26,6 +26,9 @@ function createScrollContainer(height = 200): HTMLDivElement {
   const container = document.createElement('div')
   Object.defineProperty(container, 'offsetHeight', { value: height })
   Object.defineProperty(container, 'offsetWidth', { value: 300 })
+  // @tanstack/virtual-core >= 3.19.6 sizes the scroll element by clientWidth/clientHeight
+
+  Object.defineProperty(container, 'clientWidth', { value: 300 })
   Object.defineProperty(container, 'scrollHeight', { value: 10000 })
   Object.defineProperty(container, 'clientHeight', { value: height })
   document.body.appendChild(container)
