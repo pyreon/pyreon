@@ -3,6 +3,7 @@
  * elements (which causes warnings). Props starting with `$` are
  * transient (styling-only) and are always filtered out.
  */
+import { _copyProp } from '@pyreon/core'
 
 // Common HTML attributes, event handlers, and ARIA/data attributes.
 //
@@ -237,7 +238,7 @@ export const filterProps = (props: Record<string, unknown>): Record<string, unkn
     /* v8 ignore next -- `Object.keys` guarantees an own descriptor; only an
        exotic Proxy whose ownKeys/getOwnPropertyDescriptor disagree gets here */
     if (!d) return
-    Object.defineProperty(filtered, key, { ...d, configurable: true })
+    _copyProp(filtered, key, d)
   }
 
   // OWN enumerable string keys, not `for...in`. `for...in` also walks the
@@ -340,7 +341,7 @@ export const buildProps = (
     /* v8 ignore next -- `Object.keys` guarantees an own descriptor; only an
        exotic Proxy whose ownKeys/getOwnPropertyDescriptor disagree gets here */
     if (!d) return
-    Object.defineProperty(result, key, { ...d, configurable: true })
+    _copyProp(result, key, d)
   }
 
   // Component target — forward all props except as/className/class and $-prefixed.

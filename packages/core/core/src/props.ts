@@ -2,6 +2,28 @@
 import { untrack } from '@pyreon/reactivity'
 
 /**
+ * @internal Copy one own property descriptor onto `target`, forcing
+ * `configurable: true`.
+ *
+ * Every prop pipeline (split/merge/omit/pick/forward) copies DESCRIPTORS so
+ * getter-backed reactive props survive. But almost every prop is a plain
+ * data value, and `Object.defineProperty` with a freshly spread descriptor
+ * costs ~2x a plain assignment on V8 and JSC. A plain assignment onto an own
+ * key creates exactly `{ value, writable: true, enumerable: true,
+ * configurable: true }` — the same property the defineProperty path makes —
+ * so the fast path is taken only when the source is writable + enumerable.
+ * Getters, setters and any unusual data descriptor keep the defineProperty
+ * path. `__proto__` is excluded: assigning it would set the prototype.
+ */
+export function _copyProp(target: object, key: PropertyKey, desc: PropertyDescriptor): void {
+  if (desc.writable === true && desc.enumerable === true && key !== '__proto__') {
+    ;(target as Record<PropertyKey, unknown>)[key] = desc.value
+  } else {
+    Object.defineProperty(target, key, { ...desc, configurable: true })
+  }
+}
+
+/**
  * Split props into two groups: keys you want and the rest.
  * Unlike destructuring, this preserves reactivity (getters on the original object).
  *
@@ -32,12 +54,7 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
     // and the caller omitted `configurable`). If we preserved that, any later
     // `Object.defineProperty` on the same key — including subsequent splitProps
     // post-processing or test mocks — would throw "Cannot redefine property".
-    const safe = { ...desc, configurable: true }
-    if (keySet.has(key)) {
-      Object.defineProperty(picked, key, safe)
-    } else {
-      Object.defineProperty(rest, key, safe)
-    }
+    _copyProp(keySet.has(key) ? picked : rest, key, desc)
   }
 
   return [picked, rest]
@@ -86,6 +103,14 @@ function mergeProperty(
   key: string,
   desc: PropertyDescriptor,
 ): void {
+  // No collision (the common case): copy straight across without allocating
+  // the existing key's descriptor. Same outcome as the branches below with
+  // `existing` undefined.
+  if (!Object.hasOwn(result, key)) {
+    if (desc.get) Object.defineProperty(result, key, { ...desc, configurable: true })
+    else _copyProp(result, key, desc)
+    return
+  }
   const existing = Object.getOwnPropertyDescriptor(result, key)
   if (desc.get && existing) {
     mergeGetterWithExisting(result, key, desc, existing)
@@ -99,8 +124,10 @@ function mergeProperty(
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
   } else if (desc.value !== undefined || !existing) {
-    // Both static — later value wins if defined
-    Object.defineProperty(result, key, { ...desc, configurable: true })
+    // Both static — later value wins if defined. `existing` (when present) is
+    // a data property this merge created itself, so it is writable and
+    // configurable and the assignment fast path in `_copyProp` replaces it.
+    _copyProp(result, key, desc)
   }
 }
 
@@ -167,7 +194,14 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
     // Keep getter-shaped descriptors verbatim (reactive props). For data
     // descriptors, drop `value === undefined` so they don't shadow defaults.
     if (d.get || d.value !== undefined) {
-      Object.defineProperty(result, key, d)
+      // Verbatim copy (no forced `configurable`): assignment reproduces the
+      // descriptor exactly only when the source is a plain writable,
+      // enumerable, configurable data property — the overwhelming case.
+      if (d.writable === true && d.enumerable === true && d.configurable === true && key !== '__proto__') {
+        result[key] = d.value
+      } else {
+        Object.defineProperty(result, key, d)
+      }
     }
   }
   return result
