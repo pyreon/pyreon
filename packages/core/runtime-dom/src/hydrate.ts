@@ -26,7 +26,6 @@ import {
   PortalSymbol,
   reportError,
   runWithHooks,
-  Suspense,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
@@ -39,7 +38,7 @@ import {
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
-import { attachSuspenseBoundary } from './suspense-boundary'
+import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
@@ -1826,7 +1825,8 @@ function hydrateComponent(
     // off-screen when a descendant mounted LATER suspends it (see
     // `attachSuspenseBoundary`). The server output carries no such markers —
     // they are inserted around what the walk claimed, so parity is untouched.
-    const boundaryStart = vnode.type === Suspense ? document.createComment('suspense') : null
+    const suspenseAttach = suspenseAttachOf(vnode.type)
+    const boundaryStart = suspenseAttach !== undefined ? document.createComment('suspense') : null
     if (boundaryStart !== null) parent.insertBefore(boundaryStart, domNode ?? anchor)
     const [childCleanup, next] = hydrateChild(output, domNode, parent, anchor, path)
     subtreeCleanup = childCleanup
@@ -1846,7 +1846,7 @@ function hydrateComponent(
       const boundary = useContext(SuspenseBoundaryContext)
       const detach =
         boundary !== null
-          ? attachSuspenseBoundary(boundary, boundaryStart, boundaryEnd, mountChild)
+          ? suspenseAttach!(boundary, boundaryStart, boundaryEnd, mountChild)
           : () => {
               boundaryStart.remove()
               boundaryEnd.remove()
