@@ -647,6 +647,8 @@ interface ForEntry {
   cleanup: Cleanup | null
   pos: number
   end: Node | null
+  /** Generation of the last update that saw this key — see `mountNewForEntries`. */
+  seen: number
 }
 
 /** Try small-k reorder; returns true if handled, false if LIS fallback needed. */
@@ -941,6 +943,9 @@ export function mountFor<T>(
   // Allocated on the first update that removes keys — most lists never do.
   let _reusableKeySet: Set<string | number> | null = null
   let cleanupCount = 0
+  // Per-update stamp + distinct-survivor count (see `mountNewForEntries`).
+  let updateGen = 0
+  let keptDistinct = 0
 
   // Starts as the shared zero-capacity state: the first reorder's
   // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
@@ -1011,7 +1016,7 @@ export function mountFor<T>(
       const native = result as import('@pyreon/core').NativeItem
       container.insertBefore(native.el, before)
       const nativeCleanup = withRowScope(rowScope, native.cleanup ?? null)
-      cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null })
+      cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null, seen: 0 })
       if (nativeCleanup) cleanupCount++
       return
     }
@@ -1022,7 +1027,7 @@ export function mountFor<T>(
     if (!firstMounted || firstMounted === before) {
       const ph = document.createComment('')
       container.insertBefore(ph, before)
-      cache.set(key, { anchor: ph, cleanup: cl, pos, end: null })
+      cache.set(key, { anchor: ph, cleanup: cl, pos, end: null, seen: 0 })
     } else {
       // Everything mounted for this entry sits in [firstMounted..lastMounted];
       // end stays null for the dominant single-node case.
@@ -1032,6 +1037,7 @@ export function mountFor<T>(
         cleanup: cl,
         pos,
         end: lastMounted && lastMounted !== firstMounted ? lastMounted : null,
+        seen: 0,
       })
     }
     cleanupCount++
@@ -1317,10 +1323,27 @@ export function mountFor<T>(
     //
     // `lastSurvivorIdx` is computed BEFORE any new key enters the cache, so
     // `cache.has` cleanly separates survivors from rows about to be mounted.
+    //
+    // The same pass counts the DISTINCT cached entries this update keeps, by
+    // stamping each with the update's generation (`cache.get` is the same one
+    // hash `cache.has` was). The caller's pure-reorder shortcut needs that
+    // count: "nothing added and `cache.size === n`" also holds when a key is
+    // DUPLICATED and another removed (`[1,2,3] -> [2,2,1]`), and skipping the
+    // stale scan there left the removed row in the DOM.
     let lastSurvivorIdx = -1
+    const gen = ++updateGen
+    let distinct = 0
     for (let i = 0; i < n; i++) {
-      if (cache.has(newKeys[i] as string | number)) lastSurvivorIdx = i
+      const e = cache.get(newKeys[i] as string | number)
+      if (e !== undefined) {
+        lastSurvivorIdx = i
+        if (e.seen !== gen) {
+          e.seen = gen
+          distinct++
+        }
+      }
     }
+    keptDistinct = distinct
     const tailBase = currentKeys.length
     let added = 0
     for (let i = 0; i < n; i++) {
@@ -1397,15 +1420,18 @@ export function mountFor<T>(
       return
     }
 
-    // Mount new entries FIRST and count them. If nothing was added AND the cache
-    // now holds exactly `n`, every newKey was already cached — a PURE REORDER
-    // (swap / reverse / sort) with nothing stale — so skip the O(n) newKey-Set
-    // rebuild and the O(m) stale scan (~17% off a 1k full-reverse).
+    // Mount new entries FIRST and count them. If nothing was added AND the
+    // update KEPT every cached entry (`keptDistinct`, counted by
+    // `mountNewForEntries`), it is a PURE REORDER (swap / reverse / sort) with
+    // nothing stale — so skip the O(n) newKey-Set rebuild and the O(m) stale
+    // scan (~17% off a 1k full-reverse). Counting distinct kept entries, not
+    // comparing `cache.size` to `n`, is what keeps a duplicated key from
+    // hiding a removed one.
     //
     // Mounting before removing is order-independent: new and stale keys are
     // disjoint, and `removeStaleForEntries` skips any key in the newKey Set.
     const added = mountNewForEntries(items, n, newKeys, liveParent)
-    if (added !== 0 || cache.size !== n) {
+    if (added !== 0 || keptDistinct !== cache.size) {
       const keySet = (_reusableKeySet ??= new Set<string | number>())
       keySet.clear()
       for (let i = 0; i < newKeys.length; i++) keySet.add(newKeys[i] as string | number)
@@ -1448,7 +1474,7 @@ export function mountFor<T>(
             renderItem: renderItem as (item: unknown) => unknown,
             tailMarker,
             setEntry: (key, entryAnchor, cleanup, pos, end) => {
-              cache.set(key, { anchor: entryAnchor, cleanup, pos, end })
+              cache.set(key, { anchor: entryAnchor, cleanup, pos, end, seen: 0 })
               cleanupCount++
             },
           })
