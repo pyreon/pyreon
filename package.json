@@ -188,7 +188,6 @@
     "zod": "^4.6.7"
   },
   "overrides": {
-    "pdfmake": "0.3.11",
     "@codemirror/view": "6.43.15",
     "@tanstack/query-core": "5.104.5",
     "@tanstack/virtual-core": "3.19.6",

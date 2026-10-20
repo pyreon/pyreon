@@ -54,7 +54,7 @@
     "@types/pdfmake": "^0.3.3",
     "docx": "^9.13.0",
     "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.11",
+    "pdfmake": "^0.3.12",
     "pptxgenjs": "^4.0.1"
   },
   "publishConfig": {
