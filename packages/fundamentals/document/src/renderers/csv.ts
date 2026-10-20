@@ -19,8 +19,13 @@ function resolveColumn(col: string | TableColumn): TableColumn {
  */
 function escapeCsv(value: string | number): string {
   let s = String(value)
-  if (typeof value !== 'number' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
-  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  // Formula-injection guard: the FIRST character only — a char-code check, not
+  // an anchored regex (`=` `+` `-` `@` TAB CR).
+  if (typeof value !== 'number') {
+    const c = s.charCodeAt(0)
+    if (c === 61 || c === 43 || c === 45 || c === 64 || c === 9 || c === 13) s = `'${s}`
+  }
+  if (/[",\r\n]/.test(s)) return `"${s.includes('"') ? s.replace(/"/g, '""') : s}"`
   return s
 }
 
