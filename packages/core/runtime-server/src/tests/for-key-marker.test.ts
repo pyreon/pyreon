@@ -1,6 +1,6 @@
-import { For, h } from '@pyreon/core'
+import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { decodeKeyFromMarker, renderToString } from '../index'
+import { decodeKeyFromMarker, renderToStream, renderToString } from '../index'
 
 // For list SSR carries every item's key in an HTML comment — on the closing
 // marker (`<!--/pyreon-for:k0 k1 …-->`) for a leading run of single-element
@@ -10,8 +10,8 @@ import { decodeKeyFromMarker, renderToString } from '../index'
 // terminate the comment and inject arbitrary markup. This suite locks the fix
 // for both forms.
 
-// A component row is not a single-element row, so it takes the per-row form.
-const CompRow = () => h('li', null, 'x')
+// A row that renders TWO nodes cannot be bare, so it takes the per-row form.
+const CompRow = () => h(Fragment, null, h('li', null, 'x'), h('li', null, 'y'))
 const ROW_FORMS = [
   { name: 'closing-marker key list', row: () => h('li', null, 'x'), re: /<!--\/pyreon-for:([^>]*)-->/ },
   { name: 'per-row marker', row: () => h(CompRow, null), re: /<!--k:([^>]*)-->/ },
@@ -35,7 +35,7 @@ describe('For SSR — key marker safety', () => {
     expect(html).toBe('<!--pyreon-for--><li>a</li><li>b</li><li>c</li><!--/pyreon-for:1 2 3-->')
   })
 
-  it('switches to per-row markers from the first row that is not a single element', async () => {
+  it('switches to per-row markers from the first row that renders more than one element', async () => {
     type Row = { id: number; comp: boolean }
     const items = signal<Row[]>([
       { id: 1, comp: false },
@@ -49,10 +49,11 @@ describe('For SSR — key marker safety', () => {
         children: (r: Row) => (r.comp ? h(CompRow, null) : h('li', null, String(r.id))),
       }),
     )
-    // Row 1 is bare (its key on the closing marker); row 2 starts the marked
-    // region, and row 3 stays marked even though it is an element again.
+    // Row 1 is bare (its key on the closing marker); row 2 renders two nodes
+    // and starts the marked region; row 3 stays marked even though it is a
+    // single element again.
     expect(html).toBe(
-      '<!--pyreon-for--><li>1</li><!--k:2--><li>x</li><!--k:3--><li>3</li><!--/pyreon-for:1-->',
+      '<!--pyreon-for--><li>1</li><!--k:2--><li>x</li><li>y</li><!--k:3--><li>3</li><!--/pyreon-for:1-->',
     )
   })
 
@@ -100,5 +101,53 @@ describe('For SSR — key marker safety', () => {
     // the inverse on a value we know was encoded from it).
     const encoded = encodeURIComponent(attackKey).replace(/-/g, '%2D')
     expect(decodeKeyFromMarker(encoded)).toBe(attackKey)
+  })
+
+  describe('component rows', () => {
+    const Single = (p: { n: number }) => h('li', null, `c${p.n}`)
+    const Wrapper = (p: { n: number }) => h(Single, p)
+    const Multi = () => h(Fragment, null, h('li', null, 'a'), h('li', null, 'b'))
+    const Reactive = (p: { n: number }) => () => h('li', null, `r${p.n}`)
+    const render = (children: (n: number) => unknown) =>
+      renderToString(h(For, { each: () => [1, 2], by: (n: number) => n, children } as never))
+    const stream = async (children: (n: number) => unknown) => {
+      const reader = renderToStream(
+        h(For, { each: () => [1, 2], by: (n: number) => n, children } as never),
+      ).getReader()
+      let out = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) return out
+        out += typeof value === 'string' ? value : new TextDecoder().decode(value)
+      }
+    }
+
+    it('a component rendering one element is bare — also through a wrapper component', async () => {
+      expect(await render((n) => h(Single, { n }))).toBe(
+        '<!--pyreon-for--><li>c1</li><li>c2</li><!--/pyreon-for:1 2-->',
+      )
+      expect(await render((n) => h(Wrapper, { n }))).toBe(
+        '<!--pyreon-for--><li>c1</li><li>c2</li><!--/pyreon-for:1 2-->',
+      )
+    })
+
+    it('a component rendering several nodes, or an accessor, keeps per-row markers', async () => {
+      expect(await render(() => h(Multi, null))).toContain('<!--k:1-->')
+      // The documented reactive-conditional return: its first node can be
+      // replaced on the client, so it must never be a bare row.
+      expect(await render((n) => h(Reactive, { n }))).toContain('<!--k:1-->')
+    })
+
+    it('stream and string renderers emit identical bytes for every component shape', async () => {
+      for (const children of [
+        (n: number) => h(Single, { n }),
+        (n: number) => h(Wrapper, { n }),
+        () => h(Multi, null),
+        (n: number) => h(Reactive, { n }),
+        (n: number) => (n === 1 ? h(Single, { n }) : h(Multi, null)),
+      ]) {
+        expect(await stream(children)).toBe(await render(children))
+      }
+    })
   })
 })

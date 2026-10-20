@@ -91,7 +91,15 @@ const _count: (name: string) => void =
 // Solid's `ssr()`, React's dangerouslySetInnerHTML boundary). A plain string hole
 // is still user text and IS escaped.
 class RawHtml {
-  constructor(readonly value: string) {}
+  /**
+   * `el` — the HTML is exactly ONE element. Set only by `_ssr`, which the
+   * compiler emits for a single JSX element; `<For>` uses it to leave a
+   * component row's per-row marker out (see `isSingleElementRow`).
+   */
+  constructor(
+    readonly value: string,
+    readonly el = false,
+  ) {}
 }
 
 // The sanitized `innerHTML` prop is DOM-based on the client (`applyStaticProp`
@@ -753,6 +761,21 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
       const row = children(item)
       if (!marked && isSingleElementRow(row)) {
         leadKeys.push(safeKeyForMarker(key))
+      } else if (!marked && isComponentRow(row)) {
+        // Classified by its render (see `renderForItems`), so the row streams
+        // into a buffer until the marker decision is known.
+        let buf = ''
+        const single = await streamComponentNode(row as VNode, (c) => {
+          buf += c
+        })
+        if (single) leadKeys.push(safeKeyForMarker(key))
+        else {
+          marked = true
+          _count('runtime-server.for.keyMarker')
+          enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
+        }
+        enqueue(buf)
+        continue
       } else {
         marked = true
         _count('runtime-server.for.keyMarker')
@@ -777,11 +800,17 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
   await streamElementNode(vnode, enqueue)
 }
 
-async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+/**
+ * Streams a component; resolves to whether it rendered exactly one element —
+ * the same STRUCTURAL classification `renderComponent` records, so `<For>`'s
+ * string and stream output agree.
+ */
+async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): Promise<boolean> {
   if (vnode.type === Suspense) {
     await streamSuspenseBoundary(vnode, enqueue)
-    return
+    return false
   }
+  let single = false
   _count('runtime-server.component')
   // Snapshot the context stack BEFORE the component renders so we can pop frames
   // pushed via `provide()` after children stream. We do NOT run user unmount hooks
@@ -796,6 +825,8 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     const pending = pendingLazy(vnode.type)
     if (pending) await pending
     const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
+    // A still-loading lazy has no classification on the string path either.
+    const classify = pending === null || pending === undefined
     // Async components: emit sentinel markers around the resolved output so the
     // client hydrate can find the SSR DOM range for the still-pending Promise and
     // attach reactivity to it. `<!--$pas-->` / `<!--$pae-->` nest correctly — the
@@ -807,7 +838,14 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
       if (resolved !== null) await streamNode(resolved, enqueue)
       enqueue('<!--$pae-->')
     } else if (output !== null) {
-      await streamNode(output, enqueue)
+      const t = typeof output === 'object' ? (output as VNode).type : undefined
+      if (typeof t === 'function' && t !== Suspense) {
+        const inner = await streamComponentNode(output as VNode, enqueue)
+        single = classify && inner
+      } else {
+        await streamNode(output, enqueue)
+        single = classify && outputIsSingleElement(output, false)
+      }
     }
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') {
@@ -820,9 +858,11 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     const ctx = _streamCtxAls.getStore()
     if (ctx && ctx.suspenseDepth > 0) throw err
     enqueue('<!--pyreon-error-->')
+    single = false
   } finally {
     trimContextStack(stackLenBefore)
   }
+  return single
 }
 
 async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
@@ -1285,13 +1325,51 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
 }
 
 /**
+ * Whether a component's OUTPUT is exactly one element: an element vnode, or a
+ * compiled `_ssr` template (`RawHtml.el`, a `_ssrDeferred` thunk or a streamed
+ * `StreamParts` — all one JSX element by construction). A nested component
+ * inherits its own classification (`inner`). Anything else — an accessor (which
+ * SSR brackets with `<!--$-->` markers), a fragment, an array, text, a
+ * `<Suspense>` — is not.
+ */
+function outputIsSingleElement(output: unknown, inner: boolean): boolean {
+  if (typeof output !== 'object' || output === null) return false
+  if (output instanceof RawHtml) return output.el
+  if (output instanceof DeferredHtml || output instanceof StreamParts) return true
+  const t = (output as VNode).type
+  if (typeof t === 'string') return true
+  return typeof t === 'function' && t !== Suspense ? inner : false
+}
+
+/**
+ * Per component vnode: did it render exactly one element? Written by
+ * `renderComponent` SYNCHRONOUSLY, as soon as the component returns its output
+ * (before any async child resolves), and read by `renderForItems` right after
+ * it starts the row's render. Classification is STRUCTURAL — it depends on the
+ * output's shape, never on whether something below it renders asynchronously —
+ * which is what keeps the string and stream renderers' bytes identical. No
+ * entry (a not-yet-loaded `lazy()`, an async component) reads as "no". Weak:
+ * entries die with the vnode.
+ */
+const _componentSingleEl = new WeakMap<object, boolean>()
+/**
+ * Recording is ON only while `renderForItems` synchronously starts a leading
+ * component row — every other SSR render pays nothing. Nothing can interleave
+ * (it is set and cleared around one synchronous call), and the nested
+ * components a row needs classified all reach their classification inside it.
+ */
+let _recordSingleEl = false
+
+/**
  * `<For>` SSR block shape. Rows that render exactly ONE element need no
  * per-row marker — the element IS the row boundary — so a block's LEADING run
  * of single-element rows is emitted bare and its keys travel once, on the
- * CLOSING marker: `<!--/pyreon-for:k0 k1 …-->`. From the first row that is not
- * a single element (component, fragment, accessor, text), that row and every
- * later one keep the explicit `<!--k:KEY-->` marker hydration needs to find
- * multi-node boundaries. Rows are still rendered one at a time in source order
+ * CLOSING marker: `<!--/pyreon-for:k0 k1 …-->`. An element row is classified
+ * before it renders; a component row by what it rendered (`outputIsSingleElement`
+ * — an element, compiled `_ssr` output, or a component that renders one). From
+ * the first row that is not a single element (fragment, accessor, text, an async
+ * or still-loading component), that row and every later one keep the explicit
+ * `<!--k:KEY-->` marker hydration needs to find multi-node boundaries. Rows are still rendered one at a time in source order
  * (row callback, then the row's own render), exactly as the client mounts
  * them, and the string and stream renderers emit identical bytes.
  *
@@ -1300,6 +1378,12 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
  * walk and ~10% less HTML. Keys are `safeKeyForMarker`-encoded (`[\w.:]` or
  * percent-escaped), so the space separator can never occur inside one.
  */
+function isComponentRow(row: unknown): boolean {
+  if (row === null || typeof row !== 'object') return false
+  const t = (row as VNode).type
+  return typeof t === 'function' && t !== Suspense
+}
+
 function isSingleElementRow(row: unknown): boolean {
   return row !== null && typeof row === 'object' && typeof (row as VNode).type === 'string'
 }
@@ -1324,15 +1408,39 @@ function renderForItems(
     const item = items[i]
     const key = by(item)
     const row = children(item)
+    let r: MaybeAsync
     if (!marked && isSingleElementRow(row)) {
       const k = safeKeyForMarker(key)
       leadKeys = leadKeys === null ? k : `${leadKeys} ${k}`
+      r = renderNode(row as VNodeChild)
+    } else if (!marked && isComponentRow(row)) {
+      // A component row is classified by what it RENDERED, so start the render
+      // first. A single-element result joins the bare run; anything else
+      // starts the marked region, with the marker placed before it.
+      // Saved and RESTORED, never reset to false: a nested <For> inside this
+      // row runs this same code, and a reset there would stop the outer row's
+      // remaining components from recording.
+      const prevRecord = _recordSingleEl
+      _recordSingleEl = true
+      try {
+        r = renderNode(row as VNodeChild)
+      } finally {
+        _recordSingleEl = prevRecord
+      }
+      if (_componentSingleEl.get(row as object) === true) {
+        const k = safeKeyForMarker(key)
+        leadKeys = leadKeys === null ? k : `${leadKeys} ${k}`
+      } else {
+        marked = true
+        _count('runtime-server.for.keyMarker')
+        acc += `<!--k:${safeKeyForMarker(key)}-->`
+      }
     } else {
       marked = true
       _count('runtime-server.for.keyMarker')
       acc += `<!--k:${safeKeyForMarker(key)}-->`
+      r = renderNode(row as VNodeChild)
     }
-    const r = renderNode(row as VNodeChild)
     if (typeof r === 'string') {
       acc += r
     } else {
@@ -1407,6 +1515,14 @@ function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
     return ''
   }
   const r = renderNode(output)
+  // After `renderNode` STARTS the output's render: a nested component has
+  // classified itself synchronously by now, whatever its subtree does next.
+  if (_recordSingleEl) {
+    _componentSingleEl.set(
+      vnode,
+      outputIsSingleElement(output, _componentSingleEl.get(output as object) === true),
+    )
+  }
   if (typeof r === 'string') {
     trimContextStack(stackLenBefore)
     return r
@@ -1673,7 +1789,7 @@ export function _ssr(
   if (rest.length === 0) {
     // oxlint-disable-next-line prefer-rest-params
     const fast = _ssrFixed(statics, arguments.length - 1, a, b, c, d, e, f)
-    if (fast !== undefined) return new RawHtml(fast)
+    if (fast !== undefined) return new RawHtml(fast, true)
   }
   // oxlint-disable-next-line prefer-rest-params
   const holes = _collectHoles(arguments.length - 1, a, b, c, d, e, f, rest)
@@ -1685,7 +1801,7 @@ export function _ssr(
     return new StreamParts(parts) as unknown as RawHtml
   }
   const r = _ssrConcat(statics, holes, 0, statics[0] ?? '')
-  return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
+  return typeof r === 'string' ? new RawHtml(r, true) : r.then((s) => new RawHtml(s, true))
 }
 
 /**

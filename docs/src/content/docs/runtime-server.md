@@ -1187,7 +1187,7 @@ All text content and attribute values within Suspense templates go through the s
 
 `<For>` SSR output carries every item's key, so the client-side hydrator can match server-rendered items with their reactive counterparts by key rather than by position, and adopt the existing DOM instead of rebuilding it.
 
-When the rows are single elements — the common case, such as a table or a list — the keys travel once, space-separated, on the closing marker:
+When the rows render a single element each — the common case, such as a table or a list, whether the row is written as an element or as a component that renders one — the keys travel once, space-separated, on the closing marker:
 
 ```html
 <!--pyreon-for-->
@@ -1197,7 +1197,7 @@ When the rows are single elements — the common case, such as a table or a list
 <!--/pyreon-for:apple banana cherry-->
 ```
 
-A row of any other shape (a component, a fragment, an accessor, text) can render a variable number of nodes, so from the first such row on, every row gets its own `<!--k:key-->` marker:
+A row of any other shape (a fragment, an accessor such as the `() => cond() ? <A/> : <B/>` component return, text, or an async component) can render a variable number of nodes, so from the first such row on, every row gets its own `<!--k:key-->` marker:
 
 ```html
 <!--pyreon-for-->

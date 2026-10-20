@@ -5,7 +5,7 @@
 '@pyreon/mcp': patch
 ---
 
-`<For>` SSR output is now about half as many DOM nodes for a typical list. A leading run of single-element rows (a table body, a list) no longer gets a `<!--k:KEY-->` comment before every row. Their keys travel once, space-separated, on the closing marker instead: `<!--/pyreon-for:k0 k1 …-->`. From the first row of any other shape (a component, fragment, accessor or text), every row keeps its own marker as before, because those rows can span any number of nodes.
+`<For>` SSR output is now about half as many DOM nodes for a typical list. A leading run of single-element rows (a table body, a list) no longer gets a `<!--k:KEY-->` comment before every row. Their keys travel once, space-separated, on the closing marker instead: `<!--/pyreon-for:k0 k1 …-->`. This covers component rows too, when the component renders one element: `<For>{(r) => <Row r={r} />}</For>` is classified by what `Row` returned, including compiled `_ssr` output and components that wrap another component. From the first row of any other shape (a fragment, an accessor such as the reactive-conditional component return, text, or an async or still-loading component), every row keeps its own marker as before, because those rows can span any number of nodes.
 
 The string renderer, the stream renderer and the compiled `_ssrForKeyed` fast path emit identical bytes. Hydration rebuilds the row table from both forms and still verifies every key before adopting anything. A list whose keys don't match is re-rendered, exactly as before. The previous format (a marker before every row) still hydrates, so a cached prerendered page keeps working after an upgrade.
 
