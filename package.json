@@ -189,6 +189,8 @@
   },
   "overrides": {
     "follow-redirects": "^1.16.1",
+    "launch-editor": "^2.14.2",
+    "markdown-it": "^15.0.3",
     "@codemirror/view": "6.43.15",
     "@tanstack/query-core": "5.104.5",
     "@tanstack/virtual-core": "3.19.6",
