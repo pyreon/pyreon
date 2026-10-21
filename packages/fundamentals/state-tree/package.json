@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/state-tree",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Structured reactive state tree \u2014 composable models with snapshots, patches, and middleware",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/state-tree#readme",
@@ -59,18 +59,18 @@
     "@pyreon/validation": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "arktype": "^2.2.5",
-    "bun-types": "^1.4.2",
-    "mobx": "^7.0.5",
+    "arktype": "^2.2.8",
+    "bun-types": "^1.4.3",
+    "mobx": "^7.1.0",
     "mobx-state-tree": "^8.0.0",
     "valibot": "^1.5.0",
-    "zod": "^4.6.5",
+    "zod": "^4.6.7",
     "@pyreon/native-compiler": "workspace:*"
   },
   "publishConfig": {

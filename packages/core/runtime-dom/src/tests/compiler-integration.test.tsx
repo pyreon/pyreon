@@ -9,7 +9,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { query } from '@pyreon/test-utils'
-import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, h, _fuse, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
 import {
@@ -17,6 +17,7 @@ import {
   _setAttr,
   _setClass,
   _setStyle,
+  _setStyleOnce,
   _setValue,
   _setHtml,
   bindPolymorphicText,
@@ -43,12 +44,14 @@ const RUNTIME_DEPS = {
   bindPolymorphicText,
   _applyProps,
   _setStyle,
+  _setStyleOnce,
   _setClass,
   _setAttr,
   _setValue,
   _setHtml,
   _rp,
   _rpd,
+  _fuse,
   _cx: cx,
   h,
   Fragment,
@@ -758,10 +761,12 @@ describe('Compiler integration — class/style binding fidelity', () => {
         set!.call(this, v)
       },
     })
-    // Byte-identical re-emits after the initial (pre-spy) write: zero writes.
+    // Byte-identical re-emits after the initial (pre-spy) write: the first
+    // writes once more to record the serialization, the rest are skipped.
     tick.set(1)
     tick.set(2)
-    expect(writes).toBe(0)
+    tick.set(3)
+    expect(writes).toBe(1)
     expect(div.style.color).toBe('red')
     delete (div.style as unknown as Record<string, unknown>).cssText
   })
@@ -873,16 +878,37 @@ describe('compiler integration — universal VNode[] child mounting', () => {
     expect(ul.textContent).toBe('pqr')
   })
 
-  it('STATIC mixed child a{items}b (VNode[]) mounts at the placeholder position', () => {
-    // Text siblings force the placeholder path → `_setChildAt`.
+  it('STATIC mixed child a{items}b (VNode[]) mounts between its text siblings', () => {
     const { container, code } = compileComponent(
       `const C = ({ items }) => (<div>before{items}after</div>)`,
       { items: [h('b', null, 'X'), h('b', null, 'Y')] },
     )
-    expect(code).toContain('_setChildAt(')
+    // An all-static run fuses into one `_setChild(_fuse(...))`; `_fuse` returns
+    // the parts ARRAY when one is a VNode[], which `_setChild` mounts in order.
+    expect(code).toContain('_setChild(__root, _fuse("before", items, "after"))')
     const div = container.querySelector('div')!
     expect(div.querySelectorAll('b').length).toBe(2)
     expect(div.textContent).toBe('beforeXYafter')
+  })
+
+  it('STATIC fused run with a FUNCTION part mounts it as a live child, never its source text', () => {
+    const n = signal(1)
+    const { container, code } = compileComponent(
+      `const C = ({ live }) => (<p>n={live}!</p>)`,
+      { live: () => n() },
+    )
+    expect(code).toContain('_setChild(__root, _fuse("n=", live, "!"))')
+    const p = container.querySelector('p')!
+    expect(p.textContent).toBe('n=1!')
+    n.set(2)
+    expect(p.textContent).toBe('n=2!')
+  })
+
+  it('STATIC fused run of primitives is ONE text node (the row fast path)', () => {
+    const { container } = compileComponent(`const C = ({ i }) => (<li>Row {i} of {i}</li>)`, { i: 7 })
+    const li = container.querySelector('li')!
+    expect(li.childNodes.length).toBe(1)
+    expect(li.textContent).toBe('Row 7 of 7')
   })
 
   it('STATIC primitive param {label} still renders as text (fallback path intact)', () => {

@@ -140,7 +140,10 @@ export function kotlinChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, des
 
 export function kotlinAccessorExpr(v: ExprIR, tag: string, what: string, indent: number): string | 'unsupported' {
   if (v.kind !== 'arrow' || (v.stmts !== undefined && v.stmts.length > 0) || v.params.length > 2) {
-    host.warn(`<${tag}> ${what}: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an empty Box().`)
+    // A mark's channel may be a COLUMN on the web (\`line(prices)\`); name
+    // that case, since the arrow-only rule reads as a typo otherwise.
+    const column = what.startsWith('mark') && (v.kind === 'identifier' || v.kind === 'array' || v.kind === 'member' || v.kind === 'new-collection') ? ' A column (an array of values) is web-only; use an arrow in shared source.' : ''
+    host.warn(`<${tag}> ${what}: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an empty Box().${column}`)
     return 'unsupported'
   }
   let body: ExprIR | null = v.body

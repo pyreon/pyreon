@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/hotkeys",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Reactive keyboard shortcut management for Pyreon — scope-aware, conflict detection",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/hotkeys#readme",
   "bugs": {
@@ -48,7 +48,7 @@
     "bench:keys": "NODE_ENV=production bun bench/hotkeys-bench.ts"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",

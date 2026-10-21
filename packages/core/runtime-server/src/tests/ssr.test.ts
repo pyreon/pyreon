@@ -631,7 +631,7 @@ describe('renderToString — For component', () => {
     })
     const html = await renderToString(vnode)
     expect(html).toContain('<!--pyreon-for-->')
-    expect(html).toContain('<!--/pyreon-for-->')
+    expect(html).toContain('<!--/pyreon-for:a b c-->')
     expect(html).toContain('<li>a</li>')
     expect(html).toContain('<li>b</li>')
     expect(html).toContain('<li>c</li>')
@@ -1040,7 +1040,7 @@ describe('renderToStream — additional coverage', () => {
     expect(html).toContain('<!--pyreon-for-->')
     expect(html).toContain('<li>x</li>')
     expect(html).toContain('<li>y</li>')
-    expect(html).toContain('<!--/pyreon-for-->')
+    expect(html).toContain('<!--/pyreon-for:x y-->')
   })
 
   test('streams reactive getter children', async () => {
@@ -1576,12 +1576,8 @@ describe('renderToString — For key markers', () => {
       children: (item: { id: number; name: string }) => h('li', null, item.name),
     })
     const html = await renderToString(vnode)
-    expect(html).toContain('<!--k:1-->')
-    expect(html).toContain('<!--k:2-->')
-    expect(html).toContain('<!--pyreon-for-->')
-    expect(html).toContain('<!--/pyreon-for-->')
-    expect(html).toContain('<li>a</li>')
-    expect(html).toContain('<li>b</li>')
+    // Single-element rows: keys travel once, on the closing marker.
+    expect(html).toBe('<!--pyreon-for--><li>a</li><li>b</li><!--/pyreon-for:1 2-->')
   })
 
   test('For markers appear in correct order', async () => {
@@ -1596,11 +1592,8 @@ describe('renderToString — For key markers', () => {
       children: (item: { id: number; name: string }) => h('span', null, item.name),
     })
     const html = await renderToString(vnode)
-    const idx10 = html.indexOf('<!--k:10-->')
-    const idx20 = html.indexOf('<!--k:20-->')
-    const idx30 = html.indexOf('<!--k:30-->')
-    expect(idx10).toBeLessThan(idx20)
-    expect(idx20).toBeLessThan(idx30)
+    // The closing-marker key list is in row order.
+    expect(html).toContain('<!--/pyreon-for:10 20 30-->')
   })
 
   test('For with empty array emits boundary markers only', async () => {
@@ -1762,7 +1755,8 @@ describe('renderToStream — For key markers', () => {
       children: (item: { id: number; name: string }) => h('li', null, item.name),
     })
     const html = await collectStream(renderToStream(vnode))
-    expect(html).toContain('<!--k:1-->')
-    expect(html).toContain('<!--k:2-->')
+    // Byte-identical to the string renderer.
+    expect(html).toBe(await renderToString(vnode))
+    expect(html).toContain('<!--/pyreon-for:1 2-->')
   })
 })

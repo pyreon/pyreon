@@ -938,6 +938,23 @@ h('select', { value: 'b' }, h('option', { value: 'a' }, 'A'), h('option', { valu
     }),
   },
   {
+    // `<For>` row whose first node a reactive boundary REPLACES (a row that is
+    // an accessor, a component returning one, a text value that becomes a
+    // VNode). mountFor took the row's anchor from the mounted content, so after
+    // the row re-ran the anchor was the detached old node; the next reorder
+    // moved it back into the list (stale duplicate row, live content stranded)
+    // or threw from `moveEntryBefore`. Must precede the PZ-08 entry below, whose
+    // broader pattern also matches an `insertBefore … not a child` message.
+    pattern:
+      /insertBefore[\s\S]*not a child of this node[\s\S]*(moveEntryBefore|smallKPlace|forLisReorder|applyForMoves)/,
+    diagnose: () => ({
+      cause:
+        'A `<For>` row whose content re-renders (a row that returns an accessor, or a component returning `() => cond ? <A/> : <B/>`) was anchored on its own first node. Once the row re-ran, that node was detached, and moving the row on a reorder failed — on `@pyreon/runtime-dom` versions before the fix this also showed up as a duplicated row or rows in the wrong order with no error.',
+      fix: 'Upgrade `@pyreon/runtime-dom`: rows that are not a single element are now delimited by their own stable comment markers. On an older version, make the row a single element that wraps the reactive part — `(x) => <li>{() => x.label()}</li>` instead of `(x) => () => <li>{x.label()}</li>`.',
+      fixCode: `<For each={rows} by={(r) => r.id}>{(r) => <li>{() => r.label()}</li>}</For>`,
+    }),
+  },
+  {
     // Template ref-hoist fix (PZ-08): a reactive/conditional slot
     // (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`) BEFORE static siblings
     // broke the compiled template's sibling ref-walk — `_mountSlot` mounts

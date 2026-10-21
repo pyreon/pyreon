@@ -32,7 +32,9 @@
  * link-bearing template and each rendered page gets its OWN critical CSS.
  */
 import { readdirSync, statSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
+import { Worker } from 'node:worker_threads'
+import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Plugin } from 'vite'
 
@@ -44,6 +46,7 @@ const UNRENDERED_MARKER = '<!--pyreon-app-->'
 export default function inlineCriticalCss(): Plugin {
   let outDir = 'dist'
   let base = '/'
+  let root = process.cwd()
 
   return {
     name: 'pyreon-docs-inline-critical-css',
@@ -57,10 +60,9 @@ export default function inlineCriticalCss(): Plugin {
       // points at the sub-build dir — the real, page-bearing output is its
       // parent. (A normal build resolves to `outDir` unchanged.)
       const resolved = config.build.outDir
-      outDir = resolved.endsWith('.zero-ssg-server')
-        ? dirname(resolved)
-        : resolved
+      outDir = resolved.endsWith('.zero-ssg-server') ? dirname(resolved) : resolved
       base = config.base || '/'
+      root = config.root
     },
 
     async closeBundle() {
@@ -72,7 +74,6 @@ export default function inlineCriticalCss(): Plugin {
       // finished (no template placeholder). Idempotent: a processed page's
       // link is already an async preload, so it won't re-match.
       const targets: string[] = []
-      const pageHtml = new Map<string, string>()
       for (const file of htmlFiles) {
         let html: string
         try {
@@ -81,45 +82,60 @@ export default function inlineCriticalCss(): Plugin {
           continue
         }
         if (html.includes(UNRENDERED_MARKER)) continue
-        if (!/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="[^"]*\.css"[^>]*>/i.test(html))
-          continue
+        if (!/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="[^"]*\.css"[^>]*>/i.test(html)) continue
         targets.push(file)
-        pageHtml.set(file, html)
       }
       if (targets.length === 0) return
 
-      // Lazy ESM import — keeps beasties out of the dev / SSR graph and
-      // only loads it when there is real work to do.
-      const { default: Beasties } = await import('beasties')
-
+      // Pages are independent (a fresh beasties instance per page), so they
+      // run across worker threads: beasties' per-page selector matching was
+      // ~17s of a ~37s docs build when done one page at a time. Workers PULL
+      // the next page from a shared queue rather than taking a fixed slice:
+      // page cost varies a lot, and fixed slices left the step waiting on the
+      // slowest one while the other workers sat idle.
+      const workers = Math.max(1, Math.min(availableParallelism() - 1, 8, targets.length))
+      const workerFile = join(root, 'vite-plugins', 'inline-critical-css.worker.mjs')
+      let next = 0
+      const results = await Promise.all(
+        Array.from(
+          { length: workers },
+          () =>
+            new Promise<{ done: number; skipped: Array<{ file: string; message: string }> }>(
+              (resolve, reject) => {
+                const worker = new Worker(workerFile, { workerData: { outDir, base } })
+                worker.on(
+                  'message',
+                  (
+                    msg:
+                      | { type: 'next' }
+                      | {
+                          type: 'result'
+                          done: number
+                          skipped: Array<{ file: string; message: string }>
+                        },
+                  ) => {
+                    if (msg.type === 'next') {
+                      worker.postMessage(next < targets.length ? targets[next++] : null)
+                    } else {
+                      resolve(msg)
+                    }
+                  },
+                )
+                worker.once('error', reject)
+                worker.once('exit', (code) => {
+                  if (code !== 0) reject(new Error(`critical-CSS worker exited with code ${code}`))
+                })
+              },
+            ),
+        ),
+      )
       let done = 0
-      for (const file of targets) {
-        const html = pageHtml.get(file)
-        if (!html) continue
-        try {
-          // A fresh instance per page so critical sets never leak across
-          // pages; `path` lets beasties resolve the `<link href>` CSS file.
-          const beasties = new Beasties({
-            path: outDir,
-            publicPath: base,
-            preload: 'swap', // async-load the full sheet, non-blocking
-            pruneSource: false, // keep the full sheet intact for the async load
-            fonts: false, // fontPlugin owns @font-face / woff2
-            reduceInlineStyles: false, // never touch existing inline <style>
-            logLevel: 'silent',
-          })
-          const processed = await beasties.process(html)
-          if (processed && processed !== html) {
-            await writeFile(file, processed)
-            done++
-          }
-        } catch (err) {
-          // Never fail the build over one page — it keeps its (correct,
-          // render-blocking) <link>, just unoptimized.
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[pyreon-docs] critical-CSS skipped for ${file}: ${(err as Error).message}`,
-          )
+      for (const r of results) {
+        done += r.done
+        // Never fail the build over one page — it keeps its (correct,
+        // render-blocking) <link>, just unoptimized.
+        for (const { file, message } of r.skipped) {
+          console.warn(`[pyreon-docs] critical-CSS skipped for ${file}: ${message}`)
         }
       }
 

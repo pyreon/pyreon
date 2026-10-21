@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getPlatformPackageName } from '../load-native'
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { getPlatformPackageName, loadNativeBinding } from '../load-native'
 
 describe('getPlatformPackageName', () => {
   it('returns @pyreon/compiler-darwin-arm64 on Apple Silicon', () => {
@@ -49,5 +53,41 @@ describe('getPlatformPackageName', () => {
     // ABI-compatible with Debian's glibc binary. Per-platform packages
     // must differentiate.
     expect(getPlatformPackageName('linux', 'x64', 'musl')).toBe('@pyreon/compiler-linux-x64-musl')
+  })
+})
+
+describe('loadNativeBinding — in-tree binary depth', () => {
+  // The built entry is code-split into `lib/_chunks/<file>.js`, two levels
+  // below the package root, while `src/<file>.ts` is one level below. Both
+  // must find `<root>/native/pyreon-compiler.node`; probing only `../native`
+  // silently dropped every built-lib consumer onto the JS fallback.
+  const real = join(import.meta.dirname, '..', '..', 'native', 'pyreon-compiler.node')
+  const hasBinary = existsSync(real)
+
+  function fakePackage(): string {
+    const root = mkdtempSync(join(tmpdir(), 'pyreon-load-native-'))
+    mkdirSync(join(root, 'native'))
+    symlinkSync(real, join(root, 'native', 'pyreon-compiler.node'))
+    mkdirSync(join(root, 'src'))
+    mkdirSync(join(root, 'lib', '_chunks'), { recursive: true })
+    return root
+  }
+
+  it('the in-tree binary is present in this environment', () => {
+    // A skipped depth spec must never masquerade as coverage: say so loudly.
+    if (!hasBinary) console.warn(`[load-native.test] no in-tree binary at ${real}; depth specs skipped`)
+    expect(typeof hasBinary).toBe('boolean')
+  })
+
+  it.runIf(hasBinary)('resolves from a src/<file> module (one level deep)', () => {
+    const root = fakePackage()
+    const b = loadNativeBinding(pathToFileURL(join(root, 'src', 'jsx.ts')).href)
+    expect(typeof b?.transformJsx).toBe('function')
+  })
+
+  it.runIf(hasBinary)('resolves from a lib/_chunks/<file> module (two levels deep)', () => {
+    const root = fakePackage()
+    const b = loadNativeBinding(pathToFileURL(join(root, 'lib', '_chunks', 'jsx-abc.js')).href)
+    expect(typeof b?.transformJsx).toBe('function')
   })
 })

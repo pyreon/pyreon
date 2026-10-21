@@ -73,6 +73,10 @@ export { mapArray } from './map-array'
 export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
 export {
+  _copyProp,
+  _mergePropsExcept,
+  _mergePropsOmit,
+  _pickProps,
   _lc,
   _fuse,
   _rp,
@@ -95,8 +99,10 @@ export type { MatchProps, ShowProps, SwitchProps } from './show'
 export { Match, MatchSymbol, Show, Switch } from './show'
 export type { ClassValue } from './style'
 export { CSS_UNITLESS, cx, normalizeStyleValue, toKebabCase } from './style'
-export type { LazyComponent, SuspenseBoundary } from './suspense'
-export { _setSuspenseHydrating, Suspense, SuspenseBoundaryContext } from './suspense'
+export type { LazyComponent } from './suspense'
+export { _setSuspenseHydrating, Suspense } from './suspense'
+export type { SuspenseBoundary } from './suspense-context'
+export { SuspenseBoundaryContext } from './suspense-context'
 export { EVENT_HANDLER_ATTRS, isElementEventHandlerAttr, isEventHandlerAttr, UNSAFE_ATTR_NAME_RE, isSafeImageDataUri, isUnsafeUrl, isUrlAttr, UNSAFE_URL_RE, URL_ATTRS } from './url-guard'
 export type { ErrorContext, ErrorHandler, ReactiveTraceEntry } from './telemetry'
 export { registerErrorHandler, reportError } from './telemetry'

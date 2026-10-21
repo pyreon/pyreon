@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/compiler",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Template and JSX compiler for Pyreon",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",
@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "magic-string": "^1.4.2",
-    "oxc-parser": "^0.152.0",
+    "oxc-parser": "^0.155.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
@@ -83,7 +83,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "happy-dom": "^20.14.5"
+    "happy-dom": "^21.0.3"
   },
   "optionalDependencies": {
     "@pyreon/compiler-darwin-arm64": "workspace:^",

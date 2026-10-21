@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/zero-content",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Pyreon Zero — content layer for markdown-driven Pyreon sites. Compile-time .md/.mdx → Pyreon JSX, typed content collections (zod), convention-scanned MDX components.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/zero-content#readme",
@@ -66,9 +66,9 @@
     "remark-gfm": "^4.0.1",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
-    "shiki": "^4.4.3",
+    "shiki": "^4.5.0",
     "unified": "^11.0.5",
-    "vite": "^8.3.1",
+    "vite": "^8.3.4",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
@@ -77,8 +77,8 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/mdast": "^4.0.4",
-    "@vitest/browser-playwright": "^5.0.2",
-    "mdast-util-directive": "^3.1.0",
+    "@vitest/browser-playwright": "^5.0.5",
+    "mdast-util-directive": "^3.1.1",
     "mdast-util-mdx-jsx": "^3.2.0",
     "unist-util-visit": "^5.1.0"
   },

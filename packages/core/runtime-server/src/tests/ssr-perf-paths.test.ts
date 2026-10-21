@@ -48,16 +48,13 @@ describe('safeKeyForMarker — fast paths keep the comment-safety contract', () 
 
   it('numeric keys (incl. negative + float + exponent) emit verbatim — never form --', async () => {
     const html = await render(h('ul', null, list([0, -5, 1.5, 1e-7])))
-    expect(html).toContain('<!--k:0-->')
-    expect(html).toContain('<!--k:-5-->')
-    expect(html).toContain('<!--k:1.5-->')
-    expect(html).toContain('<!--k:1e-7-->')
+    // Single-element rows carry their keys on the closing marker, space-separated.
+    expect(html).toContain('<!--/pyreon-for:0 -5 1.5 1e-7-->')
   })
 
   it('simple word keys emit verbatim and roundtrip through decodeKeyFromMarker', async () => {
     const html = await render(h('ul', null, list(['abc', 'a_b.c:d', 'ID42'])))
-    expect(html).toContain('<!--k:abc-->')
-    expect(html).toContain('<!--k:a_b.c:d-->')
+    expect(html).toContain('<!--/pyreon-for:abc a_b.c:d ID42-->')
     expect(decodeKeyFromMarker('a_b.c:d')).toBe('a_b.c:d')
   })
 
@@ -65,12 +62,10 @@ describe('safeKeyForMarker — fast paths keep the comment-safety contract', () 
     const evil = 'x--><script>alert(1)</script>'
     const html = await render(h('ul', null, list([evil, 'a--b', 'uuid-550e-8400'])))
     // No raw early-closing sequence from the key payload:
-    expect(html).not.toContain('<!--k:x-->')
     expect(html).not.toContain('--><script>')
     // The dashes are %2D-encoded so `-->` is structurally impossible:
     expect(html).toContain('%2D%2D%3E')
-    expect(html).toContain('<!--k:a%2D%2Db-->')
-    expect(html).toContain('<!--k:uuid%2D550e%2D8400-->')
+    expect(html).toContain(' a%2D%2Db uuid%2D550e%2D8400-->')
     // And the encoding roundtrips:
     expect(decodeKeyFromMarker('a%2D%2Db')).toBe('a--b')
     expect(decodeKeyFromMarker('x%2D%2D%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E')).toBe(evil)
@@ -78,7 +73,7 @@ describe('safeKeyForMarker — fast paths keep the comment-safety contract', () 
 
   it('percent signs are not in the fast path (would corrupt decode)', async () => {
     const html = await render(h('ul', null, list(['50%off'])))
-    expect(html).toContain('<!--k:50%25off-->')
+    expect(html).toContain('<!--/pyreon-for:50%25off-->')
     expect(decodeKeyFromMarker('50%25off')).toBe('50%off')
   })
 })

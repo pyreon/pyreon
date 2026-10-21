@@ -215,8 +215,9 @@ A table from `useTable` carries a per-row signal bridge, so each cell subscribes
 own row's signal, and an in-place data edit re-runs **just the changed rows' cells** — a
 benchmark-verified match for a hand-`React.memo`'d react-table row, with zero memoization
 boilerplate. A table built directly with `constructTable` has no bridge; it renders correctly
-but subscribes coarsely (every cell re-runs on any change). A table-state change
-(sort/filter/selection/visibility) also re-runs all cells — coarse, and correct-by-default for
+but subscribes coarsely (every cell re-runs on any change). A sort re-runs no cells: the same
+rows move, and only rows whose data or row object changed are refreshed. Other table-state
+changes (filter/selection/visibility) re-run all cells — coarse, and correct-by-default for
 state-reading cells. Returns `null` when the row isn't in the current (filtered / paginated)
 row model.
 

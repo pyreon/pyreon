@@ -33,11 +33,11 @@ interface QueuedRefresh {
 }
 const recomputeQueue: QueuedRefresh[] = []
 
-// Effect-queue intrusive fields, created LAZILY on first enqueue (NOT at effect
-// creation) so an effect that never re-fires stays a bare closure with zero
-// added retained bytes — the dominant "create, run once, never notified again"
-// shape. Every effect that HAS fired then shares one hidden class, so the
-// per-enqueue flag reads stay monomorphic in steady state.
+// Effect-queue intrusive fields. `effect()` creates them up front (see the
+// comment there: lazily created, V8 dispatched queued runs measurably slower);
+// everything else that can be enqueued — `renderEffect` runs, `direct`
+// updaters, raw `subscribe` listeners — gets them on first enqueue, so a
+// binding that is never queued stays a bare closure.
 //   `_eq` — queue membership. Cur/Next are mutually exclusive in time (an effect
 //           leaves `curEffects` before it can enter `nextEffects`), so one
 //           tri-state field dedups BOTH queues.
@@ -62,17 +62,18 @@ const nextEffects: QueuedEffect[] = []
 // generations from prior passes/drains automatically read as "not visited".
 let _passGen = 1
 
-// Every computed NOTIFY recompute. Checked FIRST in the enqueue router because
-// a MISS means an effect — the wide-fan-out hot path — so it must be one cheap
-// lookup there. `WeakSet.has` on an absent key beats `WeakMap.get` returning
-// undefined (an A/B with a single `WeakMap<fn, kind>` un-flipped both the
-// fan-out and batch-50 wins).
-const _recomputes = new WeakSet<() => void>()
+// Every computed NOTIFY recompute carries `_rc = true` (stamped by
+// `_markRecompute`). The enqueue router checks it FIRST because a MISS means an
+// effect — the wide-fan-out hot path. An own boolean read replaced a
+// `WeakSet.has`: every effect fn shares one shape, so the absent-property read
+// is an inline-cache hit rather than a hash lookup (measured −13% V8 wide
+// fan-out, and see the PR for JSC). A plain field also costs a computed nothing
+// beyond its existing property storage, where the set held a weak entry each.
 const MAX_PASSES = 32
 
 // Fused-cascade back-ref: `_markRecompute` stamps a LAZY computed's read fn onto
 // its notify as `_c`, letting `propagateLazyDirty` walk a single-subscriber chain
-// ITERATIVELY over plain fields instead of paying a WeakSet lookup + closure call
+// ITERATIVELY over plain fields instead of paying a recompute check + closure call
 // + re-entry per hop. An EAGER (`{ equals }`) notify does MORE than dirty-marking
 // (it books a tier-1 refresh unconditionally, so the gate sits at its OWN node)
 // so it is deliberately NOT stamped; the walk routes `_c`-less recomputes through
@@ -91,6 +92,8 @@ interface LazyTarget extends LazySource {
 }
 interface LazyNotify {
   (): void
+  /** @internal true on every computed notify (lazy AND eager). */
+  _rc?: boolean
   /** @internal back-ref to the lazy computed read fn (the field carrier). */
   _c?: LazyTarget
 }
@@ -105,7 +108,7 @@ interface LazyNotify {
  * body MUST stay in lock-step with `computedLazy`'s recompute.
  */
 export function _markRecompute(fn: () => void, target?: LazyTarget): void {
-  _recomputes.add(fn)
+  ;(fn as LazyNotify)._rc = true
   if (target !== undefined) (fn as LazyNotify)._c = target
 }
 
@@ -328,7 +331,7 @@ export function isBatching(): boolean {
 //
 // The SINGLE-SUBSCRIBER segment (the deep-chain shape) is a FUSED ITERATIVE
 // WALK over the lazy computed's fields via the `notify._c` back-ref — zero
-// closure calls, zero WeakSet lookups, zero JS-stack growth at any depth.
+// closure calls, zero recompute lookups, zero JS-stack growth at any depth.
 // Only FAN-OUT levels (>=2 subscribers) recurse, and only while shallow:
 // past `MAX_CASCADE_RECURSION` they defer to an explicit stack, so a deep
 // fan-out tree is chunked with a BOUNDED live stack. Unbounded recursion here
@@ -375,7 +378,7 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
 
   // Fused single-subscriber walk — the deep-chain shape resolves here as a plain
   // LOOP over the lazy computed's fields via `notify._c`, replacing per hop a
-  // [WeakSet.has + closure call + re-entry] with plain field ops. Iterative, so
+  // [recompute check + closure call + re-entry] with plain field ops. Iterative, so
   // it consumes zero JS stack at any chain length.
   //
   // The inlined body MUST stay in lock-step with `_markLazyAndPropagate`:
@@ -411,11 +414,11 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
     const c = sub._c
     if (c === undefined) {
       // No back-ref: either an EAGER (`{ equals }`) computed notify — which gates
-      // at its own node and must run — or a genuine RUNNER. `_recomputes` is the
+      // at its own node and must run — or a genuine RUNNER. `_rc` is the
       // discriminator, the SAME lookup `enqueuePendingNotification` would have
       // made, hoisted so the runner branch can gate the owner instead of
       // enqueueing blindly.
-      if (_recomputes.has(sub)) {
+      if ((sub as LazyNotify)._rc === true) {
         sub()
         return
       }
@@ -453,7 +456,7 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
     // Too deep — defer every lazy branch to the explicit stack; each re-enters
     // at depth 0 and recurses another full window.
     for (const sub of subs) {
-      if (_recomputes.has(sub)) _lazyDirtyStack.push(sub)
+      if ((sub as LazyNotify)._rc === true) _lazyDirtyStack.push(sub)
       else if (owner !== null) {
         gated = true
         break
@@ -462,9 +465,9 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
   } else {
     _cascadeDepth = depth + 1
     for (const sub of subs) {
-      // The WeakSet check stays FIRST so an effect notify pays only the miss —
-      // a leading `_c` read would cost every effect a property-miss proto walk.
-      if (_recomputes.has(sub)) {
+      // The `_rc` check stays FIRST: an effect notify pays one absent-field
+      // read, and only a recompute goes on to read `_c`.
+      if ((sub as LazyNotify)._rc === true) {
         const c = (sub as LazyNotify)._c
         if (c !== undefined) _markLazyAndPropagate(c)
         else sub()
@@ -492,7 +495,7 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
 }
 
 export function enqueuePendingNotification(notify: () => void): void {
-  if (_recomputes.has(notify)) {
+  if ((notify as LazyNotify)._rc === true) {
     // Propagate INLINE (idempotent via the computed's own `_dirty` guard): a
     // pure lazy cascade resolves here and never enters `drainQueuesLocked`.
     const c = (notify as LazyNotify)._c

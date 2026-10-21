@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-real-bench",
-  "version": "0.50.2",
+  "version": "0.50.3",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -16,16 +16,16 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.1",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }

@@ -142,17 +142,30 @@ function detectLibc(platform: string): string | null {
  * silently because a missing native binary is a perf optimization
  * miss, not a correctness failure.
  */
+/** `src/<file>` and `lib/_chunks/<file>` — see Path 1 below. */
+const IN_TREE_DEPTHS = ['..', join('..', '..')] as const
+
 export function loadNativeBinding(metaUrl: string): NativeBinding | null {
   const nativeRequire = createRequire(metaUrl)
 
   // Path 1: in-tree binary (dev mode + Phase 2 local-build path).
-  try {
-    const __filename = fileURLToPath(metaUrl)
-    const __dirname = dirname(__filename)
-    const nativePath = join(__dirname, '..', 'native', 'pyreon-compiler.node')
-    return nativeRequire(nativePath) as NativeBinding
-  } catch {
-    // In-tree binary not present — fall through to per-platform package.
+  //
+  // The caller's module sits at a different depth depending on how it was
+  // loaded: `src/jsx.ts` (bun condition) is one level below the package
+  // root, but the BUILT entry is code-split into `lib/_chunks/jsx-<hash>.js`,
+  // two levels below. Probing only `../native` made every node-condition
+  // consumer inside the monorepo (Vite configs, the e2e dev servers,
+  // verify-modes, the docs build) miss the binary and silently run the JS
+  // fallback, so they measured, and tested, a backend users do not get.
+  // Published installs never ship `native/` (`files` excludes it), so the
+  // extra probe is a no-op for them and they fall through to Path 2.
+  const here = dirname(fileURLToPath(metaUrl))
+  for (const up of IN_TREE_DEPTHS) {
+    try {
+      return nativeRequire(join(here, up, 'native', 'pyreon-compiler.node')) as NativeBinding
+    } catch {
+      // Not at this depth — try the next, then the per-platform package.
+    }
   }
 
   // Path 2: per-platform npm package (production install path).

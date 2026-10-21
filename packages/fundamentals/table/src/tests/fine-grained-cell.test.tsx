@@ -14,7 +14,7 @@ import { effect, signal, untrack } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { constructTable } from '@tanstack/table-core'
-import { flexRenderCell, pyreonReactivity, useTable, visibleCells } from '../index'
+import { flexRenderCell, pyreonReactivity, tableFeatures, useTable, visibleCells } from '../index'
 import { allFeatures } from './fixtures'
 
 const flush = async () => {
@@ -126,7 +126,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.unmount()
   })
 
-  it('a SORT (state change) re-runs all cells AND re-orders correctly', async () => {
+  it('a SORT re-orders the rows without re-running any cell', async () => {
     // reverse-sorted `a` so ascending sort actually re-orders
     const data = signal([
       { id: 0, a: 'z', b: 'b0' },
@@ -137,11 +137,13 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.cellRuns[0] = 0
     t.table().getColumn('a').toggleSorting(false) // ascending
     await flush()
-    // all 3×2 = 6 cells re-ran (coarse on state change)
-    expect(t.cellRuns[0]).toBe(6)
-    // order in DOM is now a, m, z
-    const firstRow = t.el.querySelector('tbody [data-rowid]')
-    expect(firstRow?.querySelector('.col-a')?.textContent).toBe('a')
+    // A sort moves rows; no cell's content changed, so no cell re-runs.
+    expect(t.cellRuns[0]).toBe(0)
+    // Order and content in the DOM: a, m, z — every cell still matches its row.
+    const rows = [...t.el.querySelectorAll('tbody [data-rowid]')]
+    expect(rows.map((r) => r.getAttribute('data-rowid'))).toEqual(['2', '1', '0'])
+    expect(rows.map((r) => r.querySelector('.col-a')?.textContent)).toEqual(['a', 'm', 'z'])
+    expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b1', 'b0'])
     t.unmount()
   })
 
@@ -297,7 +299,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     el.remove()
   })
 
-  it('sort asc → desc (array-state slice, same length) re-runs cells; a value edit while sorted stays fine', async () => {
+  it('sort asc → desc re-runs no cells; a value edit while sorted stays fine-grained', async () => {
     const data = signal(makeData(4))
     const t = mountFineTable(data)
     t.table().getColumn('a').toggleSorting(false) // sorting: [{id:'a',desc:false}]
@@ -305,7 +307,9 @@ describe('flexRenderCell — fine-grained invalidation', () => {
     t.cellRuns[0] = 0
     t.table().getColumn('a').toggleSorting(true) // sorting: [{id:'a',desc:true}] — same length, differ
     await flush()
-    expect(t.cellRuns[0]).toBe(8) // coarse: all 4×2 cells re-run on the sort-direction change
+    expect(t.cellRuns[0]).toBe(0) // a reorder moves rows, it re-runs no cell
+    expect(t.cellText(0, 'a')).toBe('a0')
+    expect(t.cellText(3, 'a')).toBe('a3')
     // a subsequent value edit (structure/state unchanged) is fine-grained again
     t.cellRuns[0] = 0
     data.set(editCell(data(), 0, 'b', 'Z'))
@@ -455,7 +459,7 @@ describe('flexRenderCell — fine-grained invalidation', () => {
 /** Mount a table whose cells-LIST accessor is `visibleCells` (the recommended
  *  fine-grained inner loop) and count BOTH the cells-list accessor runs and the
  *  cell-accessor runs, so the per-edit invalidation shape is fully asserted. */
-function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>) {
+function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>, onTable?: (table: any) => void) {
   const cellRuns: number[] = [0]
   const listRuns: number[] = [0]
   const el = document.createElement('div')
@@ -469,6 +473,7 @@ function mountVisibleCellsTable(data: ReturnType<typeof signal<Row[]>>) {
       getRowId: (r: Row) => String(r.id),
     }))
     tableAccessor = table
+    onTable?.(table)
     return h('table', {}, h('tbody', {}, () =>
       hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
         const rowId = row.id
@@ -545,7 +550,7 @@ describe('visibleCells — fine-grained cells-list invalidation', () => {
     t.unmount()
   })
 
-  it('a SORT still re-runs all cells (the coarse-but-correct state contract is unchanged)', async () => {
+  it('a SORT re-orders the rows without re-running any cell (visibleCells)', async () => {
     const data = signal([
       { id: 0, a: 'z', b: 'b0' },
       { id: 1, a: 'm', b: 'b1' },
@@ -555,9 +560,10 @@ describe('visibleCells — fine-grained cells-list invalidation', () => {
     t.cellRuns[0] = 0
     t.table().getColumn('a').toggleSorting(false)
     await flush()
-    expect(t.cellRuns[0]).toBe(6) // 3×2 — bump-every-row on a structure change
-    const firstRow = t.el.querySelector('tbody [data-rowid]')
-    expect(firstRow?.querySelector('.col-a')?.textContent).toBe('a')
+    expect(t.cellRuns[0]).toBe(0) // a reorder moves rows, it re-runs no cell
+    const rows = [...t.el.querySelectorAll('tbody [data-rowid]')]
+    expect(rows.map((r) => r.querySelector('.col-a')?.textContent)).toEqual(['a', 'm', 'z'])
+    expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b1', 'b0'])
     t.unmount()
   })
 
@@ -618,3 +624,336 @@ describe('visibleCells — fine-grained cells-list invalidation', () => {
   })
 })
 
+
+describe('flexRenderCell — the context a cell renderer receives', () => {
+  it('carries every table-core context key, survives a spread, and reads the value', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown }) => {
+            // `{ ...info }` is the common forwarding idiom (`<MyCell {...info} />`):
+            // every key the renderer was given must survive it.
+            seen.push({ ...info })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    expect(t.cellText(0, 'a')).toBe('a0|a0')
+    const ctx = seen[0]!
+    for (const key of ['table', 'column', 'row', 'cell', 'getValue', 'renderValue']) {
+      expect(ctx, key).toHaveProperty(key)
+    }
+    expect((ctx.cell as { column: { id: string } }).column.id).toBe('a')
+    expect(typeof ctx.getValue).toBe('function')
+
+    // The renderer's value reads stay untracked: a data edit re-runs only the
+    // edited row's cell, not every cell.
+    t.cellRuns[0] = 0
+    data.set(editCell(data(), 1, 'a', 'Z'))
+    await flush()
+    expect(t.cellText(1, 'a')).toBe('Z|Z')
+    expect(t.cellText(0, 'a')).toBe('a0|a0')
+    expect(t.cellRuns[0]).toBe(1)
+    t.unmount()
+  })
+
+  it('builds the core context directly: getContext runs once to sample its shape, not once per cell', async () => {
+    const data = signal(makeData(4))
+    const seen: Array<{ table: unknown; row: unknown; column: { id: string }; cell: { row: unknown } }> = []
+    const t = mountFineTable(data, {
+      columns: [
+        { accessorKey: 'a', id: 'a', cell: (info: any) => (seen.push(info), String(info.getValue())) },
+        { accessorKey: 'b', id: 'b', cell: (info: any) => (seen.push(info), String(info.getValue())) },
+      ],
+    })
+    // Count getContext calls on a fresh render of every cell.
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    let calls = 0
+    const counted = function (this: unknown) {
+      calls++
+      return original.call(this)
+    }
+    owner.getContext = counted
+    try {
+      seen.length = 0
+      data.set(makeData(4).map((r) => ({ ...r, a: `${r.a}!`, b: `${r.b}!` })))
+      await flush()
+      expect(t.cellText(3, 'b')).toBe('b3!')
+      expect(seen).toHaveLength(8)
+      // One call samples the shape of this getContext; the other 7 contexts
+      // are built directly.
+      expect(calls).toBe(1)
+      for (const info of seen) {
+        expect(info.table).toBe(t.table())
+        expect(info.row).toBe(info.cell.row)
+      }
+      expect(seen.map((i) => i.column.id).sort()).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b'])
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+
+  it('a plain context with an extra key (a feature-added field) keeps that key and stays untracked', async () => {
+    const seen: Array<{ extra?: unknown }> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown; extra?: unknown }) => {
+            seen.push({ extra: info.extra })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    owner.getContext = function (this: unknown) {
+      return { ...original.call(this), extra: 'from-feature' }
+    }
+    try {
+      data.set(editCell(data(), 0, 'a', 'P'))
+      await flush()
+      expect(t.cellText(0, 'a')).toBe('P|P')
+      expect(seen[seen.length - 1]!.extra).toBe('from-feature')
+      // A second render through the same getContext takes the cached answer.
+      t.cellRuns[0] = 0
+      data.set(editCell(data(), 1, 'a', 'Q'))
+      await flush()
+      expect(t.cellText(1, 'a')).toBe('Q|Q')
+      expect(seen[seen.length - 1]!.extra).toBe('from-feature')
+      expect(t.cellRuns[0]).toBe(1)
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+
+  it('keeps a non-plain context prototype (descriptor-copy fallback) and still untracks the value', async () => {
+    const seen: Array<{ inherited?: unknown; proto: unknown }> = []
+    const data = signal(makeData(2))
+    const t = mountFineTable(data, {
+      columns: [
+        {
+          accessorKey: 'a',
+          id: 'a',
+          cell: (info: { getValue: () => unknown; renderValue: () => unknown; inherited?: unknown }) => {
+            seen.push({ inherited: info.inherited, proto: Object.getPrototypeOf(info) })
+            return `${String(info.getValue())}|${String(info.renderValue())}`
+          },
+        },
+      ],
+    })
+    // table-core always returns a plain-object context; a feature or wrapper
+    // may not. Give every cell context an inherited member, then re-render.
+    const cell = t.table().getRowModel().rows[0].getAllCells()[0]
+    const owner = Object.hasOwn(cell, 'getContext') ? cell : Object.getPrototypeOf(cell)
+    const original = owner.getContext
+    const base = { inherited: 'from-proto' }
+    owner.getContext = function (this: unknown) {
+      return Object.assign(Object.create(base), original.call(this))
+    }
+    try {
+      data.set(editCell(data(), 0, 'a', 'P'))
+      await flush()
+      expect(t.cellText(0, 'a')).toBe('P|P')
+      const last = seen[seen.length - 1]!
+      expect(last.inherited).toBe('from-proto')
+      expect(last.proto).toBe(base)
+
+      // Value reads on the wrapped context stay untracked.
+      t.cellRuns[0] = 0
+      data.set(editCell(data(), 1, 'a', 'Q'))
+      await flush()
+      expect(t.cellText(1, 'a')).toBe('Q|Q')
+      expect(t.cellRuns[0]).toBe(1)
+    } finally {
+      owner.getContext = original
+      t.unmount()
+    }
+  })
+})
+
+describe('visibleCells — edges', () => {
+  const mountWith = (opts: () => object) => {
+    let table!: any
+    const el = document.createElement('div')
+    const App = () => {
+      table = useTable(() => ({ getRowId: (r: Row) => String(r.id), ...opts() }) as never)
+      return null
+    }
+    const dispose = mount(hAny(App), el)
+    return { table: () => table, unmount: () => (typeof dispose === 'function' ? dispose() : undefined) }
+  }
+
+  it('returns an empty list for a row that is not in the current model', () => {
+    const t = mountWith(() => ({ data: makeData(2), columns: cols, features: allFeatures }))
+    expect(visibleCells(t.table(), 'no-such-row')).toEqual([])
+    expect(visibleCells(t.table(), '0').map((c: any) => c.column.id)).toEqual(['a', 'b'])
+    t.unmount()
+  })
+
+  it('falls back to every cell when column visibility is not registered', () => {
+    const t = mountWith(() => ({ data: makeData(1), columns: cols, features: tableFeatures({}) }))
+    expect(visibleCells(t.table(), '0').map((c: any) => c.column.id)).toEqual(['a', 'b'])
+    t.unmount()
+  })
+
+  it('re-lists a row\'s cells when groupedColumnMode changes', async () => {
+    const mode = signal<false | 'reorder' | 'remove'>('remove')
+    const t = mountWith(() => ({
+      data: makeData(2),
+      columns: cols,
+      features: allFeatures,
+      groupedColumnMode: mode(),
+      initialState: { grouping: ['b'] },
+    }))
+    const seen: string[][] = []
+    const stop = effect(() => {
+      seen.push(visibleCells(t.table(), '0').map((c: any) => c.column.id))
+    })
+    const before = seen.length
+    mode.set(false)
+    await flush()
+    expect(seen.length).toBeGreaterThan(before)
+    expect(seen.at(-1)).not.toEqual(seen[before - 1])
+    stop.dispose()
+    t.unmount()
+  })
+})
+
+describe('flexRenderCell reuses the cells its row just looked up', () => {
+  /** Count `table.getRowModel()` calls — the walk every uncached cell repeats. */
+  const counting = () => {
+    const calls = [0]
+    const wrap = (table: any): void => {
+      const orig = table.getRowModel.bind(table)
+      table.getRowModel = () => {
+        calls[0]!++
+        return orig()
+      }
+    }
+    return { calls, wrap }
+  }
+
+  it('a mount walks the row model once per row, not once per cell', async () => {
+    const c = counting()
+    const t = mountVisibleCellsTable(signal(makeData(10)), c.wrap)
+    await flush()
+    expect(t.cellText(9, 'b')).toBe('b9')
+    // The outer list + one `visibleCells` per row; the 20 cells add none.
+    // Without the reuse every cell walks it again: 1 + 10 + 20.
+    expect(c.calls[0]).toBeLessThanOrEqual(1 + 10 + 2)
+    t.unmount()
+  })
+
+  it('an edit, a sort and a column toggle never serve a stale cell', async () => {
+    const data = signal(makeData(3))
+    const t = mountVisibleCellsTable(data)
+    data.set(editCell(data(), 1, 'a', 'EDITED'))
+    await flush()
+    expect(t.cellText(1, 'a')).toBe('EDITED')
+    t.table().getColumn('a').toggleSorting(true)
+    await flush()
+    expect(t.cellText(1, 'a')).toBe('EDITED')
+    expect(t.cellText(2, 'b')).toBe('b2')
+    data.set(editCell(data(), 2, 'b', 'AGAIN'))
+    await flush()
+    expect(t.cellText(2, 'b')).toBe('AGAIN')
+    t.table().getColumn('b').toggleVisibility(false)
+    await flush()
+    t.table().getColumn('b').toggleVisibility(true)
+    await flush()
+    expect(t.cellText(2, 'b')).toBe('AGAIN')
+    expect(t.cellText(0, 'b')).toBe('b0')
+    t.unmount()
+  })
+
+  it('a cell read after its row changed, before the row re-listed, is fresh', async () => {
+    // Notification order normally re-lists a row before its cells re-run, which
+    // re-seeds the reuse. This reads a cell DIRECTLY after an edit, with the
+    // seed still from before it: the row-version tag is what refuses the stale
+    // cell.
+    // `mountFineTable` lists cells with `row.getVisibleCells()`, so nothing
+    // re-seeds the reuse on an edit: the one seed below is all there is.
+    const data = signal(makeData(3))
+    const t = mountFineTable(data)
+    const table = t.table()
+    visibleCells(table, '1')
+    data.set(editCell(data(), 1, 'a', 'FRESH'))
+    await flush()
+    expect(String(flexRenderCell(table, '1', 'a'))).toBe('FRESH')
+    expect(t.el.querySelector('[data-rowid="1"] .col-a')?.textContent).toBe('FRESH')
+    t.unmount()
+  })
+})
+
+describe('reorders (sort) — rows move, cells re-run only where content changed', () => {
+  it('an edit that moves a row in a sorted table updates its content and order', async () => {
+    const data = signal([
+      { id: 0, a: 'b', b: 'b0' },
+      { id: 1, a: 'c', b: 'b1' },
+      { id: 2, a: 'd', b: 'b2' },
+    ])
+    const t = mountFineTable(data)
+    t.table().getColumn('a').toggleSorting(false)
+    await flush()
+    // Row 2 jumps from last to first.
+    data.set(data().map((r) => (r.id === 2 ? { ...r, a: 'a' } : r)))
+    await flush()
+    const rows = [...t.el.querySelectorAll('tbody [data-rowid]')]
+    expect(rows.map((r) => r.querySelector('.col-a')?.textContent)).toEqual(['a', 'b', 'c'])
+    expect(rows.map((r) => r.querySelector('.col-b')?.textContent)).toEqual(['b2', 'b0', 'b1'])
+    t.unmount()
+  })
+
+  it('a sort that reorders sub-rows refreshes cells that read them', async () => {
+    type Node = { id: string; a: string; children?: Node[] }
+    const data = signal<Node[]>([
+      { id: 'p', a: 'p', children: [{ id: 'p.z', a: 'z' }, { id: 'p.y', a: 'y' }] },
+      { id: 'q', a: 'q' },
+    ])
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    let table!: any
+    const App = () => {
+      table = useTable(() => ({
+        data: data(),
+        columns: [
+          { accessorKey: 'a', id: 'a' },
+          // Reads the row's sub-rows: their order changes when sorting.
+          { id: 'kids', cell: (info: any) => info.row.subRows.map((s: any) => s.original.a).join(',') },
+        ],
+        features: allFeatures,
+        getRowId: (r: Node) => r.id,
+        getSubRows: (r: Node) => r.children,
+      }))
+      return h('table', {}, h('tbody', {}, () =>
+        hFor({ each: () => table.getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+          const rowId = row.id
+          return h('tr', { 'data-rowid': rowId },
+            h('td', { class: 'col-kids' }, () => String(flexRenderCell(table, rowId, 'kids'))),
+          )
+        }),
+      ))
+    }
+    const dispose = mount(hAny(App), el)
+    expect(el.querySelector('[data-rowid="p"] .col-kids')?.textContent).toBe('z,y')
+    table.getColumn('a').toggleSorting(false)
+    await flush()
+    expect(el.querySelector('[data-rowid="p"] .col-kids')?.textContent).toBe('y,z')
+    if (typeof dispose === 'function') dispose()
+    el.remove()
+  })
+})

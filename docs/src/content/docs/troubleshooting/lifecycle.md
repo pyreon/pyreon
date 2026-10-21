@@ -7,6 +7,18 @@ description: "Common lifecycle & cleanup mistakes in Pyreon and how to fix them.
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### [FIXED, 2026-10] A "nothing removed" shortcut that compares COUNTS (`cache.size === n`) is fooled by a duplicate key.
+
+`<For>`'s pure-reorder fast path skipped its stale-row scan when no row was added and the cache held `n` entries. `[1,2,3] → [2,2,1]` satisfies that (n stays 3) while key 3 is gone, so the removed row stayed in the DOM — a production-visible ghost row (duplicates only warn in dev). Fix: count the DISTINCT cached entries the update keeps (a per-update generation stamp on each entry, set in the `cache.get` pass that already ran) and take the shortcut only when that equals `cache.size`. **Rule: "set A is a superset of set B" can be decided by counting only when the counted side is duplicate-free.** Reference: `runtime-dom/src/nodes.ts:mountNewForEntries`; bisect-locked in `tests/for-duplicate-key-stale-row.test.ts`.
+
+---
+
+### [FIXED, 2026-10] An `effect()` / `computed()` created in a `<For>` row callback had no owner.
+
+The callback runs after the surrounding component's setup, when no scope is current, so the effect registered nowhere: a removed row kept running it, and so did every row after the list unmounted. Each row callback now runs under a pooled collector scope that the row keeps (and stops on removal) only when something registered — zero allocation otherwise, no measurable cost on the fair board. **Rule: any framework construct that runs a user callback outside component setup must give that callback an owner, or effects created in it are unowned.** Reference: `runtime-dom/src/nodes.ts:runRowCallback`; locked by `for-row-effect-scope.test.tsx` (bisect-verified).
+
+---
+
 ### Measuring layout in a `ref` inside `<For>`
 
 `<For>` mounts its initial rows into a fragment and moves them into the document afterwards, so a row's `ref` fires on a detached element and `getBoundingClientRect()` returns zeros. Recording that size breaks consumers (in `@pyreon/virtual`, TanStack compensated scroll for the 0 → 40px corrections and the window rendered from the wrong row). A layout read in a `ref` must check `el.isConnected` and defer (a microtask is enough for `<For>`). Reference: `packages/fundamentals/virtual/src/detached-measure.ts` + `tests/detached-measure.test.ts`.

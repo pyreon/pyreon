@@ -37,7 +37,7 @@ export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
 export { area, band, bars, bubble, groupedBars, histogram, line, normalizeCorners, points, resolveCategories, resolveMarks, stackedArea, stackedBars, waterfall } from './engine/marks'
-export type { Accessor, BubbleOptions, ErrorOptions, HistogramOptions, HistogramProps, Mark, MarkOptions } from './engine/marks'
+export type { Accessor, BubbleOptions, Column, YChannel, ErrorOptions, HistogramOptions, HistogramProps, Mark, MarkOptions } from './engine/marks'
 export { binValues } from './engine/bin'
 export type { Bin } from './engine/bin'
 

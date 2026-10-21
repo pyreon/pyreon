@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-chat",
-  "version": "0.50.2",
+  "version": "0.50.3",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -34,6 +34,6 @@
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero-cli": "workspace:*",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }

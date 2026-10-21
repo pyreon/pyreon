@@ -79,6 +79,13 @@ describe('_ssrAttrGen / _ssrAttrUrl — lean, byte-identical to renderProp', () 
       expect(_ssrAttrGen('data-id', v)).toBe(_ssrAttr('div', 'data-id', v))
     }
   })
+  // `_ssrAttrGen` skips the escape scan for numbers (a number's string form has
+  // nothing to escape). Every number shape must still match the oracle.
+  test('_ssrAttrGen matches _ssrAttr for every NUMBER shape (escape-scan fast path)', () => {
+    for (const v of [7, -1.5, 0.1 + 0.2, 1e21, 1e-7, -0, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.MAX_SAFE_INTEGER]) {
+      expect(_ssrAttrGen('data-n', v)).toBe(_ssrAttr('div', 'data-n', v))
+    }
+  })
   test('_ssrAttrUrl matches _ssrAttr for URL names (incl. the guard)', () => {
     for (const v of ['/ok?a=1&b=2', 'javascript:x', 'data:text/html,x', null, false, true]) {
       expect(_ssrAttrUrl('a', 'href', v)).toBe(_ssrAttr('a', 'href', v))

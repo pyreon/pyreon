@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/head",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Head tag management for Pyreon — works in SSR and CSR",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/head#readme",
@@ -68,13 +68,13 @@
     "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.2"
+    "@vitest/browser-playwright": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"

@@ -1361,6 +1361,7 @@ export function transformJSX_JS(
   let needsMountComponentImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
+  let needsSetStyleOnceImportGlobal = false
   let needsSetClassImportGlobal = false
   let needsSetAttrImportGlobal = false
   let needsSetValueImportGlobal = false
@@ -1664,7 +1665,11 @@ export function transformJSX_JS(
     const start = expr.start as number
     const end = expr.end as number
     const sliced = sliceExpr(expr)
-    const text = expr.type === 'ObjectExpression' ? `() => (${sliced})` : `() => ${sliced}`
+    // An expression that STARTS with `{` (a literal, or `{…}.key` / `{…}[k]`)
+    // must be parenthesized: `() => { a: s() }.a` parses as a block. Keyed on
+    // the emitted text, which is exact: the leading token is `{` iff the
+    // expression starts with an object literal (a leading `(` is user parens).
+    const text = sliced.startsWith('{') ? `() => (${sliced})` : `() => ${sliced}`
     replacements.push({ start, end, text })
     lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
   }
@@ -2221,6 +2226,23 @@ export function transformJSX_JS(
           return true
         }
       }
+      // A conditional between two string literals (`class={on ? 'a' : 'b'}`):
+      // both possible attributes are known at compile time, so bake both and
+      // let the test pick one. Each branch goes through the same static bake as
+      // a lone literal, so the bytes match `renderProp` exactly; a branch that
+      // cannot bake (an unsafe URL) keeps the runtime path for the whole attr.
+      if (!hasUpper && expr.type === 'ConditionalExpression') {
+        const a = ssrStaticStringValue(expr.consequent)
+        const b = ssrStaticStringValue(expr.alternate)
+        if (a !== null && b !== null) {
+          const ta = ssrBakeStringAttrText(name, a)
+          const tb = ssrBakeStringAttrText(name, b)
+          if (ta !== null && tb !== null) {
+            ssrEmitHole(buf, `(${sliceExpr(expr.test)} ? ${JSON.stringify(ta)} : ${JSON.stringify(tb)})`, true)
+            return true
+          }
+        }
+      }
       // DYNAMIC value. A syntactically-proven non-null-non-boolean (and, for a
       // url attr, proven-safe) value BAKES ` name="` + `_esc(v)` + `"` — Solid-
       // style template baking, byte-identical because renderProp's null-omit /
@@ -2234,19 +2256,35 @@ export function transformJSX_JS(
     return false
   }
 
+  /** The value of a string literal (through type layers), else `null`. */
+  function ssrStaticStringValue(node: N): string | null {
+    const n = unwrapTypeLayers(node)
+    if ((n.type === 'StringLiteral' || n.type === 'Literal') && typeof n.value === 'string') return n.value
+    return null
+  }
+
   /** Bake a static string-valued attribute, mirroring `renderPropValue`. */
   function ssrBakeStringAttr(buf: SsrBuf, name: string, value: string): boolean {
+    const text = ssrBakeStringAttrText(name, value)
+    if (text === null) return false
+    if (text !== '') ssrEmitStatic(buf, text)
+    return true
+  }
+
+  /**
+   * The baked text of a static string attribute (` name="…"`), `''` when the
+   * runtime would omit it, or `null` when it cannot be baked at compile time.
+   */
+  function ssrBakeStringAttrText(name: string, value: string): string | null {
     if (name === 'class') {
       // cx(string) === string. Empty string EMITS class="" (CSR parity — the
       // client materializes it; renderPropValue mirrors this).
-      ssrEmitStatic(buf, ` class="${escapeHtmlSsr(value)}"`)
-      return true
+      return ` class="${escapeHtmlSsr(value)}"`
     }
     if (name === 'style') {
       // normalizeStyle(string) === string; empty → omit.
-      if (value === '') return true
-      ssrEmitStatic(buf, ` style="${escapeHtmlSsr(value)}"`)
-      return true
+      if (value === '') return ''
+      return ` style="${escapeHtmlSsr(value)}"`
     }
     if (SSR_URL_ATTRS.has(name)) {
       // Unsafe (`javascript:`/`data:`) → renderProp drops it (or keeps it only
@@ -2258,12 +2296,10 @@ export function transformJSX_JS(
       // static lint rule was stronger than the runtime guard. Reachable with a
       // static literal because `@pyreon/lathe` generates JSX from OpenAPI specs.
       if (SSR_UNSAFE_URL_RE.test(value) || SSR_UNSAFE_URL_RE.test(stripUrlSchemeNoise(value)))
-        return false
-      ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
-      return true
+        return null
+      return ` ${name}="${escapeHtmlSsr(value)}"`
     }
-    ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
-    return true
+    return ` ${name}="${escapeHtmlSsr(value)}"`
   }
 
   /**
@@ -2380,8 +2416,18 @@ export function transformJSX_JS(
    * and a lone expression keeps its single-signal direct-tier fast path.
    * Applies to DOM elements only — a component's children are its props, and
    * their shape is the component's contract.
+   *
+   * `allowStatic` (template path only) also fuses an ALL-STATIC mix such as a
+   * `<For>` row's `Row {it.index}`. Unfused, that bakes `Row <!>` and swaps the
+   * placeholder for a fresh text node per row (`_setChildAt` — a createTextNode
+   * plus a replaceChild); fused, it is one `_setChild(el, _fuse("Row ", it.index))`
+   * into an empty element — the same single text node the sole static `{x}`
+   * child already gets, and the same `.data` adoption on hydration. Measured on
+   * the virtual-list `jump` (23 rows remounted): 1.14–1.39× behind react-virtual
+   * → tie / 1.21× ahead. The SSR and h() emits are unchanged: a static mix
+   * already serializes to one marker-free text run there.
    */
-  function fuseTextChildren(el: N): string | null {
+  function fuseTextChildren(el: N, allowStatic = false): string | null {
     const kids = jsxChildren(el)
     if (kids.length < 2) return null
     type Part = { lit: string } | { expr: string }
@@ -2452,7 +2498,7 @@ export function transformJSX_JS(
       spans.push({ start: u.start as number, end: u.end as number, reactive })
       if (reactive) anyReactive = true
     }
-    if (!anyReactive || parts.length < 2) return null
+    if ((!anyReactive && !allowStatic) || parts.length < 2) return null
     for (const sp of spans) {
       if (sp.reactive)
         lens(sp.start, sp.end, 'reactive', 'live — this text re-renders whenever its signals change')
@@ -2569,8 +2615,9 @@ export function transformJSX_JS(
    * by={B}>{(p) => <eligible-el>}</For>` child previously bailed the WHOLE
    * parent template to the h() walk (component child). It now emits ONE hole:
    * `_ssrForKeyed(E, B, (p) => <item _ssr>)` — the runtime helper produces the
-   * SAME `<!--pyreon-for-->` / per-item `<!--k:KEY-->` / `<!--/pyreon-for-->`
-   * bytes as `renderForItems`, and the item call is built by the SAME
+   * SAME `<!--pyreon-for-->` … `<!--/pyreon-for:KEYS-->` bytes as
+   * `renderForItems` (every fused row is a single element, so all keys ride
+   * on the closing marker), and the item call is built by the SAME
    * serializer (`buildSsrBuf`, recursed mode so wrapped exprs keep their
    * `<!--$-->` markers) that guarantees `_ssr(...)` ≡ `renderNode(<el>)`.
    * Conditions are EXACT — any other prop (`fallback`, spreads), a non-arrow
@@ -2997,7 +3044,7 @@ export function transformJSX_JS(
         const start = expr.start as number
         const end = expr.end as number
         const sliced = sliceExpr(expr)
-        const inner = expr.type === 'ObjectExpression' ? `(${sliced})` : sliced
+        const inner = sliced.startsWith('{') ? `(${sliced})` : sliced
         // A bare signal/computed call — `value={sig()}` — wraps with `_rpd`,
         // which carries the signal's direct-tier surface so a `_bindProp`
         // consumer can skip the tracked effect (see core `_rpd`). Same
@@ -3600,7 +3647,13 @@ export function transformJSX_JS(
         if (grandparent && (grandparent.type === 'JSXElement' || grandparent.type === 'JSXFragment'))
           return
       }
-      const firstParam = node.params[0]
+      // A defaulted props param (`function C(props = {})`) is an
+      // AssignmentPattern in ESTree; the identifier is its `.left`. The Rust
+      // backend (oxc) keeps the BindingIdentifier and an initializer, so the
+      // two backends agree only if both unwrap here.
+      const rawFirstParam = node.params[0]
+      const firstParam =
+        rawFirstParam?.type === 'AssignmentPattern' ? rawFirstParam.left : rawFirstParam
       if (firstParam?.type === 'Identifier') {
         let hasJSX = false
         function checkJSX(n: N): void {
@@ -3845,6 +3898,24 @@ export function transformJSX_JS(
     return result
   }
 
+  /** An identifier in a non-computed object/class member KEY position is a name,
+   *  not a reference. Shorthand `{ name }` is EXCLUDED — it evaluates the binding
+   *  and must keep counting as a read (same contract as referencesSignalVar). */
+  function isNonComputedKeyPosition(node: N, parent: N | null | undefined): boolean {
+    if (!parent) return false
+    if (parent.type === 'Property' || parent.type === 'ObjectProperty') {
+      return parent.key === node && !parent.computed && !parent.shorthand
+    }
+    if (
+      parent.type === 'MethodDefinition' ||
+      parent.type === 'PropertyDefinition' ||
+      parent.type === 'AccessorProperty'
+    ) {
+      return parent.key === node && !parent.computed
+    }
+    return false
+  }
+
   function _isDynamicImpl(node: N): boolean {
     // Call expression (non-pure)
     if (node.type === 'CallExpression') {
@@ -3877,6 +3948,8 @@ export function transformJSX_JS(
         !parent.computed
       ) {
         // This is a property name position, not a reference — fall through
+      } else if (isNonComputedKeyPosition(node, parent)) {
+        // `{ r: 1 }` / `{ r() {} }` — the key names a property, it is not a read
       } else {
         return true
       }
@@ -3893,6 +3966,8 @@ export function transformJSX_JS(
         // Property name position — not a reference
       } else if (parent && parent.type === 'CallExpression' && parent.callee === node) {
         // Already being called: signal() — don't double-flag
+      } else if (isNonComputedKeyPosition(node, parent)) {
+        // `{ source: 1 }` / `class { source = 1 }` — a NAME, not a read
       } else {
         return true
       }
@@ -4287,6 +4362,7 @@ export function transformJSX_JS(
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
     if (needsSetChildAtImportGlobal) runtimeDomImports.push('_setChildAt')
     if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
+    if (needsSetStyleOnceImportGlobal) runtimeDomImports.push('_setStyleOnce')
     if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
     if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
     if (needsSetValueImportGlobal) runtimeDomImports.push('_setValue')
@@ -4577,6 +4653,7 @@ export function transformJSX_JS(
     let needsMountComponentImport = false
     let needsCxImport = false
     let needsSetStyle = false
+    let needsSetStyleOnce = false
     let needsSetClass = false
     let needsSetAttr = false
     let needsSetValue = false
@@ -4628,9 +4705,9 @@ export function transformJSX_JS(
     // answers "what is the full walk this name stands for?" (so a chained or
     // var-rooted parentRef still composes a stable key), and `capturedRefs`
     // answers "does a const already hold that walk?".
-    /** Ref var / accessor string -> its fully-expanded walk from `__root`. */
+    /** Ref var / accessor string -> its compact walk key (see `canonicalWalk`). */
     const canonicalOf = new Map<string, string>()
-    /** Fully-expanded walk -> the phase-1 const that already holds that node. */
+    /** Compact walk key -> the phase-1 const that already holds that node. */
     const capturedRefs = new Map<string, string>()
 
     /** Resolve a `parentRef` (var name, chained string, or raw walk) to its full walk. */
@@ -4649,25 +4726,50 @@ export function transformJSX_JS(
     function chainFromCaptured(canonical: string): { expr: string; hops: number } {
       const exact = capturedRefs.get(canonical)
       if (exact !== undefined) return { expr: exact, hops: 0 }
-      for (
-        let dot = canonical.lastIndexOf('.');
-        dot > 0;
-        dot = canonical.lastIndexOf('.', dot - 1)
-      ) {
-        const held = capturedRefs.get(canonical.slice(0, dot))
-        if (held !== undefined) {
-          const suffix = canonical.slice(dot)
-          return { expr: held + suffix, hops: countSiblingHops(suffix) }
+      // `canonical` is a COMPACT walk (see `canonicalWalk`): `root/c0/e37`. The
+      // candidates are its structural prefixes, longest first — the same set and
+      // order the former dotted-string split produced: earlier siblings at the
+      // deepest level (nearest first), then that level's parent, then up.
+      // `levels` collects the walk below the scan point (outermost LAST) so the
+      // shortened expression can be rendered.
+      const levels: { mixed: boolean; k: number }[] = []
+      let cur = canonical
+      for (let slash = cur.lastIndexOf('/'); slash !== -1; slash = cur.lastIndexOf('/')) {
+        const parent = cur.slice(0, slash)
+        const mixed = cur.charCodeAt(slash + 1) === 99 // 'c'
+        const k = Number(cur.slice(slash + 2))
+        const tag = mixed ? '/c' : '/e'
+        for (let j = k - 1; j >= 0; j--) {
+          const held = capturedRefs.get(parent + tag + j)
+          if (held !== undefined) {
+            const next = mixed ? '.nextSibling' : '.nextElementSibling'
+            const expr = held + next.repeat(k - j)
+            const r = renderLevels(levels)
+            return { expr: expr + r.text, hops: k - j + r.hops }
+          }
         }
+        levels.push({ mixed, k })
+        const held = capturedRefs.get(parent)
+        if (held !== undefined) {
+          const r = renderLevels(levels)
+          return { expr: held + r.text, hops: r.hops }
+        }
+        cur = parent
       }
-      return { expr: canonical, hops: countSiblingHops(canonical) }
+      const r = renderLevels(levels)
+      return { expr: cur + r.text, hops: r.hops }
     }
 
-    /** Count `.nextSibling` / `.nextElementSibling` steps in a walk expression. */
-    function countSiblingHops(walk: string): number {
-      let n = 0
-      for (let i = walk.indexOf('.next'); i !== -1; i = walk.indexOf('.next', i + 1)) n++
-      return n
+    /** Dotted walk for `levels` (outermost LAST), plus the sibling hops it adds. */
+    function renderLevels(levels: { mixed: boolean; k: number }[]): { text: string; hops: number } {
+      let text = ''
+      let hops = 0
+      for (let i = levels.length - 1; i >= 0; i--) {
+        const { mixed, k } = levels[i]!
+        text += (mixed ? '.firstChild' : '.firstElementChild') + (mixed ? '.nextSibling' : '.nextElementSibling').repeat(k)
+        hops += k
+      }
+      return { text, hops }
     }
 
     /**
@@ -4899,11 +5001,26 @@ export function transformJSX_JS(
       // computed access. Root identifier must NOT be a tracked active
       // signal (would imply a method call on a signal, e.g. `count.peek()`).
       if (callee.type === 'MemberExpression') {
-        let cur: N = callee
+        // The outermost link names the signal itself and stays a plain
+        // property (`.elapsed`). Inner links may also be a LITERAL index
+        // (`row.queries[0]`) — as stable as a named property, which this fast
+        // path already assumes — and any link may sit under a TS type layer
+        // (`(row.cell as Cell).elapsed()`), which is erased at runtime. Both
+        // used to bail to a fully tracked `bindPolymorphicText` / `renderEffect`
+        // per binding. A computed key that is not a literal (`row[k]`) still
+        // bails: the key is dynamic.
+        if (callee.computed || callee.property?.type !== 'Identifier') return null
+        let cur: N = unwrapTypeLayers(callee.object)
         while (cur.type === 'MemberExpression') {
-          if (cur.computed) return null
-          if (cur.property?.type !== 'Identifier') return null
-          cur = cur.object
+          if (cur.computed) {
+            const k = cur.property
+            const literalKey =
+              k?.type === 'NumericLiteral' ||
+              k?.type === 'StringLiteral' ||
+              (k?.type === 'Literal' && (typeof k.value === 'number' || typeof k.value === 'string'))
+            if (!literalKey) return null
+          } else if (cur.property?.type !== 'Identifier') return null
+          cur = unwrapTypeLayers(cur.object)
         }
         if (cur.type !== 'Identifier') return null
         if (isActiveSignal(cur.name)) return null
@@ -5168,6 +5285,15 @@ export function transformJSX_JS(
     ): void {
       const { expr, isReactive } = unwrapAccessor(exprNode)
       if (!isReactive) {
+        // A style written outside any reactive binding runs exactly once, so it
+        // goes through `_setStyleOnce`, which skips the skip-if-equal cache
+        // (and the `cssText` readback that cache needs) — pure mount cost for
+        // a write that can never re-run.
+        if (htmlAttrName === 'style') {
+          needsSetStyleOnce = true
+          bindLines.push(`_setStyleOnce(${varName}, ${expr})`)
+          return
+        }
         bindLines.push(attrSetter(htmlAttrName, varName, expr, tag))
         return
       }
@@ -5776,11 +5902,13 @@ export function transformJSX_JS(
      * (run it through `canonicalBase` first).
      */
     function canonicalWalk(base: string, idx: number, mixed: boolean): string {
-      const first = mixed ? 'firstChild' : 'firstElementChild'
-      const next = mixed ? 'nextSibling' : 'nextElementSibling'
-      let s = `${base}.${first}`
-      for (let i = 0; i < idx; i++) s += `.${next}`
-      return s
+      // COMPACT key: one `/c<idx>` (childNodes walk) or `/e<idx>` (element walk)
+      // segment per tree level. The fully-expanded dotted walk grew by one
+      // segment per SIBLING, so building, hashing and prefix-splitting it cost
+      // O(position) per child and O(n^2) per template. `chainFromCaptured`
+      // renders the dotted form only for the part it emits. Mirrors the Rust
+      // `canonical_walk`.
+      return `${base}${mixed ? '/c' : '/e'}${idx}`
     }
 
     function childNodeAccessor(parentRef: string, idx: number, mixed: boolean): string {
@@ -5807,7 +5935,8 @@ export function transformJSX_JS(
       // Record what this (possibly shortened) expression stands for, so a caller
       // that turns it into a const (`resolveElementVar`) still keys on the
       // canonical walk rather than on the shortened text.
-      if (expr !== canonical) canonicalOf.set(expr, canonical)
+      // The compact key never equals an emitted expression, so always record it.
+      canonicalOf.set(expr, canonical)
       return expr
     }
 
@@ -5985,6 +6114,14 @@ export function transformJSX_JS(
         const html = emitFusedTextChild(fused, varName, accessor === '__root' ? '__root' : varName)
         return { html, isHole: false }
       }
+      // All-static mix (see `fuseTextChildren`'s `allowStatic`): the sole static
+      // child shape — empty element, one `_setChild`.
+      const fusedStatic = fuseTextChildren(el, true)
+      if (fusedStatic !== null) {
+        needsSetChildImportGlobal = true
+        bindLines.push(`_setChild(${varName}, ${fusedStatic})`)
+        return { html: '', isHole: false }
+      }
       const flatChildren = flattenChildren(jsxChildren(el))
       const hasComponent = flatChildren.some((c) => c.kind === 'component')
       // Re-derived from the SAME predicate on the SAME input the prescan used,
@@ -6085,6 +6222,7 @@ export function transformJSX_JS(
     if (needsMountComponentImport) needsMountComponentImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true
+    if (needsSetStyleOnce) needsSetStyleOnceImportGlobal = true
     if (needsSetClass) needsSetClassImportGlobal = true
     if (needsSetAttr) needsSetAttrImportGlobal = true
     if (needsSetValue) needsSetValueImportGlobal = true
@@ -6189,6 +6327,22 @@ export function transformJSX_JS(
         if (grand && grand.type === 'CallExpression' && grand.callee === parent) return false
       }
       if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
+      // Object-literal / class member KEY named like a signal (`{ source: 1 }`,
+      // `class { source = 1 }`) is a name, not a read. Mirrors the key skips in
+      // findSignalIdents below. Shorthand `{ source }` stays a READ: it
+      // evaluates the binding, so it must still count.
+      if (parent && (parent.type === 'Property' || parent.type === 'ObjectProperty')) {
+        if (parent.key === node && !parent.computed && !parent.shorthand) return false
+      }
+      if (
+        parent &&
+        (parent.type === 'MethodDefinition' ||
+          parent.type === 'PropertyDefinition' ||
+          parent.type === 'AccessorProperty') &&
+        parent.key === node &&
+        !parent.computed
+      )
+        return false
       return true
     }
     const kids = childrenMap.get(node)
@@ -6357,6 +6511,43 @@ export function transformJSX_JS(
     // signal and must not get `()` (R11: scope-blind rewrite emitted
     // `({x}) => <li>{x()}</li>` → `1()` runtime crash).
     const shadowed = new Set<string>()
+    // Identifier nodes that are the WRITE target of an assignment, update or
+    // for-in/of head (`i = 2`, `i++`, `[i] = arr`). A target identifier is
+    // written, never read: auto-calling it emits `i() = 2` / `i()++`, a syntax
+    // error. Member-target objects and computed keys (`a[i] = 1`) stay reads.
+    const assignTargets = new Set<N>()
+    const markAssignTarget = (t: N | null | undefined): void => {
+      if (!t) return
+      switch (t.type) {
+        case 'Identifier':
+          assignTargets.add(t)
+          return
+        case 'TSAsExpression':
+        case 'TSSatisfiesExpression':
+        case 'TSNonNullExpression':
+        case 'TSTypeAssertion':
+        case 'ParenthesizedExpression':
+          markAssignTarget(t.expression)
+          return
+        case 'AssignmentPattern':
+          markAssignTarget(t.left)
+          return
+        case 'RestElement':
+          markAssignTarget(t.argument)
+          return
+        case 'ArrayPattern':
+          for (const el of t.elements ?? []) markAssignTarget(el)
+          return
+        case 'ObjectPattern':
+          for (const pr of t.properties ?? []) {
+            if (pr.type === 'RestElement') markAssignTarget(pr.argument)
+            else markAssignTarget(pr.value)
+          }
+          return
+        // MemberExpression targets: the object and computed key are reads and
+        // are walked by the generic recursion; nothing to mark here.
+      }
+    }
 
     function findSignalIdents(node: N): void {
       if ((node.start as number) >= end || (node.end as number) <= start) return
@@ -6368,7 +6559,19 @@ export function transformJSX_JS(
           introduced.push(n)
         }
       }
-      if (node.type === 'Identifier' && isActiveSignal(node.name) && !shadowed.has(node.name)) {
+      if (node.type === 'AssignmentExpression') markAssignTarget(node.left)
+      else if (node.type === 'UpdateExpression') markAssignTarget(node.argument)
+      else if (
+        (node.type === 'ForInStatement' || node.type === 'ForOfStatement') &&
+        node.left.type !== 'VariableDeclaration'
+      )
+        markAssignTarget(node.left)
+      if (
+        node.type === 'Identifier' &&
+        isActiveSignal(node.name) &&
+        !shadowed.has(node.name) &&
+        !assignTargets.has(node)
+      ) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (

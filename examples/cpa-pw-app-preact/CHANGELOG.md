@@ -1,5 +1,25 @@
 # cpa-pw-app-preact
 
+## 0.50.3
+
+### Patch Changes
+
+- Updated dependencies [[`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`6df4450`](https://github.com/pyreon/pyreon/commit/6df4450bb57c834997796f8f37c59bae3e743d74), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`2edea31`](https://github.com/pyreon/pyreon/commit/2edea31efd113364eebbd8fcc3150d730acd44a0), [`3de1c68`](https://github.com/pyreon/pyreon/commit/3de1c68b460f1f83deb9988192dfa4000ffb25b0)]:
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/form@0.53.0
+  - @pyreon/query@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/store@0.53.0
+  - @pyreon/validation@0.53.0
+  - @pyreon/meta@0.53.0
+  - @pyreon/zero@0.53.0
+  - @pyreon/head@0.53.0
+  - @pyreon/runtime-server@0.53.0
+  - @pyreon/server@0.53.0
+  - @pyreon/preact-compat@0.53.0
+
 ## 0.50.2
 
 ### Patch Changes

@@ -330,6 +330,7 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
       bindPolymorphicText: (rd as any).bindPolymorphicText,
       _applyProps: (rd as any)._applyProps,
       _setStyle: (rd as any)._setStyle,
+      _setStyleOnce: (rd as any)._setStyleOnce,
       _setClass: (rd as any)._setClass,
       _setAttr: (rd as any)._setAttr,
       _rp: (core as any)._rp,

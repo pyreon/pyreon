@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-edge-runtimes",
-  "version": "0.50.1",
+  "version": "0.50.2",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -24,8 +24,8 @@
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
-    "@types/bun": "^1.4.2",
+    "@types/bun": "^1.4.3",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }

@@ -50,8 +50,10 @@ describe('literal expression children bake into the template', () => {
   it('a numeric literal bakes only when its source is its String() form', () => {
     expect(tpl(js(`const A = () => <main>{0}{7}{1.5}{123456789012345}</main>`))).toBe('<main>071.5123456789012345</main>')
     const out = js(`const A = () => <main>{1.50}{1e3}{-1}{0x10}{1234567890123456}</main>`)
-    expect(tpl(out)).toBe('<main><!><!><!><!><!></main>')
-    expect(out.match(/_setChildAt\(/g)).toHaveLength(5)
+    // Not baked: each keeps its SOURCE text and is evaluated at runtime (the
+    // all-static run fuses into one child set rather than five placeholders).
+    expect(tpl(out)).toBe('<main></main>')
+    expect(out).toContain('_fuse(1.50, 1e3, -1, 0x10, 1234567890123456)')
   })
 
   it('a cast or parenthesized literal bakes byte-identically', () => {

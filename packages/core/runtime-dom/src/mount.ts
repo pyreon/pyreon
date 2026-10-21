@@ -18,7 +18,6 @@ import {
   propagateError,
   reportError,
   runWithHooks,
-  Suspense,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
@@ -33,9 +32,9 @@ import {
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
-import { _takePendingForAdoption, mountFor, mountKeyedList, mountReactive } from './nodes'
+import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
-import { attachSuspenseBoundary } from './suspense-boundary'
+import { suspenseAttachOf } from './suspense-boundary'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -124,10 +123,7 @@ export function mountChild(
     // a noop there ORPHANS the text node (`() => cond ? <>a b</> : 'x'` rendered
     // "abx"). Mirrors the reactive-text fast path's own `_elementDepth` gate.
     if (_elementDepth > 0) return noop
-    return () => {
-      const p = tn.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(tn)
-    }
+    return () => detachNode(tn)
   }
 
   // NativeItem — pre-built DOM element from _tpl() or createTemplate().
@@ -136,16 +132,12 @@ export function mountChild(
     parent.insertBefore(native.el, anchor)
     if (!native.cleanup) {
       if (_elementDepth > 0) return noop
-      return () => {
-        const p = native.el.parentNode
-        if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
-      }
+      return () => detachNode(native.el)
     }
     if (_elementDepth > 0) return native.cleanup
     return () => {
       native.cleanup?.()
-      const p = native.el.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
+      detachNode(native.el)
     }
   }
 
@@ -179,6 +171,9 @@ export function mountChild(
       // One-shot hydration-adoption handoff — non-null only when hydrate.ts
       // set it synchronously before dispatching this <For> vnode.
       _takePendingForAdoption(),
+      // Inside a freshly built element, the element's removal takes the rows
+      // with it — so the For's teardown may skip its own (see `detachNode`).
+      prevDepth > 0,
     )
     _elementDepth = prevDepth
     return cleanup
@@ -415,10 +410,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
   if (!propCleanup && childCleanup === noop && !ref) {
     if (_elementDepth > 0) return noop
-    return () => {
-      const p = el.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(el)
-    }
+    return () => detachNode(el)
   }
 
   if (_elementDepth > 0) {
@@ -446,8 +438,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     }
     if (propCleanup) propCleanup()
     childCleanup()
-    const p = el.parentNode
-    if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(el)
+    detachNode(el)
   }
 }
 
@@ -699,7 +690,8 @@ function mountComponent(
   let subtreeCleanup: Cleanup = noop
   // A `<Suspense>` delimits its output so it can move it off-screen while a
   // descendant loads (see `attachSuspenseBoundary`).
-  const boundaryEnd = vnode.type === Suspense ? document.createComment('/suspense') : null
+  const suspenseAttach = suspenseAttachOf(vnode.type)
+  const boundaryEnd = suspenseAttach !== undefined ? document.createComment('/suspense') : null
   const boundaryStart = boundaryEnd !== null ? document.createComment('suspense') : null
   if (boundaryEnd !== null) {
     parent.insertBefore(boundaryStart!, anchor)
@@ -710,7 +702,7 @@ function mountComponent(
     if (boundaryEnd !== null) {
       const boundary = useContext(SuspenseBoundaryContext)
       if (boundary !== null) {
-        const detach = attachSuspenseBoundary(boundary, boundaryStart!, boundaryEnd, mountChild)
+        const detach = suspenseAttach!(boundary, boundaryStart!, boundaryEnd, mountChild)
         const inner = subtreeCleanup
         subtreeCleanup = () => {
           inner()
@@ -819,6 +811,11 @@ export function createPolyTextCore(
   let marker: Comment | null = null
   let mode: 'text' | 'sub' = 'text'
   let subCleanup: Cleanup = noop
+  // The string this core last wrote to `text`. Comparing against it instead of
+  // reading `text.data` back saves a DOM read per update; `null` until the
+  // first text write, which reads the node once (an adopted SSR node whose
+  // text already matches is left untouched).
+  let written: string | null = null
 
   return {
     apply(v: VNodeChild): void {
@@ -835,7 +832,11 @@ export function createPolyTextCore(
           mode = 'text'
         }
         const next = v == null || v === false ? '' : String(v as string | number | boolean)
-        if (next !== text.data) text.data = next
+        if (written === null) written = text.data
+        if (next !== written) {
+          text.data = next
+          written = next
+        }
         return
       }
       // Non-text value — mount it as a subtree at this binding's position.

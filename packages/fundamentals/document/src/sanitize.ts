@@ -210,10 +210,13 @@ export function escapeXml(str: string): string {
   // Dirty path: single charCode scan with lazy slicing (the canonical
   // shape from runtime-server's escapeHtml). The previous 4× chained
   // `.replace()` did 4 full scans + up to 3 intermediate strings per
-  // call — paid even on clean strings.
-  let out = ''
-  let last = 0
-  for (let i = 0; i < str.length; i++) {
+  // call — paid even on clean strings. The loop starts at the first special
+  // (`search` finds it natively), skipping the clean prefix — the same shape
+  // runtime-server's escapeHtml uses.
+  const first = str.search(NEEDS_ESCAPE_RE)
+  let out = str.slice(0, first)
+  let last = first
+  for (let i = first; i < str.length; i++) {
     const c = str.charCodeAt(i)
     let entity: string | null = null
     if (c === 38) entity = '&amp;'

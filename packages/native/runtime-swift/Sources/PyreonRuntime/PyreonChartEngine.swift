@@ -813,6 +813,7 @@ public struct Emphasis: Codable {
 public struct ChartSpec {
   public var width: Double
   public var height: Double
+  public var m4Density: Double? = nil
   public var series: [Series]
   public var categories: [String]
   public var theme: ChartTheme
@@ -842,9 +843,10 @@ public struct ChartSpec {
   public var y2Title: String? = nil
   public var xLabels: String? = nil
   public var rowKeys: [String]? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, rowKeys: [String]? = nil) {
+  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, rowKeys: [String]? = nil) {
     self.width = width
     self.height = height
+    self.m4Density = m4Density
     self.series = series
     self.categories = categories
     self.theme = theme
@@ -6037,26 +6039,41 @@ public func rawExtentOver(_ series: [Series]) -> Domain {
     return hasBars ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
   }
 
+public func m4Density(_ spec: ChartSpec) -> Double {
+    let d = (spec.m4Density ?? 2.0)
+    return d > 1.0 ? d : 1.0
+  }
+
 public func extendSpan(_ span: ExtentSpan, _ values: [Double]) -> ExtentSpan {
     var seen = span.seen
     var lo = span.lo
     var hi = span.hi
-    for i in 0..<values.count {
-      let v = values[i]
-      if isFiniteValue(v) {
-        if !seen {
+    let n = values.count
+    var i = 0
+    if !seen {
+      while i < n {
+        let v = values[i]
+        i = i + 1
+        if isFiniteNumber(v) {
           lo = v
           hi = v
           seen = true
+          break
+        }
+      }
+    }
+    while i < n {
+      let v = values[i]
+      if isFiniteNumber(v) {
+        if v < lo {
+          lo = v
         } else {
-          if v < lo {
-            lo = v
-          }
           if v > hi {
             hi = v
           }
         }
       }
+      i = i + 1
     }
     return ExtentSpan(seen: seen, lo: lo, hi: hi)
   }
@@ -6547,7 +6564,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
         } else {
           if s.kind == "line" {
-            let direct = s.curve == nil && xs.count == 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
+            let direct = s.curve == nil && xs.count == 0 ? m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) : []
             let useDirect = direct.count > 0
             let runs = useDirect ? [direct] : splitRuns(s.values, place)
             let keyedLine = rowKeys.count == s.values.count && s.curve == nil
@@ -6565,7 +6582,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                 }
               }
               runFrom = runFrom + run.count
-              let pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
+              let pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)), m4Density(spec))
               if pts.count > 1 {
                 let oneToOne = keyedLine && runKeys.count == pts.count
                 out.append(oneToOne ? PyreonDrawCmd(kind: "polyline", key: s.label, stroke: s.color, width: s.width, dash: s.dash, points: pts, pointKeys: runKeys) : PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
@@ -13812,24 +13829,47 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
     if !(Double(n) > span * perPx * 4.0 + 8.0) {
       return out
     }
-    for i in 0..<n {
-      let v = values[i]
-      if !isFiniteChartNumber(v) {
-        return out
-      }
-    }
+    let none: [PyreonChartPt] = []
     let top = plot.y + plot.h
+    let px = plot.x
+    let dmin = dom.min
+    let dspan = dom.max - dom.min
+    let flat = dspan == 0.0
+    let inv = dom.inverse == true
+    let r0 = inv ? plot.y : top
+    let diff = inv ? top - plot.y : plot.y - top
+    let flatY = (top + plot.y) / 2.0
     var i = 0
+    var prevLen = 1
     while i < n {
-      let col = floor(Double((bandCenter(plot.x, band, i)) * perPx))
+      let col = floor(Double((bandCenter(px, band, i)) * perPx))
+      var end = i + prevLen
+      if end > n {
+        end = n
+      }
+      while end > i + 1 && floor(Double((bandCenter(px, band, end - 1)) * perPx)) != col {
+        end = end - 1
+      }
+      while end < n && floor(Double((bandCenter(px, band, end)) * perPx)) == col {
+        end = end + 1
+      }
+      prevLen = end - i
       let first = i
+      let v0 = values[i]
+      if !isFiniteChartNumber(v0) {
+        return none
+      }
       var lo = i
       var hi = i
-      var loY = scaleLinear(dom, top, plot.y, values[i])
+      var loY = scaleLinear(dom, top, plot.y, v0)
       var hiY = loY
-      var j = i
-      while j < n && floor(Double((bandCenter(plot.x, band, j)) * perPx)) == col {
-        let y = scaleLinear(dom, top, plot.y, values[j])
+      var j = i + 1
+      while j < end {
+        let v = values[j]
+        if !isFiniteChartNumber(v) {
+          return none
+        }
+        let y = flat ? flatY : r0 + ((v - dmin) / dspan) * diff
         if y < loY {
           lo = j
           loY = y

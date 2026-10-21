@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/lint",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Pyreon-specific linter \u2014 133 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/lint#readme",
@@ -54,10 +54,10 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@oxc-project/types": "^0.152.0",
+    "@oxc-project/types": "^0.155.0",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/sized-map": "workspace:*",
-    "oxc-parser": "^0.152.0"
+    "oxc-parser": "^0.155.0"
   },
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",

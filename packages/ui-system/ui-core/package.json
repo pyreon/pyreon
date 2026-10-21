@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ui-core",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Core utilities, config, and context for Pyreon UI System",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/ui-system/ui-core#readme",
   "bugs": {
@@ -55,7 +55,7 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitus-labs/tools-rolldown": "^2.6.3"
+    "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

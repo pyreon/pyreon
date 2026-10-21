@@ -91,7 +91,15 @@ function _looksLikeVNode(v: unknown): boolean {
  *  containing at least one. Plain objects and plain-primitive arrays keep
  *  the historical String() coercion (consistent across all four sites). */
 function _isMountableTextValue(v: unknown): boolean {
-  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_looksLikeVNode))
+  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_isMountablePart))
+}
+
+// A part of an array child that must be MOUNTED rather than stringified: a
+// VNode, a nested array (`_fuse("a", items, "b")` returns its parts with
+// `items` still an array) or a function (a reactive part — mountChild binds
+// it, as the h() path does). Arrays of primitives keep the text path.
+function _isMountablePart(x: unknown): boolean {
+  return _looksLikeVNode(x) || Array.isArray(x) || typeof x === 'function'
 }
 
 /**
@@ -116,7 +124,9 @@ export function _setChild(node: Element, value: unknown): void {
     // short-circuits same-value data writes, so an adopted row whose SSR text
     // already matches pays nearly nothing. Fresh mounts have no children and
     // take the textContent branch unchanged.
-    const fc = node.firstChild
+    // On a fresh clone the compiled cell is empty, so the adoption probe is
+    // skipped (`textContent =` would replace any children regardless).
+    const fc = _freshBind ? null : node.firstChild
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
       ;(fc as Text).data = value as string
     } else {
@@ -240,7 +250,7 @@ function _warnTextCoercion(v: unknown, node: Text): void {
  * to a subtree mount at the text node's position (the swap core shared with
  * `bindPolymorphicText`) — matching what SSR already renders for the same
  * shape. The string hot path stays byte-identical until a VNode is actually
- * seen: the no-change bail (`next !== node.data`) is untouched, and the
+ * seen: the no-change bail (against the last string written) is untouched, and the
  * detection is ONE `typeof v === 'object'` short-circuit on the
  * value-actually-changed branch only.
  *
@@ -324,10 +334,19 @@ export function _bindText(
     // an upgrade, the combined cleanup after one. The returned disposer reads it
     // late so ONE stable function survives the subscriber swap.
     let disposer: (() => void) | null = null
+    // The string this binding last wrote. Comparing against it instead of
+    // reading `node.data` back saves a DOM read (and the string it returns) on
+    // every update. `null` until the first call, which reads the node once so a
+    // hydration-adopted node whose server text already matches is not rewritten.
+    // `undefined` = the first call ran on a FRESH clone, where the current text
+    // is the template placeholder and nothing needs preserving: write
+    // unconditionally instead of reading the node back.
+    let written: string | null | undefined = null
     const textUpdate = () => {
       const v = source._v
       const next = v == null || v === false ? '' : String(v as string | number)
-      if (next !== node.data) {
+      if (written === null) written = _freshBind ? undefined : node.data
+      if (next !== written) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
         if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
@@ -352,6 +371,7 @@ export function _bindText(
         }
         if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
         node.data = next
+        written = next
       }
     }
     textUpdate()
@@ -374,6 +394,8 @@ export function _bindText(
   // child mounts are untracked.
   const fn = resolveSlowCaller(source, caller, receiver)
   let core: PolyTextCore | null = null
+  // Last string written — same read-back saving as the fast path above.
+  let written: string | null | undefined = null
   const disposeEffect = renderEffect(() => {
     const v = fn()
     if (core !== null) {
@@ -381,7 +403,8 @@ export function _bindText(
       return
     }
     const next = v == null || v === false ? '' : String(v as string | number)
-    if (next !== node.data) {
+    if (written === null) written = _freshBind ? undefined : node.data
+    if (next !== written) {
       if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
         const parent = node.parentNode
         if (parent !== null) {
@@ -392,6 +415,7 @@ export function _bindText(
       }
       if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
       node.data = next
+      written = next
     }
   })
   return () => {
@@ -457,6 +481,18 @@ export function _bindDirect(
 // app bundle for one line of eviction.)
 const TPL_CACHE_MAX = 1024
 const _tplCache = new Map<string, HTMLTemplateElement>()
+/** A cached template carrying its parsed root element (see `_tpl`). */
+type CachedTemplate = HTMLTemplateElement & { _root?: Element | null }
+
+// True ONLY while `buildTpl` runs a bind against a FRESH CLONE (never during an
+// adoption bind). Two per-row DOM reads exist purely so a hydration-ADOPTED
+// node is not rewritten — `_setChild`'s `firstChild` probe and a text
+// binding's first `node.data` read. On a fresh clone the answers are known
+// (the compiled cell is empty, the text is the template placeholder), so
+// those reads are skipped. Saved/restored around every bind (frame discipline
+// — binds nest through child templates), so it can never leak past the
+// synchronous bind into a later reactive re-run.
+let _freshBind = false
 
 /**
  * Compiler-emitted template instantiation.
@@ -772,6 +808,11 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     // bare valueless attribute and HTML_ATTR likewise, and neither string is
     // a substring of the other ("data-pyreon-hole" vs "data-pyreon-html").
     if (html.includes(HTML_ATTR)) stripMarkers(tpl.content, HTML_ATTR, _tplHtmlEls)
+    // Remember the root to clone. `buildTpl` runs once per ROW, and reading
+    // `tpl.content.firstElementChild` there costs two DOM getter calls per
+    // clone for a node that never changes once parsed (markers are stripped
+    // above, before this point). A JS field read replaces both.
+    ;(tpl as CachedTemplate)._root = tpl.content.firstElementChild
     // FIFO eviction — drop the oldest entry once we hit the cap. Map iteration
     // order is insertion order, so `keys().next()` is the oldest.
     if (_tplCache.size >= TPL_CACHE_MAX) _tplCache.delete(_tplCache.keys().next().value as string)
@@ -844,12 +885,15 @@ function buildTpl(
         // remaining holes on the plain mount path.
         const prevHoles = _tplHoleCursors
         _tplHoleCursors = holes
+        const prevFresh = _freshBind
+        _freshBind = false // an ADOPTED node holds server content — keep every read
         let cleanup: (() => void) | null
         try {
           cleanup = bind(target as HTMLElement)
           if (holes !== null) sweepHoles(holes)
         } finally {
           _tplHoleCursors = prevHoles
+          _freshBind = prevFresh
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -859,8 +903,18 @@ function buildTpl(
     }
   }
   // (adoption falls through to a normal clone on any verification bail)
-  const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
-  const cleanup = bind(el)
+  const root = (tpl as CachedTemplate)._root
+  const el = (root !== undefined ? root : tpl.content.firstElementChild)?.cloneNode(
+    true,
+  ) as HTMLElement
+  const prevFresh = _freshBind
+  _freshBind = true
+  let cleanup: (() => void) | null
+  try {
+    cleanup = bind(el)
+  } finally {
+    _freshBind = prevFresh
+  }
   // A CLONE is not a consumption. Stated on this exit too so `_tplAdoptDidConsume()`
   // describes THIS call rather than whichever nested `_tpl` ran last inside
   // `bind` — the reading the `<For>` row loop makes. Skipped entirely when no

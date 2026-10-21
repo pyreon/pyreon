@@ -26,7 +26,6 @@ import {
   PortalSymbol,
   reportError,
   runWithHooks,
-  Suspense,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
@@ -39,7 +38,7 @@ import {
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
-import { attachSuspenseBoundary } from './suspense-boundary'
+import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
@@ -123,7 +122,7 @@ function firstReal(initialNode: ChildNode | null): ChildNode | null {
       // Structural markers — return as-is so the caller can handle them.
       if (data === ASYNC_START_MARKER || data === ASYNC_END_MARKER) return node
       if (data.startsWith('k:')) return node
-      if (data === 'pyreon-for' || data === '/pyreon-for') return node
+      if (data === 'pyreon-for' || data.startsWith('/pyreon-for')) return node
       if (data === '$' || data === '/$') return node
       node = node.nextSibling
       continue
@@ -201,7 +200,7 @@ function skippedWhitespaceBefore(
       d === ASYNC_END_MARKER ||
       d.startsWith('k:') ||
       d === 'pyreon-for' ||
-      d === '/pyreon-for' ||
+      d.startsWith('/pyreon-for') ||
       d === '$' ||
       d === '/$'
     ) {
@@ -802,9 +801,13 @@ function hydrateVNode(
 
   if (vnode.type === ForSymbol) {
     // SSR emits a fully-bounded block for a <For>:
-    //   <!--pyreon-for-->  <!--k:KEY-->row…  xN  <!--/pyreon-for-->
-    // Keyed ADOPTION is implemented: the block below parses the <!--k:KEY-->
-    // markers, verifies every key against the client items (all-or-nothing),
+    //   <!--pyreon-for-->  el… xL  <!--k:KEY-->row… xM  <!--/pyreon-for:K0 … KL-1-->
+    // A LEADING run of single-element rows ships bare, with their keys on the
+    // closing marker; every row from the first other shape on keeps its own
+    // <!--k:KEY--> marker (it may span any number of nodes). The previous
+    // format — a marker before every row, plain closing marker — is the L = 0
+    // case and still parses. Keyed ADOPTION: the block below rebuilds the row
+    // table from both forms, verifies every key against the client items (all-or-nothing),
     // and hands mountFor a `hydrateExisting` that arms each SSR row for
     // compiled-`_tpl` adoption (plan replay for rows 2..N) or walks h()-rows
     // interpretively. Any verification failure falls back to swap semantics
@@ -835,31 +838,43 @@ function hydrateVNode(
       // `startsWith(keyStr, 2)` in the verify loop below.
       let end: ChildNode | null = null
       let parseOk = true
+      // Row tables, parallel arrays. Rows [0, leadCount) are the block's
+      // LEADING BARE rows (one element each, no per-row marker — their keys
+      // travel on the closing marker, see runtime-server `isSingleElementRow`);
+      // their raw key has no `k:` prefix and their "marker" is the row element
+      // itself. Rows from leadCount on are marker-delimited exactly as before.
       const rowKeysRaw: string[] = []
-      const rowMarkers: Comment[] = []
+      const rowMarkers: ChildNode[] = []
       const rowFirsts: ChildNode[] = []
       const rowLasts: ChildNode[] = []
+      let leadCount = 0
       {
         let depth = 0
         let cur: ChildNode | null = domNode.nextSibling
         // `prev` mirrors `cur.previousSibling` — the scan is a pure read, so
         // nothing can mutate the chain underneath it.
         let prev: ChildNode | null = null
+        let lead = true // still in the leading bare-row region
         let openKey = ''
         let openMarker: Comment | null = null
         let openFirst: ChildNode | null = null
         while (cur) {
           const next: ChildNode | null = cur.nextSibling
-          if (cur.nodeType === 8 /* comment */) {
+          const type = cur.nodeType
+          if (type === 8 /* comment */) {
             const d = (cur as Comment).data
-            if (d === '/pyreon-for') {
+            if (d === '/pyreon-for' || d.startsWith('/pyreon-for:')) {
               if (depth === 0) {
                 end = cur
                 break
               }
               depth--
-            } else if (d === 'pyreon-for') depth++
-            else if (
+            } else if (d === 'pyreon-for') {
+              depth++
+              // A nested block at the top level is a multi-node row — legal
+              // only inside a marker-delimited row.
+              if (lead && depth === 1) parseOk = false
+            } else if (
               // `parseOk` short-circuits the row bookkeeping once the parse has
               // failed, but the scan MUST continue: `end` is what decides
               // whether this is an adoptable block at all, and a bail before
@@ -869,6 +884,7 @@ function hydrateVNode(
               d.charCodeAt(0) === 107 /* k */ &&
               d.charCodeAt(1) === 58 /* : */
             ) {
+              lead = false
               if (openMarker) {
                 if (!openFirst || !prev || openFirst === cur) {
                   parseOk = false // empty row — no adoptable range
@@ -882,7 +898,17 @@ function hydrateVNode(
               openKey = d
               openMarker = cur as Comment
               openFirst = next
+            } else if (lead && depth === 0) {
+              parseOk = false // any other comment between bare rows
             }
+          } else if (lead && depth === 0) {
+            if (type === 1 /* element */) {
+              rowKeysRaw.push('') // filled from the closing marker below
+              rowMarkers.push(cur)
+              rowFirsts.push(cur)
+              rowLasts.push(cur)
+              leadCount++
+            } else parseOk = false // text between bare rows — not this shape
           }
           prev = cur
           cur = next
@@ -897,8 +923,20 @@ function hydrateVNode(
             rowLasts.push(prev)
           }
         }
-        // Content before the first k: marker (shouldn't exist) → not adoptable.
-        if (end && parseOk && rowKeysRaw.length === 0 && domNode.nextSibling !== end) parseOk = false
+        if (end) {
+          // The leading rows' keys ride on the closing marker; their count must
+          // match the bare elements found, or the block is not this shape.
+          const ed = (end as Comment).data
+          if (ed.length > 11 /* '/pyreon-for'.length */) {
+            if (parseOk) {
+              const leadKeys = ed.slice(12).split(' ')
+              if (leadKeys.length !== leadCount) parseOk = false
+              else for (let i = 0; i < leadCount; i++) rowKeysRaw[i] = leadKeys[i] as string
+            }
+            // Normalize the live tail marker — the key list is only read here.
+            ;(end as Comment).data = '/pyreon-for'
+          } else if (leadCount > 0) parseOk = false
+        }
       }
       if (end) {
         const after = end.nextSibling
@@ -927,17 +965,20 @@ function hydrateVNode(
             // Phase 1 — verify every key BEFORE any mutation (all-or-nothing).
             for (let i = 0; i < rowCount; i++) {
               const key = getKey(items[i])
-              const raw = rowKeysRaw[i] as string // 'k:KEY', possibly URL-escaped
+              // 'k:KEY' for marker rows, bare 'KEY' for leading rows; possibly
+              // URL-escaped either way.
+              const raw = rowKeysRaw[i] as string
+              const off = i < leadCount ? 0 : 2
               if (raw.indexOf('%') < 0) {
                 // No escapes — compare against the raw form in place
-                // (equivalent to `String(key) === raw.slice(2)` without the
+                // (equivalent to `String(key) === raw.slice(off)` without the
                 // per-row slice allocation).
                 const keyStr = typeof key === 'string' ? key : String(key)
-                if (raw.length !== keyStr.length + 2 || !raw.startsWith(keyStr, 2)) return null
+                if (raw.length !== keyStr.length + off || !raw.startsWith(keyStr, off)) return null
               } else {
                 let markerKey: string
                 try {
-                  markerKey = decodeURIComponent(raw.slice(2))
+                  markerKey = decodeURIComponent(raw.slice(off))
                 } catch {
                   return null // malformed marker — bail, never throw mid-hydration
                 }
@@ -950,10 +991,10 @@ function hydrateVNode(
             _setTplAdoptVerifier(tplAdoptVerify)
   _setTplHoleHydrator(hydrateMountHole)
             for (let i = 0; i < rowCount; i++) {
-              const rowMarker = rowMarkers[i] as Comment
+              const rowMarker = rowMarkers[i] as ChildNode
               const rowFirst = rowFirsts[i] as ChildNode
               const rowLast = rowLasts[i] as ChildNode
-              const rowAfter: Node = i + 1 < rowCount ? (rowMarkers[i + 1] as Comment) : opsTail
+              const rowAfter: Node = i + 1 < rowCount ? (rowMarkers[i + 1] as ChildNode) : opsTail
               // COMPILED rows: arm the one-shot _tpl target BEFORE renderItem —
               // the _tpl call inside binds against the SSR row when the
               // structure verifies. h()-rows ignore it; cleared either way.
@@ -970,7 +1011,8 @@ function hydrateVNode(
               // Anchor on the row's k: MARKER (kept in the DOM) — the row range
               // is [marker .. last]; moves/removals carry the marker with the
               // row, so no per-row marker removal at adoption time.
-              let endNode: Node | null = rowLast !== (rowMarker as ChildNode) ? rowLast : null
+              let endNode: Node | null = rowLast !== rowMarker ? rowLast : null
+              let rowAnchor: ChildNode = rowMarker
               if (tplAdopted) {
                 const native = rowVNode as { el: ChildNode; cleanup?: (() => void) | null }
                 const nativeCleanup = native.cleanup ?? null
@@ -991,14 +1033,33 @@ function hydrateVNode(
                 cleanup =
                   (rowPlan ? replayRowPlan(rowPlan, rowVNode as VNodeChild, rowFirst) : null) ??
                   hydrateChild(rowVNode as VNodeChild, rowFirst, parent, rowAfter, `${path}.for`)[0]
-                // A NativeItem row that did NOT adopt was SWAPPED — re-derive
-                // the live end from the still-present neighbors.
-                if (!rowFirst.isConnected) {
-                  const lastLive = (rowAfter as ChildNode).previousSibling
+                // A bare row IS its own anchor. If it did NOT adopt it was
+                // SWAPPED, and the replacement (the node right before the next
+                // row) is the new anchor of a single-node range.
+                if (i < leadCount && !rowFirst.isConnected) {
+                  rowAnchor = (rowAfter as ChildNode).previousSibling as ChildNode
+                  endNode = null
+                }
+              }
+              if (i >= leadCount) {
+                // A marked row's end must come from the LIVE DOM, after the row
+                // hydrated: the node the scan saw last is often a hydration
+                // marker the walk has since consumed (`<!--/$-->` around a
+                // reactive text child), or a node a swapped row replaced. And a
+                // text end can itself be replaced later — a polymorphic text
+                // binding swaps its node for a subtree — so it gets a comment
+                // nothing inside the row can replace, exactly as a client-mounted
+                // row does (`mountFor`'s renderInto).
+                const lastLive = (rowAfter as ChildNode).previousSibling
+                if (lastLive && lastLive.nodeType === 3) {
+                  const endMark = document.createComment('')
+                  parent.insertBefore(endMark, rowAfter)
+                  endNode = endMark
+                } else {
                   endNode = lastLive && lastLive !== (rowMarker as ChildNode) ? lastLive : null
                 }
               }
-              setEntry(keys[i] as string | number, rowMarker, cleanup, i, endNode)
+              setEntry(keys[i] as string | number, rowAnchor, cleanup, i, endNode)
             }
             return keys
           },
@@ -1826,7 +1887,8 @@ function hydrateComponent(
     // off-screen when a descendant mounted LATER suspends it (see
     // `attachSuspenseBoundary`). The server output carries no such markers —
     // they are inserted around what the walk claimed, so parity is untouched.
-    const boundaryStart = vnode.type === Suspense ? document.createComment('suspense') : null
+    const suspenseAttach = suspenseAttachOf(vnode.type)
+    const boundaryStart = suspenseAttach !== undefined ? document.createComment('suspense') : null
     if (boundaryStart !== null) parent.insertBefore(boundaryStart, domNode ?? anchor)
     const [childCleanup, next] = hydrateChild(output, domNode, parent, anchor, path)
     subtreeCleanup = childCleanup
@@ -1846,7 +1908,7 @@ function hydrateComponent(
       const boundary = useContext(SuspenseBoundaryContext)
       const detach =
         boundary !== null
-          ? attachSuspenseBoundary(boundary, boundaryStart, boundaryEnd, mountChild)
+          ? suspenseAttach!(boundary, boundaryStart, boundaryEnd, mountChild)
           : () => {
               boundaryStart.remove()
               boundaryEnd.remove()

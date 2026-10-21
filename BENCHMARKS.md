@@ -12,6 +12,31 @@ This run **supersedes** the 2026-09-23 run. Where a verdict changed, it is calle
 
 ---
 
+## Refresh — 2026-10-15
+
+**Code:** `main` at `3f1009eb6` — after the 2026-10-14/15 performance PRs (#3885 direct-tier binding through literal indexes and casts, #3886 table cell context, #3887 React Flow edges inside the timed window, #3889 release-candidate arms, #3890 SSR conditional-attribute bake, #3891 write-once compiled styles, #3892/#3895/#3896 reactivity notify path, #3893 hotkeys registration, #3894 url-state number parse) and #3884, which moved every rival to its latest release (react 19.3.1 · vue 3.5.44 · svelte 5.57.2 · solid-js 1.9.17 · preact 11.0.1 · octane 0.13.5 · motion 14.2.0 · zod 4.6.7 · @tanstack/table-core 9.3.1 · @tanstack/query-core 5.104.2 · @tanstack/virtual-core 3.19.4).
+**New arms:** Vue 3.6 Vapor (`3.6.0-rc.11`) and SolidJS 2.0 (`2.0.0-rc.15`) release candidates on the row board, ranked like any other arm.
+**Run:** same machine and protocol, 49 suites one at a time, load 1.6–4.8, Chromium 153.0.8010.12.
+
+Sections §1, §2 (scenarios, flow, charts), §4, §5, §8, §10 (hotkeys, url-state, virtual, table) and §12 below are from this run. Everything else is still the 2026-09-24 run.
+
+| bench | 2026-09-24 | 2026-10-15 |
+| --- | --- | --- |
+| dbmon | 🤝 tie with Svelte | Pyreon fastest median (1.83 vs Svelte 1.84 ms) |
+| effect list: update 500 | Solid 🥇, Pyreon 🤝 | **Pyreon 🥇** (0.97 vs Solid 1.02 ms) |
+| flow: mount 500 nodes | React Flow 1.25× faster | **Pyreon** (19.5 vs 21.1 ms) — the React Flow arm drew 0 of 499 edges inside the timed window until #3887 |
+| charts vs ECharts: mount 1,000 points | ECharts 2.11× faster | **Pyreon 3.8× faster** (1.12 vs 4.23 ms) |
+| SSR 1,000 rows vs Vue | Vue 1.05× faster | 🤝 (CIs overlap) |
+| SSR 100 rows vs Vue | 🤝 | **Pyreon 1.13× faster** |
+| reactivity, V8: diamond / wide fan-out / batch | 8,853 / 2,859 / 735 ns | 6,542 / 2,181 / 626 ns |
+| reactivity, JSC: diamond | Preact 1.20× faster | 🤝 tie with Preact |
+| hotkeys register + teardown | 4.3× slower than tinykeys | 1.07–1.32× faster (2.3× slower before the registration-list change) |
+| url-state integer parse / round-trip | 1.6× / 1.2× slower than nuqs | 1.14× slower / Pyreon 1.08× faster |
+| table mount 1,000 rows (happy-dom) | 2.1× slower than memoized react-table | 2.0× slower; replace and sort 1,000 rows now 1.2× and 2.2× (were 1.9× and 3.3×) |
+| table, 1,000 rows, **real Chromium** (new `--scenario table`) | not measured | mount 1.15× slower, replace 1.07×, sort 1.22×, unmount 1.44× slower than memoized react-table; single-cell update **Pyreon 1.07× faster**. happy-dom overstated the mount gap ~2× |
+
+---
+
 ## 0. What changed since 2026-09-23
 
 ### Harness fixes made during this run (in this PR)
@@ -42,31 +67,31 @@ This run **supersedes** the 2026-09-23 run. Where a verdict changed, it is calle
 
 ---
 
-## 1. DOM row-list suite — `bench:fair` (8 frameworks, real Chromium)
+## 1. DOM row-list suite — `bench:fair` (10 frameworks, real Chromium) — 2026-10-15
 
-`--repeat 5 --wait-quiet 6` → 100 pooled samples per cell, order rotated per pass, load re-checked before every framework (2.1–3.9 throughout). Bimodality guard: one cell flagged (Solid `clear rows`, fast mode holds 5% of samples — median stands).
+`--repeat 5` → 100 pooled samples per cell, order rotated per pass, load 1.6–4.8. Bimodality guard: no median captured by an artifact mode.
 
-| op | Vanilla | **Pyreon** | Octane | Vue 3 | Solid | Svelte 5 | React 19 | Preact |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| create 1,000 | 7.34 | **7.93** | 8.38 | 8.13 | 8.51 | 8.90 | 9.81 | 11.53 |
-| replace all | 7.32 | **7.86** | 8.12 | 8.08 | 8.37 | 8.79 | 9.69 | 11.55 |
-| partial update | 745µs | **660µs** | 710µs | 1.03 | 1.45 | 765µs | 830µs | 930µs |
-| select row | 5µs | 10µs | 25µs | 365µs | 25µs | 445µs | 230µs | 275µs |
-| swap rows | 755µs | **785µs** | 825µs | 1.02 | 905µs | 1.53 | 6.05 | 955µs |
-| remove row | 6.15 | **6.23** | 6.24 | 6.38 | 6.27 | 6.90 | 6.46 | 6.69 |
-| clear rows | 85µs | **130µs** | 180µs | 260µs | 475µs | 305µs | 595µs | 825µs |
-| create 10,000 | 74.63 | **80.01** | 85.92 | 86.54 | 85.42 | 95.83 | 201.24 | 276.14 |
-| append 1k→10k | 12.87 | **13.93** | 16.59 | 69.27 | 14.41 | 21.91 | 16.19 | 17.97 |
+| op | Vanilla | **Pyreon** | Vue 3.6 Vapor (RC) | Octane | Vue 3 | Solid | Solid 2.0 (RC) | Svelte 5 | React 19 | Preact |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| create 1,000 | 7.16 | **7.73** | 7.65 | 7.98 | 7.91 | 8.26 | 8.58 | 8.46 | 9.77 | 10.60 |
+| replace all | 7.19 | **7.69** | 7.56 | 7.87 | 7.89 | 8.14 | 8.55 | 8.35 | 9.42 | 10.54 |
+| partial update | 700µs | **700µs** | 715µs | 740µs | 1.05 | 1.45 | 1.48 | 810µs | 895µs | 950µs |
+| select row | 5µs | **10µs** | 25µs | 25µs | 365µs | 30µs | 60µs | 385µs | 285µs | 280µs |
+| swap rows | 755µs | **815µs** | 755µs | 825µs | 1.06 | 950µs | 905µs | 1.51 | 6.06 | 985µs |
+| remove row | 6.00 | **6.06** | 6.03 | 6.05 | 6.19 | 6.07 | 6.06 | 6.70 | 6.25 | 6.22 |
+| clear rows | 95µs | **135µs** | 150µs | 205µs | 280µs | 515µs | 655µs | 340µs | 730µs | 305µs |
+| create 10,000 | 71.14 | **77.35** | 76.98 | 83.12 | 84.26 | 81.85 | 86.10 | 91.34 | 199.51 | 308.57 |
+| append 1k→10k | 12.33 | **13.27** | 65.46 | 15.19 | 66.85 | 14.06 | 14.88 | 19.58 | 15.70 | 16.79 |
 
 (ms unless noted.)
 
-**Verdicts (CI95):** **Pyreon outright** on create 1,000, replace all, partial update, clear rows, create 10,000, append · **tie** Pyreon = Octane on swap rows · **tie** Pyreon = Octane = Solid on remove row · **no verdict** on select row (below 10 clock ticks — §3 resolves it) · `batch cycle` rows are implemented by only 4 of 8 arms, so no verdict.
+**Verdicts (CI95):** **Pyreon outright** on clear rows and append · **tie** Pyreon = Vue 3.6 Vapor (RC) on create 1,000, partial update and create 10,000 · **tie** Pyreon = Vapor = Octane = Solid 2.0 (RC) on remove row · **Vapor (RC) outright** on replace all (7.56 vs 7.69 ms, 1.02×) and swap rows (755 vs 815 µs, 1.08×) · **no verdict** on select row (below 10 clock ticks).
 
-**Pyreon vs hand-written Vanilla:** create 1.08×, replace 1.07×, swap 1.04×, remove 1.01×, create-10k 1.07×, append 1.08×, clear 1.53×. `partial update` reads **0.89×** (Pyreon faster than Vanilla) — Vanilla's arm sets `textContent` on the cell, which replaces the text node, while Pyreon writes the existing text node's `.data` — so that cell compares against an untuned floor. Read it as "Pyreon at the floor", not "faster than hand-written DOM".
+Against the stable releases alone, Pyreon is outright or tied first on every op. The Vapor release candidate is the first arm to take ops from Pyreon on this board; both margins are under 10%.
 
-**Retained heap after the suite (post-GC, MB):** Vanilla 2.65 · **Pyreon 2.78** · Preact 2.78 · Solid 2.87 · Svelte 2.99 · Octane 3.15 · React 3.21 · Vue 3.51.
+**Retained heap after the suite (post-GC, MB):** Vanilla 2.96 · **Pyreon 3.09** · Preact 3.10 · Solid 3.17 · Svelte 3.29 · Vue 3.32 · Octane 3.43 · Solid 2.0 (RC) 3.46 · React 3.52 · Vue 3.6 Vapor (RC) 4.10.
 
-Caveats: create/replace/remove/append are dominated by browser layout that every framework pays identically; `create N rows` is a replace for 19 of 20 samples (no reset between runs); Pyreon and Solid allocate a per-row signal the plain-object frameworks do not.
+Caveats: create/replace/remove/append are dominated by browser layout that every framework pays identically; `create N rows` is a replace for 19 of 20 samples (no reset between runs); Pyreon and Solid allocate a per-row signal inside the timed op that the plain-object frameworks (Vue, Vapor) do not.
 
 ## 2. Scenario suite — `bench:scenarios` (real Chromium, 60 samples per cell)
 
@@ -74,37 +99,54 @@ Caveats: create/replace/remove/append are dominated by browser layout that every
 
 | scenario | fastest | **Pyreon** | others |
 | --- | --- | --- | --- |
-| dbmon tick (100×6, all change) | Svelte 1.84 ms 🥇 | 1.89 ms 🤝 | Solid 1.87 🤝 · React 1.95 · Vue 2.04 · Octane 2.10 · Preact 2.11 |
-| mount deep tree (2,047 components) | Solid 3.17 ms 🥇 | **4.09 ms (1.29× slower)** | React 4.31 · Preact 7.49 · Vue 8.18 · Svelte 12.34 |
-| context → 1,024 consumers | Solid 1.77 ms 🥇 | 1.81 ms 🤝 | React 2.19 · Svelte 2.45 · Vue 2.52 · Preact 2.65 |
-| effect list: update 500 | Solid 1.03 ms 🥇 | 1.04 ms 🤝 | React 1.31 · Svelte 1.63 · Preact 1.81 · Vue 2.89 |
-| effect list: dispose 500 | **Pyreon 40 µs 🥇** | — | Solid 40 🤝 · Svelte 100 · React 225 · Vue 235 · Preact 295 |
-| memo wall: blocked | **Pyreon 12 µs 🥇** | — | Vue 16 · Preact 17 · React 17 · Solid 20 · Svelte 46 |
-| memo wall: passthrough | Pyreon (bare computed) 508 µs 🥇 | 528 µs 🤝 | Svelte 529 🤝 · Solid 535 🤝 · React 572 · Preact 877 · Vue 2,000 |
+| dbmon tick (100×6, all change) | **Pyreon 1.83 ms** | — | Svelte 1.84 · Octane 1.88 · React 1.92 · Solid 1.96 · Vue 2.01 · Preact 2.10 |
+| mount deep tree (2,047 components) | Solid 3.07 ms 🥇 | **3.78 ms (1.23× slower)** | React 3.73 · Preact 4.66 · Vue 6.34 · Svelte 10.88 |
+| context → 1,024 consumers | **Pyreon 1.91 ms** | — | Solid 2.00 · React 2.29 · Svelte 2.34 · Preact 2.58 · Vue 2.63 |
+| effect list: update 500 | **Pyreon 0.97 ms 🥇** | — | Solid 1.02 · React 1.25 · Svelte 1.50 · Preact 1.70 · Vue 2.86 |
+| effect list: dispose 500 | Solid 45 µs 🥇 | 55 µs | Svelte 95 · Preact 170 · React 192 · Vue 210 |
+| memo wall: blocked | **Pyreon 12 µs 🥇** | — | Vue 16 · Preact 17 · React 17 · Solid 20 · Svelte 38 |
+| memo wall: passthrough | Pyreon (bare computed) 469 µs 🥇 | 471 µs | Svelte 502 · Solid 503 · React 572 · Preact 768 · Vue 1,900 |
 
-- Deep-tree mount remains **Pyreon's clearest framework loss** (Vanilla floor 2.40 ms). The template diagnostic arms measure 4.09 ms (`tpl append`) and 4.27 ms (`tpl slot`); `SolidJS (eager props)` 2.70 ms is a diagnostic, unranked.
+- Scenario rows above are the 2026-10-15 run (60 samples per cell; 🥇 = fastest median — check CIs in the raw output before reading a sub-3% gap as a win).
+- Deep-tree mount remains **Pyreon's clearest framework loss** (Vanilla floor 2.53 ms). The template diagnostic arms measure 3.81 ms (`tpl append`) and 4.05 ms (`tpl slot`); `SolidJS (eager props)` 2.66 ms is a diagnostic, unranked. Profiled again on 2026-10-15: GC share is the same as Solid's (19.4% vs 19.1%) and no single lever remains.
 
 **Flow — `@pyreon/flow` vs React Flow 12 (500 nodes / 499 edges):**
 
 | op | Pyreon | React Flow 12 | verdict |
 | --- | ---: | ---: | --- |
-| mount | 19.97 ms | **16.01 ms** | React Flow 1.25× faster |
-| drag one node ×60 | **4.72 ms** | 33.82 ms | Pyreon 7.2× |
-| select node | **273 µs** | 1.11 ms | Pyreon 4.1× |
-| add 50 nodes + 50 edges | 4.42 ms | 4.48 ms | 🤝 |
-| pan + zoom ×60 | **210 µs** | 22.27 ms | Pyreon 106× |
-| unmount | **2.92 ms** | 9.14 ms | Pyreon 3.1× |
+| mount | **19.51 ms** | 21.05 ms | Pyreon 1.08× |
+| drag one node ×60 | **5.01 ms** | 31.41 ms | Pyreon 6.3× |
+| select node | **213 µs** | 980 µs | Pyreon 4.6× |
+| add 50 nodes + 50 edges | **4.45 ms** | 4.83 ms | Pyreon 1.09× |
+| pan + zoom ×60 | **190 µs** | 20.47 ms | Pyreon 108× |
+| unmount | **2.68 ms** | 8.42 ms | Pyreon 3.1× |
 
-**Charts — `@pyreon/charts` vs ECharts 6 (line, 800×400 canvas) — NEW:**
+The React Flow arm now declares node handles (#3887), its documented render-without-measuring path. Before that it drew 0 of 499 edges inside the timed mount window, so the 2026-09-24 "React Flow 1.25× faster" compared a complete graph against nodes only.
 
-| op | PlotChart (default) | OptionChart | ECharts 6 | PlotChart, no a11y table (diagnostic) |
+**Charts — `@pyreon/charts` vs ECharts 6 (line, 800×400 canvas):**
+
+| op | PlotChart (default) | ECharts 6 | PlotChart, no a11y table (diagnostic) |
+| --- | ---: | ---: | ---: |
+| mount 1,000 points | **1.12 ms 🥇** | 4.23 ms (3.8× slower) | 1.10 ms |
+| mount 100,000 points | **6.94 ms 🥇** | 38.49 ms (5.5× slower) | 6.90 ms |
+| update 100k (every value) | **7.33 ms 🥇** | 29.52 ms (4.0× slower) | 5.00 ms |
+| update 1k (one value) | **848 µs 🥇** | 1.86 ms (2.2× slower) | 445 µs |
+
+The 2026-09-24 small-chart loss is gone: the accessible data table now fills after the first paint, so it no longer sits in the mount window. (OptionChart was not re-measured in this run.)
+
+**Charts — vs uPlot 1.6, Chart.js 4, Recharts 3 (800×300, first painted frame):**
+
+| op | **Pyreon** | uPlot 1.6 | Chart.js 4 (decimation) | Recharts 3 |
 | --- | ---: | ---: | ---: | ---: |
-| mount 1,000 points | 8.74 ms (**2.11× slower**) | 8.42 ms (**2.04× slower**) | **4.14 ms 🥇** | 1.13 ms |
-| mount 100,000 points | **25.25 ms 🥇** | 30.04 ms | 41.52 ms (1.64× slower) | 17.39 ms |
-| update 100k (every value) | 18.69 ms | **12.98 ms 🥇** | 30.06 ms (2.32× slower) | 14.39 ms |
-| update 1k (one value) | 1.27 ms | **1.02 ms 🥇** | 1.93 ms (1.89× slower) | 550 µs |
+| mount line, 1,000 | 3.16 ms | **2.93 ms 🥇** | 4.60 ms | 13.50 ms |
+| mount line, 10,000 | 5.02 ms | **3.39 ms 🥇** | 5.46 ms | 72.48 ms |
+| mount line, 100,000 | 8.76 ms | **5.64 ms 🥇** | 6.46 ms | 664 ms |
+| mount line, 1,000,000 | 22.0 ms | 15.29 ms | **12.75 ms 🥇** | 6.96 s |
+| update line 10,000 | **1.71 ms 🥇** | 2.33 ms | 3.95 ms | 24.34 ms |
+| update line 100,000 | 4.40 ms | 5.24 ms | **3.96 ms 🥇** | 184 ms |
+| mount bars, 1,000 | **5.74 ms 🥇** | 23.72 ms | 11.43 ms | 42.10 ms |
 
-The small-chart mount loss is the accessible data table PlotChart renders by default (the diagnostic arm without it mounts 3.7× faster than ECharts). ECharts has no equivalent table, so the default arms do more work — but the default is what users get, so it is ranked as a loss.
+uPlot leads line mounts; its main-thread time ties Pyreon's (2.73 vs 2.70 ms, measured 2026-10-14), so the remaining wall-clock gap is outside JS (raster/read-back) and is open.
 
 ## 3. Scaling — `bench-crossover` (batch instrument, 100 → 20,000 rows)
 
@@ -126,26 +168,28 @@ One pass per cell, load 3.9–5.8, no cell discarded.
 
 **1,000-row table (`bench:hydration`)** — every framework adopted 1,000/1,000 server rows.
 
-| | total | **walk** (framework work) | layout |
-| --- | ---: | ---: | ---: |
-| Vue 3 | **6.20 ms 🥇** | **1.20 ms 🥇** | 5.00 ms |
-| **Pyreon** | 6.32 ms (1.02×) | 1.27 ms 🤝 | 5.06 ms |
-| React 19 | 6.98 ms (1.13×) | 2.00 ms (1.66×) | 4.99 ms |
-| Preact | 11.67 ms (1.88×) | 6.38 ms (5.32×) | 5.29 ms |
+| | total | **walk** (framework work) |
+| --- | ---: | ---: |
+| Vue 3 | **6.00 ms 🥇** | **1.19 ms 🥇** |
+| **Pyreon** | 6.12 ms (1.02×) | 1.25 ms (1.05×) |
+| React 19 | 6.71 ms (1.12×) | 1.88 ms (1.58×) |
+| Preact | 8.63 ms (1.44×) | 3.59 ms (3.02×) |
 
-Vue now leads the total by 2% with CIs just disjoint ([6.17–6.24] vs [6.25–6.39]); the framework-attributable walk remains a tie. 85 µs of Pyreon's walk is constructing per-row signals Vue's arm does not.
+Vue leads by 2% on the total and 5% on the walk. About 100 µs of Pyreon's walk is constructing the per-row signals Vue's arm does not, which accounts for the walk gap.
 
-**App page (`bench:apppage`, 320 statically composed components, 2,206 nodes)** — all four adopt 2,206/2,206: **Pyreon 3.67 ms 🥇** · React 4.07 (1.11×) · Vue 4.45 (1.21×) · Preact 5.16 (1.40×).
+**App page (`bench:apppage`, 320 statically composed components, 2,206 nodes)** — all four adopt 2,206/2,206: **Pyreon 4.08 ms 🥇** · React 4.22 (1.03×) · Preact 4.36 (1.07×) · Vue 4.48 (1.10×).
 
 ## 5. Server rendering
 
 **Compiled SSR, idiomatic per framework (`bench:ssr`, µs/render, 3 processes pooled):**
 
-| rows | **Pyreon** | Vue 3 | Svelte 5 | React 19 | Pyreon h() walk |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 10 | **2.06 🥇** | 3.14 (1.52×) | 2.47 (1.20×) | 10.63 (5.16×) | 15.26 |
-| 100 | 14.68 🤝 | **14.58 🥇** | 17.79 (1.22×) | 70.17 (4.81×) | 121.63 |
-| 1,000 | 135.9 (1.05×) | **128.8 🥇** | 169.4 (1.32×) | 717.4 (5.57×) | 1,208.1 |
+| rows | **Pyreon** | Vue 3 | Svelte 5 | React 19 |
+| --- | ---: | ---: | ---: | ---: |
+| 10 | **1.85 🥇** | 2.83 (1.53×) | 2.36 (1.28×) | 10.44 (5.64×) |
+| 100 | **12.35 🥇** | 13.92 (1.13×) | 16.74 (1.36×) | 71.67 (5.80×) |
+| 1,000 | 133.6 🤝 | **126.0** | 160.8 (1.28×) | 690.0 (5.48×) |
+
+At 1,000 rows the CIs overlap ([123.8–138.2] vs [124.8–129.4]). #3890 (bake attributes that choose between two string literals) took Pyreon from 1.05× behind to this tie.
 
 Vue's `renderToString` is async and awaited (its real completion); the others are synchronous.
 
@@ -153,10 +197,10 @@ Vue's `renderToString` is async and awaited (its real completion); the others ar
 
 | scenario | Pyreon compiled | Solid | Pyreon h() | Preact | React |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| card | **8.60M/s 🥇** | 1.86M (4.63×) | 1.65M | 1.43M | 733K |
-| list-50 | **185.7K/s 🥇** | 121.0K (1.53×) | 38.8K | 27.0K | 27.7K |
-| list-1000 | **11.0K/s 🥇** | 6.4K (1.72×) | 1.9K | 1.4K | 1.5K |
-| layout (component children) | **197.2K/s 🥇** | 110.1K (1.79×) | 36.8K | 25.3K | 26.1K |
+| card | **10.8M/s 🥇** | 1.90M (5.7×) | 1.70M | 1.41M | 780K |
+| list-50 | **201K/s 🥇** | 127K (1.58×) | 41.6K | 28.0K | 29.6K |
+| list-1000 | **11.1K/s 🥇** | 6.5K (1.71×) | 1.9K | 1.3K | 1.6K |
+| layout (component children) | **185K/s 🥇** | 113K (1.63×) | 37.5K | 25.6K | 27.3K |
 
 ## 6. Real-app shapes
 
@@ -183,35 +227,35 @@ Retained heap: **Pyreon 2.28 MB** · Solid 2.33 · Vue 2.95 · Svelte 2.98 · RH
 
 ## 7. Bundle size — the same keyed-table app per framework (gzip -9)
 
-Vanilla 3.6 KB · **Solid 7.5 KB 🥇** · Preact 10.6 · Svelte 16.0 · **Pyreon 16.6 (2.22×)** · Vue 27.0 · Octane 65.8 · React 69.6. Unchanged from yesterday. Pyreon packages alone: reactivity 7.6 KB · core 8.4 · runtime-dom 23.7 · router 15.9 (gzipped main entry).
+Vanilla 3.6 KB · **Solid 7.5 KB 🥇** · Preact 10.1 · Svelte 16.1 · **Pyreon 16.6 (2.21×)** · Vue 27.5 · Octane 53.9 · React 69.6 (2026-10-20, after #3920 made `<Suspense>` pay-per-use; the 2026-10-20 full run measured Pyreon 17.0 before it). Pyreon packages alone: reactivity 7.6 KB · core 8.4 · runtime-dom 23.7 · router 15.9 (gzipped main entry).
 
 ## 8. Reactivity core — vs Preact Signals and Solid
 
 Median ns/op, one process per cell, 3 rounds × 10 windows, order reshuffled per round. `Pyreon-bundled` = `lib/` with `process.env.NODE_ENV` folded, as every bundler does for a browser app; `Pyreon unbundled` = `lib/` imported directly by Node.
 
-**V8 (node 26.1 — the engine Chrome uses):**
+**V8 (node 26.1 — the engine Chrome uses), 2026-10-15:**
 
 | test | Pyreon-bundled | Preact | Solid | Pyreon unbundled |
 | --- | ---: | ---: | ---: | ---: |
-| signal create+read+write | 64 | **13 🥇** | 20 | 610 |
-| computed diamond (100 updates) | 8,853 | **5,823 🥇** | 37,903 | 73,468 |
-| effect propagation (100) | **2,274 🥇** | 2,929 | 16,531 | 37,405 |
-| batch 50 signals | **735 🥇** | 891 | 4,840 | 13,723 |
-| deep chain (depth 50, 100) | 173,568 | **76,294 🥇** | 694,622 | 601,122 |
-| wide fan-out (1→100 effects) | 2,859 | **1,606 🥇** | 4,908 | 20,125 |
+| signal create+read+write | 63 | **13 🥇** | 19 | 709 |
+| computed diamond (100 updates) | 6,542 | **5,795 🥇** | 38,404 | 67,707 |
+| effect propagation (100) | **2,196 🥇** | 2,888 | 16,784 | 40,411 |
+| batch 50 signals | **626 🥇** | 887 | 4,797 | 13,521 |
+| deep chain (depth 50, 100) | 143,663 | **75,867 🥇** | 683,929 | 749,574 |
+| wide fan-out (1→100 effects) | 2,181 | **1,586 🥇** | 4,909 | 14,878 |
 
-**JavaScriptCore (bun 1.4):**
+**JavaScriptCore (bun 1.4), 2026-10-15:**
 
 | test | Pyreon | Pyreon-bundled | Preact | Solid |
 | --- | ---: | ---: | ---: | ---: |
-| signal create+read+write | 31 | 32 | **6 🥇** | 28 |
-| computed diamond | 6,618 | 6,949 | **5,525 🥇** | 16,112 |
-| effect propagation | 1,639 🤝 | **1,560 🥇** | 4,290 | 7,386 |
-| batch 50 signals | **538 🥇** | 539 🤝 | 1,024 | 1,787 |
-| deep chain | 163,322 | 163,486 | **118,577 🥇** | 295,327 |
-| wide fan-out | **2,039 🥇** | 2,045 🤝 | 2,636 | 2,972 |
+| signal create+read+write | 32 | 32 | **6 🥇** | 30 |
+| computed diamond | 5,620 | **5,558 🤝** | 5,566 🤝 | 16,034 |
+| effect propagation | **1,437 🥇** | 1,607 | 4,332 | 7,375 |
+| batch 50 signals | 524 | **522 🥇** | 1,043 | 1,807 |
+| deep chain | 142,060 | 137,393 | **120,490 🥇** | 303,014 |
+| wide fan-out | 1,813 | **1,793 🥇** | 2,197 | 3,022 |
 
-**Honest read:** on V8 Pyreon wins effect propagation (1.29× vs Preact) and batching (1.21×) and loses create (~5×), diamond (1.52×), deep chains (2.27×) and wide fan-out (1.78×) to Preact. On JSC Pyreon also wins fan-out (1.29×). Solid is behind Pyreon everywhere except create. The **unbundled** column — a Node process importing `lib/` without a bundler — is 10–20× slower on V8 because each dev-gate `process.env` read costs ~145 ns there (#3586 fixed Vite production SSR builds; unbundled Node remains open).
+**Honest read:** since 2026-09-24, #3892 (skip propagation with nothing to reach), #3895 (computed notifies marked with a field) and #3896 (skip empty effect cleanup) moved V8 diamond −26%, wide fan-out −24%, batch −15% and deep chain −17%. On V8 Pyreon wins effect propagation (1.32× vs Preact) and batching (1.42×) and still loses create (~5×), deep chains (1.89×), wide fan-out (1.38×) and diamond (1.13×). On JSC the diamond is now a tie with Preact and Pyreon wins fan-out (1.23×), batching (2.0×) and effect propagation (2.7×); it loses create and deep chains (1.14×). **Deep chains, decomposed (2026-10-20):** the published row reads an UNOBSERVED chain (no effect at the tail). There Pyreon's write costs 256 ns per update against Preact's 28 ns, because Preact leaves unobserved computeds unsubscribed and validates them by version on read, while Pyreon keeps every computed subscribed and dirty-marks the whole chain. The read-side pull is close (918 vs 791 ns). With an effect at the tail, the shape apps actually render, both cascade and the gap is 1.44× (163 vs 113 µs per 100 updates). Reading through a `.value` prototype getter instead of `count()` was prototyped and measured at 139 vs 143 µs, so the callable API is not the cause. Signal creation stays bound by `Object.setPrototypeOf` (~47 of ~57 ns on V8); per-instance methods (+72 B per signal, ~40% slower `.set()` dispatch) and a bound-function variant (slower reads on JSC) were measured and declined on 2026-10-15. The **unbundled** column is still 10–20× slower on V8 because each dev-gate `process.env` read costs ~145 ns there.
 
 Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns) is slower than unbundled (172 ns); the fold should be neutral there.
 
@@ -235,18 +279,20 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 | i18n | i18next | t 18.2×, interpolation 6.3×, plural 4.5×, number 3.3×, date 2.6× | — |
 | permissions | CASL | fair resolver race 1.7–2.0× | exact deny: 🤝. Memo-hit rows (3.4–14.1×) are a cache read, not a race |
 | http | ky, ofetch, redaxios, axios | 1.4–7.7× vs ky/ofetch/redaxios, 12.8–19.4× vs axios | **creating a client is slower than ofetch (0.84×) and redaxios (0.46×)** |
-| hotkeys | tinykeys, hotkeys-js, mousetrap | dispatch hit 2.2–10×, miss 1.4–29× | **register + teardown 4.3× slower than tinykeys** |
-| url-state | nuqs | boolean 2.2×, array parse 7.9×, array serialize 2.7×, float 1.3× | **integer parse 1.6× slower, round-trip 1.2× slower** |
+| hotkeys | tinykeys, hotkeys-js, mousetrap | dispatch hit 1.5–7.8×, miss 6.1–18× vs tinykeys/hotkeys-js; register + teardown 3.2–5.0× vs hotkeys-js/mousetrap | register + teardown 1.07–1.32× faster than tinykeys (≈930 vs 1000–1160 ns, four interleaved rounds; was 4.3× slower before #3893, 2.3× after); dispatch miss 6–7× faster than mousetrap (≈10 vs 58–69 ns; was 1.17× slower, 77 vs 66 ns) |
+| url-state | nuqs | boolean 1.8×, array parse 2.1×, array serialize 1.2×, float 1.7×, round-trip 1.08× | **integer parse 1.14× slower** (was 1.6×; #3894) |
 | form (headless store) | TanStack form-core | update 62.6×, reset 5.4× | **setup 1.4× slower** |
 | form (re-render count) | RHF, Formik | 0 re-renders / 10 keystrokes (RHF 0, Formik 10) | — |
 | query ⚠ happy-dom | react-query (same core) | data change → DOM 5.3×; 1 vs 8 derivations | mount 🤝 |
-| virtual ⚠ happy-dom | react-virtual (same core, 3.17.11) | scroll → DOM 1.2× | **mount 10k list 1.2× slower** |
-| table ⚠ happy-dom | react-table (same core) | single-cell update 1.1–1.5× vs memoized rows, 11.7–22.3× vs naive | **mount 1.5–1.9× slower, replace 1.2–1.4×, sort 2.2–2.7× slower than memoized rows** |
+| virtual ⚠ happy-dom | react-virtual (same core) | scroll → DOM 1.2× | **mount 10k list 1.1× slower** (was 1.2×; #3891) |
+| virtual, real Chromium (`--scenario virtual`) | react-virtual (same core), memoized rows | **mount 10k list 1.13–1.17× faster**, **jump to row 5,000 1.09–1.15× faster**, **60 small scroll steps 1.11–1.12× faster**, unmount 2.4–2.8× faster (2026-10-20, after #3921's static text fusion — jump had been 1.13–1.41× slower, scroll 1.03–1.08× slower) | — happy-dom had the mount backwards |
+| table ⚠ happy-dom | react-table (same core) | single-cell update 1.6× vs memoized rows at 100 (🤝 at 1,000), 12.2–22.3× vs naive | **mount 1.5–2.0× slower, replace 1.2×, sort 2.2× slower than memoized rows** |
+| table, real Chromium | react-table (same core), memoized rows | replace 1.14×, sort 1.08×, unmount 1.52× faster; single-cell update 🤝 (2026-10-20 full run, after #3913–#3917) | **mount 1.03× slower** |
 | toast | react-hot-toast, sonner | headless 2.1–3.1×; ⚠ happy-dom commit create/update/dismiss 18.6–27×; cold create 2.3× vs sonner | sonner excluded from commit rows (no render under happy-dom) |
 | charts engine | ECharts 6.1 SSR | spec → SVG 7.5× (bars 1k), 7.6× (bars 10k), 8.0× (line 10k) | — |
 | charts wrapper ⚠ happy-dom | echarts-for-react | update 10.0×, dispose 1.9× | mount 🤝 |
 | hooks | Solid / Preact counters | counter 1.20× / 1.23× | wrapper overhead vs raw signal: 0–6% |
-| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count) | **per-op, `@pyreon/rx` is slower than a plain computed** (filter 3.6 vs 2.3 µs, map 2.9 vs 1.5 µs) |
+| rx | computed / Solid / RxJS | `pipe` fuses N nodes into 1 (exact count); per-op `filter` 2.1–2.2 µs, `map` 1.4–1.5 µs and `sum` 0.86 µs, level with or ahead of a hand computed (2.3–2.4 / 1.5 / 2.2) and Solid memo (2.5 / 1.6–1.7 / 0.98) — were 3.6 / 2.7 / 2.2 µs before the Array builtins became plain loops | **`pipe` of three stages 1.06× behind a hand computed** (29.5 vs 27.8 µs), `sortBy` 1.03× |
 | dnd ⚠ happy-dom | raw pragmatic-drag-and-drop | row-enter fan-out 24× | mount/unmount 🤝; dispatch +6 ns |
 | validation (wrapper tax) | raw zod / valibot / arktype | — | tax −20 to +278 ns over raw (largest: arktype invalid, zod invalid 173 ns) |
 
@@ -266,17 +312,15 @@ Unexplained, disclosed: under JSC the `Pyreon-bundled` store read+write (209 ns)
 
 ## 12. Where Pyreon loses (collected)
 
-1. **Deep component-tree mount** — 1.29× behind Solid (4.09 vs 3.17 ms).
-2. **Signal creation** — ~5× slower than Preact on both engines; on V8 also deep chains 2.27×, fan-out 1.78×, diamond 1.52×; on JSC deep chains 1.38×, diamond 1.20×.
-3. **Charts mount at 1,000 points** — 2.0–2.1× slower than ECharts (the default accessible table).
-4. **Flow mount** — React Flow 1.25× faster to mount 500 nodes.
-5. **SSR of large pages** — Vue 1.05× faster at 1,000 rows (tie at 100).
-6. **Hydration total** — Vue 1.02× ahead (walk tied).
-7. **Bundle size** — 16.6 KB vs Solid 7.5 KB and Preact 10.6 KB for the same app.
-8. **Swap at 1,000 rows** — Octane 1.08× faster (batch instrument).
-9. **Router at 10 routes** (Hono), **validate** invalid-string (zod 1.19×) and several zod-c/arktype protocol cells.
-10. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **hotkeys register/teardown** (4.3×), **http client creation**, **url-state integer parse** (1.6×), **form store setup** (1.4×), **rx per-op**, **table/virtual mount under happy-dom**.
-11. **Unbundled Node** — any process importing `lib/` without a bundler pays ~145 ns per dev-gate read.
+1. **Deep component-tree mount** — 1.23× behind Solid (3.78 vs 3.07 ms).
+2. **Vue 3.6 Vapor (release candidate)** — replace all 1.02× and swap rows 1.08× faster than Pyreon; create and partial update are ties.
+3. **Signal creation** — ~5× slower than Preact on both engines; on V8 also deep chains 1.89×, fan-out 1.38×, diamond 1.13×; on JSC deep chains 1.14×.
+4. **Charts line mounts vs uPlot** — 1.08–1.55× slower for 1k–100k points (main-thread time ties; the gap is outside JS); Chart.js with decimation leads at 1M points and 100k updates.
+5. **Hydration** — Vue 1.02× ahead on the total, 1.05× on the walk.
+6. **Bundle size** — 16.6 KB vs Solid 7.5 KB and Preact 10.1 KB for the same app (2026-10-20).
+7. **Router at 10 routes** (Hono), **validate** invalid-string (zod 1.19×) and several zod-c/arktype protocol cells (2026-09-24).
+8. **Store setup** (29.8× vs Zustand), **storage read** (1.3×), **http client creation**, **url-state integer parse** (1.14×), **form store setup** (1.4×), **table/virtual mount under happy-dom**.
+9. **Unbundled Node** — any process importing `lib/` without a bundler pays ~145 ns per dev-gate read.
 
 ## 13. Defects (open)
 

@@ -219,3 +219,28 @@ describe('renameCompatJsxAttributes — only attribute NAMES', () => {
     expect(renameCompatJsxAttributes(`const a = <p className="x" />`, '/x.js')).toBe(`const a = <p class="x" />`)
   })
 })
+
+describe('foldNodeEnvProduction — pruned walk', () => {
+  // The walk skips every subtree whose span holds no `NODE_ENV` text. These
+  // pin the two ways that could drop a fold: a key spelled through an escape
+  // (no literal text at all), and a read nested deep inside unrelated code.
+  it('an escaped key still folds when the module also has a literal read', () => {
+    const code = `const a = process.env.NODE\\u005fENV\nconst b = process.env.NODE_ENV`
+    const out = foldNodeEnvProduction(code, '/x.ts')!
+    expect(out).not.toContain('process.env')
+    expect(out.length).toBe(code.length)
+  })
+
+  it('an escaped string key folds too', () => {
+    const code = `const a = process.env['NODE\\x5fENV']; const b = process.env.NODE_ENV`
+    expect(foldNodeEnvProduction(code, '/x.ts')).not.toContain('process.env')
+  })
+
+  it('a read deep inside unrelated nesting folds; an equally deep write does not', () => {
+    const code = `export const o = { a: [() => { if (x) { return f(g(process.env.NODE_ENV)) } }], b: () => { process.env.NODE_ENV = 'x' } }`
+    const out = foldNodeEnvProduction(code, '/x.ts')!
+    expect(out).toContain('f(g(')
+    expect(out).toContain(`process.env.NODE_ENV = 'x'`)
+    expect(out.match(/process\.env\.NODE_ENV/g)!.length).toBe(1)
+  })
+})

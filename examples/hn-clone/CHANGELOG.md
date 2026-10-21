@@ -1,5 +1,47 @@
 # hn-clone
 
+## 0.50.3
+
+### Patch Changes
+
+- Updated dependencies [[`c933f92`](https://github.com/pyreon/pyreon/commit/c933f92e20104aba2807e229f03b9f0530135cb3), [`ffef09a`](https://github.com/pyreon/pyreon/commit/ffef09a6e7b3074db97c49113a15e25cc3712700), [`e16926f`](https://github.com/pyreon/pyreon/commit/e16926f03de3a7366b97817b95aab72d71580613), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`4d3fae3`](https://github.com/pyreon/pyreon/commit/4d3fae39e62d0fe71392990b878f2d94686a1c5f), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`f437679`](https://github.com/pyreon/pyreon/commit/f4376793cdaec42cea86196f1a674f890a54b6ee), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`c253ae2`](https://github.com/pyreon/pyreon/commit/c253ae23978b06904768d171f3eb7e2b7114e273), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`6df4450`](https://github.com/pyreon/pyreon/commit/6df4450bb57c834997796f8f37c59bae3e743d74), [`a110468`](https://github.com/pyreon/pyreon/commit/a1104680b3cf44b9d062ee4906b76a3ff09b2634), [`b0d6ac0`](https://github.com/pyreon/pyreon/commit/b0d6ac0c32c0b678d97144f43e750683bf1225ae), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`2edea31`](https://github.com/pyreon/pyreon/commit/2edea31efd113364eebbd8fcc3150d730acd44a0), [`3de1c68`](https://github.com/pyreon/pyreon/commit/3de1c68b460f1f83deb9988192dfa4000ffb25b0), [`a346a44`](https://github.com/pyreon/pyreon/commit/a346a44570955f23cd6ce385f0d26c8c8e340d4d)]:
+  - @pyreon/hooks@0.53.0
+  - @pyreon/charts@0.53.0
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/machine@0.53.0
+  - @pyreon/coolgrid@0.53.0
+  - @pyreon/dnd@0.53.0
+  - @pyreon/elements@0.53.0
+  - @pyreon/feature@0.53.0
+  - @pyreon/form@0.53.0
+  - @pyreon/hotkeys@0.53.0
+  - @pyreon/i18n@0.53.0
+  - @pyreon/kinetic@0.53.0
+  - @pyreon/kinetic-presets@0.53.0
+  - @pyreon/permissions@0.53.0
+  - @pyreon/query@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/rx@0.53.0
+  - @pyreon/state-tree@0.53.0
+  - @pyreon/storage@0.53.0
+  - @pyreon/store@0.53.0
+  - @pyreon/table@0.53.0
+  - @pyreon/toast@0.53.0
+  - @pyreon/url-state@0.53.0
+  - @pyreon/validation@0.53.0
+  - @pyreon/meta@0.53.0
+  - @pyreon/code@0.53.0
+  - @pyreon/zero@0.53.0
+  - @pyreon/head@0.53.0
+  - @pyreon/runtime-server@0.53.0
+  - @pyreon/server@0.53.0
+  - @pyreon/document@0.53.0
+  - @pyreon/virtual@0.53.0
+  - @pyreon/connector-document@0.53.0
+  - @pyreon/document-primitives@0.53.0
+
 ## 0.50.2
 
 ### Patch Changes

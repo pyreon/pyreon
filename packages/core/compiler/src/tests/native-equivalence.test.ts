@@ -154,6 +154,10 @@ describe('JS syntax and optional native parity — class/style binding fidelity'
   test('class string ternary', () =>
     compare(`${sig}export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>`))
   test('class non-reactive', () => compare(`export const X = () => <div class={someVar}>y</div>`))
+  test('style non-reactive → _setStyleOnce, reactive sibling keeps _setStyle', () =>
+    compare(
+      `${sig}export const X = (p) => <ul><For each={() => xs()} by={(it) => it.id}>{(it) => <li style={\`top:\${it.y}px\`}><b style={t}>y</b></li>}</For></ul>`,
+    ))
   test('class direct signal ref', () =>
     compare(`${sig}export const X = () => <div class={t}>y</div>`))
   // single-disposer fast path: `return __d0` (no wrapper closure) — JS + Rust
@@ -310,6 +314,12 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('one-time set for variable', () => compare('<div title={someVar}><span /></div>'))
   test('benchmark-like row', () =>
     compare('<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>'))
+  test('direct ref through a literal index', () =>
+    compare('<tr><td class={row.q[0].cls()}>{row.q[0].elapsed()}</td><td>{row.q["a"].v()}</td></tr>'))
+  test('direct ref through TS type layers', () =>
+    compare('<tr><td>{(row.c as C).v()}</td><td>{row.c!.v()}</td><td class={(row.q[1] as C).cls()}>x</td></tr>'))
+  test('direct ref with a dynamic index stays general', () =>
+    compare('<tr><td>{row.q[i].v()}</td><td class={row.q[i].cls()}>x</td></tr>'))
 })
 
 describe('JS syntax and optional native parity — hoisting', () => {
@@ -1254,6 +1264,16 @@ describe('JS syntax and optional native parity — select value binding (PZ-09)'
 // JS↔Rust with the flag ON; bail shapes (where the compiler falls to h()) must
 // ALSO agree — so the h() output for those matches between backends too.
 describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional native parity', () => {
+  test('conditional between two string literals bakes both attribute renderings', () => {
+    compareSsrTemplate(
+      `const A = (p) => <a class={p.on ? 'even row' : 'odd row'} style={p.on ? '' : 'color:red'} title={p.on ? 'a "q" <b>' : 'x & y'} href={p.on ? '/one' : '/two'}>x</a>`,
+    )
+  })
+  test('conditional bake declines an unsafe URL branch, a camelCase name and a non-literal branch', () => {
+    compareSsrTemplate(
+      `const A = (p) => <a href={p.on ? '/ok' : 'javascript:x'} tabIndex={p.on ? '1' : '2'} title={p.on ? 'a' : p.t}>x</a>`,
+    )
+  })
   test('fully static element (no holes)', () => {
     compareSsrTemplate(`const A = <div class="x" id="y">hello</div>`)
   })
@@ -2813,5 +2833,133 @@ describe('namespaced attribute names — both backends emit identically', () => 
 describe('JS syntax and optional native parity — static mixed checkbox state', () => {
   for (const attr of ['indeterminate', 'indeterminate={true}', 'indeterminate={false}', 'indeterminate={null}', 'indeterminate="true"']) {
     test(attr, () => compare(`<div><input type="checkbox" ${attr} /></div>`))
+  }
+})
+
+// ─── Backend parity — four divergences (audit 2026-10-20) ─────────────────
+//
+// Each block asserts the two backends agree AND the agreed output is the
+// CORRECT shape. Agreement alone is not enough: a both-wrong pair (the
+// `i() = 1` syntax error, for one) would pass a pure equality check.
+
+describe('backend parity #1 — transitive prop-derived inlining in non-top-level containers', () => {
+  const body = 'const a = props.s; const b = a + 1; return <Foo x={b} />'
+  const shapes: Array<[string, string]> = [
+    ['object-literal method', `const o = { r: (props) => { ${body} } }`],
+    ['higher-order wrapper', `const W = (C) => (props) => { ${body} }`],
+    ['class field arrow', `class K { f = (props) => { ${body} } }`],
+    ['array element', `const arr = [(props) => { ${body} }]`],
+    ['ternary branch', `const t = cond ? (props) => { ${body} } : null`],
+    ['export default object', `export default { r: (props) => { ${body} } }`],
+  ]
+  for (const [name, src] of shapes) {
+    test(`${name}: b resolves through a → props.s, not the captured const`, () => {
+      const code = transformJSX_JS(src, 'test.tsx').code
+      assertJavaScript(code)
+      expect(code, `${name}: transitive resolution reached props.s`).toContain('(props.s) + 1')
+      expect(code, `${name}: no unresolved captured const in the _rp thunk`).not.toContain('_rp(() => (a + 1))')
+      compare(src)
+    })
+  }
+})
+
+describe('backend parity #2 — defaulted props param (`props = {}`) is a props param', () => {
+  for (const src of [
+    'function C(props = {}) { return <div>{props.x}</div> }',
+    'const C = (props = {}) => <div>{props.x}</div>',
+    'const C = (props = { x: 1 }) => <div>{props.x}</div>',
+  ]) {
+    test(src, () => {
+      const code = transformJSX_JS(src, 'test.tsx').code
+      assertJavaScript(code)
+      expect(code, 'props.x is bound reactively').toContain('_bindProp(props, "x"')
+      expect(code, 'props.x is not baked as a static child').not.toContain('_setChild')
+      compare(src)
+    })
+  }
+})
+
+describe('backend parity #3 — object/class KEY named like a signal is not a read', () => {
+  test('`{ source: 1 }` stays a static literal (no _rp wrap)', () => {
+    const src = 'const source = signal(0)\nconst el = <Foo g={{ source: 1 }} />'
+    const code = transformJSX_JS(src, 'test.tsx').code
+    assertJavaScript(code)
+    expect(code).toContain('g={{ source: 1 }}')
+    expect(code).not.toContain('_rp(() => ({ source: 1 }))')
+    compare(src)
+  })
+  test('object method named like a signal is not a read', () => {
+    const src = 'const source = signal(0)\nconst el = <Foo g={{ source() { return 1 } }} />'
+    const code = transformJSX_JS(src, 'test.tsx').code
+    assertJavaScript(code)
+    expect(code).not.toContain('_rp(() => ({ source() { return 1 } }))')
+    compare(src)
+  })
+  test('shorthand `{ source }` is still a READ and stays wrapped', () => {
+    const src = 'const source = signal(0)\nconst el = <Foo h={{ source }} />'
+    const code = transformJSX_JS(src, 'test.tsx').code
+    expect(code).toContain('_rp(() => ({ source }))')
+    compare(src)
+  })
+  test('prop-derived key named like the const is not a read either', () => {
+    const src = 'function C(props) { const r = props.x; return <Foo k={{ r: 1 }} /> }'
+    const code = transformJSX_JS(src, 'test.tsx').code
+    expect(code).toContain('k={{ r: 1 }}')
+    compare(src)
+  })
+})
+
+describe('backend parity #4 — signal in an assignment / update TARGET', () => {
+  const handlers: Array<[string, string, string[], string[]]> = [
+    // [name, handler body, must contain, must not contain]
+    ['member write indexed by a signal', '{ a[i] = 1 }', ['a[i()] = 1'], ['i() =']],
+    ['postfix update of a signal', 'i++', ['i++'], ['i()++']],
+    ['assignment to a signal', '{ i = 2 }', ['i = 2'], ['i() =']],
+    ['update of a signal member', 's.value++', ['s().value++'], []],
+    ['destructuring target (bare)', '{ [i] = arr }', ['[i] = arr'], ['i()']],
+    ['destructuring target (member, computed key read)', '{ [a[i]] = arr }', ['[a[i()]] = arr'], ['[i()] =']],
+  ]
+  for (const [name, handler, must, mustNot] of handlers) {
+    test(name, () => {
+      const src = `function App() {
+  const i = signal(0)
+  const a = []
+  const s = signal({ value: 0 })
+  const arr = []
+  return <div><button onClick={() => ${handler}} /></div>
+}`
+      const code = transformJSX_JS(src, 'test.tsx').code
+      assertJavaScript(code)
+      for (const m of must) expect(code, `${name}: contains ${m}`).toContain(m)
+      for (const m of mustNot) expect(code, `${name}: must not contain ${m}`).not.toContain(m)
+      compare(src)
+    })
+  }
+  test('for-in/of with a bare signal target keeps the head bare', () => {
+    const src = `function App() {
+  const i = signal(0)
+  const xs = []
+  return <div><button onClick={() => { for (i of xs) {} }} /></div>
+}`
+    const code = transformJSX_JS(src, 'test.tsx').code
+    assertJavaScript(code)
+    expect(code).toContain('for (i of xs)')
+    expect(code).not.toContain('i() of')
+    compare(src)
+  })
+})
+
+describe('backend parity — a reactive expression that STARTS with an object literal parses', () => {
+  for (const [name, src] of [
+    ['member of an object literal (attr)', 'function App() {\n  const s = signal(1)\n  return <div title={{ a: s() }.a} />\n}'],
+    ['bare object literal (attr)', 'function App() {\n  const s = signal(1)\n  return <div title={{ a: s() }} />\n}'],
+    ['computed member of an object literal', 'function App() {\n  const s = signal(1)\n  return <div title={{ a: s() }["a"]} />\n}'],
+  ] as const) {
+    test(name, () => {
+      const code = transformJSX_JS(src, 'test.tsx').code
+      assertJavaScript(code)
+      expect(code).toContain('() => ({ a: s() }')
+      compare(src)
+    })
   }
 })

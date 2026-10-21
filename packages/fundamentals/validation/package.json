@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/validation",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType)",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/validation#readme",
@@ -68,7 +68,7 @@
     }
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/core": "workspace:^",
     "@pyreon/form": "workspace:^",
     "@pyreon/manifest": "workspace:*",
@@ -78,9 +78,9 @@
     "@pyreon/store": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "arktype": "^2.2.5",
+    "arktype": "^2.2.8",
     "valibot": "^1.5.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "publishConfig": {
     "access": "public"

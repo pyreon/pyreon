@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/i18n",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Reactive internationalization for Pyreon with async namespace loading",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/i18n#readme",
@@ -67,13 +67,13 @@
     }
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "i18next": "^26.4.2"
+    "i18next": "^26.5.3"
   },
   "publishConfig": {
     "access": "public"

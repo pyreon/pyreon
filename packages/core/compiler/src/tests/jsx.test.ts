@@ -547,6 +547,43 @@ describe('JSX transform — edge cases', () => {
     expect(result).toContain('bindPolymorphicText(')
   })
 
+  test('member-expression _bindText: a LITERAL index link takes the fast path (row.queries[0].elapsed())', () => {
+    // A literal key is as stable as a named property; only the signal at the
+    // end of the chain changes. Used to fall to a fully tracked binding per cell.
+    const num = t('const a = () => <div>{row.queries[0].elapsed()}</div>')
+    expect(num).toContain('_bindText(row.queries[0].elapsed,')
+    expect(num).not.toContain('bindPolymorphicText(')
+    const str = t("const a = () => <div>{row.q['a'].elapsed()}</div>")
+    expect(str).toContain("_bindText(row.q['a'].elapsed,")
+  })
+
+  test('member-expression _bindText: a TS type layer in the chain is transparent', () => {
+    // Casts and non-null assertions are erased at runtime, so they must not
+    // change which binding tier a cell gets.
+    for (const src of [
+      'const a = () => <div>{(row.cell as Cell).elapsed()}</div>',
+      'const a = () => <div>{row.cell!.elapsed()}</div>',
+      'const a = () => <div>{(row.queries[0] as Cell).elapsed()}</div>',
+      'const a = () => <div>{(row.cell satisfies Cell).elapsed()}</div>',
+    ]) {
+      const out = t(src)
+      expect(out, src).toContain('_bindText(')
+      expect(out, src).not.toContain('bindPolymorphicText(')
+    }
+  })
+
+  test('member-expression fast path: a DYNAMIC index link still bails (row.queries[i].elapsed())', () => {
+    const out = t('const a = () => <div>{row.queries[i].elapsed()}</div>')
+    expect(out).not.toContain('_bindText(')
+    expect(out).toContain('bindPolymorphicText(')
+  })
+
+  test('member-expression _bindDirect: a literal index link in an attribute takes the fast path', () => {
+    const out = t('const a = () => <div class={row.queries[0].cls()}>x</div>')
+    expect(out).toContain('_bindDirect(row.queries[0].cls,')
+    expect(out).not.toContain('renderEffect(')
+  })
+
   test('member-expression _bindText: bails when root identifier IS a tracked signal (count.peek())', () => {
     // count.peek() is intentionally untracked; emitting _bindText would
     // create a tracking subscription contradicting user intent.
@@ -1176,11 +1213,11 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('_tpl(')
   })
 
-  test('static expression with multi-expression context uses placeholder', () => {
+  test('adjacent static expressions fuse into one child set (no placeholders)', () => {
     const result = t('<div><span>{label}{other}</span></div>')
-    expect(result).toContain('_tpl(')
-    expect(result).toContain('const __p0 = __e0.firstChild;')
-    expect(result).toContain('const __p1 = __p0.nextSibling;')
+    expect(result).toContain('_tpl("<div><span></span></div>"')
+    expect(result).toContain('_fuse(label, other)')
+    expect(result).not.toContain('__p0')
   })
 })
 
@@ -1622,6 +1659,22 @@ describe('JSX transform — style attribute in templates', () => {
     // Static string should NOT go through _bind / _setStyle
     expect(result).not.toContain('_setStyle')
     expect(result).not.toContain('cssText')
+  })
+
+  test('a non-reactive computed style string is written once via _setStyleOnce', () => {
+    // A <For> item param is static, so this style can never re-run: it skips the
+    // skip-if-equal cache (and its cssText readback) that _setStyle keeps.
+    const result = t(
+      '<ul><For each={() => xs()} by={(it) => it.id}>{(it) => <li style={`top:${it.y}px`}>x</li>}</For></ul>',
+    )
+    expect(result).toContain('_setStyleOnce(__root, `top:${it.y}px`)')
+    expect(result).not.toContain('_setStyle(__root')
+  })
+
+  test('a reactive style keeps _setStyle (the cached, re-runnable path)', () => {
+    const result = t('<div style={`top:${y()}px`}>x</div>')
+    expect(result).toContain('_setStyle(__root,')
+    expect(result).not.toContain('_setStyleOnce')
   })
 
   test('reactive style delegates to _setStyle', () => {

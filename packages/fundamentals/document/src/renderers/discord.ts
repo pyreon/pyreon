@@ -25,6 +25,9 @@ function resolveColumn(col: string | TableColumn): TableColumn {
  * (`<` `>`), plus line-start headings, quotes and list bullets.
  */
 function discordEscape(text: string): string {
+  // Skip both passes when the text holds none of the inline markup characters
+  // and none of the line-start markers (`#` `>` `+` `-`) the second pass keys on.
+  if (!/[\\`*_~|[\]()<>#+-]/.test(text)) return text
   return text
     .replace(/[\\`*_~|[\]()<>]/g, '\\$&')
     .replace(/^(\s*)([#>+-])/gm, '$1\\$2')

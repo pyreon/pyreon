@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/server",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "SSR handler, SSG prerender, and island architecture for Pyreon",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/server#readme",
@@ -60,8 +60,8 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser": "^5.0.2",
-    "@vitest/browser-playwright": "^5.0.2"
+    "@vitest/browser": "^5.0.5",
+    "@vitest/browser-playwright": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"

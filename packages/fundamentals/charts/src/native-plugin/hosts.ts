@@ -2022,6 +2022,7 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   onDoubleClick: 'it reports a DOM double-click by datum; the native canvas has the tap gesture only',
   onContextMenu: 'it reports a DOM context-menu gesture by datum; the native canvas has the tap gesture only',
   onRendered: 'it follows a canvas paint; the SwiftUI / Compose canvas draws with no paint callback to hand back',
+  density: 'it picks the M4 decimation density from the browser\'s `devicePixelRatio`; the engine\'s `ChartSpec.m4Density` crosses, but no native host feeds it the screen scale (`UIScreen.scale` / display density) yet, so native decimates at the 2-per-pixel default',
   onHighlight: 'it reports the HOVERED datum and -1 when the pointer leaves, so a touch target has nothing to report — a tap is a pick, which is `onSelect`. Firing this on tap would report a hover that did not happen',
 }
 
@@ -2038,7 +2039,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['density', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
 
 /**
  * A host's `visualMap` at COMPILE time — the web `VisualMapSpec` literal, or a
@@ -2184,4 +2185,20 @@ export function chartActionFields(arg: ExprIR | undefined): Partial<Record<'type
     else if (f.name === 'type' || f.name === 'index' || f.name === 'series' || f.name === 'start' || f.name === 'end' || f.name === 'brushType' || f.name === 'areas') out[f.name] = f.value
   }
   return out.type === undefined ? null : out
+}
+
+/**
+ * Whether every mark in a `marks={[…]}` literal was handed an ARRAY-shaped
+ * channel (`line(prices)`, `bars([1, 2])`) rather than an arrow — the web's
+ * column-only chart, which needs no `data`. Only then does a missing `data`
+ * warning name the column case; an arrow mark with no `data` is a plain
+ * omission and must not be told it is a column.
+ */
+export function marksAreColumns(marks: ExprIR): boolean {
+  if (marks.kind !== 'array' || marks.elements.length === 0) return false
+  return marks.elements.every((m) => {
+    if (m.kind !== 'call') return false
+    const first = m.args[0]
+    return first !== undefined && (first.kind === 'identifier' || first.kind === 'array' || first.kind === 'member' || first.kind === 'new-collection')
+  })
 }

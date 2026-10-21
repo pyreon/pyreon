@@ -90,6 +90,13 @@ interface Ctx {
    */
   pd: boolean
   rnd2: () => number
+  /**
+   * A THIRD, independent PRNG stream for the widening forms (assignment /
+   * update handler bodies, wrapper shapes). Drawing them from `rnd`/`rnd2`
+   * would shift every existing seed's grammar; a separate stream keeps the
+   * original 300-seed corpus byte-for-byte the same shape it was.
+   */
+  rnd3: () => number
 }
 
 /**
@@ -157,14 +164,32 @@ function genAttrs(c: Ctx): string {
     if (r < 0.22) parts.push(`class="${'c' + Math.floor(c.rnd() * 10)}"`)
     else if (r < 0.32) parts.push(`class={${genExpr(c)}}`)
     else if (r < 0.42) parts.push(`id={${genExpr(c)}}`)
-    else if (r < 0.54)
-      parts.push(
-        `${pick(c.rnd, EVENTS)}={() => ${
-          c.signals.length
-            ? `${pick(c.rnd, c.signals)}.set(${c.rnd() < 0.5 && c.signals.length ? pick(c.rnd, c.signals) + ' + 1' : '1'})`
-            : 'void 0'
-        }}`,
-      )
+    else if (r < 0.54) {
+      // Assignment / update TARGET forms (backend-parity #4) — a signal in a
+      // write position, a member target indexed by a signal, a destructuring
+      // target. Gated on rnd3 so the `.set(...)` draw sequence is unchanged.
+      const altEvent = c.signals.length && c.rnd3() < 0.4 ? pick(c.rnd3, EVENTS) : null
+      if (altEvent) {
+        const sig = pick(c.rnd3, c.signals)
+        const alt = pick(c.rnd3, [
+          `{ ext[${sig}] = 1 }`,
+          `${sig}++`,
+          `{ ${sig} = ${sig} + 1 }`,
+          `${sig}.value++`,
+          `{ [${sig}] = ext }`,
+          `{ for (${sig} of ext) {} }`,
+        ])
+        parts.push(`${altEvent}={() => ${alt}}`)
+      } else {
+        parts.push(
+          `${pick(c.rnd, EVENTS)}={() => ${
+            c.signals.length
+              ? `${pick(c.rnd, c.signals)}.set(${c.rnd() < 0.5 && c.signals.length ? pick(c.rnd, c.signals) + ' + 1' : '1'})`
+              : 'void 0'
+          }}`,
+        )
+      }
+    }
     else if (r < 0.6 && c.props) parts.push(`{...props}`)
     else if (r < 0.68) parts.push(`data-x={${genExpr(c)}}`)
     else if (r < 0.74) parts.push(`style={{ color: ${genExpr(c)} }}`)
@@ -264,6 +289,25 @@ function genElement(c: Ctx): string {
   return `<${tag}${genAttrs(c)}>${children.join('')}</${tag}>`
 }
 
+/** Re-shape a generated `function App(…) { … }` into a container form. */
+function wrapAppLines(app: string[], wrap: number, hasProps: boolean): string[] {
+  const inner = app.slice(1, -1)
+  const close = app[app.length - 1]!
+  const params = hasProps ? 'props' : ''
+  switch (wrap) {
+    case 1:
+      return [`const App = (${params}) => {`, ...inner, close]
+    case 2:
+      return [`const holder = {`, `  App: (${params}) => {`, ...inner, `  },`, `}`, `const App = holder.App`]
+    case 3:
+      return [`const W = (C) => (${params}) => {`, ...inner, close, `const App = W(null)`]
+    case 4:
+      return hasProps ? [`const App = (props = {}) => {`, ...inner, close] : app
+    default:
+      return app
+  }
+}
+
 function genComponent(seed: number): string {
   const rnd = mulberry32(seed)
   const nSignals = Math.floor(rnd() * 3)
@@ -288,7 +332,8 @@ function genComponent(seed: number): string {
   }
   const rnd2 = mulberry32((seed ^ 0x9e3779b9) >>> 0)
   const pd = props && rnd2() < 0.5
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2 }
+  const rnd3 = mulberry32((seed ^ 0x51ed270b) >>> 0)
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
@@ -322,10 +367,17 @@ function genComponent(seed: number): string {
   }
   const before = rnd() < 0.5
   if (before) lines.push(...sibling)
-  lines.push(`function App(${props ? 'props' : ''}) {`)
-  lines.push(...body)
-  lines.push(`  return ${genElement(c)}`)
-  lines.push(`}`)
+  const appLines = [
+    `function App(${props ? 'props' : ''}) {`,
+    ...body,
+    `  return ${genElement(c)}`,
+    `}`,
+  ]
+  // Wrapper form (backend-parity #1/#2 shapes): the component is the same body
+  // in a different container — an arrow, an object-literal property, a
+  // higher-order return, or a defaulted props param. Drawn from rnd3 so the
+  // default-form seeds stay the original function declaration.
+  lines.push(...wrapAppLines(appLines, Math.floor(rnd3() * 5), props))
   if (!before) lines.push(...sibling)
   return lines.join('\n')
 }
@@ -412,6 +464,14 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
             firstDivergence = `\n── native threw (seed=${seed} mode=${label}) ──\n${src}\n${String(err)}`
           }
           continue
+        }
+        for (const [which, out] of [['JS', js], ['native', rs]] as const) {
+          if (parseSync('fuzz.tsx', out).errors.length > 0) {
+            failures.push(`seed=${seed} mode=${label} (${which} output does not parse)`)
+            if (!firstDivergence) {
+              firstDivergence = `\n── ${which} output does not parse (seed=${seed} mode=${label}) ──\n${src}\n── output ──\n${out}`
+            }
+          }
         }
         if (js !== rs) {
           failures.push(`seed=${seed} mode=${label}`)

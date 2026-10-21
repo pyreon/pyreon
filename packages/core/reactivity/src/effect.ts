@@ -256,7 +256,8 @@ export function effect(
       _countSink.__pyreon_count__?.('reactivity.effectRun')
       _rdRecordFire(run)
     }
-    runCleanup()
+    // Most effects hold nothing to tear down between runs; skip the call.
+    if (innerEffects !== null || cleanups !== undefined || cleanup !== undefined) runCleanup()
     // Open LAZY inner-effect + onCleanup windows (nothing allocated until
     // actually used), saved/restored so nested runs can't clobber this one.
     const outerCollector = getInnerEffectCollector()
@@ -303,6 +304,15 @@ export function effect(
       undefined,
       options?.__sourceLocation ?? _captureCallerLocation(1),
     )
+
+  // Create the batch queue's intrusive flags (`_eq`, `_vg` — see batch.ts) up
+  // front. Created lazily on first enqueue they cost the same bytes once an
+  // effect has been queued, but V8 dispatched the queued runs measurably slower
+  // (wide fan-out, 1 signal → 100 effects: ~2,090 → ~1,790 ns per write; either
+  // flag alone recovers only half). The price is ~40 B on an effect that is
+  // never queued — one whose signal writes all run it directly, outside a batch.
+  ;(run as { _eq?: number; _vg?: number })._eq = 0
+  ;(run as { _eq?: number; _vg?: number })._vg = 0
 
   run()
 

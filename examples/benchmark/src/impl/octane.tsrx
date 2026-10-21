@@ -63,13 +63,15 @@
  * Standing lesson, since this comment misled a published claim: a figure taken
  * in node + happy-dom may not survive a real engine, and an ARCHITECTURAL
  * conclusion must never be drawn from one. Measure the target environment, or
- * say the shape is unknown. Octane ships no `createSelector` equivalent (its
- * public API is React's, and its `useState` third tuple member is a
- * transition-rebase getter, not a subscription — verified: reading it still
- * re-runs all 1,000 bodies). The only O(1) route is `useSyncExternalStore` plus
- * a hand-written keyed store (~5.8µs here), a generic React-model escape hatch
- * that `react.ts` and `preact.ts` do not use either — so declining it is
- * uniform, not a handicap.
+ * say the shape is unknown.
+ *
+ * UPDATED for octane 0.13.5: the compiler now lowers this `@for` to
+ * `fastKeyedForBlock(…, 30, [selectedId], …, selectionBody)` — flags still 30
+ * (the dep-eligible fast path) plus a dedicated selection callback that the
+ * 0.6 line did not emit. So Octane now has its own selection fast path, and
+ * this arm picks it up with no source change. Earlier text here saying
+ * Octane ships no selector equivalent described 0.6.x and no longer holds.
+ * Check with `compile(src, f, { mode: 'client' })` from `octane/compiler`.
  *
  * Setters are published out through `useEffect` (fires post-commit) via a
  * Promise, exactly as `react.ts` does — the value is unknown at bundle time so

@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Long, var selected: List<Long>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var rowKeys: List<String>? = null)
+data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var rowKeys: List<String>? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -3406,26 +3406,41 @@ fun rawExtentOver(series: List<Series>): Domain {
     return if (hasBars) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
   }
 
+fun m4Density(spec: ChartSpec): Double {
+    val d = (spec.m4Density ?: 2.0)
+    return if (d > 1.0) d else 1.0
+  }
+
 fun extendSpan(span: ExtentSpan, values: List<Double>): ExtentSpan {
     var seen = span.seen
     var lo = span.lo
     var hi = span.hi
-    for (i in 0L until values.length) {
-      val v = values[(i).toInt()]
-      if (isFiniteValue(v)) {
-        if (!seen) {
+    val n = values.length
+    var i = 0L
+    if (!seen) {
+      while (i < n) {
+        val v = values[(i).toInt()]
+        i = i + 1L
+        if (isFiniteNumber(v)) {
           lo = v
           hi = v
           seen = true
+          break
+        }
+      }
+    }
+    while (i < n) {
+      val v = values[(i).toInt()]
+      if (isFiniteNumber(v)) {
+        if (v < lo) {
+          lo = v
         } else {
-          if (v < lo) {
-            lo = v
-          }
           if (v > hi) {
             hi = v
           }
         }
       }
+      i = i + 1L
     }
     return ExtentSpan(seen = seen, lo = lo, hi = hi)
   }
@@ -3915,7 +3930,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
         } else {
           if (s.kind == "line") {
-            val direct = if (s.curve == null && xs.length == 0L) m4CategoryPoints(s.values, plot, sDomain) else listOf()
+            val direct = if (s.curve == null && xs.length == 0L) m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) else listOf()
             val useDirect = direct.length > 0L
             val runs = if (useDirect) listOf(direct) else splitRuns(s.values, place)
             val keyedLine = rowKeys.length == s.values.length && s.curve == null
@@ -3933,7 +3948,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                 }
               }
               runFrom = runFrom + run.length
-              val pts = if (useDirect) reveal(run) else m4Pixels(reveal(curveFn(run)))
+              val pts = if (useDirect) reveal(run) else m4Pixels(reveal(curveFn(run)), m4Density(spec))
               if (pts.length > 1L) {
                 val oneToOne = keyedLine && runKeys.length == pts.length
                 out.add(if (oneToOne) PyreonDrawCmd(kind = "polyline", key = s.label, stroke = s.color, width = s.width, dash = s.dash, points = pts, pointKeys = runKeys) else PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))
@@ -11189,24 +11204,47 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
     if (!(n > span * perPx * 4.0 + 8.0)) {
       return out
     }
-    for (i in 0L until n) {
-      val v = values[(i).toInt()]
-      if (!isFiniteChartNumber(v)) {
-        return out
-      }
-    }
+    val none: List<PyreonChartPt> = listOf()
     val top = plot.y + plot.h
+    val px = plot.x
+    val dmin = dom.min
+    val dspan = dom.max - dom.min
+    val flat = dspan == 0.0
+    val inv = dom.inverse == true
+    val r0 = if (inv) plot.y else top
+    val diff = if (inv) top - plot.y else plot.y - top
+    val flatY = ((top + plot.y)).toDouble() / (2.0).toDouble()
     var i = 0L
+    var prevLen = 1L
     while (i < n) {
-      val col = Math.floor((bandCenter(plot.x, band, i)) * perPx)
+      val col = Math.floor((bandCenter(px, band, i)) * perPx)
+      var end = i + prevLen
+      if (end > n) {
+        end = n
+      }
+      while (end > i + 1L && Math.floor((bandCenter(px, band, end - 1L)) * perPx) != col) {
+        end = end - 1L
+      }
+      while (end < n && Math.floor((bandCenter(px, band, end)) * perPx) == col) {
+        end = end + 1L
+      }
+      prevLen = end - i
       val first = i
+      val v0 = values[(i).toInt()]
+      if (!isFiniteChartNumber(v0)) {
+        return none
+      }
       var lo = i
       var hi = i
-      var loY = scaleLinear(dom, top, plot.y, values[(i).toInt()])
+      var loY = scaleLinear(dom, top, plot.y, v0)
       var hiY = loY
-      var j = i
-      while (j < n && Math.floor((bandCenter(plot.x, band, j)) * perPx) == col) {
-        val y = scaleLinear(dom, top, plot.y, values[(j).toInt()])
+      var j = i + 1L
+      while (j < end) {
+        val v = values[(j).toInt()]
+        if (!isFiniteChartNumber(v)) {
+          return none
+        }
+        val y = if (flat) flatY else r0 + (((v - dmin)).toDouble() / (dspan).toDouble()) * diff
         if (y < loY) {
           lo = j
           loY = y

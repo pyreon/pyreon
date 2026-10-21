@@ -197,6 +197,27 @@ describe('abort + timeout cover the BODY read, not just the headers', () => {
     expect(seen[0]?.signal?.aborted).toBe(true)
   })
 
+  // A body NOT wired to the request signal (a custom transport, a mock): it
+  // ignores the abort and never resolves, so only the client's own race can
+  // end the read. The bodies above stall on the signal and would cancel
+  // themselves, so they cannot tell whether that race works.
+  const unwired = (): Transport => async (request) =>
+    toHttpResponse(new Response(new ReadableStream({ start() {} })), request)
+
+  it('the timeout ends a body read that ignores the signal', { timeout: 2000 }, async () => {
+    const api = createHttp({ transport: unwired(), timeout: 30 })
+    await expect(api.get('/slow').text()).rejects.toBeInstanceOf(TimeoutError)
+  })
+
+  it("the caller's abort ends a body read that ignores the signal", { timeout: 2000 }, async () => {
+    const api = createHttp({ transport: unwired(), timeout: false })
+    const controller = new AbortController()
+    const body = api.get('/slow', { signal: controller.signal }).json()
+    await tick(5)
+    controller.abort()
+    await expect(body).rejects.toBeInstanceOf(AbortError)
+  })
+
   it('releases the caller listener once the body has been read (leak class D)', async () => {
     const api = createHttp({
       transport: async (request) => toHttpResponse(new Response('{"ok":true}'), request),

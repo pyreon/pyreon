@@ -2,7 +2,32 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import { effect, getContextOwner, runUntracked, runWithContextOwner } from '@pyreon/reactivity'
+import type { EffectScope } from '@pyreon/reactivity'
+import { effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+
+
+/**
+ * BULK DETACH. While a `<For>` whose parent element is removed as a unit tears
+ * down, every node it would remove one at a time is about to leave the
+ * document with that parent anyway. On a 1,000-row × 6-column table that was
+ * ~9,000 `removeChild` calls for a subtree detached once. Inside the window
+ * `detachNode` skips the removal; cleanups still run, so effects are disposed
+ * and refs cleared.
+ *
+ * Only `mountFor` opens the window, and only when it was mounted inside a
+ * freshly built element (`_elementDepth > 0` at mount) — the same contract that
+ * lets `mountChild` return a no-op remover there. A `<Portal>` inside the
+ * subtree removes its own bracketed range directly, never through
+ * `detachNode`, so a portaled node in a live target is still removed.
+ */
+let bulkDetachDepth = 0
+
+/** Remove `node` from its parent, unless a bulk detach makes it redundant. */
+export function detachNode(node: Node): void {
+  if (bulkDetachDepth > 0) return
+  const p = node.parentNode
+  if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(node)
+}
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -213,6 +238,26 @@ interface LisState {
   entries: (ForEntry | undefined)[]
 }
 
+/**
+ * The zero-capacity reorder state every keyed list starts from.
+ *
+ * The LIS buffers are needed only when a list REORDERS, but they used to be
+ * allocated eagerly — four typed arrays per list instance. A list of lists (a
+ * table row's cells, a tree level's children) mounted one inner list per row,
+ * so a 1,000-row table paid 4,000 typed-array allocations that nothing ever
+ * read. Every reorder path calls `growLisArrays` before touching the buffers,
+ * and that returns a FRESH state whenever `n` exceeds the capacity (here 0),
+ * so this shared object is never written: for `n === 0` the fills and the
+ * entries loop are empty ranges.
+ */
+const EMPTY_LIS: LisState = {
+  tails: new Int32Array(0),
+  tailIdx: new Int32Array(0),
+  pred: new Int32Array(0),
+  stay: new Uint8Array(0),
+  entries: [],
+}
+
 function growLisArrays(lis: LisState, n: number): LisState {
   if (n <= lis.pred.length) return lis
   return {
@@ -321,13 +366,9 @@ export function mountKeyedList(
   const curPos = new Map<string | number, number>()
   let currentKeyOrder: (string | number)[] = []
 
-  let lis: LisState = {
-    tails: new Int32Array(16),
-    tailIdx: new Int32Array(16),
-    pred: new Int32Array(16),
-    stay: new Uint8Array(16),
-    entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
-  }
+  // Starts as the shared zero-capacity state: the first reorder's
+  // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
+  let lis: LisState = EMPTY_LIS
 
   /**
    * The key sequence this update actually reconciles, DEDUPED first-wins, plus
@@ -606,6 +647,8 @@ interface ForEntry {
   cleanup: Cleanup | null
   pos: number
   end: Node | null
+  /** Generation of the last update that saw this key — see `mountNewForEntries`. */
+  seen: number
 }
 
 /** Try small-k reorder; returns true if handled, false if LIS fallback needed. */
@@ -631,6 +674,62 @@ function trySmallKReorder(
     if (cached) cached.pos = i
   }
   return true
+}
+
+/**
+ * Same-length update that only PERMUTES a few positions (the krausest `swap`
+ * op): `newKeys` differs from `currentKeys` at ≤ SMALL_K indices, and the keys
+ * at those indices are the same multiset before and after. Nothing is added and
+ * nothing goes stale, so the cache is already exact and the update is just the
+ * small-k placement. Recognizing that from the ≤k differing keys skips the
+ * general path's two full `cache.has` passes in `mountNewForEntries` (2n Map
+ * probes to learn that nothing was added).
+ *
+ * Returns `'done'` when it applied the update, `'many'` when more than SMALL_K
+ * positions differ (so `trySmallKReorder` would fail too and can be skipped),
+ * and `'no'` otherwise (an add or removal hides among the differences — the
+ * general path handles it). Never mutates anything unless it returns `'done'`.
+ */
+function trySmallKPermutation(
+  n: number,
+  newKeys: (string | number)[],
+  currentKeys: (string | number)[],
+  cache: Map<string | number, ForEntry>,
+  liveParent: Node,
+  tailMarker: Comment,
+): 'done' | 'many' | 'no' {
+  if (n !== currentKeys.length) return 'no'
+  const diffs: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (newKeys[i] !== currentKeys[i]) {
+      diffs.push(i)
+      if (diffs.length > SMALL_K) return 'many'
+    }
+  }
+  const k = diffs.length
+  // One-to-one match of the new keys at the differing positions against the old
+  // keys at those positions. k ≤ SMALL_K, so the quadratic match is a handful of
+  // compares. Bitmask of old positions already matched.
+  let used = 0
+  for (let a = 0; a < k; a++) {
+    const key = newKeys[diffs[a] as number]
+    let found = false
+    for (let b = 0; b < k; b++) {
+      if ((used & (1 << b)) === 0 && currentKeys[diffs[b] as number] === key) {
+        used |= 1 << b
+        found = true
+        break
+      }
+    }
+    if (!found) return 'no'
+  }
+  if (k > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
+  for (let a = 0; a < k; a++) {
+    const i = diffs[a] as number
+    const cached = cache.get(newKeys[i] as string | number)
+    if (cached) cached.pos = i
+  }
+  return 'done'
 }
 
 function computeForLis(lis: LisState, n: number): number {
@@ -762,7 +861,8 @@ function forLisReorder(
  */
 /**
  * SSR-block adoption context for a hydrating `<For>` — parsed from the
- * `<!--pyreon-for--> <!--k:KEY-->row… <!--/pyreon-for-->` markers by
+ * `<!--pyreon-for--> bare-row… <!--k:KEY-->row… <!--/pyreon-for:KEYS-->`
+ * block by
  * hydrate.ts and handed to `mountFor` via the one-shot slot below. When the
  * client's first items align 1:1 (same keys, same order) with the SSR rows,
  * each row's vnode is HYDRATED against its existing DOM range instead of
@@ -822,6 +922,7 @@ export function mountFor<T>(
   anchor: Node | null,
   mountChild: MountFn,
   adoption?: ForAdoption | null,
+  parentRemovesUnit = false,
 ): Cleanup {
   let startMarker: Comment
   let tailMarker: Comment
@@ -840,16 +941,16 @@ export function mountFor<T>(
 
   let cache = new Map<string | number, ForEntry>()
   let currentKeys: (string | number)[] = []
-  const _reusableKeySet = new Set<string | number>()
+  // Allocated on the first update that removes keys — most lists never do.
+  let _reusableKeySet: Set<string | number> | null = null
   let cleanupCount = 0
+  // Per-update stamp + distinct-survivor count (see `mountNewForEntries`).
+  let updateGen = 0
+  let keptDistinct = 0
 
-  let lis: LisState = {
-    tails: new Int32Array(16),
-    tailIdx: new Int32Array(16),
-    pred: new Int32Array(16),
-    stay: new Uint8Array(16),
-    entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
-  }
+  // Starts as the shared zero-capacity state: the first reorder's
+  // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
+  let lis: LisState = EMPTY_LIS
 
   const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
     if (!seen) return
@@ -902,7 +1003,7 @@ export function mountFor<T>(
     container: Node,
     before: Node | null,
   ) => {
-    const result = renderItem(item)
+    const { result, scope: rowScope } = runRowCallback(() => renderItem(item))
     // Optional-chained: `renderItem` may legitimately return null/undefined —
     // `{(r) => r.visible ? <Row/> : null}` is how a row is conditionally
     // hidden, and the empty-entry branch below exists precisely to give such a
@@ -915,27 +1016,47 @@ export function mountFor<T>(
     if ((result as import('@pyreon/core').NativeItem | null | undefined)?.__isNative === true) {
       const native = result as import('@pyreon/core').NativeItem
       container.insertBefore(native.el, before)
-      cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos, end: null })
-      if (native.cleanup) cleanupCount++
+      const nativeCleanup = withRowScope(rowScope, native.cleanup ?? null)
+      cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null, seen: 0 })
+      if (nativeCleanup) cleanupCount++
       return
     }
     const priorLast = before ? before.previousSibling : container.lastChild
-    const cl = mountChild(result as import('@pyreon/core').VNode, container, before)
+    const mounted = mountChild(result as import('@pyreon/core').VNode, container, before)
+    const cl = withRowScope(rowScope, mounted) as Cleanup
     const firstMounted = priorLast ? priorLast.nextSibling : container.firstChild
     if (!firstMounted || firstMounted === before) {
       const ph = document.createComment('')
       container.insertBefore(ph, before)
-      cache.set(key, { anchor: ph, cleanup: cl, pos, end: null })
+      cache.set(key, { anchor: ph, cleanup: cl, pos, end: null, seen: 0 })
     } else {
-      // Everything mounted for this entry sits in [firstMounted..lastMounted];
-      // end stays null for the dominant single-node case.
-      const lastMounted = before ? before.previousSibling : container.lastChild
-      cache.set(key, {
-        anchor: firstMounted,
-        cleanup: cl,
-        pos,
-        end: lastMounted && lastMounted !== firstMounted ? lastMounted : null,
-      })
+      // Everything mounted for this entry sits in [firstMounted..lastMounted].
+      const lastMounted = (before ? before.previousSibling : container.lastChild) as ChildNode
+      if (lastMounted === firstMounted && firstMounted.nodeType === 1) {
+        // The dominant shape: a single element. Nothing inside a row can
+        // replace the row's own root element, so it is a stable anchor and the
+        // range needs no end.
+        cache.set(key, { anchor: firstMounted, cleanup: cl, pos, end: null, seen: 0 })
+      } else {
+        // Any other shape can REPLACE its own boundary nodes while mounted: a
+        // reactive accessor (`() => …`, or a component returning one — the
+        // documented reactive-conditional pattern) swaps its first node on
+        // every re-run, and a polymorphic text binding swaps its text node for
+        // a subtree. An anchor taken from the mounted content then goes stale,
+        // and the next reorder moves the DETACHED old node back into the list
+        // while the live content is stranded in place. So the range is
+        // delimited by nodes nothing inside it can replace: a start comment,
+        // plus an end comment when the row ends in a text node (every other
+        // boundary a reactive region leaves is its own stable trailing marker).
+        const start = document.createComment('')
+        container.insertBefore(start, firstMounted)
+        let end: Node = lastMounted
+        if (lastMounted.nodeType === 3) {
+          end = document.createComment('')
+          container.insertBefore(end, before)
+        }
+        cache.set(key, { anchor: start, cleanup: cl, pos, end, seen: 0 })
+      }
     }
     cleanupCount++
   }
@@ -1036,6 +1157,7 @@ export function mountFor<T>(
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
+      entry.end?.parentNode?.removeChild(entry.end)
       cache.delete(key)
     }
   }
@@ -1092,6 +1214,7 @@ export function mountFor<T>(
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
+      entry.end?.parentNode?.removeChild(entry.end)
       cache.delete(key)
     }
 
@@ -1220,10 +1343,27 @@ export function mountFor<T>(
     //
     // `lastSurvivorIdx` is computed BEFORE any new key enters the cache, so
     // `cache.has` cleanly separates survivors from rows about to be mounted.
+    //
+    // The same pass counts the DISTINCT cached entries this update keeps, by
+    // stamping each with the update's generation (`cache.get` is the same one
+    // hash `cache.has` was). The caller's pure-reorder shortcut needs that
+    // count: "nothing added and `cache.size === n`" also holds when a key is
+    // DUPLICATED and another removed (`[1,2,3] -> [2,2,1]`), and skipping the
+    // stale scan there left the removed row in the DOM.
     let lastSurvivorIdx = -1
+    const gen = ++updateGen
+    let distinct = 0
     for (let i = 0; i < n; i++) {
-      if (cache.has(newKeys[i] as string | number)) lastSurvivorIdx = i
+      const e = cache.get(newKeys[i] as string | number)
+      if (e !== undefined) {
+        lastSurvivorIdx = i
+        if (e.seen !== gen) {
+          e.seen = gen
+          distinct++
+        }
+      }
     }
+    keptDistinct = distinct
     const tailBase = currentKeys.length
     let added = 0
     for (let i = 0; i < n; i++) {
@@ -1292,21 +1432,33 @@ export function mountFor<T>(
       return
     }
 
-    // Mount new entries FIRST and count them. If nothing was added AND the cache
-    // now holds exactly `n`, every newKey was already cached — a PURE REORDER
-    // (swap / reverse / sort) with nothing stale — so skip the O(n) newKey-Set
-    // rebuild and the O(m) stale scan (~17% off a 1k full-reverse).
+    // Fast path: a few positions permuted, nothing added or removed (swap).
+    const perm = trySmallKPermutation(n, newKeys, currentKeys, cache, liveParent, tailMarker)
+    if (perm === 'done') {
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.mountFor.permFast')
+      currentKeys = newKeys
+      return
+    }
+
+    // Mount new entries FIRST and count them. If nothing was added AND the
+    // update KEPT every cached entry (`keptDistinct`, counted by
+    // `mountNewForEntries`), it is a PURE REORDER (swap / reverse / sort) with
+    // nothing stale — so skip the O(n) newKey-Set rebuild and the O(m) stale
+    // scan (~17% off a 1k full-reverse). Counting distinct kept entries, not
+    // comparing `cache.size` to `n`, is what keeps a duplicated key from
+    // hiding a removed one.
     //
     // Mounting before removing is order-independent: new and stale keys are
     // disjoint, and `removeStaleForEntries` skips any key in the newKey Set.
     const added = mountNewForEntries(items, n, newKeys, liveParent)
-    if (added !== 0 || cache.size !== n) {
-      _reusableKeySet.clear()
-      for (let i = 0; i < newKeys.length; i++) _reusableKeySet.add(newKeys[i] as string | number)
-      removeStaleForEntries(_reusableKeySet)
+    if (added !== 0 || keptDistinct !== cache.size) {
+      const keySet = (_reusableKeySet ??= new Set<string | number>())
+      keySet.clear()
+      for (let i = 0; i < newKeys.length; i++) keySet.add(newKeys[i] as string | number)
+      removeStaleForEntries(keySet)
     }
 
-    if (trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {
+    if (perm !== 'many' && trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {
       currentKeys = newKeys
       return
     }
@@ -1342,7 +1494,7 @@ export function mountFor<T>(
             renderItem: renderItem as (item: unknown) => unknown,
             tailMarker,
             setEntry: (key, entryAnchor, cleanup, pos, end) => {
-              cache.set(key, { anchor: entryAnchor, cleanup, pos, end })
+              cache.set(key, { anchor: entryAnchor, cleanup, pos, end, seen: 0 })
               cleanupCount++
             },
           })
@@ -1379,17 +1531,80 @@ export function mountFor<T>(
 
   return () => {
     e.dispose()
+    if (parentRemovesUnit) {
+      // The parent element leaves the document as a unit right after this, so
+      // the rows' own removals are redundant (see `detachNode`).
+      bulkDetachDepth++
+      try {
+        if (cleanupCount > 0) {
+          for (const entry of cache.values()) {
+            if (entry.cleanup) {
+              _emitCleanup()
+              entry.cleanup()
+            }
+          }
+        }
+      } finally {
+        bulkDetachDepth--
+      }
+      cache = new Map()
+      cleanupCount = 0
+      return
+    }
     for (const entry of cache.values()) {
       if (cleanupCount > 0 && entry.cleanup) {
         _emitCleanup()
         entry.cleanup()
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
+      entry.end?.parentNode?.removeChild(entry.end)
     }
     cache = new Map()
     cleanupCount = 0
     startMarker.parentNode?.removeChild(startMarker)
     tailMarker.parentNode?.removeChild(tailMarker)
+  }
+}
+
+/**
+ * A `<For>` row callback is a component-like body that runs outside any
+ * component, so an `effect()` or `computed()` created in it had no owner: it
+ * registered with whatever scope was current (none, after the surrounding
+ * component's setup) and was never disposed — a removed row kept running its
+ * effects, and so did every row once the list unmounted. Each row callback now
+ * runs under a collector scope that the row keeps, and stops on removal, ONLY
+ * when something registered with it; a row that registers nothing (no binding,
+ * no effect) costs no allocation. One collector is pooled across rows.
+ */
+let rowCollector: EffectScope | null = null
+
+function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
+  const prev = getCurrentScope()
+  const collector = rowCollector ?? (rowCollector = effectScope())
+  setCurrentScope(collector)
+  let result: R
+  try {
+    result = fn()
+  } catch (err) {
+    // A half-filled collector must never be handed to the next row.
+    collector.stop()
+    rowCollector = null
+    throw err
+  } finally {
+    setCurrentScope(prev)
+  }
+  if (collector._isEmpty()) return { result, scope: null }
+  rowCollector = null
+  return { result, scope: collector }
+}
+
+/** Chain a row scope's stop in front of the row's own cleanup. */
+function withRowScope(scope: EffectScope | null, cleanup: Cleanup | null): Cleanup | null {
+  if (scope === null) return cleanup
+  if (cleanup === null) return () => scope.stop()
+  return () => {
+    scope.stop()
+    cleanup()
   }
 }
 

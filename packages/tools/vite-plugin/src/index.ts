@@ -35,7 +35,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseSync } from 'oxc-parser'
+import { Visitor } from 'oxc-parser'
+import { parseOxc } from './oxc-parse'
 import { foldNodeEnvProduction, islandCallOffsets, renameCompatJsxAttributes } from './ast-rewrite'
 import {
   detectPlain,
@@ -1512,7 +1513,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // needs no sanitizer. Each false positive pinned a ~1.9 kB gz
       // side-effect import into a module that never used the prop.
       // (`dangerouslySetInnerHTML` cannot match: its `I` is uppercase.)
-      if (/(?<![.\w$])innerHTML\s*(?:=(?!=)|:)/.test(_maskStringsAndComments(code))) {
+      // `includes` first: masking only blanks characters, so a module without
+      // the substring cannot match, and the mask is a full-source pass.
+      if (
+        code.includes('innerHTML') &&
+        /(?<![.\w$])innerHTML\s*(?:=(?!=)|:)/.test(_maskStringsAndComments(code))
+      ) {
         // APPENDED, not prepended: an ESM import is hoisted wherever it
         // sits, and a prepend shifted every line the compiler's source map
         // describes by one — a frame then resolved to the WRONG statement.
@@ -2103,15 +2109,29 @@ function injectSignalNames(code: string, moduleId: string): string {
   // Without this, user code like `const docs = \`effect(() => x)\`` would
   // get `, { __sourceLocation: ... }` injected INSIDE the template literal,
   // corrupting the help-text content at runtime.
+  // Both regexes below need a literal `signal(` / `computed(` / `effect(`, and
+  // masking only blanks characters — a module without any of them cannot
+  // match, so skip the full-source mask (and the AST confirmation below).
+  if (!code.includes('signal(') && !code.includes('computed(') && !code.includes('effect(')) {
+    return code
+  }
   const masked = _maskStringsAndComments(code)
   // The mask cannot see JSX TEXT (`<Code>effect()</Code>` in a demo), and a
   // character scanner cannot tell a JSX `<` from less-than reliably. So every
   // regex hit is CONFIRMED against the AST: only a real call whose callee is
   // the matched identifier gets the injection. `null` (the file did not parse)
   // keeps the regex-only behaviour — the pre-existing conservative default.
-  const realCallees = _reactiveCalleeStarts(code, moduleId)
-  const isRealCall = (tokenStart: number): boolean =>
-    realCallees === null || realCallees.has(tokenStart)
+  //
+  // The parse is LAZY: it runs on the first regex hit that needs confirming,
+  // so a module with no `signal(`/`computed(`/`effect(` text (~80% of a real
+  // app's .tsx files) never pays a second full parse. That parse cost about
+  // 3x the whole native JSX compile across a 775-file corpus; deferring it
+  // changes no output, because `isRealCall` is only ever asked about a hit.
+  let realCallees: Set<number> | null | undefined
+  const isRealCall = (tokenStart: number): boolean => {
+    if (realCallees === undefined) realCallees = _reactiveCalleeStarts(code, moduleId)
+    return realCallees === null || realCallees.has(tokenStart)
+  }
 
   // Pass 1: bound forms — `const X = (signal|computed|effect)(…)`.
   // Extract `X` as the debug name + the reactive primitive kind.
@@ -2204,46 +2224,52 @@ function injectSignalNames(code: string, moduleId: string): string {
  * @internal — exported for tests.
  */
 export function _reactiveCalleeStarts(code: string, moduleId: string): Set<number> | null {
-  let program: unknown
+  let program: ReturnType<typeof parseOxc>['program']
   try {
     const lang = /\.tsx?(?:$|\?)/.test(moduleId)
       ? moduleId.includes('.tsx')
         ? 'tsx'
         : 'ts'
       : 'jsx'
-    const r = parseSync(moduleId, code, { sourceType: 'module', lang })
+    const r = parseOxc(moduleId, code, { sourceType: 'module', lang })
     if (r.errors.length > 0) return null
     program = r.program
   } catch {
     return null
   }
+  // oxc's own Visitor walks only the fields its generated visitor keys name
+  // (no `Object.keys` per node), and dispatches on the one node type this
+  // needs. It also works on the default JSON-decoded AST, so the Bun / older
+  // Node path (no raw transfer) gets the same result.
   const out = new Set<number>()
-  const visit = (n: unknown): void => {
-    if (!n || typeof n !== 'object') return
-    if (Array.isArray(n)) {
-      for (const c of n) visit(c)
-      return
-    }
-    const node = n as { type?: unknown; callee?: { type?: string; name?: string; start?: number } }
-    if (typeof node.type !== 'string') return
-    if (
-      node.type === 'CallExpression' &&
-      node.callee?.type === 'Identifier' &&
-      (node.callee.name === 'signal' ||
-        node.callee.name === 'computed' ||
-        node.callee.name === 'effect') &&
-      typeof node.callee.start === 'number'
-    ) {
-      out.add(node.callee.start)
-    }
-    for (const key of Object.keys(node)) {
-      if (key === 'type' || key === 'start' || key === 'end') continue
-      const v = (node as Record<string, unknown>)[key]
-      if (v && typeof v === 'object') visit(v)
-    }
-  }
-  visit(program)
+  new Visitor({
+    CallExpression(node) {
+      const callee = node.callee
+      if (
+        callee.type === 'Identifier' &&
+        (callee.name === 'signal' || callee.name === 'computed' || callee.name === 'effect')
+      ) {
+        out.add(callee.start)
+      }
+    },
+  }).visit(program)
   return out
+}
+
+/** Characters a masker branch can start on: comment slash, quotes, backtick. */
+const MASK_TRIGGER_RE = /[/"'`]/g
+
+/** Index of the next masker trigger at or after `from`, or `code.length`. */
+function _nextMaskTrigger(code: string, from: number): number {
+  MASK_TRIGGER_RE.lastIndex = from
+  const m = MASK_TRIGGER_RE.exec(code)
+  return m === null ? code.length : m.index
+}
+
+/** `code.indexOf(ch, from)`, with "not found" mapped to `code.length`. */
+function _indexOrEnd(code: string, ch: string, from: number): number {
+  const at = code.indexOf(ch, from)
+  return at < 0 ? code.length : at
 }
 
 /**
@@ -2270,7 +2296,18 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
  * @internal — exported for tests.
  */
 export function _maskStringsAndComments(code: string): string {
-  const out: string[] = []
+  // Built from SLICES (see `_maskSource`): the traversal is unchanged, but each
+  // masked run is emitted as one newline-preserving blank instead of one array
+  // entry per character. Every masked character follows the same rule —
+  // newline stays a newline, anything else becomes a space — so the output is
+  // identical; `${...}` interpolation bodies are copied through as code.
+  const parts: string[] = []
+  let last = 0
+  const mask = (from: number, to: number): void => {
+    if (from > last) parts.push(code.slice(last, from))
+    if (to > from) parts.push(code.slice(from, to).replace(/[^\n]/g, ' '))
+    last = to
+  }
   let i = 0
   const n = code.length
   while (i < n) {
@@ -2279,106 +2316,94 @@ export function _maskStringsAndComments(code: string): string {
 
     // Line comment `// ...`
     if (c === '/' && c1 === '/') {
-      while (i < n && code[i] !== '\n') {
-        out.push(' ')
-        i++
-      }
+      const start = i
+      while (i < n && code[i] !== '\n') i++
+      mask(start, i)
       continue
     }
-    // Block comment `/* ... */`
+    // Block comment `/* ... */` — newlines preserved so line numbers don't shift
     if (c === '/' && c1 === '*') {
-      out.push(' ', ' ')
+      const start = i
       i += 2
       while (i < n) {
         if (code[i] === '*' && code[i + 1] === '/') {
-          out.push(' ', ' ')
           i += 2
           break
         }
-        // Preserve newlines so line numbers don't shift
-        out.push(code[i] === '\n' ? '\n' : ' ')
         i++
       }
+      mask(start, i)
       continue
     }
     // String literal "..." or '...'
     if (c === '"' || c === "'") {
+      const start = i
       const quote = c
-      out.push(' ')
       i++
       while (i < n && code[i] !== quote) {
-        // Escape sequence — skip the next char too (handles `\"`, `\\`, etc.)
+        // Escape sequence — skip the next char too (handles `\"`, `\\`, and a
+        // line-continuation `\<LF>`, whose newline the mask preserves).
         if (code[i] === '\\' && i + 1 < n) {
-          // Preserve a newline (line-continuation `\<LF>`) as a newline.
-          out.push(' ', code[i + 1] === '\n' ? '\n' : ' ')
           i += 2
           continue
         }
         // Unterminated string (legacy parsers stop at newline) — break
         if (code[i] === '\n') break
-        out.push(' ')
         i++
       }
-      if (i < n && code[i] === quote) {
-        out.push(' ')
-        i++
-      }
+      if (i < n && code[i] === quote) i++
+      mask(start, i)
       continue
     }
     // Template literal `...` — preserve `${...}` interpolations as code
     if (c === '`') {
-      out.push(' ')
+      let start = i
       i++
       while (i < n && code[i] !== '`') {
         if (code[i] === '\\' && i + 1 < n) {
-          out.push(' ', code[i + 1] === '\n' ? '\n' : ' ')
           i += 2
           continue
         }
-        // `${...}` — keep the interpolation body as code (with nested
-        // brace tracking so we find the matching `}`).
+        // `${...}` — mask the template text up to and including `${`, keep the
+        // interpolation body as code (nested braces tracked), mask its `}`.
         if (code[i] === '$' && code[i + 1] === '{') {
-          out.push(' ', ' ')
           i += 2
+          mask(start, i)
           let depth = 1
           while (i < n && depth > 0) {
             if (code[i] === '{') {
               depth++
-              out.push(code[i] ?? ' ')
               i++
               continue
             }
             if (code[i] === '}') {
               depth--
               if (depth === 0) {
-                out.push(' ')
+                mask(i, i + 1)
                 i++
                 break
               }
-              out.push(code[i] ?? ' ')
               i++
               continue
             }
             // Inside `${}` — pass through as code (might contain `signal(` etc).
-            out.push(code[i] ?? ' ')
             i++
           }
+          start = i
           continue
         }
-        // Preserve newlines so line numbers don't shift.
-        out.push(code[i] === '\n' ? '\n' : ' ')
         i++
       }
-      if (i < n && code[i] === '`') {
-        out.push(' ')
-        i++
-      }
+      if (i < n && code[i] === '`') i++
+      mask(start, i)
       continue
     }
-    out.push(c ?? '')
-    i++
+    // Every branch above starts on `/`, a quote or a backtick; jump to the
+    // next one rather than stepping through plain code (see `_maskSource`).
+    i = _nextMaskTrigger(code, i + 1)
   }
-  return out.join('')
+  if (last < n) parts.push(code.slice(last))
+  return parts.join('')
 }
 
 /**
@@ -2420,7 +2445,8 @@ export function _offsetToLineCol(
 }
 
 function injectHmr(code: string, moduleId: string): string {
-  const hasSignals = SIGNAL_PREFIX_RE.test(code)
+  // `includes` first — the regex needs the literal `signal` and scans line by line.
+  const hasSignals = code.includes('signal') && SIGNAL_PREFIX_RE.test(code)
   SIGNAL_PREFIX_RE.lastIndex = 0
 
   const hasComponentExport = EXPORT_COMPONENT_RE.test(code)
@@ -2546,19 +2572,24 @@ function autoImportCanonicalPrimitives(
   // are strings. Masking them blinds `_collectImportedNames` and the
   // extend-existing-import path, so the pass re-injects names the file already
   // imports and emits a duplicate import line.
-  const maskedForUsage = _maskCommentsAndStrings(code)
-  const masked = _maskComments(code)
-
+  //
+  // Masking only BLANKS characters, so a tag the raw source does not contain
+  // cannot appear in the masked source either: test the raw text first and
+  // skip both masks for the (common) file that uses none of the names.
   // Build alternation matching all configured names — single regex pass.
   const allNames = Array.from(nameToSource.keys())
   const nameAlt = allNames.join('|')
   const jsxTagRe = new RegExp(`<(${nameAlt})(?=[\\s/>])`, 'g')
+  if (!jsxTagRe.test(code)) return code
+  jsxTagRe.lastIndex = 0
+  const maskedForUsage = _maskCommentsAndStrings(code)
   const used = new Set<string>()
   let m: RegExpExecArray | null
   while ((m = jsxTagRe.exec(maskedForUsage)) !== null) {
     used.add(m[1]!)
   }
   if (used.size === 0) return code
+  const masked = _maskComments(code)
 
   // Find names already imported (any source). The auto-import respects
   // existing imports — we don't shadow a user's local symbol or
@@ -2572,7 +2603,9 @@ function autoImportCanonicalPrimitives(
   // canonical names — `export function Stack(...)`, `function Stack`,
   // `const Stack = ...`. These are local symbols; auto-importing the
   // upstream package would shadow them.
-  for (const name of allNames) {
+  // Only names this file USES can be injected, so only those need the
+  // shadowing check; the loop builds two regexes per name it visits.
+  for (const name of used) {
     const declRe = new RegExp(
       `(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+${name}\\b|const\\s+${name}\\b|let\\s+${name}\\b|var\\s+${name}\\b|class\\s+${name}\\b)`,
     )
@@ -2686,13 +2719,22 @@ function autoImportCanonicalPrimitives(
  *   - block comments `/* ... *​/`
  */
 function _maskSource(code: string, maskStrings: boolean): string {
-  const out: string[] = new Array(code.length)
+  // Built from SLICES: unmasked runs are copied whole and each masked run is
+  // blanked with one replace. The former shape wrote one single-character
+  // string per source character into an array and joined it — a full-source
+  // allocation storm on every masked file. Same output: a masked run keeps
+  // its newlines and turns every other UTF-16 unit into a space, so positions
+  // still align.
+  const parts: string[] = []
+  let last = 0
   let i = 0
   const n = code.length
 
   /** Blank out [from, to) while preserving newlines so positions still align. */
   const blank = (from: number, to: number): void => {
-    for (let j = from; j < to; j++) out[j] = code[j] === '\n' ? '\n' : ' '
+    if (from > last) parts.push(code.slice(last, from))
+    parts.push(code.slice(from, to).replace(/[^\n]/g, ' '))
+    last = to
   }
 
   while (i < n) {
@@ -2792,10 +2834,13 @@ function _maskSource(code: string, maskStrings: boolean): string {
       continue
     }
 
-    out[i] = c
-    i++
+    // Nothing above starts at this character, and nothing CAN start before the
+    // next `/` (or quote / backtick, when strings are masked): jump there
+    // instead of stepping one character at a time through plain code.
+    i = maskStrings ? _nextMaskTrigger(code, i + 1) : _indexOrEnd(code, '/', i + 1)
   }
-  return out.join('')
+  if (last < n) parts.push(code.slice(last))
+  return parts.join('')
 }
 
 /**
@@ -3196,6 +3241,14 @@ function scanSignalExports(
   registry: Map<string, Set<string>>,
 ): void {
   const normalizedId = normalizeModuleId(moduleId)
+  // Every classic pattern below needs the literal `signal` or `computed`, and
+  // the Plain Mode ones only run for a plain module — so a module with none of
+  // them exports no signals. Same outcome as falling through: drop any stale
+  // registry entry (the module may have just been edited).
+  if (!code.includes('signal') && !code.includes('computed') && !detectPlain(code)) {
+    registry.delete(normalizedId)
+    return
+  }
   let match: RegExpExecArray | null
   const signals = new Set<string>()
 

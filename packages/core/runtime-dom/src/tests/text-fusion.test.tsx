@@ -24,7 +24,7 @@ import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   _applyProps, _bindDirect, _bindText, _bindProp, _mountSlot, _textSlot, _setChild, _setChildAt, _mountChild,
-  _setHtml, _setAttr, _setClass, _setStyle, _tpl, hydrateRoot, mount,
+  _setHtml, _setAttr, _setClass, _setStyle, _setStyleOnce, _tpl, hydrateRoot, mount,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
 
@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setAttr, _setClass, _mountSlot, _textSlot,
+  _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass, _mountSlot, _textSlot,
   _setChild, _setChildAt, _mountChild, _setHtml, bindPolymorphicText, h, Fragment, For, Show, _lc, _rp, _rpd, _fuse,
   _wrapSpread, signal,
   _ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _escSole, _ssrAttr, _ssrAttrGen, _ssrAttrUrl,
@@ -178,10 +178,11 @@ describe('text fusion — what does NOT fuse', () => {
     expect(out).not.toContain('_fuse(')
   })
 
-  it('a static-only mix keeps its baked shape', () => {
+  it('a static-only mix fuses STATICALLY: one `_setChild` into an empty element, no binding', () => {
     const out = emit(`const x = 1; const v = <p>Hello {x}!</p>`)
-    expect(out).toContain('_setChildAt(')
-    expect(out).not.toContain('_fuse(')
+    expect(out).toContain('_setChild(__root, _fuse("Hello ", x, "!"))')
+    expect(out).not.toContain('_setChildAt(')
+    expect(out).not.toContain('bindPolymorphicText')
   })
 
   it('an element sibling keeps the run mixed (placeholders, `_textSlot`)', () => {

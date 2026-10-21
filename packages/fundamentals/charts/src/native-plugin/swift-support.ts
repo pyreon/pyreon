@@ -279,7 +279,10 @@ export function swiftChartGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, h
 /** An accessor arrow's body with its params substituted, as an expression — or 'unsupported' (reported). */
 export function swiftAccessorExpr(v: ExprIR, tag: string, what: string, indent: number): string | 'unsupported' {
   if (v.kind !== 'arrow' || (v.stmts !== undefined && v.stmts.length > 0) || v.params.length > 2) {
-    host.warn(`<${tag}> ${what}: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an EmptyView().`)
+    // A mark's channel may be a COLUMN on the web (\`line(prices)\`); name
+    // that case, since the arrow-only rule reads as a typo otherwise.
+    const column = what.startsWith('mark') && (v.kind === 'identifier' || v.kind === 'array' || v.kind === 'member' || v.kind === 'new-collection') ? ' A column (an array of values) is web-only; use an arrow in shared source.' : ''
+    host.warn(`<${tag}> ${what}: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an EmptyView().${column}`)
     return 'unsupported'
   }
   let body: ExprIR | null = v.body

@@ -14,7 +14,7 @@
  * loop) would turn 1k items into 1M emits — caught here with absolute
  * upper bounds.
  */
-import { For, h } from '@pyreon/core'
+import { For, Fragment, h } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
@@ -31,8 +31,12 @@ afterEach(() => {
   _disable()
 })
 
+// Two nodes per row: a row that renders ONE element ships without a per-row
+// key marker (its key rides on the closing marker), which would leave the
+// keyMarker counter at 0 and stop it measuring anything here. Two nodes keep
+// every row in the marked region, so the counter still proves linear emits.
 const Row = ({ label }: { label: string }) =>
-  h('li', null, h('span', null, label))
+  h(Fragment, null, h('li', null, h('span', null, label)), h('li', null, 'x'))
 
 describe('SSR counter scaling', () => {
   it('1k-row list: counters scale linearly with row count', async () => {

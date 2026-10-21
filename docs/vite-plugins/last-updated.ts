@@ -12,7 +12,7 @@
  * Mirrors VitePress's `lastUpdated: true` config — same data source
  * (git log), same per-page granularity.
  */
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { readdirSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import type { Plugin } from 'vite'
@@ -67,21 +67,48 @@ function buildRegistry(
   const absContentDir = join(projectRoot, contentDir)
   const files: string[] = []
   walk(absContentDir, files)
+  const latest = latestCommitDates(absContentDir)
   const out: Record<string, string> = {}
   for (const file of files) {
     const rel = relative(absContentDir, file).split(sep).join('/')
-    const slug = rel.replace(/\.(md|mdx)$/, '')
-    try {
-      const ts = execSync(
-        `git log -1 --format=%aI -- "${file}"`,
-        { encoding: 'utf8', cwd: projectRoot },
-      ).trim()
-      if (ts) out[slug] = ts
-    } catch {
-      // Untracked file or git unavailable — skip silently.
-    }
+    const ts = latest.get(rel)
+    // Untracked files have no history and are skipped, as before.
+    if (ts) out[rel.replace(/\.(md|mdx)$/, '')] = ts
   }
   return out
+}
+
+/**
+ * Author date of the most recent commit touching each file under `dir`,
+ * keyed by path relative to `dir`.
+ *
+ * ONE `git log` over the directory instead of a `git log -1 -- <file>` per
+ * page: the per-file form spawned a process per document (200+ of them,
+ * ~7.8s of a docs build). `git log` lists commits newest-first, so the first
+ * time a path appears is its latest change, which is what `-1 -- <file>`
+ * returned. `--relative` keys paths to `dir` (no worry about how the repo
+ * root is spelled), and `core.quotePath=false` keeps non-ASCII names
+ * verbatim instead of octal-quoted.
+ */
+function latestCommitDates(dir: string): Map<string, string> {
+  const latest = new Map<string, string>()
+  let log: string
+  try {
+    log = execFileSync(
+      'git',
+      ['-c', 'core.quotePath=false', 'log', '--format=%x00%aI', '--name-only', '--relative', '--', '.'],
+      { encoding: 'utf8', cwd: dir, maxBuffer: 256 * 1024 * 1024 },
+    )
+  } catch {
+    // Not a git checkout, or git unavailable — no dates, as before.
+    return latest
+  }
+  let date = ''
+  for (const line of log.split('\n')) {
+    if (line.startsWith('\0')) date = line.slice(1)
+    else if (line !== '' && !latest.has(line)) latest.set(line, date)
+  }
+  return latest
 }
 
 function walk(dir: string, out: string[]): void {

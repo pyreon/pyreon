@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/kinetic",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "CSS-transition-based animation components for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/ui-system/kinetic#readme",
   "bugs": {
@@ -61,9 +61,9 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.2",
-    "@vitus-labs/tools-rolldown": "^2.6.3",
-    "motion": "^13.4.6"
+    "@vitest/browser-playwright": "^5.0.5",
+    "@vitus-labs/tools-rolldown": "^2.8.0",
+    "motion": "^14.4.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

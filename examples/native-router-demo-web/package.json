@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-router-demo-web",
-  "version": "0.50.2",
+  "version": "0.50.3",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Web sibling of native-router-demo-ios. Imports RouterApp from the iOS path directly: ONE source, THREE targets. Proves the Pyreon multiplatform routing story end-to-end via real Vite build + Playwright.",
   "license": "MIT",
@@ -28,8 +28,8 @@
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
-    "@types/bun": "^1.4.2",
+    "@types/bun": "^1.4.3",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }

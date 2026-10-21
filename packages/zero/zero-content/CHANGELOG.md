@@ -1,5 +1,18 @@
 # @pyreon/zero-content
 
+## 0.53.0
+
+### Patch Changes
+
+- [#3863](https://github.com/pyreon/pyreon/pull/3863) [`283d3bf`](https://github.com/pyreon/pyreon/commit/283d3bffd8cbd27fa00db4589a6822e81f71208a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Replace the legacy frontmatter test oracle dependency with versioned compatibility fixtures, removing the test-only sprintf-js dependency chain.
+- Updated dependencies [[`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`2c98031`](https://github.com/pyreon/pyreon/commit/2c980310b388ecc18d7812a418d836dd20afc060), [`62e0aad`](https://github.com/pyreon/pyreon/commit/62e0aadfc0565ba64fd59da61338fd6061c3da14), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d), [`8fa9de5`](https://github.com/pyreon/pyreon/commit/8fa9de5d22fdc2848e813dd114972092c8fb554d)]:
+  - @pyreon/runtime-dom@0.53.0
+  - @pyreon/core@0.53.0
+  - @pyreon/reactivity@0.53.0
+  - @pyreon/router@0.53.0
+  - @pyreon/zero@0.53.0
+  - @pyreon/head@0.53.0
+
 ## 0.52.0
 
 ### Minor Changes

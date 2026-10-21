@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/lathe",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Spec-to-Pyreon code generator — OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.",
   "license": "MIT",
   "publishConfig": {
@@ -78,12 +78,12 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero-content": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.2",
+    "@vitest/browser-playwright": "^5.0.5",
     "axios": "^1.20.0",
-    "happy-dom": "^20.14.5",
-    "ky": "^2.1.0",
-    "oxc-parser": "^0.152.0",
-    "zod": "^4.6.5"
+    "happy-dom": "^21.0.3",
+    "ky": "^2.2.0",
+    "oxc-parser": "^0.155.0",
+    "zod": "^4.6.7"
   },
   "dependencies": {
     "@pyreon/config": "workspace:*",

@@ -6,7 +6,7 @@
 // full ECharts feature set for the long tail.
 
 import { createUniqueId, h } from '@pyreon/core'
-import { a11yTableNode, A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
+import { a11yTableNode, A11Y_TABLE_MAX, afterPaint, DEFER_ROWS, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
 import { lttbIndices, minMaxBuckets } from './decimate-values'
 import { warnOnce } from './dev-warn'
@@ -32,7 +32,7 @@ import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
-import { markLabel, resolveCategories, resolveMarks } from './marks'
+import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
 import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum } from './a11y'
@@ -54,8 +54,16 @@ function cancelFrame(frame: Double): void {
 }
 
 export interface PlotChartProps<T> {
-  /** The rows. An accessor makes it reactive; a plain array is static. */
-  data: T[] | (() => T[])
+  /**
+   * The rows. An accessor makes it reactive; a plain array is static.
+   *
+   * Optional when every mark is a COLUMN (`line(values)` with a
+   * `Float64Array` or `number[]`): the chart then has one row per index of
+   * the longest column, and row callbacks (`x`, `by`, `tooltip`, …) receive
+   * `undefined` with the index. A plain `number[]` column is used as the
+   * series without a copy — the fast path for large series.
+   */
+  data?: T[] | (() => T[])
   /** The marks to draw, in paint order. */
   marks: Mark<T>[]
   /** Category labels for the x axis. Omit for a numeric axis. */
@@ -237,6 +245,14 @@ export interface PlotChartProps<T> {
    * GLOBAL index of the row actually drawn.
    */
   maxPoints?: number
+  /**
+   * How finely a dense line is decimated. `'fine'` (the default) keeps two
+   * M4 columns per CSS pixel — more of a noisy line's detail than a 1×
+   * display has pixels for. `'device'` keeps one per DEVICE pixel, as uPlot
+   * does: about half the points on a 1× display, so a faster mount, at the
+   * cost of a measurably coarser noisy line. Web only.
+   */
+  density?: 'fine' | 'device'
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -801,9 +817,29 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    */
   const hideHidden = (series: Series[]): Series[] => hideHiddenSeries(series, hiddenSeries())
 
+  // Column-only charts synthesize their rows: one `undefined` per index of
+  // the longest column, cached by (marks, length) so every memo keyed on row
+  // identity stays stable across reads.
+  let colRows: { marks: Mark<T>[]; n: number; rows: T[] } | null = null
   const readData = (): T[] => {
     const d = props.data
-    return typeof d === 'function' ? (d as () => T[])() : d
+    if (d !== undefined) return typeof d === 'function' ? (d as () => T[])() : d
+    const marks = props.marks
+    if (colRows !== null && colRows.marks === marks) {
+      const n = columnLength(marks)
+      if (colRows.n === n) return colRows.rows
+    }
+    if (process.env.NODE_ENV !== 'production' && !marks.every(isColumnMark)) {
+      warnOnce(
+        'plot:no-data',
+        '<PlotChart> has no `data`, but a mark reads rows through an accessor, which will receive `undefined` for every row. Pass `data`, or give every mark a column (line(values)).',
+      )
+    }
+    const n = columnLength(marks)
+    // `fill` makes the array packed rather than holey, so `.map` visits it.
+    const rows = new Array<T>(n).fill(undefined as T)
+    colRows = { marks, n, rows }
+    return rows
   }
   // The theme in scope (provider → system scheme) with the prop merged over
   // it. Read inside the draw effect so a mode flip repaints.
@@ -919,13 +955,18 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // magicType: a line/bar switch retypes the INDEPENDENT marks only —
       // stacked/grouped/points keep their geometry (a stack is not a line).
       kind: m.kind,
+      // A column is indexed GLOBALLY too: drop it so `resolveMarks` reads
+      // through `y`, which already remaps — a zoomed or thinned frame is
+      // small, so the call per kept row is cheap.
+      column: undefined,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
-    return {
+    const spec: ChartSpec = {
     width: w,
     height: hgt,
+    ...(props.density === 'device' ? { m4Density: typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1.0 } : {}),
     // Accessors receive the GLOBAL index — an accessor keyed on position
     // (striping, ids) must not see its data renumbered by a zoom.
     series: hideHidden(resolved),
@@ -964,6 +1005,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => visibleIndexOf(g - off, keep)).filter((i) => i >= 0 && i < rows.length) } }
       : {}),
     }
+    // Resolve the value domain ONCE per frame. Unpinned, `resolveYDomain` is a
+    // full scan of every series (stack totals included), and a frame asks for
+    // it from layout, every series' geometry, markers and hit-testing — ten
+    // passes over a 100,000-point line. Filling it in returns the same Domain
+    // each later call computes. Not for a log axis: there a set `yDomain` reads
+    // as an author-pinned range (`logBounds`).
+    if (spec.yDomain === undefined && spec.yScale !== 'log') spec.yDomain = resolveYDomain(spec)
+    return spec
   }
 
   const draw = (): void => {
@@ -1969,12 +2018,22 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     },
   })
 
+  const labelReady = signal(isServer)
   const canvasNode = h('canvas', {
     class: props.class,
     // `img` + a label is what makes the canvas announce as a single described
     // thing rather than being skipped over entirely.
     role: 'img',
-    'aria-label': () => describeChart(a11yInput()),
+    // A LARGE chart's spoken description waits for the first paint, like its
+    // table: it is a full scan of every series (~3ms at 1M points) for an
+    // attribute assistive tech reads on focus, not during the first frame.
+    // Until then the canvas carries its title. A server render describes in
+    // full — `labelReady` starts true there.
+    'aria-label': () => {
+      const input = a11yInput()
+      if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? 'Chart'
+      return describeChart(input)
+    },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
     // The box the client will paint into, as SSR attributes: `prepareCanvas`
     // never runs on the server, and a server-rendered canvas with no size is
@@ -1983,6 +2042,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     ...canvasSizeAttrs(props.width, props.height ?? 200, props.dataZoom === true || props.brush === true || props.navigator === true),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
+      if (el !== null && !labelReady.peek()) afterPaint(() => labelReady.set(true))
       sizeObserver?.disconnect()
       sizeObserver = null
       stopDprWatch()
@@ -2136,7 +2196,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // from the accessibility tree along with the visual layout.
   // A real table rather than a longer label (see `a11yTableNode`), capped and
   // updated in place.
-  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data')
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data', () => chartRowCount(a11yInput()))
   const table = (): VNode => tableNode
 
 

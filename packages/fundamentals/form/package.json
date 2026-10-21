@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/form",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Signal-based form management for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/form#readme",
   "bugs": {
@@ -59,7 +59,7 @@
     "@pyreon/validation": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
@@ -67,11 +67,11 @@
     "@pyreon/validate": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@tanstack/form-core": "^1.33.5",
-    "arktype": "^2.2.5",
+    "arktype": "^2.2.8",
     "formik": "^2.4.9",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-hook-form": "^7.89.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.90.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

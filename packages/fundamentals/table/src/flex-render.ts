@@ -1,6 +1,6 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { untrack } from '@pyreon/reactivity'
-import type { Cell, RowData, Table, TableFeatures } from '@tanstack/table-core'
+import type { Cell, CellContext, Row, RowData, Table, TableFeatures } from '@tanstack/table-core'
 import { _getRowSignalBridge } from './use-table'
 
 /** Resolved renderable content — deliberately NOT the full `VNodeChild`.
@@ -114,24 +114,109 @@ export function flexRenderCell<TFeatures extends TableFeatures, TData extends Ro
     const cell = lookupCellByColumnId(table, rowId, columnId)
     return cell == null ? null : flexRender(cell.column.columnDef.cell, cell.getContext())
   }
-  bridge.rowSignal(rowId)()
+  const sig = bridge.rowSignal(rowId)
+  const version = sig()
+  // The row's `visibleCells` call just fetched exactly these cells; reuse them
+  // while the row's version has not moved, instead of walking the row model and
+  // the column map again for every cell of the row (measured ~640ns a cell).
+  // Any data, column or structural change bumps the version (see `useTable`),
+  // which forces a fresh lookup — so a cached cell is never a stale one.
+  const entry = rowCellsCache.get(sig)
+  const cached =
+    entry !== undefined && entry.version === version
+      ? (entry.byColumnId[columnId] as Cell<TFeatures, TData, unknown> | undefined)
+      : undefined
   const found = untrack(() => {
-    const cell = lookupCellByColumnId(table, rowId, columnId)
-    return cell == null ? undefined : { cell, context: untrackedValueContext(cell.getContext()) }
+    const cell = cached ?? lookupCellByColumnId(table, rowId, columnId)
+    return cell == null ? undefined : { cell, context: cellContext(cell) }
   })
   if (found === undefined) return null
   return flexRender(found.cell.column.columnDef.cell, found.context)
 }
 
+/**
+ * A row's visible cells by column id, as its last `visibleCells` call found
+ * them, tagged with the row-signal version they were read at. Keyed by the row
+ * signal (a `WeakMap`), so an entry is collected with the signal when the row
+ * leaves the model — no eviction to manage.
+ */
+// The values are each table's own `Cell` type; one module-level map serves
+// every table, so it stores `unknown` and the single read site narrows it back
+// (the entry was written by `visibleCells` for this same table and row).
+const rowCellsCache = new WeakMap<object, { version: number; byColumnId: Record<string, unknown> }>()
+
+/**
+ * Does this `getContext` return exactly table-core's core context (a plain
+ * object with these six keys)? Decided once per `getContext` FUNCTION, from the
+ * first context it produces: a feature that overrides it, or code that patches
+ * it, is a different function and gets its own answer. Keyed weakly, so an
+ * entry dies with its function.
+ */
+const CORE_CONTEXT_KEYS = ['table', 'column', 'row', 'cell', 'getValue', 'renderValue']
+const coreContextShape = new WeakMap<object, boolean>()
+function isCoreContext(context: object): boolean {
+  const keys = Object.keys(context)
+  return (
+    Object.getPrototypeOf(context) === Object.prototype &&
+    keys.length === CORE_CONTEXT_KEYS.length &&
+    CORE_CONTEXT_KEYS.every((k) => keys.includes(k))
+  )
+}
+
+/**
+ * The context handed to a cell renderer, with `getValue` / `renderValue`
+ * untracked (see `flexRenderCell`). For the core context shape it is built
+ * directly — the same six keys `cell_getContext` produces — instead of
+ * building table-core's context and then copying it: one object and two
+ * closures per cell instead of two objects and four (measured ~2 ms less per
+ * 6,000 cells). Any other shape takes `untrackedValueContext`.
+ */
+function cellContext<TFeatures extends TableFeatures, TData extends RowData>(
+  cell: Cell<TFeatures, TData, unknown>,
+): CellContext<TFeatures, TData, unknown> {
+  const getContext = cell.getContext
+  let core = coreContextShape.get(getContext)
+  if (core === undefined) {
+    const sample = cell.getContext()
+    core = isCoreContext(sample)
+    coreContextShape.set(getContext, core)
+    if (!core) return untrackedValueContext(sample)
+  } else if (!core) {
+    return untrackedValueContext(cell.getContext())
+  }
+  return {
+    table: (cell as unknown as { table: Table<TFeatures, TData> }).table,
+    column: cell.column,
+    row: cell.row,
+    cell,
+    getValue: () => untrack(() => cell.getValue()),
+    renderValue: () => untrack(() => cell.renderValue()),
+  } as CellContext<TFeatures, TData, unknown>
+}
+
 /** A cell context whose value readers do not subscribe (see `flexRenderCell`).
  *  Same prototype + own properties as the original; only `getValue` and
- *  `renderValue` (always present on a v9 cell context) are wrapped. */
+ *  `renderValue` (always present on a v9 cell context) are wrapped.
+ *
+ *  This runs once per cell per render, so its cost scales with the table.
+ *  table-core builds the context as a plain object literal of data properties
+ *  (`cell_getContext`), and for that shape a spread produces exactly the same
+ *  object as copying descriptors — measured ~13x cheaper (0.2ms vs 2.9ms per
+ *  6,000 cells). Any other prototype keeps the descriptor copy, which also
+ *  preserves accessors. */
 function untrackedValueContext<C extends { getValue: () => unknown; renderValue: () => unknown }>(
   context: C,
 ): C {
+  const { getValue, renderValue } = context
+  if (Object.getPrototypeOf(context) === Object.prototype) {
+    return {
+      ...context,
+      getValue: () => untrack(() => getValue.call(context)),
+      renderValue: () => untrack(() => renderValue.call(context)),
+    }
+  }
   const wrapped = Object.create(Object.getPrototypeOf(context) as object) as C
   Object.defineProperties(wrapped, Object.getOwnPropertyDescriptors(context))
-  const { getValue, renderValue } = context
   const define = (name: 'getValue' | 'renderValue', fn: () => unknown): void => {
     Object.defineProperty(wrapped, name, {
       value: () => untrack(() => fn.call(context)),
@@ -151,12 +236,40 @@ function untrackedValueContext<C extends { getValue: () => unknown; renderValue:
  *  columnVisibility feature is registered; else an O(C) scan. This replaces a
  *  per-cell `getVisibleCells().find(...)`, which was O(C²) per row (O(N·C²) on a
  *  full render). Returns `undefined` when the row or column is absent. */
+/**
+ * The row object for `rowId` in the CURRENT row model.
+ *
+ * `rowsById` is not always that object: table-core's sorted model passes the
+ * PRE-sort `rowsById` through, while it clones any row whose sub-rows it
+ * reorders. Looking such a row up by id returns the original, so a cell reading
+ * `row.subRows` would show the unsorted order. A row without sub-rows is never
+ * cloned, so the common case returns straight from `rowsById`; only rows with
+ * sub-rows consult the model's own `flatRows`, indexed once per row model (a
+ * WeakMap keyed by the model, so an index dies with its model).
+ */
+const flatRowIndex = new WeakMap<object, Map<string, unknown>>()
+function liveRow<TFeatures extends TableFeatures, TData extends RowData>(
+  table: Table<TFeatures, TData>,
+  rowId: string,
+): Row<TFeatures, TData> | undefined {
+  const model = table.getRowModel()
+  const row = model.rowsById[rowId]
+  if (row == null || !(row.subRows?.length > 0)) return row ?? undefined
+  let index = flatRowIndex.get(model)
+  if (index === undefined) {
+    index = new Map()
+    for (const r of model.flatRows) index.set(r.id, r)
+    flatRowIndex.set(model, index)
+  }
+  return (index.get(rowId) as Row<TFeatures, TData> | undefined) ?? row
+}
+
 function lookupCellByColumnId<TFeatures extends TableFeatures, TData extends RowData>(
   table: Table<TFeatures, TData>,
   rowId: string,
   columnId: string,
 ): Cell<TFeatures, TData, unknown> | undefined {
-  const row = table.getRowModel().rowsById[rowId]
+  const row = liveRow(table, rowId)
   if (row == null) return undefined
   const byId = (
     row as { getVisibleCellsByColumnId?: () => Record<string, Cell<TFeatures, TData, unknown>> }
@@ -176,7 +289,7 @@ function lookupVisibleCells<TFeatures extends TableFeatures, TData extends RowDa
   table: Table<TFeatures, TData>,
   rowId: string,
 ): VisibleCells<TFeatures, TData> {
-  const row = table.getRowModel().rowsById[rowId]
+  const row = liveRow(table, rowId)
   if (row == null) return []
   const withVisible = row as { getVisibleCells?: () => VisibleCells<TFeatures, TData> }
   return typeof withVisible.getVisibleCells === 'function' ? withVisible.getVisibleCells() : row.getAllCells()
@@ -240,7 +353,16 @@ export function visibleCells<TFeatures extends TableFeatures, TData extends RowD
 ): VisibleCells<TFeatures, TData> {
   const bridge = _getRowSignalBridge(table)
   if (!bridge) return lookupVisibleCells(table, rowId)
-  bridge.rowSignal(rowId)()
+  const sig = bridge.rowSignal(rowId)
+  const version = sig()
   trackColumnGeometry(table)
-  return untrack(() => lookupVisibleCells(table, rowId))
+  return untrack(() => {
+    const cells = lookupVisibleCells(table, rowId)
+    // Hand the row's cells to `flexRenderCell`, keyed by the row's signal so the
+    // entry dies with it when the row leaves the model.
+    const byColumnId: Record<string, unknown> = Object.create(null)
+    for (const c of cells) byColumnId[c.column.id] = c
+    rowCellsCache.set(sig, { version, byColumnId })
+    return cells
+  })
 }

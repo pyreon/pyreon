@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { transform as esbuildTransform } from 'esbuild'
 import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite'
+import { withSilent } from '@pyreon/reactivity'
 import { compileMarkdown } from './pipeline/parse'
 import type { HighlighterOptions } from './pipeline/highlighter'
 import {
@@ -44,6 +45,22 @@ import {
   validateAgainstSchema,
 } from './schema-validate'
 import type { Heading } from './types'
+
+/**
+ * `ssrLoadModule` for `content.config.ts`, inside the `@pyreon/reactivity`
+ * singleton sentinel's silent window — the same opt-out `@pyreon/zero`'s
+ * `ssrLoadModuleQuiet` uses.
+ *
+ * This plugin process already holds one set of `@pyreon/*` modules (its own
+ * import chain), and Vite's SSR module graph evaluates a SECOND set for the
+ * config — which imports `@pyreon/zero-content` for `defineCollection`. Two
+ * module records of the same package are expected here, not an app bug, but
+ * outside the window the sentinel throws, the config fails to load, and every
+ * page of a content site answers 500 in dev.
+ */
+function ssrLoadQuiet(server: ViteDevServer, file: string): Promise<{ default?: unknown }> {
+  return withSilent(() => server.ssrLoadModule(file) as Promise<{ default?: unknown }>)
+}
 
 /**
  * Build the search entry for one page — the page is the single searchable
@@ -648,8 +665,7 @@ Until this file exists, getCollection() / getEntry() will throw "No content coll
         try {
           loadedConfig = await loadConfig(
             resolvedConfig.root,
-            async (file) =>
-              server.ssrLoadModule(file) as Promise<{ default?: unknown }>,
+            async (file) => ssrLoadQuiet(server, file),
           )
           if (loadedConfig) await maybeEmitTypes(loadedConfig)
         } catch (err) {
@@ -1229,11 +1245,7 @@ export {}
           loadedConfig = await loadConfig(
             resolvedConfig?.root ?? process.cwd(),
             async (file) => {
-              if (viteServer) {
-                return viteServer.ssrLoadModule(file) as Promise<{
-                  default?: unknown
-                }>
-              }
+              if (viteServer) return ssrLoadQuiet(viteServer, file)
               return defaultLoader(file)
             },
           )

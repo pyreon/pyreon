@@ -2,6 +2,28 @@
 import { untrack } from '@pyreon/reactivity'
 
 /**
+ * @internal Copy one own property descriptor onto `target`, forcing
+ * `configurable: true`.
+ *
+ * Every prop pipeline (split/merge/omit/pick/forward) copies DESCRIPTORS so
+ * getter-backed reactive props survive. But almost every prop is a plain
+ * data value, and `Object.defineProperty` with a freshly spread descriptor
+ * costs ~2x a plain assignment on V8 and JSC. A plain assignment onto an own
+ * key creates exactly `{ value, writable: true, enumerable: true,
+ * configurable: true }` — the same property the defineProperty path makes —
+ * so the fast path is taken only when the source is writable + enumerable.
+ * Getters, setters and any unusual data descriptor keep the defineProperty
+ * path. `__proto__` is excluded: assigning it would set the prototype.
+ */
+export function _copyProp(target: object, key: PropertyKey, desc: PropertyDescriptor): void {
+  if (desc.writable === true && desc.enumerable === true && key !== '__proto__') {
+    ;(target as Record<PropertyKey, unknown>)[key] = desc.value
+  } else {
+    Object.defineProperty(target, key, { ...desc, configurable: true })
+  }
+}
+
+/**
  * Split props into two groups: keys you want and the rest.
  * Unlike destructuring, this preserves reactivity (getters on the original object).
  *
@@ -15,7 +37,11 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
 ): [Pick<T, K[number]>, Omit<T, K[number]>] {
   const picked = {} as Pick<T, K[number]>
   const rest = {} as Omit<T, K[number]>
-  const keySet = new Set<string | symbol>(keys as (string | symbol)[])
+  // A linear `includes` scan, not a Set: callers pass short key lists (often
+  // an inline literal, so nothing could be cached per array), and building a
+  // Set per call costs more than scanning — measured never slower on V8 and
+  // 25-45% faster on JSC up to 20 keys. Same SameValueZero membership.
+  const keyList = keys as (string | symbol)[]
 
   // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them
   // silently. Without this, symbol-keyed props (e.g. branded reactive props
@@ -32,12 +58,7 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
     // and the caller omitted `configurable`). If we preserved that, any later
     // `Object.defineProperty` on the same key — including subsequent splitProps
     // post-processing or test mocks — would throw "Cannot redefine property".
-    const safe = { ...desc, configurable: true }
-    if (keySet.has(key)) {
-      Object.defineProperty(picked, key, safe)
-    } else {
-      Object.defineProperty(rest, key, safe)
-    }
+    _copyProp(keyList.includes(key) ? picked : rest, key, desc)
   }
 
   return [picked, rest]
@@ -86,6 +107,14 @@ function mergeProperty(
   key: string,
   desc: PropertyDescriptor,
 ): void {
+  // No collision (the common case): copy straight across without allocating
+  // the existing key's descriptor. Same outcome as the branches below with
+  // `existing` undefined.
+  if (!Object.hasOwn(result, key)) {
+    if (desc.get) Object.defineProperty(result, key, { ...desc, configurable: true })
+    else _copyProp(result, key, desc)
+    return
+  }
   const existing = Object.getOwnPropertyDescriptor(result, key)
   if (desc.get && existing) {
     mergeGetterWithExisting(result, key, desc, existing)
@@ -99,9 +128,90 @@ function mergeProperty(
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
   } else if (desc.value !== undefined || !existing) {
-    // Both static — later value wins if defined
-    Object.defineProperty(result, key, { ...desc, configurable: true })
+    // Both static — later value wins if defined. `existing` (when present) is
+    // a data property this merge created itself, so it is writable and
+    // configurable and the assignment fast path in `_copyProp` replaces it.
+    _copyProp(result, key, desc)
   }
+}
+
+/**
+ * @internal `omit(mergeProps(...sources), omitKeys)` in ONE pass — the shape
+ * every rocketstyle component runs on each render. Merging into a full copy
+ * and then copying it again minus the reserved keys allocated every prop's
+ * descriptor twice; skipping omitted keys during the merge produces the
+ * identical object (each key merges independently, so dropping it before or
+ * after the merge is the same). Like `omit`, only STRING keys are kept —
+ * `omit` iterates `Object.getOwnPropertyNames` — so symbol keys are skipped
+ * here too. `omitKeys` must be non-empty: `omit` with an empty key set takes a
+ * different path that also copies symbol keys.
+ */
+export function _mergePropsOmit<T extends Record<string, unknown>>(
+  omitKeys: ReadonlySet<string>,
+  ...sources: T[]
+): T {
+  const result = {} as T
+  for (const source of sources) {
+    for (const key of Reflect.ownKeys(source)) {
+      if (typeof key !== 'string' || omitKeys.has(key)) continue
+      const desc = Object.getOwnPropertyDescriptor(source, key)
+      /* v8 ignore next */
+      if (!desc) continue
+      mergeProperty(result, key, desc)
+    }
+  }
+  return result
+}
+
+/**
+ * @internal The `picked` half of `splitProps(props, keys)` alone, for callers
+ * that never use the `rest` copy (they merge from `props` with
+ * {@link _mergePropsExcept} instead). Same keys, order and descriptors.
+ * Takes a `Set` built once by the caller (a module constant), so membership
+ * is O(1) per prop — callers have long own-key lists.
+ */
+export function _pickProps<T extends object>(props: T, keys: ReadonlySet<PropertyKey>): Partial<T> {
+  const picked = {} as Partial<T>
+  for (const key of Reflect.ownKeys(props)) {
+    if (!keys.has(key)) continue
+    const desc = Object.getOwnPropertyDescriptor(props, key)
+    /* v8 ignore next */
+    if (!desc) continue
+    _copyProp(picked, key, desc)
+  }
+  return picked
+}
+
+/**
+ * @internal `mergeProps(rest, ...others)` where `rest` is the `rest` half of
+ * `splitProps(first, exclude)` — without building `rest`. Keys of `first`
+ * listed in `exclude` are skipped (symbol keys are kept, exactly as
+ * `splitProps` keeps them in `rest`); `others` merge in full, so a later
+ * source may still supply an excluded key. Identical result: `rest` held each
+ * descriptor with `configurable` forced, and every merge path forces it too.
+ */
+export function _mergePropsExcept<T extends Record<string, unknown>>(
+  exclude: ReadonlySet<PropertyKey>,
+  first: T,
+  ...others: Record<string, unknown>[]
+): T {
+  const result = {} as T
+  for (const key of Reflect.ownKeys(first)) {
+    if (exclude.has(key)) continue
+    const desc = Object.getOwnPropertyDescriptor(first, key)
+    /* v8 ignore next */
+    if (!desc) continue
+    mergeProperty(result, key as string, desc)
+  }
+  for (const source of others) {
+    for (const key of Reflect.ownKeys(source)) {
+      const desc = Object.getOwnPropertyDescriptor(source, key)
+      /* v8 ignore next */
+      if (!desc) continue
+      mergeProperty(result, key as string, desc)
+    }
+  }
+  return result
 }
 
 /**
@@ -167,7 +277,19 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
     // Keep getter-shaped descriptors verbatim (reactive props). For data
     // descriptors, drop `value === undefined` so they don't shadow defaults.
     if (d.get || d.value !== undefined) {
-      Object.defineProperty(result, key, d)
+      // Verbatim copy (no forced `configurable`): assignment reproduces the
+      // descriptor exactly only when the source is a plain writable,
+      // enumerable, configurable data property — the overwhelming case.
+      if (
+        d.writable === true &&
+        d.enumerable === true &&
+        d.configurable === true &&
+        key !== '__proto__'
+      ) {
+        result[key] = d.value
+      } else {
+        Object.defineProperty(result, key, d)
+      }
     }
   }
   return result
@@ -205,7 +327,9 @@ export function _rp<T>(fn: () => T): () => T {
  * shared object passed elsewhere as a plain value would then be misread as
  * a reactive prop); this allocates one thunk per prop, as `_rp` does.
  */
-export function _rpd<T>(sig: (() => T) & { direct?: unknown; _v?: unknown; peek?: unknown }): () => T {
+export function _rpd<T>(
+  sig: (() => T) & { direct?: unknown; _v?: unknown; peek?: unknown },
+): () => T {
   const t = (() => sig()) as (() => T) & Record<string | symbol, unknown>
   t[REACTIVE_PROP] = true
   // `direct`/`peek` are METHODS on the signal (they read `this`), so they are
@@ -372,9 +496,7 @@ export function _wrapSpread(
  *
  * Returns the same object if no reactive props found (fast path).
  */
-export function makeReactiveProps(
-  raw: Record<string, unknown>,
-): Record<string, unknown> {
+export function makeReactiveProps(raw: Record<string, unknown>): Record<string, unknown> {
   // SINGLE pass, copy-on-first-reactive-prop.
   //
   // All-static components (the majority — buttons, icons, layout) are unchanged:

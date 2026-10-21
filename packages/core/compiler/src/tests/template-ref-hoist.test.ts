@@ -58,7 +58,7 @@ export function App() {
     )
     expect(idx(code, 'const __p0 = ')).toBeLessThan(idx(code, '_mountSlot('))
     // The mutation still references the hoisted const.
-    idx(code, '_setStyle(__e0, styles.card);')
+    idx(code, '_setStyleOnce(__e0, styles.card);')
   })
 
   it('two adjacent slots: BOTH placeholder walks are hoisted above the FIRST _mountSlot', () => {

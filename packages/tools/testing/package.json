@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/testing",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Official testing utilities for Pyreon — Testing-Library-style render/screen/fireEvent plus reactive-native matchers",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/testing#readme",
@@ -152,8 +152,8 @@
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@testing-library/jest-dom": "^7.0.1",
-    "@vitest/browser-playwright": "^5.0.2",
-    "@vitus-labs/tools-rolldown": "^2.6.3"
+    "@vitest/browser-playwright": "^5.0.5",
+    "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "engines": {
     "node": ">= 22"

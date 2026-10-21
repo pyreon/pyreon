@@ -1,4 +1,4 @@
-import { mergeProps } from '@pyreon/core'
+import { _mergePropsOmit, mergeProps } from '@pyreon/core'
 import { SizedMap } from '@pyreon/sized-map'
 import {
   compose,
@@ -20,11 +20,7 @@ import type { Configuration, ExtendedConfiguration } from './types/configuration
 import type { RocketComponent } from './types/rocketComponent'
 import type { InnerComponentProps, RocketStyleComponent } from './types/rocketstyle'
 import type { ComponentFn } from './types/utils'
-import {
-  calculateChainOptions,
-  calculateStylingAttrs,
-  pickStyledAttrs,
-} from './utils/attrs'
+import { calculateChainOptions, calculateStylingAttrs, pickStyledAttrs } from './utils/attrs'
 import { chainOptions, chainOrOptions, chainReservedKeyOptions } from './utils/chaining'
 import { calculateHocsFuncs } from './utils/compose'
 import { getDimensionsMap } from './utils/dimensions'
@@ -67,8 +63,7 @@ type CloneAndEnhance = (
  *   const NewBtn = Button.config({ component: 'a' }).attrs(sharedAttrs)
  */
 const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
-  const componentChanged =
-    opts.component != null && opts.component !== defaultOpts.component
+  const componentChanged = opts.component != null && opts.component !== defaultOpts.component
 
   return rocketComponent({
     ...defaultOpts,
@@ -82,9 +77,7 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
       ? chainOptions(opts.priorityAttrs, [])
       : chainOptions(opts.priorityAttrs, defaultOpts.priorityAttrs),
     statics: { ...defaultOpts.statics, ...opts.statics },
-    compose: componentChanged
-      ? { ...opts.compose }
-      : { ...defaultOpts.compose, ...opts.compose },
+    compose: componentChanged ? { ...opts.compose } : { ...defaultOpts.compose, ...opts.compose },
     ...chainOrOptions(CONFIG_KEYS, opts, defaultOpts),
     ...chainReservedKeyOptions([...defaultOpts.dimensionKeys, ...STYLING_KEYS], opts, defaultOpts),
   } as Parameters<typeof rocketComponent>[0])
@@ -384,8 +377,7 @@ const rocketComponent: RocketComponent = (options) => {
         // arrays. Sort + join so equivalent sets hash identically; without
         // this both `['a','b']` and `['b','a']` would produce different keys.
         if (Array.isArray(v)) {
-          key +=
-            '|' + (v.length === 0 ? '' : (v as unknown[]).slice().sort().join(','))
+          key += '|' + (v.length === 0 ? '' : (v as unknown[]).slice().sort().join(','))
         } else {
           // String/number/boolean serialize directly. Anything else (including
           // undefined / objects) gets a typeof tag so we don't collide.
@@ -529,13 +521,30 @@ const rocketComponent: RocketComponent = (options) => {
     // `useLocalContext` always returns a truthy object (EMPTY_CTX `{ pseudo:
     // {} }` when there's no consumer, otherwise a `{ pseudo, ...result }`
     // object), so the `: props` arm is defensive and never taken.
-    const mergedProps = localCtx
-      ? mergeProps(localCtx as Record<string, unknown>, props as Record<string, unknown>)
-      : /* v8 ignore next */ props
+    //
+    // Without `passProps` (the normal case) the merged object exists only to
+    // be copied again minus the reserved keys, so merge and omit in ONE pass
+    // (`_mergePropsOmit` ≡ `omit(mergeProps(...), omitSet)`; `omitSet` always
+    // holds the static reserved keys, so it is never empty). `passProps`
+    // needs the merged object itself, so it keeps the two-step form.
+    const mergedProps =
+      options.passProps && localCtx
+        ? mergeProps(localCtx as Record<string, unknown>, props as Record<string, unknown>)
+        : /* v8 ignore next */ props
 
     // omit() preserves descriptors (since ui-core's omit was updated to
     // copy descriptors), so reactive getters carry through to finalProps.
-    const finalProps = omit(mergedProps as Record<string, unknown>, omitSet) as Record<string, any>
+    const finalProps = (
+      options.passProps
+        ? omit(mergedProps as Record<string, unknown>, omitSet)
+        : localCtx
+          ? _mergePropsOmit(
+              omitSet,
+              localCtx as Record<string, unknown>,
+              props as Record<string, unknown>,
+            )
+          : /* v8 ignore next */ omit(props as Record<string, unknown>, omitSet)
+    ) as Record<string, any>
 
     if (options.passProps) {
       const passed = pick(mergedProps, options.passProps)

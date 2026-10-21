@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/mcp",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "MCP server for Pyreon — AI-powered framework assistance",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/mcp#readme",
@@ -52,7 +52,7 @@
     }
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/lathe": "workspace:^",
     "typescript": ">=5.0.0 <7.0.0",

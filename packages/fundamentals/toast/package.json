@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/toast",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Imperative toast notifications for Pyreon — no provider needed",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/toast#readme",
@@ -60,14 +60,14 @@
     }
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.2",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "@vitest/browser-playwright": "^5.0.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-hot-toast": "^2.6.1",
     "sonner": "^2.0.8"
   },

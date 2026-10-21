@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/storage",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Reactive client-side storage for Pyreon \u2014 localStorage, sessionStorage, cookies, IndexedDB",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/storage#readme",
@@ -56,15 +56,15 @@
     }
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "bun-types": "^1.4.2",
-    "fake-indexeddb": "^6.2.5",
-    "jotai": "^3.0.0",
+    "bun-types": "^1.4.3",
+    "fake-indexeddb": "^6.2.6",
+    "jotai": "^3.0.1",
     "zustand": "^5.0.15"
   },
   "publishConfig": {

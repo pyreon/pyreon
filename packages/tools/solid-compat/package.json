@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/solid-compat",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "SolidJS-compatible API shim for Pyreon — write Solid-style code that runs on Pyreon's reactive engine",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/solid-compat#readme",
@@ -56,13 +56,13 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.2",
-    "happy-dom": "^20.14.5"
+    "@vitest/browser-playwright": "^5.0.5",
+    "happy-dom": "^21.0.3"
   },
   "publishConfig": {
     "access": "public"

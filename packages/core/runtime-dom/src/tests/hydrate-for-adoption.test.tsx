@@ -101,15 +101,15 @@ describe('For hydration — keyed adoption', () => {
     // null keeps ALL specs green (interpretive fallback is the old path) but
     // fails THIS assertion.
     expect(replayed()).toBe(3)
-    // k: markers are ADOPTED as the rows' anchors (zero removals at hydrate
-    // time); each marker travels and DIES with its row through the normal
-    // reconciler — removing a row removes its marker.
-    expect(host.innerHTML).toContain('k:1')
+    // Single-element rows ship WITHOUT per-row markers — their keys ride on
+    // the closing marker, which hydration reads once and normalizes. Each row
+    // element is its own anchor, so removing a row removes exactly it.
+    expect(host.innerHTML).not.toContain('k:')
+    expect(host.innerHTML).toContain('<!--/pyreon-for-->')
     const shrunk = [...clientRows()]
     shrunk.splice(0, 1) // drop id 1
     clientRows.set(shrunk)
-    expect(host.innerHTML).not.toContain('k:1')
-    expect(host.innerHTML).toContain('k:2')
+    expect(Array.from(host.querySelectorAll('b'))).toEqual(before.slice(1))
     dispose()
   })
 

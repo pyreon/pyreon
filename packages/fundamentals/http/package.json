@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/http",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Pyreon HTTP client — onion middleware, typed errors, optional schema-validated responses. The transport layer under @pyreon/query.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/http#readme",
@@ -111,15 +111,15 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.104.0",
-    "@vitest/browser-playwright": "^5.0.2",
-    "arktype": "^2.2.5",
+    "@tanstack/query-core": "^5.104.5",
+    "@vitest/browser-playwright": "^5.0.5",
+    "arktype": "^2.2.8",
     "axios": "^1.20.0",
-    "ky": "^2.1.0",
+    "ky": "^2.2.0",
     "ofetch": "^1.5.1",
     "redaxios": "^0.5.1",
     "valibot": "^1.5.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "publishConfig": {
     "access": "public"

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-hn-clone",
-  "version": "0.50.2",
+  "version": "0.50.3",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -51,9 +51,9 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "@tanstack/query-core": "^5.104.0",
-    "@tanstack/virtual-core": "^3.17.7",
-    "zod": "^4.5.4"
+    "@tanstack/query-core": "^5.104.5",
+    "@tanstack/virtual-core": "^3.19.6",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@pyreon/mcp": "workspace:*",
@@ -61,6 +61,6 @@
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero-cli": "workspace:*",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/test-utils",
-  "version": "0.50.2",
+  "version": "0.50.3",
   "private": true,
   "description": "Internal testing utilities for Pyreon UI system components",
   "license": "MIT",
@@ -47,10 +47,10 @@
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser": "^5.0.2",
-    "@vitest/browser-playwright": "^5.0.2",
-    "@vitest/coverage-v8": "^5.0.2",
-    "happy-dom": "^20.14.5",
-    "vitest": "^5.0.2"
+    "@vitest/browser": "^5.0.5",
+    "@vitest/browser-playwright": "^5.0.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "happy-dom": "^21.0.3",
+    "vitest": "^5.0.5"
   }
 }

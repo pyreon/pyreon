@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-form-bench",
-  "version": "0.50.2",
+  "version": "0.50.3",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.1",
+    "@hookform/resolvers": "^6.0.0",
     "@pyreon/core": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
@@ -26,24 +26,24 @@
     "@vee-validate/zod": "^4.15.1",
     "felte": "^1.3.0",
     "formik": "^2.4.9",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-hook-form": "^7.89.0",
-    "solid-js": "^1.9.15",
-    "svelte": "^5.57.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.90.0",
+    "solid-js": "^1.9.17",
+    "svelte": "^5.57.2",
     "vee-validate": "^4.15.1",
-    "vue": "^3.5.43",
-    "zod": "^4.5.4"
+    "vue": "^3.5.44",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.1",
     "typescript": "^6.0.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.4"
   }
 }

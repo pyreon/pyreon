@@ -15,6 +15,7 @@ import {
   _setAttr,
   _setClass,
   _setStyle,
+  _setStyleOnce,
   _setValue,
   _setHtml,
   bindPolymorphicText,
@@ -24,7 +25,7 @@ import {
 
 const DEPS = {
   _tpl, _bind, _bindText, _bindProp, _bindDirect, _setChild, _setChildAt, bindPolymorphicText,
-  _applyProps, _bindSpread, _setStyle, _setClass, _setAttr, _setValue, _setHtml, _rp, _rpd,
+  _applyProps, _bindSpread, _setStyle, _setStyleOnce, _setClass, _setAttr, _setValue, _setHtml, _rp, _rpd,
   _cx: cx, h, Fragment, signal, document,
 } as const
 

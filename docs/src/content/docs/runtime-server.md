@@ -200,10 +200,10 @@ const vnode = (
 )
 
 const html = await renderToString(vnode)
-// => '<!--pyreon-for--><li>apple</li><li>banana</li><li>cherry</li><!--/pyreon-for-->'
+// => '<!--pyreon-for--><li>apple</li><li>banana</li><li>cherry</li><!--/pyreon-for:apple banana cherry-->'
 ```
 
-The `<!--pyreon-for-->` and `<!--/pyreon-for-->` markers are used by the client-side hydrator to match server-rendered list items with their reactive counterparts.
+The `<!--pyreon-for-->` and `<!--/pyreon-for…-->` markers bracket the list, and the item keys on the closing marker let the client-side hydrator match server-rendered items with their reactive counterparts (see [For List Key Markers](#for-list-key-markers)).
 
 ### Fragment Rendering
 
@@ -1185,17 +1185,29 @@ All text content and attribute values within Suspense templates go through the s
 
 ## For List Key Markers
 
-When rendering `<For>` lists during SSR, each item now includes a key marker comment for precise hydration matching:
+`<For>` SSR output carries every item's key, so the client-side hydrator can match server-rendered items with their reactive counterparts by key rather than by position, and adopt the existing DOM instead of rebuilding it.
+
+When the rows render a single element each — the common case, such as a table or a list, whether the row is written as an element or as a component that renders one — the keys travel once, space-separated, on the closing marker:
 
 ```html
 <!--pyreon-for-->
-<!--k:apple--><li>apple</li>
-<!--k:banana--><li>banana</li>
-<!--k:cherry--><li>cherry</li>
-<!--/pyreon-for-->
+<li>apple</li>
+<li>banana</li>
+<li>cherry</li>
+<!--/pyreon-for:apple banana cherry-->
 ```
 
-The `<!--k:key-->` comments allow the client-side hydrator to match server-rendered items with their reactive counterparts by key rather than by position. This improves hydration accuracy when list items are reordered between server render and client hydration.
+A row of any other shape (a fragment, an accessor such as the `() => cond() ? <A/> : <B/>` component return, text, or an async component) can render a variable number of nodes, so from the first such row on, every row gets its own `<!--k:key-->` marker:
+
+```html
+<!--pyreon-for-->
+<li>apple</li>
+<!--k:banana--><span>ban</span><span>ana</span>
+<!--k:cherry--><li>cherry</li>
+<!--/pyreon-for:apple-->
+```
+
+Keys are URL-encoded (and `-` is escaped), so a user-supplied key can never close the comment or contain the space that separates the list. Hydration verifies every key before adopting anything and re-renders the list if they don't match. It also still accepts the older format, with a marker before every row.
 
 ---
 

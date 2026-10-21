@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/table",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Pyreon adapter for TanStack Table",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/table#readme",
@@ -62,16 +62,16 @@
     "@tanstack/store": "^0.11.2"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@tanstack/react-table": "9.2.4",
-    "bun-types": "^1.4.2",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "@tanstack/react-table": "9.3.1",
+    "bun-types": "^1.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "publishConfig": {
     "access": "public"

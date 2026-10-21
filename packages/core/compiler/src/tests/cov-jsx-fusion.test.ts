@@ -41,9 +41,15 @@ describe('jsx.ts — the fused shape', () => {
     expect(out).toContain('_bindText(count')
   })
 
-  it('does NOT fuse when NO part is reactive', () => {
-    const out = t('export const A = () => <span>a {b} c</span>')
-    expect(out).not.toContain('_fuse(')
+  it('an all-static run fuses STATICALLY on the template path — one `_setChild`, no binding', () => {
+    const out = bothAgree('export const A = () => <span>a {b} c</span>')
+    expect(out).toContain('_setChild(__root, _fuse("a ", b, " c"))')
+    expect(out).not.toContain('bindPolymorphicText')
+    expect(out).toContain('_tpl("<span></span>"')
+  })
+
+  it('an all-static run is NOT fused on the SSR path (it is already one marker-free text run)', () => {
+    expect(t('export const A = () => <span>a {b} c</span>', SSR)).not.toContain('_fuse(')
   })
 
   it('an EMPTY expression container between parts is skipped, not fused', () => {

@@ -7,7 +7,7 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { h, mergeProps, onMount, splitProps } from '@pyreon/core'
+import { _mergePropsExcept, _pickProps, h, onMount } from '@pyreon/core'
 import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { resolveSlot } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
@@ -47,8 +47,7 @@ const defaultAlignX = 'left'
 const defaultAlignY = 'center'
 
 // Numeric zero is content; only absent, false and empty-string slots are empty.
-const hasSlotContent = (value: unknown): boolean =>
-  value != null && value !== false && value !== ''
+const hasSlotContent = (value: unknown): boolean => value != null && value !== false && value !== ''
 
 const SLOT_KEYS = ['beforeContent', 'afterContent'] as const
 
@@ -78,37 +77,44 @@ const LAYOUT_KEYS = [
   'afterContentAlignY',
 ] as const
 
+// Keys the Element consumes itself; everything else forwards to the Wrapper.
+const ELEMENT_OWN_KEYS = [
+  'innerRef',
+  'tag',
+  'label',
+  'content',
+  'children',
+  'beforeContent',
+  'afterContent',
+  'equalBeforeAfter',
+  'block',
+  'equalCols',
+  'gap',
+  'direction',
+  'alignX',
+  'alignY',
+  'css',
+  'contentCss',
+  'beforeContentCss',
+  'afterContentCss',
+  'contentDirection',
+  'contentAlignX',
+  'contentAlignY',
+  'beforeContentDirection',
+  'beforeContentAlignX',
+  'beforeContentAlignY',
+  'afterContentDirection',
+  'afterContentAlignX',
+  'afterContentAlignY',
+  'ref',
+] as const
+const ELEMENT_OWN_KEY_SET: ReadonlySet<PropertyKey> = /* @__PURE__ */ new Set(ELEMENT_OWN_KEYS)
+
 const Component: PyreonElement = (props) => {
-  const [own, rest] = splitProps(props, [
-    'innerRef',
-    'tag',
-    'label',
-    'content',
-    'children',
-    'beforeContent',
-    'afterContent',
-    'equalBeforeAfter',
-    'block',
-    'equalCols',
-    'gap',
-    'direction',
-    'alignX',
-    'alignY',
-    'css',
-    'contentCss',
-    'beforeContentCss',
-    'afterContentCss',
-    'contentDirection',
-    'contentAlignX',
-    'contentAlignY',
-    'beforeContentDirection',
-    'beforeContentAlignX',
-    'beforeContentAlignY',
-    'afterContentDirection',
-    'afterContentAlignX',
-    'afterContentAlignY',
-    'ref',
-  ])
+  // Only the OWN half is materialised: `rest` existed solely as the first
+  // source of the merges below, so they read `props` directly with these keys
+  // excluded (`_mergePropsExcept`) — one full prop copy per render saved.
+  const own = _pickProps(props, ELEMENT_OWN_KEY_SET)
 
   // ── Two-path reactive design ───────────────────────────────────────────
   // Getter-shaped props (compiler `_rp()` → getter via `makeReactiveProps`)
@@ -215,7 +221,9 @@ const Component: PyreonElement = (props) => {
     // --------------------------------------------------------
     // check if should render only single element
     // --------------------------------------------------------
-    const shouldBeEmpty = !!rest.dangerouslySetInnerHTML || getShouldBeEmpty(own.tag)
+    const shouldBeEmpty =
+      !!(props as { dangerouslySetInnerHTML?: unknown }).dangerouslySetInnerHTML ||
+      getShouldBeEmpty(own.tag)
 
     // --------------------------------------------------------
     // if not single element, calculate values
@@ -290,7 +298,14 @@ const Component: PyreonElement = (props) => {
     // object-spread into an override literal — a `{ ...WRAPPER_PROPS }`
     // spread would fire its getters and re-freeze the reactive layout path.)
     if (shouldBeEmpty) {
-      return h(Wrapper, mergeProps(rest as Record<string, unknown>, buildWrapperProps()))
+      return h(
+        Wrapper,
+        _mergePropsExcept(
+          ELEMENT_OWN_KEY_SET,
+          props as Record<string, unknown>,
+          buildWrapperProps(),
+        ),
+      )
     }
 
     // Simple-Element fast path: no beforeContent / afterContent slots, and no
@@ -299,7 +314,7 @@ const Component: PyreonElement = (props) => {
     // hop, one splitProps call, and one mountChild per Element. The Wrapper
     // helper still exists for the rare needsFix case below; tests that asserted
     // Wrapper appears in the VNode tree are updated to the new shape.
-    const dangerouslySetInnerHTML = (rest as { dangerouslySetInnerHTML?: unknown })
+    const dangerouslySetInnerHTML = (props as { dangerouslySetInnerHTML?: unknown })
       .dangerouslySetInnerHTML
     const needsFix = !dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
 
@@ -330,7 +345,7 @@ const Component: PyreonElement = (props) => {
       }
       return h(
         WrapperStyled,
-        mergeProps(rest as Record<string, unknown>, {
+        _mergePropsExcept(ELEMENT_OWN_KEY_SET, props as Record<string, unknown>, {
           ...WRAPPER_DEV_PROPS,
           ref: mergedRef,
           as: own.tag,
@@ -343,10 +358,15 @@ const Component: PyreonElement = (props) => {
     if (isSimpleElement) {
       return h(
         Wrapper,
-        mergeProps(rest as Record<string, unknown>, buildWrapperProps(), {
-          isInline,
-          children: () => resolveSlot(getChildren()),
-        }),
+        _mergePropsExcept(
+          ELEMENT_OWN_KEY_SET,
+          props as Record<string, unknown>,
+          buildWrapperProps(),
+          {
+            isInline,
+            children: () => resolveSlot(getChildren()),
+          },
+        ),
       )
     }
 
@@ -422,10 +442,15 @@ const Component: PyreonElement = (props) => {
 
     return h(
       Wrapper,
-      mergeProps(rest as Record<string, unknown>, buildWrapperProps(), {
-        isInline,
-        children: compoundChildren,
-      }),
+      _mergePropsExcept(
+        ELEMENT_OWN_KEY_SET,
+        props as Record<string, unknown>,
+        buildWrapperProps(),
+        {
+          isInline,
+          children: compoundChildren,
+        },
+      ),
     )
   }
 
