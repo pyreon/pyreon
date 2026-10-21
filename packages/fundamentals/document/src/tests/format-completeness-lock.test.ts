@@ -1,3 +1,8 @@
+// @vitest-environment node
+// Renders real PDFs, which happen on the server in practice. Under happy-dom
+// the PDF renderer correctly picks pdfmake's BROWSER build, whose PNG decoding
+// (pdfmake >= 0.3.12) needs a Web Worker that happy-dom lacks. Nothing here
+// needs a DOM, so run where the Node entry is used.
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
