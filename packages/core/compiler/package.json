@@ -83,7 +83,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "happy-dom": "^21.0.3"
+    "happy-dom": "^21.0.4"
   },
   "optionalDependencies": {
     "@pyreon/compiler-darwin-arm64": "workspace:^",

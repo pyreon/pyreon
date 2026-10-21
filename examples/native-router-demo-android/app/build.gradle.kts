@@ -13,7 +13,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
 
 android {
@@ -74,7 +74,7 @@ dependencies {
     // compile. Verified from the artifacts: compose-bom 2026.08.00 ships
     // compose 1.12 (needs 37) and androidx.core 1.19.0 needs 37, so both are
     // held one release back. Raising either requires AGP 9 + compileSdk 37.
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -82,7 +82,7 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // TWO runtime sources in the runtime-kotlin srcDir import okhttp3:
     // PyreonWebSocketOkHttp.kt (the default transport behind the TS-side
     // ws.connect()) and PyreonHttpOkHttp.kt (the executor behind a
@@ -94,16 +94,16 @@ dependencies {
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
     // used or not; R8 strips the unused classes from release builds.
-    implementation("androidx.media3:media3-exoplayer:1.11.0")
-    implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
     // Media-row remote image: the emit lowers <Image src="http…"> to
     // Coil's AsyncImage composable (build.ts adds the conditional
     // import; the DEP lives here — an emit whose import resolves but
     // whose artifact is missing fails only at the real gradle build,
     // the stub-masked-symbol class).
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("androidx.core:core-ktx:1.18.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
     // Instrumented-test deps. Same as the other Android examples.
@@ -112,7 +112,7 @@ dependencies {
     // so without this line ui-test-junit4 resolves VERSIONLESS
     // ("Could not find androidx.compose.ui:ui-test-junit4:" — the
     // first device-CI run to reach dependency resolution caught it).
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

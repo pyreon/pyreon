@@ -27,12 +27,12 @@
         "@vitest/browser": "^5.0.5",
         "@vitest/coverage-v8": "^5.0.5",
         "@vitus-labs/tools-rolldown": "^2.8.0",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "babel-preset-solid": "^1.9.16",
         "esbuild": "^0.28.2",
         "find-my-way": "^9.10.0",
         "goober": "^2.1.19",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "hono": "^4.13.13",
         "next": "16.4.2",
         "oxc-parser": "^0.155.0",
@@ -51,7 +51,7 @@
         "typescript": "^6.0.3",
         "unhead": "^3.4.3",
         "valibot": "^1.5.0",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "vitest": "^5.0.5",
         "vue-router": "^5.4.0",
         "y-protocols": "^1.0.7",
@@ -110,7 +110,7 @@
         "@types/bun": "^1.4.3",
         "beasties": "^0.5.5",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/ai-reference": {
@@ -127,7 +127,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/app-showcase": {
@@ -179,7 +179,7 @@
         "docx": "^9.13.0",
         "pdfmake": "^0.3.12",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/atlas-workshop": {
@@ -258,7 +258,7 @@
         "oxc-parser": "^0.155.0",
         "playwright": "^1.64.1",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/chat": {
@@ -287,7 +287,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/zero-cli": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/collab-board": {
@@ -316,7 +316,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-app": {
@@ -346,7 +346,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-app-preact": {
@@ -377,7 +377,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-app-react": {
@@ -408,7 +408,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-app-solid": {
@@ -439,7 +439,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-app-vue": {
@@ -470,7 +470,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-blog": {
@@ -494,7 +494,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cpa-pw-dash": {
@@ -527,7 +527,7 @@
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/cssvars-bench": {
@@ -549,7 +549,7 @@
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/docs-pyreon": {
@@ -579,7 +579,7 @@
         "markdown-it": "^15.0.3",
         "shiki": "^4.5.0",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/edge-runtimes": {
@@ -598,7 +598,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/experiments": {
@@ -661,7 +661,7 @@
         "@types/react-dom": "^19.3.0",
         "playwright": "^1.64.1",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/fundamentals-playground": {
@@ -707,9 +707,9 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "vitest": "^5.0.5",
       },
     },
@@ -763,7 +763,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/zero-cli": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/islands-showcase": {
@@ -781,7 +781,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/kanban": {
@@ -814,7 +814,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/zero-cli": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/lathe-bookshelf": {
@@ -834,7 +834,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "vitest": "^5.0.5",
       },
     },
@@ -949,7 +949,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/native-tasks": {
@@ -1058,7 +1058,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/native-todomvc-android": {
@@ -1094,7 +1094,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/native-viz": {
@@ -1134,7 +1134,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/playground": {
@@ -1153,7 +1153,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/preact-compat": {
@@ -1169,7 +1169,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/react-compat": {
@@ -1185,7 +1185,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/real-bench": {
@@ -1205,7 +1205,7 @@
         "@types/react-dom": "^19.3.0",
         "playwright": "^1.64.1",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/solid-compat": {
@@ -1221,7 +1221,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/ssr-showcase": {
@@ -1248,7 +1248,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/svelte-compat": {
@@ -1264,7 +1264,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/sync-yjs-demo": {
@@ -1281,7 +1281,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "examples/ui-showcase": {
@@ -1318,9 +1318,9 @@
         "@testing-library/jest-dom": "^7.0.1",
         "@types/bun": "^1.4.3",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "vitest": "^5.0.5",
       },
     },
@@ -1337,7 +1337,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
     },
     "packages/core/compiler": {
@@ -1356,7 +1356,7 @@
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "optionalDependencies": {
         "@pyreon/compiler-darwin-arm64": "workspace:^",
@@ -1445,7 +1445,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "rolldown": "^1.2.14",
       },
       "peerDependencies": {
@@ -1488,7 +1488,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -1513,9 +1513,9 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
         "esbuild": "^0.28.2",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "rolldown": "^1.2.14",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -1630,7 +1630,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
         "echarts": "^6.1.0",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
@@ -1801,7 +1801,7 @@
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "valibot": "^1.5.0",
         "zod": "^4.6.7",
       },
@@ -1856,7 +1856,7 @@
         "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@tanstack/form-core": "^1.33.5",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "formik": "^2.4.9",
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
@@ -1939,7 +1939,7 @@
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.104.5",
         "@vitest/browser-playwright": "^5.0.5",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "axios": "^1.20.0",
         "ky": "^2.2.0",
         "ofetch": "^1.5.1",
@@ -2104,7 +2104,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "bun-types": "^1.4.3",
         "mobx": "^7.1.0",
         "mobx-state-tree": "^8.0.0",
@@ -2157,7 +2157,7 @@
         "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "bun-types": "^1.4.3",
         "jotai": "^3.0.1",
         "valibot": "^1.5.0",
@@ -2290,7 +2290,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@sinclair/typebox": "^0.34.52",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "joi": "^18.3.0",
         "typia": "^15.1.0",
         "valibot": "^1.5.0",
@@ -2319,7 +2319,7 @@
         "@pyreon/store": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "arktype": "^2.2.8",
+        "arktype": "^2.2.9",
         "valibot": "^1.5.0",
         "zod": "^4.6.7",
       },
@@ -2388,7 +2388,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/unistyle": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "vitest": "^5.0.5",
       },
     },
@@ -2416,7 +2416,7 @@
         "@vitest/browser": "^5.0.5",
         "@vitest/browser-playwright": "^5.0.5",
         "@vitest/coverage-v8": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "vitest": "^5.0.5",
       },
     },
@@ -2433,7 +2433,7 @@
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
         "@vitest/coverage-v8": "^5.0.5",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "vitest": "^5.0.5",
       },
       "peerDependencies": {
@@ -2523,9 +2523,9 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "playwright-core": ">=1.40",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "zod": "^4.6.7",
       },
       "peerDependencies": {
@@ -2618,7 +2618,7 @@
         "@pyreon/zero-content": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
         "axios": "^1.20.0",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "ky": "^2.2.0",
         "oxc-parser": "^0.155.0",
         "zod": "^4.6.7",
@@ -2686,7 +2686,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@pyreon/zero": "workspace:*",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
       "peerDependencies": {
         "@pyreon/head": "workspace:*",
@@ -2743,7 +2743,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2761,7 +2761,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2779,7 +2779,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2814,7 +2814,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2892,7 +2892,7 @@
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
       "peerDependencies": {
         "@pyreon/runtime-dom": "workspace:^",
@@ -2909,7 +2909,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -3265,7 +3265,7 @@
         "@pyreon/cli": "workspace:^",
         "@pyreon/create-zero": "workspace:^",
         "@pyreon/zero": "workspace:^",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
       "devDependencies": {
         "@pyreon/router": "workspace:*",
@@ -3361,7 +3361,7 @@
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/vite-plugin": "workspace:^",
         "oxc-parser": "^0.155.0",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
@@ -3397,7 +3397,7 @@
         "remark-parse": "^11.0.0",
         "shiki": "^4.5.0",
         "unified": "^11.0.5",
-        "vite": "^8.3.4",
+        "vite": "^8.3.5",
         "yaml": "^2.9.1",
       },
       "devDependencies": {
@@ -3445,15 +3445,15 @@
     "seroval": "^1.6.8",
     "source-map-js": "^1.2.2",
     "uuid": "^11.1.1",
-    "vite": "8.3.4",
+    "vite": "8.3.5",
     "zod": "4.6.7",
   },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.5.0", "", {}, "sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q=="],
 
-    "@ark/schema": ["@ark/schema@0.56.7", "", { "dependencies": { "@ark/util": "0.56.7" } }, "sha512-jmoOJlYIc4k1uv8oYBDNOFnAsKk2a2D9t/D6npF2JUfW4ecPB0v6ce6lruKg7lkBxIBA8Z7UtxfmvephYbhUGQ=="],
+    "@ark/schema": ["@ark/schema@0.56.8", "", { "dependencies": { "@ark/util": "0.56.8" } }, "sha512-R05TOe85oQBGFFw2zKMuZpqkXibLKuC/aJt6VwFn5Cjc4x3NkWfhvGRpRDycNkj3ddcHnOPtIsmjVowJO9Yxdw=="],
 
-    "@ark/util": ["@ark/util@0.56.7", "", {}, "sha512-z8pVnrPk/x9GC18yOp5wCe8rR2+Z6us4CTSg7dvxdsDLuA2xXYq+QETD1fO6f3fMuXe+PCjpvtCnhTW9RHLgEw=="],
+    "@ark/util": ["@ark/util@0.56.8", "", {}, "sha512-XLiQyGfpJcws1zCtp2Cva8s1oheCdFn1Rt6JSyC4NnkDrpwCJnlaiawuuOc1Z97vMH+jEzW5vyyf0xOju5wUQA=="],
 
     "@atlaskit/pragmatic-drag-and-drop": ["@atlaskit/pragmatic-drag-and-drop@4.0.0", "", { "dependencies": { "@babel/runtime": "^7.0.0", "bind-event-listener": "^3.0.0", "raf-schd": "^4.0.3" } }, "sha512-pyDo2B5NiaExoKGmgeXKGNUL4aR4UzzSZm8QWWjYTEyBLVqSqKyKUwtVxMw2YEkakagOGFONUdHM32LAH2nPug=="],
 
@@ -4903,9 +4903,9 @@
 
     "aria-query": ["aria-query@5.3.1", "", {}, "sha512-Z/ZeOgVl7bcSYZ/u/rh0fOpvEpq//LZmdbkXyc7syVzjPAhfOa9ebsdTSjEBDU4vs5nC98Kfduj1uFo0qyET3g=="],
 
-    "arkregex": ["arkregex@0.0.13", "", { "dependencies": { "@ark/util": "0.56.7" } }, "sha512-c17sqCqiiZauxyoU1KZ2zbzCgeghGmc8dR2CrdQnlEtpq3bLhRLoLrxTL52M/8yQD8e/i1/IBRpRCNAuqJa7xQ=="],
+    "arkregex": ["arkregex@0.0.14", "", { "dependencies": { "@ark/util": "0.56.8" } }, "sha512-G3I/uCtWE0IKQiPh0qqmmAFDdtjZKZQ5mNPR6gJBeAMZ7VqYCpoaDeXnLju2Zo6ywExtmxZJELeVFb0MPDjPyA=="],
 
-    "arktype": ["arktype@2.2.8", "", { "dependencies": { "@ark/schema": "0.56.7", "@ark/util": "0.56.7", "arkregex": "0.0.13" } }, "sha512-tZyLza7kO2vN8BXBKcj4t43IVMe8/ZyqlITH0chZv7FfEw+edLovpY922tqcK4mCjTpf4oNo2xV6np7tquP1ww=="],
+    "arktype": ["arktype@2.2.9", "", { "dependencies": { "@ark/schema": "0.56.8", "@ark/util": "0.56.8", "arkregex": "0.0.14" } }, "sha512-Cja0IMEn19rB35on9da1i1z6QMasuS7ULffXbetCry09jvCGYT8Bi1KgYiqri5FymF4nQAXkM90yksYkgSK2EA=="],
 
     "assertion-error": ["assertion-error@2.0.1", "", {}, "sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA=="],
 
@@ -5333,7 +5333,7 @@
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
 
-    "happy-dom": ["happy-dom@21.0.3", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-PesNgu5BnIEmAwzKGewB3K1ORFeznFZJ4JrRz89ea1wkHnxskdpzX9sN/+zb4KO6k8oSMhyJSj/cwXAFrYBBNA=="],
+    "happy-dom": ["happy-dom@21.0.4", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw=="],
 
     "has-symbols": ["has-symbols@1.1.0", "", {}, "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ=="],
 
@@ -6199,7 +6199,7 @@
 
     "victory-vendor": ["victory-vendor@37.3.6", "", { "dependencies": { "@types/d3-array": "^3.0.3", "@types/d3-ease": "^3.0.0", "@types/d3-interpolate": "^3.0.1", "@types/d3-scale": "^4.0.2", "@types/d3-shape": "^3.1.0", "@types/d3-time": "^3.0.0", "@types/d3-timer": "^3.0.0", "d3-array": "^3.1.6", "d3-ease": "^3.0.1", "d3-interpolate": "^3.0.1", "d3-scale": "^4.0.2", "d3-shape": "^3.1.0", "d3-time": "^3.0.0", "d3-timer": "^3.0.1" } }, "sha512-SbPDPdDBYp+5MJHhBCAyI7wKM3d5ivekigc2Dk2s7pgbZ9wIgIBYGVw4zGHBml/qTFbexrofXW6Gu4noGxrOwQ=="],
 
-    "vite": ["vite@8.3.4", "", { "dependencies": { "lightningcss": "^1.33.0", "picomatch": "^4.0.7", "postcss": "^8.5.29", "rolldown": "~1.2.12", "tinyglobby": "^0.2.17" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "@vitejs/devtools": "^0.7.1", "esbuild": "^0.27.0 || ^0.28.0", "jiti": ">=1.21.0", "less": "^4.0.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "@vitejs/devtools", "esbuild", "jiti", "less", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-IftLE8phJhdNRIGNEV4JCCvfNScoZQVfcXaN8TQropWGJtOHcu+iAB9pHcuGvmEb/kddw0LBe/jS8ztdC6xdiQ=="],
+    "vite": ["vite@8.3.5", "", { "dependencies": { "lightningcss": "^1.33.0", "picomatch": "^4.0.7", "postcss": "^8.5.30", "rolldown": "~1.2.14", "tinyglobby": "^0.2.17" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "@vitejs/devtools": "^0.7.1 || ^0.8.0", "esbuild": "^0.27.0 || ^0.28.0", "jiti": ">=1.21.0", "less": "^4.0.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "@vitejs/devtools", "esbuild", "jiti", "less", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ=="],
 
     "vitefu": ["vitefu@1.1.3", "", { "peerDependencies": { "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0" }, "optionalPeers": ["vite"] }, "sha512-ub4okH7Z5KLjb6hDyjqrGXqWtWvoYdU3IGm/NorpgHncKoLTCfRIbvlhBm7r0YstIaQRYlp4yEbFqDcKSzXSSg=="],
 
