@@ -61,6 +61,21 @@ describe('discover', () => {
     await expect(discover('nope', () => json(meta))).rejects.toMatchObject({ code: 'invalid_url' })
     await expect(discover('https://idp.example', () => json({}, 500))).rejects.toMatchObject({ code: 'discovery_failed' })
   })
+  it('rejects a non-https jwks_uri, userinfo_endpoint or end_session_endpoint', async () => {
+    // jwks_uri is where the ID-token signing keys come from; a cleartext one lets a
+    // network attacker substitute keys. Every advertised endpoint must be https.
+    for (const k of ['jwks_uri', 'userinfo_endpoint', 'end_session_endpoint']) {
+      await expect(
+        discover('https://idp.example', () => json({ ...meta, [k]: 'http://idp.example/x' })),
+        k,
+      ).rejects.toMatchObject({ code: 'insecure_url' })
+    }
+  })
+  it('fails with an AuthError, not a TypeError, on a malformed document', async () => {
+    for (const body of [null, [], 'str', 42, { issuer: 'https://idp.example' }]) {
+      await expect(discover('https://idp.example', () => json(body)), JSON.stringify(body)).rejects.toBeInstanceOf(AuthError)
+    }
+  })
 })
 
 describe('authorization round trip', () => {
@@ -124,6 +139,15 @@ describe('authorization round trip', () => {
     await expect(
       exchangeCode(meta, client, flow, 'a', () => json({ access_token: 'x', token_type: 'mac' })),
     ).rejects.toMatchObject({ code: 'bad_token_response' })
+    // a body that is valid JSON but not an object, or not JSON at all
+    for (const body of [null, 'x', [1]]) {
+      await expect(exchangeCode(meta, client, flow, 'a', () => json(body)), JSON.stringify(body)).rejects.toMatchObject({
+        code: 'bad_token_response',
+      })
+    }
+    await expect(
+      exchangeCode(meta, client, flow, 'a', () => Promise.resolve(new Response('<html>'))),
+    ).rejects.toMatchObject({ code: 'bad_token_response' })
   })
 })
 
@@ -142,5 +166,26 @@ describe('guard', () => {
     expect(safeReturnTo('/ok?x=1')).toBe('/ok?x=1')
     const g = createGuard({ session: () => null, loginPath: '/login' })
     expect(g('//evil.example')).toEqual({ redirect: '/login?returnTo=%2F' })
+  })
+  it('anything it accepts stays on this origin under the WHATWG URL parser', () => {
+    // The parser strips ASCII tab/CR/LF anywhere in the input before parsing, so
+    // "/\t/evil.example" is followed as "//evil.example" — a protocol-relative
+    // redirect. Check every candidate against the parser itself rather than a
+    // list of expected outputs, so a new bypass shape fails here too.
+    const base = 'https://app.example'
+    const seps = ['\t', '\n', '\r', '\t\n', ' ', '\x00', '\x0b', '\x0c', ' ', '%09', '%2f']
+    const candidates: string[] = ['/ok', '/a/b?c=1#d', '/\\evil', '//evil.example']
+    for (const s of seps) {
+      candidates.push(`/${s}/evil.example`, `${s}//evil.example`, `/${s}\\evil.example`, `/\\${s}evil.example`)
+    }
+    for (const v of candidates) {
+      const out = safeReturnTo(v)
+      expect(new URL(out, base).origin, JSON.stringify(v)).toBe(base)
+    }
+    expect(safeReturnTo('/\t/evil.example')).toBe('/')
+  })
+  it('appends returnTo to a loginPath that already has a query', () => {
+    const g = createGuard({ session: () => null, loginPath: '/login?next=1' })
+    expect(g('/a')).toEqual({ redirect: '/login?next=1&returnTo=%2Fa' })
   })
 })

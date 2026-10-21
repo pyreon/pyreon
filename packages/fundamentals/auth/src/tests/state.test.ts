@@ -93,3 +93,46 @@ describe('presets', () => {
     expect(withPreset(google, { clientId: 'x', redirectUri: 'r', scope: 'openid' }).scope).toBe('openid')
   })
 })
+
+describe('memoryFlowStore', () => {
+  const flow = (state: string, createdAt: number) => ({
+    state,
+    nonce: 'n',
+    codeVerifier: 'v',
+    redirectUri: 'https://app.example/cb',
+    issuer: 'https://idp.example',
+    createdAt,
+  })
+
+  it('drops abandoned flows once they expire, so the store cannot grow without bound', async () => {
+    // Every signIn() that is started but never completed (the user closes the tab
+    // at the provider) used to stay in the map forever — an unbounded cache.
+    const store = memoryFlowStore()
+    const t0 = Date.now() - 11 * 60_000 // older than the 10-minute flow lifetime
+    for (let i = 0; i < 50; i++) await store.save(flow(`old${i}`, t0))
+    await store.save(flow('fresh', Date.now()))
+    expect(await store.take('old0')).toBeNull()
+    expect(await store.take('old49')).toBeNull()
+    expect((await store.take('fresh'))?.state).toBe('fresh')
+  })
+
+  it('caps the live entries, evicting the oldest first', async () => {
+    const store = memoryFlowStore()
+    const now = Date.now()
+    for (let i = 0; i < 1100; i++) await store.save(flow(`s${i}`, now))
+    expect(await store.take('s0')).toBeNull()
+    expect((await store.take('s1099'))?.state).toBe('s1099')
+  })
+})
+
+describe('createAuth — provider errors', () => {
+  it('surfaces a provider error even when the callback carries no state', async () => {
+    // e.g. the user cancels at the provider and it redirects back with
+    // ?error=access_denied and no state — "no pending authorization" hides why.
+    const { auth } = setup()
+    await auth.handleCallback('https://app.example/cb?error=access_denied')
+    expect(auth.status()).toBe('error')
+    expect(auth.error()?.code).toBe('provider_error')
+    expect(auth.error()?.message).toContain('access_denied')
+  })
+})

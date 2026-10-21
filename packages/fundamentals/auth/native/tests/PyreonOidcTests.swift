@@ -48,6 +48,19 @@ struct PyreonOidcTests {
         raises("provider error", .providerError("access_denied")) { _ = try core.complete(callback: cb(try begin(core), "&error=access_denied"), issuer: iss) }
         raises("no code", .missingCode) { _ = try core.complete(callback: cb(try begin(core), ""), issuer: iss) }
         raises("unknown state", .unknownFlow) { _ = try core.complete(callback: URL(string: "https://app.example/cb?state=zzz&code=a")!, issuer: iss) }
+
+        // Abandoned flows: a sign-in the user never completes must not stay in the
+        // persistent store forever. `begin` sweeps expired flows and caps the rest.
+        let store = InMemoryAuthFlowStore()
+        let sweep = PyreonAuthCore(backend: store)
+        let old = Date(timeIntervalSinceNow: -11 * 60)
+        for _ in 0..<5 { _ = try begin(sweep, now: old) }
+        let fresh = try begin(sweep)
+        expect(store.count == 2, "expired flows swept on begin (got \(store.count))")
+        _ = try sweep.complete(callback: cb(fresh, "&code=c"), issuer: iss)
+        expect(store.count == 0, "completing the last flow empties the store (got \(store.count))")
+        for _ in 0..<(PyreonAuthCore.maxPendingFlows + 5) { _ = try begin(sweep) }
+        expect(store.count == PyreonAuthCore.maxPendingFlows + 1, "live flows are capped (got \(store.count))")
         print("[PyreonOidcTests] all smoke tests passed")
     }
 }

@@ -18,6 +18,11 @@ export interface RegistrationExpectations {
   origin: string
   rpId: string
   requireUserVerification?: boolean
+  /**
+   * Accept a ceremony run inside a cross-origin iframe (`clientData.crossOrigin`).
+   * Default false: an RP that did not plan to be embedded must not accept one.
+   */
+  allowCrossOrigin?: boolean
 }
 
 export type RegistrationResult =
@@ -34,10 +39,11 @@ const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
 export async function verifyRegistration(r: RegistrationInput, e: RegistrationExpectations): Promise<RegistrationResult> {
   const no = (reason: string): RegistrationResult => ({ ok: false, reason })
   try {
-    const client = JSON.parse(new TextDecoder().decode(unb64(r.clientDataJSON))) as { type?: string; challenge?: string; origin?: string }
+    const client = JSON.parse(new TextDecoder().decode(unb64(r.clientDataJSON))) as { type?: string; challenge?: string; origin?: string; crossOrigin?: unknown }
     if (client.type !== 'webauthn.create') return no('wrong ceremony type')
     if (!timingSafeEqual(client.challenge ?? '', e.challenge)) return no('challenge mismatch')
     if (client.origin !== e.origin) return no('origin mismatch')
+    if (client.crossOrigin === true && !e.allowCrossOrigin) return no('cross-origin ceremony')
 
     const top = decodeCbor(unb64(r.attestationObject)).value
     if (!(top instanceof Map)) return no('malformed attestation')

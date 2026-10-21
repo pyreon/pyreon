@@ -141,7 +141,7 @@ const meta = await discover('https://accounts.example')
 (opts: AuthOptions) => Auth
 ```
 
-Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens` and `error` as signals plus `signIn`, `handleCallback` and `signOut`. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are read-and-deleted from the `FlowStore` so a callback URL cannot be replayed.
+Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims` and `error` as signals plus `signIn`, `handleCallback` and `signOut`. When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are read-and-deleted from the `FlowStore` so a callback URL cannot be replayed, and `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.
 
 **Example**
 
@@ -156,6 +156,7 @@ await auth.handleCallback(location.href)
 
 - Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie
 - Reading `auth.status` without calling it — it is a signal
+- Reading identity from `auth.tokens()?.id_token` — that is the raw token; use the verified `auth.claims()`
 
 **See also:** `beginAuthorization` · `google` · `keycloak`
 
@@ -213,7 +214,7 @@ const auth = createAuth({ metadata: github, client, flows, redirect })
 (token: string, keys: readonly Jwk[], meta: OidcMetadata, opts: VerifyOptions) => Promise<IdTokenClaims>
 ```
 
-Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refused to rule out algorithm confusion), signature against the provider JWKS key chosen by `kid` and the header alg, then `iss`, `aud` (+ `azp` for multi-audience tokens), `exp` with 60 s skew, `sub` and the `nonce` you stored in the pending flow. Fetch keys with `fetchJwks(meta)` and cache them server-side; call this on the server, never trust an unverified `id_token`.
+Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refused to rule out algorithm confusion), signature against the provider JWKS key chosen by `kid` and the header alg, then `iss`, `aud` (+ `azp` for multi-audience tokens), `exp` and `nbf` with 60 s skew, `sub` and the `nonce` you stored in the pending flow. A token declaring `crit` header extensions is refused (none are understood), and malformed input fails with an `AuthError`, never a raw TypeError. Fetch keys with `fetchJwks(meta)` and cache them server-side; call this on the server, never trust an unverified `id_token`.
 
 **Example**
 
@@ -287,7 +288,7 @@ if (r.ok) await save({ lastTotpStep: r.step })
 (a: AssertionInput, e: AssertionExpectations) => Promise<AssertionResult>
 ```
 
-Server-side WebAuthn sign-in (passkey assertion) verification for ES256 credentials on Web Crypto. Checks ceremony type, the single-use challenge from passkeyChallenge(), exact origin, the rpId hash, user presence, user verification (required by default), a strictly increasing signCount (cloned-authenticator signal) and the ECDSA signature over authenticatorData || SHA-256(clientDataJSON), converting the authenticator DER signature to the raw form WebCrypto expects. Returns &#123; ok: false, reason &#125; instead of throwing. Registration and attestation parsing are a later phase: today you supply the stored P-256 JWK.
+Server-side WebAuthn sign-in (passkey assertion) verification for ES256 credentials on Web Crypto. Checks ceremony type, the single-use challenge from passkeyChallenge(), exact origin, a top-level (not cross-origin iframe) ceremony unless `allowCrossOrigin` is set, the rpId hash, user presence, user verification (required by default), a strictly increasing signCount (cloned-authenticator signal) and the ECDSA signature over authenticatorData || SHA-256(clientDataJSON), converting the authenticator DER signature to the raw form WebCrypto expects. Returns &#123; ok: false, reason &#125; instead of throwing. Registration and attestation parsing are a later phase: today you supply the stored P-256 JWK.
 
 **Example**
 
@@ -313,7 +314,7 @@ if (r.ok) await save({ signCount: r.signCount })
 (r: RegistrationInput, e: RegistrationExpectations) => Promise<RegistrationResult>
 ```
 
-Server-side WebAuthn passkey registration for ES256 credentials with none attestation, which is what passkey providers send by default. Decodes the attestation object with a built-in minimal CBOR reader, checks ceremony type, single-use challenge, exact origin, rpId hash, user presence/verification and attested-credential data, and converts the COSE key to a P-256 JWK (validated on the curve) that verifyAssertion accepts directly. Any other attestation format or algorithm is refused with a reason rather than silently trusted.
+Server-side WebAuthn passkey registration for ES256 credentials with none attestation, which is what passkey providers send by default. Decodes the attestation object with a built-in minimal CBOR reader, checks ceremony type, single-use challenge, exact origin, a top-level ceremony (`allowCrossOrigin` opts in to iframes), rpId hash, user presence/verification and attested-credential data, and converts the COSE key to a P-256 JWK (validated on the curve) that verifyAssertion accepts directly. Any other attestation format or algorithm is refused with a reason rather than silently trusted.
 
 **Example**
 
@@ -337,7 +338,7 @@ if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, si
 <S>(opts: GuardOptions<S>) => (path: string) => GuardResult
 ```
 
-Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `returnTo`. Adapt it to a router `beforeEnter`.
+Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `returnTo`. Adapt it to a router `beforeEnter`. `safeReturnTo` accepts only a same-origin path: it rejects `//`, backslashes and every control character (browsers strip tab/CR/LF before parsing, so `/\t/evil.example` would otherwise navigate to `//evil.example`), then confirms the value resolves to the same origin under the WHATWG URL parser.
 
 **Example**
 

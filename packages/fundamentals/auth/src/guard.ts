@@ -9,9 +9,31 @@ export interface GuardOptions<S> {
 
 export type GuardResult = true | { redirect: string }
 
-/** Only same-origin relative paths may round-trip as `returnTo` (open-redirect guard). */
+// C0 controls + DEL, and the backslash browsers treat as a slash. The URL parser
+// strips tab/CR/LF ANYWHERE in the input before parsing, so "/\t/evil.example"
+// passes a `startsWith('//')` check and is then followed as "//evil.example".
+function hasUnsafeReturnChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c <= 0x1f || c === 0x7f || c === 0x5c /* \ */) return true
+  }
+  return false
+}
+const ORIGIN_PROBE = 'https://return-to.invalid'
+
+/**
+ * Only same-origin relative paths may round-trip as `returnTo` (open-redirect guard).
+ * A value is accepted only if it starts with a single `/`, contains no control
+ * characters or backslashes, AND resolves to the same origin under the WHATWG URL
+ * parser — the parser browsers use, so the check cannot disagree with navigation.
+ */
 export function safeReturnTo(value: string | null | undefined, fallback = '/'): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return fallback
+  if (!value || value[0] !== '/' || value[1] === '/' || hasUnsafeReturnChar(value)) return fallback
+  try {
+    if (new URL(value, ORIGIN_PROBE).origin !== ORIGIN_PROBE) return fallback
+  } catch {
+    return fallback
+  }
   return value
 }
 
@@ -21,6 +43,7 @@ export function createGuard<S>(opts: GuardOptions<S>): (path: string) => GuardRe
     const s = opts.session()
     if (s && (opts.allow?.(s) ?? true)) return true
     const to = safeReturnTo(path)
-    return { redirect: `${opts.loginPath}?returnTo=${encodeURIComponent(to)}` }
+    const sep = opts.loginPath.includes('?') ? '&' : '?'
+    return { redirect: `${opts.loginPath}${sep}returnTo=${encodeURIComponent(to)}` }
   }
 }

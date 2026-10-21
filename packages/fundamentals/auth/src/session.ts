@@ -30,16 +30,23 @@ const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
   return out
 }
 
+// Imported HMAC keys per secret. Signing and verifying run on every request, and
+// re-importing the key each time was the dominant cost. Secrets are configuration
+// (a handful, rotated rarely); the cap only guards against a caller generating them.
+const MAX_CACHED_SECRETS = 32
+const hmacKeys = new Map<string, Promise<CryptoKey>>()
+function hmacKey(secret: string): Promise<CryptoKey> {
+  let k = hmacKeys.get(secret)
+  if (k === undefined) {
+    if (hmacKeys.size >= MAX_CACHED_SECRETS) hmacKeys.clear()
+    k = crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    hmacKeys.set(secret, k)
+  }
+  return k
+}
+
 const hmac = async (secret: string, data: string) =>
-  base64url(
-    new Uint8Array(
-      await crypto.subtle.sign(
-        'HMAC',
-        await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
-        enc.encode(data),
-      ),
-    ),
-  )
+  base64url(new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(secret), enc.encode(data))))
 
 /** Sign a session into a cookie-safe `payload.signature` string (HMAC-SHA256, expiry inside the signed body). */
 export async function signSession(payload: SessionPayload, opts: SessionOptions, now = Date.now()): Promise<string> {

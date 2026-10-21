@@ -48,6 +48,8 @@ public class InMemoryAuthFlowStore : PyreonAuthFlowStore {
     override fun write(key: String, value: String): Boolean { store[key] = value; return true }
     override fun read(key: String): String? = store[key]
     override fun remove(key: String): Boolean = store.remove(key) != null
+    /** Number of stored entries (flows plus the pending-flow index). */
+    public val size: Int get() = store.size
 }
 
 public object PyreonPKCE {
@@ -74,6 +76,9 @@ public object PyreonPKCE {
 public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
     public companion object {
         public const val FLOW_TTL_MS: Long = 10 * 60 * 1000
+        /** Upper bound on pending flows kept in the backend at once. */
+        public const val MAX_PENDING_FLOWS: Int = 16
+        private const val INDEX_KEY = "pyreon.auth.flows"
         private fun key(state: String) = "pyreon.auth.flow.$state"
         private fun enc(s: String) = PyreonPKCE.base64url(s.toByteArray(Charsets.UTF_8))
         private fun dec(s: String) = String(Base64.getUrlDecoder().decode(s), Charsets.UTF_8)
@@ -90,14 +95,42 @@ public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
         null
     }
 
-    private fun query(url: String): Map<String, String> {
-        val raw = URI(url).rawQuery ?: return emptyMap()
-        return raw.split("&").filter { it.isNotEmpty() }.associate {
+    // The backend is persistent (Keystore), and a sign-in the user abandons in the
+    // system browser is never completed — without an index its flow would stay
+    // stored forever. The index (state -> createdAtMs) lets `begin` sweep expired
+    // flows and cap how many are kept. States are base64url, so ':' and ',' are safe
+    // separators.
+    private fun readIndex(): MutableMap<String, Long> {
+        val raw = backend.read(INDEX_KEY) ?: return mutableMapOf()
+        val m = mutableMapOf<String, Long>()
+        for (e in raw.split(",")) {
+            val i = e.indexOf(':')
+            if (i <= 0) continue
+            e.substring(i + 1).toLongOrNull()?.let { m[e.substring(0, i)] = it }
+        }
+        return m
+    }
+
+    private fun writeIndex(m: Map<String, Long>) {
+        if (m.isEmpty()) backend.remove(INDEX_KEY)
+        else backend.write(INDEX_KEY, m.entries.joinToString(",") { "${it.key}:${it.value}" })
+    }
+
+    // A malformed query (a bad `%` escape) reads as empty — the callback then fails
+    // as UnknownFlow, the same as Swift, where URLComponents returns nil.
+    private fun query(url: String): Map<String, String> = try {
+        val raw = URI(url).rawQuery
+        if (raw == null) emptyMap()
+        else raw.split("&").filter { it.isNotEmpty() }.associate {
             val i = it.indexOf('=')
             val k = URLDecoder.decode(if (i < 0) it else it.substring(0, i), "UTF-8")
             val v = if (i < 0) "" else URLDecoder.decode(it.substring(i + 1), "UTF-8")
             k to v
         }
+    } catch (e: IllegalArgumentException) {
+        emptyMap()
+    } catch (e: java.net.URISyntaxException) {
+        emptyMap()
     }
 
     /** Build the authorization URL and persist the pending flow. */
@@ -114,7 +147,20 @@ public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
             PyreonPKCE.randomToken(), PyreonPKCE.randomToken(), PyreonPKCE.randomToken(),
             redirectUri, issuer, nowMs,
         )
+        val index = readIndex()
+        index.entries.removeAll { (s, t) ->
+            val expired = nowMs - t > FLOW_TTL_MS
+            if (expired) backend.remove(key(s))
+            expired
+        }
+        while (index.size >= MAX_PENDING_FLOWS) {
+            val oldest = index.minByOrNull { it.value }!!.key
+            backend.remove(key(oldest))
+            index.remove(oldest)
+        }
         backend.write(key(flow.state), serialize(flow))
+        index[flow.state] = flow.createdAtMs
+        writeIndex(index)
         fun e(s: String) = URLEncoder.encode(s, "UTF-8")
         val params = listOf(
             "response_type" to "code", "client_id" to clientId, "redirect_uri" to redirectUri,
@@ -134,8 +180,12 @@ public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
     ): Pair<String, PyreonAuthFlow> {
         val q = query(callbackUrl)
         val state = q["state"] ?: ""
-        val flow = backend.read(key(state))?.let { deserialize(it) } ?: throw PyreonAuthError.UnknownFlow
+        val raw = backend.read(key(state)) ?: throw PyreonAuthError.UnknownFlow
+        // Read-and-delete, including an entry that fails to decode.
         backend.remove(key(state))
+        val index = readIndex()
+        if (index.remove(state) != null) writeIndex(index)
+        val flow = deserialize(raw) ?: throw PyreonAuthError.UnknownFlow
         if (nowMs - flow.createdAtMs > FLOW_TTL_MS) throw PyreonAuthError.FlowExpired
         q["error"]?.let { throw PyreonAuthError.ProviderError(it) }
         if (!PyreonPKCE.constantTimeEqual(state, flow.state)) throw PyreonAuthError.StateMismatch

@@ -26,6 +26,11 @@ export interface AssertionExpectations {
   signCount?: number
   /** Require user verification (biometric/PIN). Default true. */
   requireUserVerification?: boolean
+  /**
+   * Accept a ceremony run inside a cross-origin iframe (`clientData.crossOrigin`).
+   * Default false: an RP that did not plan to be embedded must not accept one.
+   */
+  allowCrossOrigin?: boolean
 }
 
 export type AssertionResult = { ok: true; signCount: number } | { ok: false; reason: string }
@@ -66,10 +71,11 @@ export async function verifyAssertion(a: AssertionInput, e: AssertionExpectation
   const no = (reason: string): AssertionResult => ({ ok: false, reason })
   try {
     const clientDataBytes = unb64(a.clientDataJSON)
-    const client = JSON.parse(new TextDecoder().decode(clientDataBytes)) as { type?: string; challenge?: string; origin?: string }
+    const client = JSON.parse(new TextDecoder().decode(clientDataBytes)) as { type?: string; challenge?: string; origin?: string; crossOrigin?: unknown }
     if (client.type !== 'webauthn.get') return no('wrong ceremony type')
     if (!timingSafeEqual(client.challenge ?? '', e.challenge)) return no('challenge mismatch')
     if (client.origin !== e.origin) return no('origin mismatch')
+    if (client.crossOrigin === true && !e.allowCrossOrigin) return no('cross-origin ceremony')
 
     const auth = unb64(a.authenticatorData)
     if (auth.length < 37) return no('authenticatorData too short')

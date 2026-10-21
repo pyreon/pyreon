@@ -64,12 +64,29 @@ export async function discover(issuer: string, fetchImpl: FetchLike = (i, o) => 
   const url = `${base.origin}${base.pathname.replace(/\/$/, '')}/.well-known/openid-configuration`
   const res = await fetchImpl(url, { redirect: 'error', headers: { accept: 'application/json' } })
   if (!res.ok) throw new AuthError('discovery_failed', `discovery returned ${res.status}`)
-  const meta = (await res.json()) as OidcMetadata
+  let meta: OidcMetadata
+  try {
+    meta = (await res.json()) as OidcMetadata
+  } catch {
+    throw new AuthError('discovery_failed', 'discovery document is not JSON')
+  }
+  if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {
+    throw new AuthError('discovery_failed', 'discovery document is not a JSON object')
+  }
   if (meta.issuer !== issuer.replace(/\/$/, '') && meta.issuer !== issuer) {
     throw new AuthError('issuer_mismatch', `discovery issuer "${meta.issuer}" does not match "${issuer}"`)
   }
+  if (typeof meta.authorization_endpoint !== 'string' || typeof meta.token_endpoint !== 'string') {
+    throw new AuthError('discovery_failed', 'discovery document lacks authorization_endpoint / token_endpoint')
+  }
   assertHttps(meta.authorization_endpoint, 'authorization_endpoint')
   assertHttps(meta.token_endpoint, 'token_endpoint')
+  // Optional endpoints must be https too when present. jwks_uri matters most:
+  // it is where the ID-token signing keys come from.
+  for (const k of ['jwks_uri', 'userinfo_endpoint', 'end_session_endpoint'] as const) {
+    const v = meta[k]
+    if (v !== undefined) assertHttps(String(v), k)
+  }
   return meta
 }
 
@@ -99,7 +116,8 @@ export async function beginAuthorization(
   return { url: u.toString(), flow }
 }
 
-const FLOW_TTL_MS = 10 * 60_000
+/** How long a pending flow stays valid (and how long a flow store needs to keep it). */
+export const FLOW_TTL_MS = 10 * 60_000
 
 /**
  * Validate the redirect back. Order matters: error → state (constant-time) → iss (RFC 9207) → code.
@@ -164,8 +182,16 @@ export async function exchangeCode(
     }),
   })
   if (!res.ok) throw new AuthError('token_exchange_failed', `token endpoint returned ${res.status}`)
-  const tokens = (await res.json()) as TokenResponse
-  if (!tokens.access_token || tokens.token_type?.toLowerCase() !== 'bearer') {
+  let tokens: TokenResponse
+  try {
+    tokens = (await res.json()) as TokenResponse
+  } catch {
+    throw new AuthError('bad_token_response', 'token response is not JSON')
+  }
+  if (tokens === null || typeof tokens !== 'object') {
+    throw new AuthError('bad_token_response', 'token response is not a JSON object')
+  }
+  if (typeof tokens.access_token !== 'string' || !tokens.access_token || String(tokens.token_type).toLowerCase() !== 'bearer') {
     throw new AuthError('bad_token_response', 'token response missing a bearer access_token')
   }
   return tokens

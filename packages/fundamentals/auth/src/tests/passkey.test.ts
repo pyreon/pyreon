@@ -20,8 +20,8 @@ function rawToDer(raw: Uint8Array): Uint8Array {
 async function authenticator() {
   const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
   const publicKey = await crypto.subtle.exportKey('jwk', kp.publicKey)
-  const assert = async (o: { challenge: string; type?: string; origin?: string; flags?: number; count?: number; rp?: string }) => {
-    const clientData = new TextEncoder().encode(JSON.stringify({ type: o.type ?? 'webauthn.get', challenge: o.challenge, origin: o.origin ?? ORIGIN }))
+  const assert = async (o: { challenge: string; type?: string; origin?: string; flags?: number; count?: number; rp?: string; crossOrigin?: boolean }) => {
+    const clientData = new TextEncoder().encode(JSON.stringify({ type: o.type ?? 'webauthn.get', challenge: o.challenge, origin: o.origin ?? ORIGIN, ...(o.crossOrigin === undefined ? {} : { crossOrigin: o.crossOrigin }) }))
     const rpHash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(o.rp ?? RP)))
     const auth = new Uint8Array(37)
     auth.set(rpHash, 0)
@@ -76,5 +76,20 @@ describe('verifyAssertion', () => {
     expect(raw[31]).toBe(0x81)
     expect(raw[63]).toBe(0x02)
     expect(() => derToRaw(Uint8Array.from([0x31, 0]))).toThrow()
+  })
+})
+
+describe('verifyAssertion — cross-origin ceremonies', () => {
+  it('rejects a ceremony run in a cross-origin iframe unless the relying party opts in', async () => {
+    // A page embedding the RP in an iframe gets `crossOrigin: true` in clientData;
+    // an RP that did not plan for that must not accept the assertion.
+    const a = await authenticator()
+    const c = passkeyChallenge()
+    const x = await a.assert({ challenge: c, crossOrigin: true })
+    expect(await verifyAssertion(x, exp(c, a.publicKey))).toEqual({ ok: false, reason: 'cross-origin ceremony' })
+    expect((await verifyAssertion(x, exp(c, a.publicKey, { allowCrossOrigin: true }))).ok).toBe(true)
+    // `crossOrigin: false` is the normal top-level case
+    const y = await a.assert({ challenge: c, crossOrigin: false })
+    expect((await verifyAssertion(y, exp(c, a.publicKey))).ok).toBe(true)
   })
 })

@@ -13,7 +13,7 @@ const cBytes = (b: Uint8Array) => [...head(2, b.length), ...b]
 const cInt = (n: number) => (n >= 0 ? head(0, n) : head(1, -1 - n))
 const cMap = (pairs: [number[], number[]][]) => [...head(5, pairs.length), ...pairs.flat(2)]
 
-async function register(o: { challenge: string; fmt?: string; flags?: number; type?: string; origin?: string; rp?: string; alg?: number; idLen?: number }) {
+async function register(o: { challenge: string; fmt?: string; flags?: number; type?: string; origin?: string; rp?: string; alg?: number; idLen?: number; crossOrigin?: boolean }) {
   const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
   const jwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
   const unb = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
@@ -22,7 +22,7 @@ async function register(o: { challenge: string; fmt?: string; flags?: number; ty
   const rpHash = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(o.rp ?? RP)))
   const auth = Uint8Array.from([...rpHash, o.flags ?? 0x45, 0, 0, 0, 7, ...new Uint8Array(16), id.length >> 8, id.length & 255, ...id, ...cose])
   const att = Uint8Array.from(cMap([[cText('fmt'), cText(o.fmt ?? 'none')], [cText('attStmt'), cMap([])], [cText('authData'), cBytes(auth)]]))
-  const clientData = te.encode(JSON.stringify({ type: o.type ?? 'webauthn.create', challenge: o.challenge, origin: o.origin ?? ORIGIN }))
+  const clientData = te.encode(JSON.stringify({ type: o.type ?? 'webauthn.create', challenge: o.challenge, origin: o.origin ?? ORIGIN, ...(o.crossOrigin === undefined ? {} : { crossOrigin: o.crossOrigin }) }))
   return { input: { attestationObject: base64url(att), clientDataJSON: base64url(clientData) }, jwk, id, kp }
 }
 const exp = (challenge: string) => ({ challenge, origin: ORIGIN, rpId: RP })
@@ -88,5 +88,14 @@ describe('cbor', () => {
     expect(() => decodeCbor(Uint8Array.from([0xf9, 0, 0]))).toThrow(/unsupported/)
     expect(() => decodeCbor(Uint8Array.from(Array(10).fill(0x81)))).toThrow(/deep/)
     expect(() => decodeCbor(Uint8Array.from([0x99, 0xff, 0xff]))).toThrow(/large/)
+  })
+})
+
+describe('verifyRegistration — cross-origin ceremonies', () => {
+  it('rejects a cross-origin registration unless the relying party opts in', async () => {
+    const c = 'reg-challenge-xo'
+    const r = await register({ challenge: c, crossOrigin: true })
+    expect(await verifyRegistration(r.input, exp(c))).toEqual({ ok: false, reason: 'cross-origin ceremony' })
+    expect((await verifyRegistration(r.input, { ...exp(c), allowCrossOrigin: true })).ok).toBe(true)
   })
 })

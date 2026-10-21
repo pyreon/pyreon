@@ -52,5 +52,27 @@ fun main() {
     testOidcRfc7636Vector()
     testOidcHappyPathAndReplay()
     testOidcRejections()
+    testOidcAbandonedFlowsAreSwept()
+    testOidcMalformedCallbackIsUnknownFlow()
     println("[PyreonOidcTest] all smoke tests passed")
+}
+
+fun testOidcAbandonedFlowsAreSwept() {
+    // A sign-in the user never completes must not stay in the persistent store
+    // forever: `begin` sweeps expired flows and caps the rest.
+    val store = InMemoryAuthFlowStore()
+    val core = PyreonAuthCore(store)
+    val old = System.currentTimeMillis() - 11 * 60 * 1000
+    repeat(5) { begin(core, old) }
+    val fresh = begin(core)
+    check(store.size == 2) { "expired flows swept on begin (got ${store.size})" }
+    core.complete(cb(fresh, "&code=c"), ISS)
+    check(store.size == 0) { "completing the last flow empties the store (got ${store.size})" }
+    repeat(PyreonAuthCore.MAX_PENDING_FLOWS + 5) { begin(core) }
+    check(store.size == PyreonAuthCore.MAX_PENDING_FLOWS + 1) { "live flows are capped (got ${store.size})" }
+}
+
+fun testOidcMalformedCallbackIsUnknownFlow() {
+    val core = PyreonAuthCore(InMemoryAuthFlowStore())
+    raises<PyreonAuthError.UnknownFlow>("bad % escape") { core.complete("https://app.example/cb?state=%zz&code=a", ISS) }
 }

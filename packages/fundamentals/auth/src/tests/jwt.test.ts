@@ -80,3 +80,33 @@ describe('fetchJwks', () => {
     expect(await code(fetchJwks(meta, () => Promise.resolve(new Response('', { status: 500 }))))).toBe('jwks_failed')
   })
 })
+
+describe('verifyIdToken — hardening', () => {
+  it('rejects a token that is not yet valid (nbf in the future)', async () => {
+    const { jwk, sign } = await rsa()
+    expect(await code(verifyIdToken(await sign({ ...good, nbf: NOW / 1000 + 600 }), [jwk], meta, opts))).toBe('not_yet_valid')
+    // within the clock-skew allowance is fine
+    expect(await code(verifyIdToken(await sign({ ...good, nbf: NOW / 1000 + 30 }), [jwk], meta, opts))).toBe('ok')
+  })
+  it('rejects a token carrying critical header extensions it does not understand (RFC 7515 §4.1.11)', async () => {
+    const { jwk, sign } = await rsa()
+    const t = await sign(good, { alg: 'RS256', kid: 'k1', crit: ['exp'], exp: 1 })
+    expect(await code(verifyIdToken(t, [jwk], meta, opts))).toBe('bad_token')
+  })
+  it('fails with an AuthError on malformed payloads, signatures and key sets', async () => {
+    const { jwk, sign } = await rsa()
+    const valid = await sign(good)
+    // correctly SIGNED payloads that are valid JSON but not a claims object
+    expect(await code(verifyIdToken(await sign(null as never), [jwk], meta, opts))).toBe('bad_token')
+    expect(await code(verifyIdToken(await sign([1]), [jwk], meta, opts))).toBe('bad_token')
+    // signature segment that is not base64url
+    const [h2, p2] = valid.split('.')
+    expect(await code(verifyIdToken(`${h2}.${p2}.%%%`, [jwk], meta, opts))).toBe('bad_signature')
+    // a key that cannot be imported
+    expect(await code(verifyIdToken(valid, [{ ...jwk, n: 'not-a-modulus!!' }], meta, opts))).toBe('bad_signature')
+  })
+  it('fetchJwks rejects a document without a keys array', async () => {
+    const f = () => Promise.resolve(new Response(JSON.stringify({ nokeys: true })))
+    expect(await code(fetchJwks(meta, f))).toBe('jwks_failed')
+  })
+})

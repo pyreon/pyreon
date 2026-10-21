@@ -42,6 +42,8 @@ public final class InMemoryAuthFlowStore: PyreonAuthFlowStore {
     public func write(key: String, value: String) -> Bool { store[key] = value; return true }
     public func read(key: String) -> String? { store[key] }
     public func remove(key: String) -> Bool { store.removeValue(forKey: key) != nil }
+    /// Number of stored entries (flows plus the pending-flow index).
+    public var count: Int { store.count }
 }
 
 public enum PyreonPKCE {
@@ -75,11 +77,29 @@ public enum PyreonPKCE {
 
 public final class PyreonAuthCore {
     public static let flowTtl: TimeInterval = 10 * 60
+    /// Upper bound on pending flows kept in the backend at once.
+    public static let maxPendingFlows = 16
     private let backend: PyreonAuthFlowStore
 
     public init(backend: PyreonAuthFlowStore) { self.backend = backend }
 
     private func key(_ state: String) -> String { "pyreon.auth.flow.\(state)" }
+    private static let indexKey = "pyreon.auth.flows"
+
+    // The backend is persistent (Keychain), and a sign-in the user abandons in the
+    // system browser is never completed — without an index its flow would stay
+    // in the Keychain forever. The index (state -> createdAt) lets `begin` sweep
+    // expired flows and cap how many are kept.
+    private func readIndex() -> [String: TimeInterval] {
+        guard let raw = backend.read(key: Self.indexKey),
+              let m = try? JSONDecoder().decode([String: TimeInterval].self, from: Data(raw.utf8)) else { return [:] }
+        return m
+    }
+
+    private func writeIndex(_ m: [String: TimeInterval]) {
+        if m.isEmpty { _ = backend.remove(key: Self.indexKey); return }
+        if let d = try? JSONEncoder().encode(m) { _ = backend.write(key: Self.indexKey, value: String(decoding: d, as: UTF8.self)) }
+    }
 
     /// Build the authorization URL and persist the pending flow.
     public func begin(authorizationEndpoint: String, issuer: String, clientId: String, redirectUri: String,
@@ -90,8 +110,20 @@ public final class PyreonAuthCore {
         let flow = PyreonAuthFlow(state: PyreonPKCE.randomToken(), nonce: PyreonPKCE.randomToken(),
                                   codeVerifier: PyreonPKCE.randomToken(), redirectUri: redirectUri,
                                   issuer: issuer, createdAt: now.timeIntervalSince1970)
+        var index = readIndex()
+        let nowS = now.timeIntervalSince1970
+        for (s, t) in index where nowS - t > Self.flowTtl {
+            _ = backend.remove(key: key(s))
+            index[s] = nil
+        }
+        while index.count >= Self.maxPendingFlows, let oldest = index.min(by: { $0.value < $1.value })?.key {
+            _ = backend.remove(key: key(oldest))
+            index[oldest] = nil
+        }
         let data = try JSONEncoder().encode(flow)
         _ = backend.write(key: key(flow.state), value: String(decoding: data, as: UTF8.self))
+        index[flow.state] = flow.createdAt
+        writeIndex(index)
         comps.queryItems = (comps.queryItems ?? []) + [
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "client_id", value: clientId),
@@ -112,11 +144,14 @@ public final class PyreonAuthCore {
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func q(_ n: String) -> String? { items.first { $0.name == n }?.value }
         let state = q("state") ?? ""
-        guard let raw = backend.read(key: key(state)),
-              let flow = try? JSONDecoder().decode(PyreonAuthFlow.self, from: Data(raw.utf8)) else {
+        guard let raw = backend.read(key: key(state)) else { throw PyreonAuthError.unknownFlow }
+        // Read-and-delete, including an entry that fails to decode.
+        _ = backend.remove(key: key(state))
+        var index = readIndex()
+        if index.removeValue(forKey: state) != nil { writeIndex(index) }
+        guard let flow = try? JSONDecoder().decode(PyreonAuthFlow.self, from: Data(raw.utf8)) else {
             throw PyreonAuthError.unknownFlow
         }
-        _ = backend.remove(key: key(state))
         if now.timeIntervalSince1970 - flow.createdAt > Self.flowTtl { throw PyreonAuthError.flowExpired }
         if let e = q("error") { throw PyreonAuthError.providerError(e) }
         guard PyreonPKCE.constantTimeEqual(state, flow.state) else { throw PyreonAuthError.stateMismatch }

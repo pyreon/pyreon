@@ -1606,7 +1606,7 @@
         "@pyreon/manifest": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.4.3",
       },
       "peerDependencies": {
         "@pyreon/reactivity": "workspace:^",

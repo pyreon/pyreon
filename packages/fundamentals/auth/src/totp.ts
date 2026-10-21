@@ -45,15 +45,21 @@ export function generateTotpSecret(): string {
   return base32Encode(crypto.getRandomValues(new Uint8Array(20)))
 }
 
-export async function totp(secret: string, now = Date.now(), step = 30, digits = 6): Promise<string> {
-  const counter = Math.floor(now / 1000 / step)
+function hotpKey(secret: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', base32Decode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'])
+}
+
+async function hotp(key: CryptoKey, counter: number, digits: number): Promise<string> {
   const msg = new Uint8Array(8)
   new DataView(msg.buffer).setBigUint64(0, BigInt(counter))
-  const key = await crypto.subtle.importKey('raw', base32Decode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'])
   const h = new Uint8Array(await crypto.subtle.sign('HMAC', key, msg))
   const o = h[h.length - 1]! & 0xf
   const bin = ((h[o]! & 0x7f) << 24) | (h[o + 1]! << 16) | (h[o + 2]! << 8) | h[o + 3]!
   return String(bin % 10 ** digits).padStart(digits, '0')
+}
+
+export async function totp(secret: string, now = Date.now(), step = 30, digits = 6): Promise<string> {
+  return hotp(await hotpKey(secret), Math.floor(now / 1000 / step), digits)
 }
 
 /**
@@ -70,9 +76,11 @@ export async function verifyTotp(
   const base = Math.floor(now / 1000 / 30)
   const w = opts.window ?? 1
   let hit = -1
+  // One key import for the whole window (it was one per step).
+  const key = await hotpKey(secret)
   for (let d = -w; d <= w; d++) {
     const step = base + d
-    if (timingSafeEqual(await totp(secret, step * 30_000), code)) hit = step
+    if (timingSafeEqual(await hotp(key, step, 6), code)) hit = step
   }
   if (hit < 0 || (opts.lastUsedStep !== undefined && hit <= opts.lastUsedStep)) return { ok: false }
   return { ok: true, step: hit }
