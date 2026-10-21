@@ -1,4 +1,4 @@
-import { base64url, randomToken } from './pkce'
+import { base64url, decodeBase64url, randomToken } from './pkce'
 import { timingSafeEqual } from './oidc'
 import type { Jwk } from './jwt'
 
@@ -37,12 +37,7 @@ export type AssertionResult = { ok: true; signCount: number } | { ok: false; rea
 
 export const passkeyChallenge = (): string => randomToken(32)
 
-const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
-  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/'))
-  const out = new Uint8Array(b.length)
-  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i)
-  return out
-}
+const unb64 = decodeBase64url
 
 /** DER ECDSA signature -> raw r||s (64 bytes) as WebCrypto expects. */
 export function derToRaw(der: Uint8Array): Uint8Array<ArrayBuffer> {

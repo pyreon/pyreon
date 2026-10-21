@@ -57,6 +57,19 @@ export class AuthError extends Error {
   }
 }
 
+/**
+ * One request. A transport failure (no network, DNS, TLS, a refused redirect) becomes
+ * `network_error` — the same code the native transports report — instead of escaping as
+ * a raw TypeError that the state machine could only call `unknown`.
+ */
+export async function send(fetchImpl: FetchLike, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetchImpl(url, init)
+  } catch {
+    throw new AuthError('network_error', `request to ${url.split('?')[0]} failed`)
+  }
+}
+
 const isLoopback = (u: URL) => u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
 
 /** https, or http on a loopback host (local development). One rule for every endpoint. */
@@ -81,7 +94,7 @@ export function assertHttps(url: string, what: string): URL {
 export async function discover(issuer: string, fetchImpl: FetchLike = (i, o) => fetch(i, o)): Promise<OidcMetadata> {
   const base = assertHttps(issuer, 'issuer')
   const url = `${base.origin}${base.pathname.replace(/\/$/, '')}/.well-known/openid-configuration`
-  const res = await fetchImpl(url, { redirect: 'error', headers: { accept: 'application/json' } })
+  const res = await send(fetchImpl, url, { redirect: 'error', headers: { accept: 'application/json' } })
   if (!res.ok) throw new AuthError('discovery_failed', `discovery returned ${res.status}`)
   let meta: OidcMetadata
   try {
@@ -196,7 +209,7 @@ async function postToken(
   body: Record<string, string>,
   fetchImpl: FetchLike,
 ): Promise<TokenResponse> {
-  const res = await fetchImpl(meta.token_endpoint, {
+  const res = await send(fetchImpl, meta.token_endpoint, {
     method: 'POST',
     redirect: 'error',
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },

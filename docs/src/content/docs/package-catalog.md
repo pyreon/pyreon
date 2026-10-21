@@ -32,7 +32,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | Package | Description |
 | --- | --- |
 | [@pyreon/a11y](/docs/a11y) | Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup |
-| [@pyreon/auth](https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/auth) | Multiplatform authentication for Pyreon — OIDC/OAuth2 authorization-code + PKCE, route guards, secure defaults |
+| [@pyreon/auth](/docs/auth) | Authentication for Pyreon on web, iOS and Android — OIDC sign-in (useOidc), ID-token verification, signed sessions, TOTP, passkeys and route guards, secure by default |
 | [@pyreon/charts](/docs/charts) | Charts for Pyreon on the web, iOS and Android: &lt;Chart&gt; with mark children over a first-party engine (21 chart families, one flat draw list), canvas and SVG, tree-shakeable marks |
 | [@pyreon/code](/docs/code) | Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages |
 | [@pyreon/dnd](/docs/dnd) | Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop |

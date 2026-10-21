@@ -6,22 +6,45 @@ workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, T
 Tested against [`oidc-provider`](https://github.com/panva/node-oidc-provider), a certified OpenID Provider, run
 in-process: discovery, PKCE + nonce, code exchange, ID-token verification, refresh and RP-initiated logout.
 
+**Guide, with live demos you can break on purpose:** [pyreon.dev/docs/auth](https://pyreon.dev/docs/auth).
+
 ## Sign-in
 
 ```ts
-import { createAuth, google, memoryFlowStore, withPreset } from '@pyreon/auth'
+import { useOidc } from '@pyreon/auth'
+
+const auth = useOidc({
+  issuer: 'https://accounts.google.com',
+  clientId: 'app',
+  redirectUri: 'https://app.example/callback',
+  nativeRedirectUri: 'com.example.app:/oauth', // iOS + Android — see "Native"
+})
+
+auth.signIn() // → the provider; on /callback the page completes the sign-in itself
+auth.status() // 'signedIn'
+auth.claim('email') // a verified ID-token claim — never read identity from a raw token
+```
+
+`useOidc` is the same call on web, iOS and Android. On the web it keeps the pending sign-in in `sessionStorage` (a
+browser sign-in is a full page load to the provider and back, so an in-memory store would be empty when the user
+returns), and when the page that loads IS the redirect it completes the callback itself, removing the code from the
+address bar and history first.
+
+Underneath is `createAuth`, which you can use directly — on a server, or to choose the flow store and navigation
+yourself:
+
+```ts
+import { createAuth, google, sessionStorageFlowStore, withPreset } from '@pyreon/auth'
 
 const auth = createAuth({
   issuer: google.issuer,
   client: withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/cb' }),
-  flows: memoryFlowStore(), // see "Running more than one instance"
+  flows: sessionStorageFlowStore(), // a server uses a shared store — see "Running more than one instance"
   redirect: (url) => location.assign(url),
 })
-
 await auth.signIn() // → provider
 await auth.handleCallback(location.href) // back on /cb
-auth.status() // 'signedIn'
-auth.claims()?.sub // verified ID-token claims — never read identity from tokens().id_token
+auth.claims()?.sub
 ```
 
 `createAuth` verifies the ID token before reporting `signedIn`: signature against the provider's JWKS, `iss`, `aud`,
@@ -87,32 +110,61 @@ browser: `pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-ke
 
 ## Native (iOS / Android)
 
-App-facing auth state on native is the existing `useAuth` container from `@pyreon/hooks` (`PyreonAuth`) — one source,
-three targets. This package ships the *mechanism* that drives it: `native/swift/PyreonOidc.swift` and
-`native/kotlin/.../PyreonOidc.kt` (PKCE S256, state/nonce, RFC 9207 `iss`, 10-minute single-use flow persisted through a
-`PyreonAuthFlowStore` so a login survives process death in the system browser). Both are compiled and run by
-`check-native-cosource`.
+`useOidc` is the shared-source entry point. On iOS and Android the compiler lowers it to the native session container
+`PyreonOidcAuth`, which runs the same flow as the web natively: discovery, S256 PKCE with state and nonce, the system
+browser, the code exchange, ID-token verification against the provider's keys (RS256 / ES256), refresh, and provider
+logout. The session lives in the Keychain / Keystore (via `@pyreon/storage`), so the app is still signed in after a
+relaunch, and an expired session with a refresh token refreshes itself on launch.
 
-**Sign-in composition (no new SDK code).** The system browser is the existing `useLinking().openUrl` (lowers to
-`UIApplication.open` / `Intent.ACTION_VIEW`, the RFC 8252 default-browser path); the redirect comes back as a deep link
-through the router to your callback route, which hands the URL to the core. Drive the `useAuth` container from there:
-`beginSignIn()` -> `openUrl(authUrl)` -> (callback route) `complete(...)` -> token exchange over `fetch` ->
-`signInSucceeded(user)` / `signInFailed(...)`. Use an HTTPS claimed redirect (universal link / App Link) rather than a
-custom scheme where you can, since a custom scheme can be claimed by another app.
+```tsx
+import { useOidc } from '@pyreon/auth'
 
-**Not built: lowering the web API to the native cores (design notes).** PMTC lowers hooks it recognizes by name, so an
-`@pyreon/auth` import in shared source would need a native plugin (recognizer, declaration emit, Swift/Kotlin container, stub
-and golden registration). Three decisions make it a separate piece of work rather than a lowering table:
+const auth = useOidc({
+  issuer: 'https://accounts.example.com',
+  clientId: 'app',
+  redirectUri: 'https://app.example.com/callback', // web
+  nativeRedirectUri: 'com.example.app:/oauth', // iOS + Android
+  scope: 'openid profile email offline_access',
+})
+// <Button onPress={() => auth.signIn()}>Sign in</Button>
+// <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>
+```
 
-1. **Sync vs async.** The web core is async (`crypto.subtle`); the native cores are synchronous. One source needs either a
-   synchronous SHA-256 on web or `await` lowering over the container methods.
-2. **A durable flow store per platform.** The pending flow must survive process death while the system browser is open.
-   iOS can use the Keychain; Android needs Keystore code that imports the real Android SDK, which the stub gates cannot
-   verify, so it is covered only by the device gate.
-3. **No second state container.** The container must drive the existing `useAuth` rather than add another one.
+Every member reads the same on all three targets, and the strings match: `status()` is `signedOut` / `signingIn` /
+`signedIn` / `error`, and `error()` is the same code everywhere (`network_error`, `bad_nonce`, `cancelled`, …). Options
+must be static (literals or module-level consts) because native bakes them in; anything else is reported by name and
+nothing is emitted.
 
-Until that lands, compose the lowered hooks as described above (`useSecureStorage`, `useLinking`, `useFetch`, `useAuth`).
-The package stays declared web-only so the compiler warns on import instead of miscompiling. The end-to-end browser round trip
-on a simulator or emulator is likewise unverified.
+**Per-platform setup.**
+
+- **iOS** — nothing. Sign-in runs in `ASWebAuthenticationSession`, which hands the redirect straight back. Register
+  `nativeRedirectUri` with the provider; an https redirect is matched as a universal link on iOS 17.4+.
+- **Android** — declare the two activities in `AndroidManifest.xml` (sources are wired, not an AAR, so there is no
+  library manifest to merge), with your redirect's scheme:
+
+  ```xml
+  <activity android:name="com.pyreon.runtime.PyreonAuthActivity" android:exported="false"
+      android:launchMode="singleTask" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+  <activity android:name="com.pyreon.runtime.PyreonAuthRedirectActivity" android:exported="true">
+    <intent-filter>
+      <action android:name="android.intent.action.VIEW" />
+      <category android:name="android.intent.category.DEFAULT" />
+      <category android:name="android.intent.category.BROWSABLE" />
+      <data android:scheme="com.example.app" />
+    </intent-filter>
+  </activity>
+  ```
+
+  Sign-in opens a Custom Tab when the browser supports it (no `androidx.browser` dependency), and returning to the app
+  without finishing is reported as `cancelled` rather than leaving sign-in hanging.
+
+**Parity is tested, not assumed.** `native/tests/vectors.json` is one answer sheet of signed ID tokens — valid ones and
+every rejection the verifier makes — that the web, Swift and Kotlin verifiers must all agree on, error code for error
+code. The native containers run end to end in the smoke tests against an in-process provider that enforces PKCE and
+the nonce, and the `native-tasks` example's sign-in panel is asserted on a real simulator and emulator.
+
+**What stays web/server.** The lower-level API — `createAuth`, `discover`, `exchangeCode`, sessions, TOTP, passkeys,
+the route guard — is web or server code. Native apps hold one session per `useOidc` call: create it once at the root
+and pass it down.
 
 MIT

@@ -9,6 +9,27 @@ export function base64url(bytes: Uint8Array): string {
   return btoa(bin).replace(B64URL, (c) => (c === '+' ? '-' : c === '/' ? '_' : ''))
 }
 
+const B64URL_ALPHABET = /^[A-Za-z0-9_-]*$/
+
+/**
+ * Strict base64url decode (RFC 4648 §5, no padding). Only the url-safe alphabet is
+ * accepted, and the input must be the CANONICAL encoding of its bytes, so every
+ * byte string has exactly one accepted spelling. `atob` alone is lenient — it skips
+ * whitespace and takes `+`, `/` and `=` — which made a token's signature segment
+ * re-encodable without invalidating it (a malleable token, and a disagreement with
+ * the native verifiers, which are strict).
+ */
+export function decodeBase64url(s: string): Uint8Array<ArrayBuffer> {
+  // The alphabet test is a cheap explicit first check; the canonical re-encode below already
+  // rejects everything it does, which is what makes the rule exact.
+  if (!B64URL_ALPHABET.test(s) || s.length % 4 === 1) throw new Error('[Pyreon] auth: invalid base64url')
+  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/'))
+  const out = new Uint8Array(b.length)
+  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i)
+  if (base64url(out) !== s) throw new Error('[Pyreon] auth: invalid base64url')
+  return out
+}
+
 /** `n` cryptographically random bytes, base64url-encoded. */
 export function randomToken(n = 32): string {
   return base64url(crypto.getRandomValues(new Uint8Array(n)))

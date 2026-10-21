@@ -17,6 +17,7 @@
 export const PLUGIN_OWNED_MODULES: ReadonlySet<string> = new Set([
   '@pyreon/a11y',
   '@pyreon/attrs',
+  '@pyreon/auth',
   '@pyreon/charts',
   '@pyreon/coolgrid',
   '@pyreon/core',
