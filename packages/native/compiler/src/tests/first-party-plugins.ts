@@ -33,6 +33,7 @@ import { i18nPlugin } from '../../../../fundamentals/i18n/src/native-plugin/plug
 import { i18nStubs } from '../../../../fundamentals/i18n/src/native-plugin/stubs'
 import { toastPlugin } from '../../../../fundamentals/toast/src/native-plugin/plugin'
 import { toastStubs } from '../../../../fundamentals/toast/src/native-plugin/stubs'
+import { headPlugin } from '../../../../core/head/src/native-plugin/plugin'
 import { a11yPlugin } from '../../../../fundamentals/a11y/src/native-plugin/plugin'
 import { a11yStubs } from '../../../../fundamentals/a11y/src/native-plugin/stubs'
 import { tablePlugin } from '../../../../fundamentals/table/src/native-plugin/plugin'
@@ -71,6 +72,7 @@ export {
   i18nStubs,
   toastPlugin,
   toastStubs,
+  headPlugin,
   a11yPlugin,
   a11yStubs,
   tablePlugin,

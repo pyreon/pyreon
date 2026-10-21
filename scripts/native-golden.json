@@ -7621,6 +7621,16 @@
       "bytes": 213,
       "warnings": 0
     },
+    "registry:@pyreon/head|swift": {
+      "sha": "af962bf42a1bd95002cf20b2177d01adfafdc74a90f69755b58dd8aca7936d05",
+      "bytes": 109,
+      "warnings": 0
+    },
+    "registry:@pyreon/head|kotlin": {
+      "sha": "2ae6efb986fb8bfed4a753f6b2dd22e0a11cc47d2a0df47426f69922d7de89be",
+      "bytes": 175,
+      "warnings": 0
+    },
     "registry:@pyreon/a11y|swift": {
       "sha": "2251d50067c39139c2012ed002b775b6b89ca123780c8a4a2242e5b8b0d201fe",
       "bytes": 135,

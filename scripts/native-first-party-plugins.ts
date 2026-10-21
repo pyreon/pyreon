@@ -40,6 +40,7 @@ import { i18nPlugin } from '../packages/fundamentals/i18n/src/native-plugin/plug
 import { i18nStubs } from '../packages/fundamentals/i18n/src/native-plugin/stubs'
 import { toastPlugin } from '../packages/fundamentals/toast/src/native-plugin/plugin'
 import { toastStubs } from '../packages/fundamentals/toast/src/native-plugin/stubs'
+import { headPlugin } from '../packages/core/head/src/native-plugin/plugin'
 import { a11yPlugin } from '../packages/fundamentals/a11y/src/native-plugin/plugin'
 import { a11yStubs } from '../packages/fundamentals/a11y/src/native-plugin/stubs'
 import { tablePlugin } from '../packages/fundamentals/table/src/native-plugin/plugin'
@@ -96,6 +97,7 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   validationPlugin,
   i18nPlugin,
   toastPlugin,
+  headPlugin,
   a11yPlugin,
   tablePlugin,
   dndPlugin,

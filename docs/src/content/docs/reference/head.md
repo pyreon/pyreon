@@ -13,7 +13,9 @@ Reactive head tag management for Pyreon — `useHead()` collects title, meta, li
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-document `<head>` management — no equivalent surface exists on iOS/Android
+document `<head>` management — a native app has no document, so there is nothing to describe: `useHead(...)` compiles to nothing and `<HeadProvider>` is transparent (so shared source builds); the head context and SSR helpers have no native equivalent
+
+**What crosses natively:** `useHead(...)` (dropped) and `<HeadProvider>` (transparent) — by design, no native `<head>`
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

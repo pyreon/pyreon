@@ -622,6 +622,19 @@ export function C() {
 }`,
   },
   {
+    name: '@pyreon/head',
+    mechanism: 'pmtc-lowers',
+    rationale:
+      'a native app has no document `<head>`, so the package crosses by BEING INERT: `useHead(...)` lowers to nothing and `<HeadProvider>` is transparent, which lets shared source that sets a page title for the web build compile for iOS and Android. The head context and SSR helpers have no native equivalent and warn by name.',
+    // Verified: zero warnings and no trace of the head API in either emit; swiftc/kotlinc accept it.
+    snippet: `import { useHead, HeadProvider } from '@pyreon/head'
+import { Stack, Text } from '@pyreon/primitives'
+export function C() {
+  useHead({ title: 'Inbox' })
+  return (<HeadProvider><Stack><Text>hello</Text></Stack></HeadProvider>)
+}`,
+  },
+  {
     name: '@pyreon/a11y',
     mechanism: 'native-container',
     rationale:

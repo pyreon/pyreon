@@ -1028,7 +1028,7 @@ describe('web-only package warnings are derived from the manifests', () => {
   // by gaining a real lowering. `useHotkey` now emits a SwiftUI
   // `.keyboardShortcut` and a Compose focused key handler, so demanding a
   // blanket warning here would assert against a shipped capability.
-  for (const pkg of ['@pyreon/head']) {
+  for (const pkg of ['@pyreon/document']) {
     it(`warns for ${pkg}, which the hand-written list silently omitted`, () => {
       expect(warnFor(pkg).some((w) => w.includes(pkg) && w.includes('WEB-ONLY'))).toBe(true)
     })
@@ -1045,6 +1045,8 @@ describe('web-only package warnings are derived from the manifests', () => {
     '@pyreon/url-state',
     '@pyreon/feature',
     '@pyreon/hotkeys',
+    // Compiles as a deliberate no-op (no native `<head>`): `useHead` drops, `<HeadProvider>` is transparent.
+    '@pyreon/head',
   ]) {
     it(`does NOT blanket-warn for ${pkg}, whose core lowers (nativeFrontend)`, () => {
       expect(warnFor(pkg).some((w) => w.includes('WEB-ONLY'))).toBe(false)

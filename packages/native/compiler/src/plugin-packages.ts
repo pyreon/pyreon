@@ -27,6 +27,7 @@ export const PLUGIN_OWNED_MODULES: ReadonlySet<string> = new Set([
   '@pyreon/feature',
   '@pyreon/flow',
   '@pyreon/form',
+  '@pyreon/head',
   '@pyreon/hooks',
   '@pyreon/hotkeys',
   '@pyreon/http',
