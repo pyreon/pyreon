@@ -13,6 +13,9 @@ function createScrollContainer(height = 300): HTMLDivElement {
   Object.defineProperty(container, 'clientHeight', { value: height, configurable: true })
   Object.defineProperty(container, 'offsetHeight', { value: height, configurable: true })
   Object.defineProperty(container, 'offsetWidth', { value: 300, configurable: true })
+  // @tanstack/virtual-core >= 3.19.6 sizes the scroll element by clientWidth/clientHeight
+
+  Object.defineProperty(container, 'clientWidth', { value: 300, configurable: true })
   // A large scrollHeight so programmatic scroll offsets aren't clamped (happy-dom
   // has no layout — scrollHeight defaults to 0, which clamps scrollToOffset to 0).
   Object.defineProperty(container, 'scrollHeight', { value: 10_000 * 40, configurable: true })
