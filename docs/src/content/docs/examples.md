@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 110 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 116 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 110 examples across 43 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 116 examples across 44 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Shared state and effects
 
@@ -32,6 +32,32 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Button Variant Chain
 
 <Example file="./examples/attrs/button-variant-chain" />
+
+## Auth
+
+### Attempt Limiter
+
+<Example file="./examples/auth/attempt-limiter" />
+
+### Oidc Sign In
+
+<Example file="./examples/auth/oidc-sign-in" />
+
+### Pkce Explorer
+
+<Example file="./examples/auth/pkce-explorer" />
+
+### Return To Guard
+
+<Example file="./examples/auth/return-to-guard" />
+
+### Signed Session
+
+<Example file="./examples/auth/signed-session" />
+
+### Totp Live
+
+<Example file="./examples/auth/totp-live" />
 
 ## Charts
 

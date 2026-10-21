@@ -16,6 +16,7 @@
   "dependencies": {
     "@pyreon/a11y": "workspace:*",
     "@pyreon/attrs": "workspace:*",
+    "@pyreon/auth": "workspace:*",
     "@pyreon/charts": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
@@ -56,6 +57,6 @@
     "@pyreon/vite-plugin": "workspace:*",
     "@types/bun": "^1.4.3",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   }
 }

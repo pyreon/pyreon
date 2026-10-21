@@ -17,6 +17,7 @@
   "dependencies": {
     "@pyreon/a11y": "workspace:*",
     "@pyreon/attrs": "workspace:*",
+    "@pyreon/auth": "workspace:*",
     "@pyreon/charts": "workspace:*",
     "@pyreon/code": "workspace:*",
     "@pyreon/core": "workspace:*",
@@ -62,6 +63,6 @@
     "@types/bun": "^1.4.3",
     "beasties": "^0.5.5",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   }
 }

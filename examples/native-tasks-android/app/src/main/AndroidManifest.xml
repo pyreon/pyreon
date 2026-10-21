@@ -28,5 +28,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- @pyreon/auth sign-in (useOidc): PyreonAuthActivity opens the provider in a
+             browser tab and reports a cancellation when the user comes back without
+             finishing; PyreonAuthRedirectActivity receives the redirect on the app's
+             scheme (nativeRedirectUri `dev.pyreon.tasks:/oauth`). Sources are wired,
+             not an AAR, so there is no library manifest to merge them from. -->
+        <activity
+            android:name="com.pyreon.runtime.PyreonAuthActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity
+            android:name="com.pyreon.runtime.PyreonAuthRedirectActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="dev.pyreon.tasks" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

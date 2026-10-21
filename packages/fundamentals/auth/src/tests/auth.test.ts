@@ -71,6 +71,12 @@ describe('discover', () => {
       ).rejects.toMatchObject({ code: 'insecure_url' })
     }
   })
+  it('a transport failure is network_error, the code every target reports', async () => {
+    const down = () => Promise.reject(new TypeError('Failed to fetch'))
+    await expect(discover('https://idp.example', down)).rejects.toMatchObject({ code: 'network_error' })
+    const { flow } = await beginAuthorization(meta, client)
+    await expect(exchangeCode(meta, client, flow, 'c', down)).rejects.toMatchObject({ code: 'network_error' })
+  })
   it('fails with an AuthError, not a TypeError, on a malformed document', async () => {
     for (const body of [null, [], 'str', 42, { issuer: 'https://idp.example' }]) {
       await expect(discover('https://idp.example', () => json(body)), JSON.stringify(body)).rejects.toBeInstanceOf(AuthError)

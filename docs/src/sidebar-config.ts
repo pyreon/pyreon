@@ -211,6 +211,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Storage', slug: 'storage' },
       { text: 'Sync (local-first / CRDT)', slug: 'sync' },
       { text: 'Permissions', slug: 'permissions' },
+      { text: 'Auth (OIDC, sessions, passkeys)', slug: 'auth' },
       { text: 'Hotkeys', slug: 'hotkeys' },
       { text: 'Toast', slug: 'toast' },
       { text: 'Rx', slug: 'rx' },
