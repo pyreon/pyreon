@@ -42,6 +42,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { runSwiftSmoke } from './swift-cosource-smoke'
+import { isCompanionRef, resolveCompanion, type CompanionContext, type CompanionPackage } from './native-companions'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -65,6 +66,11 @@ interface CoSourcePkg {
   // forgotten one look identical, which is how PyreonWebView.kt went
   // unverified without anyone choosing that.
   kotlinSdkOnly?: string[]
+  // Files from the base runtime or another package that the Swift sources
+  // compile AGAINST (`@base/PyreonHttp.swift`, `@pyreon/storage/PyreonSecureStorage.swift`)
+  // — see native-companions.ts.
+  swiftCompileWith?: string[]
+  dependencies: string[]
 }
 
 function has(cmd: string): boolean {
@@ -109,8 +115,10 @@ function scanCoSourcePackages(): CoSourcePkg[] {
             kotlin?: string
             kotlinServices?: Record<string, string[]>
             kotlinSdkOnly?: string[]
+            swiftCompileWith?: string[]
           }
         }
+        dependencies?: Record<string, string>
       }
       try {
         manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -133,6 +141,8 @@ function scanCoSourcePackages(): CoSourcePkg[] {
         ...(existsSync(testsDir) ? { testsDir } : {}),
         ...(native.kotlinServices ? { kotlinServices: native.kotlinServices } : {}),
         ...(native.kotlinSdkOnly ? { kotlinSdkOnly: native.kotlinSdkOnly } : {}),
+        ...(native.swiftCompileWith ? { swiftCompileWith: native.swiftCompileWith } : {}),
+        dependencies: Object.keys(manifest.dependencies ?? {}),
       })
     }
   }
@@ -146,6 +156,21 @@ function serviceName(file: string): string {
 
 let failures = 0
 const pkgs = scanCoSourcePackages()
+const companionPackages = new Map<string, CompanionPackage>(
+  pkgs.map((p) => [
+    p.name,
+    {
+      name: p.name,
+      ...(p.swiftDir ? { swiftDir: p.swiftDir } : {}),
+      ...(p.kotlinDir ? { kotlinDir: p.kotlinDir } : {}),
+    },
+  ]),
+)
+const companionCtx = (pkg: CoSourcePkg): CompanionContext => ({
+  root: ROOT,
+  owner: { name: pkg.name, dependencies: pkg.dependencies },
+  packages: companionPackages,
+})
 
 if (pkgs.length === 0) {
   console.warn('[check-native-cosource] no co-located native packages found (pyreon.native) — SKIP')
@@ -307,22 +332,17 @@ for (const pkg of pkgs) {
       // monolith (a shared persistence/codec primitive like
       // PyreonStorageBackends or PyreonJson) via a `@base/<File>.kt` prefix —
       // the co-located runtime compiles against it but does not own it.
-      const baseRuntimeDir = join(
-        ROOT,
-        'packages',
-        'native',
-        'runtime-kotlin',
-        'src',
-        'main',
-        'kotlin',
-        'com',
-        'pyreon',
-        'runtime',
-      )
-      const resolveGroupFile = (f: string): string =>
-        f.startsWith('@base/')
-          ? join(baseRuntimeDir, f.slice('@base/'.length))
-          : join(pkg.kotlinDir!, 'com', 'pyreon', 'runtime', f)
+      // `@base/<File>` (a base runtime file) and `@pyreon/<pkg>/<File>` (a declared
+      // dependency's co-located file) compile with the group without being owned by
+      // it — see native-companions.ts.
+      const companionErrors: string[] = []
+      const resolveGroupFile = (f: string): string => {
+        if (!isCompanionRef(f)) return join(pkg.kotlinDir!, 'com', 'pyreon', 'runtime', f)
+        const r = resolveCompanion(f, 'kotlin', companionCtx(pkg))
+        if (r.ok) return r.path
+        companionErrors.push(r.error)
+        return f
+      }
       const ktTests = pkg.testsDir ? filesUnder(pkg.testsDir, '.kt') : []
 
       // COMPLETENESS, the direction this gate was missing. It already fails on
@@ -334,7 +354,7 @@ for (const pkg of pkgs) {
       const declared = new Set(
         Object.values(pkg.kotlinServices)
           .flat()
-          .filter((f) => !f.startsWith('@base/')),
+          .filter((f) => !isCompanionRef(f)),
       )
       for (const f of pkg.kotlinSdkOnly ?? []) declared.add(f)
       const unlisted = filesUnder(runtimeDir, '.kt')
@@ -350,7 +370,13 @@ for (const pkg of pkgs) {
       }
 
       for (const [svc, files] of Object.entries(pkg.kotlinServices)) {
+        companionErrors.length = 0
         const abs = files.map(resolveGroupFile)
+        if (companionErrors.length > 0) {
+          failures++
+          console.error(`  ✗ ${pkg.name} [kotlin ${svc}]:\n    ${companionErrors.join('\n    ')}`)
+          continue
+        }
         const missing = abs.filter((f) => !existsSync(f))
         if (missing.length > 0) {
           failures++
@@ -360,7 +386,7 @@ for (const pkg of pkgs) {
           continue
         }
         // Tests whose base (minus "Test") matches a group file's base.
-        const groupBases = new Set(files.map((f) => f.replace(/^@base\//, '').replace(/\.kt$/, '')))
+        const groupBases = new Set(files.filter((f) => !isCompanionRef(f)).map((f) => f.replace(/\.kt$/, '')))
         const tests = ktTests.filter((t) => {
           const base = t.replace(/^.*\//, '').replace(/Test\.kt$/, '')
           return t.endsWith('Test.kt') && groupBases.has(base)
@@ -463,7 +489,18 @@ for (const pkg of pkgs) {
         `  ${pkg.name} [swift]: SKIPPED — full Swift SDK (SwiftUI/Observation) absent here; the macOS \`validate-swift-typecheck\` job runs this script with the real SDK`,
       )
     } else {
-      const srcFiles = filesUnder(pkg.swiftDir, '.swift')
+      const ownFiles = filesUnder(pkg.swiftDir, '.swift')
+      const companions = (pkg.swiftCompileWith ?? []).map((ref) => resolveCompanion(ref, 'swift', companionCtx(pkg)))
+      const companionErrors = companions.flatMap((r) => (r.ok ? [] : [r.error]))
+      const companionFiles = companions.flatMap((r) => (r.ok ? [r.path] : []))
+      for (const f of companionFiles) if (!existsSync(f)) companionErrors.push(`${f}: not found`)
+      if (companionErrors.length > 0) {
+        failures++
+        console.error(`  ✗ ${pkg.name} [swift]:\n    ${companionErrors.join('\n    ')}`)
+        continue
+      }
+      // The package's own files plus what an app build compiles them with.
+      const srcFiles = [...ownFiles, ...companionFiles]
       const testFiles = pkg.testsDir ? filesUnder(pkg.testsDir, '.swift') : []
       // Typecheck the source alone; if a test exists, compile source+test and RUN it.
       const swiftKey = verdictKey({
