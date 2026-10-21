@@ -17,11 +17,13 @@ describe('native companions', () => {
     expect(isCompanionRef('PyreonOidc.kt')).toBe(false)
   })
 
-  it('resolves @base/ into the base runtime of each language', () => {
-    expect(resolveCompanion('@base/PyreonHttp.swift', 'swift', ctx([]))).toEqual({
-      ok: true,
-      path: '/repo/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift',
-    })
+  it('refuses @base/ for Swift — a separate module in an iOS app, which the gate cannot model', () => {
+    const r = resolveCompanion('@base/PyreonHttp.swift', 'swift', ctx([]))
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toMatch(/separate Swift module/)
+  })
+
+  it('resolves @base/ into the Kotlin base runtime', () => {
     expect(resolveCompanion('@base/PyreonHttp.kt', 'kotlin', ctx([]))).toEqual({
       ok: true,
       path: '/repo/packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonHttp.kt',
@@ -48,8 +50,8 @@ describe('native companions', () => {
   it('refuses malformed refs, the wrong extension, self refs and a missing language', () => {
     const deps = ctx(['@pyreon/storage', '@pyreon/kotlin-only'])
     for (const [ref, lang, msg] of [
-      ['@base/PyreonHttp.kt', 'swift', /\.swift file/],
-      ['@base/a/b.swift', 'swift', /expected @base/],
+      ['@base/PyreonHttp.swift', 'kotlin', /\.kt file/],
+      ['@base/a/b.kt', 'kotlin', /expected @base/],
       ['@pyreon/storage/x/y.swift', 'swift', /expected @base/],
       ['@pyreon/auth/PyreonOidc.swift', 'swift', /names the package itself/],
       ['@pyreon/kotlin-only/X.swift', 'swift', /ships no swift sources/],

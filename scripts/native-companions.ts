@@ -4,14 +4,22 @@
 // The co-source gate compiles each package's native sources on their own, while a
 // real app build compiles them in one module together with the base runtime and
 // every wired first-party package. A co-sourced file that uses a type the app build
-// provides (`PyreonHttp` from the base runtime, `KeychainSecureBackend` from
-// @pyreon/storage) therefore compiled in every app and failed the gate — so packages
+// provides (`KeychainSecureBackend` from @pyreon/storage, `PyreonHttp` from the Kotlin
+// base runtime) therefore compiled in every app and failed the gate — so packages
 // re-implemented those types instead of using them.
 //
 // A companion reference names exactly one file:
 //
-//   @base/<File>              the base runtime (runtime-swift / runtime-kotlin)
+//   @base/<File>              the base runtime — KOTLIN ONLY (runtime-kotlin)
 //   @pyreon/<pkg>/<File>      another package's co-located native sources
+//
+// `@base/` is refused for Swift. On Android every wired source set compiles into one
+// `com.pyreon.runtime` package, so a base-runtime file is simply visible. On iOS the base
+// runtime is a separate Swift PACKAGE (module `PyreonRuntime`) while co-located package
+// sources compile into the app target: a co-located file can only see a base type through
+// `import PyreonRuntime`, which a standalone typecheck cannot model. Compiling the base file
+// alongside would make the gate pass code a real app build rejects (found by building one).
+// Co-located packages DO share the app module with each other, so `@pyreon/<pkg>` is sound.
 //
 // A `@pyreon/<pkg>` reference is only legal when <pkg> is a declared dependency:
 // that is what makes `pyreon-native wire` (which follows first-party dependencies)
@@ -58,6 +66,12 @@ export function resolveCompanion(ref: string, lang: NativeLang, ctx: CompanionCo
   const ext = lang === 'swift' ? '.swift' : '.kt'
   if (!ref.endsWith(ext)) return { ok: false, error: `${ref}: a ${lang} companion must name a ${ext} file` }
   if (ref.startsWith('@base/')) {
+    if (lang === 'swift') {
+      return {
+        ok: false,
+        error: `${ref}: the base runtime is a separate Swift module (PyreonRuntime) in an iOS app, so a co-located file cannot use it without \`import PyreonRuntime\` — compiling it alongside would pass code a real build rejects. Keep the package self-contained instead.`,
+      }
+    }
     const file = ref.slice('@base/'.length)
     if (!file || file.includes('/')) return { ok: false, error: `${ref}: expected @base/<File>${ext}` }
     return { ok: true, path: join(ctx.root, ...BASE_DIRS[lang], file) }
