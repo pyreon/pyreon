@@ -69,7 +69,7 @@ export async function totp(secret: string, now = Date.now(), step = 30, digits =
 export async function verifyTotp(
   secret: string,
   code: string,
-  opts: { now?: number; window?: number; lastUsedStep?: number } = {},
+  opts: { now?: number | undefined; window?: number | undefined; lastUsedStep?: number | undefined } = {},
 ): Promise<{ ok: true; step: number } | { ok: false }> {
   if (!/^\d{6}$/.test(code)) return { ok: false }
   const now = opts.now ?? Date.now()

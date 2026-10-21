@@ -90,6 +90,18 @@ describe('authorization round trip', () => {
     expect(p.get('scope')).toBe('openid profile email')
   })
 
+  it('adds authorizationParams but never lets them override the security parameters', async () => {
+    const { url } = await beginAuthorization(meta, { ...client, authorizationParams: { prompt: 'consent', access_type: 'offline' } })
+    const p = new URL(url).searchParams
+    expect(p.get('prompt')).toBe('consent')
+    expect(p.get('access_type')).toBe('offline')
+    for (const k of ['state', 'nonce', 'code_challenge', 'code_challenge_method', 'redirect_uri', 'client_id', 'scope', 'response_type']) {
+      await expect(beginAuthorization(meta, { ...client, authorizationParams: { [k]: 'x' } }), k).rejects.toMatchObject({
+        code: 'reserved_param',
+      })
+    }
+  })
+
   it('accepts a valid callback', async () => {
     const { flow } = await beginAuthorization(meta, client)
     const cb = `https://app.example/cb?code=abc&state=${flow.state}&iss=${encodeURIComponent(meta.issuer)}`

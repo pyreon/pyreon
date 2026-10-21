@@ -99,3 +99,77 @@ describe('verifyRegistration — cross-origin ceremonies', () => {
     expect((await verifyRegistration(r.input, { ...exp(c), allowCrossOrigin: true })).ok).toBe(true)
   })
 })
+
+describe('RS256 passkeys (Windows Hello)', () => {
+  const unb = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+  async function rsaRegister(challenge: string, bits = 2048, padTo = 0) {
+    const kp = await crypto.subtle.generateKey(
+      { name: 'RSASSA-PKCS1-v1_5', modulusLength: bits, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+      true,
+      ['sign', 'verify'],
+    )
+    const jwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
+    // a leading zero on the modulus is legal CBOR-wise and must be tolerated
+    const raw = unb(jwk.n!)
+    const n = Uint8Array.from([...new Array(Math.max(1, padTo - raw.length)).fill(0), ...raw])
+    const cose = cMap([[cInt(1), cInt(3)], [cInt(3), cInt(-257)], [cInt(-1), cBytes(n)], [cInt(-2), cBytes(unb(jwk.e!))]])
+    const id = crypto.getRandomValues(new Uint8Array(32))
+    const rpHash = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(RP)))
+    const auth = Uint8Array.from([...rpHash, 0x45, 0, 0, 0, 0, ...new Uint8Array(16), 0, id.length, ...id, ...cose])
+    const att = Uint8Array.from(cMap([[cText('fmt'), cText('none')], [cText('attStmt'), cMap([])], [cText('authData'), cBytes(auth)]]))
+    const cd = te.encode(JSON.stringify({ type: 'webauthn.create', challenge, origin: ORIGIN }))
+    return { input: { attestationObject: base64url(att), clientDataJSON: base64url(cd) }, kp }
+  }
+  async function rsaAssert(priv: CryptoKey, challenge: string, count: number) {
+    const cd = te.encode(JSON.stringify({ type: 'webauthn.get', challenge, origin: ORIGIN }))
+    const auth = new Uint8Array(37)
+    auth.set(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(RP))), 0)
+    auth[32] = 0x05
+    auth[36] = count
+    const signed = new Uint8Array([...auth, ...new Uint8Array(await crypto.subtle.digest('SHA-256', cd))])
+    const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', priv, signed))
+    return { authenticatorData: base64url(auth), clientDataJSON: base64url(cd), signature: base64url(sig) }
+  }
+
+  it('registers an RSA key and verifies an assertion signed with it', async () => {
+    const c = passkeyChallenge()
+    const { input, kp } = await rsaRegister(c)
+    const r = await verifyRegistration(input, exp(c))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.publicKey).toMatchObject({ kty: 'RSA', alg: 'RS256' })
+    const ok = await verifyAssertion(await rsaAssert(kp.privateKey, 'c2', 1), { challenge: 'c2', origin: ORIGIN, rpId: RP, publicKey: r.publicKey })
+    expect(ok).toEqual({ ok: true, signCount: 1 })
+    // a different RSA key's signature does not verify
+    const other = await rsaRegister(c)
+    const bad = await verifyAssertion(await rsaAssert(other.kp.privateKey, 'c2', 2), { challenge: 'c2', origin: ORIGIN, rpId: RP, publicKey: r.publicKey })
+    expect(bad).toEqual({ ok: false, reason: 'bad signature' })
+  })
+
+  it('refuses an RSA key shorter than 2048 bits', async () => {
+    const c = passkeyChallenge()
+    const r = await verifyRegistration((await rsaRegister(c, 1024)).input, exp(c))
+    expect(r).toEqual({ ok: false, reason: 'RSA key shorter than 2048 bits' })
+    // zero-padding the modulus to 256 bytes does not make it a 2048-bit key
+    const padded = await verifyRegistration((await rsaRegister(c, 1024, 256)).input, exp(c))
+    expect(padded).toEqual({ ok: false, reason: 'RSA key shorter than 2048 bits' })
+  })
+
+  it('an EC key type cannot be paired with the RS256 algorithm label, nor vice versa', async () => {
+    const c = passkeyChallenge()
+    const r = await verifyRegistration((await register({ challenge: c, alg: -257 })).input, exp(c))
+    expect(r).toEqual({ ok: false, reason: 'only ES256 (P-256) and RS256 passkeys are supported' })
+  })
+
+  it('an assertion against an unsupported stored key type fails closed', async () => {
+    const auth = new Uint8Array(37)
+    auth.set(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(RP))), 0)
+    auth[32] = 0x05
+    auth[36] = 1
+    const r = await verifyAssertion(
+      { authenticatorData: base64url(auth), clientDataJSON: base64url(te.encode(JSON.stringify({ type: 'webauthn.get', challenge: 'c', origin: ORIGIN }))), signature: 'AA' },
+      { challenge: 'c', origin: ORIGIN, rpId: RP, publicKey: { kty: 'oct', k: 'AA' } },
+    )
+    expect(r).toEqual({ ok: false, reason: 'unsupported public key type' })
+  })
+})

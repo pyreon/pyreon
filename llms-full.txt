@@ -1784,7 +1784,7 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 
 ## @pyreon/auth — Authentication
 
-Authentication primitives for Pyreon. Phase 1a ships the framework-neutral core: S256-only PKCE, state + nonce, RFC 9207 `iss` mix-up protection, https-only OIDC discovery with issuer equality, a single-use short-lived pending flow, a public-client code exchange, and a route guard with an open-redirect-safe `returnTo`. Everything runs on Web Crypto + fetch, so it works in browsers, Node, Bun and workerd. Reactive state, session cookies, provider presets and the native runtime land in later phases.
+Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
 
 ```typescript
 const meta = await discover('https://accounts.example')
@@ -1804,6 +1804,17 @@ await auth.handleCallback(location.href)
 
 const cookie = sessionCookie('session', await signSession({ sub: user.id }, { secrets: [process.env.SESSION_SECRET!] }))
 const session = await verifySession(value, { secrets: [process.env.SESSION_SECRET!] })
+
+const session = await verifySession(cookie, {
+  secrets: [process.env.SESSION_SECRET!],
+  isRevoked: (jti) => revoked.has(jti),
+})
+
+const limiter = createAttemptLimiter({ max: 5, windowMs: 15 * 60_000 })
+const gate = limiter.attempt(userId)
+if (!gate.allowed) return tooManyRequests(gate.retryAfterMs)
+const r = await verifyTotp(secret, code, { lastUsedStep })
+if (r.ok) limiter.reset(userId)
 
 const auth = createAuth({ metadata: github, client, flows, redirect })
 

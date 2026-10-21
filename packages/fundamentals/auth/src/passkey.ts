@@ -2,14 +2,14 @@ import { base64url, randomToken } from './pkce'
 import { timingSafeEqual } from './oidc'
 import type { Jwk } from './jwt'
 
-/** WebAuthn assertion (sign-in) verification — ES256 passkeys. Registration/attestation is a later phase. */
+/** WebAuthn assertion (sign-in) verification — ES256 and RS256 passkeys (the key type decides). */
 
 export interface AssertionInput {
   /** base64url of authenticatorData */
   authenticatorData: string
   /** base64url of clientDataJSON */
   clientDataJSON: string
-  /** base64url of the DER-encoded ECDSA signature */
+  /** base64url signature: DER-encoded ECDSA for ES256, raw PKCS#1 v1.5 for RS256 */
   signature: string
 }
 
@@ -20,10 +20,10 @@ export interface AssertionExpectations {
   origin: string
   /** Relying-party id, e.g. `app.example`. */
   rpId: string
-  /** The credential's stored public key (P-256 JWK). */
+  /** The credential's stored public key, as returned by `verifyRegistration` (P-256 or RSA JWK). */
   publicKey: Jwk
   /** Last accepted signCount; a non-increasing counter signals a cloned authenticator. */
-  signCount?: number
+  signCount?: number | undefined
   /** Require user verification (biometric/PIN). Default true. */
   requireUserVerification?: boolean
   /**
@@ -67,6 +67,10 @@ export function derToRaw(der: Uint8Array): Uint8Array<ArrayBuffer> {
   return raw
 }
 
+// WebCrypto refuses an RSA JWK whose `alg` disagrees with the import algorithm;
+// pin it rather than trust whatever was stored.
+const rsaJwk = (k: Jwk): Jwk => ({ kty: 'RSA', n: k.n, e: k.e, alg: 'RS256' }) as Jwk
+
 export async function verifyAssertion(a: AssertionInput, e: AssertionExpectations): Promise<AssertionResult> {
   const no = (reason: string): AssertionResult => ({ ok: false, reason })
   try {
@@ -92,8 +96,18 @@ export async function verifyAssertion(a: AssertionInput, e: AssertionExpectation
     const signed = new Uint8Array(auth.length + 32)
     signed.set(auth, 0)
     signed.set(hash, auth.length)
-    const key = await crypto.subtle.importKey('jwk', e.publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
-    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derToRaw(unb64(a.signature)), signed)
+    let ok: boolean
+    // The stored key's type picks the algorithm — never the assertion, which the
+    // client controls.
+    if (e.publicKey.kty === 'RSA') {
+      const key = await crypto.subtle.importKey('jwk', rsaJwk(e.publicKey), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify'])
+      ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, unb64(a.signature), signed)
+    } else if (e.publicKey.kty === 'EC' && e.publicKey.crv === 'P-256') {
+      const key = await crypto.subtle.importKey('jwk', e.publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
+      ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, derToRaw(unb64(a.signature)), signed)
+    } else {
+      return no('unsupported public key type')
+    }
     return ok ? { ok: true, signCount } : no('bad signature')
   } catch {
     return no('malformed assertion')

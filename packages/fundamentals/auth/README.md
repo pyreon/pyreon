@@ -1,23 +1,89 @@
 # @pyreon/auth
 
-Authentication primitives for Pyreon — OIDC/OAuth2 authorization-code + PKCE, route guards, secure by default.
+Authentication primitives for Pyreon on Web Crypto + `fetch`, so the same code runs in the browser, Node, Bun and
+workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, TOTP and passkeys.
 
-> **Status: phase 1b+.** OIDC core, reactive `createAuth`, `google`/`keycloak`/`github`/`facebook` presets, signed cookie sessions, ID-token verification (`verifyIdToken`). The Passport bridge ships as `@pyreon/auth/passport`. TOTP (verifyTotp) ships; passkey registration and sign-in verification (verifyRegistration, verifyAssertion) ship; the native (Swift/Kotlin) runtime are later phases.
+Tested against [`oidc-provider`](https://github.com/panva/node-oidc-provider), a certified OpenID Provider, run
+in-process: discovery, PKCE + nonce, code exchange, ID-token verification, refresh and RP-initiated logout.
+
+## Sign-in
 
 ```ts
-import { discover, beginAuthorization, parseCallback, exchangeCode } from '@pyreon/auth'
+import { createAuth, google, memoryFlowStore, withPreset } from '@pyreon/auth'
 
-const meta = await discover('https://accounts.example')
-const client = { clientId: 'app', redirectUri: 'https://app.example/cb' }
+const auth = createAuth({
+  issuer: google.issuer,
+  client: withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/cb' }),
+  flows: memoryFlowStore(), // see "Running more than one instance"
+  redirect: (url) => location.assign(url),
+})
 
-const { url, flow } = await beginAuthorization(meta, client) // store `flow` server-side; redirect to `url`
-const { code } = parseCallback(callbackUrl, flow, meta)
-const tokens = await exchangeCode(meta, client, flow, code)
+await auth.signIn() // → provider
+await auth.handleCallback(location.href) // back on /cb
+auth.status() // 'signedIn'
+auth.claims()?.sub // verified ID-token claims — never read identity from tokens().id_token
 ```
 
-Secure defaults: S256-only PKCE, `state` + `nonce`, RFC 9207 `iss` check, https-only discovery with issuer equality,
-single-use flows that expire after 10 minutes, and a guard whose `returnTo` only accepts same-origin paths.
-Not offered, on purpose: the implicit flow, the password grant, PKCE `plain`.
+`createAuth` verifies the ID token before reporting `signedIn`: signature against the provider's JWKS, `iss`, `aud`,
+`exp` / `nbf`, and this sign-in's `nonce`. The key set is cached and re-fetched when a token names an unknown `kid`, so
+provider key rotation needs no restart.
+
+**Staying signed in.** `auth.expiresAt()` is when the access token expires (epoch ms). `await auth.refresh()` swaps in
+fresh tokens; a refreshed ID token must name the same `sub`, so a refresh can never switch users. Providers differ on
+when they issue a refresh token: request `offline_access` in `scope`, and pass provider-specific parameters through
+`client.authorizationParams` (Google: `{ access_type: 'offline', prompt: 'consent' }`). The parameters that carry the
+flow's security (`state`, `nonce`, PKCE, `redirect_uri`, …) cannot be overridden there.
+
+**Signing out.** `auth.signOut()` clears local state only, so the provider still has a session and the next sign-in
+completes without a prompt. `auth.signOut({ endProviderSession: true, postLogoutRedirectUri })` also sends the user to
+the provider's `end_session_endpoint` with an `id_token_hint`.
+
+The lower-level steps are exported too (`discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`,
+`refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows.
+
+## Secure defaults
+
+S256-only PKCE, `state` + `nonce`, RFC 9207 `iss` check, https-only discovery with issuer equality and https on every
+advertised endpoint (loopback http is allowed for local development), single-use flows that expire after 10 minutes,
+ID tokens limited to RS256 / ES256 with `crit` headers refused, cookies `__Host-` + HttpOnly + Secure + SameSite=Lax,
+passkey ceremonies from a cross-origin iframe refused unless `allowCrossOrigin`, and a guard whose `returnTo` only
+accepts paths that stay on the same origin under the URL parser. Not offered, on purpose: the implicit flow, the
+password grant, PKCE `plain`.
+
+## Production checklist
+
+These are not defaults because they need storage or policy only the app has.
+
+- **Throttle every guessable check.** A 6-digit TOTP code is brute-forceable without a limit. Wrap `verifyTotp`,
+  `verifyAssertion` and any password check in an attempt limiter, keyed by account (and by IP for unauthenticated
+  endpoints), and `reset` it on success:
+
+  ```ts
+  const limiter = createAttemptLimiter({ max: 5, windowMs: 15 * 60_000 })
+  const gate = limiter.attempt(userId)
+  if (!gate.allowed) return tooManyRequests(gate.retryAfterMs)
+  const r = await verifyTotp(secret, code, { lastUsedStep })
+  if (r.ok) {
+    limiter.reset(userId)
+    lastUsedStep = r.step // store it: a code is single-use
+  }
+  ```
+
+  `createAttemptLimiter` is per process and bounded (`maxKeys`, oldest window evicted first). With several instances,
+  keep the same counters in a shared store.
+- **Make sessions revocable.** A signed cookie is valid until it expires. Every session carries a `jti`; pass
+  `isRevoked` to `verifySession` and keep revoked ids (logout everywhere, a stolen device) until their `exp`.
+- **Running more than one instance.** `memoryFlowStore` holds pending sign-ins in one process, so a callback that
+  lands on a different instance fails with `unknown_flow`. Implement `FlowStore` over a shared store; `take` must
+  read and delete atomically, and entries can expire after `FLOW_TTL_MS`.
+- **Keep the passkey `signCount`.** Store the `signCount` `verifyAssertion` returns and pass it back next time; a
+  counter that does not increase signals a cloned authenticator.
+
+## Passkeys
+
+`verifyRegistration` (`none` attestation) and `verifyAssertion` support ES256 (P-256) and RS256 (RSA ≥ 2048 bits, which
+Windows Hello uses). The stored key's type decides the algorithm, never the incoming assertion. Request both from the
+browser: `pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }]`.
 
 ## Native (iOS / Android)
 

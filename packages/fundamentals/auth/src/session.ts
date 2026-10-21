@@ -10,6 +10,13 @@ export interface SessionOptions {
   secrets: readonly string[]
   /** Lifetime in seconds. Default 8h. */
   maxAge?: number
+  /**
+   * Revocation check, run by `verifySession` after the signature and expiry pass.
+   * A signed cookie is otherwise valid until it expires — return true for a `jti`
+   * you have revoked (logout everywhere, a stolen session) to reject it early.
+   * Store revoked ids until their session's `exp`, then drop them.
+   */
+  isRevoked?: (jti: string, payload: SessionPayload) => boolean | Promise<boolean>
 }
 
 export interface SessionPayload {
@@ -68,8 +75,12 @@ export async function verifySession(value: string, opts: SessionOptions, now = D
   for (const s of opts.secrets) ok = timingSafeEqual(await hmac(s, body), sig) || ok
   if (!ok) return null
   try {
-    const p = JSON.parse(dec.decode(unb64(body))) as SessionPayload & { exp?: number }
+    const p = JSON.parse(dec.decode(unb64(body))) as SessionPayload & { exp?: number; jti?: unknown }
+    if (p === null || typeof p !== 'object') return null
     if (typeof p.exp !== 'number' || p.exp * 1000 <= now || typeof p.sub !== 'string') return null
+    if (opts.isRevoked) {
+      if (typeof p.jti !== 'string' || (await opts.isRevoked(p.jti, p))) return null
+    }
     return p
   } catch {
     return null

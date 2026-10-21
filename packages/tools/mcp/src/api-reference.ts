@@ -5402,10 +5402,13 @@ const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirect
 await auth.signIn()
 // on the callback route:
 await auth.handleCallback(location.href)`,
-    notes: `Reactive auth state machine over the OIDC primitives. Exposes \`status\` (signedOut | signingIn | signedIn | error), \`tokens\`, \`claims\` and \`error\` as signals plus \`signIn\`, \`handleCallback\` and \`signOut\`. When the provider returns an ID token, \`handleCallback\` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting \`signedIn\`, and exposes the verified payload as \`claims\`; a provider that returns an ID token but publishes no \`jwks_uri\` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after \`signOut()\`; pending flows are read-and-deleted from the \`FlowStore\` so a callback URL cannot be replayed, and \`memoryFlowStore\` drops abandoned flows after the 10-minute flow lifetime. See also: beginAuthorization, google, keycloak.`,
+    notes: `Reactive auth state machine over the OIDC primitives. Exposes \`status\` (signedOut | signingIn | signedIn | error), \`tokens\`, \`claims\`, \`expiresAt\` and \`error\` as signals plus \`signIn\`, \`handleCallback\`, \`refresh\` and \`signOut\`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown \`kid\`, so provider key rotation needs no restart. \`refresh()\` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different \`sub\`. \`signOut({ endProviderSession: true })\` also redirects to the \`end_session_endpoint\` of the provider with an \`id_token_hint\`; plain \`signOut()\` clears local state only. When the provider returns an ID token, \`handleCallback\` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting \`signedIn\`, and exposes the verified payload as \`claims\`; a provider that returns an ID token but publishes no \`jwks_uri\` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after \`signOut()\`; pending flows are read-and-deleted from the \`FlowStore\` so a callback URL cannot be replayed, and \`memoryFlowStore\` drops abandoned flows after the 10-minute flow lifetime. See also: beginAuthorization, google, keycloak.`,
     mistakes: `- Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie
 - Reading \`auth.status\` without calling it — it is a signal
-- Reading identity from \`auth.tokens()?.id_token\` — that is the raw token; use the verified \`auth.claims()\``,
+- Reading identity from \`auth.tokens()?.id_token\` — that is the raw token; use the verified \`auth.claims()\`
+- Expecting a refresh token without asking for one — request \`offline_access\`, and pass provider params via \`client.authorizationParams\` (Google: \`access_type: offline\`)
+- Calling \`signOut()\` and expecting the next sign-in to prompt — the provider session survives; use \`signOut({ endProviderSession: true })\`
+- Using \`memoryFlowStore\` behind a load balancer — a callback landing on another instance fails with \`unknown_flow\`; back \`FlowStore\` with a shared store`,
   },
 
   'auth/signSession': {
@@ -5415,6 +5418,29 @@ const session = await verifySession(value, { secrets: [process.env.SESSION_SECRE
     notes: 'Signs a session into a cookie-safe `body.signature` string (HMAC-SHA256 over Web Crypto). Expiry lives inside the signed body, secrets must be at least 32 characters and rotate via a list (first signs, all verify), and values over 4096 bytes are refused. `verifySession` returns null — never throws — for tampered, expired or malformed input. Pair with `sessionCookie` for HttpOnly + Secure + SameSite=Lax + `__Host-` attributes. See also: verifySession, sessionCookie.',
     mistakes: `- Putting the whole user profile in the cookie — it is capped at 4096 bytes; store a session id and look the rest up
 - Replacing the secret instead of prepending it — existing sessions are invalidated; rotate by putting the new secret first`,
+  },
+
+  'auth/verifySession': {
+    signature: '(value: string, opts: SessionOptions, now?: number) => Promise<SessionPayload | null>',
+    example: `const session = await verifySession(cookie, {
+  secrets: [process.env.SESSION_SECRET!],
+  isRevoked: (jti) => revoked.has(jti),
+})`,
+    notes: 'Verifies a `signSession` value: HMAC against each secret in turn (rotation), then expiry and `sub`. Returns null — never throws — for anything invalid. A signed cookie is otherwise valid until it expires, so pass `isRevoked(jti, payload)` (sync or async) to make sessions revocable: every session carries a random `jti`, and a revoked one is rejected after the signature passes. Keep revoked ids until their `exp`, then drop them. See also: signSession.',
+    mistakes: `- Treating logout as "delete the cookie" — a copied cookie stays valid until it expires unless you check \`isRevoked\`
+- Keeping revoked ids forever — they are only needed until the session would have expired`,
+  },
+
+  'auth/createAttemptLimiter': {
+    signature: '(opts?: AttemptLimiterOptions) => AttemptLimiter',
+    example: `const limiter = createAttemptLimiter({ max: 5, windowMs: 15 * 60_000 })
+const gate = limiter.attempt(userId)
+if (!gate.allowed) return tooManyRequests(gate.retryAfterMs)
+const r = await verifyTotp(secret, code, { lastUsedStep })
+if (r.ok) limiter.reset(userId)`,
+    notes: 'Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attempts per `windowMs` per key, reporting `retryAfterMs` when exhausted; call `reset(key)` after a success. Per process and bounded — expired windows are dropped as they are touched and the table never exceeds `maxKeys` (oldest window evicted first), so a flood of distinct keys cannot grow it without limit. Run several instances? Keep the same counters in a shared store. See also: verifyTotp, verifyAssertion.',
+    mistakes: `- Keying only by IP — an attacker rotates addresses; key by account as well
+- Relying on it across instances — each process counts separately`,
   },
 
   'auth/github': {
@@ -5445,10 +5471,10 @@ if (out.type === 'success') startSession(out.user)`,
   },
 
   'auth/verifyTotp': {
-    signature: '(secret: string, code: string, opts?: { now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number } | { ok: false }>',
+    signature: '(secret: string, code: string, opts?: { now?: number; window?: number; lastUsedStep?: number | undefined }) => Promise<{ ok: true; step: number } | { ok: false }>',
     example: `const r = await verifyTotp(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
 if (r.ok) await save({ lastTotpStep: r.step })`,
-    notes: 'RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code. See also: signSession.',
+    notes: 'RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code. See also: createAttemptLimiter, signSession.',
     mistakes: `- Not storing the returned step: without lastUsedStep a captured code can be replayed for up to 90 s
 - Rate-limiting nothing: six digits is brute-forceable, so limit attempts per account before calling this`,
   },
@@ -5458,7 +5484,7 @@ if (r.ok) await save({ lastTotpStep: r.step })`,
     example: `const challenge = passkeyChallenge() // store server-side, single use
 const r = await verifyAssertion(body, { challenge, origin: 'https://app.example', rpId: 'app.example', publicKey: cred.jwk, signCount: cred.signCount })
 if (r.ok) await save({ signCount: r.signCount })`,
-    notes: 'Server-side WebAuthn sign-in (passkey assertion) verification for ES256 credentials on Web Crypto. Checks ceremony type, the single-use challenge from passkeyChallenge(), exact origin, a top-level (not cross-origin iframe) ceremony unless `allowCrossOrigin` is set, the rpId hash, user presence, user verification (required by default), a strictly increasing signCount (cloned-authenticator signal) and the ECDSA signature over authenticatorData || SHA-256(clientDataJSON), converting the authenticator DER signature to the raw form WebCrypto expects. Returns { ok: false, reason } instead of throwing. Registration and attestation parsing are a later phase: today you supply the stored P-256 JWK. See also: verifyTotp, signSession.',
+    notes: 'Server-side WebAuthn sign-in (passkey assertion) verification for ES256 and RS256 credentials on Web Crypto; the type of the STORED key picks the algorithm, never the assertion. Checks ceremony type, the single-use challenge from passkeyChallenge(), exact origin, a top-level (not cross-origin iframe) ceremony unless `allowCrossOrigin` is set, the rpId hash, user presence, user verification (required by default), a strictly increasing signCount (cloned-authenticator signal) and the ECDSA signature over authenticatorData || SHA-256(clientDataJSON), converting an ES256 DER signature to the raw form WebCrypto expects (RS256 signatures are used as-is). Returns { ok: false, reason } instead of throwing. Pass the JWK `verifyRegistration` returned. See also: verifyRegistration, createAttemptLimiter.',
     mistakes: `- Reusing a challenge: it must be generated per attempt and deleted after verification
 - Skipping the stored signCount update: it is what detects a cloned authenticator
 - Verifying against a wrong or wildcard origin: it must equal your exact origin`,
@@ -5468,9 +5494,10 @@ if (r.ok) await save({ signCount: r.signCount })`,
     signature: '(r: RegistrationInput, e: RegistrationExpectations) => Promise<RegistrationResult>',
     example: `const r = await verifyRegistration(body, { challenge, origin: 'https://app.example', rpId: 'app.example' })
 if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, signCount: r.signCount })`,
-    notes: 'Server-side WebAuthn passkey registration for ES256 credentials with none attestation, which is what passkey providers send by default. Decodes the attestation object with a built-in minimal CBOR reader, checks ceremony type, single-use challenge, exact origin, a top-level ceremony (`allowCrossOrigin` opts in to iframes), rpId hash, user presence/verification and attested-credential data, and converts the COSE key to a P-256 JWK (validated on the curve) that verifyAssertion accepts directly. Any other attestation format or algorithm is refused with a reason rather than silently trusted. See also: verifyAssertion, passkeyChallenge.',
+    notes: 'Server-side WebAuthn passkey registration for ES256 (P-256) and RS256 (RSA >= 2048 bits, used by Windows Hello) credentials with none attestation, which is what passkey providers send by default. Decodes the attestation object with a built-in minimal CBOR reader, checks ceremony type, single-use challenge, exact origin, a top-level ceremony (`allowCrossOrigin` opts in to iframes), rpId hash, user presence/verification and attested-credential data, and converts the COSE key to a JWK (EC points validated on the curve; the key type is pinned to the algorithm) that verifyAssertion accepts directly. Any other attestation format or algorithm is refused with a reason rather than silently trusted. See also: verifyAssertion, passkeyChallenge.',
     mistakes: `- Accepting packed/tpm attestation without verifying the statement: this function refuses them instead of trusting them
-- Storing the credential id and key without the user id: bind the credential to the signed-in account before saving`,
+- Storing the credential id and key without the user id: bind the credential to the signed-in account before saving
+- Requesting only alg -7 from the browser: add -257 (RS256) to pubKeyCredParams or Windows Hello cannot register`,
   },
 
   'auth/createGuard': {

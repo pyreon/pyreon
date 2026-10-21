@@ -5,12 +5,14 @@ import {
   FLOW_TTL_MS,
   beginAuthorization,
   discover,
+  endSessionUrl,
   exchangeCode,
   parseCallback,
+  refreshTokens,
 } from './oidc'
 import type { ClientConfig, FetchLike, OidcMetadata, PendingFlow, TokenResponse } from './oidc'
-import { fetchJwks, verifyIdToken } from './jwt'
-import type { IdTokenClaims } from './jwt'
+import { createJwksCache, tokenKid, verifyIdToken } from './jwt'
+import type { IdTokenClaims, JwksCache, JwksCacheOptions } from './jwt'
 
 export type AuthStatus = 'signedOut' | 'signingIn' | 'signedIn' | 'error'
 
@@ -31,6 +33,20 @@ export interface AuthOptions {
   /** Navigate the user agent to the provider. */
   redirect: (url: string) => void
   fetch?: FetchLike
+  /** JWKS cache tuning (key-set max age, re-fetch throttle on an unknown `kid`). */
+  jwks?: JwksCacheOptions
+}
+
+export interface SignOutOptions {
+  /**
+   * Also end the session AT THE PROVIDER (RP-initiated logout) by redirecting to its
+   * `end_session_endpoint`. Without it only local state is cleared, and the next
+   * sign-in completes silently because the provider still has a session.
+   * Ignored when the provider advertises no end-session endpoint.
+   */
+  endProviderSession?: boolean
+  /** Where the provider sends the user afterwards (must be registered with it). */
+  postLogoutRedirectUri?: string
 }
 
 export interface Auth {
@@ -44,10 +60,19 @@ export interface Auth {
    * `tokens().id_token` directly — that is the raw, unverified token.
    */
   claims: Signal<IdTokenClaims | null>
+  /** When the access token expires (epoch ms), from `expires_in`; null if the provider did not say. */
+  expiresAt: Signal<number | null>
   error: Signal<AuthError | null>
   signIn(): Promise<void>
   handleCallback(url: string): Promise<void>
-  signOut(): void
+  /**
+   * Exchange the refresh token for fresh tokens. A new ID token must verify and
+   * name the SAME `sub` — a refresh can never switch the signed-in user. Fails
+   * (status `error`, session cleared) when there is no refresh token or the
+   * provider refuses it; the user must sign in again.
+   */
+  refresh(): Promise<void>
+  signOut(opts?: SignOutOptions): void
 }
 
 /** Reactive auth state machine over the OIDC primitives. */
@@ -55,20 +80,61 @@ export function createAuth(opts: AuthOptions): Auth {
   const status = signal<AuthStatus>('signedOut')
   const tokens = signal<TokenResponse | null>(null)
   const claims = signal<IdTokenClaims | null>(null)
+  const expiresAt = signal<number | null>(null)
   const error = signal<AuthError | null>(null)
   // Bumped by signOut/new attempts so a late async result can never resurrect a session.
   let epoch = 0
   let metaPromise: Promise<OidcMetadata> | undefined
-  const meta = () => (metaPromise ??= (opts.metadata ? Promise.resolve(opts.metadata) : discover(opts.issuer ?? '', opts.fetch)).catch((e) => {
-    metaPromise = undefined
-    throw e
-  }))
+  let metaResolved: OidcMetadata | undefined
+  let jwks: JwksCache | undefined
+  const meta = () =>
+    (metaPromise ??= (opts.metadata ? Promise.resolve(opts.metadata) : discover(opts.issuer ?? '', opts.fetch)).then(
+      (m) => {
+        metaResolved = m
+        return m
+      },
+      (e) => {
+        metaPromise = undefined
+        throw e
+      },
+    ))
+
+  /**
+   * Verify an ID token against the provider's keys (cached; re-fetched once on an
+   * unknown kid, so key rotation works). A provider that returns an ID token but
+   * publishes no keys is refused rather than trusted.
+   */
+  const verify = async (m: OidcMetadata, idToken: string, nonce: string | undefined): Promise<IdTokenClaims> => {
+    if (!m.jwks_uri) {
+      throw new AuthError('no_jwks', 'provider returned an id_token but publishes no jwks_uri to verify it')
+    }
+    jwks ??= createJwksCache(m, opts.fetch, opts.jwks)
+    const keys = await jwks.keys(tokenKid(idToken))
+    return verifyIdToken(idToken, keys, m, { clientId: opts.client.clientId, ...(nonce === undefined ? {} : { nonce }) })
+  }
+
+  const commit = (t: TokenResponse, verified: IdTokenClaims | null) => {
+    batch(() => {
+      tokens.set(t)
+      claims.set(verified)
+      expiresAt.set(typeof t.expires_in === 'number' ? Date.now() + t.expires_in * 1000 : null)
+      error.set(null)
+      status.set('signedIn')
+    })
+  }
+
+  const clear = () => {
+    batch(() => {
+      tokens.set(null)
+      claims.set(null)
+      expiresAt.set(null)
+    })
+  }
 
   const fail = (e: unknown) => {
     batch(() => {
       error.set(e instanceof AuthError ? e : new AuthError('unknown', String(e)))
-      tokens.set(null)
-      claims.set(null)
+      clear()
       status.set('error')
     })
   }
@@ -77,6 +143,7 @@ export function createAuth(opts: AuthOptions): Auth {
     status,
     tokens,
     claims,
+    expiresAt,
     error,
     async signIn() {
       const my = ++epoch
@@ -108,36 +175,56 @@ export function createAuth(opts: AuthOptions): Auth {
         const { code } = parseCallback(url, flow, m)
         const t = await exchangeCode(m, opts.client, flow, code, opts.fetch)
         // An ID token is identity, so it must verify before the session counts:
-        // signature against the provider's published keys, iss / aud / expiry, and
-        // THIS flow's nonce (which binds the token to the browser that started it).
-        // A provider that returns an ID token it publishes no keys for is refused
-        // rather than trusted. OAuth2-only providers send no ID token at all.
-        let verified: IdTokenClaims | null = null
-        if (t.id_token) {
-          if (!m.jwks_uri) {
-            throw new AuthError('no_jwks', 'provider returned an id_token but publishes no jwks_uri to verify it')
-          }
-          const keys = await fetchJwks(m, opts.fetch)
-          verified = await verifyIdToken(t.id_token, keys, m, { clientId: opts.client.clientId, nonce: flow.nonce })
-        }
+        // signature, iss / aud / expiry, and THIS flow's nonce (which binds the
+        // token to the browser that started it).
+        const verified = t.id_token ? await verify(m, t.id_token, flow.nonce) : null
         if (my !== epoch) return
-        batch(() => {
-          tokens.set(t)
-          claims.set(verified)
-          status.set('signedIn')
-        })
+        commit(t, verified)
       } catch (e) {
         if (my === epoch) fail(e)
       }
     },
-    signOut() {
+    async refresh() {
+      const my = ++epoch
+      try {
+        const current = tokens.peek()
+        if (!current?.refresh_token) throw new AuthError('no_refresh_token', 'no refresh token — sign in again')
+        const m = await meta()
+        const t = await refreshTokens(m, opts.client, current.refresh_token, opts.fetch)
+        // Providers may rotate the refresh token; keep the old one when they don't.
+        const next: TokenResponse = { ...t, refresh_token: t.refresh_token ?? current.refresh_token }
+        let verified = claims.peek()
+        if (t.id_token) {
+          // A refreshed ID token carries no new nonce (OIDC Core §12.2) but must be
+          // for the same user: a different `sub` means the session changed hands.
+          const c = await verify(m, t.id_token, undefined)
+          if (verified !== null && c.sub !== verified.sub) {
+            throw new AuthError('subject_changed', 'refreshed id_token is for a different user')
+          }
+          verified = c
+        }
+        if (my !== epoch) return
+        commit(next, verified)
+      } catch (e) {
+        if (my === epoch) fail(e)
+      }
+    },
+    signOut(o) {
       epoch++
+      const idToken = tokens.peek()?.id_token
       batch(() => {
-        tokens.set(null)
-        claims.set(null)
+        clear()
         error.set(null)
         status.set('signedOut')
       })
+      if (o?.endProviderSession && metaResolved) {
+        const url = endSessionUrl(metaResolved, {
+          ...(idToken ? { idTokenHint: idToken } : {}),
+          clientId: opts.client.clientId,
+          ...(o.postLogoutRedirectUri ? { postLogoutRedirectUri: o.postLogoutRedirectUri } : {}),
+        })
+        if (url) opts.redirect(url)
+      }
     },
   }
 }

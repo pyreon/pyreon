@@ -15,7 +15,25 @@ export interface ClientConfig {
   clientId: string
   redirectUri: string
   scope?: string
+  /**
+   * Extra authorization-request parameters — `prompt`, `login_hint`, `ui_locales`,
+   * or a provider's own (Google issues a refresh token only with
+   * `access_type: 'offline'`). Cannot override the parameters that carry the
+   * flow's security (`state`, `nonce`, PKCE, `redirect_uri`, …): passing one throws.
+   */
+  authorizationParams?: Record<string, string>
 }
+
+const RESERVED_PARAMS = new Set([
+  'response_type',
+  'client_id',
+  'redirect_uri',
+  'scope',
+  'state',
+  'nonce',
+  'code_challenge',
+  'code_challenge_method',
+])
 
 /** State that must survive the redirect round trip. Persist server-side or in a short-lived HttpOnly cookie. */
 export interface PendingFlow {
@@ -41,7 +59,8 @@ export class AuthError extends Error {
 
 const isLoopback = (u: URL) => u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
 
-function assertHttps(url: string, what: string): URL {
+/** https, or http on a loopback host (local development). One rule for every endpoint. */
+export function assertHttps(url: string, what: string): URL {
   let u: URL
   try {
     u = new URL(url)
@@ -113,6 +132,12 @@ export async function beginAuthorization(
   u.searchParams.set('nonce', flow.nonce)
   u.searchParams.set('code_challenge', await codeChallengeS256(flow.codeVerifier))
   u.searchParams.set('code_challenge_method', 'S256')
+  for (const [k, v] of Object.entries(client.authorizationParams ?? {})) {
+    if (RESERVED_PARAMS.has(k)) {
+      throw new AuthError('reserved_param', `authorizationParams cannot set "${k}" — it is managed by the flow`)
+    }
+    u.searchParams.set(k, v)
+  }
   return { url: u.toString(), flow }
 }
 
@@ -161,25 +186,21 @@ export interface TokenResponse {
   scope?: string
 }
 
-/** Exchange the code (PKCE verifier, no client secret — public client). */
-export async function exchangeCode(
+/**
+ * POST to the token endpoint and validate the response: JSON object, a non-empty
+ * `access_token`, `token_type` Bearer. Shared by the code exchange and refresh so
+ * both paths enforce the same rules.
+ */
+async function postToken(
   meta: OidcMetadata,
-  client: ClientConfig,
-  flow: PendingFlow,
-  code: string,
-  fetchImpl: FetchLike = (i, o) => fetch(i, o),
+  body: Record<string, string>,
+  fetchImpl: FetchLike,
 ): Promise<TokenResponse> {
   const res = await fetchImpl(meta.token_endpoint, {
     method: 'POST',
     redirect: 'error',
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: flow.redirectUri,
-      client_id: client.clientId,
-      code_verifier: flow.codeVerifier,
-    }),
+    body: new URLSearchParams(body),
   })
   if (!res.ok) throw new AuthError('token_exchange_failed', `token endpoint returned ${res.status}`)
   let tokens: TokenResponse
@@ -195,4 +216,57 @@ export async function exchangeCode(
     throw new AuthError('bad_token_response', 'token response missing a bearer access_token')
   }
   return tokens
+}
+
+/** Exchange the code (PKCE verifier, no client secret — public client). */
+export function exchangeCode(
+  meta: OidcMetadata,
+  client: ClientConfig,
+  flow: PendingFlow,
+  code: string,
+  fetchImpl: FetchLike = (i, o) => fetch(i, o),
+): Promise<TokenResponse> {
+  return postToken(
+    meta,
+    {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: flow.redirectUri,
+      client_id: client.clientId,
+      code_verifier: flow.codeVerifier,
+    },
+    fetchImpl,
+  )
+}
+
+/**
+ * Exchange a refresh token for fresh tokens (public client). The provider may
+ * rotate the refresh token; when the response carries none, keep using the old one.
+ */
+export function refreshTokens(
+  meta: OidcMetadata,
+  client: ClientConfig,
+  refreshToken: string,
+  fetchImpl: FetchLike = (i, o) => fetch(i, o),
+): Promise<TokenResponse> {
+  return postToken(meta, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: client.clientId }, fetchImpl)
+}
+
+/**
+ * RP-initiated logout URL (OpenID Connect RP-Initiated Logout 1.0), or null when
+ * the provider advertises no `end_session_endpoint`. Navigate the user agent there
+ * to end the session AT THE PROVIDER — clearing local state alone leaves the user
+ * signed in at Google/Keycloak, and the next sign-in completes without a prompt.
+ */
+export function endSessionUrl(
+  meta: OidcMetadata,
+  opts: { idTokenHint?: string; postLogoutRedirectUri?: string; clientId?: string; state?: string } = {},
+): string | null {
+  if (!meta.end_session_endpoint) return null
+  const u = new URL(assertHttps(meta.end_session_endpoint, 'end_session_endpoint').href)
+  if (opts.idTokenHint) u.searchParams.set('id_token_hint', opts.idTokenHint)
+  if (opts.clientId) u.searchParams.set('client_id', opts.clientId)
+  if (opts.postLogoutRedirectUri) u.searchParams.set('post_logout_redirect_uri', opts.postLogoutRedirectUri)
+  if (opts.state) u.searchParams.set('state', opts.state)
+  return u.toString()
 }

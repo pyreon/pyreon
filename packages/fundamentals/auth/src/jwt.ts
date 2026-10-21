@@ -1,4 +1,4 @@
-import { AuthError, timingSafeEqual } from './oidc'
+import { AuthError, assertHttps, timingSafeEqual } from './oidc'
 import type { FetchLike, OidcMetadata } from './oidc'
 
 /** A JSON Web Key as published in a provider's JWKS. */
@@ -53,7 +53,8 @@ function importVerifyKey(jwk: Jwk, alg: (typeof ALGS)[keyof typeof ALGS]['import
 
 export async function fetchJwks(meta: OidcMetadata, fetchImpl: FetchLike = (i, o) => fetch(i, o)): Promise<Jwk[]> {
   if (!meta.jwks_uri) throw new AuthError('no_jwks', 'provider metadata has no jwks_uri')
-  if (!meta.jwks_uri.startsWith('https://')) throw new AuthError('insecure_url', 'jwks_uri must be https')
+  // Same rule as discovery: https, or loopback http for a local dev provider.
+  assertHttps(meta.jwks_uri, 'jwks_uri')
   const res = await fetchImpl(meta.jwks_uri, { redirect: 'error' })
   if (!res.ok) throw new AuthError('jwks_failed', `jwks returned ${res.status}`)
   let body: unknown
@@ -65,6 +66,86 @@ export async function fetchJwks(meta: OidcMetadata, fetchImpl: FetchLike = (i, o
   const keys = (body as { keys?: unknown } | null)?.keys
   if (!Array.isArray(keys)) throw new AuthError('jwks_failed', 'jwks document has no keys array')
   return keys as Jwk[]
+}
+
+export interface JwksCacheOptions {
+  /** Re-fetch the key set after this long even if every kid is known. Default 1 hour. */
+  maxAgeMs?: number
+  /**
+   * Minimum gap between fetches triggered by an UNKNOWN kid. A token naming a kid we
+   * have not seen triggers one re-fetch (the provider rotated its keys); this throttle
+   * stops a flood of tokens with made-up kids from turning into a flood of requests to
+   * the provider. Default 60 seconds.
+   */
+  minRefreshMs?: number
+  /** Clock, for tests. */
+  now?: () => number
+}
+
+export interface JwksCache {
+  /** The current key set, re-fetched once when `kid` is not in it (key rotation). */
+  keys(kid?: string): Promise<Jwk[]>
+}
+
+/**
+ * A provider's JWKS, cached. Concurrent callers share one in-flight fetch, a failed
+ * fetch is not cached (the next call retries), and a token naming an unknown `kid`
+ * triggers a throttled re-fetch so key rotation works without a restart.
+ */
+export function createJwksCache(
+  meta: OidcMetadata,
+  fetchImpl: FetchLike = (i, o) => fetch(i, o),
+  opts: JwksCacheOptions = {},
+): JwksCache {
+  const maxAge = opts.maxAgeMs ?? 3_600_000
+  const minRefresh = opts.minRefreshMs ?? 60_000
+  const now = opts.now ?? Date.now
+  let cached: Jwk[] | null = null
+  let fetchedAt = 0
+  let inflight: Promise<Jwk[]> | null = null
+
+  const load = (): Promise<Jwk[]> => {
+    if (inflight) return inflight
+    const p = fetchJwks(meta, fetchImpl).then(
+      (k) => {
+        cached = k
+        fetchedAt = now()
+        return k
+      },
+    )
+    inflight = p
+    // Clear the in-flight slot on BOTH settle paths — a rejected promise left here
+    // would be returned to every later caller forever.
+    p.then(
+      () => {
+        if (inflight === p) inflight = null
+      },
+      () => {
+        if (inflight === p) inflight = null
+      },
+    )
+    return p
+  }
+
+  return {
+    async keys(kid) {
+      if (cached === null || now() - fetchedAt > maxAge) return load()
+      if (kid !== undefined && !cached.some((k) => k.kid === kid) && now() - fetchedAt >= minRefresh) {
+        return load()
+      }
+      return cached
+    },
+  }
+}
+
+/** The `kid` a compact JWS names in its header, or undefined. Unverified — used only to pick a key. */
+export function tokenKid(token: string): string | undefined {
+  try {
+    const h = part<{ kid?: unknown }>(token.split('.')[0] ?? '')
+    return typeof h?.kid === 'string' ? h.kid : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**

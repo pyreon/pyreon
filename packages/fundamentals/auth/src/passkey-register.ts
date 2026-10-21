@@ -4,7 +4,10 @@ import { decodeCbor } from './cbor'
 import type { Cbor } from './cbor'
 import type { Jwk } from './jwt'
 
-/** WebAuthn registration for ES256 passkeys with `none` attestation (what passkey providers send by default). */
+/**
+ * WebAuthn registration with `none` attestation (what passkey providers send by
+ * default). Keys: ES256 (P-256) and RS256 (RSA ≥ 2048 bits — Windows Hello).
+ */
 
 export interface RegistrationInput {
   /** base64url attestationObject */
@@ -64,15 +67,45 @@ export async function verifyRegistration(r: RegistrationInput, e: RegistrationEx
     const credentialId = base64url(auth.slice(55, 55 + idLen))
     const cose = decodeCbor(auth.slice(55 + idLen)).value as Cbor
     if (!(cose instanceof Map)) return no('malformed COSE key')
-    const x = cose.get(-2)
-    const y = cose.get(-3)
-    if (cose.get(1) !== 2 || cose.get(3) !== -7 || cose.get(-1) !== 1) return no('only ES256 (P-256) passkeys are supported')
-    if (!(x instanceof Uint8Array) || !(y instanceof Uint8Array) || x.length !== 32 || y.length !== 32) return no('bad EC coordinates')
-    const publicKey: Jwk = { kty: 'EC', crv: 'P-256', x: base64url(x), y: base64url(y), alg: 'ES256', use: 'sig' }
-    // Reject points not on the curve (importKey validates).
-    await crypto.subtle.importKey('jwk', publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
+    const publicKey = await coseToJwk(cose)
+    if (typeof publicKey === 'string') return no(publicKey)
     return { ok: true, credentialId, publicKey, signCount }
   } catch {
     return no('malformed registration')
   }
+}
+
+/** Smallest RSA modulus accepted (bits). WebAuthn RS256 keys in the wild are 2048. */
+const MIN_RSA_BITS = 2048
+
+/**
+ * COSE_Key → JWK, or the rejection reason. Only the two algorithms browsers ask
+ * for by default are accepted; the key type is pinned to the algorithm, so an
+ * `alg` label cannot select a weaker verification path.
+ */
+async function coseToJwk(cose: Map<Cbor, Cbor>): Promise<Jwk | string> {
+  const kty = cose.get(1)
+  const alg = cose.get(3)
+  if (kty === 2 && alg === -7) {
+    const x = cose.get(-2)
+    const y = cose.get(-3)
+    if (cose.get(-1) !== 1) return 'only P-256 EC keys are supported'
+    if (!(x instanceof Uint8Array) || !(y instanceof Uint8Array) || x.length !== 32 || y.length !== 32) return 'bad EC coordinates'
+    const jwk: Jwk = { kty: 'EC', crv: 'P-256', x: base64url(x), y: base64url(y), alg: 'ES256', use: 'sig' }
+    // Reject points not on the curve (importKey validates).
+    await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
+    return jwk
+  }
+  if (kty === 3 && alg === -257) {
+    let n = cose.get(-1)
+    const e = cose.get(-2)
+    if (!(n instanceof Uint8Array) || !(e instanceof Uint8Array) || e.length === 0 || e.length > 8) return 'bad RSA key'
+    // An unsigned big-endian modulus may carry a leading zero byte.
+    while (n.length > 0 && n[0] === 0) n = n.slice(1)
+    if (n.length * 8 < MIN_RSA_BITS) return `RSA key shorter than ${MIN_RSA_BITS} bits`
+    const jwk: Jwk = { kty: 'RSA', n: base64url(n), e: base64url(e), alg: 'RS256', use: 'sig' }
+    await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify'])
+    return jwk
+  }
+  return 'only ES256 (P-256) and RS256 passkeys are supported'
 }

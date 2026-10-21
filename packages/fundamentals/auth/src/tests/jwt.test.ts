@@ -77,6 +77,9 @@ describe('fetchJwks', () => {
     expect(keys).toHaveLength(1)
     expect(await code(fetchJwks({ issuer: meta.issuer, authorization_endpoint: meta.authorization_endpoint, token_endpoint: meta.token_endpoint }))).toBe('no_jwks')
     expect(await code(fetchJwks({ ...meta, jwks_uri: 'http://x/jwks' }))).toBe('insecure_url')
+    // same rule as discovery: loopback http is a local dev provider, and must work
+    const ok = () => Promise.resolve(new Response(JSON.stringify({ keys: [] })))
+    expect(await fetchJwks({ ...meta, jwks_uri: 'http://localhost:8080/jwks' }, ok)).toEqual([])
     expect(await code(fetchJwks(meta, () => Promise.resolve(new Response('', { status: 500 }))))).toBe('jwks_failed')
   })
 })
