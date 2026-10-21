@@ -8,6 +8,8 @@
 // the harness, once per run, so a key that carries the user re-fetches with the new token after sign-in. The token
 // here is a prop and a signal — the capability does not depend on where the token comes from (`useOidc`'s
 // `accessToken()`, a store, a prop).
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
@@ -225,6 +227,38 @@ export function Account() {
 
   it.skipIf(!isKotlincAvailable())('the Kotlin emit compiles', () => {
     const r = validateKotlin(transform(SIGNED_IN, { target: 'kotlin' }).code)
+    expect(r.ok, r.ok ? '' : String(r.error)).toBe(true)
+  }, 180_000)
+})
+
+// The auth guide's "Calling your API" example is labelled portable. Compile the block straight out of the page, so
+// the label cannot drift away from what the compiler does (the first draft of that example did not lower).
+describe('the auth guide example compiles to both targets', () => {
+  const page = readFileSync(join(__dirname, '../../../../../docs/src/content/docs/auth.md'), 'utf8')
+  const section = page.slice(page.indexOf('**Portable — web, iOS and Android.**'))
+  const fence = section.slice(section.indexOf('```tsx'))
+  const SNIPPET = fence.slice(fence.indexOf('\n') + 1, fence.indexOf('\n```'))
+
+  it('the snippet was found', () => {
+    expect(SNIPPET).toContain('useOidc(')
+    expect(SNIPPET).toContain('useQuery<Me>')
+  })
+
+  it('lowers with zero warnings on both targets', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(SNIPPET, { target })
+      expect(r.warnings, target).toEqual([])
+      expect(r.code, target).toMatch(/"authorization"(:| to) "Bearer /)
+    }
+  })
+
+  it.skipIf(!isSwiftcAvailable())('the Swift emit typechecks', () => {
+    const r = validateSwiftWithStubs(transform(SNIPPET, { target: 'swift' }).code)
+    expect(r.ok, r.ok ? '' : String(r.error)).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('the Kotlin emit compiles', () => {
+    const r = validateKotlin(transform(SNIPPET, { target: 'kotlin' }).code)
     expect(r.ok, r.ok ? '' : String(r.error)).toBe(true)
   }, 180_000)
 })
