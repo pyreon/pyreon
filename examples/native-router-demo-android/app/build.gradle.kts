@@ -13,7 +13,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
 
 android {
@@ -82,7 +82,7 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // TWO runtime sources in the runtime-kotlin srcDir import okhttp3:
     // PyreonWebSocketOkHttp.kt (the default transport behind the TS-side
     // ws.connect()) and PyreonHttpOkHttp.kt (the executor behind a
@@ -94,8 +94,8 @@ dependencies {
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
     // used or not; R8 strips the unused classes from release builds.
-    implementation("androidx.media3:media3-exoplayer:1.11.0")
-    implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
     // Media-row remote image: the emit lowers <Image src="http…"> to
     // Coil's AsyncImage composable (build.ts adds the conditional
     // import; the DEP lives here — an emit whose import resolves but
@@ -103,7 +103,7 @@ dependencies {
     // the stub-masked-symbol class).
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.18.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
     // Instrumented-test deps. Same as the other Android examples.

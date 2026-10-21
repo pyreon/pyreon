@@ -132,7 +132,7 @@ const owners = readdirSync(resolve(REPO, 'packages')).flatMap((category) =>
 
 describe('classifyNativeSurface — all declared owners', () => {
   it('keeps the full migrated owner set in the regression matrix', () => {
-    expect(owners).toHaveLength(39)
+    expect(owners).toHaveLength(40)
   })
   it.each(owners)('%s source entry runs native validation', (root) => {
     expect(classifyNativeSurface([root + '/src/native-plugin.ts'], noFs).run).toBe(true)

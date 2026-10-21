@@ -52,6 +52,7 @@ import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
 import { usePermissions } from '@pyreon/permissions'
+import { useOidc } from '@pyreon/auth'
 import { createHttp } from '@pyreon/http'
 import { openEventStream, openNdjsonStream, type SseEvent } from '@pyreon/http/stream'
 import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
@@ -178,6 +179,19 @@ const useApp = defineStore('app', () => {
 function LoginPage() {
   const navigate = useNavigate()
 
+  // Single sign-on through @pyreon/auth's useOidc — the device proof for the native OIDC
+  // session (PyreonOidcAuth). The issuer is under `.invalid`, a TLD that RFC 2606 guarantees
+  // never resolves, so the UITest can drive sign-in deterministically with no provider: the
+  // container constructs (reading any stored session from the Keychain / Keystore), renders
+  // `signedOut`, and a tap runs the real async flow to `error` with `network_error` — the
+  // code the web and both native transports share.
+  const sso = useOidc({
+    issuer: 'https://idp.invalid',
+    clientId: 'pyreon-tasks',
+    redirectUri: 'https://tasks.pyreon.dev/callback',
+    nativeRedirectUri: 'dev.pyreon.tasks:/oauth',
+  })
+
   // The validated-form shape (the form-binding arc): the runtime
   // Field binding routes keystrokes through setValue (re-validating
   // once a field carries an error), submit() gates on validateAll,
@@ -227,6 +241,13 @@ function LoginPage() {
           verbatim, so nothing caught it until a web e2e ran. */}
       <Button onPress={() => form.handleSubmit()} data-testid="login-submit">
         Continue
+      </Button>
+      <Text data-testid="sso-status">{sso.status()}</Text>
+      <Show when={() => sso.error() !== null}>
+        <Text data-testid="sso-error">{sso.error() ?? ''}</Text>
+      </Show>
+      <Button onPress={() => sso.signIn()} data-testid="sso-signin">
+        Continue with SSO
       </Button>
     </Stack>
   )

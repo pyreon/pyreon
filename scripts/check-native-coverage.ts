@@ -572,6 +572,19 @@ export function C() {
 }`,
   },
   {
+    name: '@pyreon/auth',
+    mechanism: 'native-container',
+    rationale:
+      'useOidc({ issuer, clientId, redirectUri, nativeRedirectUri }) lowers to the native OIDC session (PyreonOidcAuth): system browser, PKCE, ID-token verification, Keychain/Keystore persistence.',
+    requiresCoSource: true,
+    snippet: `import { useOidc } from '@pyreon/auth'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function C() {
+  const auth = useOidc({ issuer: 'https://accounts.example.com', clientId: 'app', redirectUri: 'https://app.example.com/callback', nativeRedirectUri: 'com.example.app:/oauth' })
+  return (<Stack><Text>{auth.status()}</Text><Text>{auth.claim('email') ?? ''}</Text><Button onPress={() => auth.signIn()}>Sign in</Button><Button onPress={() => auth.signOut({ endProviderSession: true })}>Sign out</Button></Stack>)
+}`,
+  },
+  {
     name: '@pyreon/permissions',
     mechanism: 'native-container',
     rationale: 'usePermissions(grants) lowers to a native PyreonPermissions container over the permissions runtime.',

@@ -148,6 +148,8 @@ The PMTC compiler rewrites `useStorage<T>('key', default)` to the platform-nativ
 
 Same pattern extends to: `@pyreon/router` (iOS NavigationStack + Android NavHost runtimes are Phase C), network fetching, permissions, lifecycle hooks.
 
+Sign-in follows it too: `useOidc({ issuer, clientId, redirectUri, nativeRedirectUri })` from `@pyreon/auth` is a web OIDC session in the browser and the native `PyreonOidcAuth` on iOS (`ASWebAuthenticationSession`) and Android (Custom Tab), with PKCE, ID-token verification and a Keychain / Keystore-backed session — the same members and the same status and error strings on all three targets. Setup and a live sign-in demo: [Auth](/docs/auth#native-ios-and-android).
+
 ### Layer 3 — UI primitives (the architectural fork)
 
 Two separate primitive layers serve different needs:

@@ -35,7 +35,6 @@
 // different as a linter, a `<head>` manager and an animation engine.
 export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
-  ['@pyreon/auth', "the native OIDC/PKCE mechanism (PyreonOidc.swift/.kt) is co-sourced and device-tested in isolation, but no PMTC recognizer lowers the web API yet; native apps use the existing useAuth container from @pyreon/hooks for state, and this package supplies the sign-in mechanism that drives it"],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
   ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
   ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],

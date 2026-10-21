@@ -7,11 +7,10 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 
-// Pyreon auth — native OIDC/PKCE core (Kotlin twin of PyreonAuth.swift and @pyreon/auth's web logic).
+// Pyreon auth — native OIDC/PKCE core (Kotlin twin of PyreonOidc.swift and @pyreon/auth's web logic).
 // JVM-only on purpose: no androidx, no org.json, so the same file compiles in the stub gate and on device.
-// The pending flow is persisted through a PyreonAuthFlowStore so it survives process death while the
-// user is in the system browser. App-facing state is the existing `useAuth` container (PyreonAuth in
-// @pyreon/hooks); this file is the mechanism that drives it.
+// The pending flow is persisted through a PyreonSecureBackend (@pyreon/storage — Keystore on device) so it
+// survives process death while the user is in the system browser.
 
 public data class PyreonAuthFlow(
     val state: String,
@@ -22,34 +21,39 @@ public data class PyreonAuthFlow(
     val createdAtMs: Long,
 )
 
-public sealed class PyreonAuthError(message: String) : Exception("[Pyreon] auth: $message") {
-    public object InsecureUrl : PyreonAuthError("authorization endpoint must be https")
-    public object FlowExpired : PyreonAuthError("authorization attempt expired")
-    public class ProviderError(public val code: String) : PyreonAuthError("provider returned \"$code\"")
-    public object StateMismatch : PyreonAuthError("state mismatch")
-    public object IssuerMismatch : PyreonAuthError("callback iss mismatch (mix-up)")
-    public object IssuerMissing : PyreonAuthError("provider advertises iss but callback omitted it")
-    public object MissingCode : PyreonAuthError("callback has no code")
-    public object UnknownFlow : PyreonAuthError("no pending authorization for this state")
-}
-
 /**
- * Where the pending flow lives across the redirect. Same shape as `PyreonSecureBackend`
- * (`@pyreon/storage`), so an Android Keystore-backed backend adapts with a one-line delegate.
+ * An auth failure. [code] is the stable cross-target string — the same codes the web `AuthError`
+ * carries — and is what the reactive container exposes as `error`.
  */
-public interface PyreonAuthFlowStore {
-    public fun write(key: String, value: String): Boolean
-    public fun read(key: String): String?
-    public fun remove(key: String): Boolean
+public open class PyreonAuthError(public val code: String, message: String) : Exception("[Pyreon] auth: $message") {
+    public object InsecureUrl : PyreonAuthError("insecure_url", "endpoint must be https")
+    public object InvalidUrl : PyreonAuthError("invalid_url", "not a valid URL")
+    public object FlowExpired : PyreonAuthError("flow_expired", "authorization attempt expired")
+    public class ProviderError(public val error: String) : PyreonAuthError("provider_error", "provider returned \"$error\"")
+    public object StateMismatch : PyreonAuthError("state_mismatch", "state mismatch")
+    public object IssuerMismatch : PyreonAuthError("issuer_mismatch", "callback iss mismatch (mix-up)")
+    public object IssuerMissing : PyreonAuthError("issuer_missing", "provider advertises iss but callback omitted it")
+    public object MissingCode : PyreonAuthError("missing_code", "callback has no code")
+    public object UnknownFlow : PyreonAuthError("unknown_flow", "no pending authorization for this state")
 }
 
-public class InMemoryAuthFlowStore : PyreonAuthFlowStore {
-    private val store = HashMap<String, String>()
-    override fun write(key: String, value: String): Boolean { store[key] = value; return true }
-    override fun read(key: String): String? = store[key]
-    override fun remove(key: String): Boolean = store.remove(key) != null
-    /** Number of stored entries (flows plus the pending-flow index). */
-    public val size: Int get() = store.size
+/** The https rule every endpoint follows, shared with the web `assertHttps`. */
+public object PyreonAuthUrl {
+    private val LOOPBACK = setOf("localhost", "127.0.0.1", "[::1]", "::1")
+
+    /** https, or http on a loopback host (local development). Returns the parsed URI. */
+    public fun assertHttps(url: String): java.net.URI {
+        val u = try { java.net.URI(url) } catch (_: java.net.URISyntaxException) { throw PyreonAuthError.InvalidUrl }
+        val scheme = u.scheme?.lowercase() ?: throw PyreonAuthError.InvalidUrl
+        if (u.host.isNullOrEmpty()) throw PyreonAuthError.InvalidUrl
+        if (scheme == "https" || (scheme == "http" && u.host.lowercase() in LOOPBACK)) return u
+        throw PyreonAuthError.InsecureUrl
+    }
+
+    /** Authorization-request parameters the flow owns; `authorizationParams` may not set them. */
+    public val RESERVED_PARAMS: Set<String> = setOf(
+        "response_type", "client_id", "redirect_uri", "scope", "state", "nonce", "code_challenge", "code_challenge_method",
+    )
 }
 
 public object PyreonPKCE {
@@ -73,7 +77,7 @@ public object PyreonPKCE {
         MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
 }
 
-public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
+public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
     public companion object {
         public const val FLOW_TTL_MS: Long = 10 * 60 * 1000
         /** Upper bound on pending flows kept in the backend at once. */
@@ -141,8 +145,14 @@ public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
         redirectUri: String,
         scope: String = "openid profile email",
         nowMs: Long = System.currentTimeMillis(),
+        authorizationParams: Map<String, String> = emptyMap(),
     ): String {
-        if (!authorizationEndpoint.startsWith("https://")) throw PyreonAuthError.InsecureUrl
+        PyreonAuthUrl.assertHttps(authorizationEndpoint)
+        for (k in authorizationParams.keys) {
+            if (k in PyreonAuthUrl.RESERVED_PARAMS) {
+                throw PyreonAuthError("reserved_param", "authorizationParams cannot set \"$k\" — it is managed by the flow")
+            }
+        }
         val flow = PyreonAuthFlow(
             PyreonPKCE.randomToken(), PyreonPKCE.randomToken(), PyreonPKCE.randomToken(),
             redirectUri, issuer, nowMs,
@@ -166,7 +176,7 @@ public class PyreonAuthCore(private val backend: PyreonAuthFlowStore) {
             "response_type" to "code", "client_id" to clientId, "redirect_uri" to redirectUri,
             "scope" to scope, "state" to flow.state, "nonce" to flow.nonce,
             "code_challenge" to PyreonPKCE.challengeS256(flow.codeVerifier), "code_challenge_method" to "S256",
-        ).joinToString("&") { "${e(it.first)}=${e(it.second)}" }
+        ).plus(authorizationParams.toList()).joinToString("&") { "${e(it.first)}=${e(it.second)}" }
         val sep = if (authorizationEndpoint.contains("?")) "&" else "?"
         return "$authorizationEndpoint$sep$params"
     }

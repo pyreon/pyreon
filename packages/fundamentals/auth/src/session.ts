@@ -1,4 +1,4 @@
-import { base64url, randomToken } from './pkce'
+import { base64url, decodeBase64url, randomToken } from './pkce'
 import { timingSafeEqual } from './oidc'
 
 const MAX_COOKIE_BYTES = 4096
@@ -30,12 +30,7 @@ function checkSecrets(secrets: readonly string[]): void {
   }
 }
 
-const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
-  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/'))
-  const out = new Uint8Array(b.length)
-  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i)
-  return out
-}
+const unb64 = decodeBase64url
 
 // Imported HMAC keys per secret. Signing and verifying run on every request, and
 // re-importing the key each time was the dominant cost. Secrets are configuration

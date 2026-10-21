@@ -1,19 +1,19 @@
 ---
 title: "Authentication — API Reference"
-description: "OIDC/OAuth2 authorization-code + PKCE primitives and route guards — secure by default"
+description: "OIDC sign-in on web, iOS and Android, ID-token verification, sessions, TOTP and passkeys — secure by default"
 ---
 
 # @pyreon/auth — API Reference
 
-> **Generated** from `auth`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest.
+> **Generated** from `auth`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [auth](/docs/auth).
 
 Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
 
 ## Multiplatform
 
-**Tier:** Web-only — the browser package; the native story is stated below
+**Tier:** Service backend — the API is shared; the native runtimes host it
 
-the native OIDC/PKCE mechanism (PyreonOidc.swift/.kt) is co-sourced and device-tested in isolation, but no PMTC recognizer lowers the web API yet; native apps use the existing useAuth container from @pyreon/hooks for state, and this package supplies the sign-in mechanism that drives it
+useOidc lowers to the native OIDC session container (PyreonOidcAuth, co-sourced Swift/Kotlin): system browser (ASWebAuthenticationSession / Custom Tab), PKCE, the code exchange, ID-token verification against the provider keys, refresh and provider logout, with the session kept in the Keychain / Keystore. The lower-level API (createAuth, sessions, TOTP, passkeys, guards) is web/server code
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
@@ -29,6 +29,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
+| [`useOidc`](#useoidc-hook) | hook | A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. |
+| [`sessionStorageFlowStore`](#sessionstorageflowstore-function) | function | The browser flow store `useOidc` uses by default: pending sign-ins (state, nonce, PKCE verifier) in `sessionStorage`, re |
 | [`beginAuthorization`](#beginauthorization-function) | function | Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive t |
 | [`parseCallback`](#parsecallback-function) | function | Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then t |
 | [`exchangeCode`](#exchangecode-function) | function | Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a b |
@@ -46,6 +48,64 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
 
 ## API
+
+### `useOidc` `hook`
+
+```ts
+(opts: UseOidcOptions) => UseOidcResult
+```
+
+A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down.
+
+**Example**
+
+```tsx
+const auth = useOidc({
+  issuer: 'https://accounts.example.com',
+  clientId: 'app',
+  redirectUri: 'https://app.example.com/callback',
+  nativeRedirectUri: 'com.example.app:/oauth',
+  scope: 'openid profile email offline_access',
+})
+// <Button onPress={() => auth.signIn()}>Sign in</Button>
+// <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>
+```
+
+**Common mistakes**
+
+- Omitting `nativeRedirectUri` — a native app cannot receive a redirect to the web page unless it is a claimed universal link / App Link; register an app-scheme redirect with the provider
+- Calling useOidc in several components — each call is its own session object; create one at the root and pass it down
+- Building the options at runtime (a prop, a fetch result) — native bakes them at compile time; the call is reported and not emitted
+- Reading `auth.status` without calling it — every member is a call on the web
+- Expecting a refresh token without `offline_access` in `scope` (and, for Google, `authorizationParams: { access_type: "offline", prompt: "consent" }`)
+- Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app
+
+**See also:** `createAuth` · `sessionStorageFlowStore`
+
+---
+
+### `sessionStorageFlowStore` `function`
+
+```ts
+(storage?: Storage) => FlowStore
+```
+
+The browser flow store `useOidc` uses by default: pending sign-ins (state, nonce, PKCE verifier) in `sessionStorage`, read-and-deleted, with expired and excess entries swept on save. A browser sign-in is a full page load to the provider and back, so an in-memory store is empty when the user returns and every callback fails with `unknown_flow`; `sessionStorage` survives the round trip and is cleared when the tab closes.
+
+**Example**
+
+```tsx
+const auth = createAuth({ issuer, client, flows: sessionStorageFlowStore(), redirect: (u) => location.assign(u) })
+```
+
+**Common mistakes**
+
+- Using memoryFlowStore() with a browser redirect — the page reload empties it; use this store (or useOidc, which defaults to it)
+- Backing flows with localStorage — it outlives the tab and is shared across tabs; sessionStorage is the standard place for a browser client's pending authorization
+
+**See also:** `useOidc` · `createAuth`
+
+---
 
 ### `beginAuthorization` `function`
 

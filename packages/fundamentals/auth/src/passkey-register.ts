@@ -1,4 +1,4 @@
-import { base64url } from './pkce'
+import { base64url, decodeBase64url } from './pkce'
 import { timingSafeEqual } from './oidc'
 import { decodeCbor } from './cbor'
 import type { Cbor } from './cbor'
@@ -32,12 +32,7 @@ export type RegistrationResult =
   | { ok: true; credentialId: string; publicKey: Jwk; signCount: number }
   | { ok: false; reason: string }
 
-const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
-  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/'))
-  const out = new Uint8Array(b.length)
-  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i)
-  return out
-}
+const unb64 = decodeBase64url
 
 export async function verifyRegistration(r: RegistrationInput, e: RegistrationExpectations): Promise<RegistrationResult> {
   const no = (reason: string): RegistrationResult => ({ ok: false, reason })

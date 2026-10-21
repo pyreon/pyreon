@@ -5365,6 +5365,34 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
 
   // <gen-docs:api-reference:start @pyreon/auth>
 
+  'auth/useOidc': {
+    signature: '(opts: UseOidcOptions) => UseOidcResult',
+    example: `const auth = useOidc({
+  issuer: 'https://accounts.example.com',
+  clientId: 'app',
+  redirectUri: 'https://app.example.com/callback',
+  nativeRedirectUri: 'com.example.app:/oauth',
+  scope: 'openid profile email offline_access',
+})
+// <Button onPress={() => auth.signIn()}>Sign in</Button>
+// <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>`,
+    notes: 'A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down. See also: createAuth, sessionStorageFlowStore.',
+    mistakes: `- Omitting \`nativeRedirectUri\` — a native app cannot receive a redirect to the web page unless it is a claimed universal link / App Link; register an app-scheme redirect with the provider
+- Calling useOidc in several components — each call is its own session object; create one at the root and pass it down
+- Building the options at runtime (a prop, a fetch result) — native bakes them at compile time; the call is reported and not emitted
+- Reading \`auth.status\` without calling it — every member is a call on the web
+- Expecting a refresh token without \`offline_access\` in \`scope\` (and, for Google, \`authorizationParams: { access_type: "offline", prompt: "consent" }\`)
+- Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app`,
+  },
+
+  'auth/sessionStorageFlowStore': {
+    signature: '(storage?: Storage) => FlowStore',
+    example: 'const auth = createAuth({ issuer, client, flows: sessionStorageFlowStore(), redirect: (u) => location.assign(u) })',
+    notes: 'The browser flow store `useOidc` uses by default: pending sign-ins (state, nonce, PKCE verifier) in `sessionStorage`, read-and-deleted, with expired and excess entries swept on save. A browser sign-in is a full page load to the provider and back, so an in-memory store is empty when the user returns and every callback fails with `unknown_flow`; `sessionStorage` survives the round trip and is cleared when the tab closes. See also: useOidc, createAuth.',
+    mistakes: `- Using memoryFlowStore() with a browser redirect — the page reload empties it; use this store (or useOidc, which defaults to it)
+- Backing flows with localStorage — it outlives the tab and is shared across tabs; sessionStorage is the standard place for a browser client's pending authorization`,
+  },
+
   'auth/beginAuthorization': {
     signature: '(meta: OidcMetadata, client: ClientConfig, now?: number) => Promise<{ url: string; flow: PendingFlow }>',
     example: `const meta = await discover('https://accounts.example')

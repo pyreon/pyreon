@@ -29,6 +29,7 @@
     "@codemirror/lang-json": "^6.0.2",
     "@pyreon/a11y": "workspace:*",
     "@pyreon/attrs": "workspace:*",
+    "@pyreon/auth": "workspace:*",
     "@pyreon/charts": "workspace:*",
     "@pyreon/code": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",

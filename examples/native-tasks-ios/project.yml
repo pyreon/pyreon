@@ -46,6 +46,7 @@ targets:
       - path: ../../packages/fundamentals/query/native/swift
       - path: ../../packages/fundamentals/http/native/swift
       - path: ../../packages/fundamentals/storage/native/swift
+      - path: ../../packages/fundamentals/auth/native/swift
       - path: ../../packages/fundamentals/hooks/native/swift
       # Added with the ToolkitScreen — the Swift mirror of the Gradle srcDir
       # additions. Both are needed: the stub gate models these types, the real

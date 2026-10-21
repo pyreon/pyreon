@@ -68,6 +68,8 @@ import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plug
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
 import { codePlugin } from '../packages/fundamentals/code/src/native-plugin/plugin'
 import { richTextPlugin } from '../packages/fundamentals/rich-text/src/native-plugin/plugin'
+import { authPlugin } from '../packages/fundamentals/auth/src/native-plugin/plugin'
+import { authStubs } from '../packages/fundamentals/auth/src/native-plugin/stubs'
 
 import corePlugin from '../packages/core/core/src/native-plugin'
 import routerPlugin from '../packages/core/router/src/native-plugin'
@@ -103,6 +105,7 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   dndPlugin,
   syncPlugin,
   permissionsPlugin,
+  authPlugin,
   urlStatePlugin,
   storagePlugin,
   sizedMapPlugin,
@@ -135,6 +138,7 @@ export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({
     dndStubs,
     syncStubs,
     permissionsStubs,
+    authStubs,
     storageStubs,
     sizedMapStubs,
   ],

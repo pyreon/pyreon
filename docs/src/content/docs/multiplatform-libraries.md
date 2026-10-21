@@ -131,10 +131,11 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/styler` | styled(Prim) factories lower through its package-owned native plugin with shared defineTheme token resolution; the CSS-in-JS runtime is web, the authored patterns compile |
 | `@pyreon/ui-core` | `<PyreonUI>` lowers through the package-owned native-plugin entry (theme is compile-time; dark mode is the system read) |
 
-### `service-backend` — one API, per-target runtime backends (10)
+### `service-backend` — one API, per-target runtime backends (11)
 
 | Package | Why |
 | --- | --- |
+| `@pyreon/auth` | useOidc lowers to the native OIDC session container (PyreonOidcAuth, co-sourced Swift/Kotlin): system browser (ASWebAuthenticationSession / Custom Tab), PKCE, the code exchange, ID-token verification against the provider keys, refresh and provider logout, with the session kept in the Keychain / Keystore. The lower-level API (createAuth, sessions, TOTP, passkeys, guards) is web/server code |
 | `@pyreon/flow` | one API with a web engine and a Swift/Kotlin port: `createFlow`/`useFlow`, the whole FlowInstance surface and all seven layouts lower to `PyreonFlowState`, and `<Flow instance>` lowers to the interactive `PyreonFlowView` (static custom node/edge maps, connection lines, handles, resizing, toolbars, background, controls, minimap, panels, colorMode including system, gestures, keyboard commands, culling, portable inline styles). The native engines replay shared scenarios against the web engine as oracle, and the iOS/Android device suites assert the rendered chrome and interactions. A `<path d>` in a custom edge or connection line lowers for any SVG path data, an inline `<svg>` in a renderer draws its shapes natively scaled by the viewBox, and plain `<div>`/`<p>`/`<span>` lower where the layout provably matches the browser. Browser-only by member and warned by name: `FlowLayersContext`, `flowStyles`, CSS-dependent renderers (a `class`/`style`, inline-flow mixes, CSS selectors), SVG `<text>`/gradients/`transform`, and renderer maps computed at runtime; `@pyreon/flow/webview` hosts the unchanged browser renderer for those. |
 | `@pyreon/form` | useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms |
 | `@pyreon/hooks` | the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences |
@@ -146,13 +147,12 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (36)
+### `web-only` — architecturally coupled to the web platform (35)
 
 | Package | Why |
 | --- | --- |
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
-| `@pyreon/auth` | the native OIDC/PKCE mechanism (PyreonOidc.swift/.kt) is co-sourced and device-tested in isolation, but no PMTC recognizer lowers the web API yet; native apps use the existing useAuth container from @pyreon/hooks for state, and this package supplies the sign-in mechanism that drives it |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine, so the editor itself stays web); the `@pyreon/code/webview` bridge crosses — see nativeFrontend |
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |

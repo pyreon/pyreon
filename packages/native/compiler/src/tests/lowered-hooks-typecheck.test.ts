@@ -90,6 +90,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ],
   ['useNotifications', '@pyreon/hooks', 'const n = useNotifications()'],
   ['useOnline', '@pyreon/hooks', 'const o = useOnline()'],
+  ['useOidc', '@pyreon/auth', "const a = useOidc({ issuer: 'https://idp.example', clientId: 'app', redirectUri: 'com.example.app:/cb' })"],
   ['useParams', '@pyreon/router', 'const { id } = useParams()'],
   [
     'useUrlState',

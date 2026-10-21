@@ -30,7 +30,7 @@ fun testOidcRfc7636Vector() {
 }
 
 fun testOidcHappyPathAndReplay() {
-    val core = PyreonAuthCore(InMemoryAuthFlowStore())
+    val core = PyreonAuthCore(CountingStore())
     val u = begin(core)
     check(u.contains("code_challenge_method=S256") && u.contains("nonce=")) { "request params" }
     check(core.complete(cb(u, "&code=abc&iss=$ISS"), ISS).first == "abc") { "code returned" }
@@ -38,11 +38,15 @@ fun testOidcHappyPathAndReplay() {
 }
 
 fun testOidcRejections() {
-    val core = PyreonAuthCore(InMemoryAuthFlowStore())
+    val core = PyreonAuthCore(CountingStore())
     raises<PyreonAuthError.IssuerMismatch>("mix-up") { core.complete(cb(begin(core), "&code=a&iss=https://evil.example"), ISS) }
     raises<PyreonAuthError.IssuerMissing>("iss missing") { core.complete(cb(begin(core), "&code=a"), ISS, issuerParamSupported = true) }
     raises<PyreonAuthError.FlowExpired>("expired") { core.complete(cb(begin(core, System.currentTimeMillis() - 700_000), "&code=a"), ISS) }
     raises<PyreonAuthError.InsecureUrl>("http") { core.begin("http://idp.example/auth", ISS, "a", "r") }
+    // Loopback http is a local dev provider, as on the web.
+    check(core.begin("http://localhost:8080/auth", ISS, "a", "r").startsWith("http://localhost:8080/auth?")) { "loopback http allowed" }
+    raises<PyreonAuthError>("reserved param") { core.begin(EP, ISS, "a", "r", authorizationParams = mapOf("state" to "x")) }
+    check(core.begin(EP, ISS, "a", "r", authorizationParams = mapOf("prompt" to "consent")).contains("prompt=consent")) { "authorizationParams added" }
     raises<PyreonAuthError.ProviderError>("provider error") { core.complete(cb(begin(core), "&error=access_denied"), ISS) }
     raises<PyreonAuthError.MissingCode>("no code") { core.complete(cb(begin(core), ""), ISS) }
     raises<PyreonAuthError.UnknownFlow>("unknown state") { core.complete("https://app.example/cb?state=zzz&code=a", ISS) }
@@ -60,7 +64,7 @@ fun main() {
 fun testOidcAbandonedFlowsAreSwept() {
     // A sign-in the user never completes must not stay in the persistent store
     // forever: `begin` sweeps expired flows and caps the rest.
-    val store = InMemoryAuthFlowStore()
+    val store = CountingStore()
     val core = PyreonAuthCore(store)
     val old = System.currentTimeMillis() - 11 * 60 * 1000
     repeat(5) { begin(core, old) }
@@ -73,6 +77,15 @@ fun testOidcAbandonedFlowsAreSwept() {
 }
 
 fun testOidcMalformedCallbackIsUnknownFlow() {
-    val core = PyreonAuthCore(InMemoryAuthFlowStore())
+    val core = PyreonAuthCore(CountingStore())
     raises<PyreonAuthError.UnknownFlow>("bad % escape") { core.complete("https://app.example/cb?state=%zz&code=a", ISS) }
+}
+
+/** The in-memory secure store, counting its entries. */
+class CountingStore : PyreonSecureBackend {
+    val entries = HashMap<String, String>()
+    val size: Int get() = entries.size
+    override fun write(key: String, value: String): Boolean { entries[key] = value; return true }
+    override fun read(key: String): String? = entries[key]
+    override fun remove(key: String): Boolean = entries.remove(key) != null
 }

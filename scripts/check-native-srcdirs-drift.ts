@@ -94,6 +94,8 @@ export function declaredPyreonDeps(pkgJsonPath: string): number {
 
 export interface DriftFinding {
   example: string
+  /** The hand-written list being compared (`build.gradle.kts` or `project.yml`) — named in the report. */
+  file: string
   missingFromGradle: string[]
   extraInGradle: string[]
 }
@@ -103,11 +105,12 @@ export function compareSets(
   example: string,
   gradle: Set<string>,
   wired: Set<string>,
+  file = 'build.gradle.kts',
 ): DriftFinding | null {
   const missingFromGradle = [...wired].filter((p) => !gradle.has(p)).sort()
   const extraInGradle = [...gradle].filter((p) => !wired.has(p)).sort()
   if (missingFromGradle.length === 0 && extraInGradle.length === 0) return null
-  return { example, missingFromGradle, extraInGradle }
+  return { example, file, missingFromGradle, extraInGradle }
 }
 
 async function main(): Promise<number> {
@@ -171,7 +174,7 @@ async function main(): Promise<number> {
       )
       return 1
     }
-    const finding = compareSets(pair.ios, spec, wired)
+    const finding = compareSets(pair.ios, spec, wired, 'project.yml')
     if (finding) findings.push(finding)
   }
 
@@ -187,11 +190,11 @@ async function main(): Promise<number> {
     for (const f of findings) {
       console.error(`  ${f.example}`)
       if (f.missingFromGradle.length > 0) {
-        console.error(`    MISSING from build.gradle.kts: ${f.missingFromGradle.join(', ')}`)
+        console.error(`    MISSING from ${f.file}: ${f.missingFromGradle.join(', ')}`)
         console.error(`      → a real build fails with an unresolved reference; add a source entry for each.`)
       }
       if (f.extraInGradle.length > 0) {
-        console.error(`    EXTRA in build.gradle.kts: ${f.extraInGradle.join(', ')}`)
+        console.error(`    EXTRA in ${f.file}: ${f.extraInGradle.join(', ')}`)
         console.error(`      → the app no longer declares these; drop the srcDir or add the dependency.`)
       }
     }
