@@ -63,6 +63,8 @@ android {
                 srcDir("../../../packages/fundamentals/dnd/native/kotlin")
                 srcDir("../../../packages/fundamentals/table/native/kotlin")
                 srcDir("../../../packages/fundamentals/storage/native/kotlin")
+                // useOidc (LoginPage SSO panel): the native OIDC session + its Android browser edge.
+                srcDir("../../../packages/fundamentals/auth/native/kotlin")
             }
         }
     }

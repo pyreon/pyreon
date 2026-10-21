@@ -455,6 +455,20 @@ class TasksAppInstrumentedTest {
             before + " | " + now + " | node: " + found + dump
     }
 
+    /**
+     * useOidc (@pyreon/auth) on a real emulator — the Android twin of the iOS UITest. The issuer
+     * is under `.invalid` (RFC 2606: never resolves), so no identity provider is needed: the
+     * container is built at launch over the Keystore-backed store, renders `signedOut`, and a tap
+     * runs the real flow on its background executor to `error` with `network_error`.
+     */
+    @Test
+    fun ssoSignInReportsNetworkErrorWithoutAProvider() {
+        waitForTagText("sso-status", "signedOut")
+        composeRule.onNodeWithTag("sso-signin").performClick()
+        waitForTagText("sso-error", "network_error")
+        waitForTagText("sso-status", "error")
+    }
+
     @Test
     fun appLaunchesOnLoginPage() {
         composeRule

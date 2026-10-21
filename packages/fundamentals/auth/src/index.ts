@@ -10,7 +10,7 @@ import { registerSingleton } from '@pyreon/reactivity'
 
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
-export { base64url, codeChallengeS256, generateCodeVerifier, randomToken } from './pkce'
+export { base64url, codeChallengeS256, decodeBase64url, generateCodeVerifier, randomToken } from './pkce'
 export {
   AuthError,
   beginAuthorization,
@@ -26,6 +26,8 @@ export { createGuard, safeReturnTo } from './guard'
 export type { GuardOptions, GuardResult } from './guard'
 export { createAuth, memoryFlowStore } from './auth'
 export type { Auth, AuthOptions, AuthStatus, FlowStore, SignOutOptions } from './auth'
+export { isRedirectFor, sessionStorageFlowStore, useOidc } from './use-oidc'
+export type { UseOidcOptions, UseOidcResult } from './use-oidc'
 export { facebook, github, google, keycloak, oauth2, withPreset } from './presets'
 export type { Preset } from './presets'
 export { sessionCookie, signSession, verifySession } from './session'

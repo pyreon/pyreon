@@ -27,6 +27,11 @@
       "bun": "./src/passport.ts",
       "import": "./lib/passport.js",
       "types": "./lib/types/passport.d.ts"
+    },
+    "./native-plugin": {
+      "bun": "./src/native-plugin.ts",
+      "import": "./lib/native-plugin.js",
+      "types": "./lib/types/native-plugin.d.ts"
     }
   },
   "files": [
@@ -47,10 +52,12 @@
     "lint": "oxlint ."
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/native-compiler": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/oidc-provider": "9.12.1",
@@ -63,7 +70,35 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "swiftCompileWith": [
+        "@pyreon/storage/PyreonSecureStorage.swift"
+      ],
+      "kotlinServices": {
+        "PyreonOidc": [
+          "PyreonOidc.kt",
+          "PyreonAuthJson.kt",
+          "PyreonOidcJose.kt",
+          "PyreonOidcClient.kt",
+          "PyreonOidcAuth.kt",
+          "@pyreon/storage/PyreonSecureStorage.kt"
+        ]
+      },
+      "kotlinSdkOnly": [
+        "PyreonOidcAndroid.kt"
+      ],
+      "plugin": "./lib/native-plugin.js",
+      "modules": [
+        "@pyreon/auth"
+      ]
+    }
+  },
+  "dependencies": {
+    "@pyreon/storage": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/native-compiler": {
+      "optional": true
     }
   }
 }

@@ -1,5 +1,6 @@
-import { AuthError, assertHttps, timingSafeEqual } from './oidc'
+import { AuthError, assertHttps, send, timingSafeEqual } from './oidc'
 import type { FetchLike, OidcMetadata } from './oidc'
+import { decodeBase64url } from './pkce'
 
 /** A JSON Web Key as published in a provider's JWKS. */
 export type Jwk = JsonWebKey & { kid?: string; use?: string }
@@ -22,13 +23,9 @@ export interface VerifyOptions {
   now?: number
 }
 
-const dec = new TextDecoder()
-const unb64 = (s: string): Uint8Array<ArrayBuffer> => {
-  const b = atob(s.replace(/-/g, '+').replace(/_/g, '/'))
-  const out = new Uint8Array(b.length)
-  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i)
-  return out
-}
+// fatal: invalid UTF-8 is a malformed token, not text to repair with U+FFFD.
+const dec = new TextDecoder('utf-8', { fatal: true })
+const unb64 = decodeBase64url
 const part = <T>(s: string): T => JSON.parse(dec.decode(unb64(s))) as T
 
 // `none` and every HS* alg are deliberately absent (RFC 8725 §3.1/§3.2: no alg confusion).
@@ -43,7 +40,15 @@ const keyCache = new WeakMap<object, Promise<CryptoKey>>()
 function importVerifyKey(jwk: Jwk, alg: (typeof ALGS)[keyof typeof ALGS]['import']): Promise<CryptoKey> {
   let p = keyCache.get(jwk)
   if (p === undefined) {
-    p = crypto.subtle.importKey('jwk', jwk, alg, false, ['verify'])
+    // Import the key MATERIAL only. `alg` / `use` were already applied when this key was
+    // chosen (an unset value — absent, null or "" — matches); WebCrypto would instead reject
+    // a key that merely carries `"alg": ""`, which the native verifiers accept.
+    const material: JsonWebKey = {}
+    for (const f of jwk.kty === 'RSA' ? (['kty', 'n', 'e'] as const) : (['kty', 'crv', 'x', 'y'] as const)) {
+      const v = jwk[f]
+      if (typeof v === 'string') material[f] = v
+    }
+    p = crypto.subtle.importKey('jwk', material, alg, false, ['verify'])
     // A failed import must not stay cached as a rejected promise.
     p.catch(() => keyCache.delete(jwk))
     keyCache.set(jwk, p)
@@ -55,7 +60,7 @@ export async function fetchJwks(meta: OidcMetadata, fetchImpl: FetchLike = (i, o
   if (!meta.jwks_uri) throw new AuthError('no_jwks', 'provider metadata has no jwks_uri')
   // Same rule as discovery: https, or loopback http for a local dev provider.
   assertHttps(meta.jwks_uri, 'jwks_uri')
-  const res = await fetchImpl(meta.jwks_uri, { redirect: 'error' })
+  const res = await send(fetchImpl, meta.jwks_uri, { redirect: 'error' })
   if (!res.ok) throw new AuthError('jwks_failed', `jwks returned ${res.status}`)
   let body: unknown
   try {
@@ -176,8 +181,20 @@ export async function verifyIdToken(
   if (header.crit !== undefined) throw bad('bad_token', 'token declares critical header extensions')
   const alg = header.alg as keyof typeof ALGS
   if (!alg || !Object.hasOwn(ALGS, alg)) throw bad('bad_alg', `unsupported alg "${String(header.alg)}"`)
+  // One explicit rule, shared with the native verifiers: a field is UNSET when absent,
+  // null or "". A token kid selects keys only when it is a non-empty string; any other
+  // value matches nothing. (JS truthiness would also treat false/0 as unset, which the
+  // native targets cannot reproduce from typed JSON — so neither target relies on it.)
+  const unset = (v: unknown) => v === undefined || v === null || v === ''
+  const kid: unknown = header.kid
   const candidates = keys.filter(
-    (k) => k !== null && typeof k === 'object' && (!header.kid || k.kid === header.kid) && (!k.alg || k.alg === alg) && (!k.use || k.use === 'sig') && k.kty === (alg === 'RS256' ? 'RSA' : 'EC'),
+    (k) =>
+      k !== null &&
+      typeof k === 'object' &&
+      (unset(kid) || (typeof kid === 'string' && k.kid === kid)) &&
+      (unset(k.alg) || k.alg === alg) &&
+      (unset(k.use) || k.use === 'sig') &&
+      k.kty === (alg === 'RS256' ? 'RSA' : 'EC'),
   )
   if (candidates.length === 0) throw bad('no_key', 'no matching signing key')
   const spec = ALGS[alg]
@@ -213,6 +230,9 @@ export async function verifyIdToken(
     throw bad('not_yet_valid', 'token is not valid yet (nbf)')
   }
   if (typeof claims.sub !== 'string' || !claims.sub) throw bad('bad_token', 'missing sub')
-  if (opts.nonce !== undefined && !timingSafeEqual(String(claims.nonce ?? ''), opts.nonce)) throw bad('bad_nonce', 'nonce mismatch')
+  // A nonce must be a string; a provider echoing it as a number is not echoing it.
+  if (opts.nonce !== undefined && (typeof claims.nonce !== 'string' || !timingSafeEqual(claims.nonce, opts.nonce))) {
+    throw bad('bad_nonce', 'nonce mismatch')
+  }
   return claims
 }

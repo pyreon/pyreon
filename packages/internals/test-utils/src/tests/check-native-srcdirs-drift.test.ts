@@ -48,6 +48,11 @@ describe('compareSets', () => {
     expect(f?.missingFromGradle).toEqual(['missing'])
     expect(f?.extraInGradle).toEqual(['extra'])
   })
+
+  it('names the file it compared, so an iOS finding does not point at Gradle', () => {
+    expect(compareSets('e', new Set(), new Set(['a']))?.file).toBe('build.gradle.kts')
+    expect(compareSets('e', new Set(), new Set(['a']), 'project.yml')?.file).toBe('project.yml')
+  })
 })
 
 describe('declaredPyreonDeps', () => {
