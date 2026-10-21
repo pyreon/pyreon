@@ -1,0 +1,203 @@
+import { describe, expect, it } from 'vitest'
+import {
+  AuthError,
+  base64url,
+  beginAuthorization,
+  codeChallengeS256,
+  createGuard,
+  discover,
+  exchangeCode,
+  generateCodeVerifier,
+  parseCallback,
+  safeReturnTo,
+} from '../index'
+import type { OidcMetadata } from '../index'
+
+const meta: OidcMetadata = {
+  issuer: 'https://idp.example',
+  authorization_endpoint: 'https://idp.example/auth',
+  token_endpoint: 'https://idp.example/token',
+}
+const client = { clientId: 'app', redirectUri: 'https://app.example/cb' }
+
+const json = (body: unknown, status = 200) =>
+  Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }))
+
+describe('pkce', () => {
+  it('matches the RFC 7636 Appendix B vector', async () => {
+    expect(await codeChallengeS256('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe(
+      'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+    )
+  })
+  it('verifier is 43 url-safe chars and unique', () => {
+    const a = generateCodeVerifier()
+    expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(a).not.toBe(generateCodeVerifier())
+  })
+  it('base64url strips padding and unsafe chars', () => {
+    expect(base64url(new Uint8Array([251, 255, 254]))).toBe('-__-')
+  })
+})
+
+describe('discover', () => {
+  it('accepts a matching issuer', async () => {
+    expect((await discover('https://idp.example/', () => json(meta))).token_endpoint).toBe(meta.token_endpoint)
+  })
+  it('rejects issuer mismatch', async () => {
+    await expect(discover('https://idp.example', () => json({ ...meta, issuer: 'https://evil.example' }))).rejects.toMatchObject({
+      code: 'issuer_mismatch',
+    })
+  })
+  it('rejects non-https issuer and non-https endpoints', async () => {
+    await expect(discover('http://idp.example', () => json(meta))).rejects.toMatchObject({ code: 'insecure_url' })
+    await expect(
+      discover('https://idp.example', () => json({ ...meta, token_endpoint: 'http://idp.example/t' })),
+    ).rejects.toMatchObject({ code: 'insecure_url' })
+  })
+  it('allows loopback http for dev, rejects bad URLs and non-200', async () => {
+    await expect(
+      discover('http://localhost:8080', () => json({ ...meta, issuer: 'http://localhost:8080' })),
+    ).resolves.toBeTruthy()
+    await expect(discover('nope', () => json(meta))).rejects.toMatchObject({ code: 'invalid_url' })
+    await expect(discover('https://idp.example', () => json({}, 500))).rejects.toMatchObject({ code: 'discovery_failed' })
+  })
+  it('rejects a non-https jwks_uri, userinfo_endpoint or end_session_endpoint', async () => {
+    // jwks_uri is where the ID-token signing keys come from; a cleartext one lets a
+    // network attacker substitute keys. Every advertised endpoint must be https.
+    for (const k of ['jwks_uri', 'userinfo_endpoint', 'end_session_endpoint']) {
+      await expect(
+        discover('https://idp.example', () => json({ ...meta, [k]: 'http://idp.example/x' })),
+        k,
+      ).rejects.toMatchObject({ code: 'insecure_url' })
+    }
+  })
+  it('fails with an AuthError, not a TypeError, on a malformed document', async () => {
+    for (const body of [null, [], 'str', 42, { issuer: 'https://idp.example' }]) {
+      await expect(discover('https://idp.example', () => json(body)), JSON.stringify(body)).rejects.toBeInstanceOf(AuthError)
+    }
+  })
+})
+
+describe('authorization round trip', () => {
+  it('builds an S256 + state + nonce request', async () => {
+    const { url, flow } = await beginAuthorization(meta, client)
+    const p = new URL(url).searchParams
+    expect(p.get('response_type')).toBe('code')
+    expect(p.get('code_challenge_method')).toBe('S256')
+    expect(p.get('code_challenge')).toBe(await codeChallengeS256(flow.codeVerifier))
+    expect(p.get('state')).toBe(flow.state)
+    expect(p.get('nonce')).toBe(flow.nonce)
+    expect(p.get('scope')).toBe('openid profile email')
+  })
+
+  it('adds authorizationParams but never lets them override the security parameters', async () => {
+    const { url } = await beginAuthorization(meta, { ...client, authorizationParams: { prompt: 'consent', access_type: 'offline' } })
+    const p = new URL(url).searchParams
+    expect(p.get('prompt')).toBe('consent')
+    expect(p.get('access_type')).toBe('offline')
+    for (const k of ['state', 'nonce', 'code_challenge', 'code_challenge_method', 'redirect_uri', 'client_id', 'scope', 'response_type']) {
+      await expect(beginAuthorization(meta, { ...client, authorizationParams: { [k]: 'x' } }), k).rejects.toMatchObject({
+        code: 'reserved_param',
+      })
+    }
+  })
+
+  it('accepts a valid callback', async () => {
+    const { flow } = await beginAuthorization(meta, client)
+    const cb = `https://app.example/cb?code=abc&state=${flow.state}&iss=${encodeURIComponent(meta.issuer)}`
+    expect(parseCallback(cb, flow, meta)).toEqual({ code: 'abc' })
+  })
+
+  it('rejects state mismatch, provider error, mix-up, missing code, expiry', async () => {
+    const { flow } = await beginAuthorization(meta, client, 1000)
+    const bad = (q: string, now = 1000) => () => parseCallback(`https://app.example/cb?${q}`, flow, meta, now)
+    expect(bad('code=a&state=wrong')).toThrow(AuthError)
+    expect(bad(`error=access_denied&state=${flow.state}`)).toThrow(/provider returned/)
+    expect(bad(`code=a&state=${flow.state}&iss=https://evil.example`)).toThrow(/mix-up/)
+    expect(bad(`state=${flow.state}`)).toThrow(/no code/)
+    expect(bad(`code=a&state=${flow.state}`, 1000 + 11 * 60_000)).toThrow(/expired/)
+  })
+
+  it('requires iss when the provider advertises it', async () => {
+    const { flow } = await beginAuthorization(meta, client)
+    const m = { ...meta, authorization_response_iss_parameter_supported: true }
+    expect(() => parseCallback(`https://app.example/cb?code=a&state=${flow.state}`, flow, m)).toThrow(/omitted it/)
+  })
+
+  it('exchanges the code with the verifier and no secret', async () => {
+    const { flow } = await beginAuthorization(meta, client)
+    let body = ''
+    const t = await exchangeCode(
+      meta,
+      client,
+      flow,
+      'abc',
+      (_u, init) => {
+        body = String(init?.body)
+        return json({ access_token: 'at', token_type: 'Bearer' })
+      },
+    )
+    expect(t.access_token).toBe('at')
+    const p = new URLSearchParams(body)
+    expect(p.get('code_verifier')).toBe(flow.codeVerifier)
+    expect(p.has('client_secret')).toBe(false)
+  })
+
+  it('rejects failed or malformed token responses', async () => {
+    const { flow } = await beginAuthorization(meta, client)
+    await expect(exchangeCode(meta, client, flow, 'a', () => json({}, 400))).rejects.toMatchObject({
+      code: 'token_exchange_failed',
+    })
+    await expect(
+      exchangeCode(meta, client, flow, 'a', () => json({ access_token: 'x', token_type: 'mac' })),
+    ).rejects.toMatchObject({ code: 'bad_token_response' })
+    // a body that is valid JSON but not an object, or not JSON at all
+    for (const body of [null, 'x', [1]]) {
+      await expect(exchangeCode(meta, client, flow, 'a', () => json(body)), JSON.stringify(body)).rejects.toMatchObject({
+        code: 'bad_token_response',
+      })
+    }
+    await expect(
+      exchangeCode(meta, client, flow, 'a', () => Promise.resolve(new Response('<html>'))),
+    ).rejects.toMatchObject({ code: 'bad_token_response' })
+  })
+})
+
+describe('guard', () => {
+  it('passes a signed-in session, redirects otherwise with a safe returnTo', () => {
+    let s: { admin: boolean } | null = null
+    const g = createGuard({ session: () => s, loginPath: '/login', allow: (x) => x.admin })
+    expect(g('/a?b=1')).toEqual({ redirect: '/login?returnTo=%2Fa%3Fb%3D1' })
+    s = { admin: false }
+    expect(g('/a')).toEqual({ redirect: '/login?returnTo=%2Fa' })
+    s = { admin: true }
+    expect(g('/a')).toBe(true)
+  })
+  it('blocks open redirects', () => {
+    for (const v of ['//evil.example', 'https://evil.example', '/\\evil', null, '']) expect(safeReturnTo(v)).toBe('/')
+    expect(safeReturnTo('/ok?x=1')).toBe('/ok?x=1')
+    const g = createGuard({ session: () => null, loginPath: '/login' })
+    expect(g('//evil.example')).toEqual({ redirect: '/login?returnTo=%2F' })
+  })
+  it('anything it accepts stays on this origin under the WHATWG URL parser', () => {
+    // The parser strips ASCII tab/CR/LF anywhere in the input before parsing, so
+    // "/\t/evil.example" is followed as "//evil.example" — a protocol-relative
+    // redirect. Check every candidate against the parser itself rather than a
+    // list of expected outputs, so a new bypass shape fails here too.
+    const base = 'https://app.example'
+    const seps = ['\t', '\n', '\r', '\t\n', ' ', '\x00', '\x0b', '\x0c', ' ', '%09', '%2f']
+    const candidates: string[] = ['/ok', '/a/b?c=1#d', '/\\evil', '//evil.example']
+    for (const s of seps) {
+      candidates.push(`/${s}/evil.example`, `${s}//evil.example`, `/${s}\\evil.example`, `/\\${s}evil.example`)
+    }
+    for (const v of candidates) {
+      const out = safeReturnTo(v)
+      expect(new URL(out, base).origin, JSON.stringify(v)).toBe(base)
+    }
+    expect(safeReturnTo('/\t/evil.example')).toBe('/')
+  })
+  it('appends returnTo to a loginPath that already has a query', () => {
+    const g = createGuard({ session: () => null, loginPath: '/login?next=1' })
+    expect(g('/a')).toEqual({ redirect: '/login?next=1&returnTo=%2Fa' })
+  })
+})

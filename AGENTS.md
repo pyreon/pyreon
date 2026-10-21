@@ -51,7 +51,7 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 
 ## Packages
 
-76 published packages across 6 categories under `packages/`, plus private support packages:
+77 published packages across 6 categories under `packages/`, plus private support packages:
 
 - `packages/core/` (10): reactivity, core, compiler, runtime-dom, runtime-server, router, head, server, primitives, sized-map
 - `packages/fundamentals/` (27): a11y, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync
@@ -62,7 +62,7 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 - `packages/internals/` (private): test-utils, manifest, perf-harness, ansi, vitest-config, playwright-config, tsconfig
 - `packages/ui/` (private): ui-theme, ui-components, ui-primitives
 
-Plus `docs/` (the docs site, built on `@pyreon/zero` — 216 doc pages covering all packages) and `examples/`.
+Plus `docs/` (the docs site, built on `@pyreon/zero` — 217 doc pages covering all packages) and `examples/`.
 
 Notable package facts:
 
@@ -76,7 +76,7 @@ Layer order: reactivity → core → {compiler, runtime-dom, runtime-server, rou
 
 Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API reference (`packages/tools/mcp/src/api-reference.ts`) and the docs-site reference pages. Edit the manifest, never a generated file, then run both generators (`bun run gen-docs && bun docs/scripts/gen-all.ts`).
 
-- Coverage: 57 of 76 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
+- Coverage: 58 of 77 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
 - Every manifest declares `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }` (rationale required for `web-only`).
 - MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 20 detector codes today.
 
