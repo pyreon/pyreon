@@ -170,3 +170,61 @@ export function Profile() {
     expect(r.ok, r.ok ? '' : String(r.error)).toBe(true)
   }, 180_000)
 })
+
+// The combination this capability exists for: a `useOidc` session (`@pyreon/auth`) calling the app's own API. The
+// token is `string | null` (signed out has none), so the documented form gives it a fallback; the key carries the
+// user, so signing in re-runs the query with the new token on device.
+describe('useOidc → an authenticated useQuery', () => {
+  const SIGNED_IN = `import { useOidc } from '@pyreon/auth'
+import { useQuery } from '@pyreon/query'
+import { Stack, Text, Button } from '@pyreon/primitives'
+
+type Me = { name: string }
+
+export function Account() {
+  const auth = useOidc({ issuer: 'https://idp.example', clientId: 'app', redirectUri: 'com.example.app:/cb' })
+  const me = useQuery<Me>(() => ({
+    queryKey: ['me', auth.subject() ?? 'anonymous'],
+    queryFn: () =>
+      fetch('https://api.example.com/me', {
+        headers: { authorization: \`Bearer \${auth.accessToken() ?? ''}\` },
+      }).then((r) => r.json()),
+    enabled: auth.isAuthenticated(),
+  }))
+  return (
+    <Stack>
+      <Text>{me.data()?.name ?? auth.status()}</Text>
+      <Button onPress={() => auth.signIn()}>Sign in</Button>
+    </Stack>
+  )
+}
+`
+  it('lowers with zero warnings, reading the session as native properties', () => {
+    const s = transform(SIGNED_IN, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toMatch(/"authorization": "Bearer \\\(\(?auth\.accessToken \?\? ""\)?\)"/)
+    expect(s.code).toMatch(/\.task\(id: [^)]*auth\.subject/)
+    const k = transform(SIGNED_IN, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toMatch(/"authorization" to "Bearer \$\{\(?auth\.accessToken\.value \?: ""\)?\}"/)
+    expect(k.code).toMatch(/LaunchedEffect\([^)]*auth\.subject\.value/)
+  })
+
+  it('a raw `auth.accessToken()` header is refused with the fix — the token is null while signed out', () => {
+    const raw = SIGNED_IN.replace("`Bearer ${auth.accessToken() ?? ''}`", 'auth.accessToken()')
+    expect(raw).not.toBe(SIGNED_IN)
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(raw, { target }).warnings.join('\n'), target).toMatch(/header "authorization" may be null or undefined/)
+    }
+  })
+
+  it.skipIf(!isSwiftcAvailable())('the Swift emit typechecks', () => {
+    const r = validateSwiftWithStubs(transform(SIGNED_IN, { target: 'swift' }).code)
+    expect(r.ok, r.ok ? '' : String(r.error)).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('the Kotlin emit compiles', () => {
+    const r = validateKotlin(transform(SIGNED_IN, { target: 'kotlin' }).code)
+    expect(r.ok, r.ok ? '' : String(r.error)).toBe(true)
+  }, 180_000)
+})
