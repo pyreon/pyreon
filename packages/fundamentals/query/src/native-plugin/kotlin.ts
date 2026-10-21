@@ -1,7 +1,7 @@
 // The Kotlin half of the `@pyreon/query` lowering: the `remember`ed containers and the
 // `LaunchedEffect` / `DisposableEffect` harnesses that drive them.
 
-import type { EmitContext, ExtDecl } from '@pyreon/native-compiler/plugin-api'
+import { sendableHeaderExprs, type EmitContext, type ExtDecl } from '@pyreon/native-compiler/plugin-api'
 import type { QueryPayload, StreamPayload } from './types'
 
 const query = (d: ExtDecl): QueryPayload => d.payload as unknown as QueryPayload
@@ -61,16 +61,16 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
   } else {
     const kotlinUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
     lines.push(`    try {`)
-    if (d.method || d.headers || d.body) {
+    if (d.method || d.headers || d.headerExprs || d.body) {
       // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or a body goes through
       // PyreonHttp (readText() can express none of them).
       const parts = [`method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`, `url = ${kotlinUrl}`]
-      if (d.headers) {
-        const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${ctx.stringLiteral(k)} to ${ctx.stringLiteral(v)}`)
-          .join(', ')
-        parts.push(`headers = mapOf(${pairs})`)
-      }
+      const pairs = [
+        ...Object.entries(d.headers ?? {}).map(([k, v]) => `${ctx.stringLiteral(k)} to ${ctx.stringLiteral(v)}`),
+        // Evaluated here, inside the harness — i.e. when THIS run builds the request, so a token is current.
+        ...sendableHeaderExprs(d.headerExprs, ctx, `Declaration ${decl.name}: useQuery queryFn fetch`).map(([k, e]) => `${ctx.stringLiteral(k)} to ${ctx.expr(e, 0)}`),
+      ]
+      if (pairs.length > 0) parts.push(`headers = mapOf(${pairs.join(', ')})`)
       if (d.body !== undefined) parts.push(`body = ${ctx.stringLiteral(d.body)}`)
       lines.push(`      val __response = withContext(Dispatchers.IO) {`)
       // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.

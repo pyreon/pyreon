@@ -3092,14 +3092,14 @@
       "warnings": 0
     },
     "golden-fixture:hooks-fetch-02.tsx|swift": {
-      "sha": "dc8961cb4b5585cba7d48b5bde5f4e1785d6f3df72f5683bfe58ad67cb353d0a",
-      "bytes": 4604,
-      "warnings": 10
+      "sha": "686c7c1f9e0bf1473cc566e2204d89d01a3408126625d4f398223db514dab2b9",
+      "bytes": 4623,
+      "warnings": 9
     },
     "golden-fixture:hooks-fetch-02.tsx|kotlin": {
-      "sha": "db2fa7288b5a96e76d39b8d15bbc6ad6f27fcb79ffa9e3514595c49adef8f252",
-      "bytes": 4996,
-      "warnings": 10
+      "sha": "2f2ab52bac7623112e867a19c576dbb2778cfa9a3e88c90eeb1e9058307c25ba",
+      "bytes": 5017,
+      "warnings": 9
     },
     "golden-fixture:hooks-fetch-03.tsx|swift": {
       "sha": "e150a7e433fe01f6e150fd706790d3dbd31583507e388d85ddf18518e220ef1d",
@@ -4282,14 +4282,14 @@
       "warnings": 1
     },
     "golden-fixture:query-15.tsx|swift": {
-      "sha": "243b133dd2b0d9530a6e3257d5b7d62a5c06c311bbb511b6a3a40aa83c39738b",
+      "sha": "43e5900c2d314d40720973e3d44167302b10dc0bd8c4426cfa5c4f128b49ac30",
       "bytes": 733,
-      "warnings": 1
+      "warnings": 2
     },
     "golden-fixture:query-15.tsx|kotlin": {
-      "sha": "2097c5a5a520faeabf2de1b8618bf80ae60895f4cfc714b8978845e2ad471dfe",
+      "sha": "eb8329e5d9180f42a572b7ef7ebc6445a8eedbe47da56ab257b1c43895d9811f",
       "bytes": 839,
-      "warnings": 1
+      "warnings": 2
     },
     "golden-fixture:query-16.tsx|swift": {
       "sha": "b8136eb4909c432325f871e392f691645d9945e62c56c16f25c5287502fcf352",
@@ -4322,14 +4322,14 @@
       "warnings": 0
     },
     "golden-fixture:query-19.tsx|swift": {
-      "sha": "42fc00339463fc2f0e83a81c6223089efd0f1f5bdc33897ecef2ee888b33fb42",
-      "bytes": 607,
-      "warnings": 1
+      "sha": "fc650d74316ac9ab5b527d04798bf12e62756935d36552f732df593cf63a9c2a",
+      "bytes": 615,
+      "warnings": 0
     },
     "golden-fixture:query-19.tsx|kotlin": {
-      "sha": "d0ddd53b6d510dc78bf94ac10feb68ddcfec92acce1f8c64d12ed9471d6ff6fc",
-      "bytes": 729,
-      "warnings": 1
+      "sha": "a56c189a59ea7faefdd9efb4341f09dcdad25cfa8ea244b6a9c0ae8fd88e6985",
+      "bytes": 739,
+      "warnings": 0
     },
     "golden-fixture:query-20.tsx|swift": {
       "sha": "f343136253be71da83f35aa0668cffe6a4cb4e05369c0c298bb65a3e55989b7e",
@@ -7352,13 +7352,13 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "38862ebd601b359121dd2bdd2f2f8ff20c39227a022872690e272170d2124375",
-      "bytes": 19247,
+      "sha": "3ded09a1515dcb648310ac27eb81e389f151a4bbccff1a1823d4685e1f6ac592",
+      "bytes": 19468,
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
-      "sha": "92ef65e586fa5adf4140e1e2da97c245aff5022ea7e918385416774abdeb9288",
-      "bytes": 17754,
+      "sha": "dfbbb19277f186490cdd9f18d2753ec8ab1182090fc5d5b89af4dbfb1c2a132f",
+      "bytes": 17987,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {

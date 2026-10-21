@@ -123,8 +123,9 @@ describe('parse.ts — useFetch request init', () => {
     expect(swift(body(`  declare const h: any\n  const q = useFetch<Resp>('https://x', { headers: h })`)).warnings.join('\n')).toContain(
       'useFetch headers must be an object literal of string literals',
     )
-    expect(swift(body(`  declare const v: string\n  const q = useFetch<Resp>('https://x', { headers: { A: v } })`)).warnings.join('\n')).toContain(
-      'useFetch header "A" must be a string literal',
+    // A runtime STRING value crosses now; a value that cannot be a header (here the number signal `n`) is still named.
+    expect(swift(body(`  const q = useFetch<Resp>('https://x', { headers: { A: n() } })`)).warnings.join('\n')).toContain(
+      'useFetch header "A" must be a string',
     )
   })
 
@@ -135,7 +136,7 @@ describe('parse.ts — useFetch request init', () => {
   })
 
   it('emits NO headers when every entry was skipped', () => {
-    const r = swift(body(`  declare const v: string\n  const q = useFetch<Resp>('https://x', { headers: { A: v } })`))
+    const r = swift(body(`  const q = useFetch<Resp>('https://x', { headers: { A: n() } })`))
     expect(r.code).not.toContain('headers: [')
   })
 

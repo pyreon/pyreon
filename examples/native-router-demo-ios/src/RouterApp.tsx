@@ -23,6 +23,7 @@ import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
+import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { defineTheme, styled } from '@pyreon/styler'
 
@@ -714,6 +715,7 @@ interface EchoReply {
   id: string
   method: string
   body: string
+  authorization: string
 }
 
 function LifecyclePage() {
@@ -745,9 +747,13 @@ function LifecyclePage() {
 
 function HttpPage() {
   const navigate = useNavigate()
+  // The Authorization value is a RUNTIME string built from a signal — not a literal — so this request proves the
+  // header value is evaluated on the device when the request is built (what a signed-in app needs to send its token).
+  // Until runtime header values crossed, this header was dropped on iOS and Android.
+  const token = signal('tok-42')
   const posted = useFetch<EchoReply>('http://localhost:8790/echo', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token()}` },
     body: '{"name":"pyreon"}',
   })
   const failed = useFetch<EchoReply>('http://localhost:8790/boom', { method: 'PUT' })
@@ -757,6 +763,7 @@ function HttpPage() {
       <Text data-testid="http-method">Method: {posted.data()?.method ?? 'none'}</Text>
       <Text data-testid="http-body">Body: {posted.data()?.body ?? 'none'}</Text>
       <Text data-testid="http-id">Id: {posted.data()?.id ?? 'none'}</Text>
+      <Text data-testid="http-auth">Auth: {posted.data()?.authorization ?? 'none'}</Text>
       <Text data-testid="http-bad">Bad: {failed.error() ? 'rejected' : 'no'}</Text>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>

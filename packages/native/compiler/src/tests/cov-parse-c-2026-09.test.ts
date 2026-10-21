@@ -134,11 +134,12 @@ describe('parse.ts — parseFetchInitObject (queryFn fetch init)', () => {
     const r = fi(
       `{ method: 'put', body: 'payload', headers: { 'x-a': 'b', auth: 'c', n: 1, [k]: 'z', ...more } }`,
     )
-    // The computed `[k]` header is NAMED (it used to vanish silently).
+    // The computed `[k]` header and the numeric `n` value are both NAMED (each used to vanish silently).
     expect(r.warnings).toEqual([
       expect.stringContaining(
         'useQuery queryFn fetch headers: the computed key `[k]` is only known at runtime',
       ),
+      expect.stringContaining('useQuery queryFn fetch header "n" must be a string'),
     ])
     expect(r.code).toContain('method: .put')
     expect(r.code).toContain('"payload"')
