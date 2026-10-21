@@ -65,6 +65,8 @@ import { elementsPlugin } from '../packages/ui-system/elements/src/native-plugin
 import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin/plugin'
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
+import { authPlugin } from '../packages/fundamentals/auth/src/native-plugin/plugin'
+import { authStubs } from '../packages/fundamentals/auth/src/native-plugin/stubs'
 
 import corePlugin from '../packages/core/core/src/native-plugin'
 import routerPlugin from '../packages/core/router/src/native-plugin'
@@ -99,6 +101,7 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   dndPlugin,
   syncPlugin,
   permissionsPlugin,
+  authPlugin,
   urlStatePlugin,
   storagePlugin,
   sizedMapPlugin,
@@ -129,6 +132,7 @@ export const FIRST_PARTY_VALIDATE_OPTIONS: ValidateOptions = Object.freeze({
     dndStubs,
     syncStubs,
     permissionsStubs,
+    authStubs,
     storageStubs,
     sizedMapStubs,
   ],

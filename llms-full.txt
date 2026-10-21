@@ -1787,6 +1787,18 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
 
 ```typescript
+const auth = useOidc({
+  issuer: 'https://accounts.example.com',
+  clientId: 'app',
+  redirectUri: 'https://app.example.com/callback',
+  nativeRedirectUri: 'com.example.app:/oauth',
+  scope: 'openid profile email offline_access',
+})
+// <Button onPress={() => auth.signIn()}>Sign in</Button>
+// <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>
+
+const auth = createAuth({ issuer, client, flows: sessionStorageFlowStore(), redirect: (u) => location.assign(u) })
+
 const meta = await discover('https://accounts.example')
 const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' })
 // store `flow`, then redirect the user to `url`

@@ -23,6 +23,17 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('login-page')).toBeVisible()
   })
 
+  // useOidc on the web arm of the same screen: identical status spelling and error code as the
+  // iOS / Android device tests, from the same source. The issuer is under `.invalid`, so
+  // discovery fails in the browser exactly as the native transports fail.
+  test('SSO sign-in reports network_error without a provider, as native does', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByTestId('sso-status')).toHaveText('signedOut')
+    await page.getByTestId('sso-signin').click()
+    await expect(page.getByTestId('sso-error')).toHaveText('network_error')
+    await expect(page.getByTestId('sso-status')).toHaveText('error')
+  })
+
   // This spec is the reason three bugs got fixed. It ran the shared source in a
   // browser for the first time, the screen rendered nothing, and each fix
   // uncovered the next one:

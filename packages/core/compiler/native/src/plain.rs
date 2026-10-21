@@ -2790,7 +2790,7 @@ pub fn transform_plain(
     let source_type = plain_source_type(&filename);
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
-    if ret.panicked {
+    if ret.fatal_error {
         return None; // downstream transform reports the parse error
     }
     let program = &ret.program;

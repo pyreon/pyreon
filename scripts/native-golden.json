@@ -541,6 +541,26 @@
       "bytes": 542,
       "warnings": 1
     },
+    "golden-fixture:auth-01.tsx|swift": {
+      "sha": "ece509dddc226a0a6b1e8a1661de3a1b6063e84a0948ded7655a640f654430f2",
+      "bytes": 980,
+      "warnings": 0
+    },
+    "golden-fixture:auth-01.tsx|kotlin": {
+      "sha": "2a2bc9e08bc4ee27dd5b179c52171f214ab0f0dc0c7db31ad63c8e51d7833a31",
+      "bytes": 1192,
+      "warnings": 0
+    },
+    "golden-fixture:auth-02.tsx|swift": {
+      "sha": "226743680389b75db3a048e92b2602f4d7893401e4b6e745c7df8e427dce2f59",
+      "bytes": 483,
+      "warnings": 4
+    },
+    "golden-fixture:auth-02.tsx|kotlin": {
+      "sha": "29f25bb687b170a921425e3b16092386301f541d097236752c8710369e89dac9",
+      "bytes": 559,
+      "warnings": 4
+    },
     "golden-fixture:chart-formatter-params.tsx|swift": {
       "sha": "95b1edc3929484f610ed2510b8c089e76f02461d5e37590bfc5262b40df72b58",
       "bytes": 5644,
@@ -7342,13 +7362,13 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "7e7b49adebfeb5a761d4e1573fee817534c233be3e3ab0c61aefe2ad9c4df827",
-      "bytes": 156602,
+      "sha": "000d7f22825839a5a76d0146ec06db3452cbf19e0bdbc10c07cda7aaa66a8687",
+      "bytes": 157036,
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "7ba1f4c3f81d736e150849ce3e9f6ccf892cbeb421cd2d64767f70f4a57075e3",
-      "bytes": 162397,
+      "sha": "d06cd70e82a8055903e7a316701cfe8a106734e86f08e40d424f1598bb35a14a",
+      "bytes": 162867,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
@@ -7589,6 +7609,16 @@
     "registry:@pyreon/hooks|kotlin": {
       "sha": "8cf919632110e69d6a1fcbf98f14652c66009c8cec34019877e71aa61d509554",
       "bytes": 528,
+      "warnings": 0
+    },
+    "registry:@pyreon/auth|swift": {
+      "sha": "a0181ee82fc1a268143c470703311a29406a9a3324e11c87d1ef6136c0835206",
+      "bytes": 408,
+      "warnings": 0
+    },
+    "registry:@pyreon/auth|kotlin": {
+      "sha": "f5330450ec1144d9b9a4d59bddf4704eb36aeed44b47761b6f7d38e1fe50224c",
+      "bytes": 521,
       "warnings": 0
     },
     "registry:@pyreon/permissions|swift": {

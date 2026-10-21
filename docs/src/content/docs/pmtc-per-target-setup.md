@@ -221,6 +221,14 @@ fun MyApp() {
 
 `HomePage` / `ProfilePage` come from the compiler-emitted Kotlin.
 
+### Step 4 — Manifest entries for packages that need them
+
+Most packages need nothing in `AndroidManifest.xml`. The runtime ships as Kotlin **sources** wired into your module rather than an AAR, so there is no library manifest to merge — a package whose native half needs an activity asks you to declare it:
+
+| Package | What to declare |
+| --- | --- |
+| `@pyreon/auth` (`useOidc`) | `PyreonAuthActivity` and an exported `PyreonAuthRedirectActivity` with an intent filter for your `nativeRedirectUri` scheme — see [Auth → Per-platform setup](/docs/auth#per-platform-setup). iOS needs nothing. |
+
 ---
 
 ## 4. Web side (Vite)

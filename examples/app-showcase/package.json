@@ -55,7 +55,7 @@
     "@pyreon/vite-plugin": "workspace:*",
     "@types/bun": "^1.4.3",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "docx": "^9.13.0",
     "pdfmake": "^0.3.12"
   }
