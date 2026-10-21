@@ -349,11 +349,12 @@ describe('validateRegistry — invariants', () => {
 })
 
 describe('the real REGISTRY', () => {
-  it('carries the shared + service-backend tiers plus the partial set (38 entries)', () => {
-    // 38 = 37 packages + @pyreon/flow's webview host at its real subpath: the
+  it('carries the shared + service-backend tiers plus the partial set (39 entries)', () => {
+    // 39 = 38 packages + @pyreon/flow's webview host at its real subpath: the
     // package itself is a pmtc-lowers entry (createFlow → PyreonFlowState) and
-    // the <WebView> bridge is a separate, still-verified crossing.
-    expect(REGISTRY.length).toBe(38)
+    // the <WebView> bridge is a separate, still-verified crossing. @pyreon/auth
+    // joined as a native-container entry when useOidc started lowering.
+    expect(REGISTRY.length).toBe(39)
   })
 
   it('@pyreon/flow is a pmtc-lowers entry whose snippet exercises createFlow; its WebView bridge lives at the subpath', () => {

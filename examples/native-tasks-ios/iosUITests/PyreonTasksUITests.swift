@@ -434,6 +434,32 @@ final class PyreonTasksUITests: XCTestCase {
         if clear.exists { clear.tap() }
     }
 
+    /// useOidc (@pyreon/auth) on a real simulator. The issuer is under `.invalid`, which never
+    /// resolves (RFC 2606), so the run needs no identity provider: the container is constructed
+    /// at launch (reading any stored session from the Keychain), renders `signedOut`, and a tap
+    /// drives the real async flow — discovery over the auth transport — to `error` with
+    /// `network_error`, the code the web and Android report for the same failure.
+    func test_ssoSignInReportsNetworkErrorWithoutAProvider() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let status = app.staticTexts["sso-status"].firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 30), "SSO status did not render — useOidc failed to construct")
+        XCTAssertEqual(status.label, "signedOut", "a fresh install starts signed out")
+
+        let signIn = app.buttons["sso-signin"].firstMatch
+        XCTAssertTrue(signIn.waitForExistence(timeout: 15), "SSO sign-in button missing")
+        signIn.tap()
+
+        let error = app.staticTexts["sso-error"].firstMatch
+        XCTAssertTrue(
+            error.waitForExistence(timeout: 45),
+            "no SSO error after sign-in against an unresolvable issuer; status=\(status.label)"
+        )
+        XCTAssertEqual(error.label, "network_error", "a DNS failure must surface as network_error")
+        XCTAssertEqual(status.label, "error", "a failed sign-in ends in the error state")
+    }
+
     func test_appLaunchesOnLoginPage() throws {
         let app = XCUIApplication()
         app.launch()

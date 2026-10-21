@@ -65,6 +65,7 @@
       "dependencies": {
         "@pyreon/a11y": "workspace:*",
         "@pyreon/attrs": "workspace:*",
+        "@pyreon/auth": "workspace:*",
         "@pyreon/charts": "workspace:*",
         "@pyreon/code": "workspace:*",
         "@pyreon/core": "workspace:*",
@@ -958,6 +959,7 @@
       "dependencies": {
         "@pyreon/a11y": "workspace:*",
         "@pyreon/attrs": "workspace:*",
+        "@pyreon/auth": "workspace:*",
         "@pyreon/charts": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/dnd": "workspace:*",
@@ -1018,6 +1020,7 @@
       "dependencies": {
         "@pyreon/a11y": "workspace:*",
         "@pyreon/attrs": "workspace:*",
+        "@pyreon/auth": "workspace:*",
         "@pyreon/charts": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
@@ -1602,8 +1605,12 @@
     "packages/fundamentals/auth": {
       "name": "@pyreon/auth",
       "version": "0.52.0",
+      "dependencies": {
+        "@pyreon/storage": "workspace:*",
+      },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@types/oidc-provider": "9.12.1",
@@ -1611,8 +1618,12 @@
         "oidc-provider": "9.12.2",
       },
       "peerDependencies": {
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/charts": {
       "name": "@pyreon/charts",

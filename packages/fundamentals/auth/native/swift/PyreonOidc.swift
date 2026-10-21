@@ -3,9 +3,8 @@ import CryptoKit
 
 // Pyreon auth — native OIDC/PKCE core. Mirrors @pyreon/auth's web logic (S256 only, state + nonce,
 // RFC 9207 `iss` check, 10-minute single-use flows). The pending flow is persisted through a
-// PyreonAuthFlowStore so a flow survives process death during the system-browser round trip.
-// App-facing state is the existing `useAuth` container (@pyreon/hooks `PyreonAuth`); this file is the
-// MECHANISM that drives it (begin -> system browser -> complete -> signInSucceeded).
+// PyreonSecureBackend (@pyreon/storage — the Keychain on device) so a flow survives process death
+// during the system-browser round trip.
 
 public struct PyreonAuthFlow: Codable, Equatable {
     public let state: String
@@ -16,34 +15,23 @@ public struct PyreonAuthFlow: Codable, Equatable {
     public let createdAt: TimeInterval
 }
 
-public enum PyreonAuthError: Error, Equatable {
-    case insecureUrl
-    case flowExpired
-    case providerError(String)
-    case stateMismatch
-    case issuerMismatch
-    case issuerMissing
-    case missingCode
-    case unknownFlow
-}
+/// The https rule every endpoint follows, shared with the web `assertHttps`.
+public enum PyreonAuthURL {
+    static let loopback: Set<String> = ["localhost", "127.0.0.1", "::1", "[::1]"]
 
-/// Where the pending flow lives across the redirect. The shape matches `PyreonSecureBackend`
-/// (`@pyreon/storage`), so a Keychain backend conforms with one line:
-/// `extension KeychainSecureBackend: PyreonAuthFlowStore {}`. Never back it with UserDefaults.
-public protocol PyreonAuthFlowStore {
-    @discardableResult func write(key: String, value: String) -> Bool
-    func read(key: String) -> String?
-    @discardableResult func remove(key: String) -> Bool
-}
+    /// https, or http on a loopback host (local development).
+    public static func assertHttps(_ url: String) throws -> URLComponents {
+        guard let c = URLComponents(string: url), let scheme = c.scheme?.lowercased(),
+              let host = c.host, !host.isEmpty
+        else { throw PyreonAuthError.invalidUrl }
+        if scheme == "https" || (scheme == "http" && loopback.contains(host.lowercased())) { return c }
+        throw PyreonAuthError.insecureUrl
+    }
 
-public final class InMemoryAuthFlowStore: PyreonAuthFlowStore {
-    private var store: [String: String] = [:]
-    public init() {}
-    public func write(key: String, value: String) -> Bool { store[key] = value; return true }
-    public func read(key: String) -> String? { store[key] }
-    public func remove(key: String) -> Bool { store.removeValue(forKey: key) != nil }
-    /// Number of stored entries (flows plus the pending-flow index).
-    public var count: Int { store.count }
+    /// Authorization-request parameters the flow owns; `authorizationParams` may not set them.
+    public static let reservedParams: Set<String> = [
+        "response_type", "client_id", "redirect_uri", "scope", "state", "nonce", "code_challenge", "code_challenge_method",
+    ]
 }
 
 public enum PyreonPKCE {
@@ -79,9 +67,9 @@ public final class PyreonAuthCore {
     public static let flowTtl: TimeInterval = 10 * 60
     /// Upper bound on pending flows kept in the backend at once.
     public static let maxPendingFlows = 16
-    private let backend: PyreonAuthFlowStore
+    private let backend: PyreonSecureBackend
 
-    public init(backend: PyreonAuthFlowStore) { self.backend = backend }
+    public init(backend: PyreonSecureBackend) { self.backend = backend }
 
     private func key(_ state: String) -> String { "pyreon.auth.flow.\(state)" }
     private static let indexKey = "pyreon.auth.flows"
@@ -103,9 +91,11 @@ public final class PyreonAuthCore {
 
     /// Build the authorization URL and persist the pending flow.
     public func begin(authorizationEndpoint: String, issuer: String, clientId: String, redirectUri: String,
-                      scope: String = "openid profile email", now: Date = Date()) throws -> URL {
-        guard var comps = URLComponents(string: authorizationEndpoint), comps.scheme == "https" else {
-            throw PyreonAuthError.insecureUrl
+                      scope: String = "openid profile email", now: Date = Date(),
+                      authorizationParams: [String: String] = [:]) throws -> URL {
+        var comps = try PyreonAuthURL.assertHttps(authorizationEndpoint)
+        for k in authorizationParams.keys where PyreonAuthURL.reservedParams.contains(k) {
+            throw PyreonAuthError("reserved_param", "authorizationParams cannot set \"\(k)\" — it is managed by the flow")
         }
         let flow = PyreonAuthFlow(state: PyreonPKCE.randomToken(), nonce: PyreonPKCE.randomToken(),
                                   codeVerifier: PyreonPKCE.randomToken(), redirectUri: redirectUri,
@@ -133,7 +123,7 @@ public final class PyreonAuthCore {
             URLQueryItem(name: "nonce", value: flow.nonce),
             URLQueryItem(name: "code_challenge", value: PyreonPKCE.challengeS256(flow.codeVerifier)),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
-        ]
+        ] + authorizationParams.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         guard let url = comps.url else { throw PyreonAuthError.insecureUrl }
         return url
     }

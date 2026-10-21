@@ -869,6 +869,43 @@ test.describe('docs rendering', () => {
     await example.getByTestId('sl-clear').click()
     await expect(items).toHaveCount(0)
   })
+
+  test('auth docs page <Example> runs a real OIDC sign-in and rejects a replayed token (real @pyreon/auth)', async ({
+    page,
+  }) => {
+    // The demo is the shipped useOidc against a provider running in the page:
+    // real discovery, S256 PKCE, and an ES256 ID token verified with Web Crypto.
+    // An honest provider must sign in; a provider that answers with a token
+    // minted for another sign-in must be refused with bad_nonce.
+    await page.goto('/docs/auth')
+    await page.waitForLoadState('networkidle')
+    await revealExamples(page)
+    const demo = page.locator('[data-testid=oidc-demo]')
+    await expect(demo).toBeVisible({ timeout: 15_000 })
+    const status = demo.getByTestId('auth-status')
+    await expect(status).toContainText('signedOut')
+
+    await demo.getByRole('button', { name: 'Sign in' }).click()
+    await expect(status).toContainText('signedIn', { timeout: 10_000 })
+    await expect(demo).toContainText('ada@example.dev')
+
+    await demo.getByRole('button', { name: 'Sign out everywhere' }).click()
+    await expect(status).toContainText('signedOut')
+    await expect(demo).toContainText('ended too')
+
+    await demo.getByLabel('provider behaviour').selectOption('wrong-nonce')
+    await demo.getByRole('button', { name: 'Sign in' }).click()
+    await expect(status).toContainText('bad_nonce', { timeout: 10_000 })
+    await expect(demo).not.toContainText('ada@example.dev')
+
+    // TOTP: the current code verifies once; the same code again is a replay.
+    const totp = page.locator('[data-testid=totp-demo]')
+    await totp.getByRole('button', { name: 'Paste current' }).click()
+    await totp.getByRole('button', { name: 'Verify' }).click()
+    await expect(totp.getByTestId('totp-verdict')).toContainText('accepted')
+    await totp.getByRole('button', { name: 'Verify' }).click()
+    await expect(totp.getByTestId('totp-verdict')).toHaveText('rejected')
+  })
 })
 
 test.describe('the charts page mounts every mark it documents', () => {
