@@ -37,6 +37,7 @@ function fixture(grouped: boolean, hasTest = true) {
   }
   copy('scripts/check-native-cosource.ts')
   copy('scripts/swift-cosource-smoke.ts')
+  copy('scripts/native-companions.ts')
   const harness = 'packages/native/runtime-kotlin/scripts'
   copy(`${harness}/verdict-cache.ts`)
   copy(`${harness}/smoke-marker.ts`)
