@@ -3,6 +3,7 @@
 // What this proves: the page BUNDLES from an isolated install, the bundle EXECUTES and assigns the `window.TT` factory
 // the host bridge waits for, and the page carries the plain-prefix bridge. That the editor then takes edits through the
 // bridge is `webview.browser.test.tsx` (real Chromium) and the simulator / emulator run in examples/native-tasks.
+import { bundleWebHostScript } from '@pyreon/native-compiler'
 import { describe, expect, it } from 'vitest'
 import { resolve } from 'node:path'
 import { runInThisContext } from 'node:vm'
@@ -20,7 +21,7 @@ describe('rich-text web-host entry', () => {
 
 describe('rich-text web-host page', () => {
   it('bundles, executes, and exposes the factory the bridge waits for', async () => {
-    const files = await buildRichTextHosts({ appDir })
+    const files = await buildRichTextHosts({ appDir, bundleScript: bundleWebHostScript })
     expect(files.map((f) => f.filename)).toEqual([RICH_TEXT_HOST_FILENAME])
     const html = files[0]!.content
     expect(html).toContain("pyreonPostMessage('c:'")

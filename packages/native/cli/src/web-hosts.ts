@@ -12,6 +12,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { bundleWebHostScript } from '@pyreon/native-compiler'
 import type { WebHostFile } from '@pyreon/native-compiler/plugin-api'
 import { discoverPlugins } from './discover-plugins'
 import {
@@ -35,7 +36,7 @@ export async function buildPluginWebHosts(appDir: string, activationSource: stri
   for (const found of await discoverPlugins(appDir, activationSource)) {
     const build = found.plugin.webHosts
     if (build === undefined) continue
-    for (const file of await build({ appDir })) {
+    for (const file of await build({ appDir, bundleScript: bundleWebHostScript })) {
       const existing = owner.get(file.filename)
       if (existing !== undefined) {
         throw new Error(

@@ -363,7 +363,7 @@ describe('native plugin dependency selection before installation', () => {
       REPO,
       `
       const surface = deriveNativePluginSurface(process.cwd());
-      assert.equal(surface.owners.length, 36);
+      assert.equal(surface.owners.length, 38);
       const apps = deriveAppSurfaces(process.cwd());
       for (const manifest of surface.owners) {
         const path = manifest.replace('package.json', 'src/native-plugin.ts');

@@ -1,3 +1,4 @@
+import type { BundleWebHostOptions } from './web-host-bundle'
 import type { CompilerRegistries } from './active-registries'
 import type {
   CallRecognizer,
@@ -111,6 +112,13 @@ export type CompilerPass = (
 export interface WebHostContext {
   /** Absolute path of the app's package directory — where its dependencies resolve from. */
   readonly appDir: string
+  /**
+   * Bundle an ESM entry (and the engine it imports from the app's own install) into one self-contained IIFE string.
+   * Supplied by the host (`pyreon-native assets`) rather than imported by the plugin: loading the app's bundler is a
+   * computed dynamic import, which a plugin's lowering graph must not contain (it is scanned for static dependencies
+   * before install).
+   */
+  readonly bundleScript: (options: BundleWebHostOptions) => Promise<string>
 }
 
 /** One web-host page: the filename a lowered `<WebView src>` names, and the page text. */

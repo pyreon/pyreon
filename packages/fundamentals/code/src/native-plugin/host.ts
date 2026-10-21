@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { bundleWebHostScript, type WebHostFile } from '@pyreon/native-compiler/plugin-api'
+import type { WebHostContext, WebHostFile } from '@pyreon/native-compiler/plugin-api'
 import { buildCodeHostHtml } from '../webview'
 import { CODE_HOST_FILENAME } from './lowering'
 
@@ -86,8 +86,8 @@ window.CM = { EditorView, EditorState, Compartment, basicSetup, languageFor }
 }
 
 /** `PluginWebHosts` for `@pyreon/code`: the one page every `<CodeWebView>` in the app loads. */
-export async function buildCodeHosts({ appDir }: { appDir: string }): Promise<WebHostFile[]> {
+export async function buildCodeHosts({ appDir, bundleScript }: WebHostContext): Promise<WebHostFile[]> {
   const dirs = [packageDir(), appDir]
-  const codemirrorScript = await bundleWebHostScript({ source: codeHostEntry(dirs), resolveDirs: dirs })
+  const codemirrorScript = await bundleScript({ source: codeHostEntry(dirs), resolveDirs: dirs })
   return [{ filename: CODE_HOST_FILENAME, content: buildCodeHostHtml({ codemirrorScript }) }]
 }

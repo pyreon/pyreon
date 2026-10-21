@@ -25,7 +25,6 @@ export type {
   WebHostContext,
   WebHostFile,
 } from './plugin'
-export { bundleWebHostScript } from './web-host-bundle'
 export { retagHostedWebView } from './hosted-webview'
 export type { HostedWebViewSpec } from './hosted-webview'
 export type { BundleWebHostOptions } from './web-host-bundle'

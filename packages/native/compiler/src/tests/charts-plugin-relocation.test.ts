@@ -38,7 +38,6 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'KOTLIN_INT',
       'NATIVE_COMPILER_PLUGIN_API_V2',
       'NATIVE_COMPILER_PLUGIN_API_VERSION',
-      'bundleWebHostScript',
       'dynamicKeyText',
       'forEachExpr',
       'hasDynamicKey',

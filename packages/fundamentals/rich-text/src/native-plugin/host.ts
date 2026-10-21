@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { bundleWebHostScript, type WebHostFile } from '@pyreon/native-compiler/plugin-api'
+import type { WebHostContext, WebHostFile } from '@pyreon/native-compiler/plugin-api'
 import { buildRichTextHostHtml } from '../webview'
 import { RICH_TEXT_HOST_FILENAME } from './lowering'
 
@@ -45,8 +45,8 @@ function packageDir(): string {
 }
 
 /** `webHosts` for `@pyreon/rich-text`: the one page every `<RichTextWebView>` in the app loads. */
-export async function buildRichTextHosts({ appDir }: { appDir: string }): Promise<WebHostFile[]> {
-  const tiptapScript = await bundleWebHostScript({
+export async function buildRichTextHosts({ appDir, bundleScript }: WebHostContext): Promise<WebHostFile[]> {
+  const tiptapScript = await bundleScript({
     source: RICH_TEXT_HOST_ENTRY,
     resolveDirs: [packageDir(), appDir],
   })

@@ -4,6 +4,7 @@
 // package, the optional grammar peers from the app), the bundle EXECUTES and assigns the `window.CM` contract the host
 // bridge waits for, and the page carries the bridge. What it cannot prove — that the editor then takes edits through
 // the bridge — is `webview.browser.test.tsx` (real Chromium) and the simulator/emulator run in examples/native-tasks.
+import { bundleWebHostScript } from '@pyreon/native-compiler'
 import { describe, expect, it } from 'vitest'
 import { resolve } from 'node:path'
 import { runInThisContext } from 'node:vm'
@@ -24,7 +25,7 @@ describe('code web-host entry', () => {
 
 describe('code web-host page', () => {
   it('bundles, executes, and exposes the engine the bridge waits for', async () => {
-    const files = await buildCodeHosts({ appDir })
+    const files = await buildCodeHosts({ appDir, bundleScript: bundleWebHostScript })
     expect(files.map((f) => f.filename)).toEqual([CODE_HOST_FILENAME])
     const html = files[0]!.content
     // The bridge protocol: plain-prefix reverse messages, not a JSON envelope.
