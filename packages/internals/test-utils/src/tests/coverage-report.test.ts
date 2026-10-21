@@ -80,7 +80,9 @@ describe('coverage verdict requires successful tests', () => {
 describe('real Vitest JSON-file reporting', { timeout: 60_000 }, () => {
   it('reports a failed assertion despite a passing 100% coverage summary', async () => {
     const result = await runCoverage(fixture(2), '@pyreon/fixture', 95, 20_000)
-    expect(result).toMatchObject({ kind: 'tests-failed' })
+    // The spawned Vitest only misbehaves under suite-wide load (it never reproduces alone), so a failure here has to
+    // carry the evidence itself: whether the child hit its deadline, was killed, or exited without a parseable report.
+    expect(result, JSON.stringify(result).slice(0, 800)).toMatchObject({ kind: 'tests-failed' })
     if ('failedTests' in result) {
       expect(result.failedTests[0]?.name).toContain('consumes the real value')
       expect(result.failedTests[0]?.message).toContain('expected 1 to be 2')
