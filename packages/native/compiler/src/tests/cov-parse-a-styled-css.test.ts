@@ -92,7 +92,9 @@ describe('styled() tag recognition', () => {
 
   it('a styled() declaration that is not a tagged template at all is ignored', () => {
     const src = mod('const Boxy = styled(Stack)')
-    expect(styledWarnings(src)).toEqual([])
+    // The styled-specific diagnostics stay quiet. The generic "no native lowering" warning is expected: the bare call
+    // really is re-emitted verbatim, which is exactly what it reports.
+    expect(styledWarnings(src).filter((w) => !w.includes('has NO native lowering'))).toEqual([])
   })
 })
 

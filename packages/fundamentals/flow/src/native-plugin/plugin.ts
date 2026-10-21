@@ -56,12 +56,16 @@ const FLOW_FUNCTIONS = [
   'resolveHandleAnchor',
 ] as const
 
+const PATH_BUILDERS: ReadonlySet<string> = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
+
 const flowFunctions: Record<string, FunctionLowering> = Object.fromEntries(
   FLOW_FUNCTIONS.map((name) => [
     name,
     {
       // `computeLayout` kept this IR spelling before functions were plugin-owned; it is hashed into synthesized struct names.
       ...(name === 'computeLayout' ? { irName: '__pyreonFlowComputeLayout' } : {}),
+      // The five path builders return the runtime's `PyreonFlowPathResult` on both targets, so a helper wrapping one is typed.
+      ...(PATH_BUILDERS.has(name) ? { returns: { kind: 'typeRef' as const, name: 'PyreonFlowPathResult', args: [] } } : {}),
       swift: flowFunctionSwift(name),
       kotlin: flowFunctionKotlin(name),
     },

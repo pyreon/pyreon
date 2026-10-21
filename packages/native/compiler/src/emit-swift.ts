@@ -8339,25 +8339,36 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
  * (`{ _ in … }`); a bare function reference is called with the message.
  */
 function emitSwiftMessageHandler(handler: ExprIR): string {
-  if (handler.kind === 'arrow') {
-    // A BLOCK body (`(event) => { a.set(x); b.set(y) }`) parses to an empty
-    // `body` with its statements in `stmts`. Reading `body` alone emitted
-    // `{ _ in }` — the whole handler silently DROPPED on both targets (found
-    // by the first real device consumer of `<FlowWebView onEvent>`). Route it
-    // through the generic action emitter, which already handles multi-
-    // statement bodies, `async`, and handler-local consts, and bind the
-    // closure parameter it does not know about.
-    if (handler.stmts !== undefined && handler.stmts.length > 0) {
+  // The page-posted payload is ALWAYS a string (the runtime bridge hands over `String(m)`), so
+  // an unannotated parameter is a `String`. Without that the receiver of `m.slice(2)` /
+  // `m.startsWith(…)` is unknown and the string lowerings never fire: Kotlin happened to
+  // survive (`drop` exists on Collection and String), Swift emitted `m.slice(2)` verbatim —
+  // an uncompilable line with zero warnings. Bound here, around the WHOLE handler, because the
+  // block-body path emits through the generic action emitter, which seeds handler-local consts
+  // but not the closure's own parameter.
+  const messageParam = handler.kind === 'arrow' ? handler.params[0] : undefined
+  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? { kind: 'string' }
+  return withSwiftLocals(messageParam !== undefined ? [[messageParam, paramType]] : [], () => {
+    if (handler.kind === 'arrow') {
+      // A BLOCK body (`(event) => { a.set(x); b.set(y) }`) parses to an empty
+      // `body` with its statements in `stmts`. Reading `body` alone emitted
+      // `{ _ in }` — the whole handler silently DROPPED on both targets (found
+      // by the first real device consumer of `<FlowWebView onEvent>`). Route it
+      // through the generic action emitter, which already handles multi-
+      // statement bodies, `async`, and handler-local consts, and bind the
+      // closure parameter it does not know about.
+      if (handler.stmts !== undefined && handler.stmts.length > 0) {
+        const param = handler.params.length > 0 ? swiftIdent(handler.params[0]!) : '_'
+        return `{ ${param} in${emitSwiftAction(handler, 0).slice(1)}`
+      }
+      if (handler.body.kind === 'literal' && handler.body.value === '') {
+        return '{ _ in }'
+      }
       const param = handler.params.length > 0 ? swiftIdent(handler.params[0]!) : '_'
-      return `{ ${param} in${emitSwiftAction(handler, 0).slice(1)}`
+      return `{ ${param} in ${emitSwiftExpr(handler.body, 0)} }`
     }
-    if (handler.body.kind === 'literal' && handler.body.value === '') {
-      return '{ _ in }'
-    }
-    const param = handler.params.length > 0 ? swiftIdent(handler.params[0]!) : '_'
-    return `{ ${param} in ${emitSwiftExpr(handler.body, 0)} }`
-  }
-  return `{ pyreonMsg in ${emitSwiftExpr(handler, 0)}(pyreonMsg) }`
+    return `{ pyreonMsg in ${emitSwiftExpr(handler, 0)}(pyreonMsg) }`
+  })
 }
 
 /** The `html` / `src` constructor arg for `<WebView>` (static literal /

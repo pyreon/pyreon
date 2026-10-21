@@ -65,6 +65,8 @@ import { elementsPlugin } from '../packages/ui-system/elements/src/native-plugin
 import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin/plugin'
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
+import { codePlugin } from '../packages/fundamentals/code/src/native-plugin/plugin'
+import { richTextPlugin } from '../packages/fundamentals/rich-text/src/native-plugin/plugin'
 
 import corePlugin from '../packages/core/core/src/native-plugin'
 import routerPlugin from '../packages/core/router/src/native-plugin'
@@ -109,6 +111,8 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   kineticPlugin,
   elementsPlugin,
   coolgridPlugin,
+  codePlugin,
+  richTextPlugin,
 ])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */

@@ -137,6 +137,8 @@ import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/r
 import { Background, Controls, Flow, Handle, MiniMap, Position, createFlow } from '@pyreon/flow'
 import type { EdgeComponentProps, NodeComponentProps } from '@pyreon/flow'
 import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
+import { CodeWebView } from '@pyreon/code/webview'
+import { RichTextWebView } from '@pyreon/rich-text/webview'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -1142,6 +1144,16 @@ function GalleryPage() {
   let seriesPickCount = state('none')
   let growthRows = state<GrowthRow[]>(GROWTH_ROWS_A)
   let growthCount = state(`${GROWTH_ROWS_A.length}`)
+  // The hosted EDITORS (`@pyreon/code/webview`, `@pyreon/rich-text/webview`): the same CodeMirror / TipTap that
+  // runs on the web, loaded from a page `pyreon-native assets` builds out of this app's installed engines. Native
+  // Text mirrors what the editor reports, so a typed edit and a pushed replacement are both assertable from
+  // outside the WebView.
+  let editorCode = state('const answer = 42')
+  let editorCodeEdits = state(0)
+  let editorCodeFailure = state('none')
+  let editorRich = state('<p>Hello <strong>hosted</strong> editor</p>')
+  let editorRichEdits = state(0)
+  let editorRichFailure = state('none')
   let flowWebEvent = state('none')
   let flowWebEventCount = state(0)
   let flowWebFitAgain = state(false)
@@ -1270,6 +1282,30 @@ function GalleryPage() {
           Toggle rows
         </Button>
         <Text data-testid="gal-growth-count">{growthCount}</Text>
+        <CodeWebView
+          state={() => ({ value: editorCode, language: 'typescript', readOnly: false })}
+          onChange={(v) => { editorCode = v; editorCodeEdits = editorCodeEdits + 1 }}
+          onError={(m) => { editorCodeFailure = m }}
+          data-testid="gal-code-webview"
+        />
+        <Text data-testid="gal-code-value">{editorCode}</Text>
+        <Text data-testid="gal-code-edits">{String(editorCodeEdits)}</Text>
+        <Text data-testid="gal-code-failure">{editorCodeFailure}</Text>
+        <Button onPress={() => { editorCode = 'let replaced = true' }} data-testid="gal-code-replace">
+          Replace code
+        </Button>
+        <RichTextWebView
+          state={() => ({ content: editorRich, editable: true })}
+          onChange={(c) => { editorRich = c; editorRichEdits = editorRichEdits + 1 }}
+          onError={(m) => { editorRichFailure = m }}
+          data-testid="gal-rich-webview"
+        />
+        <Text data-testid="gal-rich-value">{editorRich}</Text>
+        <Text data-testid="gal-rich-edits">{String(editorRichEdits)}</Text>
+        <Text data-testid="gal-rich-failure">{editorRichFailure}</Text>
+        <Button onPress={() => { editorRich = '<p>Replaced paragraph</p>' }} data-testid="gal-rich-replace">
+          Replace rich text
+        </Button>
         <FlowWebView
           graph={() => (flowWebSwapped ? FLOW_WEB_GRAPH_B : FLOW_WEB_GRAPH_A)}
           commands={() => (flowWebFitAgain ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}

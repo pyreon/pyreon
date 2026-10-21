@@ -534,8 +534,8 @@ The visible part of a CUSTOM edge: its stroke, markers and an optional label (Re
 
 ```tsx
 function Wire(props: EdgeComponentProps) {
-  const edge = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
-  return <BaseEdge path={edge().path} label="wire" labelX={edge().labelX} labelY={edge().labelY} />
+  const curve = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
+  return <BaseEdge path={curve().path} label="wire" labelX={curve().labelX} labelY={curve().labelY} />
 }
 ```
 

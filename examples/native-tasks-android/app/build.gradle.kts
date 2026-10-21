@@ -113,6 +113,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    // The hosted editors live INSIDE a WebView, whose content is not in Compose semantics. UiAutomator reads it
+    // through the accessibility tree and types into it with real key events, which is what a user does.
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }
 
 tasks.register<Exec>("pyreonCompile") {

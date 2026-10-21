@@ -1401,20 +1401,52 @@ be reimplemented as a native view: `@pyreon/code` (CodeMirror 6, a DOM editor) a
 (TipTap/ProseMirror, a DOM editor) — and `@pyreon/flow`, whose `<Flow>` host
 DOES render natively but whose DOM/CSS renderer some apps want unchanged.
 Rather than leave them web-only, each ships a **`./webview`
-subpath** that builds a self-contained host page and runs the SAME web
-bundle inside the `<WebView>` documented above; each host component below
-lowers to the native bridge itself (`PyreonWebView(html:data:onMessage:)`),
-so it is the same JSX on every target:
+subpath** with a host component, and the package's own native plugin lowers it
+to the `<WebView>` documented above, so it is the same JSX on every target:
 
-| Package | host-page builder | host component |
+| Package | host component | native page it loads |
 | --- | --- | --- |
-| `@pyreon/code/webview` | `buildCodeHostHtml()` | `<CodeWebView state onChange>` |
-| `@pyreon/flow/webview` | `buildFlowHostHtml()` | `<FlowWebView graph onSelect>` |
-| `@pyreon/rich-text/webview` | `buildRichTextHostHtml()` | `<RichTextWebView state onChange>` |
+| `@pyreon/code/webview` | `<CodeWebView state onChange onError>` | `pyreon-code-host.html` |
+| `@pyreon/flow/webview` | `<FlowWebView graph onSelect>` | generated into the app (small, self-contained) |
+| `@pyreon/rich-text/webview` | `<RichTextWebView state onChange onError>` | `pyreon-richtext-host.html` |
+
+The two editors' pages are far too large to inline as a string (Kotlin
+rejects a constant above 64 KB; CodeMirror alone is about eight times that),
+and they depend on the grammars and extensions **your app** chose. So the page
+is built, not shipped: `pyreon-native assets` bundles it from the CodeMirror /
+TipTap installed in the app (using the `esbuild` or `rolldown` the app already
+has — a Vite app has one) and writes it where each runtime resolves
+`<WebView src>`. It only builds for a package your source actually imports.
+
+```tsx
+import { CodeWebView } from '@pyreon/code/webview'
+
+<CodeWebView
+  state={() => ({ value: text(), language: 'typescript' })}
+  onChange={(v) => text.set(v)}
+  onError={(message) => failure.set(message)}
+/>
+```
+
+- `language` is whichever `@codemirror/lang-*` packages the app has installed;
+  `@pyreon/rich-text` hosts TipTap's StarterKit. Anything custom needs your own
+  `html` page.
+- **The document crosses as text in both directions.** `onChange` on
+  `<RichTextWebView>` receives the TipTap JSON serialized to a string, and
+  `state.content` accepts that string (or HTML) back, because a native handler
+  cannot hold a JSON object.
+- On the web the same component loads the same conventionally named page, so
+  `pyreon-native assets --target=web --out=public` serves it.
+- Every other export of these packages is a DOM editor API and warns by name
+  on native.
+- Device-run: `examples/native-tasks` types into both editors on an iOS
+  simulator and asserts the keystrokes reach a native signal.
 
 `examples/native-viz` is the breadth proof — ONE `src/VizApp.tsx`
 compiles to web + iOS + Android hosting a flow diagram, a real CodeMirror
-editor and a real TipTap WYSIWYG, with **0 warnings on both targets**.
+editor and a real TipTap WYSIWYG, with **0 warnings on both targets**. It
+predates the plugins and hand-builds its two editor pages; new code uses the
+host components above.
 
 **This is one codebase on every target, and it ships. It is NOT a
 natively-rendered view**, and the difference is worth stating plainly

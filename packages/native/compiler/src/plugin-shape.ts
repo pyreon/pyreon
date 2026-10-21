@@ -99,6 +99,7 @@ export function assertPluginExtensions(name: string, plugin: object): void {
     exprs,
     refineStructs,
     finishModule,
+    webHosts,
     modules,
     requires,
     builtIn,
@@ -407,6 +408,9 @@ export function assertPluginExtensions(name: string, plugin: object): void {
         )
       }
     }
+  }
+  if (webHosts !== undefined && typeof webHosts !== 'function') {
+    throw new Error(`[Pyreon] Plugin "${name}" webHosts must be a function returning web-host files.`)
   }
   if (prepareEmit !== undefined && typeof prepareEmit !== 'function') {
     throw new Error(`[Pyreon] Plugin "${name}" prepareEmit must be a synchronous function.`)

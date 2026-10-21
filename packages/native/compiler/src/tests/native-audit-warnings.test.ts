@@ -917,7 +917,9 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     // native port (PyreonFlowState) — its JSX components now get the
     // SYMBOL-level advice below ('a flow sub-path import…'), not this
     // blanket line, mirroring the charts sub-path case right after this loop.
-    for (const pkg of ['@pyreon/code', '@pyreon/document', '@pyreon/ui-components']) {
+    // `@pyreon/code` followed once its `/webview` bridge gained a plugin — it is covered per export in
+    // `native-editor-unlowered.test.ts`, and `@pyreon/virtual` takes its place as a plain web-only package.
+    for (const pkg of ['@pyreon/virtual', '@pyreon/document', '@pyreon/ui-components']) {
       it(`warns importing ${pkg} (web-only) into a native file + names the escape hatch`, () => {
         const result = transform(
           `import { Thing } from '${pkg}'\nimport { Stack } from '@pyreon/primitives'\nexport function App() { return <Stack><Thing /></Stack> }`,
@@ -934,12 +936,12 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       })
     }
 
-    it('fires on a sub-path import (`@pyreon/code/languages`)', () => {
+    it('fires on a sub-path import (`@pyreon/virtual/extra`)', () => {
       const result = transform(
-        `import { x } from '@pyreon/code/languages'\nexport function App() { return null }`,
+        `import { x } from '@pyreon/virtual/extra'\nexport function App() { return null }`,
         { target: 'kotlin' },
       )
-      expect(result.warnings.some((w) => w.includes('@pyreon/code') && w.includes('WEB-ONLY'))).toBe(true)
+      expect(result.warnings.some((w) => w.includes('@pyreon/virtual') && w.includes('WEB-ONLY'))).toBe(true)
     })
 
     it('a charts sub-path import gets the SYMBOL-level advice now, not the blanket line', () => {
@@ -966,10 +968,10 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
 
     it('warns ONCE per package even with multiple imports from it', () => {
       const result = transform(
-        `import { CodeMirror } from '@pyreon/code'\nimport { languages } from '@pyreon/code'\nexport function App() { return null }`,
+        `import { a } from '@pyreon/virtual'\nimport { b } from '@pyreon/virtual'\nexport function App() { return null }`,
         { target: 'swift' },
       )
-      expect(result.warnings.filter((w) => w.includes('@pyreon/code') && w.includes('WEB-ONLY'))).toHaveLength(1)
+      expect(result.warnings.filter((w) => w.includes('@pyreon/virtual') && w.includes('WEB-ONLY'))).toHaveLength(1)
     })
 
     for (const pkg of ['@pyreon/primitives', '@pyreon/reactivity', '@pyreon/store', '@pyreon/router', '@pyreon/form', '@pyreon/i18n', '@pyreon/validation']) {

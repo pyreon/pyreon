@@ -29,11 +29,19 @@ describe('buildCodeHostHtml', () => {
 
 describe('<CodeWebView>', () => {
   it('emits a <WebView> with the host + state as reactive data', () => {
-    const vnode = CodeWebView({ state: { value: 'const x = 1', language: 'javascript' } })
+    // An app that hands over its engine hosts the page inline…
+    const vnode = CodeWebView({ state: { value: 'const x = 1', language: 'javascript' }, codemirrorScript: 'window.CM = {}' })
     expect(vnode.type).toBe(WebView)
     expect((vnode.props as { html: string }).html).toContain('EditorView')
     expect((vnode.props as { data: unknown }).data).toEqual({ value: 'const x = 1', language: 'javascript' })
     expect('onMessage' in (vnode.props as object)).toBe(false)
+    expect('src' in (vnode.props as object)).toBe(false)
+  })
+
+  it('without an engine, loads the conventional page `pyreon-native assets` builds (same name on every target)', () => {
+    const vnode = CodeWebView({ state: { value: '' } })
+    expect((vnode.props as { src: string }).src).toBe('pyreon-code-host.html')
+    expect('html' in (vnode.props as object)).toBe(false)
   })
 
   it('unwraps an accessor state', () => {
@@ -41,11 +49,13 @@ describe('<CodeWebView>', () => {
     expect((vnode.props as { data: unknown }).data).toEqual({ value: 'x' })
   })
 
-  it('wires onChange through onMessage, parsing { value }', () => {
+  it('wires onChange through onMessage, reading the `v:` edit prefix (and the legacy JSON envelope)', () => {
     const onChange = vi.fn()
     const vnode = CodeWebView({ state: { value: '' }, onChange })
-    ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ value: 'typed' }))
-    expect(onChange).toHaveBeenCalledWith('typed')
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage('v:typed')
+    expect(onChange).toHaveBeenLastCalledWith('typed')
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ value: 'legacy' }))
+    expect(onChange).toHaveBeenLastCalledWith('legacy')
   })
 
   // The reverse-bridge is a STRING channel — the native side hands over

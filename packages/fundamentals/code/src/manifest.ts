@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath',
+      'wraps CodeMirror 6 (DOM editor engine, so the editor itself stays web); the `@pyreon/code/webview` bridge crosses — see nativeFrontend',
+    nativeFrontend:
+      '`<CodeWebView state={() => ({ value, language, readOnly })} onChange onError />` from `@pyreon/code/webview` lowers to a native `<WebView>` hosting the SAME CodeMirror: `pyreon-native assets` builds the page from the app\'s installed CodeMirror and the grammars it has, edits arrive as plain `v:<text>` messages, host failures as `e:<message>`. It is a hosted web editor, not a SwiftUI / Compose text view — WebView startup cost, no native text-field semantics, and a block-bodied `state` accessor warns and is dropped',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'

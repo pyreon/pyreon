@@ -22,13 +22,19 @@
 //   • FORWARD — `data={{ value, language?, readOnly? }}` → window.__pyreonData
 //     (+ pyreondata event) → the editor's doc/language/read-only update IN
 //     PLACE (cursor + scroll preserved; no reload). `value` is the editor text.
-//   • REVERSE — a user edit → window.pyreonPostMessage(JSON {value}) →
-//     `onChange(value)`, so the hosted editor drives native signals. A loop
-//     guard suppresses the echo of a value WE pushed.
+//   • REVERSE — a user edit → window.pyreonPostMessage('v:' + text) →
+//     `onChange(text)`, so the hosted editor drives native signals. A host
+//     failure → 'e:' + message → `onError(message)`. Plain prefixes rather than
+//     JSON so the LOWERED native handler can take the payload apart with the
+//     string operations PMTC already lowers (see `native-plugin/lowering.ts`).
+//     A loop guard suppresses the echo of a value WE pushed.
 
 import { h } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { WebView } from '@pyreon/primitives'
+import { CODE_HOST_FILENAME } from './host-file'
+
+export { CODE_HOST_FILENAME }
 
 /** The value pushed across the forward bridge. */
 export interface CodeWebViewData {
@@ -122,7 +128,7 @@ export function buildCodeHostHtml(options: BuildCodeHostHtmlOptions = {}): strin
     (function attempt() {
       try {
         if (typeof window.pyreonPostMessage === 'function') {
-          window.pyreonPostMessage(JSON.stringify({ error: msg }));
+          window.pyreonPostMessage('e:' + msg);
           return;
         }
       } catch (e) { return; }
@@ -158,7 +164,7 @@ export function buildCodeHostHtml(options: BuildCodeHostHtmlOptions = {}): strin
           if (v === cur.value) return;
           cur.value = v;
           if (typeof window.pyreonPostMessage === 'function') {
-            try { window.pyreonPostMessage(JSON.stringify({ value: v })); } catch (e) {}
+            try { window.pyreonPostMessage('v:' + v); } catch (e) {}
           }
         }),
       ],
@@ -207,6 +213,8 @@ export interface CodeWebViewProps {
   state: CodeWebViewData | (() => CodeWebViewData)
   /** User-edit callback — receives the new editor text. */
   onChange?: (value: string) => void
+  /** Host-failure callback — receives the message (CodeMirror missing, a throwing extension). */
+  onError?: (message: string) => void
   /** Provide your own host HTML (advanced). Omit to build from the `codemirror*` opts. */
   html?: string
   /** Bundled `window.CM` IIFE — see {@link BuildCodeHostHtmlOptions}. */
@@ -239,10 +247,13 @@ export function CodeWebView(props: CodeWebViewProps): VNode {
   let defaultHtml: string | undefined
 
   const webViewProps: Record<string, unknown> = {}
-  Object.defineProperty(webViewProps, 'html', {
+  // An app that supplies its own engine (or a whole page) hosts it inline. One that does not gets the page
+  // `pyreon-native assets` builds from its installed engine, addressed by the SAME conventional name on every target.
+  const hostsItself = props.html !== undefined || props.codemirrorScript !== undefined || props.codemirrorSrc !== undefined
+  Object.defineProperty(webViewProps, hostsItself ? 'html' : 'src', {
     enumerable: true,
     configurable: true,
-    get: (): string => props.html ?? (defaultHtml ??= buildCodeHostHtml(built)),
+    get: (): string => (hostsItself ? (props.html ?? (defaultHtml ??= buildCodeHostHtml(built))) : CODE_HOST_FILENAME),
   })
   Object.defineProperty(webViewProps, 'data', {
     enumerable: true,
@@ -252,14 +263,17 @@ export function CodeWebView(props: CodeWebViewProps): VNode {
       return typeof s === 'function' ? (s as () => unknown)() : s
     },
   })
-  if (props.onChange) {
-    const onChange = props.onChange
+  if (props.onChange || props.onError) {
+    const { onChange, onError } = props
     webViewProps.onMessage = (message: string): void => {
+      if (message.startsWith('v:')) return onChange?.(message.slice(2))
+      if (message.startsWith('e:')) return onError?.(message.slice(2))
+      // A custom `html` host may still post the JSON envelope — keep it working.
       try {
         const p = JSON.parse(message) as { value?: string }
-        if (typeof p.value === 'string') onChange(p.value)
+        if (typeof p.value === 'string') onChange?.(p.value)
       } catch {
-        onChange(message)
+        onChange?.(message)
       }
     }
   }

@@ -22,6 +22,7 @@ import { dirname, join, resolve } from 'node:path'
 import { createCompiler, type CompilerPlugin, type NativeCompiler, type TargetLanguage } from '@pyreon/native-compiler'
 import { pathToFileURL } from 'node:url'
 import { discoverPlugins } from './discover-plugins'
+import { buildPluginWebHosts, materializeBuiltWebHosts, type WebHostTarget } from './web-hosts'
 import { nearestPackageDir } from './native-sources'
 import { explainReport, pluginsReport } from './plugin-commands'
 
@@ -56,6 +57,8 @@ interface ParsedArgs {
   /** `wire` only: write the Android srcDirs list to this file. */
   androidOut?: string
   iosOut?: string
+  /** `assets` only: the app source dir plugin web hosts are activated from (default `<app>/src`). */
+  appSource?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -117,6 +120,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'app') out.app = value
     else if (key === 'android-out') out.androidOut = value
     else if (key === 'ios-out') out.iosOut = value
+    else if (key === 'app-source') out.appSource = value
   }
   return out
 }
@@ -135,7 +139,7 @@ Usage:
   pyreon-native build  --target=<ios|android|all> --source=<dir> --out=<dir>
   pyreon-native check  [--target=<ios|android>] [--typecheck] [--watch] [--json] --source=<file|dir>
   pyreon-native check  --lsp   (stdio LSP server — editor diagnostics)
-  pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
+  pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir> [--app=<dir>] [--app-source=<dir>] [--no-plugins]
   pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
   pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
   pyreon-native plugins [--app=<dir>] [--verify]
@@ -156,7 +160,10 @@ JSON-RPC). Exit 0 on clean-or-warnings, 2 on errors.
 assets materializes a shared assets/ directory of images
 (name.png, name@2x.png, name@3x.png) into the platform's bundled
 format: Assets.xcassets (ios), res/drawable-* density buckets
-(android), or a plain assets/ copy for the web host's public dir.
+(android), or a plain assets/ copy for the web host's public dir. It also
+builds the web-host pages that package plugins declare (the editor inside a
+<WebView>), for plugins the app source imports: --app (default: the package
+containing --source) and --app-source (default: <app>/src) select them.
 
 stage-web copies a flat local web bundle (an index HTML + sibling
 js/css) into the exact app location the PyreonWebView runtime resolves
@@ -239,6 +246,10 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
   if (parsed.command === 'explain') {
     return printReport(await runExplain(parsed, appDir))
   }
+  if (parsed.command === 'assets' && !parsed.noPlugins) {
+    const code = main(argv)
+    return code === 0 ? runPluginWebHosts(parsed, appDir) : code
+  }
   const discovering =
     ['build', 'check'].includes(parsed.command) &&
     !parsed.noPlugins &&
@@ -264,6 +275,28 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
     )
   } catch (error) {
     console.error(`[pyreon-native] plugin setup failed: ${error instanceof Error ? error.message : String(error)}`)
+    return 2
+  }
+}
+
+/**
+ * The second half of `assets`: the web-host pages package plugins declare (`CompilerPlugin.webHosts`), built for the
+ * plugins the app's source activates and placed where the target's runtime resolves `<WebView src>`. A failure here
+ * (no bundler installed, an engine that does not resolve) fails the command — the app would otherwise build and show a
+ * blank WebView, which is the worse way to find out.
+ */
+async function runPluginWebHosts(parsed: ParsedArgs, appDir: string): Promise<number> {
+  const target = parsed.rawTarget as WebHostTarget
+  const activation = resolve(parsed.appSource ?? join(appDir, 'src'))
+  if (!existsSync(activation)) return 0
+  try {
+    const files = await buildPluginWebHosts(appDir, activation)
+    if (files.length === 0) return 0
+    const result = materializeBuiltWebHosts(files, target, parsed.out!)
+    console.log(`[pyreon-native] built ${result.hosts} web-host page(s) from package plugins → ${parsed.out}`)
+    return 0
+  } catch (error) {
+    console.error(`[pyreon-native] web-host build failed: ${error instanceof Error ? error.message : String(error)}`)
     return 2
   }
 }

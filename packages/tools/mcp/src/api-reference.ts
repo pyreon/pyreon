@@ -6184,8 +6184,8 @@ const NodeWithToolbar = (props) => (
   'flow/BaseEdge': {
     signature: 'BaseEdge(props: BaseEdgeProps) => VNodeChild',
     example: `function Wire(props: EdgeComponentProps) {
-  const edge = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
-  return <BaseEdge path={edge().path} label="wire" labelX={edge().labelX} labelY={edge().labelY} />
+  const curve = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
+  return <BaseEdge path={curve().path} label="wire" labelX={curve().labelX} labelY={curve().labelY} />
 }`,
     notes: 'The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). `path` is SVG path data, typically from `getBezierPath` / `getSmoothStepPath`; the default stroke is `--pyreon-flow-edge` at 1.5px, and a `style` string REPLACES that default wholesale, as on any SVG element. `label` + `labelX` + `labelY` add an `<EdgeText>`. The flow already wraps every edge in a wider invisible hit path, so `BaseEdge` draws only what you see. Lowers natively (a native stroke plus label; `markerStart` / `markerEnd` are `url(#…)` references with no native meaning and are reported). See also: EdgeText, EdgeLabelRenderer, edge-path-helpers.',
     mistakes: `- Passing a \`style\` that sets only \`opacity\` and expecting the default stroke to remain — \`style\` replaces the default declaration, so no \`stroke\` means no line.

@@ -97,7 +97,9 @@ describe('CodeWebView bridge (real CodeMirror in a real iframe)', () => {
     const state = signal({ value: 'start' })
     const { iframe, unmount } = await mountCode(
       () => state(),
-      (m: string) => received.push(JSON.parse(m).value),
+      (m: string) => {
+        if (m.startsWith('v:')) received.push(m.slice(2))
+      },
     )
     const view = await waitForEditor(iframe)
 

@@ -102,40 +102,24 @@ cursors. See `docs/` for the full pattern.
 
 ## Multiplatform — `@pyreon/rich-text/webview`
 
-`@pyreon/rich-text` is web-only (it wraps TipTap/ProseMirror, which can't compile to SwiftUI/Compose). To ship the editor on iOS/Android too, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge.
-
-TipTap is modular ESM with app-chosen extensions (no single UMD like ECharts), so — exactly like `buildChartHostHtml({ echartsScript })` — the app bundles its own `@tiptap/*` and exposes it as a `window.TT` factory the host drives:
-
-```ts
-// window.TT = { createEditor(el, { content, editable, onUpdate }) => { setContent, setEditable, destroy } }
-// — a ~10-line factory wrapping `new Editor({ element: el, extensions, content, editable,
-//   onUpdate: ({ editor }) => onUpdate(editor.getJSON()) })`.
-import { buildRichTextHostHtml } from '@pyreon/rich-text/webview'
-
-// Inline your bundled TipTap for an offline, App-Store-safe page; or `tiptapSrc` an asset.
-const RICHTEXT_HOST = buildRichTextHostHtml({ tiptapScript: BUNDLED_TT })
-```
-
-Use it with the `<WebView>` primitive (compiles to WKWebView / Android WebView / an `<iframe srcdoc>` on web — same bridge everywhere):
+`@pyreon/rich-text` wraps TipTap/ProseMirror, a DOM editor that can't compile to SwiftUI/Compose. To ship the editor on iOS and Android too, `<RichTextWebView>` hosts the SAME TipTap inside a native `<WebView>` — one component, the same JSX on every target:
 
 ```tsx
-import { WebView } from '@pyreon/primitives'
+import { RichTextWebView } from '@pyreon/rich-text/webview'
 
-<WebView
-  html={RICHTEXT_HOST}
-  data={{ content: doc(), editable: !locked() }}
-  onMessage={(m) => doc.set(JSON.parse(m).content)}   // reverse: user edits post back
+<RichTextWebView
+  state={() => ({ content: doc(), editable: !locked() })}
+  onChange={(json) => doc.set(json)}          // the document as TipTap JSON TEXT
+  onError={(message) => failure.set(message)}
 />
 ```
 
-- **Forward** — `data={{ content, editable? }}` → `window.__pyreonData` + a `pyreondata` event → the document/editability update in place (no reload). `content` is TipTap JSON or HTML.
-- **Reverse** — a user edit → `window.pyreonPostMessage(JSON {content})` → your `onMessage` (loop-guarded against the echo of content you pushed).
-- **`<RichTextWebView state onChange>`** is the web-side ergonomic wrapper (builds the host + emits `<WebView>` for you); on native, use `<WebView html={RICHTEXT_HOST} …>` directly (the component body can't be PMTC-lowered — the host string + `<WebView>` can).
+On native the component lowers (through this package's `./native-plugin`) to a `<WebView src="pyreon-richtext-host.html">`. The page is **built for you**: `pyreon-native assets` bundles it from the TipTap installed in your app (StarterKit), using the `esbuild` or `rolldown` your app already has, and only when your source imports `@pyreon/rich-text`. On the web the same component loads the same page (`pyreon-native assets --target=web --out=public`), or hosts your own engine inline (`tiptapScript`) or a whole page you built (`html`).
 
-Proven end-to-end against REAL TipTap in `src/webview.browser.test.tsx`. See `examples/native-viz` for a one-source app hosting this editor across web/iOS/Android.
+- **The document crosses as TEXT in both directions.** `onChange` receives the TipTap JSON serialized to a string, and `state.content` accepts that string — or HTML — back. A native handler cannot hold a JSON object, so the string is the one shape identical on every target. `JSON.parse(text)` on web if you want the object. *(Changed from an object: `onChange` used to receive the parsed document.)*
+- **Reverse** — a user edit → `window.pyreonPostMessage('c:' + json)` → `onChange`; a host failure → `'e:' + message` → `onError`. A pushed value is never echoed back as an edit.
+- **It is a hosted web editor, not a native text view.** WebView startup cost, no native text-field semantics, StarterKit only (custom extensions need your own `html` page). Every other export of this package (`createRichTextEditor`, `RichText`, …) is a DOM API and warns by name on native.
 
-## License
+Lower-level: `buildRichTextHostHtml({ tiptapScript })` builds a page by hand around your own `window.TT = { createEditor(el, opts) }` factory.
 
-MIT. TipTap (`@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/pm`) and
-ProseMirror are MIT. The TipTap Pro modules (Cloud, Comments, Content AI,
-document-conversion) are paid/commercially-licensed and are **not** used.
+Proven against REAL TipTap in `src/webview.browser.test.tsx` (Chromium), the built page in `src/tests/native-plugin-host.test.ts`, and on an iOS simulator and Android emulator by `examples/native-tasks`.

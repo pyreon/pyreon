@@ -113,12 +113,36 @@ describe('RichTextWebView bridge (real TipTap in a real iframe)', () => {
     unmount()
   })
 
+  it('FORWARD: content may be JSON TEXT or HTML (the shapes a native app can hold), and a text push does not echo', async () => {
+    const received: string[] = []
+    const state = signal<{ content: unknown }>({ content: JSON.stringify(para('From JSON text')) })
+    const { iframe, unmount } = await mountRT(
+      () => state(),
+      (m: string) => {
+        if (m.startsWith('c:')) received.push(m.slice(2))
+      },
+    )
+    const pm = await waitForEditor(iframe)
+    expect(pm.textContent, 'JSON text rendered as a document').toContain('From JSON text')
+    expect(pm.textContent, 'the JSON source is not shown as literal text').not.toContain('"type"')
+
+    state.set({ content: '<p>From <strong>HTML</strong></p>' })
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    expect(iframe.contentDocument!.querySelector('.ProseMirror')!.textContent).toContain('From HTML')
+    expect(iframe.contentDocument!.querySelector('.ProseMirror strong'), 'HTML parsed into marks').not.toBeNull()
+    expect(received, 'programmatic pushes never echo as edits').toEqual([])
+    unmount()
+  })
+
   it('REVERSE: a user edit drives onChange; the loop guard suppresses pushed-content echo', async () => {
     const received: unknown[] = []
     const state = signal({ content: para('start') })
     const { iframe, unmount } = await mountRT(
       () => state(),
-      (m: string) => received.push(JSON.parse(m).content),
+      (m: string) => {
+        if (m.startsWith('c:')) received.push(JSON.parse(m.slice(2)))
+      },
     )
     const ce = await waitForEditor(iframe)
     // A real user-origin edit into the ProseMirror contenteditable → TipTap
