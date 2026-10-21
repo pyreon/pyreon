@@ -135,7 +135,10 @@ describe('CodeWebView bridge (real CodeMirror in a real iframe)', () => {
     const value = signal('const wrapped = 1')
     const edits: string[] = []
     const { container, unmount } = mountInBrowser(
-      h(CodeWebView as never, { state: () => ({ value: value(), language: 'javascript' }), onChange: (v: string) => edits.push(v) }),
+      // `html: HOST` is the page the component used to build for itself when given nothing. With nothing given it now
+      // loads the conventionally named page `pyreon-native assets` produces (the same on every target), which does not
+      // exist in this test, so the host is supplied explicitly. The default-`src` choice is asserted in `webview.test.ts`.
+      h(CodeWebView as never, { html: HOST, state: () => ({ value: value(), language: 'javascript' }), onChange: (v: string) => edits.push(v) }),
     )
     container.style.width = '400px'
     container.style.height = '240px'

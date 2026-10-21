@@ -50,6 +50,9 @@ function packageDir(): string {
     if (existsSync(join(dir, 'package.json'))) return dir
     dir = dirname(dir)
   }
+  // Unreachable: a package always has a package.json above its own source. The bound on the walk only exists so a
+  // broken layout cannot loop forever, and falling back to this file's directory keeps that case deterministic.
+  /* v8 ignore next */
   return dirname(fileURLToPath(import.meta.url))
 }
 
