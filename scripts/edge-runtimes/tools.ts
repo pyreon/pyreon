@@ -36,19 +36,69 @@ function installedVersion(dir: string, pkg: string): string | undefined {
   }
 }
 
-/** Install the pinned tools if any is missing or at the wrong version. Returns the tools dir. */
+/**
+ * Packages whose platform binary arrives through an OPTIONAL dependency
+ * (`@cloudflare/workerd-linux-64`, `-darwin-arm64`, …). npm treats a failed
+ * optional fetch as non-fatal and drops it SILENTLY, so a transient registry
+ * error leaves a complete-looking install whose runtime cannot start — the
+ * suite then dies at web-server boot with `The package "@cloudflare/workerd-…"
+ * could not be found`, far from the cause. Each package here throws at
+ * `require` time when its binary is missing, which makes loading it a cheap
+ * and exact probe.
+ */
+const BINARY_PROBES = ['workerd'] as const
+
+/**
+ * The binary-backed packages in `dir` that cannot load. Runs the probe under
+ * `node`, the runtime wrangler itself uses — bun's own resolution could load
+ * a package node cannot.
+ */
+export function missingRuntimeBinaries(dir: string, probes: readonly string[] = BINARY_PROBES): string[] {
+  return probes.filter((pkg) => {
+    try {
+      execFileSync('node', ['-e', `require(${JSON.stringify(pkg)})`], { cwd: dir, stdio: 'pipe' })
+      return false
+    } catch {
+      return true
+    }
+  })
+}
+
+function install(dir: string): void {
+  const specs = Object.entries(EDGE_TOOL_VERSIONS).map(([pkg, v]) => `${pkg}@${v}`)
+  console.log(`[edge-runtimes] installing ${specs.join(' ')} into ${dir}`)
+  execFileSync('npm', ['install', '--no-audit', '--no-fund', '--save-exact', ...specs], { cwd: dir, stdio: 'inherit' })
+}
+
+/**
+ * Install the pinned tools if any is missing, at the wrong version, or missing
+ * its platform binary. Returns the tools dir. Checking only the top-level
+ * versions is not enough: a cached install whose optional binary was dropped
+ * passes that check forever, so the binaries are probed on every call too.
+ */
 export function ensureEdgeTools(): string {
   const dir = edgeToolsDir()
   const stale = Object.entries(EDGE_TOOL_VERSIONS).filter(([pkg, v]) => installedVersion(dir, pkg) !== v)
-  if (stale.length === 0) return dir
+  if (stale.length === 0 && missingRuntimeBinaries(dir).length === 0) return dir
   mkdirSync(dir, { recursive: true })
   if (!existsSync(join(dir, 'package.json'))) {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'pyreon-edge-tools', private: true }, null, 2))
   }
-  const specs = Object.entries(EDGE_TOOL_VERSIONS).map(([pkg, v]) => `${pkg}@${v}`)
-  console.log(`[edge-runtimes] installing ${specs.join(' ')} into ${dir}`)
-  execFileSync('npm', ['install', '--no-audit', '--no-fund', '--save-exact', ...specs], { cwd: dir, stdio: 'inherit' })
-  return dir
+  // One retry: the dropped-optional case is a transient fetch failure, and a
+  // second `npm install` fills in exactly what the lockfile says is missing.
+  for (let attempt = 1; ; attempt++) {
+    install(dir)
+    const missing = missingRuntimeBinaries(dir)
+    if (missing.length === 0) return dir
+    if (attempt === 2) {
+      throw new Error(
+        `[edge-runtimes] ${missing.join(', ')} installed without its platform binary (${process.platform}-${process.arch}) ` +
+          'after 2 attempts. npm skips an optional dependency it fails to fetch without failing the install; ' +
+          `check registry access, or delete ${dir} and retry.`,
+      )
+    }
+    console.warn(`[edge-runtimes] ${missing.join(', ')} is missing its platform binary — reinstalling once`)
+  }
 }
 
 /** Absolute path of a tool's bin inside the tools dir. */
