@@ -86,7 +86,8 @@ describe('SSR counter shape', () => {
   })
 
   it('renderToString fires one runtime-server.for.keyMarker per row from the first non-element row on', async () => {
-    const Row = (props: { s: string }) => h('li', null, props.s)
+    // Two nodes — a component rendering ONE element would be bare too.
+    const Row = (props: { s: string }) => h(Fragment, null, h('li', null, props.s), h('li', null, '+'))
     const items = ['a', 'b', 'c', 'd']
     const outcome = await perfHarness.record('ssr-for-markers-marked', async () => {
       await renderToString(
@@ -96,8 +97,8 @@ describe('SSR counter shape', () => {
           h(For, {
             each: () => items,
             by: (s: string) => s,
-            // Row 'a' is a bare element; 'b' (a component) starts the marked
-            // region, which then covers 'c' and 'd' too.
+            // Row 'a' is a bare element; 'b' (a two-node component) starts the
+            // marked region, which then covers 'c' and 'd' too.
             children: (s: string) => (s === 'a' ? h('li', null, s) : h(Row, { s })),
           }),
         ),
