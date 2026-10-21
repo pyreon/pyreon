@@ -16,8 +16,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.pyreon.generated.RouterApp
 import com.pyreon.router.PyreonDeepLink
-import com.pyreon.runtime.PyreonHttp
-import com.pyreon.runtime.PyreonHttpOkHttp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,13 +24,6 @@ class MainActivity : ComponentActivity() {
         // setContent so the value is pending when the router is constructed
         // and its initialPath default picks it up.
         PyreonDeepLink.receive(intent?.data)
-        // Install the HTTP edge before any composable can run a `useFetch`
-        // with a verb. `PyreonHttp` is deliberately dependency-free so every
-        // consumer can compile it without OkHttp on the classpath; the real
-        // executor lives in its own file and is wired here. Without this,
-        // `PyreonHttp.send` throws `NoExecutor` — LOUDLY, by design, rather
-        // than silently doing nothing.
-        PyreonHttp.install(PyreonHttpOkHttp)
         setContent {
             RouterApp()
         }

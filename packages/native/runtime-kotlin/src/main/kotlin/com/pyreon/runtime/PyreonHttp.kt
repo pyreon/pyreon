@@ -118,13 +118,21 @@ public sealed class PyreonHttpError(message: String) : Exception(message) {
 }
 
 /**
- * The entry point the `useFetch` emit calls.
+ * The entry point the `useFetch` / `useQuery` emits call.
  *
- * Mirrors Swift's `PyreonHttp.send(_:)` one-for-one so ONE shared source
- * lowers to the same request on both targets. The executor is resolved once:
- * an explicitly installed one wins, otherwise the OkHttp default is used when
- * it is on the classpath (it registers itself), and failing both this throws
- * rather than silently doing nothing.
+ * Mirrors Swift's `PyreonHttp.send(_:)` so ONE shared source lowers to the same
+ * request on both targets. The executor is resolved per call: an explicitly
+ * [install]ed one wins (tests, a custom stack), then the [send] caller's
+ * `fallback`, and failing both this throws rather than silently doing nothing.
+ *
+ * The generated code passes `fallback = PyreonHttpOkHttp`. That default has to
+ * come from the CALL SITE, not from this file: this file is deliberately
+ * dependency-free (it is verified alone against stubs), so it cannot name the
+ * OkHttp executor, and an OkHttp object is never initialised until something
+ * references it — so it cannot "register itself" either. Finding it by
+ * reflection would compile, and then R8 would strip or rename it in a minified
+ * release build. A direct reference from the generated code is the one shape
+ * that works in every build, with no per-app setup.
  */
 public object PyreonHttp {
     @Volatile
@@ -135,9 +143,12 @@ public object PyreonHttp {
         this.executor = executor
     }
 
-    /** Execute [request]. Blocking — callers run it off the main thread. */
-    public fun send(request: PyreonHttpRequest): PyreonHttpResponse {
-        val exec = executor ?: throw PyreonHttpError.NoExecutor()
+    /**
+     * Execute [request] with the installed executor, else [fallback]. Blocking —
+     * callers run it off the main thread.
+     */
+    public fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse {
+        val exec = executor ?: fallback ?: throw PyreonHttpError.NoExecutor()
         return exec.send(request)
     }
 }

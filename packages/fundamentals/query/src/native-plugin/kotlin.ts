@@ -73,7 +73,8 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
       }
       if (d.body !== undefined) parts.push(`body = ${ctx.stringLiteral(d.body)}`)
       lines.push(`      val __response = withContext(Dispatchers.IO) {`)
-      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
+      // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
+      lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp)`)
       lines.push(`      }`)
       lines.push(`      if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)
       lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body))`)
