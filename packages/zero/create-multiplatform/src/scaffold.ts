@@ -882,5 +882,46 @@ setup.
 `,
   )
 
+  // ── AI-agent instructions — parity with `create-zero`'s AI overlays ──────
+  // Same file for AGENTS.md (Aider, Continue, editor agents) and CLAUDE.md
+  // (Claude Code); `.mcp.json` registers the Pyreon MCP server (API reference,
+  // `validate`, `diagnose`) with MCP-aware assistants. Static text: nothing
+  // here may name a command the scaffold does not actually define.
+  add('AGENTS.md', agentInstructions(name))
+  add('CLAUDE.md', agentInstructions(name))
+  add(
+    '.mcp.json',
+    `${JSON.stringify({ mcpServers: { pyreon: { command: 'bunx', args: ['@pyreon/mcp'] } } }, null, 2)}\n`,
+  )
+
   return files
+}
+
+function agentInstructions(name: string): string {
+  return `# ${name}
+
+A Pyreon multi-platform project: **one source (\`src/App.tsx\`) renders on web, iOS (SwiftUI) and Android (Jetpack Compose).** The native targets are compiled from your TypeScript by PMTC — there is no JavaScript engine on the device. Do not use React patterns (\`useState\`, \`useEffect\`, \`className\`, \`onClick\` on primitives).
+
+## Commands
+
+- \`bun run dev\` — the web build (fast loop, hot reload).
+- \`npx pyreon-native check --source=src\` — report every construct the native compiler cannot lower, each as a named warning. Run it after editing shared source.
+- \`bun run build:ios\` / \`bun run build:android\` — compile \`src\` to Swift / Kotlin and build the native project.
+- \`bun run lint\` — Pyreon lint rules.
+
+## Rules that matter
+
+- **Components run once.** State is \`signal()\`, derived values are \`computed()\`; read with \`count()\`, write with \`count.set(v)\` / \`count.update(fn)\`. Never destructure \`props\` (it captures once) — read \`props.x\`.
+- **Use \`@pyreon/primitives\` in shared source:** \`<Stack>\`, \`<Inline>\`, \`<Layer>\`, \`<Scroll>\`, \`<Text>\`, \`<Heading>\`, \`<Image>\`, \`<Button>\`, \`<Press>\`, \`<Field>\`, \`<Toggle>\`, \`<Modal>\`, \`<Link>\`, … One event name per concept: \`onPress\`.
+- **The native compiler accepts a narrow, declarative subset.** Anything outside it produces a *named warning* from \`pyreon-native check\` and does not run on the device. Fix warnings by name; do not silence them.
+- **Device features come from hooks the compiler recognizes** (for example \`useStorage\`, \`useFetch\`, \`useGeolocation\`, \`usePush\`, \`useAuth\`). For anything else, \`useNativeModule('Name')\` calls a Swift/Kotlin class you write in \`ios/\` and \`android/\` — see README.md.
+- **Lists:** \`<For each={items} by={(item) => item.id}>\` — the prop is \`by\`, not \`key\`.
+- **Native routing** is an explicit \`createRouter({ routes: [...] })\` array (no file-based routing on native).
+
+## Docs
+
+- Multi-platform status and the device-proven capability matrix: https://pyreon.dev/docs/multiplatform
+- Which libraries run on native: https://pyreon.dev/docs/multiplatform-libraries
+- With the Pyreon MCP server (\`.mcp.json\`), use \`get_api\`, \`validate\` and \`diagnose\` instead of guessing APIs.
+`
 }

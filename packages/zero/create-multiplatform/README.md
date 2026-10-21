@@ -49,6 +49,8 @@ my-app/
   ios/project.yml  ios/Sources/{App,ContentView}.swift  ios/Info.plist
   android/{settings,build}.gradle.kts  android/app/...   MainActivity.kt
   scripts/build-ios.sh  scripts/build-android.sh  scripts/ensure-release-keystore.sh
+  AGENTS.md  CLAUDE.md  .mcp.json   # AI-agent instructions + the Pyreon MCP server
+                               # (same files create-zero scaffolds for web apps)
 ```
 
 `src/App.tsx` uses the canonical `@pyreon/primitives` vocabulary (`<Stack>`,

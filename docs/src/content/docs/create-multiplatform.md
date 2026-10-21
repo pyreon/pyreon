@@ -43,6 +43,8 @@ The target directory must not already exist and be non-empty — a `.git`-only d
 
 Scaffolded scripts, beyond `dev` / `build:ios` / `build:android`: `preview` (Vite preview), `lint` (`pyreon-lint .`, including the opt-in `portable` `@pyreon/lint` rule group scoped to `src/App.tsx` — it flags a shared-source construct PMTC can't lower to native, before a build tries and fails), `release:keystore` (generates a self-signed Android release keystore if absent), and `release:android` (ensures the keystore, then produces a signed, R8-minified release APK via `gradle assembleRelease`).
 
+The project also ships `AGENTS.md`, `CLAUDE.md` and `.mcp.json`: instructions for AI coding assistants (the commands above, the native-subset rules, where the capability matrix lives) and the Pyreon MCP server registration, matching what `create-zero` scaffolds for web apps.
+
 ## What gets generated
 
 A project sharing **one canonical-primitive source** across three targets:
