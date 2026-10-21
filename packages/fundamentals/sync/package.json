@@ -64,7 +64,7 @@
     "yjs": "^13.6.33"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "21.0.3",
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
@@ -72,7 +72,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/ws": "^8.18.2",
-    "bun-types": "^1.4.2",
+    "bun-types": "^1.4.3",
     "ws": "^8.22.0"
   },
   "peerDependencies": {

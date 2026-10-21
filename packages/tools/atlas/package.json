@@ -96,7 +96,7 @@
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/unistyle": "workspace:*",
-    "axe-core": "^4.13.0",
+    "axe-core": "^4.14.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
@@ -108,9 +108,9 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "happy-dom": "^20.14.5",
+    "happy-dom": "^21.0.3",
     "playwright-core": ">=1.40",
-    "vite": "^8.3.1",
+    "vite": "^8.3.4",
     "zod": "^4.6.7"
   },
   "peerDependencies": {

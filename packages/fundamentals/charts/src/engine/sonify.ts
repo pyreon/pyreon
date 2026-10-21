@@ -119,7 +119,8 @@ export function sonifyValues(values: Double[], options: SonifyOptions = {}): Son
     if (owned !== null) {
       const ctx = owned
       owned = null
-      void ctx.close()
+      // A close() of an already-closing context rejects; nothing to recover.
+      ctx.close().catch(() => {})
     }
     options.link?.hover.set(-1)
     const done = finish
@@ -137,7 +138,11 @@ export function sonifyValues(values: Double[], options: SonifyOptions = {}): Son
         return
       }
       const ctx = contextNow()
-      if (ctx.state === 'suspended') void ctx.resume()
+      // Stopping before the resume settles CLOSES the context, and Chromium
+      // (>= 156) then REJECTS the pending resume() with InvalidStateError. That
+      // is the expected outcome of a quick play→stop, not an error — without a
+      // handler it surfaces as an unhandled rejection in the app.
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
       const o = ctx.createOscillator()
       const g = ctx.createGain()
       o.type = options.waveform ?? 'sine'
