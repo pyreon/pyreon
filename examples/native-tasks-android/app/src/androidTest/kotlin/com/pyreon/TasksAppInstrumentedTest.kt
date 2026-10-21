@@ -480,9 +480,13 @@ class TasksAppInstrumentedTest {
         // ── CodeMirror ───────────────────────────────────────────────────────────────────────────
         composeRule.onNodeWithTag("gal-code-webview").performScrollTo().assertExists()
         // CodeMirror's content is exposed to accessibility as text once the editor has booted.
+        // The FIRST WebView of a process pays for the WebView implementation's cold start (a native library load plus
+        // dex optimisation) and then parses a ~500 KB editor bundle, so the budget is sized for a cold, software-
+        // rendered CI emulator rather than a warm local one. The message carries what the accessibility tree shows,
+        // because a hang here is otherwise indistinguishable from a page that never loaded.
         assertTrue(
-            "CodeMirror never rendered the pushed value (failure: ${textOf("gal-code-failure")})",
-            device.wait(Until.hasObject(By.textContains("answer")), 30_000),
+            "CodeMirror never rendered the pushed value (failure: ${textOf("gal-code-failure")}; native value: '${textOf("gal-code-value")}'; visible: ${webTexts(device)})",
+            device.wait(Until.hasObject(By.textContains("answer")), 120_000),
         )
         assertTrue("the hosted CodeMirror reported a host failure", textOf("gal-code-failure") == "none")
 
@@ -507,8 +511,8 @@ class TasksAppInstrumentedTest {
         device.waitForIdle()
         composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().assertExists()
         assertTrue(
-            "TipTap never rendered the pushed HTML (failure: ${textOf("gal-rich-failure")})",
-            device.wait(Until.hasObject(By.textContains("hosted")), 30_000),
+            "TipTap never rendered the pushed HTML (failure: ${textOf("gal-rich-failure")}; visible: ${webTexts(device)})",
+            device.wait(Until.hasObject(By.textContains("hosted")), 60_000),
         )
         assertTrue("the hosted TipTap reported a host failure", textOf("gal-rich-failure") == "none")
         composeRule.onNodeWithTag("gal-rich-replace").performScrollTo().performClick()
