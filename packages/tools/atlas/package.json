@@ -108,9 +108,9 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "happy-dom": "^21.0.3",
+    "happy-dom": "^21.0.4",
     "playwright-core": ">=1.40",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "zod": "^4.6.7"
   },
   "peerDependencies": {

@@ -113,7 +113,7 @@
     "@pyreon/zero": "workspace:^",
     "@tanstack/query-core": "^5.104.5",
     "@vitest/browser-playwright": "^5.0.5",
-    "arktype": "^2.2.8",
+    "arktype": "^2.2.9",
     "axios": "^1.20.0",
     "ky": "^2.2.0",
     "ofetch": "^1.5.1",
