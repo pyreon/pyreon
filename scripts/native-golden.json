@@ -7362,13 +7362,13 @@
       "warnings": 0
     },
     "example:native-viz/VizApp.tsx|swift": {
-      "sha": "81ae689e203b73b0b6a6c0e212d7df1fda7392be5252622385af3ddb58553b54",
-      "bytes": 24623,
+      "sha": "b7ed73cdadbb28728121bd757bb66f0fa9a2c088b09ce08e10fc70edb2dfa9f5",
+      "bytes": 25091,
       "warnings": 0
     },
     "example:native-viz/VizApp.tsx|kotlin": {
-      "sha": "a278efe3b2c8997dc8cb4d659cbc5fb49b3f4d9fd0d5fcca79fe1a1bed40f1e3",
-      "bytes": 24807,
+      "sha": "4b12fe7c0b82779e6397d0a1ea05889182b10a56c23bb1972ac3f8679998d9f9",
+      "bytes": 25275,
       "warnings": 0
     },
     "registry:@pyreon/charts|swift": {
