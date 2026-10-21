@@ -1,4 +1,19 @@
 /**
+ * Copy a descriptor onto `target` VERBATIM. A plain writable + enumerable +
+ * configurable data property — nearly every prop — is reproduced exactly by
+ * an assignment, which costs about half of `Object.defineProperty` on V8 and
+ * JSC. Anything else (getters, unusual flags) keeps `defineProperty`;
+ * `__proto__` is excluded because assigning it would set the prototype.
+ */
+const copyVerbatim = (target: Record<string, any>, key: string, d: PropertyDescriptor): void => {
+  if (d.writable === true && d.enumerable === true && d.configurable === true && key !== '__proto__') {
+    target[key] = d.value
+  } else {
+    Object.defineProperty(target, key, d)
+  }
+}
+
+/**
  * Returns a copy of `obj` without the specified keys.
  *
  * Accepts either an array of keys (builds a Set internally) or a
@@ -16,16 +31,16 @@ export const omit = <T extends Record<string, any>>(
   keys?: readonly (string | keyof T)[] | Set<string>,
 ): Partial<T> => {
   if (obj == null) return {} as Partial<T>
-  const descriptors = Object.getOwnPropertyDescriptors(obj)
   if (!keys || (keys instanceof Set ? keys.size === 0 : keys.length === 0)) {
-    return Object.defineProperties({} as Partial<T>, descriptors)
+    return Object.defineProperties({} as Partial<T>, Object.getOwnPropertyDescriptors(obj))
   }
   const keysSet = keys instanceof Set ? keys : new Set(keys as readonly string[])
   const result: Record<string, any> = {}
-  for (const key of Object.keys(descriptors)) {
-    if (!keysSet.has(key)) {
-      Object.defineProperty(result, key, descriptors[key]!)
-    }
+  // Same key set as `Object.keys(Object.getOwnPropertyDescriptors(obj))`
+  // (own string keys, non-enumerable included), but a descriptor is only
+  // read for keys that are kept.
+  for (const key of Object.getOwnPropertyNames(obj)) {
+    if (!keysSet.has(key)) copyVerbatim(result, key, Object.getOwnPropertyDescriptor(obj, key)!)
   }
   return result as Partial<T>
 }
@@ -53,9 +68,7 @@ export const pick = <T extends Record<string, any>>(
   for (const key of keys) {
     const k = key as string
     const descriptor = Object.getOwnPropertyDescriptor(obj, k)
-    if (descriptor) {
-      Object.defineProperty(result, k, descriptor)
-    }
+    if (descriptor) copyVerbatim(result, k, descriptor)
   }
   return result as Partial<T>
 }
