@@ -76,12 +76,35 @@ describe('SSR counter shape', () => {
     expect(outcome.after['runtime-server.escape']).toBe(2)
   })
 
-  it('renderToString fires one runtime-server.for.keyMarker per <For> item', async () => {
+  it('renderToString fires no runtime-server.for.keyMarker for single-element rows', async () => {
+    // Their keys ride on the closing marker instead — no per-row comment.
     const items = ['a', 'b', 'c', 'd']
     const outcome = await perfHarness.record('ssr-for-markers', async () => {
       await renderToString(h(List, { items }))
     })
-    expect(outcome.after['runtime-server.for.keyMarker']).toBe(items.length)
+    expect(outcome.after['runtime-server.for.keyMarker']).toBeFalsy()
+  })
+
+  it('renderToString fires one runtime-server.for.keyMarker per row from the first non-element row on', async () => {
+    // Two nodes — a component rendering ONE element would be bare too.
+    const Row = (props: { s: string }) => h(Fragment, null, h('li', null, props.s), h('li', null, '+'))
+    const items = ['a', 'b', 'c', 'd']
+    const outcome = await perfHarness.record('ssr-for-markers-marked', async () => {
+      await renderToString(
+        h(
+          'ul',
+          null,
+          h(For, {
+            each: () => items,
+            by: (s: string) => s,
+            // Row 'a' is a bare element; 'b' (a two-node component) starts the
+            // marked region, which then covers 'c' and 'd' too.
+            children: (s: string) => (s === 'a' ? h('li', null, s) : h(Row, { s })),
+          }),
+        ),
+      )
+    })
+    expect(outcome.after['runtime-server.for.keyMarker']).toBe(3)
   })
 
   it('renderToStream fires runtime-server.stream once per call', async () => {

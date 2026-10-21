@@ -35,7 +35,7 @@ async function drain(stream: ReadableStream<unknown>): Promise<string> {
 describe('_ssrForKeyed — the fused keyed-<For> SSR fast path', () => {
   const by = (x: unknown) => (x as { id: string }).id
 
-  it('sync rows: bracket + per-key markers + row bytes, in order', () => {
+  it('sync rows: bracket + closing-marker key list + row bytes, in order', () => {
     const r = _ssrForKeyed(
       [{ id: 'a' }, { id: 'b' }],
       by,
@@ -43,7 +43,7 @@ describe('_ssrForKeyed — the fused keyed-<For> SSR fast path', () => {
     )
     expect(typeof (r as RawLike).value).toBe('string')
     expect((r as RawLike).value).toBe(
-      '<!--pyreon-for--><!--k:a--><li>a</li><!--k:b--><li>b</li><!--/pyreon-for-->',
+      '<!--pyreon-for--><li>a</li><li>b</li><!--/pyreon-for:a b-->',
     )
   })
 
@@ -53,14 +53,14 @@ describe('_ssrForKeyed — the fused keyed-<For> SSR fast path', () => {
       by,
       () => '<i>r</i>',
     ) as RawLike
-    expect(viaAccessor.value).toContain('<!--k:x-->')
+    expect(viaAccessor.value).toContain('<!--/pyreon-for:x-->')
 
     const viaIterable = _ssrForKeyed(
       new Set([{ id: 's1' }, { id: 's2' }]),
       by,
       (x) => `[${(x as { id: string }).id}]`,
     ) as RawLike
-    expect(viaIterable.value).toContain('<!--k:s1-->[s1]<!--k:s2-->[s2]')
+    expect(viaIterable.value).toContain('[s1][s2]<!--/pyreon-for:s1 s2-->')
   })
 
   it('RawHtml rows unwrap verbatim (no double-escaping)', () => {
@@ -69,7 +69,7 @@ describe('_ssrForKeyed — the fused keyed-<For> SSR fast path', () => {
       by,
       () => raw('<b>pre&rendered</b>'),
     ) as RawLike
-    expect(r.value).toContain('<!--k:r--><b>pre&rendered</b>')
+    expect(r.value).toContain('<b>pre&rendered</b><!--/pyreon-for:r-->')
   })
 
   it('ASYNC row promotes with the resume-at-next-index continuation — order + markers survive', async () => {
@@ -86,13 +86,13 @@ describe('_ssrForKeyed — the fused keyed-<For> SSR fast path', () => {
     expect(r).toBeInstanceOf(Promise)
     const out = (await r) as RawLike
     expect(out.value).toBe(
-      '<!--pyreon-for--><!--k:1--><p>1</p><!--k:2--><p>async-2</p><!--k:3--><p>3</p><!--/pyreon-for-->',
+      '<!--pyreon-for--><p>1</p><p>async-2</p><p>3</p><!--/pyreon-for:1 2 3-->',
     )
   })
 
   it('async row resolving a NUMBER goes through holeToString (String fallback)', async () => {
     const out = (await _ssrForKeyed([{ id: 'n' }], by, () => Promise.resolve(42))) as RawLike
-    expect(out.value).toContain('<!--k:n-->42')
+    expect(out.value).toContain('42<!--/pyreon-for:n-->')
   })
 })
 

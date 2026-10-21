@@ -1,14 +1,24 @@
-import { For, h } from '@pyreon/core'
+import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { decodeKeyFromMarker, renderToString } from '../index'
+import { decodeKeyFromMarker, renderToStream, renderToString } from '../index'
 
-// For list SSR emits <!--k:KEY--> markers between items. The key is
-// user-supplied (derived from `by`) and must not be able to break out
-// of the HTML comment. A naive inline of `-->` would terminate the
-// comment and inject arbitrary markup. This suite locks the fix.
+// For list SSR carries every item's key in an HTML comment — on the closing
+// marker (`<!--/pyreon-for:k0 k1 …-->`) for a leading run of single-element
+// rows, and as a per-row `<!--k:KEY-->` marker from the first row of any
+// other shape on. The key is user-supplied (derived from `by`) and must not
+// be able to break out of EITHER comment form. A naive inline of `-->` would
+// terminate the comment and inject arbitrary markup. This suite locks the fix
+// for both forms.
+
+// A row that renders TWO nodes cannot be bare, so it takes the per-row form.
+const CompRow = () => h(Fragment, null, h('li', null, 'x'), h('li', null, 'y'))
+const ROW_FORMS = [
+  { name: 'closing-marker key list', row: () => h('li', null, 'x'), re: /<!--\/pyreon-for:([^>]*)-->/ },
+  { name: 'per-row marker', row: () => h(CompRow, null), re: /<!--k:([^>]*)-->/ },
+] as const
 
 describe('For SSR — key marker safety', () => {
-  it('emits one marker per item with the expected key for normal ids', async () => {
+  it('carries a leading run of single-element rows\' keys on the closing marker', async () => {
     type Row = { id: number; label: string }
     const items = signal<Row[]>([
       { id: 1, label: 'a' },
@@ -22,58 +32,67 @@ describe('For SSR — key marker safety', () => {
         children: (r: Row) => h('li', null, r.label),
       }),
     )
-
-    const markers = html.match(/<!--k:[^>]*-->/g) ?? []
-    expect(markers).toHaveLength(3)
-    // Numeric keys are URL-encoded predictably (digits survive).
-    expect(markers[0]).toBe('<!--k:1-->')
-    expect(markers[1]).toBe('<!--k:2-->')
-    expect(markers[2]).toBe('<!--k:3-->')
+    expect(html).toBe('<!--pyreon-for--><li>a</li><li>b</li><li>c</li><!--/pyreon-for:1 2 3-->')
   })
 
-  it('prevents comment-breakout via `-->` in the key (XSS guard)', async () => {
-    // Adversarial: a key that would, unsanitized, close the comment and
-    // inject a <script> tag.
-    const attackKey = '--><script>alert(1)</script><!--'
-    type Row = { id: string }
-    const items = signal<Row[]>([{ id: attackKey }])
+  it('switches to per-row markers from the first row that renders more than one element', async () => {
+    type Row = { id: number; comp: boolean }
+    const items = signal<Row[]>([
+      { id: 1, comp: false },
+      { id: 2, comp: true },
+      { id: 3, comp: false },
+    ])
     const html = await renderToString(
       h(For, {
         each: () => items(),
         by: (r: Row) => r.id,
-        children: () => h('li', null, 'x'),
+        children: (r: Row) => (r.comp ? h(CompRow, null) : h('li', null, String(r.id))),
       }),
     )
-
-    // The raw attacker string must NOT appear verbatim.
-    expect(html).not.toContain('<script>alert(1)</script>')
-    // The `-->` terminator must not appear anywhere but at the very end
-    // of the marker (after the encoded key).
-    const markerMatch = html.match(/<!--k:([^-]*)-->/)
-    expect(markerMatch).not.toBeNull()
-    // No literal `-` survives inside the encoded key (defense-in-depth
-    // against any future HTML-comment parsing quirk).
-    expect(markerMatch![1]).not.toMatch(/-/)
-  })
-
-  it('URL-encodes keys with special chars safely', async () => {
-    type Row = { id: string }
-    const items = signal<Row[]>([{ id: 'a&b=c d' }])
-    const html = await renderToString(
-      h(For, {
-        each: () => items(),
-        by: (r: Row) => r.id,
-        children: () => h('li', null, 'x'),
-      }),
+    // Row 1 is bare (its key on the closing marker); row 2 renders two nodes
+    // and starts the marked region; row 3 stays marked even though it is a
+    // single element again.
+    expect(html).toBe(
+      '<!--pyreon-for--><li>1</li><!--k:2--><li>x</li><li>y</li><!--k:3--><li>3</li><!--/pyreon-for:1-->',
     )
-
-    const marker = html.match(/<!--k:([^>]*)-->/)
-    expect(marker).not.toBeNull()
-    // `&`, `=`, ` `, and `-` all URL-encoded.
-    expect(marker![1]).toBe('a%26b%3Dc%20d')
-    // decodeKeyFromMarker round-trips back to the original string.
-    expect(decodeKeyFromMarker(marker![1]!)).toBe('a&b=c d')
   })
+
+  for (const form of ROW_FORMS) {
+    it(`prevents comment-breakout via \`-->\` in the key (XSS guard) — ${form.name}`, async () => {
+      // Adversarial: a key that would, unsanitized, close the comment and
+      // inject a <script> tag.
+      const attackKey = '--><script>alert(1)</script><!--'
+      type Row = { id: string }
+      const items = signal<Row[]>([{ id: attackKey }])
+      const html = await renderToString(
+        h(For, { each: () => items(), by: (r: Row) => r.id, children: form.row }),
+      )
+
+      // The raw attacker string must NOT appear verbatim.
+      expect(html).not.toContain('<script>alert(1)</script>')
+      const markerMatch = html.match(form.re)
+      expect(markerMatch).not.toBeNull()
+      // No literal `-` survives inside the encoded key (defense-in-depth
+      // against any future HTML-comment parsing quirk).
+      expect(markerMatch![1]).not.toMatch(/-/)
+    })
+
+    it(`URL-encodes keys with special chars safely — ${form.name}`, async () => {
+      type Row = { id: string }
+      const items = signal<Row[]>([{ id: 'a&b=c d' }])
+      const html = await renderToString(
+        h(For, { each: () => items(), by: (r: Row) => r.id, children: form.row }),
+      )
+
+      const marker = html.match(form.re)
+      expect(marker).not.toBeNull()
+      // `&`, `=`, ` `, and `-` all URL-encoded — the space in particular, since
+      // it separates keys in the closing-marker list.
+      expect(marker![1]).toBe('a%26b%3Dc%20d')
+      // decodeKeyFromMarker round-trips back to the original string.
+      expect(decodeKeyFromMarker(marker![1]!)).toBe('a&b=c d')
+    })
+  }
 
   it('decodeKeyFromMarker round-trips adversarial keys', () => {
     // Directly round-trip the adversarial case that motivated the fix.
@@ -82,5 +101,53 @@ describe('For SSR — key marker safety', () => {
     // the inverse on a value we know was encoded from it).
     const encoded = encodeURIComponent(attackKey).replace(/-/g, '%2D')
     expect(decodeKeyFromMarker(encoded)).toBe(attackKey)
+  })
+
+  describe('component rows', () => {
+    const Single = (p: { n: number }) => h('li', null, `c${p.n}`)
+    const Wrapper = (p: { n: number }) => h(Single, p)
+    const Multi = () => h(Fragment, null, h('li', null, 'a'), h('li', null, 'b'))
+    const Reactive = (p: { n: number }) => () => h('li', null, `r${p.n}`)
+    const render = (children: (n: number) => unknown) =>
+      renderToString(h(For, { each: () => [1, 2], by: (n: number) => n, children } as never))
+    const stream = async (children: (n: number) => unknown) => {
+      const reader = renderToStream(
+        h(For, { each: () => [1, 2], by: (n: number) => n, children } as never),
+      ).getReader()
+      let out = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) return out
+        out += typeof value === 'string' ? value : new TextDecoder().decode(value)
+      }
+    }
+
+    it('a component rendering one element is bare — also through a wrapper component', async () => {
+      expect(await render((n) => h(Single, { n }))).toBe(
+        '<!--pyreon-for--><li>c1</li><li>c2</li><!--/pyreon-for:1 2-->',
+      )
+      expect(await render((n) => h(Wrapper, { n }))).toBe(
+        '<!--pyreon-for--><li>c1</li><li>c2</li><!--/pyreon-for:1 2-->',
+      )
+    })
+
+    it('a component rendering several nodes, or an accessor, keeps per-row markers', async () => {
+      expect(await render(() => h(Multi, null))).toContain('<!--k:1-->')
+      // The documented reactive-conditional return: its first node can be
+      // replaced on the client, so it must never be a bare row.
+      expect(await render((n) => h(Reactive, { n }))).toContain('<!--k:1-->')
+    })
+
+    it('stream and string renderers emit identical bytes for every component shape', async () => {
+      for (const children of [
+        (n: number) => h(Single, { n }),
+        (n: number) => h(Wrapper, { n }),
+        () => h(Multi, null),
+        (n: number) => h(Reactive, { n }),
+        (n: number) => (n === 1 ? h(Single, { n }) : h(Multi, null)),
+      ]) {
+        expect(await stream(children)).toBe(await render(children))
+      }
+    })
   })
 })
