@@ -4482,7 +4482,7 @@ pub fn transform_jsx(
     // other filename as TSX. Deriving the dialect from the path
     // (`SourceType::from_path`) fell back to plain JavaScript for any name
     // oxc did not recognise — a Vite id carrying a `?v=` query, `.pyreon`, an
-    // uppercase extension — so TypeScript syntax failed to parse, `panicked`
+    // uppercase extension — so TypeScript syntax failed to parse, `fatal_error`
     // hit, and the source was returned UNCHANGED as a success: raw JSX shipped
     // to the browser with no error and no JS fallback. The JS backend never
     // consulted the path, so the two disagreed on the same input.
@@ -4495,9 +4495,9 @@ pub fn transform_jsx(
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
 
-    // Only bail on panicked parser — recoverable errors (like empty JSX
+    // Only bail on a fatal-error parse — recoverable errors (like empty JSX
     // expressions `{/* comment */}`) still produce a valid AST.
-    if ret.panicked {
+    if ret.fatal_error {
         return TransformResult {
             code,
             uses_templates: None,
