@@ -3,7 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 export default defineManifest({
   name: '@pyreon/auth',
   title: 'Authentication',
-  tagline: 'OIDC/OAuth2 authorization-code + PKCE primitives and route guards — secure by default',
+  tagline: 'OIDC sign-in on web, iOS and Android, ID-token verification, sessions, TOTP and passkeys — secure by default',
   description:
     'Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.',
   category: 'universal',

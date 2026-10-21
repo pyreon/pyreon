@@ -65,6 +65,7 @@
       "dependencies": {
         "@pyreon/a11y": "workspace:*",
         "@pyreon/attrs": "workspace:*",
+        "@pyreon/auth": "workspace:*",
         "@pyreon/charts": "workspace:*",
         "@pyreon/code": "workspace:*",
         "@pyreon/core": "workspace:*",

@@ -1,11 +1,11 @@
 ---
 title: "Authentication — API Reference"
-description: "OIDC/OAuth2 authorization-code + PKCE primitives and route guards — secure by default"
+description: "OIDC sign-in on web, iOS and Android, ID-token verification, sessions, TOTP and passkeys — secure by default"
 ---
 
 # @pyreon/auth — API Reference
 
-> **Generated** from `auth`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest.
+> **Generated** from `auth`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [auth](/docs/auth).
 
 Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
 

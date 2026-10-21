@@ -6,6 +6,8 @@ workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, T
 Tested against [`oidc-provider`](https://github.com/panva/node-oidc-provider), a certified OpenID Provider, run
 in-process: discovery, PKCE + nonce, code exchange, ID-token verification, refresh and RP-initiated logout.
 
+**Guide, with live demos you can break on purpose:** [pyreon.dev/docs/auth](https://pyreon.dev/docs/auth).
+
 ## Sign-in
 
 ```ts

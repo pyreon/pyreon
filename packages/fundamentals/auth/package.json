@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/auth",
   "version": "0.52.0",
-  "description": "Multiplatform authentication for Pyreon \u2014 OIDC/OAuth2 authorization-code + PKCE, route guards, secure defaults",
+  "description": "Authentication for Pyreon on web, iOS and Android \u2014 OIDC sign-in (useOidc), ID-token verification, signed sessions, TOTP, passkeys and route guards, secure by default",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/auth#readme",
   "bugs": {
