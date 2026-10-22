@@ -150,7 +150,7 @@ describe('Math.round matches JS on both targets', () => {
     expect(r.code).toContain(') + 0.5).rounded(.down)')
     expect(r.code).not.toMatch(/\)\)\.rounded\(\)/)
   })
-  it('Kotlin is unchanged — java.lang.Math.round IS floor(x + 0.5)', () => {
+  it('Kotlin keeps java.lang.Math.round (IS floor(x + 0.5)), widened to Double', () => {
     const r = kotlinOf(APP(`  const out = computed(() => Math.round(-0.5))`))
     expect(r.code).toContain('Math.round(')
   })
