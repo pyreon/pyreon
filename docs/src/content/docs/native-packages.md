@@ -147,6 +147,7 @@ pyreon-native check     [--target=<ios|android>] [--typecheck] [--watch] [--json
 pyreon-native check     --lsp
 pyreon-native assets    --target=<ios|android|web> --source=<dir> --out=<dir>
 pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
+pyreon-native dev       --target=<ios|android> [--app=<dir>] [--device=<name|id>] [--once]
 pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
 ```
 

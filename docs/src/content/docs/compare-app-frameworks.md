@@ -22,7 +22,7 @@ Expo, React Native, Flutter, Kotlin Multiplatform and Capacitor all start from a
 | **Native-module story** | `useNativeModule` calls app-provided Swift/Kotlin; packages can ship `native/` sources that the toolchain scans | Expo Modules API, TurboModules; very large library catalog | Platform channels, FFI, pub.dev | `expect`/`actual`; klibs.io catalog | Plugins |
 | **Over-the-air code updates** | **Not possible** for native logic (it is compiled). Data-driven config and WebView islands are the workarounds | EAS Update | Third-party (Shorebird) | None | Third-party |
 | **Build / submit pipeline** | Local `xcodebuild` / `gradle`; no hosted build or submit service | EAS Build / Submit / Workflows | Codemagic and others | Gradle / Xcode | Varies |
-| **Hot reload on device** | Web: yes. Native: rebuild per change | Fast Refresh | Stateful hot reload | Rebuild per change on iOS | Vite HMR |
+| **Hot reload on device** | Web: yes. Native: rebuild per change, ~3 s warm ([measured](/docs/native-dev-loop)) | Fast Refresh | Stateful hot reload | Rebuild per change on iOS | Vite HMR |
 | **Third-party native SDKs** | Few first-party bindings; you write a `useNativeModule` bridge for the rest | Largest catalog (Expo SDK + community) | Large (pub.dev, FlutterFire) | Growing | Plugin ecosystem |
 | **Animation** | Platform animation via `<Transition>`; no Reanimated/Skia equivalent | Reanimated, Skia | Best-in-class | Compose animation | CSS |
 | **Maturity of native targets** | **Experimental** | Production | Production | iOS stable since Compose Multiplatform 1.8 | Production (WebView) |
@@ -41,7 +41,7 @@ Expo, React Native, Flutter, Kotlin Multiplatform and Capacitor all start from a
 - **Third-party native SDKs.** Payments, analytics, maps, camera and push SDKs are published for React Native, Flutter and Kotlin. Pyreon has first-party hooks for common cases (see the [capability matrix](/docs/multiplatform) for which are device-proven) and the `useNativeModule` bridge for the rest, but you will write more glue than on Expo.
 - **The compilable subset.** Native targets compile a deliberately narrow, declarative subset of TypeScript. Code outside it warns by name and does not run on the device — whereas React Native and Flutter run their whole language everywhere.
 - **No hosted build, submit or CI service.** Expo's EAS covers build, submit, update and monitoring as a product. Pyreon gives you the compiler and the scaffolds; the pipeline is yours.
-- **Dev loop on native.** There is no hot reload of generated native UI; a change means a rebuild. Web development is the fast loop.
+- **Dev loop on native.** There is no hot reload of generated native UI; a change means a rebuild. `pyreon-native dev` shortens it to a watch-and-relaunch loop (see [Native Dev Loop](/docs/native-dev-loop)), and web development is the fast loop.
 - **Animation, desktop and community.** Reanimated / Skia and Flutter are well ahead on animation; Flutter and Tauri are ahead on desktop; the React Native and Flutter communities, job markets and library catalogs are much larger.
 
 ## When to pick something else
