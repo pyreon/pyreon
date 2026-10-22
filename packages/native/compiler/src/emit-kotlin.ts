@@ -4269,6 +4269,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'unary': {
       // Mirror of the Swift truthiness lowering — JS `!x` / `!!x` on
       // non-Boolean args were SILENT fails ("argument type mismatch").
+      // `x!` — Kotlin's `!!` on an optional only; on a non-null type it is a warning-level no-op we do not emit.
+      if (e.op === 'non-null') {
+        const arg = emitKotlinExpr(e.argument, indent)
+        return typeIsOptional(inferType(e.argument, _kotlinExprInferCtx)) ? `(${arg})!!` : arg
+      }
       if (e.op === '!') {
         const inner = e.argument
         const isDoubleNeg = inner.kind === 'unary' && inner.op === '!'

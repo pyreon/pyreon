@@ -6398,9 +6398,14 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       return inner
     }
     case 'TSSatisfiesExpression':
-    case 'TSNonNullExpression':
-      // `x satisfies T` / `x!` — transparent; the value is the inner expression.
+      // `x satisfies T` — transparent; the value is the inner expression.
       return parseExpr(node.expression, ctx)
+    case 'TSNonNullExpression':
+      // `x!` is a type assertion in JS, but natively an optional must be unwrapped before a member is read. It used
+      // to be dropped here, so `u()!.name` lowered to `u.name` on an optional — "value of optional type must be
+      // unwrapped" on Swift, an impossible smart cast on Kotlin — with no warning. Kept as a unary the emitters
+      // force-unwrap when the argument is optional (see the `'non-null'` op in types.ts).
+      return { kind: 'unary', op: 'non-null', argument: parseExpr(node.expression, ctx) }
     case 'NewExpression': {
       // `new Map<K, V>()` / `new Set<T>()` / `new Set(arr)` — the supported
       // collection constructors. Generic args carry the element types (a
