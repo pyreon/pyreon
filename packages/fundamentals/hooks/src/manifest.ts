@@ -301,7 +301,7 @@ effect(() => fetchResults(debouncedSearch()))`,
       name: 'useFetch',
       kind: 'hook',
       signature:
-        '<T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }',
+        "<T>(url: string, init?: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; headers?: Record<string, string>; body?: string }) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }",
       summary:
         'Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compiles to native `PyreonFetch<T>` containers on iOS (URLSession `.task {}`) and Android (`LaunchedEffect` + kotlinx-serialization) via PMTC, while this runs on web. Fires once at component setup (client only — SSR renders the not-yet-loaded state); each `refetch()` aborts the previous in-flight request so a slow stale response can never clobber a fresh one; unmount aborts too. Deliberately thinner than `@pyreon/query`: no cache, no dedup, no retries.',
       example: `type Quote = { id: number; text: string }
@@ -314,6 +314,8 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
         'Using a reactive/computed URL — v1 takes a plain string captured once (PMTC requires a string literal for native emit anyway); call `refetch()` for manual re-runs, or use `@pyreon/query` for signal-driven keys',
         'Reaching for useFetch when you need caching, request dedup, retries, or mutations — that is `@pyreon/query` (TanStack) territory; useFetch is the thin multiplatform primitive',
         'Forgetting the non-2xx contract — HTTP errors land in `error()` as `[Pyreon] useFetch <url>: HTTP <status>`, they do NOT throw',
+        'Sending a token in `init.headers` and expecting it to update after sign-in — `init` is read ONCE, when the request is built at setup, on every target. A header value may be a runtime string, but one that changes belongs in `@pyreon/query`: its `queryFn` builds the request on every run, and a `queryKey` carrying the user re-runs it after sign-in',
+        "A header value that may be `null` (`authorization: auth.accessToken()`) — the web sends the text `null`, and native refuses it with a warning; write `` `Bearer ${auth.accessToken() ?? ''}` ``",
       ],
       seeAlso: ['useOnline'],
     },

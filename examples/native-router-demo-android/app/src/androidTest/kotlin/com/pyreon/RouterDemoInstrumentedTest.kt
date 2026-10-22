@@ -806,6 +806,12 @@ class RouterDemoInstrumentedTest {
         composeRule
             .onNodeWithTag("http-body")
             .assertTextEquals("Body: {\"name\":\"pyreon\"}")
+        // ...and a header whose VALUE is built at runtime (a signal-backed
+        // Bearer token). A literal-only lowering would drop it, and the server
+        // would echo an empty authorization.
+        composeRule
+            .onNodeWithTag("http-auth")
+            .assertTextEquals("Auth: Bearer tok-42")
         // A non-2xx must REJECT rather than reach the decoder.
         composeRule.waitUntil(timeoutMillis = 15_000) {
             composeRule.onAllNodesWithText("Bad: rejected").fetchSemanticsNodes().isNotEmpty()

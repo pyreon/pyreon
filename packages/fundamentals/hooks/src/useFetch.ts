@@ -14,7 +14,14 @@ import { onHookCleanup } from './lifecycle'
 export interface UseFetchInit {
   /** HTTP verb. Defaults to GET. */
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  /** Request headers. Must be a literal object to reach native. */
+  /**
+   * Request headers, as an object literal. A value may be a runtime string
+   * (`` `Bearer ${token}` ``); it is read ONCE, when the request is built at
+   * setup — on every target — so a value that changes later (a token after
+   * sign-in) belongs in `useQuery`, whose `queryFn` builds the request on
+   * each run. A value that may be `null` is refused natively with the fix
+   * (`?? ''`), since the web would send the text `null`.
+   */
   headers?: Record<string, string>
   /** Request body, already serialized. */
   body?: string
@@ -49,10 +56,11 @@ export interface UseFetchResult<T> {
  *
  * Pass `init` for a non-GET request. On native it lowers to `PyreonHttp`
  * (URLSession on iOS, OkHttp on Android) — the layer that carries verbs,
- * headers and a body. Keep every value a LITERAL: PMTC bakes them into the
- * emitted request at compile time and warns loudly for anything it cannot
- * read, because a request that silently falls back to GET is worse than one
- * that fails to build.
+ * headers and a body. The method and body must be literals (PMTC bakes them
+ * into the emitted request); a header value may be any string expression,
+ * evaluated as the request is built. Anything that cannot cross is named in
+ * a compiler warning, because a request that silently falls back to GET is
+ * worse than one that fails to build.
  *
  * @example
  * ```tsx

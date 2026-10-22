@@ -1013,6 +1013,41 @@ const UserProfile = defineComponent((props: { userId: number }) => {
 })
 ```
 
+## Authenticated Requests
+
+Send a token from the `queryFn`, and put the signed-in user in the `queryKey`:
+
+```tsx
+// @check
+import { useQuery } from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
+
+type Me = { name: string; email: string }
+
+// Wherever your session lives — a store, a context, `useOidc`'s accessToken() / subject().
+const session = signal<{ userId: string; token: string } | null>(null)
+
+export function useMe() {
+  return useQuery<Me>(() => ({
+    queryKey: ['me', session()?.userId ?? 'anonymous'],
+    queryFn: () =>
+      fetch('https://api.example.com/me', {
+        headers: { authorization: `Bearer ${session()?.token ?? ''}` },
+      }).then((r) => r.json()),
+    enabled: session() !== null,
+  }))
+}
+```
+
+Two details make this correct:
+
+- **The header is built inside `queryFn`,** which runs on every fetch, so each request carries the token that is current at that moment, including after a refresh.
+- **The user is in the key.** Signing in, or switching accounts, changes the key, so the query refetches with the new token. It never serves the previous user's cached `/me`.
+
+The same source works unchanged on iOS and Android. The compiler lowers the header value to native code that is evaluated each time the request is built, and the key change re-runs it there exactly as on the web.
+
+A header value has to be a `string`. One that may be `null` (`authorization: session()?.token`) is refused on native with a warning naming the fix — the web would send the literal text `null` — so give it a fallback as above. Avoid putting a token in `useFetch`'s `init.headers`: `useFetch` builds its request once, at setup, so the header would keep the token from that moment (on every target).
+
 ## Query Invalidation and Refetching
 
 Use the `QueryClient` to invalidate queries, triggering background refetches:

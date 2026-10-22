@@ -18,6 +18,11 @@ export interface QueryPayload {
   staleMillis: number
   method?: string
   headers?: Record<string, string>
+  /**
+   * Header values that are runtime expressions (an `Authorization` token), evaluated each time the harness BUILDS
+   * the request. Literals stay in `headers`; header order carries no meaning in HTTP.
+   */
+  headerExprs?: Record<string, ExprIR>
   body?: string
 }
 

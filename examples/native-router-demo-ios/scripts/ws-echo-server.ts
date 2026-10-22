@@ -144,6 +144,8 @@ Bun.serve({
               method: req.method,
               body,
               contentType: req.headers.get('content-type') ?? '',
+              // Reflected so the device tests assert a RUNTIME header value reached the wire.
+              authorization: req.headers.get('authorization') ?? '',
             }),
             { headers: { 'content-type': 'application/json' } },
           ),
