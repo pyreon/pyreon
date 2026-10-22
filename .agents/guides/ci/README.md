@@ -141,7 +141,7 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Bootstrap env vars
 
-`scripts/bootstrap.ts`: `PYREON_BOOTSTRAP_SKIP`, `PYREON_BOOTSTRAP_SKIP_NATIVE`, `PYREON_BOOTSTRAP_SOFT`, `PYREON_BOOTSTRAP_FORCE_FAIL`.
+`scripts/bootstrap.ts`: `PYREON_BOOTSTRAP_SKIP`, `PYREON_BOOTSTRAP_SKIP_NATIVE`, `PYREON_BOOTSTRAP_SOFT`, `PYREON_BOOTSTRAP_FORCE_FAIL`, `PYREON_BOOTSTRAP_CONCURRENCY` (builds run at once; default `min(cores, memory ÷ 1.5 GB)` — see below).
 
 ## Browser and iOS runner reliability
 
