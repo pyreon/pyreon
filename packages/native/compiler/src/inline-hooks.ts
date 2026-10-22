@@ -30,7 +30,17 @@
  *
  * The pass repeats, so a hook that calls another same-file hook is inlined through. A hook whose every call site was
  * inlined is removed from the native source; one still referenced keeps its declaration and the existing helper path.
+ *
+ * A hook IMPORTED from a relative module (`import { useMe } from './hooks'`) is inlined the same way when the calling
+ * file is on disk: the module is read, and what the hook's body needs from it travels along — its imports are added to
+ * the calling file (relative paths rebased, a clashing name refused), the types it names are copied in, and another
+ * hook from the same module is imported so the next pass inlines it too. A plain value from that module (a `const`, a
+ * helper) is refused by name: PMTC compiles one file at a time, and copying it could silently duplicate state. Before
+ * this, such a call was emitted unchanged with no warning, and the native build failed on a function that does not
+ * exist natively — so an imported hook that cannot be inlined is now always NAMED.
  */
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { parseSync } from 'oxc-parser'
 
 // oxc's ESTree output, read structurally.
@@ -46,6 +56,10 @@ interface HookDef {
   readonly name: string
   readonly params: string[]
   readonly body: Node[]
+  /** The source text the body's positions index into — the calling file, or the module the hook is imported from. */
+  readonly src: string
+  /** Set for a hook imported from another module: what inlining it requires of the calling file. */
+  readonly origin?: ImportedOrigin | undefined
   /** The statement to delete when no reference is left (an `export` wrapper included). */
   readonly declStart: number
   readonly declEnd: number
@@ -62,14 +76,26 @@ interface Edit {
 const HOOK_NAME = /^use[A-Z0-9]/
 const MAX_PASSES = 8
 
-export function inlineCustomHooks(source: string, filename: string): InlineHooksResult | null {
-  if (!/\buse[A-Z0-9]\w*\s*(?:=|\()/.test(source)) return null
+export interface InlineHooksOptions {
+  /**
+   * Read a module the calling file imports a hook from, by absolute path; `undefined` when it does not exist. Defaults
+   * to the filesystem, and only runs when `filename` is absolute — an in-memory transform has no directory to resolve
+   * from, so an imported hook there is reported rather than read.
+   */
+  readonly readModule?: ((absolutePath: string) => string | undefined) | undefined
+}
+
+const readFromDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+
+export function inlineCustomHooks(source: string, filename: string, options: InlineHooksOptions = {}): InlineHooksResult | null {
+  if (!/\buse[A-Z0-9]\w*\s*(?:=|\(|<)/.test(source) && !/\bfrom\s+['"]\.{1,2}\//.test(source)) return null
+  const readModule = options.readModule ?? readFromDisk
   let code = source
   const warnings: string[] = []
   const seenWarnings = new Set<string>()
   let changed = false
   for (let pass = 0; pass < MAX_PASSES; pass++) {
-    const step = inlineOnce(code, filename)
+    const step = inlineOnce(code, filename, readModule)
     if (!step) break
     for (const w of step.warnings) {
       if (!seenWarnings.has(w)) {
@@ -85,22 +111,39 @@ export function inlineCustomHooks(source: string, filename: string): InlineHooks
   return { code, warnings }
 }
 
-function inlineOnce(source: string, filename: string): InlineHooksResult | null {
+function inlineOnce(
+  source: string,
+  filename: string,
+  readModule: (absolutePath: string) => string | undefined,
+): InlineHooksResult | null {
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   if (ast.errors.length > 0) return null
   const program = ast.program as Node
   const hooks = collectHooks(program, source)
-  if (hooks.size === 0) return null
+  const unresolved = new Map<string, string>()
+  for (const [local, def] of collectImportedHooks(program, filename, readModule, unresolved)) hooks.set(local, def)
+  const callerTop = moduleTopBindings(program, source)
+  const additions = new Map<string, string>()
+  const warnings: string[] = []
+  // Types imported from a sibling module travel too: natively there is no other file to resolve them from.
+  const importedTypes = collectImportedTypes(program, filename, readModule, callerTop, additions, warnings)
+  if (hooks.size === 0 && unresolved.size === 0 && importedTypes.size === 0) return warnings.length > 0 ? { code: source, warnings } : null
 
   const fileNames = collectAllIdentifierNames(program)
   const edits: Edit[] = []
-  const warnings: string[] = []
 
   for (const stmt of program.body as Node[]) {
     for (const fn of componentFunctions(stmt)) {
       const body = fn.body
       if (!body || body.type !== 'BlockStatement') continue
       for (const s of body.body as Node[]) {
+        const unresolvedName = calledName(s, unresolved)
+        if (unresolvedName) {
+          warnings.push(
+            `${unresolvedName}() is a hook imported from another file that cannot be inlined into ${fnName(fn)} for native: ${unresolved.get(unresolvedName)}. Native code cannot call it, so the build would fail on this call.`,
+          )
+          continue
+        }
         const site = callSite(s, hooks)
         if (!site) continue
         const hook = hooks.get(site.hookName)!
@@ -113,11 +156,24 @@ function inlineOnce(source: string, filename: string): InlineHooksResult | null 
           warnings.push(`${hook.name}() cannot be inlined into ${fnName(fn)} for native: ${result.refusal}.`)
           continue
         }
+        if (hook.origin) {
+          const conflict = mergeRequirements(hook.origin, isAbsolute(filename) ? filename : resolve(filename), callerTop, additions)
+          if (conflict) {
+            warnings.push(`${hook.name}() cannot be inlined into ${fnName(fn)} for native: ${conflict}.`)
+            continue
+          }
+        }
         edits.push({ start: s.start, end: s.end, text: result.text })
       }
     }
   }
-  if (edits.length === 0) return warnings.length > 0 ? { code: source, warnings } : null
+  if (edits.length === 0 && importedTypes.size === 0) return warnings.length > 0 ? { code: source, warnings } : null
+  if (additions.size > 0) {
+    // After the last import, so the added imports and copied types precede the code that uses them.
+    const imports = (program.body as Node[]).filter((n) => n.type === 'ImportDeclaration')
+    const at = imports.length > 0 ? lineEnd(source, imports[imports.length - 1].end) : 0
+    edits.push({ start: at, end: at, text: `${[...additions.values()].join('\n')}\n` })
+  }
 
   let code = applyEdits(source, edits)
   // A hook nothing references any more is removed, so the helper path does not warn about a function no call needs.
@@ -128,6 +184,14 @@ function inlineOnce(source: string, filename: string): InlineHooksResult | null 
     const removals: Edit[] = []
     for (const h of remaining.values()) {
       if ((refs.get(h.name) ?? 0) === 0) removals.push({ start: h.declStart, end: h.declEnd, text: '' })
+    }
+    // An inlined hook's import specifier is spent once nothing calls it.
+    const spent = new Set([...[...hooks.values()].filter((h) => h.origin).map((h) => h.origin!.local), ...importedTypes])
+    for (const imp of (after.program as Node).body as Node[]) {
+      if (imp.type !== 'ImportDeclaration' || !isRelative(imp.source.value)) continue
+      const keep = (imp.specifiers as Node[]).filter((sp) => !(spent.has(sp.local.name) && (refs.get(sp.local.name) ?? 0) === 0))
+      if (keep.length === imp.specifiers.length) continue
+      removals.push({ start: imp.start, end: lineEnd(code, imp.end), text: keep.length === 0 ? '' : `${importText(keep, imp.source.value, code)}\n` })
     }
     if (removals.length > 0) code = applyEdits(code, removals)
   }
@@ -159,7 +223,7 @@ function collectHooks(program: Node, source: string): Map<string, HookDef> {
 }
 
 function hookDef(name: string, fn: Node, stmt: Node, source: string): HookDef {
-  const base = { name, declStart: stmt.start, declEnd: lineEnd(source, stmt.end) }
+  const base = { name, src: source, declStart: stmt.start, declEnd: lineEnd(source, stmt.end) }
   const refuse = (refusal: string): HookDef => ({ ...base, params: [], body: [], refusal })
   if (fn.async) return refuse('it is async')
   if (fn.generator) return refuse('it is a generator')
@@ -248,6 +312,7 @@ function callSite(s: Node, hooks: Map<string, HookDef>): CallSite | undefined {
 type Expansion = { readonly text: string } | { readonly refusal: string }
 
 function expandCall(site: CallSite, hook: HookDef, source: string, fileNames: Set<string>): Expansion {
+  const hookSrc = hook.src
   if (site.declKind === 'unsupported-pattern') return { refusal: 'the call site destructures with a nested, computed or rest pattern' }
   if (site.args.length > hook.params.length) return { refusal: 'it is called with more arguments than it declares' }
   const paramText = new Map<string, string>()
@@ -318,8 +383,8 @@ function expandCall(site: CallSite, hook: HookDef, source: string, fileNames: Se
     renames.set(l, candidate)
   }
 
-  const parts = statements.map((s) => rewrite(source, s.start, s.end, paramText, renames))
-  if (tail) parts.push(tail + rewrite(source, arg.start, arg.end, paramText, renames))
+  const parts = statements.map((s) => rewrite(hookSrc, s.start, s.end, paramText, renames))
+  if (tail) parts.push(tail + rewrite(hookSrc, arg.start, arg.end, paramText, renames))
   return { text: parts.join('\n') }
 }
 
@@ -365,6 +430,361 @@ function rewrite(
   return applyEdits(source.slice(0, end), edits).slice(start)
 }
 
+// ─── Hooks imported from another module ──────────────────────────────────────
+
+interface ImportedOrigin {
+  /** The name the calling file imports the hook under. */
+  readonly local: string
+  /** Absolute path of the module the hook lives in. */
+  readonly modulePath: string
+  /** Imports the hook's body needs, keyed by the name it uses. */
+  readonly imports: ReadonlyMap<string, ImportBinding>
+  /** Type declarations the hook's body names, copied into the calling file. */
+  readonly types: ReadonlyMap<string, string>
+}
+
+interface ImportBinding {
+  /** The module specifier, as written in the module it was found in. */
+  readonly spec: string
+  /** Absolute path the specifier was found relative to — used to rebase a relative specifier. */
+  readonly fromFile: string
+  /** `default`, `*`, or the exported name. */
+  readonly imported: string
+  readonly typeOnly: boolean
+}
+
+type TopBinding =
+  | ({ readonly kind: 'import' } & ImportBinding)
+  | { readonly kind: 'hook' }
+  | { readonly kind: 'type'; readonly text: string }
+  | { readonly kind: 'value' }
+
+const isRelative = (spec: string): boolean => spec === '.' || spec.startsWith('./') || spec.startsWith('../')
+
+const MODULE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx']
+
+function resolveModule(fromFile: string, spec: string, readModule: (p: string) => string | undefined): { path: string; source: string } | undefined {
+  const base = resolve(dirname(fromFile), spec)
+  for (const candidate of [base, ...MODULE_EXTENSIONS.map((e) => base + e)]) {
+    if (/\.(c|m)?[jt]sx?$/.test(candidate) || candidate !== base) {
+      const source = readModule(candidate)
+      if (source !== undefined) return { path: candidate, source }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Hooks the calling file imports from a relative module, keyed by their LOCAL name. A hook that cannot be read or
+ * inlined lands in `unresolved` with the reason instead, so its call sites are reported rather than emitted unchanged.
+ */
+function collectImportedHooks(
+  program: Node,
+  filename: string,
+  readModule: (p: string) => string | undefined,
+  unresolved: Map<string, string>,
+): Map<string, HookDef> {
+  const out = new Map<string, HookDef>()
+  for (const imp of program.body as Node[]) {
+    if (imp.type !== 'ImportDeclaration' || imp.importKind === 'type' || !isRelative(imp.source.value)) continue
+    const named = (imp.specifiers as Node[]).filter(
+      (sp) => sp.type === 'ImportSpecifier' && sp.importKind !== 'type' && HOOK_NAME.test(sp.imported.name ?? sp.imported.value),
+    )
+    if (named.length === 0) continue
+    const spec = imp.source.value as string
+    // The file has to NAME a real file — absolute, or relative to the working directory (how the golden gate and the
+    // CLI pass it). An in-memory name such as `input.tsx` has no directory to resolve from.
+    const callerPath = isAbsolute(filename) ? filename : resolve(filename)
+    if (readModule(callerPath) === undefined) {
+      for (const sp of named) unresolved.set(sp.local.name, `'${spec}' cannot be read, because this file was compiled from memory rather than from a path`)
+      continue
+    }
+    const mod = resolveModule(callerPath, spec, readModule)
+    if (!mod) {
+      for (const sp of named) unresolved.set(sp.local.name, `'${spec}' was not found next to this file`)
+      continue
+    }
+    const parsed = parseSync(mod.path, mod.source, { sourceType: 'module', lang: 'tsx' })
+    if (parsed.errors.length > 0) {
+      for (const sp of named) unresolved.set(sp.local.name, `'${spec}' does not parse`)
+      continue
+    }
+    const modProgram = parsed.program as Node
+    const defs = collectHooks(modProgram, mod.source)
+    const top = moduleTopBindings(modProgram, mod.source, mod.path)
+    for (const sp of named) {
+      const importedName = (sp.imported.name ?? sp.imported.value) as string
+      const def = defs.get(importedName)
+      if (!def || !isExported(modProgram, importedName)) {
+        unresolved.set(sp.local.name, `'${spec}' exports no hook named \`${importedName}\` that this compiler can read (a re-export or a default export is not followed)`)
+        continue
+      }
+      if (def.refusal) {
+        unresolved.set(sp.local.name, def.refusal)
+        continue
+      }
+      const needs = requirementsOf(def, top, mod.path)
+      if (typeof needs === 'string') {
+        unresolved.set(sp.local.name, needs)
+        continue
+      }
+      out.set(sp.local.name, { ...def, name: sp.local.name, origin: { local: sp.local.name, modulePath: mod.path, ...needs } })
+    }
+  }
+  return out
+}
+
+function isExported(program: Node, name: string): boolean {
+  for (const s of program.body as Node[]) {
+    if (s.type !== 'ExportNamedDeclaration') continue
+    const d = s.declaration
+    if (d?.type === 'FunctionDeclaration' && d.id?.name === name) return true
+    if (d?.type === 'VariableDeclaration' && (d.declarations as Node[]).some((x) => x.id?.name === name)) return true
+    if (!d && !s.source && (s.specifiers as Node[]).some((sp) => (sp.exported.name ?? sp.exported.value) === name && sp.local.name === name)) return true
+  }
+  return false
+}
+
+/** Every top-level name a module binds, and what it is. */
+function moduleTopBindings(program: Node, source: string, path = ''): Map<string, TopBinding> {
+  const out = new Map<string, TopBinding>()
+  for (const stmt of program.body as Node[]) {
+    if (stmt.type === 'ImportDeclaration') {
+      for (const sp of stmt.specifiers as Node[]) {
+        const imported =
+          sp.type === 'ImportDefaultSpecifier' ? 'default' : sp.type === 'ImportNamespaceSpecifier' ? '*' : ((sp.imported.name ?? sp.imported.value) as string)
+        out.set(sp.local.name, {
+          kind: 'import',
+          spec: stmt.source.value,
+          fromFile: path,
+          imported,
+          typeOnly: stmt.importKind === 'type' || sp.importKind === 'type',
+        })
+      }
+      continue
+    }
+    const decl = (stmt.type === 'ExportNamedDeclaration' || stmt.type === 'ExportDefaultDeclaration') && stmt.declaration ? stmt.declaration : stmt
+    if (decl.type === 'TSTypeAliasDeclaration' || decl.type === 'TSInterfaceDeclaration') {
+      out.set(decl.id.name, { kind: 'type', text: source.slice(decl.start, decl.end) })
+    } else if (decl.type === 'FunctionDeclaration' && decl.id) {
+      out.set(decl.id.name, HOOK_NAME.test(decl.id.name) ? { kind: 'hook' } : { kind: 'value' })
+    } else if (decl.type === 'VariableDeclaration') {
+      for (const d of decl.declarations as Node[]) {
+        const names: string[] = []
+        collectPatternNames(d.id, names)
+        for (const n of names) {
+          const isHook = HOOK_NAME.test(n) && (d.init?.type === 'ArrowFunctionExpression' || d.init?.type === 'FunctionExpression')
+          out.set(n, isHook ? { kind: 'hook' } : { kind: 'value' })
+        }
+      }
+    } else if ((decl.type === 'ClassDeclaration' || decl.type === 'TSEnumDeclaration') && decl.id) {
+      out.set(decl.id.name, { kind: 'value' })
+    }
+  }
+  return out
+}
+
+/**
+ * Copy the types this file imports from a sibling module (`import type { Me } from './types'`, or a type named in a
+ * value import) into the file, with the types they name in turn, and return the local names whose import specifier is
+ * then spent. Natively there is no other file to resolve a type from, so without this a struct the file uses simply
+ * does not exist. An aliased type import is left alone, and a different same-named declaration here is refused.
+ */
+function collectImportedTypes(
+  program: Node,
+  filename: string,
+  readModule: (p: string) => string | undefined,
+  callerTop: Map<string, TopBinding>,
+  additions: Map<string, string>,
+  warnings: string[],
+): Set<string> {
+  const spent = new Set<string>()
+  const callerPath = isAbsolute(filename) ? filename : resolve(filename)
+  let callerExists: boolean | undefined
+  for (const imp of program.body as Node[]) {
+    if (imp.type !== 'ImportDeclaration' || !isRelative(imp.source.value)) continue
+    const candidates = (imp.specifiers as Node[]).filter(
+      (sp) => sp.type === 'ImportSpecifier' && !HOOK_NAME.test((sp.imported.name ?? sp.imported.value) as string),
+    )
+    if (candidates.length === 0) continue
+    callerExists ??= readModule(callerPath) !== undefined
+    if (!callerExists) return spent
+    const mod = resolveModule(callerPath, imp.source.value, readModule)
+    if (!mod) continue
+    const parsed = parseSync(mod.path, mod.source, { sourceType: 'module', lang: 'tsx' })
+    if (parsed.errors.length > 0) continue
+    const top = moduleTopBindings(parsed.program as Node, mod.source, mod.path)
+    for (const sp of candidates) {
+      const name = (sp.imported.name ?? sp.imported.value) as string
+      const b = top.get(name)
+      if (b?.kind !== 'type' || sp.local.name !== name) continue
+      // The type and every type it names, in this module.
+      const texts = new Map<string, string>()
+      const pending = [name]
+      while (pending.length > 0) {
+        const t = pending.pop()!
+        if (texts.has(t)) continue
+        const tb = top.get(t)
+        if (tb?.kind !== 'type') continue
+        texts.set(t, tb.text.replace(/^export\s+/, ''))
+        pending.push(...collectTypeRefs(parseSync('t.ts', tb.text, { sourceType: 'module', lang: 'ts' }).program))
+      }
+      let conflict: string | undefined
+      for (const [t, text] of texts) {
+        const existing = callerTop.get(t)
+        if (t === name && existing?.kind === 'import') continue // the import being replaced
+        if (existing && !(existing.kind === 'type' && existing.text.replace(/^export\s+/, '') === text)) {
+          conflict = `\`${t}\` is already declared differently in this file`
+          break
+        }
+      }
+      if (conflict) {
+        warnings.push(`The type \`${name}\` imported from '${imp.source.value}' cannot be copied in for native: ${conflict}.`)
+        continue
+      }
+      for (const [t, text] of texts) {
+        if (callerTop.get(t)?.kind === 'type') continue
+        additions.set(`type:${t}`, text)
+      }
+      spent.add(sp.local.name)
+    }
+  }
+  return spent
+}
+
+/**
+ * What inlining `def` (from the module at `modulePath`) requires of a calling file, or why it cannot be inlined:
+ * every free VALUE name its body uses must be an import of that module (carried over) or another hook of it (imported,
+ * so the next pass inlines it); every TYPE it names is copied over, with the types those name in turn.
+ */
+function requirementsOf(
+  def: HookDef,
+  top: Map<string, TopBinding>,
+  modulePath: string,
+): Pick<ImportedOrigin, 'imports' | 'types'> | string {
+  const bound = new Set([...def.params, ...topLevelLocals(def.body.slice(0, -1)), ...collectNestedBindings(def.body)])
+  const imports = new Map<string, ImportBinding>()
+  const types = new Map<string, string>()
+  const valueNames = new Set<string>()
+  walkRefs(def.body, (id, kind) => {
+    if (kind !== 'binding' && !bound.has(id.name)) valueNames.add(id.name)
+  })
+  for (const name of valueNames) {
+    const b = top.get(name)
+    if (!b) continue // a global (`fetch`, `Math`, `JSON`, …)
+    if (b.kind === 'import') imports.set(name, b)
+    else if (b.kind === 'hook') imports.set(name, { spec: `./${relative(dirname(modulePath), modulePath)}`, fromFile: modulePath, imported: name, typeOnly: false })
+    else if (b.kind === 'value') return `it uses \`${name}\`, which its own module declares — native code compiles one file at a time, so move \`${name}\` into a package or pass it in as an argument`
+  }
+  const pending = [...collectTypeRefs(def.body)]
+  while (pending.length > 0) {
+    const name = pending.pop()!
+    if (types.has(name) || imports.has(name) || bound.has(name)) continue
+    const b = top.get(name)
+    if (!b) continue // a built-in type
+    if (b.kind === 'type') {
+      types.set(name, b.text)
+      const parsed = parseSync('types.ts', b.text, { sourceType: 'module', lang: 'ts' })
+      pending.push(...collectTypeRefs(parsed.program))
+    } else if (b.kind === 'import') {
+      imports.set(name, { ...b, typeOnly: true })
+    }
+  }
+  return { imports, types }
+}
+
+/** Every type name referenced (`Foo`, `Foo<…>`, `typeof foo`'s `foo` is a value and is not collected). */
+function collectTypeRefs(node: Node): Set<string> {
+  const out = new Set<string>()
+  const visit = (n: Node): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const c of n) visit(c)
+      return
+    }
+    if (n.type === 'TSTypeReference' && n.typeName?.type === 'Identifier') out.add(n.typeName.name)
+    if (n.type === 'TSInterfaceHeritage' || n.type === 'TSClassImplements') {
+      if (n.expression?.type === 'Identifier') out.add(n.expression.name)
+    }
+    for (const k of Object.keys(n)) if (k !== 'type' && k !== 'start' && k !== 'end') visit(n[k])
+  }
+  visit(node)
+  return out
+}
+
+/**
+ * Fold one inlined hook's requirements into the calling file's pending additions. Returns why it cannot be inlined
+ * (a name it needs is already bound to something else in the calling file), or `undefined`.
+ */
+function mergeRequirements(
+  origin: ImportedOrigin,
+  callerFile: string,
+  callerTop: Map<string, TopBinding>,
+  additions: Map<string, string>,
+): string | undefined {
+  const lines = new Map<string, string>()
+  for (const [name, b] of origin.imports) {
+    const spec = rebase(b.spec, b.fromFile, callerFile)
+    const existing = callerTop.get(name)
+    if (existing) {
+      const same = existing.kind === 'import' && existing.imported === b.imported && rebase(existing.spec, callerFile, callerFile) === spec
+      if (!same) return `it needs \`${name}\` from '${spec}', but this file already uses that name for something else`
+      continue
+    }
+    const key = `import:${name}`
+    const line = importLine(name, b.imported, spec, b.typeOnly)
+    const pending = additions.get(key)
+    if (pending !== undefined && pending !== line) return `it needs \`${name}\` from '${spec}', which another inlined hook imports differently`
+    lines.set(key, line)
+  }
+  for (const [name, text] of origin.types) {
+    const existing = callerTop.get(name)
+    const copied = text.replace(/^export\s+/, '')
+    // The same declaration already on its way in (the file imports the type from the same module).
+    if (additions.get(`type:${name}`) === copied) continue
+    if (existing) {
+      if (existing.kind === 'type' && existing.text.replace(/^export\s+/, '') === copied) continue
+      return `it names the type \`${name}\`, and this file already declares a different \`${name}\``
+    }
+    lines.set(`type:${name}`, copied)
+  }
+  for (const [k, v] of lines) additions.set(k, v)
+  return undefined
+}
+
+function rebase(spec: string, fromFile: string, toFile: string): string {
+  if (!isRelative(spec) || fromFile === '' || fromFile === toFile) return spec
+  const target = resolve(dirname(fromFile), spec).replace(/\.(c|m)?[jt]sx?$/, '')
+  let rel = relative(dirname(toFile), target).split('\\').join('/')
+  if (!rel.startsWith('.')) rel = `./${rel}`
+  return rel
+}
+
+function importLine(local: string, imported: string, spec: string, typeOnly: boolean): string {
+  const kw = typeOnly ? 'import type' : 'import'
+  if (imported === 'default') return `${kw} ${local} from '${spec}'`
+  if (imported === '*') return `${kw} * as ${local} from '${spec}'`
+  return `${kw} { ${imported === local ? local : `${imported} as ${local}`} } from '${spec}'`
+}
+
+function importText(specifiers: Node[], spec: string, source: string): string {
+  const def = specifiers.find((sp) => sp.type === 'ImportDefaultSpecifier')
+  const ns = specifiers.find((sp) => sp.type === 'ImportNamespaceSpecifier')
+  const named = specifiers.filter((sp) => sp.type === 'ImportSpecifier').map((sp) => source.slice(sp.start, sp.end))
+  const parts: string[] = []
+  if (def) parts.push(def.local.name)
+  if (ns) parts.push(`* as ${ns.local.name}`)
+  if (named.length > 0) parts.push(`{ ${named.join(', ')} }`)
+  return `import ${parts.join(', ')} from '${spec}'`
+}
+
+/** The local name of a hook in `names` called at the top of statement `s`, if any. */
+function calledName(s: Node, names: Map<string, string>): string | undefined {
+  const call =
+    s.type === 'ExpressionStatement' ? s.expression : s.type === 'VariableDeclaration' && s.declarations.length === 1 ? s.declarations[0].init : undefined
+  return call?.type === 'CallExpression' && call.callee?.type === 'Identifier' && names.has(call.callee.name) ? call.callee.name : undefined
+}
+
 // ─── AST helpers ─────────────────────────────────────────────────────────────
 
 type RefKind = 'ref' | 'binding' | 'shorthand'
@@ -392,6 +812,13 @@ function walkRefs(node: Node, visit: (id: Node, kind: RefKind) => void, parent?:
     if (parent?.type === 'Property' && key === 'value' && parent.shorthand) return // visited through the key
     if (parent?.type === 'LabeledStatement' || parent?.type === 'BreakStatement' || parent?.type === 'ContinueStatement') return
     if (parent?.type === 'JSXAttribute') return
+    // An import specifier DECLARES its local name; the name it imports is the other module's, not a value here.
+    if (parent?.type === 'ImportSpecifier' || parent?.type === 'ImportDefaultSpecifier' || parent?.type === 'ImportNamespaceSpecifier') {
+      if (key === 'local') visit(node, 'binding')
+      return
+    }
+    // `export { a as b }` reads `a` (counted by `countReferences`); the exported name is not a value here.
+    if (parent?.type === 'ExportSpecifier') return
     const isBinding =
       (parent?.type === 'VariableDeclarator' && key === 'id') ||
       ((parent?.type === 'FunctionDeclaration' || parent?.type === 'FunctionExpression' || parent?.type === 'ArrowFunctionExpression') && (key === 'id' || key === 'params'))

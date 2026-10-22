@@ -25,6 +25,7 @@ import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { type EchoReply, usePostEcho } from './hooks'
 import { defineTheme, styled } from '@pyreon/styler'
 
 // Styling-row proof — defineTheme tokens driving styled(Prim) layout,
@@ -711,12 +712,6 @@ function UserPage(props: { params: { id: string } }) {
 // than quietly passing. `/boom` answers 500 so the emitted isOK/isOk guard
 // has something to reject on — a non-2xx must surface as an ERROR, not as a
 // decode failure that reads like "the server sent bad JSON".
-interface EchoReply {
-  id: string
-  method: string
-  body: string
-  authorization: string
-}
 
 function LifecyclePage() {
   const navigate = useNavigate()
@@ -743,18 +738,6 @@ function LifecyclePage() {
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
-}
-
-// A same-file CUSTOM HOOK wrapping a native hook. Natively a hook's state is view state, which only exists inside a
-// component, so the compiler inlines this into HttpPage (inline-hooks.ts). Until it did, a hook like this was skipped
-// on iOS and Android. The Authorization value is a RUNTIME string built from a signal — evaluated on the device when
-// the request is built, which is what a signed-in app needs to send its token.
-function usePostEcho(token: () => string) {
-  return useFetch<EchoReply>('http://localhost:8790/echo', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token()}` },
-    body: '{"name":"pyreon"}',
-  })
 }
 
 function HttpPage() {

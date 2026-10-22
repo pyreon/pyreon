@@ -116,7 +116,10 @@ Each call gets its own state (two `useCounter` calls are two counters), a hook t
 | A top-level `if` / loop / early `return` in the hook body | ⚠️ Warns — only declarations and expression statements, ending in one `return`, are inlined |
 | A parameter or local re-declared in a nested function | ⚠️ Warns — the rewrite is lexical, so a shadowed name is refused rather than renamed wrongly |
 | Async / generator / generic hook, destructured or default parameters | ⚠️ Warns |
-| A hook imported from another file | ❌ Not inlined — PMTC compiles one file at a time; keep shared hooks in the file that uses them, or import a package hook |
+| A hook imported from a relative module (`import { useMe } from './hooks'`) | ✅ Inlined when the calling file is compiled from disk (as `pyreon-native build` does) — its imports are added to the calling file, the types it names are copied, and a hook it calls from another file is inlined too |
+| …that uses a value its own module declares (a module-level `const` or helper) | ⚠️ Warns — native compiles one file at a time, so copying it could duplicate state; move it into a package or pass it in |
+| …compiled from memory, from a file that does not exist, or not exported by name | ⚠️ Warns — the call is never emitted unchanged |
+| A type imported from a relative module (`import type { Order } from './types'`) | ✅ Copied in, with the types it names; a different same-named declaration in the importing file warns |
 
 A function whose name does not start with `use` is a plain helper and keeps the helper path (a top-level native function).
 
