@@ -11,6 +11,15 @@
 // output that is later discarded (a plugin that dropped a declaration still has its expression visited), and a warning
 // from there blamed calls that never reached the file. "Reproduced verbatim" is a statement about the output.
 
+/**
+ * Escape every character that is special in a regular expression. A name read from user source is normally a plain
+ * identifier, but it is spliced into a `RegExp`, so it is escaped completely (backslash included) rather than for the
+ * one character (`$`) an identifier can contain.
+ */
+function escapeRegExp(text: string): string {
+  return text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+}
+
 /** A function imported from a Pyreon package, by local name (see `collectAliasImports`). */
 export type PyreonFunctionImports = ReadonlyMap<string, { readonly source: string; readonly imported: string }>
 
@@ -63,8 +72,8 @@ export function verbatimPyreonCallWarnings(
     // Functions only: `collectAliasImports` also tracks JSX tags (`Row`), which the emitters lower into a native
     // composable of the same spelling — a `Row(` in the output is theirs, not a leftover call.
     if (!/^[a-z]/.test(imp.imported) || !imp.source.startsWith('@pyreon/') || reported.has(imp.imported)) continue
-    if (new RegExp(`(?<![\\w$])${imp.imported}(?![\\w$])`).test(existingWarnings.join('\n'))) continue
-    const name = local.replace(/\$/g, '\\$')
+    if (new RegExp(`(?<![\\w$])${escapeRegExp(imp.imported)}(?![\\w$])`).test(existingWarnings.join('\n'))) continue
+    const name = escapeRegExp(local)
     // A call of the LOCAL name as written, not a member call (`x.getSnapshot(` is some other object's method) and not
     // a declaration of a function that happens to share the name.
     const callInEmit = new RegExp(`(?<![\\w.$])${name}\\s*(?:<[^()]*>)?\\s*\\(`)
@@ -120,8 +129,8 @@ export function verbatimPyreonTypeWarnings(
   const reported = new Set<string>()
   for (const [local, imp] of typeImports) {
     if (reported.has(imp.imported) || runtimeTypes.has(local) || runtimeTypes.has(imp.imported)) continue
-    if (new RegExp(`(?<![\\w$])${imp.imported}(?![\\w$])`).test(existingWarnings.join('\n'))) continue
-    const name = local.replace(/\$/g, '\\$')
+    if (new RegExp(`(?<![\\w$])${escapeRegExp(imp.imported)}(?![\\w$])`).test(existingWarnings.join('\n'))) continue
+    const name = escapeRegExp(local)
     if (!new RegExp(`(?<![\\w.$])${name}(?![\\w$])`).test(body)) continue
     // The emitted file declares it itself (a struct synthesized from the shape, an enum from a string union).
     if (new RegExp(`\\b(?:struct|class|enum|protocol|typealias|interface|object)\\s+${name}\\b`).test(body)) continue

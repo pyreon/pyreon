@@ -181,3 +181,12 @@ export function App() { return <Stack><Text>x</Text></Stack> }`
     expect(r.warnings.filter((x) => x.startsWith('type '))).toEqual([])
   })
 })
+
+describe('names are matched literally', () => {
+  it('a `$` inside an identifier is not a regex anchor', () => {
+    const imports = new Map([['a$b', { source: '@pyreon/x', imported: 'a$b' }]])
+    expect(verbatimPyreonCallWarnings(imports, 'a$b()', 'let r = a$b()', [])).toHaveLength(1)
+    // `$` as an anchor would let `ab` (no dollar) match; literal matching must not.
+    expect(verbatimPyreonCallWarnings(imports, 'ab()', 'let r = ab()', [])).toEqual([])
+  })
+})
