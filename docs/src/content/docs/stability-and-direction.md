@@ -37,7 +37,7 @@ Use the matrix as your decision tool: if the capabilities your app needs are cre
 
 These are not scheduled and may change. They are what the comparison page identifies as the biggest gaps relative to the leading app ecosystems:
 
-1. **A native dev loop and release pipeline** — faster rebuild-and-relaunch on device, native errors mapped back to the `.tsx` source, and a documented sign-and-submit path for TestFlight and Play.
+1. **Native errors mapped back to the `.tsx` source, and a documented sign-and-submit path for TestFlight and Play.** The rebuild-and-relaunch loop already ships as [`pyreon-native dev`](/docs/native-dev-loop), and on-device flows are covered in [Native E2E Testing](/docs/native-e2e-testing).
 2. **A stronger third-party native story** — more first-party service bindings (payments, push providers, analytics) and a documented way for packages to ship their own `native/` sources, building on `useNativeModule` and the existing native-source resolution in the CLI.
 3. **A documented answer for updates between store releases** — data-driven remote configuration and WebView islands, stated honestly alongside what cannot be done within store rules.
 4. **AI-agent readiness for native projects** — the web scaffold already ships `AGENTS.md`, `CLAUDE.md`, MCP configuration and editor rules; bringing the same to the multi-platform scaffold.

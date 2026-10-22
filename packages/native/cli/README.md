@@ -12,6 +12,7 @@ pyreon-native check     [--target=<ios|android>] [--typecheck] [--watch] [--json
 pyreon-native check     --lsp
 pyreon-native assets    --target=<ios|android|web> --source=<dir> --out=<dir>
 pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
+pyreon-native dev       --target=<ios|android> [--app=<dir>] [--device=<name|id>] [--once]
 pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
 ```
 
@@ -21,6 +22,7 @@ pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [
 | `check` | The **authoring-loop** command — runs the compiler for both targets **in memory**: no build, no xcodegen, no gradle, no file writes. Reports transform errors and unsupported-TypeScript-subset warnings per file. `--typecheck` additionally runs `swiftc -typecheck`, catching what a syntactically-clean emit can still get wrong. `--lsp` runs the same checks as a stdio LSP server, so warnings arrive as editor diagnostics. |
 | `assets` | Materializes bundled images and fonts into each platform's expected layout (`res/drawable*` on Android, an asset catalog entry on iOS). |
 | `stage-web` | Stages a web bundle into the app so `<WebView src="…">` can load it from the app bundle — see [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) for the WebView host. |
+| `dev` | The on-device edit loop: watches the source, compiles it in memory, then rebuilds, reinstalls and relaunches on the booted simulator or emulator, skipping the native build when the emit is unchanged. A rebuild loop, not hot reload. `--once` runs one cycle and exits. See [Native Dev Loop](https://pyreon.dev/docs/native-dev-loop). |
 | `wire` | Resolves an app's Pyreon native source roots (the base runtime/router + every co-located feature `native/swift`/`native/kotlin` directory) in a way that survives hoisting and non-flat installs, and writes the result where each platform's build reads it — see [Native Packages](https://pyreon.dev/docs/native-packages#why-four-of-them-ship-source) for the full mechanism. |
 
 Exit codes: `0` success, `1` usage error, `2` the command failed — a compiler error on a source file for `build`/`check`, a failed copy for `assets`/`stage-web`, or, for `wire`, a package that declares native sources whose directory is missing.

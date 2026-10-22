@@ -286,6 +286,8 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'PMTC Supported TypeScript', slug: 'pmtc-supported-typescript' },
       { text: 'PMTC Per-Target Setup', slug: 'pmtc-per-target-setup' },
       { text: 'Create Multi-Platform', slug: 'create-multiplatform' },
+      { text: 'Native Dev Loop', slug: 'native-dev-loop' },
+      { text: 'Native E2E Testing (Maestro)', slug: 'native-e2e-testing' },
       { text: 'Primitives', slug: 'primitives' },
     ],
   },
