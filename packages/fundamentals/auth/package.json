@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/auth",
-  "version": "0.52.0",
+  "version": "0.54.0",
   "description": "Authentication for Pyreon on web, iOS and Android \u2014 OIDC sign-in (useOidc), ID-token verification, signed sessions, TOTP, passkeys and route guards, secure by default",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/auth#readme",

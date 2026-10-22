@@ -1,5 +1,14 @@
 # @pyreon/cli
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6), [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0), [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60), [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/compiler@0.54.0
+  - @pyreon/lint@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -245,7 +254,7 @@
 
   - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
     `check-distribution` CI gate): a new rule, `distribution/native-source-not-
-shipped`, fails any package that declares `pyreon.native` but omits the
+    shipped`, fails any package that declares `pyreon.native` but omits the
     declared native source dirs from `files`. This is the class of bug above —
     a co-located port that builds in-repo but is absent from npm. It surfaced two
     real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
@@ -430,7 +439,7 @@ shipped`, fails any package that declares `pyreon.native` but omits the
   sits behind a passing gate.
 
   Worse, the verdict depended on which tool last wrote the file: `changeset
-version` parses and re-serialises every manifest, so the same claim passed on one
+  version` parses and re-serialises every manifest, so the same claim passed on one
   branch and hard-failed on another. `.json` claim files now have their escapes
   decoded before matching, which makes `@pyreon/lint`'s published npm description
   — the real instance — checked rather than skipped.
@@ -617,7 +626,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
   not checking. The most common failure when an AI writes UI code is a plausible
   prop value that does not exist — `state="primry"` typechecks in a JS file,
   renders without throwing, and silently does nothing. `atlas check Button
-'{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
+  '{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
   wrong types (including a non-function event handler) and missing required props.
   Exits non-zero, so it works in a hook or a CI step. Reads the catalog rather
   than rescanning, so it cannot disagree with the guide an agent was just handed.
@@ -648,7 +657,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
 
   **Imported prop types now resolve** — the largest remaining gap between
   "works" and "usable on a real design system". `import type { ButtonProps } from
-'./types'` is what most projects do, and it produced ZERO controls: the
+  './types'` is what most projects do, and it produced ZERO controls: the
   component was found, its whole contract was not — no knobs, no variant axes, no
   scenarios past the edge cases. Relative imports are followed to the file,
   through barrel re-exports (`export type { X } from './y'`, `export *`) and
@@ -787,7 +796,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
   so it can't regress.
 
   This removes the `npm warn publish "repository.url" was normalized to
-"git+https://github.com/pyreon/pyreon.git"` line npm printed once per
+  "git+https://github.com/pyreon/pyreon.git"` line npm printed once per
   package on every release (69 lines of publish-log noise). The published
   metadata is byte-identical to what npm was already auto-correcting to —
   there is no runtime or API change.
@@ -905,7 +914,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
   on one synced version trajectory, `info` flags **version skew** when the
   installed set spans more than one version — the condition that can trip the
   `registerSingleton` duplicate-instance guard (`[Pyreon] Duplicate @pyreon/X
-detected`) and split context/reactivity across instances at runtime.
+  detected`) and split context/reactivity across instances at runtime.
 
   ```bash
   pyreon info          # env + installed @pyreon versions + skew check
@@ -927,7 +936,7 @@ detected`) and split context/reactivity across instances at runtime.
   `--lsp`). It exits non-zero on lint errors, just like the standalone binary.
 
   To keep one implementation, `@pyreon/lint` now exports **`runCli(argv): number
-| null`** (extracted from its bin's `main()`): returns the exit code, or `null`
+  | null`** (extracted from its bin's `main()`): returns the exit code, or `null`
   for the long-running `--watch` / `--lsp` modes. Both the `pyreon-lint` bin and
   `pyreon lint` call it, so the two CLIs can never drift. Lazy-loaded in the
   `pyreon` dispatch — no main-entry bundle growth.
@@ -1598,7 +1607,7 @@ detected`) and split context/reactivity across instances at runtime.
     A/B/C/D/F. Categories with no gate coverage are excluded from the mean
     rather than counted as perfect-100 (would inflate the score).
   - **DoctorReport aggregator** — `buildReport(gates) → { score, grade,
-categories[], findings[], gates[], totals, elapsedMs, timestamp }`.
+    categories[], findings[], gates[], totals, elapsedMs, timestamp }`.
     Pure-function: gate results in, report out. Findings sorted errors →
     warnings → infos, then by category.
   - **Beautiful CLI output** — big-score banner with letter grade,
@@ -1608,7 +1617,7 @@ categories[], findings[], gates[], totals, elapsedMs, timestamp }`.
     gates footer. ANSI colors respect `NO_COLOR` / `FORCE_COLOR`.
   - **`--json`** — full `DoctorReport` for AI agents + dashboards.
   - **`--gha`** — GitHub Actions annotation lines (`::error file=X,
-line=Y,col=Z::msg`) for inline PR annotations.
+    line=Y,col=Z::msg`) for inline PR annotations.
   - **Modes** — `--full` (enable slow gates: audit-types, bundle-budgets),
     `--only <gates>`, `--skip <gates>`, `--fix` (lint + react-patterns),
     `--ci` (exit nonzero on error findings only). `--only` precedence
@@ -1671,7 +1680,7 @@ line=Y,col=Z::msg`) for inline PR annotations.
   business asserting. Fix: pre-check whether ANY of the gate's claim files
   exist; if zero do, return `meta.skipped: true` with
   `skipReason: 'no claim sites found in this project (gate targets Pyreon
-monorepo paths)'`. The aggregator then excludes documentation from the
+  monorepo paths)'`. The aggregator then excludes documentation from the
   score mean rather than counting it as 0/100.
 
   Test coverage: the original "emits file-missing when claim file absent"

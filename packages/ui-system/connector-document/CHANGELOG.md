@@ -1,5 +1,13 @@
 # @pyreon/connector-document
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`d321f13`](https://github.com/pyreon/pyreon/commit/d321f138f0c36f99434a9b5d83160d2b13a89680), [`a1114db`](https://github.com/pyreon/pyreon/commit/a1114db6c3050235333bb5b13666f53ea3b2c8de), [`1fa0bf7`](https://github.com/pyreon/pyreon/commit/1fa0bf75529fa5c011a97314f9b59899b0f0d485), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a)]:
+  - @pyreon/document@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -618,7 +626,7 @@
     the component body throws, so any regression that causes the
     extractor to invoke it fails immediately with a real error.
     Additionally, gating Path B (`else if (false && typeof type ===
-'function')`) → Path B + reactive accessor tests fail, 2/5.
+    'function')`) → Path B + reactive accessor tests fail, 2/5.
     Restored, 5/5 pass.
 
   Also removes the three packages from `PHASE_5_PENDING_PACKAGES` in

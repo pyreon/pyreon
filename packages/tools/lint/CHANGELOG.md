@@ -1,5 +1,14 @@
 # @pyreon/lint
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+- Updated dependencies [[`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6), [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0), [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60), [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400)]:
+  - @pyreon/compiler@0.54.0
+  - @pyreon/sized-map@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -518,7 +527,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -548,7 +557,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -562,7 +571,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
@@ -857,7 +866,7 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
 
   Package coverage moves 95.01/88.47 to 95.70/90.07 (statements/branches). The
   branch threshold was configured at 90 and had been unmet — `bun run test
---coverage` exited 1 before this change and exits 0 after.
+  --coverage` exited 1 before this change and exits 0 after.
 
 - [#3148](https://github.com/pyreon/pyreon/pull/3148) [`437d110`](https://github.com/pyreon/pyreon/commit/437d11092ec59066ee82644bb3e5a66855a2231b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The manifest's rule-METADATA claims are now gated, not just its counts.
 
@@ -1284,7 +1293,7 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   `--lsp`). It exits non-zero on lint errors, just like the standalone binary.
 
   To keep one implementation, `@pyreon/lint` now exports **`runCli(argv): number
-| null`** (extracted from its bin's `main()`): returns the exit code, or `null`
+  | null`** (extracted from its bin's `main()`): returns the exit code, or `null`
   for the long-running `--watch` / `--lsp` modes. Both the `pyreon-lint` bin and
   `pyreon lint` call it, so the two CLIs can never drift. Lazy-loaded in the
   `pyreon` dispatch — no main-entry bundle growth.
@@ -1861,7 +1870,7 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   ### 1. `pyreon/promise-race-needs-cleartimeout` (performance, warn)
 
   Flags `Promise.race([work, new Promise((_, reject) => setTimeout(reject,
-MS))])` inside a try block where the enclosing `finally` block does NOT
+  MS))])` inside a try block where the enclosing `finally` block does NOT
   contain a `clearTimeout` call. The bug class: when `work` wins the race
   (the success path — every healthy invocation), the rejection branch's
   setTimeout fires later, pinning a closure + reject callback for up to
@@ -1875,7 +1884,7 @@ MS))])` inside a try block where the enclosing `finally` block does NOT
     404 render (×2), 30s setTimeout per successful render.
 
   **Heuristic**: targets the canonical `new Promise((_, reject) =>
-setTimeout(...))` shape used in every real case. Conservative — doesn't
+  setTimeout(...))` shape used in every real case. Conservative — doesn't
   attempt to detect anonymous-arrow setTimeouts deeply nested in arbitrary
   arguments.
 
@@ -1883,7 +1892,7 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
   DOES-NOT-FIRE (clearTimeout present, no setTimeout branch, plain
   setTimeout outside race, no try/catch). **Bisect-verified**: disabled
   the `TryStatement` visitor body → 3 FIRES specs fail with `expected
-[] to include 'pyreon/promise-race-needs-cleartimeout'`. Restored →
+  [] to include 'pyreon/promise-race-needs-cleartimeout'`. Restored →
   7/7 pass.
 
   ### 2. `pyreon/init-fn-needs-idempotency` (lifecycle, warn)
@@ -2169,7 +2178,7 @@ setTimeout(...))` shape used in every real case. Conservative — doesn't
 
   PR [#736](https://github.com/pyreon/pyreon/issues/736) shipped the rule with two deliberate scope deferrals: (a)
   variable-bound iteration (`const xs = Array.isArray(X) ? X : [X];
-xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
+  xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
   (b) the inner-component foot-gun (outer unwraps `props.children`,
   inner inline-defined component iterates its own `innerProps.children`)
   relied on per-source-path mitigation tracking that was implemented but
@@ -2238,7 +2247,7 @@ xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
     broader Gap-2 detection, and no remaining real bugs (consistent with
     PR [#736](https://github.com/pyreon/pyreon/issues/736)'s library-side fixes leaving the tree clean).
   - Gap 1 (Iterator-fallthrough shape: `if (Array.isArray(x)) return
-x.map(…); … return renderChild(x)`) remains intentionally out of
+    x.map(…); … return renderChild(x)`) remains intentionally out of
     scope — that shape is the precise pattern framework primitives
     (`Dynamic`, `Show`, `Switch`) use with direct `h()` rest args that
     never reach the auto-wrap, so detection would false-positive on
@@ -2421,7 +2430,7 @@ x.map(…); … return renderChild(x)`) remains intentionally out of
 
   Adds 4 opt-in rules (80 rules / 18 categories, up from 76 / 17) on the
   existing `meta.optIn` + dependency-auto-detection foundation. `pyreon
-doctor` surfaces them automatically (its lint gate is category-agnostic,
+  doctor` surfaces them automatically (its lint gate is category-agnostic,
   keyed on `meta.optIn`); the `recommended`/`strict`/`app`/`lib` presets
   force them OFF, the `best-practices` preset enables them at declared
   severity. Backward-compatible (opt-in default = no behavior change).
@@ -2634,12 +2643,12 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
   `@pyreon/lint`:
 
   - `no-window-in-ssr`: import-name shadowing — `import { history } from
-'@codemirror/commands'` makes every later `history` identifier in the
+    '@codemirror/commands'` makes every later `history` identifier in the
     file refer to the import, not `window.history`. Same for default
     (`import history from …`) and namespace (`import * as history from …`)
     imports.
   - Runner suppression-comment alias: the `// pyreon-lint-disable-next-line
-<rule-id>` syntax is now a recognised alias of the existing
+    <rule-id>` syntax is now a recognised alias of the existing
     `// pyreon-lint-ignore <rule-id>` syntax. Several rule docstrings already
     documented `disable-next-line` — closing the docs / runtime gap.
 
@@ -2731,12 +2740,12 @@ doctor` surfaces them automatically (its lint gate is category-agnostic,
     `TSInterfaceDeclaration`/`TSTypeParameter` depth counter — type refs are
     erased at compile time, not runtime accesses.
   - Recognise `const isBrowser = typeof window !== 'undefined'` idiom: `if
-(isBrowser) { … }` is now treated the same as `if (typeof window !==
-'undefined') { … }`.
+    (isBrowser) { … }` is now treated the same as `if (typeof window !==
+    'undefined') { … }`.
   - Recognise early-return-on-typeof guards: `if (typeof X === 'undefined')
-return …` makes the rest of the function body implicitly typeof-guarded.
+    return …` makes the rest of the function body implicitly typeof-guarded.
     Supports OR-chained form (`typeof X === 'undefined' || typeof Y ===
-'undefined'`) for features needing multiple browser APIs.
+    'undefined'`) for features needing multiple browser APIs.
   - Treat `onUnmount`, `onCleanup`, `effect`, `renderEffect` as safe contexts
     (same as `onMount`) — these only run after mount in the browser.
   - Ternary `typeof X !== 'undefined' ? safe : fallback` now tracked via
@@ -2767,7 +2776,7 @@ return …` makes the rest of the function body implicitly typeof-guarded.
   - `TransitionItem`, `TransitionRenderer`: replaced destructured props
     (`({ show, enter, leave, … }) => …`) with `props.x` access to preserve
     reactive prop tracking. Defaults hoisted out (`const appear = props.appear
-?? false`).
+    ?? false`).
   - Added `vitest.browser.config.ts` + `src/__tests__/kinetic.browser.test.tsx` —
     the package's first real Chromium smoke test. 5 tests covering Transition
     mount/child rendering, signal-driven show/hide, `nextFrame` scheduling,
@@ -2844,7 +2853,7 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     takes a `location` parameter — inside its body, every `location`
     references the parameter, not `window.location`.
   - Typeof-derived `&&` chains in const bindings: `const useVT = _isBrowser
-&& meta && typeof document.startViewTransition === 'function'` now
+    && meta && typeof document.startViewTransition === 'function'` now
     registers `useVT` as typeof-bound, so `if (useVT) { document.X }` is
     recognised as guarded.
 
@@ -2935,7 +2944,7 @@ return …` makes the rest of the function body implicitly typeof-guarded.
     hard-fail in SSR rather than silently no-op.
   - `no-dom-in-setup`: added the same early-return-on-typeof-document/window
     guard tracking that `no-window-in-ssr` already had — `if (typeof document
-=== 'undefined') return …` at function head implicitly guards the rest
+    === 'undefined') return …` at function head implicitly guards the rest
     of the body for both rules now.
   - `BROWSER_GLOBALS`: removed `fetch`. It's a universal global in Node 18+,
     Bun, Deno, browsers, and edge runtimes. Code using `fetch` isn't

@@ -1,5 +1,15 @@
 # @pyreon/unistyle
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`8106e81`](https://github.com/pyreon/pyreon/commit/8106e81d8f6915d18f40a65574edaa2f604e2337)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/ui-core@0.54.0
+  - @pyreon/styler@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -415,7 +425,7 @@
   `cpseStyled`'s `styles` prop now accepts responsive values — mobile-first
   arrays (`padding={[8, 16]}`) and breakpoint objects (`padding={{ sm: 16 }}`).
   Each breakpoint emits a suffixed value-agnostic rule (`padding:
-var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
+  var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
   the styler's `splitAtRules` hoists the nesting), and the instance sets every
   breakpoint's value inline. The class stays value-agnostic (shared across
   instances of the same shape); the browser's `@media` cascade selects the active
@@ -768,7 +778,7 @@ var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
   **Bisect-verified-with-restore**:
 
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
-calls without rescanning values` fires; restored → 425/425 pass.
+    calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
     425/425 pass.
 
@@ -939,10 +949,10 @@ calls without rescanning values` fires; restored → 425/425 pass.
   `@pyreon/styler`:
 
   - `src/__tests__/styler.browser.test.tsx` (8 tests): `styled('div')\`…\``mounts into real DOM with the generated`pyr-_`class; Chromium
-resolves the authored styles (color/padding) via the injected
-stylesheet; function interpolations resolve per-render against props
-(verified`isDynamic`returns true for arrow fns →`DynamicStyled`path); different tags (div/span/button) produce distinct elements;`ThemeProvider`injects a theme consumed by themed components;`keyframes` registers an animation name (`pyr-kf-_`prefix, via`String(fadeIn)`) that Chromium applies; standalone `css\`…\``CSSResult interpolates into`styled()`and resolves in the cascade;
-CSS rules are queryable via`document.styleSheets`.
+    resolves the authored styles (color/padding) via the injected
+    stylesheet; function interpolations resolve per-render against props
+    (verified`isDynamic`returns true for arrow fns →`DynamicStyled`path); different tags (div/span/button) produce distinct elements;`ThemeProvider`injects a theme consumed by themed components;`keyframes` registers an animation name (`pyr-kf-_`prefix, via`String(fadeIn)`) that Chromium applies; standalone `css\`…\``CSSResult interpolates into`styled()`and resolves in the cascade;
+    CSS rules are queryable via`document.styleSheets`.
   - Added `vitest.browser.config.ts`, `test:browser` script, and
     `@pyreon/test-utils` + `@vitest/browser-playwright` devdeps.
   - Wired `nodeExcludeBrowserTests` into the node vitest config so regular
@@ -974,10 +984,10 @@ CSS rules are queryable via`document.styleSheets`.
     `StyleSheet.insert` — 6/8 tests failed (every test that asserts a
     computed style or queryable rule). Restored, 8/8 passed.
   - unistyle (light): hard-coded `__PYREON__` to `{ sortedBreakpoints:
-undefined, media: undefined }` — enrichment test failed. Restored,
+    undefined, media: undefined }` — enrichment test failed. Restored,
     6/6 passed.
   - unistyle (load-bearing): replaced the `media[item]\`${result};\``emit in`makeItResponsive`with`return ''` — both responsive-prop
-tests failed (`expected '8px' to be '0px'`). Restored, 6/6 passed.
+    tests failed (`expected '8px' to be '0px'`). Restored, 6/6 passed.
 
   Also removes `packages/ui-system/styler/` and `packages/ui-system/unistyle/`
   from `PHASE_5_PENDING_PACKAGES` in `scripts/check-browser-smoke.ts`. The

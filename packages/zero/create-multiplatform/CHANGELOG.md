@@ -1,5 +1,13 @@
 # @pyreon/create-multiplatform
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3958](https://github.com/pyreon/pyreon/pull/3958) [`1f0208a`](https://github.com/pyreon/pyreon/commit/1f0208a1d6e55b41d65972f4ba0ab17ab4911810) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The multi-platform scaffold now ships AI-agent files, matching `create-zero`: `AGENTS.md` and `CLAUDE.md` (the project's commands, the native-subset rules, and where the capability matrix lives) and a `.mcp.json` that registers the Pyreon MCP server. A spec ties every `bun run <script>` named in the instructions to the scripts in the generated `package.json`, so the guidance cannot drift from the scaffold.
+
+- [#3964](https://github.com/pyreon/pyreon/pull/3964) [`a59a409`](https://github.com/pyreon/pyreon/commit/a59a4090c8108d1b7fa92eaf60aed465d81f0e73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The scaffold is now ready for on-device end-to-end testing with Maestro: the sample app carries `data-testid` values, a `.maestro/counter.yaml` flow runs unchanged on iOS and Android, and `e2e:ios` / `e2e:android` scripts build and launch the app (`pyreon-native dev --once`) before running the flows. `MainActivity` now exposes test tags as Android resource ids (without it, `id:` selectors match nothing on Android) and pads for the system bars (on Android 15+ the top of the screen otherwise sits under the status bar). Verified by running the flow with Maestro on an iOS 18.5 simulator and an API 35 emulator. The scripts need a `@pyreon/native-cli` that ships `dev`, so they work from the release that contains this change.
+
 ## 0.53.0
 
 ### Patch Changes
