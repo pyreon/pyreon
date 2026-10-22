@@ -541,7 +541,34 @@ jobs:
             bootstrap-ubuntu-
       - name: Build lib/ (incremental)
         if: steps.lib.outputs.run == 'true' && steps.bootstrap-cache.outputs.cache-hit != 'true'
-        run: bun scripts/bootstrap.ts
+        # DIAGNOSTIC (draft PR, not for merge): the bootstrap has hung to the job kill on every main run since
+        # 2026-10-22 11:07, leaving no log. Bound it with GNU timeout (kills the process group) so the job ends
+        # normally, and sample resources so a starvation hang is visible.
+        timeout-minutes: 14
+        shell: bash
+        run: |
+          mkdir -p .cache/diag
+          ( while true; do
+              { echo "=== $(date -u +%H:%M:%S)"; uptime; free -m; ps -eo pid,ppid,etime,pcpu,pmem,rss,args --sort=-rss | head -15 | cut -c1-220; } >> .cache/diag/resources.log
+              sleep 20
+            done ) &
+          MON=$!
+          set +e
+          bash scripts/gnu-timeout.sh --verbose --signal=KILL 10m bun scripts/bootstrap.ts 2>&1 | tee .cache/diag/bootstrap.log
+          code=${PIPESTATUS[0]}
+          kill $MON 2>/dev/null
+          echo "bootstrap exit: $code"
+          tail -60 .cache/diag/resources.log
+          exit $code
+      - name: Upload bootstrap diagnostics
+        if: always()
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bootstrap-diag-${{ github.run_attempt }}
+          path: .cache/diag/
+          if-no-files-found: warn
+          retention-days: 3
       - name: Cache-hit summary
         if: steps.lib.outputs.run == 'true'
         run: |
