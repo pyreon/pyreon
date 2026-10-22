@@ -208,6 +208,13 @@ const GATES: Gate[] = [
     name: 'check-workflow-shell-order',
     cmd: 'bun scripts/check-workflow-shell-order.ts',
   },
+  // A bare `timeout` is the uutils rewrite on Ubuntu 26.04, which cannot kill a process group: a surviving grandchild
+  // keeps a `| tee` open and the step hangs to the job's kill, uploading no logs. Every bounded command goes through
+  // scripts/gnu-timeout.sh.
+  {
+    name: 'check-gnu-timeout',
+    cmd: 'bun scripts/check-gnu-timeout.ts',
+  },
   // Its sibling for the OTHER language a workflow embeds. Two different actions
   // here take an input named `script:` -- the emulator runner's is shell, and
   // `actions/github-script`'s is JavaScript -- so a snippet pasted into the
