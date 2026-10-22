@@ -5632,9 +5632,9 @@
       "warnings": 0
     },
     "golden-fixture:storage-02.tsx|swift": {
-      "sha": "cb00283446cbc3ee63b175bfce64e7035fb84695bbaafaf47983a7ad0d77c6a5",
-      "bytes": 734,
-      "warnings": 1
+      "sha": "de497957f9cd81de7ed491f247b5ac503f940f36f9e4170db6dfa5f31dc105ea",
+      "bytes": 818,
+      "warnings": 2
     },
     "golden-fixture:storage-02.tsx|kotlin": {
       "sha": "4af88600c1b49672b90d4356df722d9dfbcfea4acd6c1e05532b96c7016fcd0f",
