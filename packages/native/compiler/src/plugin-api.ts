@@ -22,7 +22,12 @@ export type {
   CompilerPass,
   CompilerPlugin,
   ServiceSpec,
+  WebHostContext,
+  WebHostFile,
 } from './plugin'
+export { retagHostedWebView } from './hosted-webview'
+export type { HostedWebViewSpec } from './hosted-webview'
+export type { BundleWebHostOptions } from './web-host-bundle'
 
 export type * from './types'
 export type {

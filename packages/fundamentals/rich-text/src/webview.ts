@@ -27,13 +27,25 @@
 //   • FORWARD — `data={{ content, editable? }}` → window.__pyreonData (+
 //     pyreondata) → the editor's document/editability update IN PLACE (no
 //     reload). `content` is TipTap JSON (`{ type:'doc', content:[…] }`) or HTML.
-//   • REVERSE — a user edit → window.pyreonPostMessage(JSON {content}) →
-//     `onChange(content)`, so the hosted editor drives native signals. A loop
-//     guard suppresses the echo of content WE pushed.
+//   • REVERSE — a user edit → window.pyreonPostMessage('c:' + JSON text of the
+//     document) → `onChange(text)`, so the hosted editor drives native signals.
+//     A host failure → 'e:' + message → `onError(message)`. Plain prefixes
+//     rather than a JSON envelope so the LOWERED native handler can take the
+//     payload apart with string operations PMTC already lowers (see
+//     `native-plugin/lowering.ts`). A loop guard suppresses the echo of
+//     content WE pushed.
+//
+// The document crosses as TEXT in both directions: `onChange` receives the
+// TipTap JSON serialized to a string, and `state.content` accepts that same
+// string (or HTML) back. A native app cannot hold a JSON object, so the string
+// is the one shape that is identical on every target.
 
 import { h } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { WebView } from '@pyreon/primitives'
+import { RICH_TEXT_HOST_FILENAME } from './host-file'
+
+export { RICH_TEXT_HOST_FILENAME }
 
 /** The value pushed across the forward bridge. `content` is TipTap JSON or HTML. */
 export interface RichTextWebViewData {
@@ -122,7 +134,7 @@ export function buildRichTextHostHtml(options: BuildRichTextHostHtmlOptions = {}
     (function attempt() {
       try {
         if (typeof window.pyreonPostMessage === 'function') {
-          window.pyreonPostMessage(JSON.stringify({ error: msg }));
+          window.pyreonPostMessage('e:' + msg);
           return;
         }
       } catch (e) { return; }
@@ -150,7 +162,7 @@ export function buildRichTextHostHtml(options: BuildRichTextHostHtmlOptions = {}
       if (s === lastPushed) return;
       cur.content = json;
       if (typeof window.pyreonPostMessage === 'function') {
-        try { window.pyreonPostMessage(JSON.stringify({ content: json })); } catch (e) {}
+        try { window.pyreonPostMessage('c:' + s); } catch (e) {}
       }
     }
   });
@@ -159,12 +171,17 @@ export function buildRichTextHostHtml(options: BuildRichTextHostHtmlOptions = {}
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
     if (!d || typeof d !== 'object') return;
     if (d.content !== undefined) {
+      // A string is TipTap JSON TEXT (what onChange hands back) or HTML; anything else is the document itself.
+      var incoming = d.content;
+      if (typeof incoming === 'string' && /^\\s*[{]/.test(incoming)) {
+        try { incoming = JSON.parse(incoming); } catch (e) { /* not JSON — treat as HTML */ }
+      }
       var s;
-      try { s = JSON.stringify(d.content); } catch (e) { s = null; }
+      try { s = JSON.stringify(incoming); } catch (e) { s = null; }
       if (s !== null && s !== JSON.stringify(cur.content)) {
-        cur.content = d.content;
+        cur.content = incoming;
         lastPushed = s;
-        editor.setContent(d.content);
+        editor.setContent(incoming);
       }
     }
     if (d.editable !== undefined && !!d.editable !== cur.editable) {
@@ -194,10 +211,15 @@ export function buildRichTextHostHtml(options: BuildRichTextHostHtmlOptions = {}
 }
 
 export interface RichTextWebViewProps {
-  /** Editor content (TipTap JSON or HTML) + editability — pass a signal accessor for reactivity. */
+  /** Editor content (TipTap JSON, JSON text or HTML) + editability — pass a signal accessor for reactivity. */
   state: RichTextWebViewData | (() => RichTextWebViewData)
-  /** User-edit callback — receives the new TipTap JSON. */
-  onChange?: (content: unknown) => void
+  /**
+   * User-edit callback — receives the document as TipTap JSON TEXT (a string, so the same handler runs on every
+   * target). Store it as-is and pass it back as `state.content`; `JSON.parse` it on web if you want the object.
+   */
+  onChange?: (content: string) => void
+  /** Host-failure callback — receives the message (TipTap missing, a throwing extension). */
+  onError?: (message: string) => void
   /** Provide your own host HTML (advanced). Omit to build from the `tiptap*` opts. */
   html?: string
   /** Bundled `window.TT` IIFE — see {@link BuildRichTextHostHtmlOptions}. */
@@ -230,10 +252,13 @@ export function RichTextWebView(props: RichTextWebViewProps): VNode {
   let defaultHtml: string | undefined
 
   const webViewProps: Record<string, unknown> = {}
-  Object.defineProperty(webViewProps, 'html', {
+  // An app that supplies its own engine (or a whole page) hosts it inline. One that does not gets the page
+  // `pyreon-native assets` builds from its installed engine, addressed by the SAME conventional name on every target.
+  const hostsItself = props.html !== undefined || props.tiptapScript !== undefined || props.tiptapSrc !== undefined
+  Object.defineProperty(webViewProps, hostsItself ? 'html' : 'src', {
     enumerable: true,
     configurable: true,
-    get: (): string => props.html ?? (defaultHtml ??= buildRichTextHostHtml(built)),
+    get: (): string => (hostsItself ? (props.html ?? (defaultHtml ??= buildRichTextHostHtml(built))) : RICH_TEXT_HOST_FILENAME),
   })
   Object.defineProperty(webViewProps, 'data', {
     enumerable: true,
@@ -243,14 +268,17 @@ export function RichTextWebView(props: RichTextWebViewProps): VNode {
       return typeof s === 'function' ? (s as () => unknown)() : s
     },
   })
-  if (props.onChange) {
-    const onChange = props.onChange
+  if (props.onChange || props.onError) {
+    const { onChange, onError } = props
     webViewProps.onMessage = (message: string): void => {
+      if (message.startsWith('c:')) return onChange?.(message.slice(2))
+      if (message.startsWith('e:')) return onError?.(message.slice(2))
+      // A custom `html` host may still post the JSON envelope — keep it working.
       try {
         const p = JSON.parse(message) as { content?: unknown }
-        if (p.content !== undefined) onChange(p.content)
+        if (p.content !== undefined) onChange?.(JSON.stringify(p.content))
       } catch {
-        onChange(message)
+        onChange?.(message)
       }
     }
   }

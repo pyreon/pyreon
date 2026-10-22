@@ -11,7 +11,8 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'document `<head>` management — no equivalent surface exists on iOS/Android',
+      'document `<head>` management — a native app has no document, so there is nothing to describe: `useHead(...)` compiles to nothing and `<HeadProvider>` is transparent (so shared source builds); the head context and SSR helpers have no native equivalent',
+    nativeFrontend: '`useHead(...)` (dropped) and `<HeadProvider>` (transparent) — by design, no native `<head>`',
   },
   features: [
     'useHead(input | () => input) — register head tags from any component',

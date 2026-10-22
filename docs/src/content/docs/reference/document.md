@@ -13,7 +13,7 @@ Universal document rendering for Pyreon. One template, every output format: HTML
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering
+wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers).
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

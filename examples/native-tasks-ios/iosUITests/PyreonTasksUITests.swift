@@ -37,6 +37,16 @@ final class PyreonTasksUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Poll a static text until its label CONTAINS `needle`.
+    private func waitForLabelContaining(_ element: XCUIElement, _ needle: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.label.contains(needle) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return element.exists && element.label.contains(needle)
+    }
+
     /// Poll a static text's label — a state change lands a frame later than
     /// the gesture that caused it, so an immediate assert races the render.
     private func waitForLabel(_ el: XCUIElement, _ expected: String, timeout: TimeInterval) -> Bool {
@@ -497,6 +507,83 @@ final class PyreonTasksUITests: XCTestCase {
 
     /// A canvas can be hittable while the requested coordinate is below the screen.
     /// Exercise that geometry explicitly instead of depending on a swipe's final offset.
+    /// The hosted EDITORS on device: `<CodeWebView>` (CodeMirror) and `<RichTextWebView>` (TipTap) lowered to a
+    /// `PyreonWebView(src:)` pointed at pages `pyreon-native assets` built from the app's installed engines.
+    ///
+    /// Three things are proven here that no earlier gate could, because the editors had only ever been run in a
+    /// browser with the engine injected by the test:
+    ///   1. the page the build produced actually loads in WKWebView and boots the editor (no `onError`),
+    ///   2. FORWARD — a value pushed from native lands in the editor's DOM,
+    ///   3. REVERSE — a keystroke typed into the editor reaches a native signal over the `v:` / `c:` channel.
+    func test_hostedEditorsRoundTrip() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30))
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        let gallery = app.buttons["tasks-gallery"].firstMatch
+        XCTAssertTrue(gallery.waitForExistence(timeout: 20))
+        gallery.tap()
+
+        // ── CodeMirror ───────────────────────────────────────────────────────────────────────────
+        let codeView = app.descendants(matching: .any).matching(identifier: "gal-code-webview").firstMatch
+        XCTAssertTrue(codeView.waitForExistence(timeout: 20), "gal-code-webview missing on the gallery")
+        scrollIntoView(codeView, in: app, maxSwipes: 40)
+        let codeFailure = app.staticTexts["gal-code-failure"].firstMatch
+        let codeValue = app.staticTexts["gal-code-value"].firstMatch
+        // The editor boots inside the WebView: CodeMirror's content is exposed to accessibility as text.
+        let bootedText = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "answer")).firstMatch
+        XCTAssertTrue(bootedText.waitForExistence(timeout: 30), "CodeMirror never rendered the pushed value (failure: \(codeFailure.label)); tree: \(app.webViews.firstMatch.debugDescription)")
+        XCTAssertEqual(codeFailure.label, "none", "the hosted CodeMirror reported a host failure")
+
+        // FORWARD: replace the value from native; the editor shows it.
+        let replace = app.buttons["gal-code-replace"].firstMatch
+        scrollIntoView(replace, in: app, maxSwipes: 16)
+        replace.tap()
+        let replacedText = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "replaced")).firstMatch
+        XCTAssertTrue(replacedText.waitForExistence(timeout: 15), "the value pushed from native never reached CodeMirror; tree: \(app.webViews.firstMatch.debugDescription)")
+
+        // REVERSE: type into the editor; the keystrokes reach the native signal.
+        scrollIntoView(codeView, in: app, maxSwipes: 16)
+        let edits = app.staticTexts["gal-code-edits"].firstMatch
+        let editsBefore = Int(edits.label) ?? 0
+        codeView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        app.typeText("QQ")
+        XCTAssertTrue(waitForLabelContaining(codeValue, "QQ", timeout: 15), "typing in CodeMirror never reached the native signal (value label: \(codeValue.label))")
+        XCTAssertGreaterThan(Int(edits.label) ?? 0, editsBefore, "the edit counter did not move")
+
+        // ── TipTap ───────────────────────────────────────────────────────────────────────────────
+        let richView = app.descendants(matching: .any).matching(identifier: "gal-rich-webview").firstMatch
+        scrollIntoView(richView, in: app, maxSwipes: 16)
+        let richFailure = app.staticTexts["gal-rich-failure"].firstMatch
+        let richBooted = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hosted")).firstMatch
+        XCTAssertTrue(richBooted.waitForExistence(timeout: 30), "TipTap never rendered the pushed HTML (failure: \(richFailure.label)); tree: \(app.webViews.firstMatch.debugDescription)")
+        XCTAssertEqual(richFailure.label, "none", "the hosted TipTap reported a host failure")
+
+        // FORWARD: the replacement HTML lands in the editor.
+        let richReplace = app.buttons["gal-rich-replace"].firstMatch
+        scrollIntoView(richReplace, in: app, maxSwipes: 16)
+        richReplace.tap()
+        let richReplaced = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Replaced paragraph")).firstMatch
+        XCTAssertTrue(richReplaced.waitForExistence(timeout: 15), "the HTML pushed from native never reached TipTap; tree: \(app.webViews.firstMatch.debugDescription)")
+        // A pushed replacement is NOT an edit: it must not echo back through onChange.
+        let richEdits = app.staticTexts["gal-rich-edits"].firstMatch
+        let richEditsAfterPush = Int(richEdits.label) ?? 0
+
+        // REVERSE: typing reaches native as the document's JSON text.
+        scrollIntoView(richView, in: app, maxSwipes: 16)
+        richView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        app.typeText("ZZ")
+        let typingDeadline = Date().addingTimeInterval(15)
+        while Date() < typingDeadline && (Int(richEdits.label) ?? 0) <= richEditsAfterPush {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
+        XCTAssertGreaterThan(Int(richEdits.label) ?? 0, richEditsAfterPush, "typing in TipTap never reached the native signal (edits label: \(richEdits.label))")
+    }
+
     func test_grammarBarSelectionAfterPartialVisibility() throws {
         let app = XCUIApplication()
         app.launch()

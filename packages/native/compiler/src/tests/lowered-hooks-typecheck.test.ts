@@ -76,6 +76,8 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useHaptics', '@pyreon/hooks', 'const h = useHaptics()'],
   // A statement, not a binding: useHotkey returns nothing and registers a
   // shortcut, so the fixture has to call it for the lowering to be exercised.
+  // A statement that lowers to NOTHING (no native `<head>`); type-checking it proves the dropped call leaves valid code.
+  ['useHead', '@pyreon/head', "useHead({ title: 'Inbox' })"],
   ['useHotkey', '@pyreon/hotkeys', "useHotkey('mod+s', () => {})"],
   ['useImagePicker', '@pyreon/hooks', 'const i = useImagePicker()'],
   ['useLinking', '@pyreon/hooks', 'const l = useLinking()'],

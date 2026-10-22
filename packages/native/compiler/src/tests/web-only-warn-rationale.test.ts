@@ -4,7 +4,8 @@
 // animation engine, and the advice is wrong for most of them:
 //
 //   - `@pyreon/lint` is dev-time tooling that never reaches a component.
-//   - `@pyreon/head` has no device analogue at all.
+//   - `@pyreon/head` was in this list while it had no native story; it now compiles (as a no-op), so it left it.
+//   - `@pyreon/document` builds PDF/DOCX with node and browser engines; its answer is a server round trip.
 //   - `@pyreon/virtual` has a BETTER native answer — native lists are lazy by
 //     construction, so a WebView is strictly worse than `<For>` in `<Scroll>`.
 //   - `@pyreon/kinetic`'s preset vocabulary genuinely DOES cross via
@@ -35,8 +36,8 @@ const webOnlyWarn = (pkg: string, sym: string): string => {
 describe('the web-only warning carries the package’s own reason', () => {
   it.each([
     // pkg, sym, a distinctive phrase from that package's manifest rationale
-    ['@pyreon/virtual', 'useVirtualizer', 'native lists are lazy by construction'],
-    ['@pyreon/head', 'useHead', 'no equivalent surface exists on iOS/Android'],
+    ['@pyreon/virtual', 'useVirtualizer', 'Native lists are lazy by construction'],
+    ['@pyreon/document', 'render', 'Build the file on a server and fetch it'],
     ['@pyreon/lint', 'lintFile', 'runs at dev time, not app runtime'],
     // `@pyreon/dnd` is deliberately NOT here any more: `useSortable` lowers to
     // the native PyreonSortableState engine, so the package declares a
@@ -56,7 +57,7 @@ describe('the web-only warning carries the package’s own reason', () => {
     const body = (pkg: string, sym: string) => webOnlyWarn(pkg, sym).replaceAll(pkg, '')
     const reasons = [
       body('@pyreon/virtual', 'useVirtualizer'),
-      body('@pyreon/head', 'useHead'),
+      body('@pyreon/document', 'render'),
       body('@pyreon/lint', 'lintFile'),
       body('@pyreon/kinetic', 'kinetic'),
     ]
@@ -66,9 +67,10 @@ describe('the web-only warning carries the package’s own reason', () => {
   it('still names the escape hatch, but AFTER the native-first advice', () => {
     // `@pyreon/charts` moved out of the blanket set when its radial
     // components began lowering (nativeFrontend), and `@pyreon/flow`
-    // followed once `createFlow` gained a native port — `@pyreon/code`
-    // (CodeMirror 6) is a genuine DOM editor engine still in it.
-    const w = webOnlyWarn('@pyreon/code', 'CodeEditor')
+    // followed once `createFlow` gained a native port, and `@pyreon/code` once its
+    // `/webview` bridge gained a plugin — `@pyreon/virtual` (DOM virtualization) is
+    // a genuine web-only package still in it.
+    const w = webOnlyWarn('@pyreon/virtual', 'useVirtualizer')
     expect(w).toContain('<Web>')
     // Native-equivalent first: the escape hatch is right for a genuine
     // rendering engine, but it was previously the ONLY option offered, for
@@ -85,9 +87,9 @@ describe('the web-only warning carries the package’s own reason', () => {
   })
 
   it('never emits a double em-dash (several rationales contain their own)', () => {
-    // `@pyreon/head`'s rationale has an em-dash in it; joining with another
+    // `@pyreon/config`'s rationale has an em-dash in it; joining with another
     // one produced two in a sentence, which reads as a typo.
-    const w = webOnlyWarn('@pyreon/head', 'useHead')
+    const w = webOnlyWarn('@pyreon/config', 'defineConfig')
     const upToAdvice = w.slice(0, w.indexOf('On native'))
     expect(upToAdvice.split('—').length - 1).toBeLessThanOrEqual(1)
   })

@@ -1,3 +1,4 @@
+import type { BundleWebHostOptions } from './web-host-bundle'
 import type { CompilerRegistries } from './active-registries'
 import type {
   CallRecognizer,
@@ -106,6 +107,26 @@ export type CompilerPass = (
   module: CompilerModule,
   context: CompilerContext,
 ) => CompilerModule | void
+
+/** What a plugin's `webHosts` builder is told about the app it is building a page for. */
+export interface WebHostContext {
+  /** Absolute path of the app's package directory — where its dependencies resolve from. */
+  readonly appDir: string
+  /**
+   * Bundle an ESM entry (and the engine it imports from the app's own install) into one self-contained IIFE string.
+   * Supplied by the host (`pyreon-native assets`) rather than imported by the plugin: loading the app's bundler is a
+   * computed dynamic import, which a plugin's lowering graph must not contain (it is scanned for static dependencies
+   * before install).
+   */
+  readonly bundleScript: (options: BundleWebHostOptions) => Promise<string>
+}
+
+/** One web-host page: the filename a lowered `<WebView src>` names, and the page text. */
+export interface WebHostFile {
+  /** Bare filename (`pyreon-code-host.html`) — no directory, because the runtimes resolve `src` flat. */
+  readonly filename: string
+  readonly content: string
+}
 
 export interface CompilerPlugin<Target extends string = string> {
   readonly name: string
@@ -263,6 +284,15 @@ export interface CompilerPlugin<Target extends string = string> {
    * made WITHOUT loading the plugin.
    */
   readonly modules?: readonly string[] | undefined
+  /**
+   * Web-host pages this plugin contributes to the app bundle: the HTML a lowered `<WebView src="…">` loads out of
+   * `Bundle.main` (iOS) / `file:///android_asset/` (Android) / the served root (web). A library whose engine is a
+   * WEB engine (CodeMirror, TipTap) crosses by hosting it in a native WebView, and that page cannot appear in lowered
+   * source — it is produced at BUILD time, from the app's own installed engine and the languages / extensions it chose.
+   * The CLI calls this once per target for an activated plugin (`pyreon-native assets --app=…`) and materializes each
+   * returned file under its exact filename, which IS the `src` the plugin's lowering emits. See {@link WebHostFile}.
+   */
+  readonly webHosts?: ((context: WebHostContext) => readonly WebHostFile[] | Promise<readonly WebHostFile[]>) | undefined
   /**
    * Type names the plugin's RUNTIME declares (so a helper typed against one,
    * `(c: TooltipContent) => string`, resolves on the target instead of being

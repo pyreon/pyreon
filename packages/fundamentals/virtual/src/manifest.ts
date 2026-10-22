@@ -10,7 +10,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack)',
+      'DOM virtualization (scroll containers, measured rows). Native lists are lazy by construction: render the rows with a `<For>` as the ONLY child of a `<Scroll>` (LazyVStack on iOS, LazyColumn on Android) and no virtualizer is needed. Do not nest that `<For>` among other children inside a `<Scroll>`: Compose rejects a lazy list inside a scrolling Column at measure time.',
   },
   longExample: `import { useVirtualizer, useWindowVirtualizer } from '@pyreon/virtual'
 import { signal } from '@pyreon/reactivity'

@@ -165,6 +165,9 @@ export function C(){ return (<Stack><Text>x</Text></Stack>) }`
 // over a shared PyreonCrdtDoc — so it left WEB_ONLY_PACKAGES and moved to the
 // manifest's `nativeFrontend`; see native-synced-signal.test.ts.)
 //
+// (`@pyreon/rich-text` has since left the BLANKET set too: its `/webview` bridge gained a plugin, so the package
+// is partial and the per-export `unlowered` advice is what keeps `createRichTextEditor` from compiling to nothing.)
+//
 // Worth recording how it was found: the first probe imported the symbol
 // WITHOUT CALLING it, so the emit stripped the unused import and reported
 // "OK both, 0 warnings" — a clean pass that proved nothing. A probe that does
@@ -177,9 +180,11 @@ describe('web-only packages that were missing from the set', () => {
       '@pyreon/rich-text',
     ],
   ] as const) {
-    it(`${label}: warns as WEB-ONLY on both targets`, () => {
+    it(`${label}: warns that the call has no native lowering on both targets`, () => {
       for (const target of ['swift', 'kotlin'] as const) {
-        const hit = warns(src, target).find((w) => w.startsWith(`${symbol} is WEB-ONLY`))
+        // The package left the blanket web-only set when its `/webview` bridge gained a plugin: the warning is now
+        // the per-export one, naming the symbol that does not lower and the bridge that does.
+        const hit = warns(src, target).find((w) => w.startsWith('createRichTextEditor (from @pyreon/rich-text) has NO native lowering'))
         expect(hit, `${target}: no warning; got ${JSON.stringify(warns(src, target))}`).toBeTruthy()
       }
     })

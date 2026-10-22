@@ -635,6 +635,19 @@ export function C() {
 }`,
   },
   {
+    name: '@pyreon/head',
+    mechanism: 'pmtc-lowers',
+    rationale:
+      'a native app has no document `<head>`, so the package crosses by BEING INERT: `useHead(...)` lowers to nothing and `<HeadProvider>` is transparent, which lets shared source that sets a page title for the web build compile for iOS and Android. The head context and SSR helpers have no native equivalent and warn by name.',
+    // Verified: zero warnings and no trace of the head API in either emit; swiftc/kotlinc accept it.
+    snippet: `import { useHead, HeadProvider } from '@pyreon/head'
+import { Stack, Text } from '@pyreon/primitives'
+export function C() {
+  useHead({ title: 'Inbox' })
+  return (<HeadProvider><Stack><Text>hello</Text></Stack></HeadProvider>)
+}`,
+  },
+  {
     name: '@pyreon/a11y',
     mechanism: 'native-container',
     rationale:
@@ -778,20 +791,21 @@ export function C() {
     name: '@pyreon/code',
     mechanism: 'webview-host',
     rationale:
-      'CodeMirror 6 is a DOM editor with no native equivalent, so it crosses by HOSTING the same editor in a native <WebView> (@pyreon/code/webview). Bridge proven in real Chromium against real CodeMirror; native host is emit + stub-typecheck proven, NOT device-proven.',
+      'CodeMirror 6 is a DOM editor with no native equivalent, so it crosses by HOSTING the same editor in a native <WebView>: <CodeWebView> from @pyreon/code/webview lowers (through the package\'s own native plugin) to a <WebView src> pointed at a page that `pyreon-native assets` builds from the app\'s installed CodeMirror and the grammars it has. Edits arrive as plain `v:<text>` messages and host failures as `e:<message>`. Bridge proven in real Chromium against real CodeMirror; the page bundles and executes (node); the lowered host is emit + stub-typecheck proven on both targets and device-proven on iOS Simulator and Android Emulator by examples/native-tasks (the value reaches the editor and an edit comes back out; a lasting soft-keyboard session is not exercised). Every other export of the package is a DOM editor API and warns by name.',
     snippet: `import { signal } from '@pyreon/reactivity'
-import { Stack, Text, WebView } from '@pyreon/primitives'
+import { Stack, Text } from '@pyreon/primitives'
+import { CodeWebView } from '@pyreon/code/webview'
 export function C() {
-  const nums = signal([1, 2, 3])
   const text = signal('const a = 1')
-  const picked = signal('none')
+  const failure = signal('none')
   return (
     <Stack>
-      <Text>{picked()}</Text>
-      <WebView
-        html="<!doctype html><html><body></body></html>"
-        data={{ doc: text(), language: 'typescript', readOnly: false }}
-        onMessage={(m) => picked.set(m)}
+      <Text>{text()}</Text>
+      <Text>{failure()}</Text>
+      <CodeWebView
+        state={() => ({ value: text(), language: 'typescript', readOnly: false })}
+        onChange={(v) => text.set(v)}
+        onError={(m) => failure.set(m)}
       />
     </Stack>
   )
@@ -859,20 +873,21 @@ export function C() {
     name: '@pyreon/rich-text',
     mechanism: 'webview-host',
     rationale:
-      'TipTap/ProseMirror is a DOM editor with no native equivalent, so it crosses by HOSTING the same WYSIWYG in a native <WebView> (@pyreon/rich-text/webview). Bridge proven in real Chromium against real TipTap; native host is emit + stub-typecheck proven, NOT device-proven.',
+      'TipTap/ProseMirror is a DOM editor with no native equivalent, so it crosses by HOSTING the same WYSIWYG in a native <WebView>: <RichTextWebView> from @pyreon/rich-text/webview lowers (through the package\'s own native plugin) to a <WebView src> pointed at a page that `pyreon-native assets` builds from the app\'s installed TipTap. The document crosses as TEXT both ways (TipTap JSON serialized to a string; HTML also accepted), edits arrive as `c:<text>` and host failures as `e:<message>`. Bridge proven in real Chromium against real TipTap; the page bundles and executes (node); the lowered host is emit + stub-typecheck proven on both targets and device-proven on iOS Simulator and Android Emulator by examples/native-tasks (the value reaches the editor and an edit comes back out; a lasting soft-keyboard session is not exercised). Every other export of the package is a DOM editor API and warns by name.',
     snippet: `import { signal } from '@pyreon/reactivity'
-import { Stack, Text, WebView } from '@pyreon/primitives'
+import { Stack, Text } from '@pyreon/primitives'
+import { RichTextWebView } from '@pyreon/rich-text/webview'
 export function C() {
-  const nums = signal([1, 2, 3])
-  const text = signal('const a = 1')
-  const picked = signal('none')
+  const doc = signal('<p>hello</p>')
+  const failure = signal('none')
   return (
     <Stack>
-      <Text>{picked()}</Text>
-      <WebView
-        html="<!doctype html><html><body></body></html>"
-        data={{ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }}
-        onMessage={(m) => picked.set(m)}
+      <Text>{doc()}</Text>
+      <Text>{failure()}</Text>
+      <RichTextWebView
+        state={() => ({ content: doc(), editable: true })}
+        onChange={(c) => doc.set(c)}
+        onError={(m) => failure.set(m)}
       />
     </Stack>
   )

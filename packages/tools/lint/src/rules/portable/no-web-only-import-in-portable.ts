@@ -31,7 +31,6 @@ const WEB_ONLY = new Set([
   '@pyreon/document',
   '@pyreon/document-primitives',
   '@pyreon/flow',
-  '@pyreon/head',
   '@pyreon/lathe',
   '@pyreon/lint',
   '@pyreon/loom',

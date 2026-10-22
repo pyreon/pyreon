@@ -58,6 +58,7 @@ describe('@pyreon/native-compiler/plugin-api', () => {
       'readLiteralEntries',
       'readObjectProp',
       'resolveThemeToken',
+      'retagHostedWebView',
       'sendableHeaderExprs',
       'staticPropKey',
       'substituteIdentifier',

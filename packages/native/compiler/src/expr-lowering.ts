@@ -36,7 +36,7 @@
  */
 
 import type { EmitContext, KotlinEmitContext, SwiftEmitContext } from './emit-context'
-import type { ComponentIR, ExprIR, ExtDecl, JsxElementIR } from './types'
+import type { ComponentIR, ExprIR, ExtDecl, JsxElementIR, TypeIR } from './types'
 
 export type CallExprIR = Extract<ExprIR, { kind: 'call' }>
 export type MemberExprIR = Extract<ExprIR, { kind: 'member' }>
@@ -83,6 +83,13 @@ export interface FunctionLowering {
    * names stable. A plugin with no prior output omits it.
    */
   readonly irName?: string | undefined
+  /**
+   * The type the call produces. Type inference has nothing to read a plugin function's result from, so a helper that
+   * wraps one (`const curve = () => getBezierPath({…})`) was emitted with NO return type — a Void function on Swift,
+   * and the caller's `curve().path` then failed with "value of tuple type '()' has no member 'path'" and no warning.
+   * Declare it as a `typeRef` naming the runtime's own type.
+   */
+  readonly returns?: TypeIR | undefined
   swift?(site: FunctionSite, ctx: SwiftEmitContext): string | undefined
   kotlin?(site: FunctionSite, ctx: KotlinEmitContext): string | undefined
 }

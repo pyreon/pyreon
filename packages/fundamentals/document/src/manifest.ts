@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering',
+      'wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers).',
   },
   longExample: `import { Document, Page, Heading, Text, Table, List, ListItem, Code, Divider, render, createDocument, download } from '@pyreon/document'
 

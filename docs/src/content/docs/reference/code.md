@@ -15,7 +15,9 @@ Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~13
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath
+wraps CodeMirror 6 (DOM editor engine, so the editor itself stays web); the `@pyreon/code/webview` bridge crosses — see nativeFrontend
+
+**What crosses natively:** `<CodeWebView state={() => ({ value, language, readOnly })} onChange onError />` from `@pyreon/code/webview` lowers to a native `<WebView>` hosting the SAME CodeMirror: `pyreon-native assets` builds the page from the app's installed CodeMirror and the grammars it has, edits arrive as plain `v:<text>` messages, host failures as `e:<message>`. It is a hosted web editor, not a SwiftUI / Compose text view — WebView startup cost, no native text-field semantics, and a block-bodied `state` accessor warns and is dropped
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

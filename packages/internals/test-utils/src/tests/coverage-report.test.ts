@@ -23,7 +23,13 @@ function fixture(expected: number, extraSource = '', after = '') {
   writeFileSync(join(root, 'package.json'), '{"type":"module","private":true}')
   writeFileSync(
     join(root, 'vitest.config.mjs'),
+    // `fsModuleCachePath` is per-fixture on purpose. `node_modules` here is a symlink to the REPO's, and Vitest keeps
+    // its module cache at `<workspace root>/node_modules/.vitest-cache` by default (NOT under Vite's `cacheDir`) — so
+    // this child shares, and on startup cleans, one directory with every other Vitest running on the repo, and dies
+    // with `ENOTEMPTY: rmdir node_modules/.vitest-cache` when another run writes into it mid-clean. Seen in the
+    // pre-push wall as an intermittent "unparseable" verdict on this spec.
     `export default { test: {
+    fsModuleCachePath: ${JSON.stringify(join(root, '.vitest-cache'))},
     globals: true, include: ['src/*.test.js'], maxWorkers: 1,
     coverage: { provider: 'v8', include: ['src/value.js'], thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 } }
   } }`,
@@ -80,7 +86,9 @@ describe('coverage verdict requires successful tests', () => {
 describe('real Vitest JSON-file reporting', { timeout: 60_000 }, () => {
   it('reports a failed assertion despite a passing 100% coverage summary', async () => {
     const result = await runCoverage(fixture(2), '@pyreon/fixture', 95, 20_000)
-    expect(result).toMatchObject({ kind: 'tests-failed' })
+    // The spawned Vitest only misbehaves under suite-wide load (it never reproduces alone), so a failure here has to
+    // carry the evidence itself: whether the child hit its deadline, was killed, or exited without a parseable report.
+    expect(result, JSON.stringify(result).slice(0, 800)).toMatchObject({ kind: 'tests-failed' })
     if ('failedTests' in result) {
       expect(result.failedTests[0]?.name).toContain('consumes the real value')
       expect(result.failedTests[0]?.message).toContain('expected 1 to be 2')

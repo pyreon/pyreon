@@ -29,11 +29,19 @@ describe('buildRichTextHostHtml', () => {
 describe('<RichTextWebView>', () => {
   const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
   it('emits a <WebView> with the host + state as reactive data', () => {
-    const vnode = RichTextWebView({ state: { content: doc } })
+    // An app that hands over its engine hosts the page inline…
+    const vnode = RichTextWebView({ state: { content: doc }, tiptapScript: 'window.TT = {}' })
     expect(vnode.type).toBe(WebView)
     expect((vnode.props as { html: string }).html).toContain('createEditor')
     expect((vnode.props as { data: unknown }).data).toEqual({ content: doc })
     expect('onMessage' in (vnode.props as object)).toBe(false)
+    expect('src' in (vnode.props as object)).toBe(false)
+  })
+
+  it('without an engine, loads the conventional page `pyreon-native assets` builds (same name on every target)', () => {
+    const vnode = RichTextWebView({ state: { content: doc } })
+    expect((vnode.props as { src: string }).src).toBe('pyreon-richtext-host.html')
+    expect('html' in (vnode.props as object)).toBe(false)
   })
 
   it('unwraps an accessor state', () => {
@@ -41,11 +49,13 @@ describe('<RichTextWebView>', () => {
     expect((vnode.props as { data: unknown }).data).toEqual({ content: doc })
   })
 
-  it('wires onChange through onMessage, parsing { content }', () => {
+  it('wires onChange through onMessage: `c:` carries the document as TEXT; the legacy JSON envelope is delivered as text too', () => {
     const onChange = vi.fn()
     const vnode = RichTextWebView({ state: { content: null }, onChange })
+    ;(vnode.props as { onMessage: (m: string) => void }).onMessage('c:' + JSON.stringify(doc))
+    expect(onChange).toHaveBeenLastCalledWith(JSON.stringify(doc))
     ;(vnode.props as { onMessage: (m: string) => void }).onMessage(JSON.stringify({ content: doc }))
-    expect(onChange).toHaveBeenCalledWith(doc)
+    expect(onChange).toHaveBeenLastCalledWith(JSON.stringify(doc))
   })
 
   // The reverse bridge carries a raw string from the hosted page. Both the

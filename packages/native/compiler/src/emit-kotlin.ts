@@ -6760,21 +6760,32 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
 }
 
 function emitKotlinMessageHandler(handler: ExprIR): string {
-  if (handler.kind === 'arrow') {
-    // A BLOCK body parses to an empty `body` with its statements in `stmts`;
-    // reading `body` alone emitted `{ _ -> }` and DROPPED the handler (mirror
-    // of the Swift fix). The generic action emitter already binds the lambda
-    // parameters and handles multi-statement / `async` bodies.
-    if (handler.stmts !== undefined && handler.stmts.length > 0) {
-      return emitKotlinAction(handler, 0)
+  // The page-posted payload is ALWAYS a string (the runtime bridge hands over `String(m)`), so
+  // an unannotated parameter is a `String`. Without that the receiver of `m.slice(2)` /
+  // `m.startsWith(…)` is unknown and the string lowerings never fire: Kotlin happened to
+  // survive (`drop` exists on Collection and String), Swift emitted `m.slice(2)` verbatim —
+  // an uncompilable line with zero warnings. Bound here, around the WHOLE handler, because the
+  // block-body path emits through the generic action emitter, which seeds handler-local consts
+  // but not the closure's own parameter.
+  const messageParam = handler.kind === 'arrow' ? handler.params[0] : undefined
+  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? { kind: 'string' }
+  return withKotlinLocals(messageParam !== undefined ? [[messageParam, paramType]] : [], () => {
+    if (handler.kind === 'arrow') {
+      // A BLOCK body parses to an empty `body` with its statements in `stmts`;
+      // reading `body` alone emitted `{ _ -> }` and DROPPED the handler (mirror
+      // of the Swift fix). The generic action emitter already binds the lambda
+      // parameters and handles multi-statement / `async` bodies.
+      if (handler.stmts !== undefined && handler.stmts.length > 0) {
+        return emitKotlinAction(handler, 0)
+      }
+      if (handler.body.kind === 'literal' && handler.body.value === '') {
+        return '{ _ -> }'
+      }
+      const param = handler.params.length > 0 ? kotlinIdent(handler.params[0]!) : '_'
+      return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
     }
-    if (handler.body.kind === 'literal' && handler.body.value === '') {
-      return '{ _ -> }'
-    }
-    const param = handler.params.length > 0 ? kotlinIdent(handler.params[0]!) : '_'
-    return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
-  }
-  return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
+    return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
+  })
 }
 
 /**

@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath',
+      'wraps TipTap/ProseMirror (DOM editor, so the editor itself stays web); the `@pyreon/rich-text/webview` bridge crosses — see nativeFrontend',
+    nativeFrontend:
+      '`<RichTextWebView state={() => ({ content, editable })} onChange onError />` from `@pyreon/rich-text/webview` lowers to a native `<WebView>` hosting the SAME TipTap (StarterKit): `pyreon-native assets` builds the page from the app\'s installed TipTap. The document crosses as TEXT both ways — `onChange` receives the TipTap JSON serialized to a string and `state.content` accepts that string (or HTML) back — because a native handler cannot hold a JSON object. It is a hosted web editor, not a SwiftUI / Compose text view: WebView startup cost, no native text-field semantics, StarterKit only (custom extensions need your own `html` page)',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createRichTextEditor, RichText, bindRichTextToSignal } from '@pyreon/rich-text'

@@ -957,10 +957,13 @@
       "name": "@pyreon/example-native-tasks",
       "version": "0.50.3",
       "dependencies": {
+        "@codemirror/lang-javascript": "^6.2.5",
+        "@codemirror/lang-json": "^6.0.2",
         "@pyreon/a11y": "workspace:*",
         "@pyreon/attrs": "workspace:*",
         "@pyreon/auth": "workspace:*",
         "@pyreon/charts": "workspace:*",
+        "@pyreon/code": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/dnd": "workspace:*",
         "@pyreon/elements": "workspace:*",
@@ -973,6 +976,7 @@
         "@pyreon/machine": "workspace:*",
         "@pyreon/permissions": "workspace:*",
         "@pyreon/query": "workspace:*",
+        "@pyreon/rich-text": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
         "@pyreon/rx": "workspace:*",
         "@pyreon/sized-map": "workspace:*",
@@ -998,6 +1002,7 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/store": "workspace:*",
+        "esbuild": "^0.28.2",
       },
     },
     "examples/native-tasks-android": {
@@ -1425,6 +1430,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "21.0.3",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
@@ -1433,8 +1439,12 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/core/primitives": {
       "name": "@pyreon/primitives",
@@ -1688,6 +1698,7 @@
         "@happy-dom/global-registrator": "21.0.3",
         "@monaco-editor/react": "^4.7.0",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -1715,6 +1726,7 @@
         "@codemirror/lang-yaml": "^6.1.3",
         "@codemirror/legacy-modes": "^6.5.3",
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
@@ -1734,6 +1746,7 @@
         "@codemirror/lang-xml",
         "@codemirror/lang-yaml",
         "@codemirror/legacy-modes",
+        "@pyreon/native-compiler",
       ],
     },
     "packages/fundamentals/dnd": {
@@ -2070,6 +2083,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "21.0.3",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/native-compiler": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2077,9 +2091,13 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
+      "optionalPeers": [
+        "@pyreon/native-compiler",
+      ],
     },
     "packages/fundamentals/rx": {
       "name": "@pyreon/rx",

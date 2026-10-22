@@ -40,6 +40,7 @@ import { i18nPlugin } from '../packages/fundamentals/i18n/src/native-plugin/plug
 import { i18nStubs } from '../packages/fundamentals/i18n/src/native-plugin/stubs'
 import { toastPlugin } from '../packages/fundamentals/toast/src/native-plugin/plugin'
 import { toastStubs } from '../packages/fundamentals/toast/src/native-plugin/stubs'
+import { headPlugin } from '../packages/core/head/src/native-plugin/plugin'
 import { a11yPlugin } from '../packages/fundamentals/a11y/src/native-plugin/plugin'
 import { a11yStubs } from '../packages/fundamentals/a11y/src/native-plugin/stubs'
 import { tablePlugin } from '../packages/fundamentals/table/src/native-plugin/plugin'
@@ -65,6 +66,8 @@ import { elementsPlugin } from '../packages/ui-system/elements/src/native-plugin
 import { coolgridPlugin } from '../packages/ui-system/coolgrid/src/native-plugin/plugin'
 import { syncPlugin } from '../packages/fundamentals/sync/src/native-plugin/plugin'
 import { syncStubs } from '../packages/fundamentals/sync/src/native-plugin/stubs'
+import { codePlugin } from '../packages/fundamentals/code/src/native-plugin/plugin'
+import { richTextPlugin } from '../packages/fundamentals/rich-text/src/native-plugin/plugin'
 import { authPlugin } from '../packages/fundamentals/auth/src/native-plugin/plugin'
 import { authStubs } from '../packages/fundamentals/auth/src/native-plugin/stubs'
 
@@ -96,6 +99,7 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   validationPlugin,
   i18nPlugin,
   toastPlugin,
+  headPlugin,
   a11yPlugin,
   tablePlugin,
   dndPlugin,
@@ -112,6 +116,8 @@ export const FIRST_PARTY_PLUGINS: readonly CompilerPlugin[] = Object.freeze([
   kineticPlugin,
   elementsPlugin,
   coolgridPlugin,
+  codePlugin,
+  richTextPlugin,
 ])
 
 /** The compile gates' options with every first-party plugin's stubs appended. */

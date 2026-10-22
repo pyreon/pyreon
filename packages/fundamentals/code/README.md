@@ -217,41 +217,29 @@ Both wrap the SAME CodeMirror 6 engine, so the runtime bench (`bun run --filter=
 
 ## Multiplatform — `@pyreon/code/webview`
 
-`@pyreon/code` is web-only (it wraps CodeMirror 6, which can't compile to SwiftUI/Compose). To ship the editor on iOS/Android too, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge.
-
-CodeMirror 6 is modular ESM (no single UMD like ECharts), so — exactly like `buildChartHostHtml({ echartsScript })` — the app bundles its own `@codemirror/*` and exposes it as a `window.CM` namespace the host drives:
-
-```ts
-// window.CM = { EditorView, EditorState, Compartment, basicSetup, languageFor? }
-// — a ~15-line entry bundling your @codemirror/{view,state} + `codemirror` (+ lang packages).
-import { buildCodeHostHtml } from '@pyreon/code/webview'
-
-// Inline your bundled CM for an offline, App-Store-safe page; or `codemirrorSrc` an asset.
-const CODE_HOST = buildCodeHostHtml({ codemirrorScript: BUNDLED_CM })
-```
-
-Use it with the `<WebView>` primitive (compiles to WKWebView / Android WebView / an `<iframe srcdoc>` on web — same bridge everywhere):
+`@pyreon/code` wraps CodeMirror 6, a DOM editor that can't compile to SwiftUI/Compose. To ship the editor on iOS and Android too, `<CodeWebView>` hosts the SAME CodeMirror inside a native `<WebView>` — one component, the same JSX on every target:
 
 ```tsx
-import { WebView } from '@pyreon/primitives'
+import { CodeWebView } from '@pyreon/code/webview'
 
-<WebView
-  html={CODE_HOST}
-  data={{ value: source(), language: 'javascript', readOnly: locked() }}
-  onMessage={(m) => source.set(JSON.parse(m).value)}   // reverse: user edits post back
+<CodeWebView
+  state={() => ({ value: source(), language: 'typescript', readOnly: locked() })}
+  onChange={(text) => source.set(text)}        // a user edit, as plain text
+  onError={(message) => failure.set(message)}  // CodeMirror missing, a throwing extension
 />
 ```
 
-- **Forward** — `data={{ value, language?, readOnly? }}` → `window.__pyreonData` + a `pyreondata` event → cursor-preserving doc replacement + Compartment reconfigure, in place (no reload).
-- **Reverse** — a user edit → `window.pyreonPostMessage(JSON {value})` → your `onMessage` (loop-guarded against the echo of a value you pushed).
-- **`<CodeWebView state onChange>`** is the web-side ergonomic wrapper (builds the host + emits `<WebView>` for you); on native, use `<WebView html={CODE_HOST} …>` directly (the component body can't be PMTC-lowered — the host string + `<WebView>` can).
+On native the component lowers (through this package's `./native-plugin`) to a `<WebView src="pyreon-code-host.html">`. The page is **built for you**: `pyreon-native assets` bundles it from the CodeMirror installed in your app and the `@codemirror/lang-*` grammars you have, using the `esbuild` or `rolldown` your app already has (a Vite app has one), and only when your source imports `@pyreon/code`. On the web the same component loads the same page (`pyreon-native assets --target=web --out=public`), or hosts your own engine inline:
 
-Proven end-to-end against REAL CodeMirror in `src/webview.browser.test.tsx`. See `examples/native-viz` for a one-source app hosting this editor across web/iOS/Android.
+```tsx
+<CodeWebView state={…} codemirrorScript={BUNDLED_CM} />   // web only; ignored (with a warning) on native
+<CodeWebView state={…} html={MY_PAGE} />                  // a page you built yourself, on every target
+```
 
-## Documentation
+- **Forward** — `state` → `window.__pyreonData` + a `pyreondata` event → cursor-preserving doc replacement and Compartment reconfigure, in place (no reload). Native `data` is re-read when the signals it reads change.
+- **Reverse** — a user edit → `window.pyreonPostMessage('v:' + text)` → `onChange(text)`; a host failure → `'e:' + message` → `onError`. Loop-guarded against the echo of a value you pushed. Plain prefixes rather than JSON so the lowered native handler needs only string operations.
+- **It is a hosted web editor, not a native text view.** WebView startup cost, and no native text-field semantics. `state` must be an object or an accessor returning one; a block-bodied accessor warns and is dropped on native. Every other export of this package (`createEditor`, `CodeEditor`, …) is a DOM API and warns by name on native.
 
-Full docs: [pyreon.dev/docs/code](https://pyreon.dev/docs/code) (or `docs/src/content/docs/code.md` in this repo).
+Lower-level: `buildCodeHostHtml({ codemirrorScript })` builds a page by hand around your own `window.CM = { EditorView, EditorState, Compartment, basicSetup, languageFor? }` bundle.
 
-## License
-
-MIT
+Proven against REAL CodeMirror in `src/webview.browser.test.tsx` (Chromium), the built page in `src/tests/native-plugin-host.test.ts`, and on an iOS simulator and Android emulator by `examples/native-tasks` (boot, native→editor push, keystrokes→native signal).

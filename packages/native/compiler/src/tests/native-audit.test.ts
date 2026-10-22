@@ -25,21 +25,21 @@ describe('auditNative', () => {
   it('flags a web-only-package import in a multiplatform file', () => {
     // NOTE `@pyreon/charts` left the web-only set when its radial components
     // began lowering (nativeFrontend); `@pyreon/flow` followed the same path
-    // once `createFlow` gained a native port (this PR) — `@pyreon/code`
-    // (CodeMirror 6, a genuine DOM editor engine) is the current negative
-    // example. When it too grows a nativeFrontend, swap this fixture again
-    // rather than deleting the case — the SET must always have a real
-    // web-only member to prove the "flags" behavior against.
+    // once `createFlow` gained a native port, and `@pyreon/code` once its
+    // `/webview` bridge gained a plugin — `@pyreon/virtual` (DOM virtualization)
+    // is the current negative example. When it too grows a nativeFrontend, swap
+    // this fixture again rather than deleting the case — the SET must always
+    // have a real web-only member to prove the "flags" behavior against.
     write(
       'src/App.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { CodeEditor } from '@pyreon/code'\nexport function App() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { useVirtualizer } from '@pyreon/virtual'\nexport function App() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.summary.multiplatformFiles).toBe(1)
     const f = r.findings.find((x) => x.code === 'web-only-package-import')
     expect(f).toBeDefined()
-    expect(f!.message).toContain('@pyreon/code')
-    expect(f!.message).toContain('WebView')
+    expect(f!.message).toContain('@pyreon/virtual')
+    expect(f!.message).toContain('LazyColumn')
   })
 
   it('does NOT flag @pyreon/charts — its radial components lower (nativeFrontend)', () => {
@@ -124,10 +124,10 @@ describe('auditNative', () => {
     expect(r.findings).toHaveLength(0)
   })
 
-  it('matches web-only subpath imports (e.g. @pyreon/code/languages)', () => {
+  it('matches web-only subpath imports (e.g. @pyreon/virtual/extra)', () => {
     write(
       'src/Sub.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { x } from '@pyreon/code/languages'\nexport function Sub() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { x } from '@pyreon/virtual/extra'\nexport function Sub() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.findings.some((f) => f.code === 'web-only-package-import')).toBe(true)

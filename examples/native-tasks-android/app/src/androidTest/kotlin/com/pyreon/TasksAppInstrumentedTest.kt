@@ -38,6 +38,11 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performMouseInput
 import org.junit.Assert.assertTrue
+import androidx.test.uiautomator.By
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.semantics.SemanticsActions
@@ -453,6 +458,99 @@ class TasksAppInstrumentedTest {
                         .take(600)
         return "waitForTagText timed out: tag='$tag' expected='$expected' | " +
             before + " | " + now + " | node: " + found + dump
+    }
+
+    /**
+     * The hosted EDITORS on device: `<CodeWebView>` (CodeMirror) and `<RichTextWebView>` (TipTap) lowered to a
+     * `PyreonWebView(src = …)` pointed at pages `pyreon-native assets` built from the app's installed engines
+     * (`file:///android_asset/pyreon-code-host.html`).
+     *
+     * Mirror of `PyreonTasksUITests.test_hostedEditorsRoundTrip` on iOS. Proven here: the page the build produced
+     * loads in the Android WebView and boots the editor (no host failure), a value pushed from native lands in the
+     * editor's DOM, and keystrokes typed into the editor reach a native signal over the `v:` / `c:` channel.
+     */
+    @Test
+    fun hostedEditorsRoundTrip() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-gallery").performClick()
+        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+
+        // ── CodeMirror ───────────────────────────────────────────────────────────────────────────
+        // Typing the login name opened the soft keyboard. A CI emulator shows it (a local one with a hardware keyboard
+        // does not), it covers the lower half of the screen, and a WebView region under it is not in the accessibility
+        // tree — so the editor looked absent although it had rendered. Close it before reading anything.
+        dismissSoftKeyboard(device)
+        composeRule.onNodeWithTag("gal-code-webview").performScrollTo().assertExists()
+        // CodeMirror's content is exposed to accessibility as text once the editor has booted.
+        // The FIRST WebView of a process pays for the WebView implementation's cold start (a native library load plus
+        // dex optimisation) and then parses a ~500 KB editor bundle, so the budget is sized for a cold, software-
+        // rendered CI emulator rather than a warm local one. The message carries what the accessibility tree shows,
+        // because a hang here is otherwise indistinguishable from a page that never loaded.
+        assertTrue(
+            "CodeMirror never rendered the pushed value (failure: ${textOf("gal-code-failure")}; native value: '${textOf("gal-code-value")}'; visible: ${webTexts(device)})",
+            device.wait(Until.hasObject(By.textContains("answer")), 120_000),
+        )
+        assertTrue("the hosted CodeMirror reported a host failure", textOf("gal-code-failure") == "none")
+
+        // FORWARD: replace the value from native; the editor shows it.
+        composeRule.onNodeWithTag("gal-code-replace").performScrollTo().performClick()
+        assertTrue(
+            "the value pushed from native never reached CodeMirror; native says '${textOf("gal-code-value")}'; editor shows: ${webTexts(device)}",
+            device.wait(Until.hasObject(By.textContains("replaced")), 30_000),
+        )
+
+        // REVERSE: type into the editor; the keystrokes reach the native signal.
+        composeRule.onNodeWithTag("gal-code-webview").performScrollTo().performClick()
+        val editsBefore = textOf("gal-code-edits").toIntOrNull() ?: 0
+        device.executeShellCommand("input text QQ")
+        composeRule.waitUntil(timeoutMillis = 15_000) { textOf("gal-code-value").contains("QQ") }
+        assertTrue("the edit counter did not move", (textOf("gal-code-edits").toIntOrNull() ?: 0) > editsBefore)
+
+        // ── TipTap ───────────────────────────────────────────────────────────────────────────────
+        // The typing above reopened the soft keyboard; close it before reading the next editor.
+        dismissSoftKeyboard(device)
+        composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().assertExists()
+        assertTrue(
+            "TipTap never rendered the pushed HTML (failure: ${textOf("gal-rich-failure")}; visible: ${webTexts(device)})",
+            device.wait(Until.hasObject(By.textContains("hosted")), 60_000),
+        )
+        assertTrue("the hosted TipTap reported a host failure", textOf("gal-rich-failure") == "none")
+        composeRule.onNodeWithTag("gal-rich-replace").performScrollTo().performClick()
+        assertTrue(
+            "the HTML pushed from native never reached TipTap; native says '${textOf("gal-rich-value")}'; editor shows: ${webTexts(device)}",
+            device.wait(Until.hasObject(By.textContains("Replaced paragraph")), 30_000),
+        )
+        // A pushed replacement is NOT an edit: it must not echo back through onChange.
+        val richEditsAfterPush = textOf("gal-rich-edits").toIntOrNull() ?: 0
+        composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().performClick()
+        device.executeShellCommand("input text ZZ")
+        composeRule.waitUntil(timeoutMillis = 15_000) { (textOf("gal-rich-edits").toIntOrNull() ?: 0) > richEditsAfterPush }
+    }
+
+    /**
+     * Close the soft keyboard when (and only when) it is showing. An unconditional BACK would navigate away from the
+     * page whenever the keyboard is already hidden, which is the usual state on a local emulator with a hardware
+     * keyboard. Ask the window insets, which report IME visibility the same way on every API level that has them.
+     */
+    private fun dismissSoftKeyboard(device: UiDevice) {
+        val shown = composeRule.runOnUiThread {
+            ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+        if (shown) {
+            device.pressBack()
+            device.waitForIdle()
+        }
+    }
+
+    /** Every text the accessibility tree currently shows, for a failure message (the WebView is opaque to Compose). */
+    private fun webTexts(device: UiDevice): String {
+        val out = java.io.ByteArrayOutputStream()
+        device.dumpWindowHierarchy(out)
+        return Regex("text=\"([^\"]+)\"").findAll(out.toString()).map { it.groupValues[1] }.take(40).joinToString(" | ")
     }
 
     /**

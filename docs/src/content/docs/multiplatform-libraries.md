@@ -53,6 +53,7 @@ Load every owning package used by the source. For example, a form using schema v
 - Attrs, styler and rocketstyle own their factory parsers, definition payloads and JSX rewrites. Generic theme tokens and the native style connector remain compiler operations. Static factory definitions and supported dimension expressions cross; arbitrary CSS callbacks and browser CSSOM behavior do not.
 - UI core owns `PyreonUI` providers. Each provider controls its own scope while the compiler saves and restores scope state.
 - Kinetic owns its factory and transition rewrite. Kinetic-presets owns which exported motion names have a native equivalent. Unsupported presets produce a named diagnostic instead of selecting a different animation.
+- Code and rich-text own the WebView bridge to their editors: `<CodeWebView>` and `<RichTextWebView>` lower to a native `<WebView src>`, and each package builds the page from the app's installed CodeMirror or TipTap (`webHosts`, run by `pyreon-native assets`). The editors themselves are DOM engines and stay web; every other export of those packages warns by name.
 - Charts owns its chart hosts, draw-list integration, typing and target code. The web rendering implementation is not embedded in the native app.
 
 ## Authoring a native plugin
@@ -92,6 +93,7 @@ Choose the seam that matches the source:
 | File-scope declaration, schema or singleton    | `topLevel` and `items`                              |
 | JSX naming a file-scope factory definition     | `items.<type>.element`                              |
 | Imported JSX host or provider                  | `elements` and `scopes`                             |
+| A WebView page the lowered view loads          | `webHosts`                                          |
 | Package expression or receiver chain           | `callExprs`, `exprs`, `receivers`                   |
 
 Factory recognizers can inspect `ModuleParseContext.binding(name)` to distinguish an import alias from a local or foreign binding. They read static theme tokens through `theme`. Item element hooks return ordinary JSX/style IR; the shared backend handles its native rendering. Plugin memory is scoped to one file or component, and an unsupported source shape should report an actionable diagnostic.
@@ -151,15 +153,15 @@ The table below comes from each package manifest. `shared` describes an authorin
 | --- | --- |
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
-| `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine, so the editor itself stays web); the `@pyreon/code/webview` bridge crosses — see nativeFrontend |
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
 | `@pyreon/dnd` | `useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped |
-| `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
+| `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers). |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
 | `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
-| `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
+| `@pyreon/head` | document `<head>` management — a native app has no document, so there is nothing to describe: `useHead(...)` compiles to nothing and `<HeadProvider>` is transparent (so shared source builds); the head context and SSR helpers have no native equivalent |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer, plus the co-located PyreonStream runtime for SSE / NDJSON |
 | `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend |
@@ -169,7 +171,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/loom` | the dependency observatory — dev tooling, not app runtime |
 | `@pyreon/mcp` | the MCP server — dev/AI tooling, not app runtime |
 | `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
-| `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor, so the editor itself stays web); the `@pyreon/rich-text/webview` bridge crosses — see nativeFrontend |
 | `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns) |
 | `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
 | `@pyreon/server` | SSR handler + islands for web deployments; native apps have no server-rendered HTML |
@@ -181,7 +183,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
 | `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
 | `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
-| `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
+| `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows). Native lists are lazy by construction: render the rows with a `<For>` as the ONLY child of a `<Scroll>` (LazyVStack on iOS, LazyColumn on Android) and no virtualizer is needed. Do not nest that `<For>` among other children inside a `<Scroll>`: Compose rejects a lazy list inside a scrolling Column at measure time. |
 | `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |
 | `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
 

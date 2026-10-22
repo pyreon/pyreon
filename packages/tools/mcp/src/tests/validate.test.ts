@@ -76,13 +76,12 @@ describe('MCP validate — native (multiplatform) detector', () => {
     // struct / data class, so flagging one told authors to rewrite code that
     // already worked. A class genuinely does not lower.
     //
-    // `@pyreon/code` rather than `@pyreon/flow`: `createFlow` now crosses to
-    // native (#3295), so `@pyreon/flow` dropped out of `WEB_ONLY_PACKAGES` —
-    // `@pyreon/code` wraps CodeMirror (a DOM editor engine) and stays
-    // durably web-only regardless of any single component's crossing status.
+    // `@pyreon/virtual` rather than `@pyreon/flow` or `@pyreon/code`: `createFlow` crosses to native (#3295) and the
+    // CodeMirror / TipTap editors cross through a hosted WebView, so neither is in `WEB_ONLY_PACKAGES` any more.
+    // `@pyreon/virtual` wraps a DOM scroll virtualizer and has no native lowering.
     const code = `
       import { Stack } from '@pyreon/primitives'
-      import { CodeEditor } from '@pyreon/code'
+      import { useVirtualizer } from '@pyreon/virtual'
       class Todo { id = 1 }
       export function App() { return (<Stack />) }
     `

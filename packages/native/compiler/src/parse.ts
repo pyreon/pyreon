@@ -1265,14 +1265,30 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     // A scoped sub-path import (`@scope/pkg/x`) normalises to the package root.
     const scoped = src.startsWith('@') ? src.split('/') : undefined
     const pkg = scoped !== undefined && scoped.length >= 2 ? `${scoped[0]}/${scoped[1]}` : src
+    // A package already covered at the IMPORT (blanket web-only, or per-export advice) is not tracked for the
+    // call-site warning below — it would double-report.
+    const coveredAtImport =
+      WEB_ONLY_PACKAGES.has(pkg) ||
+      findUnloweredModule(src, UNLOWERED_PYREON_MODULES) !== undefined ||
+      findUnloweredModule(pkg, UNLOWERED_PYREON_MODULES) !== undefined
+    const typeOnlyImport = (node as { importKind?: string }).importKind === 'type'
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
       const imported = spec?.imported?.name
-      if (
-        typeof local === 'string' &&
-        typeof imported === 'string' &&
-        isElementLoweringTag(imported)
+      if (typeof local !== 'string' || typeof imported !== 'string') continue
+      if (isElementLoweringTag(imported)) {
+        map.set(local, { source: pkg, imported })
+      } else if (
+        pkg.startsWith('@pyreon/') &&
+        !coveredAtImport &&
+        !typeOnlyImport &&
+        (spec as { importKind?: string }).importKind !== 'type' &&
+        /^[a-z]/.test(imported) &&
+        // The hook arc (`warnUnloweredPyreonHooks`) already names every unlowered `use*`.
+        !/^use[A-Z]/.test(imported)
       ) {
+        // A value import of a function from a Pyreon package, remembered so the emitters can name it if the call
+        // survives to the verbatim tail (see `verbatimPyreonCallWarning`). Lowered ones never get there.
         map.set(local, { source: pkg, imported })
       }
     }
@@ -3064,7 +3080,37 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     decls.push(...tail)
   }
   ctx.componentDeclRequests.clear()
+  warnLocalShadowsProp(name, props, decls, ctx)
   return { name, props, propsParamName, decls, returnExpr }
+}
+
+/**
+ * A component-level helper, state or computed that shares its name with a PROP.
+ *
+ * Legal JavaScript — the prop lives at `props.edge`, the local at `edge` — and silently wrong natively. The component
+ * becomes a struct / function whose props and locals share ONE namespace: Swift cannot declare `let edge` beside
+ * `func edge()` ("invalid redeclaration"), and Kotlin's parameter and local `val` collide the same way. Nothing said so:
+ * the documented flow custom-edge idiom (`const edge = () => getBezierPath(…)` in a component whose props type has an
+ * `edge` field) compiled to Swift that did not build, with zero warnings. Renaming is the author's call, so name both.
+ */
+function warnLocalShadowsProp(
+  component: string,
+  props: readonly { name: string }[],
+  decls: readonly DeclIR[],
+  ctx: ParseCtx,
+): void {
+  if (props.length === 0) return
+  const propNames = new Set(props.map((p) => p.name))
+  const seen = new Set<string>()
+  for (const d of decls) {
+    if (d.kind !== 'function' && d.kind !== 'signal' && d.kind !== 'computed') continue
+    if (!propNames.has(d.name) || seen.has(d.name)) continue
+    seen.add(d.name)
+    ctx.warnings.push(
+      `Component \`${component}\`: the local \`${d.name}\` has the same name as the prop \`${d.name}\`. Props and locals share one namespace natively, ` +
+        `so the target would declare both under the same name (Swift: "invalid redeclaration"). Rename the local (e.g. \`${d.name}Value\`).`,
+    )
+  }
 }
 
 /**

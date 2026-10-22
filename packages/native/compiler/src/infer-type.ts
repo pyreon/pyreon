@@ -22,7 +22,7 @@ import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './ex
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { pluginItemType, findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
+import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -1344,6 +1344,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'call': {
+      // A plugin-lowered function declares what it returns (`FunctionLowering.returns`). Not when a local of the same name shadows it.
+      if (expr.callee.kind === 'identifier' && !ctx.locals.has(expr.callee.name)) {
+        const returns = findFunctionLowering(expr.callee.name)?.lowering.returns
+        if (returns !== undefined) return returns
+      }
       if (expr.args.length === 0 && expr.callee.kind === 'member' &&
         expr.callee.object.kind === 'identifier' && expr.callee.object.name === ctx.signalReceiver &&
         !ctx.locals.has(expr.callee.object.name)) {
