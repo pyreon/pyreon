@@ -1093,6 +1093,15 @@ export function emitSwift(
   // the typed value from matchPath's [String: String] dict. Runs after
   // _structFieldsToName so a declared-struct structural match resolves
   // to the same name the prop-type emit will use.
+  // Render every component's prop types before any component is emitted (see `_componentSynth`). Slots are skipped:
+  // their parameter types render in the component's own slot handling, as before.
+  _componentSynth = new Map()
+  for (const c of components) {
+    const propSynth: SwiftSynthCtx = { componentName: c.name, structs: [] }
+    const slotNames = new Set((_componentSlotsMap.get(c.name) ?? slotPropsOf(c)).map((sl) => sl.name))
+    for (const p of c.props) if (!slotNames.has(p.name)) swiftType(p.type, propSynth, p.name)
+    _componentSynth.set(c.name, propSynth)
+  }
   _componentParamsInfo = new Map()
   for (const c of components) {
     const paramsProp = c.props.find((p) => p.name === 'params')
@@ -1248,6 +1257,7 @@ export function emitSwift(
   _viewHelpersSwift = new Map()
   _aliasImports = new Map()
   _componentParamsInfo = new Map()
+  _componentSynth = new Map()
   _layoutComponentNames = new Set()
   _structDefs = []
   _serviceBindings = new Map()
@@ -1291,6 +1301,13 @@ let _structDefs: StructIR[] = []
 // per-decl; non-pure seeds; walker-uncovered nodes) warn LOUDLY and keep the
 // old emit, which the residual check guarantees is never silently wrong-er.
 let _siblingSignalSeeds: Map<string, ExprIR> = new Map()
+/**
+ * Each component's struct-synthesis context, created with its PROP types already rendered (see the pre-pass beside
+ * `_componentParamsInfo`). An inline object prop type (`user?: { name: string }`) is registered as `CardUser` here,
+ * before any component is emitted, so an object literal at a call site resolves to it whichever of caller and callee
+ * comes first in the file. The component's own emit reuses this context, so the struct is still declared with it.
+ */
+let _componentSynth: Map<string, SwiftSynthCtx> = new Map()
 /**
  * Signals whose initializer reads a PROP (`signal(props.start)`), mapped to the emitted initial value. A `@State`
  * initializer is a stored-property initializer, which cannot read another member — and a prop IS a member — so these
@@ -1668,7 +1685,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // declarations land ahead of the component struct in the output —
   // Swift doesn't require that ordering at file scope, but it keeps the
   // file readable and byte-mirrors the Kotlin emit's layout.
-  const synth: SwiftSynthCtx = { componentName: c.name, structs: [] }
+  const synth: SwiftSynthCtx = _componentSynth.get(c.name) ?? { componentName: c.name, structs: [] }
   _activeSynth = synth
   // Optional props (`label?: string` → union-with-undefined) emit as
   // `var label: String? = nil` — the explicit `= nil` default is what

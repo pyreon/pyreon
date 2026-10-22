@@ -311,6 +311,11 @@ function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = ta
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
 /** Kotlin twin of emit-swift's `_componentSlotsMap` — see its doc comment. */
 let _componentSlotsMapKotlin: Map<string, SlotProp[]> = new Map()
+/**
+ * Each component's data classes from its PROP types, rendered before any component is emitted — emit-swift's
+ * `_componentSynth` twin. The component's own emit starts from this list, so the classes are still declared with it.
+ */
+let _componentPropClassesKotlin: Map<string, KotlinCtx['synthesizedDataClasses']> = new Map()
 let _activeSlotsKotlin: Map<string, SlotProp> = new Map()
 let _moduleViewHelpersKotlin: Map<string, ViewHelper> = new Map()
 let _viewHelpersKotlin: Map<string, ViewHelper> = new Map()
@@ -810,6 +815,21 @@ export function emitKotlin(
   // component's own prop emit synthesizes via kotlinType →
   // synthesizeDataClassName — both are pure functions of the same
   // inputs, so they agree by construction.
+  // Render every component's prop types before any component is emitted (see `_componentPropClassesKotlin`), and
+  // index each class those props created under its TYPED shape, so an object literal of exactly that shape at a call
+  // site (`<Card user={{ name: 'a' }} />`) resolves to `CardUser` whichever of caller and callee comes first. Only the
+  // typed index: a name-only entry would let a literal of a different field TYPE claim the class.
+  _componentPropClassesKotlin = new Map()
+  for (const c of components) {
+    const propCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
+    const slotNames = new Set((_componentSlotsMapKotlin.get(c.name) ?? slotPropsOf(c)).map((sl) => sl.name))
+    for (const p of c.props) if (!slotNames.has(p.name)) kotlinType(p.type, propCtx, p.name)
+    for (const cls of propCtx.synthesizedDataClasses) {
+      const key = structShapeKey(cls.fields)
+      if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, cls.name)
+    }
+    _componentPropClassesKotlin.set(c.name, propCtx.synthesizedDataClasses)
+  }
   _componentParamsInfoKotlin = new Map()
   for (const c of components) {
     const paramsProp = c.props.find((p) => p.name === 'params')
@@ -924,6 +944,7 @@ export function emitKotlin(
   _jsxFnNames = new Set()
   _aliasImports = new Map()
   _componentParamsInfoKotlin = new Map()
+  _componentPropClassesKotlin = new Map()
   _layoutComponentNames = new Set()
   _serviceBindingsKotlin = new Map()
   _needsKotlinKeepAliveWrapper = false
@@ -1228,7 +1249,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     _moduleItems,
   )
   const ctx: KotlinCtx = {
-    synthesizedDataClasses: [],
+    synthesizedDataClasses: [...(_componentPropClassesKotlin.get(c.name) ?? [])],
     componentName: c.name,
     inferCtx,
   }
