@@ -61,7 +61,6 @@ export function Greeting(props: { title: string; count: number }) {
 | Async, generator or generic component | ⚠️ Warns | Declare a plain `function Comp(props: P)` |
 | `function Comp(props)` (untyped) | ❌ Warning | `Component X has an untyped 'props' parameter — type-annotate it (e.g. function X(props: { title: string }))` — PR #1136. Without annotation, member access (`props.X`) silently drops. |
 | `function Comp({ a, b }: { a: string; b: number })` (destructured) | ✅ Full | Renames and defaults too: `{ title, count: n, size = 'm' }` reads `props.count` for `n` and `props.size ?? 'm'` for `size` |
-| A signal seeded from a prop (`signal(props.start)`) | ❌ Swift does not compile | A `@State` initializer cannot read a prop. Kotlin compiles. Seed from a literal for now |
 | Component with no `return` statement | ❌ Warning | "Component X: no return statement found; skipping." |
 | Component returning a fragment (`<>…</>`) | 🟡 Phase 1+ | Limited — single root element preferred |
 
