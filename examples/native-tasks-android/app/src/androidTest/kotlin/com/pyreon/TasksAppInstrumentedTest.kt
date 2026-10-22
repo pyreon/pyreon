@@ -39,6 +39,8 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performMouseInput
 import org.junit.Assert.assertTrue
 import androidx.test.uiautomator.By
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import androidx.compose.ui.test.SemanticsMatcher
@@ -478,6 +480,10 @@ class TasksAppInstrumentedTest {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
         // ── CodeMirror ───────────────────────────────────────────────────────────────────────────
+        // Typing the login name opened the soft keyboard. A CI emulator shows it (a local one with a hardware keyboard
+        // does not), it covers the lower half of the screen, and a WebView region under it is not in the accessibility
+        // tree — so the editor looked absent although it had rendered. Close it before reading anything.
+        dismissSoftKeyboard(device)
         composeRule.onNodeWithTag("gal-code-webview").performScrollTo().assertExists()
         // CodeMirror's content is exposed to accessibility as text once the editor has booted.
         // The FIRST WebView of a process pays for the WebView implementation's cold start (a native library load plus
@@ -505,10 +511,8 @@ class TasksAppInstrumentedTest {
         assertTrue("the edit counter did not move", (textOf("gal-code-edits").toIntOrNull() ?: 0) > editsBefore)
 
         // ── TipTap ───────────────────────────────────────────────────────────────────────────────
-        // The soft keyboard the typing above opened covers the lower half of the screen, and a WebView region
-        // under it is not in the accessibility tree, so close it before reading the next editor.
-        device.pressBack() // the first BACK only dismisses the keyboard
-        device.waitForIdle()
+        // The typing above reopened the soft keyboard; close it before reading the next editor.
+        dismissSoftKeyboard(device)
         composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().assertExists()
         assertTrue(
             "TipTap never rendered the pushed HTML (failure: ${textOf("gal-rich-failure")}; visible: ${webTexts(device)})",
@@ -525,6 +529,21 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().performClick()
         device.executeShellCommand("input text ZZ")
         composeRule.waitUntil(timeoutMillis = 15_000) { (textOf("gal-rich-edits").toIntOrNull() ?: 0) > richEditsAfterPush }
+    }
+
+    /**
+     * Close the soft keyboard when (and only when) it is showing. An unconditional BACK would navigate away from the
+     * page whenever the keyboard is already hidden, which is the usual state on a local emulator with a hardware
+     * keyboard. Ask the window insets, which report IME visibility the same way on every API level that has them.
+     */
+    private fun dismissSoftKeyboard(device: UiDevice) {
+        val shown = composeRule.runOnUiThread {
+            ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+        if (shown) {
+            device.pressBack()
+            device.waitForIdle()
+        }
     }
 
     /** Every text the accessibility tree currently shows, for a failure message (the WebView is opaque to Compose). */
