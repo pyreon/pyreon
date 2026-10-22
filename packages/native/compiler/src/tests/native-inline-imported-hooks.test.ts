@@ -254,3 +254,49 @@ export type Order = { id: string; customer: Customer }
     expect(transform(q.source, { target: 'swift', filename: q.path }).warnings.join('\n')).toMatch(/The type `Order` imported from '\.\/types' cannot be copied in for native: `Customer` is already declared differently/)
   })
 })
+
+describe('barrels, default exports and aliased exports are followed to the defining module', () => {
+  const COUNTER = `import { signal } from '@pyreon/reactivity'
+export function useCounter(start: number) {
+  const count = signal(start)
+  const increment = () => count.set(count() + 1)
+  return { count, increment }
+}
+`
+  const APP = (imp: string, call: string) => `import { Stack, Text, Button } from '@pyreon/primitives'
+${imp}
+export function App() {
+  const { count, increment } = ${call}(1)
+  return <Stack><Text>{count()}</Text><Button onPress={increment}>+</Button></Stack>
+}
+`
+  const cases: [string, Record<string, string>, string, string][] = [
+    ['a named re-export in a barrel index.ts', { 'hooks/index.ts': "export { useCounter } from './counter'\n", 'hooks/counter.ts': COUNTER }, "import { useCounter } from './hooks'", 'useCounter'],
+    ['`export *` in a barrel', { 'hooks/index.ts': "export * from './counter'\n", 'hooks/counter.ts': COUNTER }, "import { useCounter } from './hooks'", 'useCounter'],
+    ['a barrel two levels deep', { 'lib/index.ts': "export * from './hooks'\n", 'lib/hooks/index.ts': "export { useCounter } from './counter'\n", 'lib/hooks/counter.ts': COUNTER }, "import { useCounter } from './lib'", 'useCounter'],
+    ['a default-exported named hook', { 'counter.ts': COUNTER.replace('export function useCounter', 'export default function useCounter') }, "import useCounter from './counter'", 'useCounter'],
+    ['a default-exported anonymous hook', { 'counter.ts': COUNTER.replace('export function useCounter(start: number)', 'export default function (start: number)') }, "import useCounter from './counter'", 'useCounter'],
+    ['an aliased export', { 'counter.ts': COUNTER.replace('export function useCounter', 'function useInner') + 'export { useInner as useCounter }\n' }, "import { useCounter } from './counter'", 'useCounter'],
+    ['a re-exported default (`export { default as useCounter }`)', { 'hooks.ts': "export { default as useCounter } from './counter'\n", 'counter.ts': COUNTER.replace('export function useCounter', 'export default function useCounter') }, "import { useCounter } from './hooks'", 'useCounter'],
+  ]
+  for (const [what, files, imp, call] of cases) {
+    it(what, () => {
+      const p = project({ 'App.tsx': APP(imp, call), ...files })
+      for (const target of both) {
+        const r = transform(p.source, { target, filename: p.path })
+        expect(r.warnings, target).toEqual([])
+        expect(r.code, target).not.toMatch(/\buseCounter\(/)
+      }
+      expect(inlineCustomHooks(p.source, p.path)!.code).toContain("import { signal } from '@pyreon/reactivity'")
+    })
+  }
+
+  it('a re-export cycle is reported by name, not followed forever', () => {
+    const p = project({
+      'App.tsx': APP("import { useCounter } from './a'", 'useCounter'),
+      'a.ts': "export * from './b'\n",
+      'b.ts': "export * from './a'\n",
+    })
+    expect(transform(p.source, { target: 'swift', filename: p.path }).warnings.join('\n')).toMatch(/useCounter\(\) is a hook imported from another file that cannot be inlined into App/)
+  })
+})

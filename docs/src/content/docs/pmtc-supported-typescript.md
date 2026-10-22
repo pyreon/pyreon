@@ -118,7 +118,8 @@ Each call gets its own state (two `useCounter` calls are two counters), a hook t
 | Async / generator / generic hook, destructured or default parameters | ⚠️ Warns |
 | A hook imported from a relative module (`import { useMe } from './hooks'`) | ✅ Inlined when the calling file is compiled from disk (as `pyreon-native build` does) — its imports are added to the calling file, the types it names are copied, and a hook it calls from another file is inlined too |
 | …that uses a value its own module declares (a module-level `const` or helper) | ⚠️ Warns — native compiles one file at a time, so copying it could duplicate state; move it into a package or pass it in |
-| …compiled from memory, from a file that does not exist, or not exported by name | ⚠️ Warns — the call is never emitted unchanged |
+| …re-exported through a barrel (`export { useMe } from './me'`, `export * from './hooks'`), default-exported, or exported under an alias | ✅ Followed to the module that defines it; its own imports resolve relative to that module |
+| …compiled from memory, from a file that does not exist, not exported, or in a re-export cycle | ⚠️ Warns — the call is never emitted unchanged |
 | A type imported from a relative module (`import type { Order } from './types'`) | ✅ Copied in, with the types it names; a different same-named declaration in the importing file warns |
 
 A function whose name does not start with `use` is a plain helper and keeps the helper path (a top-level native function).

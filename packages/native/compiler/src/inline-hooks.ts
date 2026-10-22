@@ -203,7 +203,8 @@ function inlineOnce(
 function collectHooks(program: Node, source: string): Map<string, HookDef> {
   const out = new Map<string, HookDef>()
   for (const stmt of program.body as Node[]) {
-    const decl = stmt.type === 'ExportNamedDeclaration' && stmt.declaration ? stmt.declaration : stmt
+    const decl =
+      (stmt.type === 'ExportNamedDeclaration' || stmt.type === 'ExportDefaultDeclaration') && stmt.declaration ? stmt.declaration : stmt
     if (decl.type === 'FunctionDeclaration' && decl.id && HOOK_NAME.test(decl.id.name)) {
       out.set(decl.id.name, hookDef(decl.id.name, decl, stmt, source))
     } else if (decl.type === 'VariableDeclaration' && decl.kind === 'const' && decl.declarations.length === 1) {
@@ -491,8 +492,11 @@ function collectImportedHooks(
   const out = new Map<string, HookDef>()
   for (const imp of program.body as Node[]) {
     if (imp.type !== 'ImportDeclaration' || imp.importKind === 'type' || !isRelative(imp.source.value)) continue
+    // `import { useMe }`, `import { useMe as useProfile }`, and a default-imported hook (`import useMe from …`).
     const named = (imp.specifiers as Node[]).filter(
-      (sp) => sp.type === 'ImportSpecifier' && sp.importKind !== 'type' && HOOK_NAME.test(sp.imported.name ?? sp.imported.value),
+      (sp) =>
+        (sp.type === 'ImportSpecifier' && sp.importKind !== 'type' && HOOK_NAME.test(sp.imported.name ?? sp.imported.value)) ||
+        (sp.type === 'ImportDefaultSpecifier' && HOOK_NAME.test(sp.local.name)),
     )
     if (named.length === 0) continue
     const spec = imp.source.value as string
@@ -508,45 +512,102 @@ function collectImportedHooks(
       for (const sp of named) unresolved.set(sp.local.name, `'${spec}' was not found next to this file`)
       continue
     }
-    const parsed = parseSync(mod.path, mod.source, { sourceType: 'module', lang: 'tsx' })
-    if (parsed.errors.length > 0) {
-      for (const sp of named) unresolved.set(sp.local.name, `'${spec}' does not parse`)
-      continue
-    }
-    const modProgram = parsed.program as Node
-    const defs = collectHooks(modProgram, mod.source)
-    const top = moduleTopBindings(modProgram, mod.source, mod.path)
     for (const sp of named) {
-      const importedName = (sp.imported.name ?? sp.imported.value) as string
-      const def = defs.get(importedName)
-      if (!def || !isExported(modProgram, importedName)) {
-        unresolved.set(sp.local.name, `'${spec}' exports no hook named \`${importedName}\` that this compiler can read (a re-export or a default export is not followed)`)
+      const exportName = sp.type === 'ImportDefaultSpecifier' ? 'default' : ((sp.imported.name ?? sp.imported.value) as string)
+      // Follows the module's own export, an aliased export, a named re-export and `export *` — a barrel `index.ts`.
+      const found = findExportedHook(mod.path, mod.source, exportName, readModule, new Set())
+      if ('reason' in found) {
+        unresolved.set(sp.local.name, `'${spec}' ${found.reason}`)
         continue
       }
+      const { def, path } = found
       if (def.refusal) {
         unresolved.set(sp.local.name, def.refusal)
         continue
       }
-      const needs = requirementsOf(def, top, mod.path)
+      const needs = requirementsOf(def, found.top, path)
       if (typeof needs === 'string') {
         unresolved.set(sp.local.name, needs)
         continue
       }
-      out.set(sp.local.name, { ...def, name: sp.local.name, origin: { local: sp.local.name, modulePath: mod.path, ...needs } })
+      out.set(sp.local.name, { ...def, name: sp.local.name, origin: { local: sp.local.name, modulePath: path, ...needs } })
     }
   }
   return out
 }
 
-function isExported(program: Node, name: string): boolean {
-  for (const s of program.body as Node[]) {
-    if (s.type !== 'ExportNamedDeclaration') continue
-    const d = s.declaration
-    if (d?.type === 'FunctionDeclaration' && d.id?.name === name) return true
-    if (d?.type === 'VariableDeclaration' && (d.declarations as Node[]).some((x) => x.id?.name === name)) return true
-    if (!d && !s.source && (s.specifiers as Node[]).some((sp) => (sp.exported.name ?? sp.exported.value) === name && sp.local.name === name)) return true
+const MAX_REEXPORT_DEPTH = 8
+
+interface FoundHook {
+  readonly def: HookDef
+  /** The module that DEFINES the hook — what its requirements and relative imports are resolved against. */
+  readonly path: string
+  readonly top: Map<string, TopBinding>
+}
+
+/**
+ * The hook a module exports as `exportName` (`default` for a default export), following the module's own declaration,
+ * an aliased export (`export { inner as useMe }`), a named re-export (`export { useMe } from './me'`) and `export *` —
+ * so a barrel `index.ts` resolves to the module that actually defines the hook. `seen` stops a re-export cycle.
+ */
+function findExportedHook(
+  path: string,
+  source: string,
+  exportName: string,
+  readModule: (p: string) => string | undefined,
+  seen: Set<string>,
+): FoundHook | { readonly reason: string } {
+  const key = `${path}#${exportName}`
+  if (seen.has(key) || seen.size > MAX_REEXPORT_DEPTH) return { reason: `re-exports \`${exportName}\` in a cycle` }
+  seen.add(key)
+  const parsed = parseSync(path, source, { sourceType: 'module', lang: 'tsx' })
+  if (parsed.errors.length > 0) return { reason: 'does not parse' }
+  const program = parsed.program as Node
+  const defs = collectHooks(program, source)
+  const found = (localName: string): FoundHook | undefined => {
+    const def = defs.get(localName)
+    return def ? { def, path, top: moduleTopBindings(program, source, path) } : undefined
   }
-  return false
+
+  for (const stmt of program.body as Node[]) {
+    if (stmt.type === 'ExportDefaultDeclaration' && exportName === 'default') {
+      const d = stmt.declaration
+      if (d?.type === 'FunctionDeclaration' && d.id) return found(d.id.name) ?? { reason: `default-exports \`${d.id.name}\`, which is not a hook it can inline` }
+      if (d?.type === 'Identifier') return found(d.name) ?? { reason: `default-exports \`${d.name}\`, which is not a hook it can inline` }
+      if (d && (d.type === 'FunctionDeclaration' || d.type === 'ArrowFunctionExpression' || d.type === 'FunctionExpression')) {
+        return { def: hookDef('default', d, stmt, source), path, top: moduleTopBindings(program, source, path) }
+      }
+      return { reason: 'default-exports something that is not a function' }
+    }
+    if (stmt.type !== 'ExportNamedDeclaration') continue
+    const d = stmt.declaration
+    if (exportName !== 'default') {
+      if (d?.type === 'FunctionDeclaration' && d.id?.name === exportName) return found(exportName) ?? { reason: `exports \`${exportName}\`, which is not a hook it can inline` }
+      if (d?.type === 'VariableDeclaration' && (d.declarations as Node[]).some((x) => x.id?.name === exportName)) {
+        return found(exportName) ?? { reason: `exports \`${exportName}\`, which is not a hook it can inline` }
+      }
+    }
+    for (const sp of (stmt.specifiers as Node[] | undefined) ?? []) {
+      if ((sp.exported.name ?? sp.exported.value) !== exportName) continue
+      const local = (sp.local.name ?? sp.local.value) as string
+      if (!stmt.source) return found(local) ?? { reason: `exports \`${exportName}\` as \`${local}\`, which is not a hook it can inline` }
+      // `export { useMe } from './me'` / `export { default as useMe } from './me'`
+      const next = resolveModule(path, stmt.source.value, readModule)
+      if (!next) return { reason: `re-exports \`${exportName}\` from '${stmt.source.value}', which was not found` }
+      return findExportedHook(next.path, next.source, local, readModule, seen)
+    }
+  }
+  // `export * from './x'` never re-exports a default.
+  if (exportName !== 'default') {
+    for (const stmt of program.body as Node[]) {
+      if (stmt.type !== 'ExportAllDeclaration' || stmt.exported) continue
+      const next = resolveModule(path, stmt.source.value, readModule)
+      if (!next) continue
+      const result = findExportedHook(next.path, next.source, exportName, readModule, seen)
+      if (!('reason' in result)) return result
+    }
+  }
+  return { reason: `exports no hook named \`${exportName}\`` }
 }
 
 /** Every top-level name a module binds, and what it is. */
