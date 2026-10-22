@@ -879,7 +879,22 @@ export function _tpl(
  * object and two closures per mount); `<For>` rows and component roots stay on
  * the plain path.
  */
-function remountableTpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
+/**
+ * A `_tpl` item built with the compiler's re-mountable flag. `__dead` is true once
+ * its cleanup has run (its bindings are disposed and the DOM it holds is dead);
+ * a mount boundary that mounts the SAME item again must call `__revive()` first,
+ * or it would re-insert an element nothing updates. Kept here rather than on
+ * core's `NativeItem`: only the template runtime creates and consumes it.
+ */
+export interface RemountableNativeItem extends NativeItem {
+  readonly __dead: boolean
+  __revive(): void
+}
+
+function remountableTpl(
+  html: string,
+  bind: (el: HTMLElement) => (() => void) | null,
+): RemountableNativeItem {
   let current: NativeItem = _tpl(html, bind)
   let dead = false
   const dispose = (): void => {
@@ -911,7 +926,7 @@ function remountableTpl(html: string, bind: (el: HTMLElement) => (() => void) | 
       return (current as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
     },
   }
-  return item as unknown as NativeItem
+  return item as unknown as RemountableNativeItem
 }
 
 /**

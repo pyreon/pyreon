@@ -115,15 +115,6 @@ export interface NativeItem {
   readonly __isNative: true
   el: HTMLElement
   cleanup: (() => void) | null
-  /**
-   * Set only on a RE-MOUNTABLE item (a compiled template emitted as a component
-   * child, `_tpl(html, bind, 1)`). True once its cleanup has run, i.e. its
-   * bindings are disposed and the DOM it holds is dead. A mount boundary that
-   * re-mounts the same item (`<Show>` re-showing, a `when` that re-runs) must
-   * call `__revive()` first or it would re-insert an element nothing updates.
-   */
-  readonly __dead?: boolean
-  __revive?: () => void
 }
 
 export interface LifecycleHooks {
