@@ -23,11 +23,13 @@ function fixture(expected: number, extraSource = '', after = '') {
   writeFileSync(join(root, 'package.json'), '{"type":"module","private":true}')
   writeFileSync(
     join(root, 'vitest.config.mjs'),
-    // `cacheDir` is per-fixture on purpose. `node_modules` here is a symlink to the REPO's, and Vitest's default cache
-    // lives inside it — so this child shares (and on startup cleans) one cache directory with every other Vitest
-    // running on the repo, which dies with `ENOTEMPTY: rmdir node_modules/.vitest-cache` when another run writes
-    // into it mid-clean. Seen in the pre-push wall as an intermittent "unparseable" verdict on this spec.
-    `export default { cacheDir: './.vitest-cache', test: {
+    // `fsModuleCachePath` is per-fixture on purpose. `node_modules` here is a symlink to the REPO's, and Vitest keeps
+    // its module cache at `<workspace root>/node_modules/.vitest-cache` by default (NOT under Vite's `cacheDir`) — so
+    // this child shares, and on startup cleans, one directory with every other Vitest running on the repo, and dies
+    // with `ENOTEMPTY: rmdir node_modules/.vitest-cache` when another run writes into it mid-clean. Seen in the
+    // pre-push wall as an intermittent "unparseable" verdict on this spec.
+    `export default { test: {
+    fsModuleCachePath: ${JSON.stringify(join(root, '.vitest-cache'))},
     globals: true, include: ['src/*.test.js'], maxWorkers: 1,
     coverage: { provider: 'v8', include: ['src/value.js'], thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 } }
   } }`,
