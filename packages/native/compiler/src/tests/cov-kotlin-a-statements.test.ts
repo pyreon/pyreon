@@ -166,15 +166,13 @@ describe('Kotlin statements: do-while and switch', () => {
 // Kotlin quirk — and both are a hard call-site error, since neither
 // language widens Int→Double implicitly.
 //
-// FIX: apply the same integral-literal-under-a-Double-annotation branch in
-// `emitKotlinDecl`'s value arm (and its `emitSwiftDecl` twin) — ideally by
-// extracting the predicate the statement arm already uses, so the two
-// scopes cannot disagree again.
-//
-// This spec passes the moment the component-scope emit matches; delete the
-// `.fails` then.
+// FIXED (#3956), not by patching each emit arm but at the class: the shared
+// pass in `contextual-double-literals.ts` flags an integer literal wherever a
+// Double is declared or required, so the component-scope declaration, the
+// body-scope statement, a module const, a return and a call argument can no
+// longer disagree. Both targets, since the defect was never Kotlin's alone.
 describe('Kotlin decls: a `Double` annotation at COMPONENT scope', () => {
-  it.fails('KNOWN BUG: an integral literal under a Double annotation emits an Int at component scope', () => {
+  it('an integral literal under a Double annotation emits a Double at component scope', () => {
     const out = transform(
       `import { Stack, Text, Press } from '@pyreon/primitives'
 function takesD(d: Double): Double { return d * 2 }

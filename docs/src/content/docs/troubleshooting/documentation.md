@@ -114,6 +114,12 @@ A component's sole child is memoized by `_lc`, so `<Show>`'s accessor can return
 
 ---
 
+### An integer literal in a position that EXPECTS a Double is an Int unless something says otherwise
+
+(PMTC, #3956): Kotlin never coerces an integer literal into a `Double`, and Swift drops a local's annotation, so `const ZERO: Double = 0`, `const MARKS: Double[] = [0, 1]`, `function zero(): Double { return 0 }`, `half(0)` and `half(geo.latitude ?? 0)` each failed one target or both. The issue named two spellings; probing showed every position that names a Double, so the fix is the RULE, not the spelling. `contextual-double-literals.ts` runs after the other float passes and sets `float` on an integer literal wherever a Double is declared or required (module/local/signal initializers, returns, call arguments to a known function, parameter defaults, and the partner of a `??`/`||` whose other side infers Double); `Double` is read by NAME (`type Double = number` is the documented alias) as well as inferred. Locked by `native-contextual-double-literals.test.ts`, compiled with the real `kotlinc`/`swiftc` and bisect-verified (removing the one call reproduces the issue's exact Kotlin errors). An Int context must stay an Int: the control specs keep the pass from widening every number.
+
+---
+
 ### A code generator must typecheck and run its output
 
 String assertions only prove the emitter agrees with itself. `@pyreon/lathe`'s first pass had six bugs its unit suite missed: an `Infer` import that makes PMTC reject a native module; the response generic on `.query<T>()` instead of `useQuery<T>`; no `schema: standardSchema` on the client (so `@pyreon/http` rejects a 200 at runtime); `{ response }` emitted only for bare `$ref`; `x?: T` where the schema infers `x?: T | undefined` under `exactOptionalPropertyTypes`; mock fixtures with a wrong field, imported from the package root.

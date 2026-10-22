@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { widenLiteralsInDoubleContexts } from './contextual-double-literals'
 import { forEachExpr } from './expr-walk'
 import { CORE_LOWERED_SURFACE, PLUGIN_OWNED_MODULES } from './plugin-packages'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
@@ -643,6 +644,15 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // type still can't be determined is warned + dropped (never a broken emit).
   refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
   for (const helper of ctx.helperFns) helperReturnSeed.set(helper.name, helper.returnType)
+
+  // Last of the float passes: a Double the declarations and signatures now agree
+  // on reaches the integer literals sitting in those positions (see the module).
+  widenLiteralsInDoubleContexts({
+    components,
+    helperFns: ctx.helperFns,
+    moduleDecls,
+    inferenceCtx: (c) => (c === null ? defaultCtx : componentCtx(c)),
+  })
 
   // Items plugins synthesized outside a declaration, then each plugin's last pass over the whole list.
   moduleItems.push(...ctx.lateModuleItems)
