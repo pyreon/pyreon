@@ -444,6 +444,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Registered element lowerings intercept ONLY a tag imported from
   // its expected @pyreon package (not a same-named user component).
   const aliasImports = collectAliasImports(ast.program.body as AnyNode[])
+  const typeImports = collectPyreonTypeImports(ast.program.body as AnyNode[])
   // Pre-pass: parse the app's `defineTheme({ … })` so the styler + rocketstyle
   // native frontends resolve `t.color.primary` to the APP's real token value
   // (not a hardcoded default), regardless of whether the theme is declared
@@ -658,6 +659,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     moduleDecls,
     moduleItems,
     aliasImports,
+    typeImports,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
@@ -1249,6 +1251,30 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
  *  so a plugin's tags get the same import guard with no edit here. */
 
 /**
+ * Types explicitly imported from a `@pyreon/*` package, by local name: `import type { X } from '@pyreon/y'` and
+ * `import { type X } from '@pyreon/y'`. Only the explicit forms count — an ordinary `import { X }` of a capitalised name
+ * is far more often a component or a value, and guessing would flag working code.
+ */
+function collectPyreonTypeImports(body: AnyNode[]): Map<string, { source: string; imported: string }> {
+  const map = new Map<string, { source: string; imported: string }>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const src = node.source?.value
+    if (typeof src !== 'string' || !src.startsWith('@pyreon/')) continue
+    const scoped = src.split('/')
+    const pkg = scoped.length >= 2 ? `${scoped[0]}/${scoped[1]}` : src
+    const whole = (node as { importKind?: string }).importKind === 'type'
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      const local = spec?.local?.name
+      const imported = spec?.imported?.name
+      if (typeof local !== 'string' || typeof imported !== 'string') continue
+      if (whole || (spec as { importKind?: string }).importKind === 'type') map.set(local, { source: pkg, imported })
+    }
+  }
+  return map
+}
+
+/**
  * Collect each local name with its source package and original imported name.
  * emit uses it to intercept `<Element>` / `<Row>` / … ONLY when the tag is
  * imported from its expected package, so a user component that happens to
@@ -1265,12 +1291,24 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
     // A scoped sub-path import (`@scope/pkg/x`) normalises to the package root.
     const scoped = src.startsWith('@') ? src.split('/') : undefined
     const pkg = scoped !== undefined && scoped.length >= 2 ? `${scoped[0]}/${scoped[1]}` : src
-    // A package already covered at the IMPORT (blanket web-only, or per-export advice) is not tracked for the
-    // call-site warning below — it would double-report.
-    const coveredAtImport =
-      WEB_ONLY_PACKAGES.has(pkg) ||
-      findUnloweredModule(src, UNLOWERED_PYREON_MODULES) !== undefined ||
-      findUnloweredModule(pkg, UNLOWERED_PYREON_MODULES) !== undefined
+    // An export already covered at the IMPORT is not tracked for the call-site warning below — it would double-report.
+    // That is decided PER EXPORT, mirroring the import-level loop in `warnUnloweredPyreonImports`: a blanket web-only
+    // package covers all of its exports, but a module with per-export advice covers only the exports that loop warns
+    // on. A module that lists `unsupported` (core, reactivity — where listing what DOES lower would be most of the
+    // public surface) warns ONLY those names, so every other export is judged by what the emitter actually produced.
+    // Treating the whole module as covered left `isClient`, `getCurrentScope`, `createRef`… with no warning at all.
+    const unloweredEntry =
+      findUnloweredModule(src, UNLOWERED_PYREON_MODULES) ?? findUnloweredModule(pkg, UNLOWERED_PYREON_MODULES)
+    const warnedAtImport = (imported: string): boolean => {
+      if (WEB_ONLY_PACKAGES.has(pkg)) return true
+      if (unloweredEntry === undefined) return false
+      // Exports the module says DO lower are handled by their lowering, whose output may legitimately contain the same
+      // spelling (`model(…)`, `line(…)`); judging them by survival would flag working code.
+      if (unloweredEntry.supported?.has(imported)) return true
+      if (unloweredEntry.dropped?.has(imported) === true) return true
+      if (unloweredEntry.unsupported !== undefined) return unloweredEntry.unsupported.has(imported)
+      return true
+    }
     const typeOnlyImport = (node as { importKind?: string }).importKind === 'type'
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
@@ -1280,7 +1318,7 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
         map.set(local, { source: pkg, imported })
       } else if (
         pkg.startsWith('@pyreon/') &&
-        !coveredAtImport &&
+        !warnedAtImport(imported) &&
         !typeOnlyImport &&
         (spec as { importKind?: string }).importKind !== 'type' &&
         /^[a-z]/.test(imported) &&

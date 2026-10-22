@@ -123,6 +123,84 @@ describe('withVerdictCache', () => {
     expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toEqual([])
   })
 
+  it('classifies an exit code above 128 (death by signal under a wrapper script) as TRANSIENT', () => {
+    // kotlinc is a shell script around the JVM: when the JVM is OOM-killed the wrapper exits 137 with no signal.
+    for (const status of [129, 134, 137, 139, 143, 192]) {
+      expect(isTransientProcessFailure({ status, signal: null }), `exit ${status}`).toBe(true)
+    }
+    // A compiler's own verdicts are small exit codes, and a missing command is 127: those are judgements.
+    for (const status of [1, 2, 3, 127, 128]) {
+      expect(isTransientProcessFailure({ status, signal: null }), `exit ${status}`).toBe(false)
+    }
+  })
+
+  it('does NOT cache a wrapper-script kill (exit 137), so it cannot poison later runs', () => {
+    let calls = 0
+    const run = (): { ok: boolean; error: string; transient: boolean } => {
+      calls++
+      return { ok: false, error: 'kotlinc: line 102: 35795 Killed: 9', transient: isTransientProcessFailure({ status: 137, signal: null }) }
+    }
+    withVerdictCache('kotlin', 'v', 's', 'src', run)
+    withVerdictCache('kotlin', 'v', 's', 'src', run)
+    expect(calls).toBe(2)
+    expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toEqual([])
+  })
+
+  it('evicts an ALREADY-STORED wrapper-kill rejection, even one written as a classified (v: 2) entry', () => {
+    const key = cacheKey('kotlin', 'v', 's', 'src')
+    writeFileSync(
+      join(dir, `${key}.json`),
+      JSON.stringify({ v: 2, ok: false, error: '/opt/kotlin/bin/kotlinc: line 102: 35795 Killed: 9   "${JAVACMD:=java}"' }),
+      'utf8',
+    )
+    let calls = 0
+    const result = withVerdictCache('kotlin', 'v', 's', 'src', () => {
+      calls++
+      return { ok: true }
+    })
+    expect(result.ok).toBe(true)
+    expect(calls).toBe(1)
+  })
+
+  it('classifies the swiftc DRIVER\'s "failed due to signal" notice as transient even though it exits 1', () => {
+    const killed = { status: 1, signal: null, stderr: 'error: compile command failed due to signal 15 (use -v to see invocation)' }
+    expect(isTransientProcessFailure(killed)).toBe(true)
+    expect(isTransientProcessFailure({ status: 1, signal: null, message: 'Command failed\nerror: compile command failed due to signal 9' })).toBe(true)
+    // An ordinary rejection of the same exit status is a verdict.
+    expect(isTransientProcessFailure({ status: 1, signal: null, stderr: "Input.swift:3:5: error: cannot find 'x' in scope" })).toBe(false)
+  })
+
+  it('evicts a stored swiftc driver kill notice', () => {
+    const key = cacheKey('swift-stubs', 'v', 's', 'src')
+    writeFileSync(
+      join(dir, `${key}.json`),
+      JSON.stringify({ v: 2, ok: false, error: 'error: compile command failed due to signal 15 (use -v to see invocation)' }),
+      'utf8',
+    )
+    let calls = 0
+    const result = withVerdictCache('swift-stubs', 'v', 's', 'src', () => {
+      calls++
+      return { ok: true }
+    })
+    expect(result.ok).toBe(true)
+    expect(calls).toBe(1)
+  })
+
+  it('still KEEPS a real rejection whose diagnostic merely contains the word "Killed"', () => {
+    // The guard matches a shell's `<pid> Killed` notice, not the word: a user identifier or a message is not a kill.
+    const error = "e: input.kt:3:5 Unresolved reference: Killed"
+    const key = cacheKey('kotlin', 'v', 's', 'src')
+    writeFileSync(join(dir, `${key}.json`), JSON.stringify({ v: 2, ok: false, error }), 'utf8')
+    let calls = 0
+    const result = withVerdictCache('kotlin', 'v', 's', 'src', () => {
+      calls++
+      return { ok: true }
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe(error)
+    expect(calls).toBe(0)
+  })
+
   it('evicts a LEGACY cached failure whose provenance is unknown', () => {
     // Written before failures were classified, and its text is not compiler
     // output — it could be a cached ENOENT. Derive a fresh verdict.

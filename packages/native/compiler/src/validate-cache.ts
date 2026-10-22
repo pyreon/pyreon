@@ -70,8 +70,15 @@ interface CachedVerdict {
  *   killed         → { status: null, signal: 'SIGKILL', code: undefined }
  *   spawn failure  → { status: null, signal: null,      code: 'ENOENT'   }
  *   timeout        → { status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' }
+ *   killed UNDER A WRAPPER SCRIPT → { status: 137, signal: null, code: undefined }
  *
- * Only the first is a judgement about the source. The classification is
+ * The last shape is easy to miss and is why exit codes above 128 count. `kotlinc` is a shell script that launches the
+ * JVM; when the OOM killer takes the JVM the wrapper survives and exits 128 + 9 with no signal of its own, so it looks
+ * like an ordinary non-zero exit. A compiler does not exit that way on a verdict (it exits 1 or 2), so 129..192 is the
+ * shell convention for "died from signal N" and is treated as the compiler never having answered. Caching it served
+ * a phantom rejection to every later run until the cache was cleared.
+ *
+ * Only a plain non-zero exit is a judgement about the source. The classification is
  * structural — it never inspects diagnostic text, which a compiler is free to
  * reword between versions.
  */
@@ -79,9 +86,14 @@ export function isTransientProcessFailure(err: unknown): boolean {
   if (err === null || typeof err !== 'object') return true
   const e = err as { status?: unknown; signal?: unknown; code?: unknown }
   if (typeof e.status !== 'number') return true
+  if (e.status > 128 && e.status <= 192) return true
   if (e.signal !== null && e.signal !== undefined) return true
   if (typeof e.code === 'string') return true
-  return false
+  // The swiftc driver exits 1 even when its child compiler was killed, so the only signal is its own message.
+  const text = [(err as { message?: unknown }).message, (err as { stderr?: unknown }).stderr]
+    .map((part) => (typeof part === 'string' ? part : part !== null && part !== undefined ? String(part) : ''))
+    .join('\n')
+  return KILL_NOTICE.test(text)
 }
 
 /**
@@ -94,6 +106,29 @@ export function isTransientProcessFailure(err: unknown): boolean {
  */
 function legacyRejectionIsCompilerOutput(error: string): boolean {
   return /(^|\n)e: |(^|[\s:])error: /.test(error)
+}
+
+/**
+ * The text a toolchain prints when a process under it was killed. Two distinct emitters, neither of which the exit
+ * status can distinguish from a verdict:
+ *
+ *   - a shell wrapper's job notice — `kotlinc: line 102: 35795 Killed: 9` (also `Terminated`, `Segmentation fault`)
+ *   - the swiftc DRIVER, which exits an ordinary 1 and says `error: compile command failed due to signal 15` when the
+ *     compiler process it spawned was killed
+ *
+ * Both are the OS or a runner cap ending the compile, not the source being wrong. Matching exact phrases from the
+ * toolchains' own crash reporting is the one place the classifier reads text: there is no structural alternative, and a
+ * source diagnostic cannot contain these (they are not rendered from user code).
+ */
+const KILL_NOTICE =
+  /(^|\s)\d+\s+(Killed|Terminated|Aborted|Segmentation fault)\b|compile command failed due to signal \d+/
+
+/**
+ * A STORED rejection whose text is a kill notice. Entries written before kills were recognised are poisoned this way
+ * and would otherwise be served forever, in a local cache and in a CI-restored one alike; they read as a miss.
+ */
+function rejectionIsWrapperKill(error: string): boolean {
+  return KILL_NOTICE.test(error)
 }
 
 /** Which validator produced the verdict. Two validators can disagree about
@@ -264,7 +299,9 @@ function readDisk(key: string): CachedVerdict | undefined {
         // A classified rejection, or a legacy one whose text proves the
         // compiler wrote it. Anything else predates classification and could
         // be a cached ENOENT/timeout — evict it and derive a fresh verdict.
-        if (v.v === 2 || legacyRejectionIsCompilerOutput(v.error)) {
+        if (rejectionIsWrapperKill(v.error)) {
+          // A cached kill is not a verdict: evict it and derive a fresh one.
+        } else if (v.v === 2 || legacyRejectionIsCompilerOutput(v.error)) {
           return { v: 2, ok: false, error: v.error }
         }
       }
