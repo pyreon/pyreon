@@ -185,7 +185,10 @@ describe('RichTextWebView bridge (real TipTap in a real iframe)', () => {
     const content = signal(para('wrapped draft'))
     const edits: unknown[] = []
     const { container, unmount } = mountInBrowser(
-      h(RichTextWebView as never, { state: () => ({ content: content() }), onChange: (c: unknown) => edits.push(c) }),
+      // `html: HOST` is the page the component used to build for itself when given nothing. With nothing given it now
+      // loads the conventionally named page `pyreon-native assets` produces (the same on every target), which does not
+      // exist in this test, so the host is supplied explicitly. The default-`src` choice is asserted in `webview.test.ts`.
+      h(RichTextWebView as never, { html: HOST, state: () => ({ content: content() }), onChange: (c: unknown) => edits.push(c) }),
     )
     container.style.width = '400px'
     container.style.height = '240px'
