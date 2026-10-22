@@ -101,10 +101,15 @@ public final class PyreonClipboard {
         copied = true
         self.text = text
         resetTask?.cancel()
-        resetTask = _Concurrency.Task { [weak self] in
+        // The task itself runs on the main actor: `Task.sleep` suspends without
+        // blocking it, and the flag write needs no second hop. The previous
+        // `MainActor.run { self?.copied = false }` captured the weak `self` var in
+        // a concurrently-executing closure — a warning on every iOS build, and an
+        // error in the Swift 6 language mode.
+        resetTask = _Concurrency.Task { @MainActor [weak self] in
             try? await _Concurrency.Task.sleep(nanoseconds: 2_000_000_000)
             if _Concurrency.Task.isCancelled { return }
-            await MainActor.run { self?.copied = false }
+            self?.copied = false
         }
     }
 
