@@ -28,7 +28,9 @@ function resolve(timeoutFlavor: 'gnu' | 'uutils', withGnutimeout: boolean): stri
   stub('timeout', timeoutFlavor === 'gnu' ? 'timeout (GNU coreutils) 9.4' : 'timeout (uutils coreutils) 0.10.0')
   if (withGnutimeout) stub('gnutimeout', 'timeout (GNU coreutils) 9.7')
   const r = spawnSync('/bin/bash', [RESOLVER, '--signal=KILL', '10m', 'bun', 'install'], {
-    env: { PATH: `${bin}:/usr/bin:/bin` },
+    // ONLY the stubs: a runner image that ships a real `gnutimeout` in /usr/bin (Ubuntu 26.04 does) would otherwise
+    // satisfy the "no GNU timeout" case. The resolver uses only shell builtins, and the stubs' shebang needs no PATH.
+    env: { PATH: bin },
     encoding: 'utf8',
   })
   expect(r.status).toBe(0)
