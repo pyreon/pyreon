@@ -24,6 +24,13 @@ import { pathToFileURL } from 'node:url'
 import { discoverPlugins } from './discover-plugins'
 import { nearestPackageDir } from './native-sources'
 import { explainReport, pluginsReport } from './plugin-commands'
+import {
+  createAndroidPlatform,
+  createIosPlatform,
+  runDevLoop,
+  sourceDirError,
+  spawnRunner,
+} from './dev'
 
 interface ParsedArgs {
   command: string
@@ -56,6 +63,12 @@ interface ParsedArgs {
   /** `wire` only: write the Android srcDirs list to this file. */
   androidOut?: string
   iosOut?: string
+  /** `dev` only: one build-install-launch cycle, then exit. */
+  once?: boolean
+  /** `dev` only: simulator name/udid or adb serial. */
+  device?: string
+  /** `dev` only: poll interval in ms. */
+  interval?: number
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -80,6 +93,10 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (a === '--no-plugins') {
       out.noPlugins = true
+      continue
+    }
+    if (a === '--once') {
+      out.once = true
       continue
     }
     if (a === '--verify') {
@@ -117,6 +134,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'app') out.app = value
     else if (key === 'android-out') out.androidOut = value
     else if (key === 'ios-out') out.iosOut = value
+    else if (key === 'device') out.device = value
+    else if (key === 'interval') out.interval = Number(value)
   }
   return out
 }
@@ -137,9 +156,18 @@ Usage:
   pyreon-native check  --lsp   (stdio LSP server — editor diagnostics)
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
   pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
+  pyreon-native dev    --target=<ios|android> [--app=<dir>] [--source=<dir>] [--device=<name|id>] [--once]
   pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
   pyreon-native plugins [--app=<dir>] [--verify]
   pyreon-native explain <file.tsx> [--app=<dir>] [--no-plugins]
+
+dev is the on-device edit loop: it watches the source, compiles it in memory
+(warnings in milliseconds), and on a real change runs an incremental
+xcodebuild / gradle build, installs it on the booted simulator / emulator and
+relaunches the app. It skips the native build when the emitted Swift / Kotlin
+is unchanged, and keeps going after a failed build. This is a rebuild loop, not
+hot reload — the app restarts and in-memory state resets. --once runs a single
+build-install-launch cycle and exits (use it to prepare a device for E2E).
 
 check is the fast authoring-loop command: it runs the PMTC compiler for
 both targets IN MEMORY (no build, no xcodegen/gradle, no file writes) and
@@ -239,6 +267,7 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
   if (parsed.command === 'explain') {
     return printReport(await runExplain(parsed, appDir))
   }
+  if (parsed.command === 'dev') return runDev(parsed, appDir)
   const discovering =
     ['build', 'check'].includes(parsed.command) &&
     !parsed.noPlugins &&
@@ -264,6 +293,58 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
     )
   } catch (error) {
     console.error(`[pyreon-native] plugin setup failed: ${error instanceof Error ? error.message : String(error)}`)
+    return 2
+  }
+}
+
+async function runDev(parsed: ParsedArgs, appDir: string): Promise<number> {
+  const target = parsed.rawTarget
+  if (target !== 'ios' && target !== 'android') {
+    console.error('error: dev --target must be ios | android')
+    printUsage()
+    return 1
+  }
+  const sourceDir = resolve(parsed.source ?? join(appDir, 'src'))
+  const sourceProblem = sourceDirError(sourceDir)
+  if (sourceProblem) {
+    console.error(`error: ${sourceProblem}`)
+    return 1
+  }
+  const platform =
+    target === 'ios'
+      ? createIosPlatform(appDir, spawnRunner, parsed.device)
+      : createAndroidPlatform(appDir, spawnRunner, parsed.device)
+  if ('error' in platform) {
+    console.error(`error: ${platform.error}`)
+    return 1
+  }
+  try {
+    const plugins: CompilerPlugin[] = []
+    for (const path of parsed.plugins ?? []) {
+      plugins.push((await import(pathToFileURL(resolve(path)).href)).default)
+    }
+    const discovered = parsed.noPlugins ? [] : await discoverPlugins(appDir, sourceDir)
+    const compiler =
+      plugins.length > 0 || discovered.length > 0
+        ? createCompiler({ plugins, discovered: discovered.map((d) => d.plugin) })
+        : undefined
+    const controller = new AbortController()
+    process.once('SIGINT', () => controller.abort())
+    const summary = await runDevLoop({
+      appDir,
+      sourceDir,
+      target: target === 'ios' ? 'swift' : 'kotlin',
+      platform,
+      run: spawnRunner,
+      compiler,
+      once: parsed.once === true,
+      ...(parsed.interval !== undefined && Number.isFinite(parsed.interval) ? { intervalMs: parsed.interval } : {}),
+      signal: controller.signal,
+    })
+    // --once is a gate: a failed cycle must fail the command.
+    return parsed.once === true && (summary.failures > 0 || summary.builds === 0) ? 2 : 0
+  } catch (error) {
+    console.error(`[pyreon-native] dev failed: ${error instanceof Error ? error.message : String(error)}`)
     return 2
   }
 }

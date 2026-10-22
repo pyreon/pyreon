@@ -109,7 +109,7 @@ For anything not on this list, `useNativeModule('Name')` calls a Swift or Kotlin
 - **Over-the-air updates.** There is no EAS Update equivalent: native logic is compiled. Ship fixes through the stores, or move volatile content into data or a [WebView island](/docs/multiplatform-libraries).
 - **Arbitrary npm packages.** The compiler lowers your component *source*, not npm packages. A package runs on native only if it is pure reactive logic the compiler recognizes or has a native runtime — see [PMTC Library Status & Authoring](/docs/multiplatform-libraries).
 - **Arbitrary JavaScript.** Outside the declarative subset (signals, typed props, the primitives, `<For>`/`<Show>`, the supported hooks) the compiler emits a *named* warning. Check output with the native CLI's `check` command during development.
-- **Fast Refresh on native.** Web has hot reload; native changes rebuild the app.
+- **Fast Refresh on native.** Web has hot reload; native changes rebuild the app. [`pyreon-native dev`](/docs/native-dev-loop) automates the rebuild-reinstall-relaunch loop.
 - **Reanimated / Skia.** Animation on native is the platform's own, via `<Transition>`; there is no worklet or canvas-drawing equivalent.
 
 ## A migration path that works
