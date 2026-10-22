@@ -201,7 +201,13 @@ export function isViewShaped(e: ExprIR): boolean {
 export interface ViewHelper {
   name: string
   params: { name: string; type: TypeIR }[]
+  /** The view an expression-bodied helper returns; for a block-bodied one, its first view. */
   body: ExprIR
+  /**
+   * A BLOCK-bodied helper's planned body (`const` locals, early-return `if`s, a final view — see `planViewBlock`),
+   * lowered by the same view-block emitters a block-bodied render callback uses. Absent for an expression body.
+   */
+  block?: ViewBlock
 }
 
 /**
@@ -217,20 +223,50 @@ function isHelperParamType(t: TypeIR): boolean {
 /** A component-scope `const renderX = (u: T) => <…/>` / `function renderX(u: T) { return <…/> }`. */
 export function viewHelperFromDecl(d: DeclIR): ViewHelper | null {
   if (d.kind !== 'function') return null
-  if (d.body.length !== 1) return null
-  const only = d.body[0]!
-  if (only.kind !== 'return' || only.expr === undefined) return null
-  if (!isViewShaped(only.expr)) return null
   if (d.params.some((p) => !isHelperParamType(p.type) || p.defaultValue !== undefined)) return null
-  return { name: d.name, params: d.params.map((p) => ({ name: p.name, type: p.type })), body: only.expr }
+  const params = d.params.map((p) => ({ name: p.name, type: p.type }))
+  const only = d.body.length === 1 ? d.body[0]! : undefined
+  if (only?.kind === 'return' && only.expr !== undefined) {
+    return isViewShaped(only.expr) ? { name: d.name, params, body: only.expr } : null
+  }
+  return blockViewHelper(d.name, params, d.body)
+}
+
+/**
+ * A view helper with a BLOCK body — `const Row = (x: number) => { const label = …; return <Text>{label}</Text> }`.
+ * It lowers when the body has a view-builder shape (`planViewBlock`) and reaches a view; anything else stays a plain
+ * function, and the caller names it.
+ */
+function blockViewHelper(
+  name: string,
+  params: { name: string; type: TypeIR }[],
+  stmts: readonly StatementIR[],
+): ViewHelper | null {
+  if (!returnsJsx(stmts)) return null
+  const block = planViewBlock(stmts)
+  if (block === null) return null
+  const first = viewBlockViews(block)[0]
+  return first === undefined ? null : { name, params, body: first, block }
+}
+
+/** Apply `f` to every expression of a planned view block. */
+export function mapViewBlock(b: ViewBlock, f: (e: ExprIR) => ExprIR): ViewBlock {
+  switch (b.kind) {
+    case 'let':
+      return { kind: 'let', stmt: { ...b.stmt, expr: f(b.stmt.expr) }, rest: mapViewBlock(b.rest, f) }
+    case 'if':
+      return { kind: 'if', cond: f(b.cond), then: mapViewBlock(b.then, f), otherwise: mapViewBlock(b.otherwise, f) }
+    case 'view':
+      return { kind: 'view', expr: f(b.expr) }
+    case 'empty':
+      return b
+  }
 }
 
 /** A file-scope `const renderX = (u: T) => <…/>`. */
 export function viewHelperFromModuleDecl(md: ModuleDeclIR): ViewHelper | null {
   const init = md.initial
   if (md.mutable || init.kind !== 'arrow') return null
-  if (init.stmts !== undefined && init.stmts.length > 0) return null
-  if (!isViewShaped(init.body)) return null
   const types = init.paramTypes ?? []
   const params: { name: string; type: TypeIR }[] = []
   for (const [i, name] of init.params.entries()) {
@@ -238,6 +274,8 @@ export function viewHelperFromModuleDecl(md: ModuleDeclIR): ViewHelper | null {
     if (t === undefined || !isHelperParamType(t)) return null
     params.push({ name, type: t })
   }
+  if (init.stmts !== undefined && init.stmts.length > 0) return blockViewHelper(md.name, params, init.stmts)
+  if (!isViewShaped(init.body)) return null
   return { name: md.name, params, body: init.body }
 }
 

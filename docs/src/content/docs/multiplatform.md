@@ -1249,7 +1249,11 @@ idiom:
 A JSX-returning function with annotated parameters — at file or component
 scope — is emitted as a view function (`@ViewBuilder func` /
 `@Composable fun`), so it can be handed to a render prop by name and
-called in view position (`{renderRow(r)}`). An inline object parameter
+called in view position (`{renderRow(r)}`). Its body may be an
+expression or a block: `const` locals, early-return `if`s and a final
+view (`return null` renders nothing) lower into the view function the
+same way a block-bodied render callback does; a body with a loop or an
+assignment is named by a warning. An inline object parameter
 type (`(item: { title: string }) => …`) is lifted to a declared struct
 (`PickerRenderItem`), shared by every component that declares the same
 shape. The call site is decided from the callback's own shape, so a
