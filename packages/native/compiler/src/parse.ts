@@ -148,6 +148,11 @@ interface ParseCtx {
   fnTypeAliases: Map<string, TypeIR>
   /** Plugin aliases live within one component and are hidden by narrower bindings. */
   pluginAliases: Map<string, ExprIR>
+  /**
+   * Next index for a destructured callback parameter's synthesized name (`__pN`). Unique per file, so a nested
+   * destructured callback cannot shadow the outer one's name and capture its field aliases.
+   */
+  destructuredParamSeq: number
   aliasFactories: Map<string, { alias: ExprIR; destructureDiagnostic?: string | undefined }>
   /**
    * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
@@ -322,6 +327,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     pluginAliases: new Map(),
+    destructuredParamSeq: 0,
     aliasFactories: new Map(),
     typedComponentAliases: new Map(),
     componentDeclRequests: new Map(),
@@ -2368,6 +2374,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     enumTypeNames: ctx.enumTypeNames,
     fnTypeAliases: new Map(),
     pluginAliases: new Map(),
+    destructuredParamSeq: 0,
     aliasFactories: new Map(),
     // Scratch ctx: deliberately isolated from the main pass (see the doc
     // comment above) and it never parses a JSX tag, so empty sets are correct
@@ -6179,15 +6186,48 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // only identifier params, so pre-fix the body referenced UNBOUND
         // names (`pairs.map({ k })` — uncompilable) with no warning. Warn
         // loudly; the fix is a plain param + member/index reads.
-        for (const p of node.params as AnyNode[]) {
-          if (p.type === 'ArrayPattern' || p.type === 'ObjectPattern') {
+        //
+        // An OBJECT pattern whose properties are plain field reads (`({ title, done }) =>`, renames included) DOES
+        // lower: the parameter gets a synthesized name and each local is aliased to a member read on it for the
+        // body's scope (`title` → `__p0.title`), through the same scoped alias map a plugin alias uses — so a nested
+        // binding of the same name still hides it. This is the commonest destructure in JSX (`<For>` items, `.map`
+        // callbacks). Defaults, rest, nested and computed keys, and every ARRAY pattern keep the warning: their
+        // native meaning is not a plain member read (a default needs a nullish test; tuple vs list access differs).
+        const plainObjectFields = (p: AnyNode): { local: string; field: string }[] | null => {
+          if (p.type !== 'ObjectPattern') return null
+          const out: { local: string; field: string }[] = []
+          for (const prop of p.properties as AnyNode[]) {
+            if (prop.type !== 'Property' && prop.type !== 'ObjectProperty') return null
+            if (prop.computed === true) return null
+            const key = prop.key as AnyNode
+            const value = prop.value as AnyNode
+            if (key?.type !== 'Identifier' || value?.type !== 'Identifier') return null
+            out.push({ local: value.name as string, field: key.name as string })
+          }
+          return out
+        }
+        const paramNodes = node.params as AnyNode[]
+        const loweredPatterns = new Map<AnyNode, string>()
+        paramNodes.forEach((p) => {
+          const fields = plainObjectFields(p)
+          if (fields !== null) {
+            const synth = `__p${ctx.destructuredParamSeq++}`
+            loweredPatterns.set(p, synth)
+            for (const f of fields) {
+              ctx.pluginAliases.set(f.local, {
+                kind: 'member',
+                object: { kind: 'identifier', name: synth },
+                property: f.field,
+              })
+            }
+          } else if (p.type === 'ArrayPattern' || p.type === 'ObjectPattern') {
             ctx.warnings.push(
-              `[${locOf(node, ctx)}] A destructured callback parameter (\`([a, b]) =>\` / \`({ a }) =>\`) is not supported in native (PMTC) — take a plain parameter and read fields/indices (\`(pair) => pair.a\`).`,
+              `[${locOf(node, ctx)}] A destructured callback parameter (\`([a, b]) =>\` / \`({ a = 1, ...rest }) =>\`) is not supported in native (PMTC) — take a plain parameter and read fields/indices (\`(pair) => pair.a\`). A plain object pattern (\`({ a, b: c }) =>\`) is supported.`,
             )
           }
-        }
-        const identParams = (node.params as AnyNode[]).filter((p) => p.type === 'Identifier')
-        const params = identParams.map((p) => p.name as string)
+        })
+        const identParams = paramNodes.filter((p) => p.type === 'Identifier' || loweredPatterns.has(p))
+        const params = identParams.map((p) => loweredPatterns.get(p) ?? (p.name as string))
         // Annotations, index-aligned. A standalone Swift closure cannot infer
         // its param types (`let f = { r in … }` is 'cannot infer type of
         // closure parameter'), so what the author wrote must survive to emit.

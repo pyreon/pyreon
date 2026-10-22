@@ -1792,14 +1792,14 @@
       "warnings": 1
     },
     "golden-fixture:dnd-12.tsx|swift": {
-      "sha": "5e6c8b69852f1bea8cbffb7467f103a7884a8d3a0562561cfae7052872de7b7f",
-      "bytes": 254,
-      "warnings": 2
+      "sha": "672d6951bb368e2d412cdf3b4982a223a48347751d0fd51997e6ec136bbc6926",
+      "bytes": 267,
+      "warnings": 1
     },
     "golden-fixture:dnd-12.tsx|kotlin": {
-      "sha": "f9deeb9c0e0c5ab05880bce99534676d7bac99f78793728544d9004143998861",
-      "bytes": 405,
-      "warnings": 2
+      "sha": "f26c32db69dbd2a3c2113e799811d93a6efa29764c540d37264416be49024d91",
+      "bytes": 418,
+      "warnings": 1
     },
     "golden-fixture:dnd-13.tsx|swift": {
       "sha": "4cff1f2d68fdf19419f43ccd567dad67da58fd24c0fda9f8a6ae20203eaf7013",
@@ -4022,14 +4022,14 @@
       "warnings": 0
     },
     "golden-fixture:model-module-declines.tsx|swift": {
-      "sha": "751f32bfa63303bc256998d0c62b6212b6fb707c111a84a96c4da493c9cc7586",
-      "bytes": 1554,
-      "warnings": 26
+      "sha": "07b2c02c460c6356672cac4cbf82896a5d0978a1d99eb39ff037cbace8359eba",
+      "bytes": 1569,
+      "warnings": 25
     },
     "golden-fixture:model-module-declines.tsx|kotlin": {
-      "sha": "7d279042a90db5a3dff7ee99bc713e91691b4a96c0ce87fb4976c4aa20998b6a",
-      "bytes": 1579,
-      "warnings": 24
+      "sha": "c15a161dd3a79d4a71cfd08d47f7241e8cc1dcbce9d1faab3d77c3640bfb84bb",
+      "bytes": 1594,
+      "warnings": 23
     },
     "golden-fixture:model-module-members.tsx|swift": {
       "sha": "c23649d2338daf00dbbf44158c0218cf603e2af5116829fafbeefe8db11428e2",
