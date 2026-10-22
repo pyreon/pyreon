@@ -54,6 +54,59 @@ describe('web-host pages from package plugins', () => {
     await expect(buildPluginWebHosts(root, join(root, 'src'))).rejects.toThrow(/"host.html" is produced by both "@acme\/a" and "@acme\/b"/)
   })
 
+  it('a plugin that declares no webHosts is skipped without error', async () => {
+    addPlugin('@acme/hosted', [{ filename: 'hosted.html', content: 'H' }])
+    addPlugin('@acme/plain', [])
+    // Same package shape, but the plugin object carries no `webHosts` at all.
+    writeFileSync(
+      join(root, 'node_modules', '@acme', 'plain', 'plugin.mjs'),
+      `export default { name: '@acme/plain', apiVersion: 2, modules: ['@acme/plain'] }\n`,
+    )
+    addSource(['@acme/hosted', '@acme/plain'])
+    const files = await buildPluginWebHosts(root, join(root, 'src'))
+    expect(files.map((f) => f.filename)).toEqual(['hosted.html'])
+  })
+
+  it('`assets` reads activation from --app-source, and builds nothing (exit 0) when that source is absent or activates nothing', async () => {
+    addPlugin('@acme/used', [{ filename: 'used.html', content: 'U' }])
+    mkdirSync(join(root, 'assets'), { recursive: true })
+    const argv = (out: string, ...extra: string[]) => ['assets', '--target=ios', `--source=${join(root, 'assets')}`, `--out=${out}`, ...extra]
+
+    // An app source elsewhere than <app>/src, importing the plugin: its page is built.
+    mkdirSync(join(root, 'shared-src'), { recursive: true })
+    writeFileSync(join(root, 'shared-src', 'App.tsx'), `import '@acme/used'\n`)
+    expect(await mainWithPlugins(argv(join(root, 'out-shared'), `--app-source=${join(root, 'shared-src')}`))).toBe(0)
+    expect(existsSync(join(root, 'out-shared', 'webhost', 'used.html'))).toBe(true)
+
+    // A source directory that does not exist is not an error, and produces nothing.
+    expect(await mainWithPlugins(argv(join(root, 'out-missing'), `--app-source=${join(root, 'no-such-dir')}`))).toBe(0)
+    expect(existsSync(join(root, 'out-missing', 'webhost'))).toBe(false)
+
+    // A source that imports no plugin module activates nothing: success, with no pages.
+    mkdirSync(join(root, 'empty-src'), { recursive: true })
+    writeFileSync(join(root, 'empty-src', 'App.tsx'), `export const x = 1\n`)
+    expect(await mainWithPlugins(argv(join(root, 'out-empty'), `--app-source=${join(root, 'empty-src')}`))).toBe(0)
+    expect(existsSync(join(root, 'out-empty', 'webhost'))).toBe(false)
+  })
+
+  it('`assets` does not attempt web hosts when the image half fails, and reports a non-Error throw from a builder', async () => {
+    addPlugin('@acme/used', [{ filename: 'used.html', content: 'U' }])
+    addSource(['@acme/used'])
+
+    // A source directory that does not exist fails the image half; the command returns that failure and builds no pages.
+    const missing = await mainWithPlugins(['assets', '--target=ios', `--source=${join(root, 'no-assets')}`, `--out=${join(root, 'out-fail')}`])
+    expect(missing).not.toBe(0)
+    expect(existsSync(join(root, 'out-fail', 'webhost'))).toBe(false)
+
+    // A builder may throw something that is not an Error (a bare string); the message is still reported and the exit is 2.
+    mkdirSync(join(root, 'assets'), { recursive: true })
+    writeFileSync(
+      join(root, 'node_modules', '@acme', 'used', 'plugin.mjs'),
+      `export default { name: '@acme/used', apiVersion: 2, modules: ['@acme/used'], webHosts: () => { throw 'bare string failure' } }\n`,
+    )
+    expect(await mainWithPlugins(['assets', '--target=ios', `--source=${join(root, 'assets')}`, `--out=${join(root, 'out-str')}`])).toBe(2)
+  })
+
   it('materializes where each runtime resolves <WebView src>', () => {
     const files = [{ filename: 'host.html', content: '<html></html>' }]
     const ios = join(root, 'ios')
