@@ -71,6 +71,7 @@ The compiler recognises these hook identifiers and emits per-target equivalents:
 | Hook | Shape supported | Target emit |
 |---|---|---|
 | `signal<T>(initial)` | `const x = signal(0)` / `signal<string>('')` | `@State` (Swift) / `var x by remember { mutableStateOf(…) }` (Kotlin) |
+| `signal(props.start)` (seeded from a prop) | Local state initialised from a prop, including a chain (`signal(n() * 2)` where `n` is prop-seeded) | Swift: `@State private var n: Int` seeded in the generated `init` (`_n = State(initialValue: start)`), since a stored-property initializer cannot read a prop. Kotlin: unchanged. A persisted (`useStorage`) signal seeded from a prop warns by name |
 | `computed(() => expr)` | `const c = computed(() => a() + b())` | Computed property (Swift) / `derivedStateOf` (Kotlin) |
 | `useStorage<T>('key', default)` | Persistent signal | `@PyreonAppStorage` (Swift) / `rememberPyreonStorage` (Kotlin) |
 | `useFetch<T>('/url')` | URLSession/ktor wrapper | `PyreonFetch<T>` runtime container |

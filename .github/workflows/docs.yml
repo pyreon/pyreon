@@ -88,11 +88,17 @@ concurrency:
 permissions:
   contents: read
 
+# setup-pyreon restores lib/ under this key. It is per-run, so it never hits
+# exactly; the restore falls back to the source-hashed key CI saves, and
+# scripts/bootstrap.ts rebuilds only what is stale (the ci-main.yml shape).
+env:
+  BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
+
 jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
-    # 10m install + 8m docs + 3m Atlas + checkout/diagnostic upload headroom.
+    # Cached setup + 8m docs + 3m Atlas + checkout/diagnostic upload headroom.
     # Inner deadlines fail normally, leaving time to preserve their logs.
     timeout-minutes: 25
     steps:
@@ -103,18 +109,24 @@ jobs:
           # of the shallow-clone-only commit.
           fetch-depth: 0
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      # The SAME setup every CI job uses: cached node_modules, postinstall
+      # bootstrap skipped, lib/ restored from the source-hashed cache with a
+      # targeted rebuild. This job used to run its own uncached
+      # `bun install`, whose postinstall rebuilt EVERY package from scratch;
+      # on the Ubuntu 26.04 runners that hung until GitHub cancelled the job
+      # at 30 minutes — past the step's own timeout, i.e. the runner itself
+      # stopped responding — on main and every PR, with no log. The jobs on
+      # this shared path were unaffected throughout.
+      - uses: ./.github/actions/setup-pyreon
         with:
-          bun-version-file: .bun-version
+          restore-bootstrap: 'true'
 
-      - name: Install workspace deps
-        shell: bash
-        run: |
-          mkdir -p .cache/docs-ci
-          timeout --verbose --signal=KILL 10m bun install --frozen-lockfile 2>&1 | tee .cache/docs-ci/install.log
+      - name: Prepare diagnostics directory
+        run: mkdir -p .cache/docs-ci
 
       - name: Build docs
         shell: bash
+        timeout-minutes: 10
         # ROOT base (no `--base` flag → Vite defaults to `/`) because the
         # site now serves at the apex `pyreon.dev`, not the `/pyreon/`
         # project-pages subpath. The custom domain is pinned by
@@ -122,7 +134,7 @@ jobs:
         # across deploys.
         run: |
           cd docs
-          timeout --verbose --signal=KILL 8m bunx vite build 2>&1 | tee ../.cache/docs-ci/docs.log
+          bash ../scripts/gnu-timeout.sh --verbose --signal=KILL 8m bunx vite build 2>&1 | tee ../.cache/docs-ci/docs.log
 
       - name: No SSG render errors
         # The SSG plugin is deliberately non-fatal on a per-path render
@@ -143,6 +155,7 @@ jobs:
 
       - name: Build the Atlas workbench site
         shell: bash
+        timeout-minutes: 5
         # Publishes the workbench at pyreon.dev/atlas, against the REAL
         # `@pyreon/ui-components` catalog — 108 components derived from source,
         # not a hand-written demo. That distinction is the whole pitch: a
@@ -166,7 +179,7 @@ jobs:
         # `packages/ui/components/docs/dist/atlas` and the upload would ship a
         # docs site with no /atlas in it.
         run: |
-          timeout --verbose --signal=KILL 3m bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
+          bash scripts/gnu-timeout.sh --verbose --signal=KILL 3m bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
             --out "$GITHUB_WORKSPACE/docs/dist/atlas" \
             --base /atlas/ \
             --title "Pyreon UI" 2>&1 | tee .cache/docs-ci/atlas.log
