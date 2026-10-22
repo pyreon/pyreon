@@ -17,6 +17,7 @@
   - A `lib/index.js` under 50 bytes counts as stale (crashed or empty build), both when detecting dirty packages and when checking the result.
   - Packages still dirty after the build are retried once, sequentially, via `bun run --filter='@pyreon/X' build`; success prints `[bootstrap] Retry recovered N package(s) …`.
   - If any package is still missing or stale afterwards, the script exits non-zero, including on the postinstall path. `PYREON_BOOTSTRAP_SOFT=1` lets the install complete anyway (builds then fail with confusing errors until you re-run bootstrap).
+  - **Builds are bounded**: dirty packages build in dependency-ordered batches of at most `min(cores, memory ÷ 1.5 GB)` (`PYREON_BOOTSTRAP_CONCURRENCY` overrides). One unbounded `bun run --filter=… build` starts every build at once — a near-full rebuild measured ~88 processes and ~23 GB peak, which took 16 GB CI runners down so completely that neither a GNU `timeout` nor a step `timeout-minutes` fired (2026-10-22: every main CI run hung in Install until the job kill, triggered by a dependency edge that made one package's change dirty most of the repo). Bounded, the same rebuild peaked at 4.5 GB.
 
 ## TypeScript config presets (@pyreon/tsconfig)
 

@@ -51,8 +51,10 @@
 
 import { execSync, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { availableParallelism, totalmem } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { attributeBuildFailures, spawnBatchAttributed } from './bootstrap-attribution'
+import { batches, buildConcurrency, dependencyOrder } from './bootstrap-concurrency'
 import {
   computeGlobalSalt,
   computeLibHash,
@@ -464,10 +466,36 @@ try {
   // guaranteed non-empty here (the all-clean path exits early above).
   // execFileSync (argv array, no shell) — package names come from
   // workspace package.json and flow straight to bun as args.
-  const buildFilters = dirty.map((p) => `--filter=${p.name}`)
-  const batch = await runBuildAttributed(['run', ...buildFilters, 'build'], 300_000 /* 5 min max */)
-  failedInBatch = attributeBuildFailures(batch.output)
-  if (!batch.ok) throw new Error('build subprocess exited nonzero')
+  //
+  // BOUNDED: one `bun run --filter=… build` over the whole dirty set starts every build at once — a near-full
+  // rebuild peaked at ~23 GB and took 16 GB CI runners down (see bootstrap-concurrency.ts). Build in dependency-
+  // ordered batches no larger than the machine can hold; every batch runs even if an earlier one failed, so the
+  // per-package retry below sees the full set of failures.
+  const depsOf = new Map<string, Set<string>>()
+  for (const p of dirty) {
+    const pj = JSON.parse(readFileSync(join(ROOT, p.path, 'package.json'), 'utf-8'))
+    const names = new Set<string>()
+    for (const field of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
+      for (const dep of Object.keys(pj[field] ?? {})) if (dep.startsWith('@pyreon/')) names.add(dep)
+    }
+    depsOf.set(p.name, names)
+  }
+  const concurrency = buildConcurrency(process.env, availableParallelism(), totalmem())
+  const groups = batches(dependencyOrder(dirty.map((p) => p.name), depsOf), concurrency)
+  // oxlint-disable-next-line no-console
+  console.log(
+    `[bootstrap] Building ${dirty.length} package(s), at most ${concurrency} at once (${groups.length} batch(es)).`,
+  )
+  let batchFailed = false
+  for (const group of groups) {
+    const batch = await runBuildAttributed(
+      ['run', ...group.map((n) => `--filter=${n}`), 'build'],
+      300_000 /* 5 min max per batch */,
+    )
+    for (const name of attributeBuildFailures(batch.output)) failedInBatch.add(name)
+    if (!batch.ok) batchFailed = true
+  }
+  if (batchFailed) throw new Error('build subprocess exited nonzero')
   // oxlint-disable-next-line no-console
   console.log(`[bootstrap] Build complete (${dirty.length} package(s)).`)
 } catch {
