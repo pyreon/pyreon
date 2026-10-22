@@ -58,6 +58,8 @@ import {
 } from './infer-type'
 import { canonicalizeHookBindings } from './hook-binding'
 import { inlineCustomHooks } from './inline-hooks'
+import { normalizeComponentForms } from './component-forms'
+import { rewritePropsDestructuring } from './props-destructure'
 import type {
   AttrIR,
   ChildIR,
@@ -255,10 +257,16 @@ function parsePyreonWithPlain(source: string, filename: string): ParseResult {
  * Plain-Mode pre-pass so a Plain-Mode hook is inlined in its classic form. Warnings from the inlining are prepended.
  */
 function parseWithInlinedHooks(source: string, filename: string): ParseResult {
-  const inlined = inlineCustomHooks(source, filename)
-  if (!inlined) return parsePyreonClassic(source, filename)
-  const result = parsePyreonClassic(inlined.code, filename)
-  if (inlined.warnings.length > 0) result.warnings.unshift(...inlined.warnings)
+  // Component declarations first (every spelling → a `function` declaration), then props destructuring (→ `props.x`),
+  // then hook inlining. Each is a property of how a component is WRITTEN, so each normalises the source into the one
+  // form the parser lowers.
+  const forms = normalizeComponentForms(source, filename)
+  const destructured = rewritePropsDestructuring(forms?.code ?? source, filename)
+  const code = destructured?.code ?? forms?.code ?? source
+  const inlined = inlineCustomHooks(code, filename)
+  const result = parsePyreonClassic(inlined?.code ?? code, filename)
+  const prepended = [...(forms?.warnings ?? []), ...(destructured?.warnings ?? []), ...(inlined?.warnings ?? [])]
+  if (prepended.length > 0) result.warnings.unshift(...prepended)
   return result
 }
 
@@ -2514,8 +2522,9 @@ function liftInlineObjects(st: StructIR, declared: ReadonlySet<string>, ctx: Par
  * `private let` moduleDecl). A HELPER is a function OF ITS INPUTS: it takes
  * value parameters and its body returns NO JSX. Falls through (returns `false`,
  * UNCHANGED behavior) for:
- *   - a JSX-returning arrow (an arrow-const COMPONENT — a separate, pre-existing
- *     gap; not a helper);
+ *   - a JSX-returning arrow (an arrow-const COMPONENT — `component-forms.ts`
+ *     rewrites a PascalCase one into a function declaration before parsing; not
+ *     a helper);
  *   - a NO-param arrow (the const-thunk / component-returning-value shape);
  *   - a non-arrow const (`const APP = '1.0'` — a real module binding);
  *   - a multi-declarator const (`const a = …, b = …` — left as moduleDecls).
