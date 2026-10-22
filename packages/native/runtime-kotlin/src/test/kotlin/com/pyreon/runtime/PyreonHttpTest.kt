@@ -79,6 +79,39 @@ fun testHttpExecutorRoutes() {
     check(res.body == "created") { "response body routed" }
 }
 
+/**
+ * How `PyreonHttp.send` picks an executor: installed, then the caller's
+ * fallback, then a loud `NoExecutor`. The generated code passes the OkHttp
+ * executor as the fallback, so before this a scaffolded app (which installs
+ * nothing) threw `NoExecutor` on every request with a verb, a header or a body.
+ *
+ * Runs BEFORE anything is installed, since `install` is process-wide.
+ */
+fun testHttpSendResolvesFallbackThenInstalled() {
+    fun executor(status: Int) = object : PyreonHttpExecutor {
+        override fun send(request: PyreonHttpRequest): PyreonHttpResponse = PyreonHttpResponse(status)
+    }
+    val req = PyreonHttpRequest.get("https://api/x")
+
+    var threw = false
+    try {
+        PyreonHttp.send(req)
+    } catch (_: PyreonHttpError.NoExecutor) {
+        threw = true
+    }
+    check(threw) { "nothing installed and no fallback → NoExecutor, not a silent no-op" }
+
+    check(PyreonHttp.send(req, fallback = executor(201)).status == 201) {
+        "nothing installed → the caller's fallback is used"
+    }
+
+    PyreonHttp.install(executor(202))
+    check(PyreonHttp.send(req, fallback = executor(201)).status == 202) {
+        "an installed executor wins over the fallback"
+    }
+    check(PyreonHttp.send(req).status == 202) { "an installed executor serves calls with no fallback" }
+}
+
 // NOTE: the PyreonHttp ⇄ PyreonFetch composition (an executor result feeding
 // the fetcher's load path — the shape the useFetch emit produces) is NOT
 // tested here: `verify-kotlin.ts` compiles ONE service file at a time, so
@@ -94,5 +127,6 @@ fun main() {
     testHttpResponseIsOk()
     testHttpResponseBody()
     testHttpExecutorRoutes()
+    testHttpSendResolvesFallbackThenInstalled()
     println("[PyreonHttpTest] all smoke tests passed")
 }

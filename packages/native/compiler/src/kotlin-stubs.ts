@@ -1096,8 +1096,15 @@ sealed class PyreonHttpError(message: String) : Exception(message) {
   class BadStatus(val status: Int) : PyreonHttpError("HTTP " + status)
   class NoExecutor : PyreonHttpError("no executor")
 }
+interface PyreonHttpExecutor {
+  fun send(request: PyreonHttpRequest): PyreonHttpResponse
+}
+object PyreonHttpOkHttp : PyreonHttpExecutor {
+  override fun send(request: PyreonHttpRequest): PyreonHttpResponse = PyreonHttpResponse(200)
+}
 object PyreonHttp {
-  fun send(request: PyreonHttpRequest): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun install(executor: PyreonHttpExecutor) {}
+  fun send(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /

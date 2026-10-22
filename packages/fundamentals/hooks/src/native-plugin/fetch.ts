@@ -204,7 +204,8 @@ function kotlinHarness(d: ExtDecl, ctx: { ident(name: string): string; typeText(
     }
     if (p.body !== undefined) parts.push(`body = ${kotlinStr(p.body)}`)
     lines.push(`    val __response = withContext(Dispatchers.IO) {`)
-    lines.push(`      PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
+    // The OkHttp default comes from HERE, as a direct reference: see `PyreonHttp.send` for why it cannot live in the runtime.
+    lines.push(`      PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}), fallback = PyreonHttpOkHttp)`)
     lines.push(`    }`)
     // A non-2xx REJECTS rather than decoding — handing an error page to the JSON decoder reads as "the server sent bad JSON".
     lines.push(`    if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`)

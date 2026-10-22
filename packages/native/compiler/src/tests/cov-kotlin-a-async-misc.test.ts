@@ -24,7 +24,7 @@ export function P() {
   return (<Stack><Text>{p.data()?.id ?? 'none'}</Text></Stack>)
 }`).code
     expect(out).toContain(
-      'PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "https://x.dev/a", headers = mapOf("X-A" to "1"), body = "{}"))',
+      'PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "https://x.dev/a", headers = mapOf("X-A" to "1"), body = "{}"), fallback = PyreonHttpOkHttp)',
     )
     // a non-2xx rejects rather than handing an error page to the decoder
     expect(out).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)')

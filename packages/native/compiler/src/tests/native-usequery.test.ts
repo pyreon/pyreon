@@ -154,6 +154,8 @@ export function P() {
     expect(r.code).toContain('"Content-Type" to "application/json"')
     expect(r.code).toContain('body = "{\\"x\\":1}"')
     expect(r.code).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus')
+    // An app that installs no executor still has one: the OkHttp default, named by the generated code itself.
+    expect(r.code).toContain('fallback = PyreonHttpOkHttp)')
   })
 
   it.runIf(isSwiftcAvailable())('Swift POST-query emit typechecks against the stubs', () => {
