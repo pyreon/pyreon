@@ -508,6 +508,14 @@ final class PyreonRouterDemoUITests: XCTestCase {
                 + "\"\(app.staticTexts["http-body"].label)\""
         )
 
+        // ...and a header whose VALUE is built at runtime (a signal-backed Bearer token). A literal-only lowering would
+        // drop it and the server would echo an empty authorization.
+        XCTAssertTrue(
+            app.staticTexts["Auth: Bearer tok-42"].waitForExistence(timeout: 10),
+            "the runtime Authorization header never reached the server — got "
+                + "\"\(app.staticTexts["http-auth"].label)\""
+        )
+
         // A non-2xx must surface as an ERROR, not as a decode failure.
         XCTAssertTrue(
             app.staticTexts["Bad: rejected"].waitForExistence(timeout: 10),

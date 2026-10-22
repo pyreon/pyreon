@@ -159,7 +159,12 @@ jobs:
     # must fire on every PR the dependency graph says can change the emit, not
     # just on native-surface paths. The macOS job below keeps `run` alone.
     if: (success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success')
-    runs-on: ubuntu-latest
+    # PINNED, not `ubuntu-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26.04, which
+    # swift-actions/setup-swift (v2.4.0, the newest stable release) rejects with
+    # `Version "26.04" of Ubuntu is not supported` — Swift never installs and this
+    # job fails on any PR that lands on a new-image runner, whatever it changes.
+    # Unpin once a stable setup-swift release supports 26.04.
+    runs-on: ubuntu-24.04
     # Derived, not guessed (the ws-relay backstop rule). RE-DERIVED 2026-07-29
     # with the SAME formula, because the suite outgrew the previous budget —
     # which is exactly the failure this comment already describes happening to

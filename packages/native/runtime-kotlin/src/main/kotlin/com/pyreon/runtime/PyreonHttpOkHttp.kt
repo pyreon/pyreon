@@ -50,8 +50,9 @@ private val sharedHttpClient: OkHttpClient by lazy { OkHttpClient() }
 /**
  * OkHttp-backed [PyreonHttpExecutor].
  *
- * Install it with `PyreonHttp.install(PyreonHttpOkHttp)` — the scaffolded
- * Android entry point does this so `useFetch` works out of the box.
+ * The generated `useFetch` / `useQuery` code passes it as
+ * `PyreonHttp.send(request, fallback = PyreonHttpOkHttp)`, so requests work
+ * with no setup; `PyreonHttp.install(...)` still overrides it.
  */
 public object PyreonHttpOkHttp : PyreonHttpExecutor {
     override fun send(request: PyreonHttpRequest): PyreonHttpResponse {

@@ -114,7 +114,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonGeolocation.locationManager',
     'PyreonGeolocation.locationManagerDidChangeAuthorization',
     'PyreonHttp.buildURLRequest',
-    'PyreonHttp.install',
     'PyreonI18n.fallbackLocale',
     'PyreonI18n.messages',
     'PyreonNetworkStatus.isMonitoring',

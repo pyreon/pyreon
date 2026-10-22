@@ -8,6 +8,24 @@ if [ "$#" -eq 0 ]; then
   exit 1
 fi
 
+# GNU timeout signals the command's WHOLE process group at the deadline, which is
+# what kills a hung apt grandchild and frees dpkg's lock. Ubuntu 26.04 ships the
+# uutils rewrite as `timeout`, which signals only its direct child — the
+# grandchild survives (verified in containers: 24.04's GNU 9.4 kills it, 26.04's
+# uutils 0.10.0 does not) — and keeps GNU as `gnutimeout`. Resolve GNU
+# explicitly, so the guarantee does not depend on the runner image.
+case "$(timeout --version 2>/dev/null)" in
+  *'GNU coreutils'*) TIMEOUT=timeout ;;
+  *)
+    if command -v gnutimeout >/dev/null 2>&1; then
+      TIMEOUT=gnutimeout
+    else
+      echo '::warning::GNU timeout not found; a hung apt could outlive its deadline and keep the dpkg lock'
+      TIMEOUT=timeout
+    fi
+    ;;
+esac
+
 NODE_BIN=$(command -v node)
 PLAYWRIGHT_CLI=$("$NODE_BIN" -p 'require("node:path").join(require.resolve("playwright/package.json"), "..", "cli.js")')
 
@@ -35,7 +53,7 @@ for ((attempt = 1; attempt <= deps_attempts; attempt++)); do
   # Do not use --foreground: timeout must signal the entire process group.
   # Kill the group at the deadline. TERM + kill-after can still orphan apt
   # when Node exits on TERM first: timeout stops waiting before escalating.
-  if sudo timeout --signal=KILL "$deps_timeout" "$NODE_BIN" "$PLAYWRIGHT_CLI" install-deps "$@"; then
+  if sudo "$TIMEOUT" --signal=KILL "$deps_timeout" "$NODE_BIN" "$PLAYWRIGHT_CLI" install-deps "$@"; then
     deps_ready=true
     break
   fi
@@ -43,7 +61,7 @@ for ((attempt = 1; attempt <= deps_attempts; attempt++)); do
   if [ "$attempt" -lt "$deps_attempts" ] || [ "$*" = chromium ]; then
     # A timeout during configuration can leave dpkg interrupted. Repair it
     # before retrying, under the same root-owned process-group bound.
-    sudo timeout --signal=KILL 60s dpkg --configure -a
+    sudo "$TIMEOUT" --signal=KILL 60s dpkg --configure -a
   fi
 done
 
@@ -61,7 +79,7 @@ fi
 # Download as the runner user, into the same store restored by actions/cache.
 # Keep CDN outages bounded too, and reconcile even an exact cache hit.
 for attempt in 1 2; do
-  if timeout --kill-after=15s 120s "$NODE_BIN" "$PLAYWRIGHT_CLI" install "$@"; then
+  if "$TIMEOUT" --kill-after=15s 120s "$NODE_BIN" "$PLAYWRIGHT_CLI" install "$@"; then
     exit 0
   fi
   echo "::warning::Playwright browser download failed on attempt $attempt"

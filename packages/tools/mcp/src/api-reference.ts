@@ -4605,7 +4605,7 @@ effect(() => fetchResults(debouncedSearch()))`,
   },
 
   'hooks/useFetch': {
-    signature: '<T>(url: string) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }',
+    signature: `<T>(url: string, init?: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; headers?: Record<string, string>; body?: string }) => { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }`,
     example: `type Quote = { id: number; text: string }
 const quotes = useFetch<Quote[]>('/api/quotes.json')
 <Show when={quotes.isPending}><Text>Loading…</Text></Show>
@@ -4615,7 +4615,9 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
 - Expecting data during SSR — the fetch only runs client-side; server HTML renders the \`undefined\`-data state and the request fires after hydration
 - Using a reactive/computed URL — v1 takes a plain string captured once (PMTC requires a string literal for native emit anyway); call \`refetch()\` for manual re-runs, or use \`@pyreon/query\` for signal-driven keys
 - Reaching for useFetch when you need caching, request dedup, retries, or mutations — that is \`@pyreon/query\` (TanStack) territory; useFetch is the thin multiplatform primitive
-- Forgetting the non-2xx contract — HTTP errors land in \`error()\` as \`[Pyreon] useFetch <url>: HTTP <status>\`, they do NOT throw`,
+- Forgetting the non-2xx contract — HTTP errors land in \`error()\` as \`[Pyreon] useFetch <url>: HTTP <status>\`, they do NOT throw
+- Sending a token in \`init.headers\` and expecting it to update after sign-in — \`init\` is read ONCE, when the request is built at setup, on every target. A header value may be a runtime string, but one that changes belongs in \`@pyreon/query\`: its \`queryFn\` builds the request on every run, and a \`queryKey\` carrying the user re-runs it after sign-in
+- A header value that may be \`null\` (\`authorization: auth.accessToken()\`) — the web sends the text \`null\`, and native refuses it with a warning; write \`\` \`Bearer \${auth.accessToken() ?? ''}\` \`\``,
   },
 
   'hooks/useClipboard': {

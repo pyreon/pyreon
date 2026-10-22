@@ -788,7 +788,7 @@ class RouterDemoInstrumentedTest {
                     "\"Id: none\" means the request never SUCCEEDED, which has " +
                     "THREE causes and the first version of this message only " +
                     "listed two — costing real time when the answer was the " +
-                    "third: (1) no executor installed (PyreonHttp.install), " +
+                    "third: (1) no executor resolved — this app installs none on purpose, so the request rides the generated `fallback = PyreonHttpOkHttp`; if that is missing from the emit, PyreonHttp.send throws NoExecutor, " +
                     "(2) the fixture unreachable (is `adb reverse " +
                     "tcp:8790 tcp:8790` set and the server up?), or (3) the " +
                     "response arrived 200 and the DECODE threw — " +
@@ -806,6 +806,12 @@ class RouterDemoInstrumentedTest {
         composeRule
             .onNodeWithTag("http-body")
             .assertTextEquals("Body: {\"name\":\"pyreon\"}")
+        // ...and a header whose VALUE is built at runtime (a signal-backed
+        // Bearer token). A literal-only lowering would drop it, and the server
+        // would echo an empty authorization.
+        composeRule
+            .onNodeWithTag("http-auth")
+            .assertTextEquals("Auth: Bearer tok-42")
         // A non-2xx must REJECT rather than reach the decoder.
         composeRule.waitUntil(timeoutMillis = 15_000) {
             composeRule.onAllNodesWithText("Bad: rejected").fetchSemanticsNodes().isNotEmpty()

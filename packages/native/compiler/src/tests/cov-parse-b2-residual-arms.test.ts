@@ -107,16 +107,21 @@ describe('parse.ts — non-Identifier object keys through every options walker',
     expect(swift(body(`  const q = useFetch<Resp>('https://x', { 'method': 'POST' })`)).code).toContain('method: .post')
   })
 
-  it('names a RUNTIME computed header key, reads a NUMERIC key as its string, and names a non-literal value', () => {
+  it('names a RUNTIME computed header key, reads a NUMERIC key as its string, sends a runtime string value and names a non-string one', () => {
     const computed = swift(body(`  declare const k: string\n  const q = useFetch<Resp>('https://x', { headers: { [k]: 'v', A: 'b' } })`))
     expect(computed.code).toContain('headers: ["A": "b"]')
     expect(computed.warnings.join('\n')).toContain('useFetch headers: the computed key `[k]` is only known at runtime')
     // `{ 1: 'v' }` has the runtime key "1" — JS object-key semantics.
     const numeric = swift(body(`  const q = useFetch<Resp>('https://x', { headers: { 1: 'v', A: 'b' } })`))
     expect(numeric.code).toContain('headers: ["1": "v", "A": "b"]')
+    // A runtime STRING value under a numeric key crosses: it is evaluated when the request is built.
     const both = swift(body(`  declare const v: string\n  const q = useFetch<Resp>('https://x', { headers: { 1: v, A: 'b' } })`))
-    expect(both.code).toContain('headers: ["A": "b"]')
-    expect(both.warnings.join('\n')).toContain('useFetch header "1" must be a string literal to lower to native; it will be OMITTED')
+    expect(both.code).toContain('headers: ["A": "b", "1": v]')
+    expect(both.warnings).toEqual([])
+    // A value that cannot cross is still NAMED, never dropped in silence.
+    const nonString = swift(body(`  declare const n: number\n  const q = useFetch<Resp>('https://x', { headers: { 1: n, A: 'b' } })`))
+    expect(nonString.code).toContain('headers: ["A": "b"]')
+    expect(nonString.warnings.join('\n')).toContain('useFetch header "1" must be a string')
   })
 
   it('ignores an unknown useQuery option key', () => {

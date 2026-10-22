@@ -109,7 +109,44 @@ Every member of the result is a reactive read. Use it in JSX, `computed`, or `ef
 
 ## Calling your API
 
-Attach the access token with `@pyreon/http`'s `bearer` middleware, and let its `refresh` middleware renew an expired session once on a `401`:
+There are two ways to attach the token. Use the first in code that also runs on iOS and Android; the second is a web and server convenience.
+
+**Portable — web, iOS and Android.** Build the header inside a `useQuery` `queryFn`, and put the user in the `queryKey`:
+
+```tsx
+// @check
+import { useOidc } from '@pyreon/auth'
+import { Text } from '@pyreon/primitives'
+import { useQuery } from '@pyreon/query'
+
+type Me = { name: string; email: string }
+
+export function Account() {
+  const auth = useOidc({
+    issuer: 'https://accounts.example.com',
+    clientId: 'app',
+    redirectUri: 'https://app.example.com/callback',
+    nativeRedirectUri: 'com.example.app:/oauth',
+  })
+  const me = useQuery<Me>(() => ({
+    queryKey: ['me', auth.subject() ?? 'anonymous'],
+    queryFn: () =>
+      fetch('https://api.example.com/me', {
+        headers: { authorization: `Bearer ${auth.accessToken() ?? ''}` },
+      }).then((r) => r.json()),
+    enabled: auth.isAuthenticated(),
+  }))
+  return <Text>{me.data()?.name ?? auth.status()}</Text>
+}
+```
+
+- **The header is built in `queryFn`,** which runs on every fetch, so each request carries the token that is current then, including after a refresh.
+- **The user is in the key,** so signing in or switching accounts refetches with the new token instead of serving the previous user's cached response.
+- **The token has a fallback (`?? ''`).** `accessToken()` is `null` while signed out. The compiler refuses a header value that may be `null` and names this fix, because native headers cannot be optional and the web would send the literal text `null`.
+
+The same source compiles to iOS and Android unchanged: the header is evaluated on the device each time the request is built. Keep the query in the component that holds `auth`: a separate helper hook that takes the session as an argument (`useMe(auth)`) runs on the web, but does not compile to native yet — the native compiler cannot type a parameter declared as `ReturnType<typeof useOidc>`, and skips a helper that returns a query.
+
+**Web and server — `@pyreon/http` middleware.** With an `@pyreon/http` client, attach the token with the `bearer` middleware and let `refresh` renew an expired session once on a `401`:
 
 ```ts
 // @check
@@ -138,7 +175,7 @@ export const api = createHttp({
 })
 ```
 
-`bearer` only attaches the token to requests that stay on `baseUrl`'s origin, so a stray absolute URL to a third party never receives it.
+`bearer` only attaches the token to requests that stay on `baseUrl`'s origin, so a stray absolute URL to a third party never receives it. It has no native lowering: on iOS and Android `useOidc` lives inside a component, so a module-level client has no session in scope. Use the portable form there.
 
 On the server, validate the access token as your provider documents (a JWT access token against the provider's JWKS, or token introspection). If your provider issues ID tokens to your backend, `verifyIdToken` does the full check — see [Server-side flows](#server-side-flows).
 
@@ -590,6 +627,8 @@ Native code bakes the configuration in at compile time, so `useOidc`'s options m
 | An `http://` issuer that is not loopback | Warning — native refuses it exactly as the web does |
 | A reserved `authorizationParams` key (`state`, `nonce`, …) | Warning |
 | `signOut({ postLogoutRedirectUri })` per call | Warning — pass it once, in the `useOidc` options |
+| `` authorization: `Bearer ${auth.accessToken() ?? ''}` `` in a `useQuery` `queryFn` | Sent, built on the device for every request — see [Calling your API](#calling-your-api) |
+| `bearer(() => auth.accessToken())` on an `@pyreon/http` client | Web and server only — no native lowering |
 
 The lower-level API — `createAuth`, `discover`, `exchangeCode`, sessions, TOTP, passkeys and `createGuard` — is web and server code. A native app holds one session per `useOidc` call: create it once at the root and pass it down.
 

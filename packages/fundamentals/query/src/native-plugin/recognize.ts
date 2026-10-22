@@ -6,6 +6,7 @@
 // `ctx.requests`, so this package needs no import of it.
 
 import {
+  classifyHeaderValue,
   hasDynamicKey,
   isNullishLiteral,
   literalScalar,
@@ -285,7 +286,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
   let valueExpr: ExprIR | undefined
   let queryFnSeen = false
   let staleMillis = 0
-  const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
+  const req: FetchInitFields = {}
   for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
     if (prop.type !== 'Property') continue
     if (hasDynamicKey(prop)) {
@@ -914,12 +915,19 @@ function tryQueryFnValue(node: AnyNode): AnyNode | undefined {
  * non-literal WARNS (a silently-wrong verb/body is worse than a missing
  * feature). Returns the request fields; a missing/non-object init → GET.
  */
+interface FetchInitFields {
+  method?: string
+  headers?: Record<string, string>
+  headerExprs?: Record<string, ExprIR>
+  body?: string
+}
+
 function parseFetchInitObject(
   initNode: AnyNode,
   name: string,
   ctx: ParseContext,
-): { method?: string; headers?: Record<string, string>; body?: string } {
-  const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
+): FetchInitFields {
+  const req: FetchInitFields = {}
   if (!initNode) return req
   if (initNode.type !== 'ObjectExpression') {
     ctx.report(
@@ -963,6 +971,7 @@ function parseFetchInitObject(
         continue
       }
       const headers: Record<string, string> = {}
+      const headerExprs: Record<string, ExprIR> = {}
       for (const h of (value.properties as AnyNode[] | undefined) ?? []) {
         if (h.type !== 'Property') continue
         if (hasDynamicKey(h)) {
@@ -970,12 +979,17 @@ function parseFetchInitObject(
           continue
         }
         const hk = staticPropKey(h)
-        const hv = h.value
-        if (hk && (hv?.type === 'Literal' || hv?.type === 'StringLiteral') && typeof hv.value === 'string') {
-          headers[hk] = hv.value
-        }
+        if (!hk) continue
+        // A runtime value (an `Authorization` token) is evaluated each time the request is built; its type is judged at
+        // emit time, where a value that cannot cross is NAMED. This loop used to drop a non-literal value without a word.
+        const hv = h.value as AnyNode | undefined
+        if (!hv) continue
+        const v = classifyHeaderValue(hv, ctx)
+        if (v.kind === 'literal') headers[hk] = v.value
+        else headerExprs[hk] = v.expr
       }
       if (Object.keys(headers).length > 0) req.headers = headers
+      if (Object.keys(headerExprs).length > 0) req.headerExprs = headerExprs
     }
   }
   return req
