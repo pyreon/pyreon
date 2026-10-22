@@ -109,6 +109,10 @@ jobs:
 
       - name: Install workspace deps
         shell: bash
+        # A STEP timeout as well as the command one: GitHub kills the step itself and the job goes on to run the
+        # `if: always()` diagnostics upload, so a hang leaves its log behind. A command-level `timeout` can be
+        # outlived by a descendant that left its process group, and then only the job timeout ends it — with no logs.
+        timeout-minutes: 12
         run: |
           mkdir -p .cache/docs-ci
           # GNU timeout via the resolver: on Ubuntu 26.04 a bare `timeout` cannot kill the
@@ -118,6 +122,7 @@ jobs:
 
       - name: Build docs
         shell: bash
+        timeout-minutes: 10
         # ROOT base (no `--base` flag → Vite defaults to `/`) because the
         # site now serves at the apex `pyreon.dev`, not the `/pyreon/`
         # project-pages subpath. The custom domain is pinned by
@@ -146,6 +151,7 @@ jobs:
 
       - name: Build the Atlas workbench site
         shell: bash
+        timeout-minutes: 5
         # Publishes the workbench at pyreon.dev/atlas, against the REAL
         # `@pyreon/ui-components` catalog — 108 components derived from source,
         # not a hand-written demo. That distinction is the whole pitch: a
