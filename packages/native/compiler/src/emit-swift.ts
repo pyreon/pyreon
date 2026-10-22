@@ -5799,7 +5799,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.spreads && e.spreads.length > 0) {
         const plan = planObjectSpread(e.fields, e.spreads, swiftSpreadResolver(indent))
         if (plan !== null) {
-          if (plan.warn !== undefined) _emitWarnings.push(plan.warn)
+          // An expression can be emitted more than once (type probing, then the value); name it once.
+          if (plan.warn !== undefined && !_emitWarnings.includes(plan.warn)) _emitWarnings.push(plan.warn)
           // An OPTIONAL source is a warning on EVERY arm, not just the
           // override one: `let r = o` where `o` is `T?` mistypes exactly as
           // `var c = o` did, and the copy arm is reachable for the shape the

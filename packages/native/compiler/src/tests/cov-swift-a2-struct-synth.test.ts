@@ -102,8 +102,8 @@ export function App() {
     expect(code).toContain('@State private var b: [AppA] = [AppA(q: 3, r: 4), AppA(q: 5, r: 6)]')
   })
 
-  it('a SPREAD-bearing literal and an EMPTY array have no single name and keep `Any`', () => {
-    const { code } = swift(`import { Stack, Text } from '@pyreon/primitives'
+  it('a SPREAD that adds a key and an EMPTY array have no single name and keep `Any`', () => {
+    const { code, warnings } = swift(`import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 export function App(props: { seed: { name: string } }) {
   const d = signal([])
@@ -111,7 +111,10 @@ export function App(props: { seed: { name: string } }) {
   return (<Stack><Text>{() => \`\${d().length}\${e().extra}\`}</Text></Stack>)
 }`)
     expect(code).toContain('@State private var d: Any = []')
-    expect(code).toContain('@State private var e: Any = (extra: 1)')
+    // The added key has no faithful lowering, so it is NAMED and the source is emitted — no longer the silent
+    // one-field tuple `(extra: 1)`, which dropped every inherited field (native-spread-any-source.test.ts).
+    expect(code).toContain('@State private var e: Any = seed')
+    expect(warnings.some((w) => /object spread that ADDS a key/.test(String(w)))).toBe(true)
   })
 })
 

@@ -230,9 +230,9 @@ describe('TodoMVC gap-tracking baseline', () => {
   it('G4 — object partial-update {...t, k: v} emits data class `.copy(...)` on Kotlin', () => {
     // CLOSED by this PR. Kotlin's data class `.copy(field = value)` is
     // the canonical copy-with-overrides idiom and maps 1:1 to the JS
-    // `{...t, k: v}` source. Single-spread + identifier source only;
-    // multi-spread and non-identifier sources fall through to the
-    // tuple-literal emit.
+    // `{...t, k: v}` source. The source may be any expression whose type is
+    // known (`{ ...u(), k: v }`), and several same-typed sources merge — see
+    // native-object-spread-shapes.test.ts / native-spread-any-source.test.ts.
     const out = transform(source, { target: 'kotlin' })
     expect(out.code).toMatch(/t\.copy\(done = !t\.done\)/)
   })

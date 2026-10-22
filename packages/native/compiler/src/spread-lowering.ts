@@ -67,10 +67,12 @@ export function planObjectSpread(
 ): SpreadPlan {
   if (spreads.length === 0) return null
 
-  // A non-identifier source (`{ ...makeDefaults() }`, `{ ...cfg.theme }`) was
-  // never claimed by either emitter and fell into the plain-literal path,
-  // which drops the spread entirely — a silent loss of every inherited field.
-  if (spreads.some((s) => s.kind !== 'identifier')) return null
+  // A source may be ANY expression — the signal read `{ ...u(), age: n }` is the commonest spread there is. Both
+  // lowerings evaluate the source exactly once (Swift `{ var c = <source>; …; return c }()`, Kotlin
+  // `<source>.copy(…)`), so the only question is whether its FIELDS are known, which the resolver answers. (This
+  // used to bail for every non-identifier, which fell into the plain-literal path and dropped the spread entirely:
+  // `u.set({ ...u(), age: n })` became a tuple holding only `age`, on both targets, with no warning.)
+  const opaque = spreads.some((s) => s.kind !== 'identifier')
 
   const last = spreads[spreads.length - 1]!
   const surviving = winners(fields, spreads.length)
@@ -99,9 +101,14 @@ export function planObjectSpread(
   const known = r.fieldsOf(last)
   if (known === null) {
     // The source's shape is unknown, so an ADDED key cannot be detected. A
-    // plain copy is exact regardless; anything else keeps the caller's
-    // existing path rather than guessing.
-    return fields.length === 0 ? plan() : null
+    // plain copy is exact regardless. An identifier source keeps the caller's
+    // existing override path; any other source has none, so it is emitted
+    // with the overrides AND named — never dropped.
+    if (fields.length === 0) return plan()
+    if (!opaque) return null
+    return plan(
+      `The type of the spread source \`${r.label(last)}\` could not be inferred, so the fields written after it (${surviving.map((f) => `\`${f.name}\``).join(', ')}) are assigned onto it unchecked. Annotate the value it comes from (\`signal<T>(…)\`, a typed parameter) so the native type is known.`,
+    )
   }
 
   const added = fields.filter((f) => !known.has(f.name)).map((f) => f.name)
