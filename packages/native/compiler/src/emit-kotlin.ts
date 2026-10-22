@@ -94,6 +94,8 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  logicalOrValueKind,
+  normalizeNumericAlias,
   objectLengthRangeForm,
   optionalMemberTernary,
   rewriteObjectKeys,
@@ -4343,6 +4345,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `(${fnRef(e.left)} ?: ${fnRef(e.right)})`
         } finally {
           _activeEnumType = prev
+        }
+      }
+      if (e.op === '||') {
+        const lt = inferType(e.left, _kotlinExprInferCtx)
+        const rt = inferType(e.right, _kotlinExprInferCtx)
+        const k = logicalOrValueKind(lt, rt)
+        if (k !== null) {
+          // Bind the left once (it is often a call), evaluate the right only when it is falsy — JS semantics.
+          const asDouble = (x: ExprIR, t: TypeIR): string => {
+            const code = emitKotlinExpr(x, indent)
+            const n = normalizeNumericAlias(t)
+            return k === 'double' && !(n.kind === 'number' && n.float === true) ? `(${code}).toDouble()` : code
+          }
+          const falsy =
+            k === 'string' ? '__or.isEmpty()' : k === 'int' ? '__or == 0L' : '__or == 0.0 || __or.isNaN()'
+          return `(${asDouble(e.left, lt)}).let { __or -> if (${falsy}) ${asDouble(e.right, rt)} else __or }`
         }
       }
       warnNonBooleanLogical(e.op, e.left, e.right, (x) => inferType(x, _kotlinExprInferCtx))

@@ -105,6 +105,8 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  logicalOrValueKind,
+  normalizeNumericAlias,
   inferTypeValue,
   objectLengthRangeForm,
   optionalMemberTernary,
@@ -5621,6 +5623,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `(${emitSwiftExpr(e.left, indent)} ?? ${emitSwiftExpr(e.right, indent)})`
         } finally {
           _activeEnumType = prev
+        }
+      }
+      if (e.op === '||') {
+        const lt = inferType(e.left, _activeInferCtx)
+        const rt = inferType(e.right, _activeInferCtx)
+        const k = logicalOrValueKind(lt, rt)
+        if (k !== null) {
+          // Bind the left once (it is often a call), evaluate the right only when it is falsy — JS semantics.
+          const asDouble = (x: ExprIR, t: TypeIR): string => {
+            const code = emitSwiftExpr(x, indent)
+            const n = normalizeNumericAlias(t)
+            return k === 'double' && !(n.kind === 'number' && n.float === true) ? `Double(${code})` : code
+          }
+          const ty = k === 'string' ? 'String' : k === 'int' ? 'Int' : 'Double'
+          const falsy =
+            k === 'string' ? '__or.isEmpty' : k === 'int' ? '__or == 0' : '__or == 0 || __or.isNaN'
+          return `{ () -> ${ty} in let __or = ${asDouble(e.left, lt)}; return ${falsy} ? ${asDouble(e.right, rt)} : __or }()`
         }
       }
       warnNonBooleanLogical(e.op, e.left, e.right, (x) => inferType(x, _activeInferCtx))
