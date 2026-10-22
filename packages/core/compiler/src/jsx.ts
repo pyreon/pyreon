@@ -1706,7 +1706,9 @@ export function transformJSX_JS(
    * then have to unwrap — the documented breakage class) or a new runtime branch
    * that resolves such arrays. That is a genuine contract change, not a shape, so
    * it is left out and recorded rather than half-done. Multi-child parents keep
-   * today's eager behaviour exactly.
+   * today's eager BUILD ORDER exactly. Their items are still marked re-mountable
+   * (see `braceTemplateChild`), which is what makes a multi-child `<Show>` safe to
+   * hide and re-show even though it cannot be built lazily.
    *
    * "Meaningful" uses the same JSX whitespace elision the `<For>` holder check
    * uses: a JSXText child that `cleanJsxText` reduces to nothing is not a child.
@@ -1728,9 +1730,15 @@ export function transformJSX_JS(
    */
   function braceTemplateChild(call: string, node: N, needsBraces: boolean): string {
     if (!needsBraces) return call
-    if (!isSoleComponentChild(node)) return `{${call}}`
+    // A template in a CHILD position is built once, at the call site, and handed
+    // to a reactive boundary that may tear it down and mount the SAME object
+    // again (`<Show>` re-showing, a `when` that re-runs). `_tpl`'s third argument
+    // marks it re-mountable so the second mount rebuilds instead of re-inserting
+    // dead DOM. SSR calls (`_ssr(…)`) have no such notion and are left alone.
+    const child = call.startsWith('_tpl(') ? `${call.slice(0, -1)}, 1)` : call
+    if (!isSoleComponentChild(node)) return `{${child}}`
     needsLcImport = true
-    return `{_lc(() => ${call})}`
+    return `{_lc(() => ${child})}`
   }
 
   // ── Template emit ─────────────────────────────────────────────────────────

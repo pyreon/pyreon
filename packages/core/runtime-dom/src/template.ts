@@ -777,7 +777,17 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
   }
 }
 
-export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
+/**
+ * `remountable` (the compiler passes `1` for a template emitted as a
+ * component's child) makes the returned item SURVIVE being torn down and
+ * mounted again — see {@link remountableTpl}.
+ */
+export function _tpl(
+  html: string,
+  bind: (el: HTMLElement) => (() => void) | null,
+  remountable?: 1,
+): NativeItem {
+  if (remountable === 1) return remountableTpl(html, bind)
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
@@ -848,6 +858,60 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     return deferTpl(tpl, html, bind)
   }
   return buildTpl(tpl, html, bind)
+}
+
+/**
+ * A compiled template used as a component CHILD is built ONCE, at the call site,
+ * and handed to whatever reactive boundary the component renders it through. A
+ * plain `_tpl` item is single-use: its cleanup disposes the bindings, and
+ * mounting the SAME item again re-inserts an element nothing updates. That is
+ * exactly what `<Show>` does — on hide then show, and on a `when` re-run — so a
+ * `<Show>` toggled twice froze its content at the first value.
+ *
+ * This item remembers how it was made. Its cleanup marks it dead, and
+ * `__revive()` (called by `mountChild` before re-inserting) builds a fresh clone
+ * and re-runs `bind` against it — the same thing a first mount does, so a revived
+ * item is indistinguishable from a new one. The item's identity is stable across
+ * revivals, which is what lets a boundary recognize "the same value" and skip an
+ * unnecessary teardown.
+ *
+ * Cost is paid only by children emitted in a component-child position (one
+ * object and two closures per mount); `<For>` rows and component roots stay on
+ * the plain path.
+ */
+function remountableTpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
+  let current: NativeItem = _tpl(html, bind)
+  let dead = false
+  const dispose = (): void => {
+    dead = true
+    current.cleanup?.()
+  }
+  const item = {
+    __isNative: true as const,
+    get el(): HTMLElement {
+      return current.el
+    },
+    // Always a function: even a bind with no disposers must mark the item dead.
+    get cleanup(): () => void {
+      return dispose
+    },
+    get __dead(): boolean {
+      return dead
+    },
+    __revive(): void {
+      dead = false
+      current = _tpl(html, bind)
+    },
+    // Hydration hands a DEFERRED item its real cursor; forward to the item
+    // actually holding the build (the facade is transparent to that protocol).
+    get __deferred(): true | undefined {
+      return (current as Partial<DeferredNativeItem>).__deferred
+    },
+    __adoptAt(domNode: Element): boolean {
+      return (current as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
+    },
+  }
+  return item as unknown as NativeItem
 }
 
 /**

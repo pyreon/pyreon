@@ -2524,14 +2524,14 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
   },
 
   'runtime-dom/_tpl': {
-    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined): NativeItem',
+    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, remountable?: 1): NativeItem',
     example: `// Compiler output for <div class="box">{text()}</div>:
 _tpl("<div class=\\"box\\"> </div>", (__root) => {
   const __t0 = __root.firstChild as Text
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
-    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
+    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The compiler passes a third argument, `1`, when a template is emitted as a component child: that item is built once but may be torn down and mounted again (`<Show>` re-showing), so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
     mistakes: `- COMPILER-EMITTED — never hand-write \`_tpl()\`; the html string + the bind walks (\`.firstChild\`/\`.nextSibling\` captures) are generated to match the JSX exactly, and a hand-written mismatch corrupts the ref walks
 - The html is parsed + cached per DISTINCT string (module-level) then \`cloneNode(true)\`d — a dynamically-built html string defeats the cache (a \`<template>\` parse per unique string)
 - Bindings run against the CLONE after ALL node references are captured (the two-phase ref-hoist) — this is what keeps a dynamic slot before static siblings from corrupting their walks; the capture-before-mutate ordering is load-bearing, not cosmetic`,

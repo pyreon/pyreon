@@ -129,6 +129,9 @@ export function mountChild(
   // NativeItem — pre-built DOM element from _tpl() or createTemplate().
   if ((child as unknown as NativeItem).__isNative) {
     const native = child as unknown as NativeItem
+    // A re-mountable item whose bindings were disposed by an earlier unmount
+    // must be rebuilt before it goes back in the DOM.
+    if (native.__dead === true) native.__revive?.()
     parent.insertBefore(native.el, anchor)
     if (!native.cleanup) {
       if (_elementDepth > 0) return noop
