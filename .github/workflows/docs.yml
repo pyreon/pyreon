@@ -111,7 +111,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p .cache/docs-ci
-          timeout --verbose --signal=KILL 10m bun install --frozen-lockfile 2>&1 | tee .cache/docs-ci/install.log
+          # GNU timeout via the resolver: on Ubuntu 26.04 a bare `timeout` cannot kill the
+          # process group, so the `| tee` never closes and the step hangs until the job is
+          # killed, uploading no logs. See scripts/gnu-timeout.sh.
+          bash scripts/gnu-timeout.sh --verbose --signal=KILL 10m bun install --frozen-lockfile 2>&1 | tee .cache/docs-ci/install.log
 
       - name: Build docs
         shell: bash
@@ -122,7 +125,7 @@ jobs:
         # across deploys.
         run: |
           cd docs
-          timeout --verbose --signal=KILL 8m bunx vite build 2>&1 | tee ../.cache/docs-ci/docs.log
+          bash ../scripts/gnu-timeout.sh --verbose --signal=KILL 8m bunx vite build 2>&1 | tee ../.cache/docs-ci/docs.log
 
       - name: No SSG render errors
         # The SSG plugin is deliberately non-fatal on a per-path render
@@ -166,7 +169,7 @@ jobs:
         # `packages/ui/components/docs/dist/atlas` and the upload would ship a
         # docs site with no /atlas in it.
         run: |
-          timeout --verbose --signal=KILL 3m bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
+          bash scripts/gnu-timeout.sh --verbose --signal=KILL 3m bun packages/tools/atlas/bin/atlas.js build packages/ui/components \
             --out "$GITHUB_WORKSPACE/docs/dist/atlas" \
             --base /atlas/ \
             --title "Pyreon UI" 2>&1 | tee .cache/docs-ci/atlas.log
