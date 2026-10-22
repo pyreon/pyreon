@@ -81,10 +81,11 @@ describe('a pure sibling seed is substituted IN, through every container kind', 
 
 describe('an UNSUBSTITUTABLE read is NAMED, never silently emitted', () => {
   it('a seed that is not a pure construction-time expression refuses its dependents', () => {
-    // `impure` reads a PROP, so it is not seedable; `chained` reads `impure`
-    // and therefore cannot be substituted either.
+    // `impure` is a CALL, so it is not a pure construction-time seed; `chained` reads `impure` and therefore cannot be
+    // substituted either. (A bare prop read IS a pure seed — `native-prop-seeded-signal.test.ts` — so a call is what
+    // keeps this a refusal.)
     const { warnings } = sw(
-      `  const impure = signal(props.base + 1)
+      `  const impure = signal(Math.max(props.base, 1))
   const chained = signal(impure() + 1)`,
       '${impure()}${chained()}',
     )

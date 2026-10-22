@@ -1276,6 +1276,14 @@ let _structDefs: StructIR[] = []
 // per-decl; non-pure seeds; walker-uncovered nodes) warn LOUDLY and keep the
 // old emit, which the residual check guarantees is never silently wrong-er.
 let _siblingSignalSeeds: Map<string, ExprIR> = new Map()
+/**
+ * Signals whose initializer reads a PROP (`signal(props.start)`), mapped to the emitted initial value. A `@State`
+ * initializer is a stored-property initializer, which cannot read another member — and a prop IS a member — so these
+ * are declared typed with no initializer and seeded in the generated `init`, where the prop is the init parameter:
+ * `_n = State(initialValue: start)`. Populated while the declarations are emitted; consumed by the init block.
+ */
+let _propSeededSignals: Set<string> = new Set()
+let _propSeedInits: Map<string, string> = new Map()
 /** Set while emitting a model view/action body — the factory's `self`
  * param name. Distinct from `_activePropsParamName` (which also carries it,
  * for the member-expression rewrite) so the signal-READ rewrite below can
@@ -1727,6 +1735,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // valid topological order, so one forward pass with cumulative seeds
   // handles chains (`b = signal(a() * 2); c = signal(b() + 1)`).
   _siblingSignalSeeds = new Map()
+  const propNameSet = new Set(c.props.map((p) => p.name))
   {
     const signalsSoFar = new Set<string>()
     const seedable = new Map<string, ExprIR>()
@@ -1756,10 +1765,41 @@ function emitSwiftComponent(c: ComponentIR): string {
         _siblingSignalSeeds.set(d.name, eff)
       }
       const isEnum = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
-      if (d.storageKey === undefined && !isEnum && residual.length === 0 && isPureSeedExpr(eff)) {
+      if (d.storageKey === undefined && !isEnum && residual.length === 0 && isPureSeedExpr(eff, propNameSet, c.propsParamName)) {
         seedable.set(d.name, { kind: 'paren', inner: eff })
       }
       signalsSoFar.add(d.name)
+    }
+  }
+  // Signals seeded from a prop — after sibling substitution, so `b = signal(a() * 2)` with `a = signal(props.x)` is one.
+  _propSeededSignals = new Set()
+  _propSeedInits = new Map()
+  {
+    const propNames = c.props.map((p) => p.name)
+    if (c.propsParamName !== undefined) propNames.push(c.propsParamName)
+    for (const d of c.decls) {
+      if (d.kind !== 'signal') continue
+      const eff = _siblingSignalSeeds.get(d.name) ?? inlineValueConsts(d.initial)
+      if (!propNames.some((n) => exprReferencesIdent(eff, n))) continue
+      if (d.storageKey === undefined) {
+        _propSeededSignals.add(d.name)
+        continue
+      }
+      // A persisted signal's declaration belongs to the persistence plugin (`@AppStorage` / the runtime wrapper), which
+      // has no init-seeding form yet — say so rather than emit a stored initializer that reads a prop.
+      _emitWarnings.push(
+        `persisted signal '${d.name}' (storage key '${d.storageKey}') is seeded from a prop. Its Swift declaration is a ` +
+          `stored-property initializer, which cannot read a prop ("cannot use instance member within property ` +
+          `initializer"). Seed it from a literal and write the prop's value in onMount if the key is still unset.`,
+      )
+    }
+    if (_propSeededSignals.size > 0 && isLayout) {
+      _emitWarnings.push(
+        `${c.name}: signal(s) ${[..._propSeededSignals].map((n) => `'${n}'`).join(', ')} are seeded from a prop in a ` +
+          `layout component, which has no generated init to seed them in. Seed from a literal and set the value ` +
+          `in onMount.`,
+      )
+      _propSeededSignals = new Set()
     }
   }
   for (const s of synth.structs) {
@@ -1827,7 +1867,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // property) are seeded in a generated init() (`DeclEmitter.swiftInit`). Props are threaded as init params (reproducing
   // SwiftUI's memberwise init) so the component can still take props.
   const seededDecls = swiftInitDecls(c.decls)
-  if (seededDecls.length > 0 && !isLayout) {
+  if ((seededDecls.length > 0 || _propSeedInits.size > 0) && !isLayout) {
     const params = c.props
       .map((p) =>
         typeIsOptional(p.type)
@@ -1841,6 +1881,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     }
     for (const { decl, init } of seededDecls) {
       for (const line of init.lines(decl, swiftEmitContext(2))) lines.push(`    ${line}`)
+    }
+    // Inside init the prop names are the init PARAMETERS, so the initial value reads them directly.
+    for (const [name, initial] of _propSeedInits) {
+      lines.push(`    _${swiftIdent(name)} = State(initialValue: ${initial})`)
     }
     lines.push(`  }`)
   }
@@ -2084,18 +2128,31 @@ function collectMutatedComponentVars(decls: DeclIR[]): Set<string> {
 }
 
 /** Pure construction-time seed: safe to duplicate into another initializer. */
-function isPureSeedExpr(e: ExprIR): boolean {
+/**
+ * A seed is pure when it is fixed at construction: literals, and — when the component's prop names are given — a prop
+ * read (`start`, `props.start`), since props do not change while the view is being constructed. A seed that reads a
+ * prop is then seeded in the generated init rather than in a stored-property initializer (see `_propSeededSignals`).
+ */
+function isPureSeedExpr(e: ExprIR, props?: ReadonlySet<string>, propsParam?: string): boolean {
   switch (e.kind) {
     case 'literal':
       return true
+    case 'identifier':
+      return props?.has(e.name) === true
+    case 'member':
+      return propsParam !== undefined && e.object.kind === 'identifier' && e.object.name === propsParam
     case 'paren':
-      return isPureSeedExpr(e.inner)
+      return isPureSeedExpr(e.inner, props, propsParam)
     case 'unary':
-      return isPureSeedExpr(e.argument)
+      return isPureSeedExpr(e.argument, props, propsParam)
     case 'binary':
-      return isPureSeedExpr(e.left) && isPureSeedExpr(e.right)
+      return isPureSeedExpr(e.left, props, propsParam) && isPureSeedExpr(e.right, props, propsParam)
     case 'ternary':
-      return isPureSeedExpr(e.cond) && isPureSeedExpr(e.then) && isPureSeedExpr(e.otherwise)
+      return (
+        isPureSeedExpr(e.cond, props, propsParam) &&
+        isPureSeedExpr(e.then, props, propsParam) &&
+        isPureSeedExpr(e.otherwise, props, propsParam)
+      )
     default:
       return false
   }
@@ -2389,6 +2446,11 @@ function emitSwiftDecl(
         },
         swiftEmitContext(0),
       )
+    }
+    // Seeded from a prop: declared without an initializer and seeded in the generated init (see _propSeededSignals).
+    if (_propSeededSignals.has(d.name) && anno !== 'Any' && anno !== '[Any]') {
+      _propSeedInits.set(d.name, initial)
+      return `@State private var ${swiftIdent(d.name)}: ${anno}`
     }
     return `@State private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
   }
