@@ -175,6 +175,7 @@ return <RouterProvider router={router}><RouterView /></RouterProvider>
 |---|---|---|
 | `createRouter({ routes: [...] })` | ✅ Full | Routes extracted; non-literal arrays silently drop |
 | `{ path: '/x', component: Identifier }` | ✅ Full | Both fields required; non-literal path silently dropped |
+| A route component's `params` prop (`props: { params: { id: string } }` or a named `params: UserParams`) | ✅ Full | Constructed from the matched path (`UserParams(id: params["id"] ?? "")`). Flat `string` / `number` / `boolean` fields only; a nested field passes the raw map, which the native build rejects by name |
 | `beforeEnter: () => expr` (expression-body) | ✅ Full | A5 PR #1242 wired into runtime |
 | `beforeEnter: () => { … }` (block-body) | ❌ Warning | PR #1136 — "Per-route beforeEnter is a block-body arrow — only expression-body arrows are extracted; this route emits UNGUARDED." |
 | `beforeEach: [identifier, identifier]` | ✅ Full | A4-shipped runtime; identifier args land, inline-arrow args silently dropped |
