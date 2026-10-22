@@ -67,7 +67,7 @@ interface HookDef {
   readonly refusal: string | undefined
 }
 
-interface Edit {
+export interface Edit {
   readonly start: number
   readonly end: number
   readonly text: string
@@ -852,14 +852,14 @@ function calledName(s: Node, names: Map<string, string>): string | undefined {
 
 // ─── AST helpers ─────────────────────────────────────────────────────────────
 
-type RefKind = 'ref' | 'binding' | 'shorthand'
+export type RefKind = 'ref' | 'binding' | 'shorthand'
 
 /**
  * Visit every identifier that names a VALUE: a reference (`ref`), a declaration's own name (`binding`), or a shorthand
  * object property (`shorthand`, which must keep its key). Property keys, member properties, labels and type positions
  * are not values and are skipped.
  */
-function walkRefs(node: Node, visit: (id: Node, kind: RefKind) => void, parent?: Node, key?: string): void {
+export function walkRefs(node: Node, visit: (id: Node, kind: RefKind) => void, parent?: Node, key?: string): void {
   if (!node || typeof node !== 'object') return
   if (Array.isArray(node)) {
     for (const n of node) walkRefs(n, visit, parent, key)
@@ -935,7 +935,7 @@ function collectPatternNames(p: Node, out: string[]): void {
 }
 
 /** Every name bound inside a NESTED function (its params, its declarations, a catch param). */
-function collectNestedBindings(body: Node[]): Set<string> {
+export function collectNestedBindings(body: Node[]): Set<string> {
   const out = new Set<string>()
   const visit = (n: Node, nested: boolean): void => {
     if (!n || typeof n !== 'object') return
@@ -994,7 +994,7 @@ function containsReturnOutsideNestedFunctions(statements: Node[]): boolean {
   return found
 }
 
-function collectAllIdentifierNames(program: Node): Set<string> {
+export function collectAllIdentifierNames(program: Node): Set<string> {
   const out = new Set<string>()
   const visit = (n: Node): void => {
     if (!n || typeof n !== 'object') return
@@ -1050,11 +1050,11 @@ function describeStatement(s: Node): string {
   }
 }
 
-function lineEnd(source: string, offset: number): number {
+export function lineEnd(source: string, offset: number): number {
   return source[offset] === '\n' ? offset + 1 : offset
 }
 
-function applyEdits(source: string, edits: Edit[]): string {
+export function applyEdits(source: string, edits: Edit[]): string {
   const sorted = [...edits].sort((a, b) => b.start - a.start)
   let out = source
   let floor = Number.POSITIVE_INFINITY

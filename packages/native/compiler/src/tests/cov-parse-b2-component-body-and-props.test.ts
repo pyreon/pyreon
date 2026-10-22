@@ -150,10 +150,13 @@ describe('parse.ts — parseProps', () => {
     expect(r.code).toContain('let label: String')
   })
 
-  it('bails (no props) on a RENAMED destructure — never a half-binding', () => {
+  it('binds a RENAMED destructure completely — never a half-binding', () => {
+    // parseProps itself still bails on a rename; the props-destructure pre-pass (`props-destructure.ts`) rewrites it
+    // into `props.label` reads first, so the component declares the prop and reads it — nothing is half-bound.
     const r = swift(`export function Row({ label: lbl }: { label: string }) { return <Text>{lbl}</Text> }`)
-    expect(r.code).not.toContain('let label: String')
-    expect(r.code).not.toContain('let lbl: String')
+    expect(r.code).toContain('let label: String')
+    expect(r.code).toContain('Text(verbatim: "\\(label)")')
+    expect(r.code).not.toMatch(/\blbl\b/)
   })
 
   it('bails on an EMPTY destructure pattern and on a REST element', () => {

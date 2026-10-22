@@ -52,10 +52,15 @@ export function Greeting(props: { title: string; count: number }) {
 | Shape | Status | Notes |
 |---|---|---|
 | `function Comp(props: { … })` | ✅ Full | The canonical shape |
-| `const Comp = (props: { … }) => …` | ✅ Full | Arrow form supported |
+| `const Comp = (props: { … }) => …` | ✅ Full | Arrow form, concise or block body, exported or not. Rewritten into a `function` declaration before parsing when it is a component: rendered as `<Comp …>`, taking a props object, or with a block body |
+| `const Row = (x: number) => <…/>` called as `{Row(1)}` | ✅ Full | A view function, not a component: lowers to `@ViewBuilder func Row(_ x: Int)` / `@Composable fun Row(x: Long)`. A parameterless `const Hi = () => <…/>` lowers the same way |
+| `const Comp = function (props: { … }) { … }` | ✅ Full | Function-expression form, rewritten the same way |
+| `export default function Comp(props)` | ✅ Full | Emitted as the named component `Comp`; the host imports a component by name |
+| `export default function () { … }` / `export default () => …` | ⚠️ Warns | An anonymous component has no name for the host to import. Name it |
+| `const Comp: FC<P> = (props) => …` | ⚠️ Warns | Typed on its name, so the parameter's type is invisible natively. Type the parameter instead: `(props: P) =>` |
+| Async, generator or generic component | ⚠️ Warns | Declare a plain `function Comp(props: P)` |
 | `function Comp(props)` (untyped) | ❌ Warning | `Component X has an untyped 'props' parameter — type-annotate it (e.g. function X(props: { title: string }))` — PR #1136. Without annotation, member access (`props.X`) silently drops. |
-| `function Comp({ a, b }: { a: string; b: number })` (destructured) | 🟡 Skipped | The destructured-param shape bails earlier in `parseProps` — no warning yet (planned). |
-| `export default function Comp(props)` | ✅ Full | Default export supported |
+| `function Comp({ a, b }: { a: string; b: number })` (destructured) | ✅ Full | Renames and defaults too: `{ title, count: n, size = 'm' }` reads `props.count` for `n` and `props.size ?? 'm'` for `size` |
 | Component with no `return` statement | ❌ Warning | "Component X: no return statement found; skipping." |
 | Component returning a fragment (`<>…</>`) | 🟡 Phase 1+ | Limited — single root element preferred |
 
@@ -137,8 +142,8 @@ function deleteAt(index: number) { items.value.splice(index, 1) }
 | `const fn = (a, b) => { ... }` | ✅ Full | Block-body arrow |
 | `function fn(a, b) { ... }` | ✅ Full | Function declaration (PR landed Round-1) |
 | `async function` / `async () => …` | 🟡 Phase 1 | Async body must be inside a recognised effect hook |
-| Default parameters (`function fn(a = 1)`) | 🟡 Phase 2 | May silently drop the default value |
-| Rest parameters (`function fn(...args)`) | ❌ Unsupported | Silent drop |
+| Default parameters (`function fn(a = 1)`) | ✅ Full | Emitted as a native default argument |
+| Rest parameters (`function fn(...args)`) | ⚠️ Warns | Take an array parameter instead |
 
 ### ✅ Reactive prop access
 
@@ -154,8 +159,9 @@ The `props.X` member access is rewritten per target. **The annotation type is th
 |---|---|---|
 | `props.fieldName` for an annotated field | ✅ Full | Rewritten to platform-native field |
 | `props.fieldName` for an UN-annotated field | ❌ Silent drop | Field not in annotation = parser doesn't know about it. No warning at this granularity (only for the parent — see "untyped props parameter" above) |
-| Destructure (`const { title } = props`) | 🟡 Skipped | Falls through silently — not yet emitted; use `props.title` directly |
-| Spread attributes (e.g. `Child` element with `{...props}`) | ❌ Unsupported | Silently dropped (the spread attribute is ignored; explicit attrs win) |
+| Destructure (`const { title, count: n, size = 'm' } = props`) | ✅ Full | Each name reads its field; a default becomes `props.size ?? 'm'`. `const` only |
+| Destructure with a rest element, a nested pattern or a computed key | ⚠️ Warns | Read the props off the parameter instead |
+| Spread onto a component (`<Child {...props} />`, `<Child {...obj} />`) | ✅ Full | Each known field becomes a named argument |
 
 ### ✅ Routing
 
@@ -227,7 +233,6 @@ These are shapes the parser walks but doesn't (yet) emit anything for. The compi
 | Route's `loader: async (ctx) => …` field | line ~872 | Loader auto-emit deferred to Phase B6 | Use runtime `router.setLoaderData()` + the A3 diagnostic for `useLoaderData<T>()` |
 | Route's `meta`, `name` | line ~862 | Not in v1 scope | Track app-side; use route path as key |
 | Inline-arrow guards in `beforeEach`/`afterEach` | line ~597 | Identifier-array parser only | Hoist to named function, then pass identifier |
-| Spread attribute on JSX (`<Comp {...props}>`) | (compiler-level) | Phase 2 follow-up | Forward attrs explicitly |
 | Block-body `beforeEnter` arrow | line ~862 | A5 wires expression-body only; block-body warns (PR #1136) | Use expression body: `beforeEnter: () => isAuthed()` |
 | `useClipboard` destructure | line ~459 | Warns (PR #1136) | Use single-binding shape |
 
