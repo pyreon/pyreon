@@ -177,6 +177,7 @@ import {
   forBlockBodyWarning,
   narrowViewBlock,
   optionalSlotSwiftWarning,
+  mapViewBlock,
   planViewBlock,
   propRefName,
   slotPropsOf,
@@ -2788,12 +2789,18 @@ function emitSwiftViewHelper(
     .map((p) => `_ ${swiftIdent(p.name)}: ${swiftParamType(p.type)}`)
     .join(', ')
   const vis = visibility === 'private' ? 'private ' : ''
-  const body = withSwiftLocals(
-    h.params.map((p) => [p.name, p.type] as const),
-    () =>
-      emitSwiftChild({ kind: 'expr', expr: unparenExpr(inlineValueConsts(h.body)) }, indent + 2),
+  const locals = h.params.map((p) => [p.name, p.type] as const)
+  const head = `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {`
+  if (h.block !== undefined) {
+    // A struct-level func cannot see the body-local `let`s value consts emit as — inline them, as the expression form does.
+    const block = mapViewBlock(h.block, inlineValueConsts)
+    const lines = withSwiftLocals(locals, () => emitSwiftViewBlock(block, indent + 2))
+    return `${head}\n${lines.join('\n')}\n${' '.repeat(indent)}}`
+  }
+  const body = withSwiftLocals(locals, () =>
+    emitSwiftChild({ kind: 'expr', expr: unparenExpr(inlineValueConsts(h.body)) }, indent + 2),
   )
-  return `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
+  return `${head}\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
 /**

@@ -1839,11 +1839,17 @@ function emitKotlinViewHelper(
   const params = h.params
     .map((p) => `${kotlinIdent(p.name)}: ${kotlinParamType(p.type, ctx, p.name)}`)
     .join(', ')
-  const body = withKotlinLocals(
-    h.params.map((p) => [p.name, p.type] as const),
-    () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
+  const locals = h.params.map((p) => [p.name, p.type] as const)
+  const head = `@Composable\n${' '.repeat(indent)}${visibility}fun ${kotlinIdent(h.name)}(${params}) {`
+  if (h.block !== undefined) {
+    const block = h.block
+    const lines = withKotlinLocals(locals, () => emitKotlinViewBlock(block, indent + 2))
+    return `${head}\n${lines.join('\n')}\n${' '.repeat(indent)}}`
+  }
+  const body = withKotlinLocals(locals, () =>
+    emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
   )
-  return `@Composable\n${' '.repeat(indent)}${visibility}fun ${kotlinIdent(h.name)}(${params}) {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
+  return `${head}\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
 /**

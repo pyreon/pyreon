@@ -373,16 +373,21 @@ describe('render-slots — view helper recognition', () => {
     expect(viewHelperFromDecl(fn([{ kind: 'return', expr: jsx }]))?.name).toBe('renderRow')
   })
 
-  it('a module-scope `let`, a non-arrow, or a statement-bodied arrow is not a helper', () => {
+  it('a module-scope `let`, a non-arrow, or a body with no view-builder shape is not a helper', () => {
     const arrow = (extra: object = {}): ExprIR => ({ kind: 'arrow', params: ['r'], paramTypes: [{ kind: 'string' }], body: jsx, ...extra }) as ExprIR
     const md = (name: string, initial: ExprIR, mutable = false): ModuleDeclIR => ({ name, mutable, type: { kind: 'unknown' }, initial })
     const helpers = moduleViewHelpers([
       md('ok', arrow()),
       md('mutable', arrow(), true),
       md('notArrow', lit(1)),
+      // A block body that plans to a view IS a helper, carrying the planned block (native-block-view-helper.test.ts).
       md('stmts', arrow({ stmts: [{ kind: 'return', expr: jsx }] })),
+      // An expression statement has no view-builder spelling, so this one is not.
+      md('effectful', arrow({ stmts: [{ kind: 'expr', expr: lit(1) }, { kind: 'return', expr: jsx }] })),
     ])
-    expect([...helpers.keys()]).toEqual(['ok'])
+    expect([...helpers.keys()]).toEqual(['ok', 'stmts'])
+    expect(helpers.get('stmts')?.block).toEqual({ kind: 'view', expr: jsx })
+    expect(helpers.get('ok')?.block).toBeUndefined()
   })
 })
 
