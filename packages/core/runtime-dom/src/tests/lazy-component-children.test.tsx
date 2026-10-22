@@ -351,13 +351,16 @@ describe('lazy component children — control flow keeps working', () => {
     cond.set(false)
     expect(container.querySelector('div.k')).toBeNull()
 
-    // Re-shown: the SAME memoized instance comes back. This matches the eager
-    // behaviour exactly — `_tpl` produced ONE NativeItem there too, and `Show`
-    // mounted/unmounted that one instance — so the memo preserves the semantics
-    // rather than introducing new ones.
+    // Re-shown: the item is REBUILT. This spec used to assert the opposite — that
+    // the same instance came back ("v1", one build) — which only held because
+    // hiding disposed the item's bindings and re-showing re-inserted it WITHOUT
+    // re-binding: the content was frozen at its first value, and any signal in
+    // it stopped updating (#3955). The invariant worth keeping is that nothing
+    // is built before the first show and that a read within one mount is
+    // memoized; a fresh mount of a torn-down child is a fresh build.
     cond.set(true)
-    expect(container.querySelector('div.k')?.textContent).toBe('v1')
-    expect(builds).toBe(1)
+    expect(container.querySelector('div.k')?.textContent).toBe('v2')
+    expect(builds).toBe(2)
   })
 })
 

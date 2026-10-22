@@ -176,7 +176,7 @@ describe('templatizeComponentChildren — emit shape', () => {
   it('PRESERVES nested _tpl + _lc INSIDE an absorbed component child', () => {
     const src = `const N = () => <div class="a"><Card><b>x</b></Card></div>`
     const code = transformJSX(src, 'test.tsx', ON).code
-    expect(code).toContain('_mountChild(<Card>{_lc(() => _tpl("<b>x</b>", () => null))}</Card>')
+    expect(code).toContain('_mountChild(<Card>{_lc(() => _tpl("<b>x</b>", () => null, 1))}</Card>')
   })
 
   it('leaves the emit untouched when the option is OFF', () => {

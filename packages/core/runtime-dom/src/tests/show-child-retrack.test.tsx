@@ -199,4 +199,139 @@ describe('Show child accessor re-tracking', () => {
     await Promise.resolve()
     expect(container.querySelector('#t')?.textContent).toBe('c')
   })
+
+  test('MULTI-child Show keeps updating after `when` re-runs truthy (#3955)', async () => {
+    // The issue's exact shape: more than one child, and a signal read by
+    // `when` changes while the verdict stays true. With a sole child the
+    // memoized `_lc` value hid this; with several, `props.children` is an
+    // ARRAY, and a fresh array per read defeats an identity comparison, so the
+    // boundary tore the existing nodes down and re-mounted them without
+    // re-binding.
+    const page = signal(1)
+    const count = signal(0)
+    const { container, cleanup } = compileAndMount(
+      `function App() {
+         return (
+           <Show when={() => page() > 0}>
+             <p>header</p>
+             <p id="count">{() => 'count: ' + count()}</p>
+           </Show>
+         )
+       }`,
+      { page, count },
+    )
+    mounted.push(cleanup)
+
+    count.set(1)
+    await Promise.resolve()
+    expect(container.querySelector('#count')?.textContent).toBe('count: 1')
+
+    page.set(2) // `when` re-runs; the verdict is still true
+    await Promise.resolve()
+    count.set(2)
+    await Promise.resolve()
+    expect(container.querySelector('#count')?.textContent).toBe('count: 2')
+    count.set(3)
+    await Promise.resolve()
+    expect(container.querySelector('#count')?.textContent).toBe('count: 3')
+    expect(container.querySelectorAll('#count')).toHaveLength(1)
+  })
+
+  test('MULTI-child Show inside a wrapping element (the same bug, nested)', async () => {
+    const page = signal(1)
+    const count = signal(0)
+    const { container, cleanup } = compileAndMount(
+      `function App() {
+         return (
+           <div>
+             <Show when={() => page() > 0}>
+               <p>header</p>
+               <p id="count">{() => 'count: ' + count()}</p>
+             </Show>
+           </div>
+         )
+       }`,
+      { page, count },
+    )
+    mounted.push(cleanup)
+    page.set(2)
+    await Promise.resolve()
+    count.set(2)
+    await Promise.resolve()
+    expect(container.querySelector('#count')?.textContent).toBe('count: 2')
+    expect(container.querySelectorAll('#count')).toHaveLength(1)
+  })
+
+  test('hide then show again keeps updating — sole child', async () => {
+    const gate = signal(true)
+    const value = signal('a')
+    const { container, cleanup } = compileAndMount(
+      `function App() { return <div><Show when={() => gate()}><p id="t">{() => value()}</p></Show></div> }`,
+      { gate, value },
+    )
+    mounted.push(cleanup)
+    gate.set(false); await Promise.resolve()
+    gate.set(true); await Promise.resolve()
+    value.set('b'); await Promise.resolve()
+    expect(container.querySelector('#t')?.textContent).toBe('b')
+  })
+
+  test('hide then show again keeps updating — multiple children', async () => {
+    const gate = signal(true)
+    const value = signal('a')
+    const { container, cleanup } = compileAndMount(
+      `function App() { return <div><Show when={() => gate()}><p>h</p><p id="t">{() => value()}</p></Show></div> }`,
+      { gate, value },
+    )
+    mounted.push(cleanup)
+    gate.set(false); await Promise.resolve()
+    gate.set(true); await Promise.resolve()
+    value.set('b'); await Promise.resolve()
+    expect(container.querySelector('#t')?.textContent).toBe('b')
+  })
+
+  test('an UNCHANGED `when` keeps the same DOM nodes for several children', async () => {
+    // Rebuilding on every re-run would also work now that items are
+    // re-mountable, but it would drop focus, selection and typed input. The
+    // verdict did not change, so nothing may be touched.
+    const page = signal(1)
+    const count = signal(0)
+    const { container, cleanup } = compileAndMount(
+      `function App() {
+         return (
+           <Show when={() => page() > 0}>
+             <p>header</p>
+             <p id="count">{() => 'count: ' + count()}</p>
+           </Show>
+         )
+       }`,
+      { page, count },
+    )
+    mounted.push(cleanup)
+    const before = container.querySelector('#count')
+    page.set(2)
+    await Promise.resolve()
+    expect(container.querySelector('#count')).toBe(before)
+    count.set(5)
+    await Promise.resolve()
+    expect(before?.textContent).toBe('count: 5')
+  })
+
+  test('a re-run with the SAME array mutated in place still re-mounts it', async () => {
+    // `signal.trigger()` re-notifies after an in-place mutation; identity alone
+    // cannot see it, so the skip must compare the elements too. Mounted
+    // directly: a compiled `{() => list()}` inside an element takes a different
+    // path and would never reach the boundary under test.
+    const list = signal<unknown[]>([])
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    mounted.push(mountChild((() => list()) as never, container) ?? (() => {}))
+    list.set([_tpl('<p id="n">n</p>', () => null, 1), h('p', { id: 'a' }, 'a')])
+    await Promise.resolve()
+    expect(container.querySelectorAll('p')).toHaveLength(2)
+    ;(list.peek() as unknown[]).push(h('p', { id: 'c' }, 'c'))
+    list.trigger()
+    await Promise.resolve()
+    expect(container.querySelectorAll('p')).toHaveLength(3)
+  })
 })

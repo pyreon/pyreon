@@ -64,6 +64,13 @@ function _emitCleanup(): void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.cleanup')
 }
 
+/** Same length and the same element objects, position by position. */
+function sameItems(value: unknown[], snapshot: unknown[]): boolean {
+  if (value.length !== snapshot.length) return false
+  for (let i = 0; i < value.length; i++) if (value[i] !== snapshot[i]) return false
+  return true
+}
+
 /**
  * Mount a reactive node whose content changes over time.
  *
@@ -99,6 +106,11 @@ export function mountReactive(
   // accessor result that must not read as "same as last time" on the first run.
   const NEVER_RAN: unique symbol = Symbol('pyreon.never-ran') as never
   let lastValue: unknown = NEVER_RAN
+  // A copy of the array mounted last time, kept ONLY when it holds a compiled
+  // template (`__isNative`). `value === lastValue` cannot tell "the same array,
+  // unchanged" from "the same array, mutated in place" (`signal.trigger()`), so
+  // the skip below also compares the elements against this snapshot.
+  let lastItems: unknown[] | null = null
 
   const e = effect(() => {
     const myGen = ++generation
@@ -138,7 +150,15 @@ export function mountReactive(
     // stale node. Every other value (a VNode, an array, a primitive) is rebuilt
     // correctly by a re-mount, which is the pre-#3082 behaviour and is what
     // `trigger()` and store mutation depend on.
-    if (value === lastValue && (value as { __isNative?: boolean } | null)?.__isNative === true) {
+    // A component with SEVERAL children hands back an ARRAY of such items (a
+    // multi-child `<Show>`), and the same destruction applies to every one. The
+    // array is skipped only when it is the same array AND every element is the
+    // same object as when it was mounted — a mutated array re-mounts as always.
+    if (
+      value === lastValue &&
+      ((value as { __isNative?: boolean } | null)?.__isNative === true ||
+        (lastItems !== null && sameItems(value as unknown[], lastItems)))
+    ) {
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('runtime.mountReactive.identitySkip')
       }
@@ -157,6 +177,10 @@ export function mountReactive(
     // Recorded only once the teardown has actually happened, so a throw from
     // `accessor()` above leaves the previous mount and its record intact.
     lastValue = value
+    lastItems =
+      Array.isArray(value) && value.some((v) => (v as { __isNative?: boolean } | null)?.__isNative === true)
+        ? value.slice()
+        : null
     // NOTE: `typeof value === 'function'` is a VALID accessor return — a nested
     // `() => VNodeChild` (the `{() => show() ? <A /> : null}` pattern), which
     // mountChild handles reactively. Do NOT warn on function returns.

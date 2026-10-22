@@ -1706,7 +1706,9 @@ export function transformJSX_JS(
    * then have to unwrap — the documented breakage class) or a new runtime branch
    * that resolves such arrays. That is a genuine contract change, not a shape, so
    * it is left out and recorded rather than half-done. Multi-child parents keep
-   * today's eager behaviour exactly.
+   * today's eager BUILD ORDER exactly. Their items are still marked re-mountable
+   * (see `braceTemplateChild`), which is what makes a multi-child `<Show>` safe to
+   * hide and re-show even though it cannot be built lazily.
    *
    * "Meaningful" uses the same JSX whitespace elision the `<For>` holder check
    * uses: a JSXText child that `cleanJsxText` reduces to nothing is not a child.
@@ -1801,12 +1803,18 @@ export function transformJSX_JS(
     const elemCount = templateElementCount(node, true)
     if (elemCount < 1) return false
     const holes: N[] = []
-    const tplCall = buildTemplateCall(node, holes)
+    const parent = findParent(node)
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    // A template in a CHILD position is built once, at the call site, and handed
+    // to a reactive boundary that may tear it down and mount the SAME object
+    // again (`<Show>` re-showing, a `when` that re-runs). `_tpl`'s third argument
+    // marks it re-mountable so the second mount rebuilds instead of re-inserting
+    // dead DOM. Passed INTO the builder so the flag is part of the call as it is
+    // first written, not spliced onto finished code. SSR (`_ssr`) has no such notion.
+    const tplCall = buildTemplateCall(node, holes, !!needsBraces)
     if (!tplCall) return false
     const start = node.start as number
     const end = node.end as number
-    const parent = findParent(node)
-    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     const braced = braceTemplateChild(tplCall, node, !!needsBraces)
     needsTplImport = true
 
@@ -4608,7 +4616,7 @@ export function transformJSX_JS(
     return count
   }
 
-  function buildTemplateCall(node: N, holesOut?: N[]): string | null {
+  function buildTemplateCall(node: N, holesOut?: N[], remountable = false): string | null {
     // Two-phase emission (PZ-08 fix). `refLines` (phase 1) holds every
     // PRISTINE-CLONE node capture: element ref walks (`const __eN = …`),
     // sole-text captures (`const __tN = X.firstChild`), and hoisted
@@ -6243,8 +6251,10 @@ export function transformJSX_JS(
 
     if (holesOut) holesOut.push(...holeNodes)
 
+    // Third `_tpl` argument: this template is a component child that may be re-mounted.
+    const remountArg = remountable ? ', 1' : ''
     if (refLines.length === 0 && bindLines.length === 0 && disposerNames.length === 0) {
-      return `_tpl("${escaped}", () => null)`
+      return `_tpl("${escaped}", () => null${remountArg})`
     }
 
     // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
@@ -6277,7 +6287,7 @@ export function transformJSX_JS(
       body += '\n  return null'
     }
 
-    return `_tpl("${escaped}", (__root) => {\n${body}\n})`
+    return `_tpl("${escaped}", (__root) => {\n${body}\n}${remountArg})`
   }
 
   function sliceExpr(expr: N): string {
