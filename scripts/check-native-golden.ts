@@ -166,7 +166,9 @@ export function collectCorpus(root = REPO_ROOT): CorpusSource[] {
       out.push({
         key: `example:${dir}/${f}`,
         source: readFileSync(join(src, f), 'utf8'),
-        filename: `${dir}/src/${f}`,
+        // The real path, as `pyreon-native build` passes it: a source that imports a hook or a type from a
+        // sibling module is only resolvable from a file that exists on disk.
+        filename: join(src, f),
       })
     }
   }
