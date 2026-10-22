@@ -6,6 +6,7 @@
 
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { lowerWebViewDomStorage } from './webview-options'
+import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
 import { kotlinStr } from './string-literals'
 import {
   bindServices,
@@ -1330,6 +1331,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   const propsList = propsParts.join(', ')
   lines.push(`@Composable`)
   lines.push(`fun ${kotlinIdent(c.name)}(${propsList}) {`)
+  // A component-local `async` function launches on the scope, and a local declaration can only see what precedes it —
+  // so the scope goes ABOVE the decls when one of them needs it (an inline handler's goes below, before the JSX).
+  const declsNeedAsyncScope = _hasAsyncHandler
+  const declStartIndex = lines.length
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
   }
@@ -1402,7 +1407,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // `pyreonAsyncScope.launch { … }`; hoist its coroutine scope to the composable
   // top (rememberCoroutineScope() must run at composable scope, not in a lambda).
   if (_hasAsyncHandler) {
-    lines.splice(asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
+    lines.splice(declsNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
   }
   lines.push(`}`)
   _activePropsParamName = undefined
@@ -2101,6 +2106,33 @@ function kotlinParamType(t: TypeIR, ctx: KotlinCtx | undefined, name: string): s
 }
 
 function emitKotlinFunction(d: Extract<DeclIR, { kind: 'function' }>, ctx: KotlinCtx): string {
+  // `async` → fire-and-forget on the composition's coroutine scope (the Swift twin wraps in `Task`). Emit the body as a
+  // plain synchronous block, then move it inside `pyreonAsyncScope.launch { … }`.
+  if (d.async === true) {
+    if (bodyReturnsValue(d.body)) _pushKotlinEmitWarning(asyncValueReturnWarning(d.name))
+    if (ctx.componentName === 'PyreonHelpers') {
+      _pushKotlinEmitWarning(
+        `async function \`${d.name}\` is a top-level helper: there is no composition scope to launch its coroutine on. Move it inside the component, or call it from an inline async handler.`,
+      )
+    } else {
+      const only = d.body.length === 1 ? d.body[0]! : undefined
+      const body: typeof d.body =
+        only !== undefined && only.kind === 'return' && only.expr !== undefined
+          ? [{ kind: 'expr', expr: only.expr }]
+          : d.body
+      const sync = emitKotlinFunction(
+        { ...d, async: false, returnType: { kind: 'unknown' }, body },
+        ctx,
+      )
+      const m = /^(fun [^\n]*\{)\n([\s\S]*)\n {2}\}$/.exec(sync)
+      if (m !== null) {
+        _hasAsyncHandler = true
+        const inner = m[2]!.split('\n').map((l) => `  ${l}`).join('\n')
+        return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${inner}\n    }\n  }`
+      }
+      return sync
+    }
+  }
   // A function whose whole body returns a view is a composable — see
   // render-slots.ts. As a plain `fun` it could not call `Text` at all.
   const vh = viewHelperFromDecl(d)

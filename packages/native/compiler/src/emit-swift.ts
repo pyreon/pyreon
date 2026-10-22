@@ -92,6 +92,7 @@ import {
   optionalSpreadWarning,
   synthStructName,
 } from './expr-utils'
+import { asyncValueReturnWarning, bodyReturnsValue } from './async-function'
 import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
@@ -3092,6 +3093,10 @@ function emitSwiftFunction(
   if (returnType.kind === 'unknown' && inferCtx !== undefined) {
     returnType = inferReturnType(d.params, d.body, inferCtx)
   }
+  // An `async` function is fire-and-forget (`Task { … }`), so it has no result to type.
+  const isAsync = d.async === true
+  if (isAsync && bodyReturnsValue(d.body)) _pushSwiftEmitWarning(asyncValueReturnWarning(d.name))
+  if (isAsync) returnType = { kind: 'unknown' } as typeof returnType
   const retType = returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`
   const prevReturnType = _currentReturnType
   _currentReturnType = returnType.kind === 'unknown' ? undefined : returnType
@@ -3132,6 +3137,7 @@ function emitSwiftFunction(
         () => emitSwiftExpr(conciseExpr, 0),
       )
       const vis = visibility === 'private' ? 'private ' : ''
+      if (isAsync) return `${vis}func ${swiftIdent(d.name)}(${params}) { Task { ${concise} } }`
       return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
     }
     // Inline component value-consts into the body — a `private func` handler,
@@ -3153,6 +3159,9 @@ function emitSwiftFunction(
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
+    if (isAsync) {
+      return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n    Task {\n${bodyLines}\n    }\n  }`
+    }
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
     _currentReturnType = prevReturnType

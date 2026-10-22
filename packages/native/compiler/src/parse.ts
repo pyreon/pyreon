@@ -4686,6 +4686,7 @@ function tryFunctionDeclBody(
     params,
     returnType,
     body: destructurePrelude.length > 0 ? [...destructurePrelude, ...stmts] : stmts,
+    ...(arrow.async === true ? { async: true } : {}),
   }
 }
 

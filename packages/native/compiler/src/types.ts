@@ -153,6 +153,13 @@ export type DeclIR =
       params: { name: string; type: TypeIR; defaultValue?: ExprIR | undefined }[]
       returnType: TypeIR
       body: StatementIR[]
+      /**
+       * `async () => { await … }` / `async function f()`. The body's `await` is only legal inside an async scope, so the
+       * emitters wrap the body in `Task { … }` (Swift) / `pyreonAsyncScope.launch { … }` (Kotlin) — fire-and-forget, the
+       * same lowering an inline `async` handler gets. A function that RETURNS a value (a Promise a caller may await) has
+       * no such lowering and warns instead.
+       */
+      async?: boolean | undefined
     }
   /**
    * Router instance declaration via `createRouter({ routes: [...] })`
