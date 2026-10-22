@@ -1967,6 +1967,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // float-ness (`-rate()` over a Double stays Double; was always Int →
       // a wrong Int annotation / coercion downstream).
       if (expr.op === '!') return { kind: 'boolean' }
+      // `x!` has x's type with null and undefined removed.
+      if (expr.op === 'non-null') return unwrapOptionalType(inferType(expr.argument, ctx))
       // Alias-normalized for the same reason the binary and ternary cases are:
       // `-rect.w` over a `Double`-typed field is a Double, and reading the
       // unresolved `typeRef` as "not a number" typed it Int — which put a

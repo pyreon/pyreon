@@ -670,7 +670,12 @@ export type ExprIR =
    * callbacks. Both Swift and Kotlin support `!` / `-` / `+` as
    * prefix unary; the emitter passes them through verbatim.
    */
-  | { kind: 'unary'; op: '!' | '-' | '+'; argument: ExprIR }
+  /**
+   * `'non-null'` is TypeScript's postfix `x!`. It is a type assertion with no runtime effect in JS, but natively an
+   * optional must be unwrapped before a member is read, so the emitters force-unwrap (`x!` / `x!!`) when — and only
+   * when — the argument's inferred type is optional; otherwise they emit the argument unchanged.
+   */
+  | { kind: 'unary'; op: '!' | '-' | '+' | 'non-null'; argument: ExprIR }
   /**
    * Logical operators (Parser-C). TodoMVC uses `e.key === 'Enter' && addTodo()`
    * in the keyboard handler. Swift and Kotlin both have `&&` / `||` with

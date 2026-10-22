@@ -5583,6 +5583,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // doubly broken (juxtaposed unary is a Swift parse error). Both were
       // SILENT fails (idiom-sweep batch 2). By the arg's inferred type;
       // unknown args keep the raw emit (loud).
+      // `x!` — force-unwrap only an optional; on a non-optional the `!` would itself be a compile error.
+      if (e.op === 'non-null') {
+        const arg = emitSwiftExpr(e.argument, indent)
+        return typeIsOptional(inferType(e.argument, _activeInferCtx)) ? `(${arg})!` : arg
+      }
       if (e.op === '!') {
         const inner = e.argument
         const isDoubleNeg = inner.kind === 'unary' && inner.op === '!'
