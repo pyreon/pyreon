@@ -35,6 +35,7 @@ import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 import { suspenseAttachOf } from './suspense-boundary'
+import type { RemountableNativeItem } from './template'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -129,6 +130,11 @@ export function mountChild(
   // NativeItem — pre-built DOM element from _tpl() or createTemplate().
   if ((child as unknown as NativeItem).__isNative) {
     const native = child as unknown as NativeItem
+    // A re-mountable item whose bindings were disposed by an earlier unmount
+    // must be rebuilt before it goes back in the DOM.
+    if ((native as Partial<RemountableNativeItem>).__dead === true) {
+      ;(native as RemountableNativeItem).__revive()
+    }
     parent.insertBefore(native.el, anchor)
     if (!native.cleanup) {
       if (_elementDepth > 0) return noop

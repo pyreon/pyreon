@@ -273,10 +273,10 @@ Mount children ONCE and keep them alive when hidden — when `active()` returns 
 ### `_tpl` `function`
 
 ```ts
-_tpl(html: string, bind: (root: Element) => (() => void) | undefined): NativeItem
+_tpl(html: string, bind: (root: Element) => (() => void) | undefined, remountable?: 1): NativeItem
 ```
 
-Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.
+Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The compiler passes a third argument, `1`, when a template is emitted as a component child: that item is built once but may be torn down and mounted again (`<Show>` re-showing), so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.
 
 **Example**
 

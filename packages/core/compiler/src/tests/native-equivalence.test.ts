@@ -2963,3 +2963,25 @@ describe('backend parity — a reactive expression that STARTS with an object li
     })
   }
 })
+
+describeNative('re-mountable component-child templates (#3955)', () => {
+  // A template emitted as a component's CHILD is built once and may be mounted
+  // again as the same object, so it carries `_tpl`'s third argument. Locked in
+  // BOTH backends — the JS oracle and the Rust mirror must agree byte for byte.
+  const cases: Array<[string, string]> = [
+    ['sole child', `const A = () => <Show when={g()}><p>{() => v()}</p></Show>`],
+    ['several children', `const A = () => <Show when={g()}><p>h</p><p>{() => v()}</p></Show>`],
+    ['inside a fragment', `const A = () => <Show when={g()}><><p>{() => v()}</p></></Show>`],
+    ['a root template is not a child', `const A = () => <p>{() => v()}</p>`],
+  ]
+  for (const [name, source] of cases) {
+    test(name, () => compare(source))
+  }
+
+  test('flags a braced child, and only a braced child', () => {
+    const child = transformJSX_JS(`const A = () => <Show when={g()}><p>{() => v()}</p></Show>`, 't.tsx').code
+    const root = transformJSX_JS(`const A = () => <p>{() => v()}</p>`, 't.tsx').code
+    expect(child).toMatch(/_tpl\([^]*?, 1\)/)
+    expect(root).not.toMatch(/, 1\)/)
+  })
+})

@@ -136,7 +136,7 @@ describe('preserved holes — what survives into the emitted child', () => {
 
   it('keeps a nested _tpl + _lc INSIDE the absorbed child', () => {
     const code = emit(`const N = () => <div class="a"><Card><b>x</b></Card></div>`)
-    expect(code).toContain('_mountChild(<Card>{_lc(() => _tpl("<b>x</b>", () => null))}</Card>')
+    expect(code).toContain('_mountChild(<Card>{_lc(() => _tpl("<b>x</b>", () => null, 1))}</Card>')
   })
 
   it('walks EVERY hole when several are absorbed, in source order', () => {

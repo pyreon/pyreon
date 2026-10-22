@@ -162,6 +162,7 @@ The `props.X` member access is rewritten per target. **The annotation type is th
 | Destructure (`const { title, count: n, size = 'm' } = props`) | ✅ Full | Each name reads its field; a default becomes `props.size ?? 'm'`. `const` only |
 | Destructure with a rest element, a nested pattern or a computed key | ⚠️ Warns | Read the props off the parameter instead |
 | Spread onto a component (`<Child {...props} />`, `<Child {...obj} />`) | ✅ Full | Each known field becomes a named argument |
+| An object literal for an inline-object prop (`<Card user={{ name: 'a' }} />` with `user?: { name: string }`) | ✅ Full | Constructs the prop's own struct (`CardUser(name: "a")`), whether the component is declared before or after the call site; an array prop of such objects too |
 
 ### ✅ Routing
 

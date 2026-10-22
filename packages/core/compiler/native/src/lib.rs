@@ -7418,6 +7418,15 @@ fn brace_template_child(call: String, ctx: &mut Ctx) -> String {
     if !ctx.parent_is_jsx {
         return call;
     }
+    // A template in a CHILD position is built once and may be torn down then
+    // mounted again as the same object (`<Show>` re-showing). The third `_tpl`
+    // argument marks it re-mountable. SSR `_ssr(…)` calls are left alone. Mirrors
+    // the JS backend's `braceTemplateChild`.
+    let call = if call.starts_with("_tpl(") && call.ends_with(')') {
+        format!("{}, 1)", &call[..call.len() - 1])
+    } else {
+        call
+    };
     if !(ctx.parent_is_component_jsx_element && ctx.parent_component_has_sole_child) {
         return format!("{{{}}}", call);
     }
