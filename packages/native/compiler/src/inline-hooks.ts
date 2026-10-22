@@ -459,6 +459,10 @@ type TopBinding =
   | { readonly kind: 'type'; readonly text: string }
   | { readonly kind: 'value' }
 
+/** Keys of the pending additions map — one per copied type, one per added import, so a repeat is a no-op. */
+const typeKey = (name: string): string => 'type:' + name
+const importKey = (name: string): string => 'import:' + name
+
 const isRelative = (spec: string): boolean => spec === '.' || spec.startsWith('./') || spec.startsWith('../')
 
 const MODULE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx']
@@ -644,7 +648,7 @@ function collectImportedTypes(
       }
       for (const [t, text] of texts) {
         if (callerTop.get(t)?.kind === 'type') continue
-        additions.set(`type:${t}`, text)
+        additions.set(typeKey(t), text)
       }
       spent.add(sp.local.name)
     }
@@ -731,7 +735,7 @@ function mergeRequirements(
       if (!same) return `it needs \`${name}\` from '${spec}', but this file already uses that name for something else`
       continue
     }
-    const key = `import:${name}`
+    const key = importKey(name)
     const line = importLine(name, b.imported, spec, b.typeOnly)
     const pending = additions.get(key)
     if (pending !== undefined && pending !== line) return `it needs \`${name}\` from '${spec}', which another inlined hook imports differently`
@@ -741,12 +745,12 @@ function mergeRequirements(
     const existing = callerTop.get(name)
     const copied = text.replace(/^export\s+/, '')
     // The same declaration already on its way in (the file imports the type from the same module).
-    if (additions.get(`type:${name}`) === copied) continue
+    if (additions.get(typeKey(name)) === copied) continue
     if (existing) {
       if (existing.kind === 'type' && existing.text.replace(/^export\s+/, '') === copied) continue
       return `it names the type \`${name}\`, and this file already declares a different \`${name}\``
     }
-    lines.set(`type:${name}`, copied)
+    lines.set(typeKey(name), copied)
   }
   for (const [k, v] of lines) additions.set(k, v)
   return undefined
