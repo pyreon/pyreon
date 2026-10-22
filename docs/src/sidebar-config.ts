@@ -44,6 +44,8 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Overview', slug: '' },
       { text: 'Package Catalog', slug: 'package-catalog' },
       { text: 'Why Pyreon', slug: 'why-pyreon' },
+      { text: 'Pyreon vs Other App Frameworks', slug: 'compare-app-frameworks' },
+      { text: 'Stability, Versioning & Direction', slug: 'stability-and-direction' },
       { text: 'Quickstart', slug: 'quickstart' },
       { text: 'Getting Started', slug: 'getting-started' },
       { text: 'Build an App (Tutorial)', slug: 'build-an-app' },
@@ -136,6 +138,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Coming from Vue', slug: 'migrating-from-vue' },
       { text: 'Coming from Svelte', slug: 'migrating-from-svelte' },
       { text: 'Coming from Angular', slug: 'migrating-from-angular' },
+      { text: 'Coming from React Native & Expo', slug: 'migrating-from-react-native' },
     ],
   },
   {
