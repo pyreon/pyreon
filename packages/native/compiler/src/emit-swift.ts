@@ -1097,6 +1097,20 @@ export function emitSwift(
   for (const c of components) {
     const paramsProp = c.props.find((p) => p.name === 'params')
     if (paramsProp === undefined) continue
+    // A NAMED struct (`params: UserParams`) is constructed exactly like an inline one, under its own name. It used to
+    // fall to 'opaque', and the dispatcher passed matchPath's raw [String: String] where a `UserParams` was expected.
+    const declaredParams =
+      paramsProp.type.kind === 'typeRef'
+        ? structs.find((st) => st.name === (paramsProp.type as { name: string }).name)
+        : undefined
+    if (declaredParams !== undefined) {
+      const fields = declaredParams.fields
+      const constructible = fields.every(
+        (f) => f.type.kind === 'string' || f.type.kind === 'number' || f.type.kind === 'boolean',
+      )
+      _componentParamsInfo.set(c.name, constructible ? { typeName: declaredParams.name, fields } : 'opaque')
+      continue
+    }
     if (paramsProp.type.kind === 'object') {
       const fields = paramsProp.type.fields
       // Conservative: route params are flat strings — a nested

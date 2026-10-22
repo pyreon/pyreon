@@ -671,7 +671,12 @@ function AboutPage() {
   )
 }
 
-function UserPage(props: { params: { id: string } }) {
+// A NAMED params type: the dispatcher constructs it from the matched path (`UserParams(id: params["id"] ?? "")`).
+// Before, only an inline `{ id: string }` was constructed and a named type passed the raw dictionary, which did not
+// build — so the device gate now proves the named form.
+type UserParams = { id: string }
+
+function UserPage(props: { params: UserParams }) {
   const navigate = useNavigate()
   // Networking-row proof — useWebSocket against a real loopback echo server
   // (scripts/ws-echo-server.ts). Auto-connect fires on mount (both targets
