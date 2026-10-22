@@ -814,6 +814,19 @@ export function emitKotlin(
   for (const c of components) {
     const paramsProp = c.props.find((p) => p.name === 'params')
     if (paramsProp === undefined) continue
+    // A NAMED struct (`params: UserParams`): construct it under its own name (emit-swift's twin explains).
+    const declaredParams =
+      paramsProp.type.kind === 'typeRef'
+        ? structs.find((st) => st.name === (paramsProp.type as { name: string }).name)
+        : undefined
+    if (declaredParams !== undefined) {
+      const fields = declaredParams.fields
+      const constructible = fields.every(
+        (f) => f.type.kind === 'string' || f.type.kind === 'number' || f.type.kind === 'boolean',
+      )
+      _componentParamsInfoKotlin.set(c.name, constructible ? { typeName: declaredParams.name, fields } : 'opaque')
+      continue
+    }
     if (paramsProp.type.kind === 'object') {
       const fields = paramsProp.type.fields
       // Conservative: route params are flat strings — a nested
@@ -826,8 +839,11 @@ export function emitKotlin(
         _componentParamsInfoKotlin.set(c.name, 'opaque')
         continue
       }
+      // The SAME name the prop's own emit picks: a declared class of this exact shape is reused (`knownKotlinShape`),
+      // otherwise the synthesized one. Predicting only the synthesized name constructed `InlinePageParam(…)` for a
+      // parameter the renderer had typed `UserParams` — a type mismatch.
       _componentParamsInfoKotlin.set(c.name, {
-        typeName: synthesizeDataClassName(c.name, 'params'),
+        typeName: _structTypedKeyToName.get(structShapeKey(fields)) ?? synthesizeDataClassName(c.name, 'params'),
         fields,
       })
     } else {
