@@ -148,7 +148,8 @@ import { s } from '@pyreon/validate'
     // a spread cannot be flattened into a dictionary literal here — the
     // non-literal argument goes through `pyreonSchemaInput`, converting it
     // through its own Codable encoding (see native-validate-typed-safeparse).
-    expect(out).toContain('safeParseResult(pyreonSchemaInput((n: 3)))')
+    // The spread keeps its source: an override of `base`, not the one-field tuple `(n: 3)` it used to drop to.
+    expect(out).toContain('safeParseResult(pyreonSchemaInput({ var c = base; c.n = 3; return c }()))')
     // an identifier is a typed value too, so it goes through the same helper.
     expect(out).toContain('safeParseResult(pyreonSchemaInput(base))')
   })

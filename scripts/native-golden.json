@@ -2332,14 +2332,14 @@
       "warnings": 0
     },
     "golden-fixture:flow-12.tsx|swift": {
-      "sha": "88f6a807c3c8dce61f60d4833644cf23d084e1edc3c22f11623febfd0a5ce371",
-      "bytes": 2816,
-      "warnings": 11
+      "sha": "6f54b2724f636855c3cbeec0a44ca279a688f3b076f71adb57d9643cad358e18",
+      "bytes": 2849,
+      "warnings": 12
     },
     "golden-fixture:flow-12.tsx|kotlin": {
-      "sha": "39cb1f85d5c56bb1f372c2a5abd7004dacf42a31e04e58dc561b5c001e329b4f",
-      "bytes": 2741,
-      "warnings": 11
+      "sha": "3ccd23dea54bb1a6c8f9129ac960c4e0e2fe42837301b3a682e9ce51495262c5",
+      "bytes": 2752,
+      "warnings": 12
     },
     "golden-fixture:flow-13.tsx|swift": {
       "sha": "cf69bbc8db1411bd8f2011f988f806495f3440947ab222f18ce3109e4d54745a",

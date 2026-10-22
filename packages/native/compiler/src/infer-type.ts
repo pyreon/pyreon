@@ -2082,6 +2082,20 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             return { kind: 'typeRef', name, args: [] }
           }
         }
+        return { kind: 'unknown' }
+      }
+      // `{ ...src, k: v }` has the type of `src` when every source is the same struct and every written field is
+      // one of its fields — exactly the case the spread lowering emits as a copy / override of the source
+      // (spread-lowering.ts), so the type and the emitted value cannot disagree. Without this a computed returning
+      // a spread typed `Any`, and the first field read on it failed to compile.
+      const sources = expr.spreads.map((sp) => inferType(sp, ctx))
+      const first = sources[0]
+      if (
+        first?.kind === 'typeRef' &&
+        sources.every((t) => t.kind === 'typeRef' && t.name === first.name)
+      ) {
+        const fields = ctx.structs.get(first.name)
+        if (fields !== undefined && expr.fields.every((f) => fields.has(f.name))) return first
       }
       return { kind: 'unknown' }
     }
