@@ -57,6 +57,7 @@ import {
   type InferenceCtx,
 } from './infer-type'
 import { canonicalizeHookBindings } from './hook-binding'
+import { inlineCustomHooks } from './inline-hooks'
 import type {
   AttrIR,
   ChildIR,
@@ -246,6 +247,22 @@ export function parsePyreon(
 }
 
 function parsePyreonWithPlain(source: string, filename: string): ParseResult {
+  return parsePyreonPlainStage(source, filename)
+}
+
+/**
+ * Inline same-file custom hooks (`inline-hooks.ts`) into the components that call them, then parse. Runs AFTER the
+ * Plain-Mode pre-pass so a Plain-Mode hook is inlined in its classic form. Warnings from the inlining are prepended.
+ */
+function parseWithInlinedHooks(source: string, filename: string): ParseResult {
+  const inlined = inlineCustomHooks(source, filename)
+  if (!inlined) return parsePyreonClassic(source, filename)
+  const result = parsePyreonClassic(inlined.code, filename)
+  if (inlined.warnings.length > 0) result.warnings.unshift(...inlined.warnings)
+  return result
+}
+
+function parsePyreonPlainStage(source: string, filename: string): ParseResult {
   // Plain-Mode shared source: run the SAME source-to-source pre-pass the web
   // compiler runs (`@pyreon/compiler/plain` — a light subpath: magic-string +
   // oxc-parser only), so PMTC parses the classic shapes it already
@@ -258,12 +275,12 @@ function parsePyreonWithPlain(source: string, filename: string): ParseResult {
       const plainWarnings = plained.warnings.map(
         (w) => `${w.message} (${filename}:${w.line}:${w.column})`,
       )
-      const result = parsePyreonClassic(plained.code, filename)
+      const result = parseWithInlinedHooks(plained.code, filename)
       if (plainWarnings.length > 0) result.warnings.unshift(...plainWarnings)
       return result
     }
   }
-  return parsePyreonClassic(source, filename)
+  return parseWithInlinedHooks(source, filename)
 }
 
 /**

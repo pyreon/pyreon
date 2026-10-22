@@ -100,14 +100,16 @@ describe('every native example compiles on both targets', () => {
 
   describe.runIf(isSwiftcAvailable())('swiftc -typecheck against stubs', () => {
     it.each(APPS)('%s', (_name, path) => {
-      const r = validateSwiftWithStubs(transform(readFileSync(path, 'utf8'), { target: 'swift' }).code)
+      // The real path, as `pyreon-native build` passes it: a hook or a type imported from a sibling module only
+      // resolves from a file that exists on disk.
+      const r = validateSwiftWithStubs(transform(readFileSync(path, 'utf8'), { target: 'swift', filename: path }).code)
       expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
     })
   })
 
   describe.runIf(isKotlincAvailable())('kotlinc against stubs', () => {
     it.each(APPS)('%s', (_name, path) => {
-      const r = validateKotlin(transform(readFileSync(path, 'utf8'), { target: 'kotlin' }).code)
+      const r = validateKotlin(transform(readFileSync(path, 'utf8'), { target: 'kotlin', filename: path }).code)
       expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
     })
   })

@@ -25,6 +25,7 @@ import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { type EchoReply, usePostEcho } from './hooks'
 import { defineTheme, styled } from '@pyreon/styler'
 
 // Styling-row proof — defineTheme tokens driving styled(Prim) layout,
@@ -711,12 +712,6 @@ function UserPage(props: { params: { id: string } }) {
 // than quietly passing. `/boom` answers 500 so the emitted isOK/isOk guard
 // has something to reject on — a non-2xx must surface as an ERROR, not as a
 // decode failure that reads like "the server sent bad JSON".
-interface EchoReply {
-  id: string
-  method: string
-  body: string
-  authorization: string
-}
 
 function LifecyclePage() {
   const navigate = useNavigate()
@@ -747,15 +742,8 @@ function LifecyclePage() {
 
 function HttpPage() {
   const navigate = useNavigate()
-  // The Authorization value is a RUNTIME string built from a signal — not a literal — so this request proves the
-  // header value is evaluated on the device when the request is built (what a signed-in app needs to send its token).
-  // Until runtime header values crossed, this header was dropped on iOS and Android.
   const token = signal('tok-42')
-  const posted = useFetch<EchoReply>('http://localhost:8790/echo', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token()}` },
-    body: '{"name":"pyreon"}',
-  })
+  const posted = usePostEcho(token)
   const failed = useFetch<EchoReply>('http://localhost:8790/boom', { method: 'PUT' })
   return (
     <Stack gap={3} padding={4} data-testid="http-page">
