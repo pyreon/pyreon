@@ -39,7 +39,12 @@ if (name === 'sudo') {
   // timeout outside sudo cannot terminate root apt. Reject that arrangement.
   run(args[0], args.slice(1), { ...process.env, FIXTURE_ROOT: 'yes' })
 }
-if (name === 'timeout') {
+if (name === 'timeout' || name === 'gnutimeout') {
+  // The script picks GNU timeout by asking it; the uutils scenario models Ubuntu 26.04's \`timeout\`.
+  if (args[0] === '--version') {
+    console.log(name === 'timeout' && process.env.SCENARIO === 'uutils-timeout' ? 'timeout (uutils coreutils) 0.10.0' : 'timeout (GNU coreutils) 9.4')
+    process.exit(0)
+  }
   if (!['--kill-after=15s', '--signal=KILL'].includes(args[0])) process.exit(90)
   if (args.includes('install-deps') || args.includes('dpkg')) {
     if (process.env.FIXTURE_ROOT !== 'yes') process.exit(91)
@@ -47,7 +52,8 @@ if (name === 'timeout') {
   if (process.env.SCENARIO === 'hang' && args.includes('install-deps')) {
     // Real GNU timeout + a stubborn grandchild reproduce lock survival on
     // Linux. Shorten only the budgets, keeping the script's process tree.
-    run('/usr/bin/timeout', [args[0], '1s', ...args.slice(2)])
+    // GNU timeout, as the script resolves it: \`gnutimeout\` where the distro ships uutils as \`timeout\`.
+    run(existsSync('/usr/bin/gnutimeout') ? '/usr/bin/gnutimeout' : '/usr/bin/timeout', [args[0], '1s', ...args.slice(2)])
   }
   run(args[2], args.slice(3))
 }
@@ -100,7 +106,7 @@ function install(scenario: string, engines = ['webkit', 'firefox']) {
       join(dir, 'apt/sources.list.d/ubuntu.sources'),
       'Types: deb\nURIs: http://azure.archive.ubuntu.com/ubuntu\nSuites: noble noble-updates\nComponents: main universe\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n',
     )
-    for (const command of ['sudo', 'timeout', 'node', 'dpkg', 'tee', 'grep', 'xargs']) {
+    for (const command of ['sudo', 'timeout', 'gnutimeout', 'node', 'dpkg', 'tee', 'grep', 'xargs']) {
       const file = join(dir, command)
       writeFileSync(file, COMMAND)
       chmodSync(file, 0o755)
@@ -187,6 +193,22 @@ describe('Playwright install entry', () => {
   it('retries a transient browser download but fails a persistent outage', () => {
     expect(install('download-retry').status).toBe(0)
     expect(install('download-fail').status).toBe(1)
+  })
+
+  it('uses GNU timeout when the system `timeout` is the uutils rewrite (Ubuntu 26.04)', () => {
+    // uutils signals only its direct child, so a hung apt grandchild would keep dpkg's lock.
+    const result = install('uutils-timeout')
+    expect(result.status).toBe(0)
+    const bounded = result.calls.filter((c) => (c.name === 'timeout' || c.name === 'gnutimeout') && c.args[0] !== '--version')
+    expect(bounded.length).toBeGreaterThan(0)
+    expect(bounded.every((c) => c.name === 'gnutimeout')).toBe(true)
+  })
+
+  it('keeps the system `timeout` when it is GNU', () => {
+    const result = install('ok')
+    const bounded = result.calls.filter((c) => (c.name === 'timeout' || c.name === 'gnutimeout') && c.args[0] !== '--version')
+    expect(bounded.length).toBeGreaterThan(0)
+    expect(bounded.every((c) => c.name === 'timeout')).toBe(true)
   })
 
   it('rejects an empty engine list', () => {
