@@ -1,5 +1,15 @@
 # @pyreon/styler
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3943](https://github.com/pyreon/pyreon/pull/3943) [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Prop pipelines copy plain values by assignment instead of `Object.defineProperty`. `splitProps`, `mergeProps`, `removeUndefinedProps`, ui-core's `omit`/`pick` and the styler's prop forwarding copy property descriptors so getter-backed reactive props survive, but almost every prop is a plain value, and defining it costs about twice an assignment. An assignment produces the identical property, so it is now used whenever the source is a plain writable, enumerable value; getters and unusual descriptors keep the old path. Server-rendering `@pyreon/ui-components` gets 43% faster per component on Node (12.8 → 7.3 µs) and 15–24% faster on Bun, with byte-identical HTML.
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -541,7 +551,7 @@
   allocate and subscribe but emit zero HTML.
 
   `DynamicStyled` now branches on a module-level `IS_SERVER` (`typeof document
-=== 'undefined'`): on the server it resolves the class once and emits,
+  === 'undefined'`): on the server it resolves the class once and emits,
   skipping the computed/ref/renderEffect entirely. The emitted className is
   byte-identical to the reactive path's initial value, so hydration (where the
   client re-establishes the reactive machinery) sees no mismatch.
@@ -885,7 +895,7 @@
   **Bisect-verified-with-restore**:
 
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
-calls without rescanning values` fires; restored → 425/425 pass.
+    calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
     425/425 pass.
 
@@ -969,7 +979,7 @@ calls without rescanning values` fires; restored → 425/425 pass.
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
   - `@pyreon/runtime-dom` — `_rsCollapse(html, lightClass, darkClass,
-isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
+    isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
     bound to the live mode accessor — RFC decision 1 dual-emit, mode swap
     re-runs ONLY the className on the SAME node, no remount; decision 4
     hoisted-factory). `runtime-dom` stays layer-pure (never imports
@@ -1007,7 +1017,7 @@ isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
 
   Bisect-verified: disabling the compiler's `tryRocketstyleCollapse(node)`
   detection call fails the 4 collapse-emission specs (`expected … to
-contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
+  contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   specs still pass; restored → 13/13.
 
   **Deliberately deferred (follow-up PRs, tracked in
@@ -1221,10 +1231,10 @@ contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   `@pyreon/styler`:
 
   - `src/__tests__/styler.browser.test.tsx` (8 tests): `styled('div')\`…\``mounts into real DOM with the generated`pyr-_`class; Chromium
-resolves the authored styles (color/padding) via the injected
-stylesheet; function interpolations resolve per-render against props
-(verified`isDynamic`returns true for arrow fns →`DynamicStyled`path); different tags (div/span/button) produce distinct elements;`ThemeProvider`injects a theme consumed by themed components;`keyframes` registers an animation name (`pyr-kf-_`prefix, via`String(fadeIn)`) that Chromium applies; standalone `css\`…\``CSSResult interpolates into`styled()`and resolves in the cascade;
-CSS rules are queryable via`document.styleSheets`.
+    resolves the authored styles (color/padding) via the injected
+    stylesheet; function interpolations resolve per-render against props
+    (verified`isDynamic`returns true for arrow fns →`DynamicStyled`path); different tags (div/span/button) produce distinct elements;`ThemeProvider`injects a theme consumed by themed components;`keyframes` registers an animation name (`pyr-kf-_`prefix, via`String(fadeIn)`) that Chromium applies; standalone `css\`…\``CSSResult interpolates into`styled()`and resolves in the cascade;
+    CSS rules are queryable via`document.styleSheets`.
   - Added `vitest.browser.config.ts`, `test:browser` script, and
     `@pyreon/test-utils` + `@vitest/browser-playwright` devdeps.
   - Wired `nodeExcludeBrowserTests` into the node vitest config so regular
@@ -1256,10 +1266,10 @@ CSS rules are queryable via`document.styleSheets`.
     `StyleSheet.insert` — 6/8 tests failed (every test that asserts a
     computed style or queryable rule). Restored, 8/8 passed.
   - unistyle (light): hard-coded `__PYREON__` to `{ sortedBreakpoints:
-undefined, media: undefined }` — enrichment test failed. Restored,
+    undefined, media: undefined }` — enrichment test failed. Restored,
     6/6 passed.
   - unistyle (load-bearing): replaced the `media[item]\`${result};\``emit in`makeItResponsive`with`return ''` — both responsive-prop
-tests failed (`expected '8px' to be '0px'`). Restored, 6/6 passed.
+    tests failed (`expected '8px' to be '0px'`). Restored, 6/6 passed.
 
   Also removes `packages/ui-system/styler/` and `packages/ui-system/unistyle/`
   from `PHASE_5_PENDING_PACKAGES` in `scripts/check-browser-smoke.ts`. The

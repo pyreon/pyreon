@@ -1,5 +1,27 @@
 # @pyreon/native-cli
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3953](https://github.com/pyreon/pyreon/pull/3953) [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The CodeMirror and TipTap editors now work in a native app. `<CodeWebView>` and `<RichTextWebView>` previously compiled to Swift and Kotlin with no warning but called a function that does not exist on either platform, so a native build failed. They now lower to a native `<WebView>` hosting the same editor, and the page it loads is built for you.
+
+  - **`@pyreon/code`, `@pyreon/rich-text`:** new `./native-plugin` entry. `<CodeWebView state onChange onError>` and `<RichTextWebView …>` lower to `<WebView src data onMessage>`. `pyreon-native assets` builds `pyreon-code-host.html` / `pyreon-richtext-host.html` from the CodeMirror or TipTap installed in the app (CodeMirror uses whichever `@codemirror/lang-*` grammars are installed; TipTap uses StarterKit). Every other export of each package warns by name, so `createEditor(...)` no longer compiles to nothing in silence.
+    - New `onError` prop on both components. A host failure (engine missing, a throwing extension) now reaches the app instead of leaving a blank frame.
+    - Without `html` or an engine script the components load the same conventionally named page on every target, so `pyreon-native assets --target=web` serves it on the web.
+    - **Breaking, rich-text:** `onChange` now receives the document as TipTap JSON **text** (a string), not an object, and `state.content` accepts that string (or HTML) back. A native handler cannot hold a JSON object, so the string is the one shape identical on every target. Use `JSON.parse(text)` on web if you want the object.
+    - The reverse channel uses plain `v:` / `c:` / `e:` prefixes instead of a JSON envelope; a custom `html` host that still posts the old envelope keeps working.
+  - **`@pyreon/native-compiler`:** plugins can declare `webHosts` to contribute the pages a lowered `<WebView src>` loads. The builder receives `bundleScript` on its context (bundles a host entry with the app's `esbuild` or `rolldown`; also exported as `bundleWebHostScript` from the main entry) and the plugin API gains `retagHostedWebView`. The bundler is injected rather than imported because loading the app's bundler is a computed dynamic import, which a plugin's scanned dependency graph must not contain.
+  - **`@pyreon/native-cli`:** `pyreon-native assets` also builds the web-host pages of every plugin the app source imports (`--app`, `--app-source`, `--no-plugins`). A missing bundler fails the command with the install instruction.
+  - **Fix, `@pyreon/native-compiler`:** the parameter of `<WebView onMessage={(m) => …}>` is now a `String`. `m.slice(2)` and similar were emitted verbatim on Swift (`value of type 'String' has no member 'slice'`) with no warning, while Kotlin compiled.
+
+- [#3964](https://github.com/pyreon/pyreon/pull/3964) [`a59a409`](https://github.com/pyreon/pyreon/commit/a59a4090c8108d1b7fa92eaf60aed465d81f0e73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `pyreon-native dev --target=ios|android` command: the on-device edit loop. It watches the shared source, compiles it in memory (warnings and errors in milliseconds), and on a real change runs an incremental `xcodebuild` / `gradle installDebug`, installs on the booted simulator or emulator and relaunches the app. The native build is skipped when the emitted Swift or Kotlin is unchanged, a failed build never ends the session and is retried on the next save, and `--once` runs a single build-install-launch cycle and exits non-zero on failure (for scripts and E2E setup). It is a rebuild loop, not hot reload. Measured on the scaffolded app: about 31 s for the first iOS build, about 3 s for a warm edit-to-relaunch.
+
+### Patch Changes
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63)]:
+  - @pyreon/native-compiler@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -191,7 +213,7 @@
   enumerating them. The hand-maintained arm covered `detectHorizontalDragGestures`
   and neither `detectTapGestures` nor `detectTransformGestures`, so a chart host
   emitting a tap handler failed the real Android build with `Unresolved reference
-'detectTapGestures'` — invisible to the kotlinc stub gate, which concatenates
+  'detectTapGestures'` — invisible to the kotlinc stub gate, which concatenates
   its stubs into one compilation unit where a symbol resolves with or without an
   import.
 
@@ -264,7 +286,7 @@
   Two details that are load-bearing rather than stylistic:
 
   - The Swift interval loop consults `Task.isCancelled` instead of `while
-true`. A cancelled sleep returns immediately, so an unguarded loop would
+    true`. A cancelled sleep returns immediately, so an unguarded loop would
     SPIN rather than stop.
   - The `.task` attaches to the ZStack-wrapped body, not a transparent Group.
     A modifier on a Group is redistributed onto the conditional branches inside
@@ -294,7 +316,7 @@ true`. A cancelled sleep returns immediately, so an unguarded loop would
   output is legitimate for other reasons (a types-only module, a re-export
   barrel), so nothing downstream could tell "there was nothing to emit" from
   "this is not TypeScript", and both tools reported success: `pyreon-native
-check` exited 0 on a file with a syntax error, and `pyreon-native build` wrote
+  check` exited 0 on a file with a syntax error, and `pyreon-native build` wrote
   an empty `.swift`/`.kt` and exited 0, so the failure surfaced later as a
   missing symbol in Xcode or Gradle with nothing pointing back at the file.
   Parse errors now throw as `file:line:col: message` — the form `extractPosition`
@@ -315,7 +337,7 @@ check` exited 0 on a file with a syntax error, and `pyreon-native build` wrote
 
 - [#2727](https://github.com/pyreon/pyreon/pull/2727) [`2b5be05`](https://github.com/pyreon/pyreon/commit/2b5be059737e000aa8ccd7d481242816f235075e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `repository` field npm provenance requires. All six packages were
   rejected from the 0.51.0 release with a 422 (`"repository.url" is "",
-expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
+  expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
   publishing validates the field against the OIDC attestation, so its absence
   is a publish blocker, not cosmetic metadata.
 

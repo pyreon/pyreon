@@ -1,5 +1,14 @@
 # @pyreon/svelte-compat
 
+## 0.54.0
+
+### Patch Changes
+
+- Updated dependencies [[`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957)]:
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -64,7 +73,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -94,7 +103,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -108,7 +117,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this

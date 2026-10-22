@@ -1,5 +1,24 @@
 # @pyreon/flow
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3953](https://github.com/pyreon/pyreon/pull/3953) [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three cases where native output failed to compile with no warning are fixed. All were found by compiling every package's documented `api[].example` through the real compiler and type-checking the result.
+
+  - **A local with the same name as a prop** (for example `const edge = () => …` in a component whose props type has an `edge` field) is legal JavaScript but declares the same name twice on Swift (`invalid redeclaration of 'edge()'`). It now warns, naming the local, the prop and the fix.
+  - **A helper wrapping a flow path builder** (`const curve = () => getBezierPath({…})`) was emitted on Swift as a function with no return type, so `curve().path` failed with `value of tuple type '()' has no member 'path'`. The helper is now typed. Plugin function lowerings can declare a `returns` type for this, and the five flow path builders do.
+  - **A call to a Pyreon package function that nothing lowers** (`getSnapshot(model)`, `compose(…)`, `kinetic(…)` in a shape the lowering declined) was re-emitted verbatim, and the native build failed with `cannot find 'getSnapshot' in scope`. It now warns, naming the function and its package. The check reads the final emitted text, needs the source to call the name (a preset passed as a value does not count), and skips tags, hooks, web-only packages and anything an earlier warning already names. It also surfaces two documented fixtures (`feature-05`, `kinetic-03`) whose declined shapes had been silent.
+
+  The documented `BaseEdge` example used the colliding name; it now uses `curve`, which also updates the generated reference and the MCP API reference.
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/primitives@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -403,7 +422,7 @@
 - [#3101](https://github.com/pyreon/pyreon/pull/3101) [`25d8f3c`](https://github.com/pyreon/pyreon/commit/25d8f3c9903c792c17ca93ed0a1d3f3de1b2d2ed) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: O(n) layout position application (was O(n²))
 
   Applying a computed layout to the nodes ran `positions.find((p) => p.id ===
-node.id)` inside `nds.map(...)` — O(nodes²), which shows up on large graphs after
+  node.id)` inside `nds.map(...)` — O(nodes²), which shows up on large graphs after
   every layout run. The _animated_ branch already indexed positions into a `Map`
   and used `.get(node.id)`; the non-animated branch just never got the same
   treatment.

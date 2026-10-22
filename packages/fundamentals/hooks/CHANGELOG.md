@@ -1,5 +1,23 @@
 # @pyreon/hooks
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3954](https://github.com/pyreon/pyreon/pull/3954) [`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Android: `useFetch` and `useQuery` requests with a method, headers or a body now work with no setup. They used to throw `NoExecutor` in any app that did not call `PyreonHttp.install(PyreonHttpOkHttp)` itself, and a scaffolded app does not. The generated code now passes the bundled OkHttp executor as a fallback (`PyreonHttp.send(request, fallback = PyreonHttpOkHttp)`); an installed executor still wins. The fallback is a direct reference rather than reflection, so R8 keeps it in minified release builds.
+
+- [#3976](https://github.com/pyreon/pyreon/pull/3976) [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native emit: an integer literal in a position that expects a `Double` is now emitted as a `Double` (`0.0`), on both targets ([#3956](https://github.com/pyreon/pyreon/issues/3956)). Kotlin does not coerce an integer literal into a `Double`, so `const ZERO: Double = 0`, a `Double[]` of whole numbers, a `Double` function that returns `0`, an argument to a `Double` parameter, and the `0` in `half(geo.latitude ?? 0)` all failed `gradle` while building on the web and iOS; Swift lost the annotation on a local (`const x: Double = 0` emitted `let x = 0`, an Int). One expected-type pass now types every one of those positions, and an Int context is never touched. Also silences the Swift 6 concurrency warning in the staged `PyreonClipboard` runtime (the reset task now runs on the main actor instead of capturing a weak `self` var in a concurrently-executing closure).
+
+- [#3959](https://github.com/pyreon/pyreon/pull/3959) [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native: a request header value may now be any string expression, not just a literal, in `useQuery`'s `queryFn` fetch and in `useFetch`'s `init.headers`. It is evaluated each time the request is built, which is what lets a signed-in iOS / Android app send `Authorization: Bearer <token>`. In `useQuery` that is inside the harness on every run; with the user in the `queryKey`, a sign-in refetches with the new token, exactly as on the web.
+
+  A value typed as possibly `null` is refused with a warning naming the fix (`?? ''`): native headers cannot be optional, and the web would send the literal text `null`. A non-string value is refused the same way. `useQuery` used to drop any non-literal header value with no warning at all; every value that does not cross is now named. The plugin API gains `classifyHeaderValue`, `headerValueProblem` and `sendableHeaderExprs`, so the two hooks share one rule.
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/storage@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -857,7 +875,7 @@
   A PHANTOM entry and a MISSING one, from the same mistake seen from opposite
   sides: the table was written from a pattern rather than from the runtimes.
   `{map.error}` failed swiftc with `value of type 'PyreonMapState' has no member
-'error'`. That entry was added in #2566 by generalising "every service container
+  'error'`. That entry was added in #2566 by generalising "every service container
   has an optional `error`" across the services without checking each runtime —
   my own over-generalisation, the same mistake documented for `@pyreon/rx`.
   `PyreonMapState` holds camera/markers/selection, performs no I/O and cannot
@@ -1776,7 +1794,7 @@
   **Bisect-verified-with-restore**:
 
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
-calls without rescanning values` fires; restored → 425/425 pass.
+    calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
     425/425 pass.
 
@@ -1999,12 +2017,12 @@ calls without rescanning values` fires; restored → 425/425 pass.
     `TSInterfaceDeclaration`/`TSTypeParameter` depth counter — type refs are
     erased at compile time, not runtime accesses.
   - Recognise `const isBrowser = typeof window !== 'undefined'` idiom: `if
-(isBrowser) { … }` is now treated the same as `if (typeof window !==
-'undefined') { … }`.
+    (isBrowser) { … }` is now treated the same as `if (typeof window !==
+    'undefined') { … }`.
   - Recognise early-return-on-typeof guards: `if (typeof X === 'undefined')
-return …` makes the rest of the function body implicitly typeof-guarded.
+    return …` makes the rest of the function body implicitly typeof-guarded.
     Supports OR-chained form (`typeof X === 'undefined' || typeof Y ===
-'undefined'`) for features needing multiple browser APIs.
+    'undefined'`) for features needing multiple browser APIs.
   - Treat `onUnmount`, `onCleanup`, `effect`, `renderEffect` as safe contexts
     (same as `onMount`) — these only run after mount in the browser.
   - Ternary `typeof X !== 'undefined' ? safe : fallback` now tracked via

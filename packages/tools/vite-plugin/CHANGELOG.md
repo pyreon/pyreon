@@ -1,5 +1,28 @@
 # @pyreon/vite-plugin
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+
+- [#3926](https://github.com/pyreon/pyreon/pull/3926) [`c5d086d`](https://github.com/pyreon/pyreon/commit/c5d086df30d65a4628525283a10bdb9ad9fb2bab) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster dev transforms. The plugin's per-file passes no longer do full-source work on files that can't match:
+
+  - **Signal-name injection** (dev only) skips both its string/comment mask and its AST confirmation parse unless the module contains `signal(`, `computed(` or `effect(`. The parse is now lazy, so it runs only when a regex hit needs confirming.
+  - **The JSX auto-import scan** tests the raw source before masking. A file that uses none of the auto-importable primitives skips both masks.
+  - **The `innerHTML` sanitizer check, the signal-export registry scan and the HMR signal detection** check for their literal keyword before scanning.
+
+  Masking only blanks characters, so a substring absent from the source can't appear in the masked text, and output is unchanged by construction. Across 775 real `.tsx` files from the repo's examples, docs and UI packages, the dev `transform` hook went from about 310ms to about 165ms per pass (−47%), with byte-identical output.
+
+  The two source maskers (`_maskSource` for build-mode collapse and `_maskStringsAndComments` for signal injection) now build their output from slices: one newline-preserving blank per masked run instead of one array push per character. A 300,000-case differential fuzz against the previous implementation found zero mismatches. Build-mode `transform` went from about 135ms to about 85ms per pass over the same corpus, again with byte-identical output.
+
+  The plugin's two `oxc-parser` call sites (the signal-name confirmation parse and the AST rewrites) now use oxc's raw-transfer decoding when the runtime supports it (Node 22+ / Deno 2+, 64-bit). That replaces a JSON round-trip of the whole AST and is 3–4× faster per parse. The ASTs are deep-equal, verified over 1,271 repo files. Bun and older Node keep the default path, because the option throws there. Under Node, across all the changes in this release, the dev `transform` went from ~685ms to ~410–440ms and build from ~450–465ms to ~368ms per pass, with byte-identical output. The signal-name confirmation walk now uses oxc's generated `Visitor` instead of a reflective `Object.keys` walk over the whole AST. That's another ~7% of a dev pass once the compiler runs natively.
+
+- Updated dependencies [[`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6), [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0), [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60), [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957)]:
+  - @pyreon/compiler@0.54.0
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -365,7 +388,7 @@
   `@pyreon/vite-plugin`, so every SSR app gets it automatically.
 
   Safe by construction: the emit injects `import { _ssr, … } from
-"@pyreon/runtime-server"` into app source, and `_ssr` returns an
+  "@pyreon/runtime-server"` into app source, and `_ssr` returns an
   `instanceof`-branded `RawHtml` the app's OWN `renderToString` must recognize.
   So the plugin's new `ssrTemplate` option defaults to **AUTO** — it probes (once,
   via Vite's own resolver) whether `@pyreon/runtime-server` resolves from the app,
@@ -808,7 +831,7 @@
 
   - **Compiler** (`@pyreon/compiler`): `detectElementChildCollapsibleShape`
     (literal root props + recursively-static element children → `{ props,
-childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
+    childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
     `CollapsibleSite` per element-child site carrying `childTree` +
     `childrenText = serializeStaticChildren(childTree)`;
     `tryRocketstyleCollapse` falls through to `tryElementChildCollapse`
@@ -823,7 +846,7 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   The element-child site expands to ONE resolution (no per-value fan-out,
   unlike dynamic's two), so the census trustworthiness invariant becomes
   `collapsible + 2×dynamic-addressable + 1×element-child-static-addressable
-=== scanner-count`. All 1414 compiler + 207 vite-plugin tests pass.
+  === scanner-count`. All 1414 compiler + 207 vite-plugin tests pass.
 
   Bisect-verified: removing the `|| tryElementChildCollapse` emit arm fails
   the 2 positive emit specs; stubbing the scan element-child branch fails
@@ -1477,7 +1500,7 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   - `signalExportRegistry: Map<moduleId, Set<signalName>>` — populated
     by `prescanSignalExports` + `scanSignalExports` on every transform.
   - `resolveCache: Map<\`${importer}::${source}\`, resolvedId>`—
-populated by`resolveImportedSignals`.
+    populated by`resolveImportedSignals`.
   - `islandRegistry: Map<filePath, IslandDecl[]>` — populated by
     `prescanIslandDeclarations` + `scanIslandDeclarations`.
   - `pyreonWorkspaceDirCache: Map<dir, boolean>` — populated by
@@ -1600,7 +1623,7 @@ populated by`resolveImportedSignals`.
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
   - `@pyreon/runtime-dom` — `_rsCollapse(html, lightClass, darkClass,
-isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
+    isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
     bound to the live mode accessor — RFC decision 1 dual-emit, mode swap
     re-runs ONLY the className on the SAME node, no remount; decision 4
     hoisted-factory). `runtime-dom` stays layer-pure (never imports
@@ -1638,7 +1661,7 @@ isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
 
   Bisect-verified: disabling the compiler's `tryRocketstyleCollapse(node)`
   detection call fails the 4 collapse-emission specs (`expected … to
-contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
+  contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   specs still pass; restored → 13/13.
 
   **Deliberately deferred (follow-up PRs, tracked in
