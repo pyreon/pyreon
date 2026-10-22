@@ -77,11 +77,32 @@ export function App() {
   const count = signal(0)
   return (
     <Stack gap="md" align="center">
-      <Text>{count}</Text>
-      <Button onPress={() => count.set(count() + 1)}>Increment</Button>
+      <Text data-testid="count">{count}</Text>
+      <Button data-testid="increment" onPress={() => count.set(count() + 1)}>Increment</Button>
     </Stack>
   )
 }
+`,
+  )
+
+  add(
+    '.maestro/counter.yaml',
+    `# One flow, both platforms: data-testid becomes the iOS accessibility
+# identifier and the Android resource id, so \`id:\` selects identically.
+appId: ${bundleId}
+---
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: count
+    text: "0"
+- tapOn:
+    id: increment
+- tapOn:
+    id: increment
+- assertVisible:
+    id: count
+    text: "2"
 `,
   )
 
@@ -128,6 +149,10 @@ android/keystore.properties
           'build:android': 'bash scripts/build-android.sh',
           // Release lane: self-signed keystore (credential-free — Play App
           // Signing re-signs uploads) + a signed, R8-minified release APK.
+          // On-device E2E: build, install and launch via pyreon-native dev --once,
+          // then run the Maestro flows in .maestro/ (https://maestro.dev).
+          'e2e:ios': 'pyreon-native dev --target=ios --once && maestro test .maestro',
+          'e2e:android': 'pyreon-native dev --target=android --once && maestro test .maestro',
           'release:keystore': 'bash scripts/ensure-release-keystore.sh',
           'release:android': 'bash scripts/ensure-release-keystore.sh && cd android && gradle assembleRelease',
         },
@@ -697,16 +722,32 @@ package ${androidPkg}
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import ${androidPkg}.generated.App
 
 // ComponentActivity (NOT plain android.app.Activity) — Compose's
 // setContent {} is an extension on ComponentActivity; a plain Activity
 // fails to resolve it (receiver type mismatch).
+//
+// The Box does two things the emitted App() cannot do for itself:
+//  - safeDrawingPadding(): on Android 15+ (API 35) apps draw edge-to-edge, so
+//    without it the top of the screen sits UNDER the status bar and is hidden.
+//  - testTagsAsResourceId: Compose exposes data-testid (Modifier.testTag) only
+//    to its own test rules unless this is set; with it, UI Automator and so
+//    Maestro can select by id: on Android exactly as on iOS.
+@OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            App()
+            Box(Modifier.safeDrawingPadding().semantics { testTagsAsResourceId = true }) {
+                App()
+            }
         }
     }
 }
@@ -907,6 +948,8 @@ A Pyreon multi-platform project: **one source (\`src/App.tsx\`) renders on web, 
 - \`bun run dev\` — the web build (fast loop, hot reload).
 - \`npx pyreon-native check --source=src\` — report every construct the native compiler cannot lower, each as a named warning. Run it after editing shared source.
 - \`bun run build:ios\` / \`bun run build:android\` — compile \`src\` to Swift / Kotlin and build the native project.
+- \`npx pyreon-native dev --target=ios\` (or \`android\`) — watch \`src\`, rebuild, reinstall and relaunch on the running simulator/emulator. A rebuild loop, not hot reload.
+- \`bun run e2e:ios\` / \`bun run e2e:android\` — build and launch on the device, then run the Maestro flows in \`.maestro/\`. Give elements a \`data-testid\` and select them with \`id:\`.
 - \`bun run lint\` — Pyreon lint rules.
 
 ## Rules that matter
