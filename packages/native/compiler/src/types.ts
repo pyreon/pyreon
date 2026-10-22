@@ -909,6 +909,12 @@ export interface ParseResult {
    * keeps prior behaviour, so this is a purely additive precision guard.
    */
   aliasImports: Map<string, { source: string; imported: string }>
+  /**
+   * Local-name → source package for TYPES explicitly imported from a `@pyreon/*` package (`import type { X }` or
+   * `import { type X }`). Remembered so a type that survives into the emitted Swift/Kotlin undeclared can be named
+   * (see `verbatimPyreonTypeWarnings`); a type the plugin runtimes provide never reaches that check.
+   */
+  typeImports?: Map<string, { source: string; imported: string }>
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

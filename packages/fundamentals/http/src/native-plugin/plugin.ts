@@ -1,5 +1,5 @@
-import { type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
-import { httpRequestSource, scanHttp } from './endpoint'
+import { type CompilerPlugin, type MethodCallRecognizer } from '@pyreon/native-compiler/plugin-api'
+import { httpFacts, httpRequestSource, scanHttp } from './endpoint'
 import { HTTP_PLUGIN_NAME } from './names'
 
 export { HTTP_PLUGIN_NAME }
@@ -14,12 +14,37 @@ export { HTTP_PLUGIN_NAME }
  * (`@pyreon/query`) are owned by the packages an app imports them from, and read this plugin's
  * request source through `ParseContext.requests`.
  */
+/**
+ * An imperative call on a `createHttp` client — `api.get('/users/1')`, `api.post(…)`, `api.request(…)`.
+ *
+ * The client itself is compile-time METADATA (a base URL and options): it emits nothing, so there is no native object
+ * for a method to be called on, and the emitted handler would reference an `api` that does not exist. The lowering
+ * that does exist is endpoint → `useFetch` / `useQuery`, so the hint names it. `client.endpoint(…)` declarations are
+ * left alone (the scan owns them).
+ */
+const recognizeClientCall: MethodCallRecognizer = (site, ctx) => {
+  const receiver = site.receiver as { type?: string; name?: string }
+  if (receiver.type !== 'Identifier' || receiver.name === undefined) return undefined
+  if (!httpFacts(ctx).clients.has(receiver.name)) return undefined
+  if (site.method === 'endpoint') return undefined
+  return ctx.unsupported(
+    site.node,
+    `\`${receiver.name}.${site.method}(…)\` on an @pyreon/http client`,
+    `the client is compile-time metadata with no native object, so imperative calls cannot lower. Declare the request as an endpoint — const e = ${receiver.name}.endpoint('GET /path') — and read it with useFetch<T>(e({ params })) or useQuery`,
+  )
+}
+
 export const httpPlugin: CompilerPlugin = {
   name: HTTP_PLUGIN_NAME,
   apiVersion: 2,
   modules: ['@pyreon/http'],
   scanModule: scanHttp,
   requestSources: [httpRequestSource],
+  methodCalls: Object.fromEntries(
+    ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'request'].map((m) => [m, recognizeClientCall]),
+  ),
+  // A client declared inside a component body is not the scanned file-scope form, so it would be copied through verbatim.
+  tier2Calls: ['createHttp'],
   unlowered: {
     '@pyreon/http': {
       // `createHttp` LOWERS as part of the endpoint→useFetch resolution: a

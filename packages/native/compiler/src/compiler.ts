@@ -1,4 +1,4 @@
-import { verbatimPyreonCallWarnings } from './verbatim-call-warning'
+import { verbatimPyreonCallWarnings, verbatimPyreonTypeWarnings } from './verbatim-call-warning'
 import { inferType, buildInferenceCtx, buildModuleConstTypes } from './infer-type'
 import { createRegistries, withRegistries } from './active-registries'
 import { kotlinBackend, swiftBackend } from './backends'
@@ -332,7 +332,11 @@ export function createCompiler<Target extends string = never>(
     const known = [...module.warnings, ...warnings, ...emitted.warnings]
     return {
       code: emitted.code,
-      warnings: [...known, ...verbatimPyreonCallWarnings(module.aliasImports, source, emitted.code, known)],
+      warnings: [
+        ...known,
+        ...verbatimPyreonCallWarnings(module.aliasImports, source, emitted.code, known),
+        ...verbatimPyreonTypeWarnings(module.typeImports, emitted.code, registries.runtimeTypes, known),
+      ],
     }
   }
 }
