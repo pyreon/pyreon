@@ -6798,6 +6798,19 @@ function swiftDisabledModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   return `.disabled(${emitSwiftSignalRead(unwrapAccessorArrow(attr.value))})`
 }
 
+/**
+ * A callback passed to a USER component's `on…` prop. `emitSwiftAction` builds a closure for a SwiftUI action slot,
+ * which takes no arguments, so it emits the body alone — and a callback that receives a value
+ * (`onPick={(x) => v.set(x)}`) lost its parameter: `{ v = x }`, "cannot find 'x' in scope". Kotlin was always
+ * right (`{ x -> v = x }`). Bind the arrow's parameters; a zero-parameter callback is unchanged.
+ */
+function emitSwiftCallbackArg(handler: ExprIR, indent: number): string {
+  const action = emitSwiftAction(handler, indent)
+  if (handler.kind !== 'arrow' || handler.params.length === 0) return action
+  const params = handler.params.map((p) => swiftIdent(p)).join(', ')
+  return `{ ${params} in${action.slice(1)}`
+}
+
 function emitSwiftAction(handler: ExprIR, indent: number): string {
   // Strip outer arrow if present — Button takes a closure body directly.
   if (handler.kind === 'arrow') {
@@ -9832,7 +9845,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
       argEntries.push({
         name: propName,
-        part: `${swiftIdent(propName)}: ${emitSwiftAction(a.handler, indent)}`,
+        part: `${swiftIdent(propName)}: ${emitSwiftCallbackArg(a.handler, indent)}`,
       })
     } else if (a.kind === 'spread' && isUserComponent) {
       argEntries.push(...expandSwiftSpread(a.argument, e.tag, explicitNames, indent))
