@@ -68,9 +68,21 @@ describe.each(TARGETS)('hook binding resolution (%s)', (target) => {
     expect(r.code).toContain(LOWERED)
   })
 
-  it('keeps the user function callable under its own (renamed) name instead of the framework container', () => {
+  it('uses the user function instead of the framework container', () => {
+    // A same-file custom hook is inlined into its caller (inline-hooks.ts), so the user's `return 1` is what `a`
+    // becomes. What this guards is unchanged: the framework container must never stand in for the user's function.
     const r = compile(
       `${prim}function useOnline() { return 1 }\nexport function App() {\n  const a = useOnline()\n  return <Text>{a}</Text>\n}\n`,
+      target,
+    )
+    expect(r.code).toMatch(/\b(let|val) a = 1L?\b/)
+    expect(r.code).not.toContain(LOWERED)
+  })
+
+  it('keeps a same-named user function that is NOT a hook-shaped body callable under its own (renamed) name', () => {
+    // Not inlinable (a top-level `if`), so the helper path still keeps it callable, renamed away from the framework.
+    const r = compile(
+      `${prim}function useOnline(n: number): number { if (n > 1) return n\n  return 1 }\nexport function App() {\n  const a = useOnline(2)\n  return <Text>{a}</Text>\n}\n`,
       target,
     )
     expect(r.code).toContain('useOnline_')

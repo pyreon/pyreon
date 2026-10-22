@@ -87,6 +87,39 @@ The compiler recognises these hook identifiers and emits per-target equivalents:
 - `useLoaderData<T>()` — **A3 diagnostic** (PR #1235). Emits a warning naming the binding because PMTC has no emit yet; the runtime `PyreonRouter.setLoaderData()` is the only way to populate this signal today. (Real emit lands as Phase B.6.)
 - `const { copy, copied } = useClipboard()` — destructure form unsupported; warns to use `const cb = useClipboard()` instead.
 
+### ✅ Custom hooks (same file)
+
+A custom hook — a same-file `function useX(…)` or `const useX = (…) => …` that calls other hooks — is **inlined into each component that calls it** before native compilation. Its state becomes that component's state, which is what a hook means: natively, `signal` / `useQuery` / `useOidc` lower to view state (`@State`, `remember`), which only exists inside a component, so a hook has no standalone native form.
+
+```tsx
+function useCounter(start: number) {
+  const count = signal(start)
+  const increment = () => count.set(count() + 1)
+  return { count, increment }
+}
+
+export function App() {
+  const { count, increment } = useCounter(1)
+  return <Button onPress={increment}>{count()}</Button>
+}
+```
+
+Each call gets its own state (two `useCounter` calls are two counters), a hook that calls another same-file hook is inlined through, and a hook nothing calls any more is dropped from the native output. Writing the body directly in the component produces the same Swift and Kotlin, byte for byte.
+
+| Shape | Status |
+| --- | --- |
+| `return local` / `return useQuery(…)` read as `const x = useX(…)` | ✅ Inlined |
+| `return { a, b }` read as `const { a, b: renamed } = useX(…)` | ✅ Inlined — each name maps to the hook's own local |
+| `return { a, b }` read as `const x = useX(…)` | ⚠️ Warns — destructure it, so each value keeps its own native state |
+| An argument that is a name, a member read or a literal (`useMe(auth)`, `useX(props.id)`) | ✅ Substituted |
+| An argument with a cost (`useX(compute())`) | ⚠️ Warns — bind it to a `const` and pass the name |
+| A top-level `if` / loop / early `return` in the hook body | ⚠️ Warns — only declarations and expression statements, ending in one `return`, are inlined |
+| A parameter or local re-declared in a nested function | ⚠️ Warns — the rewrite is lexical, so a shadowed name is refused rather than renamed wrongly |
+| Async / generator / generic hook, destructured or default parameters | ⚠️ Warns |
+| A hook imported from another file | ❌ Not inlined — PMTC compiles one file at a time; keep shared hooks in the file that uses them, or import a package hook |
+
+A function whose name does not start with `use` is a plain helper and keeps the helper path (a top-level native function).
+
 ### ✅ Function declarations
 
 ```ts

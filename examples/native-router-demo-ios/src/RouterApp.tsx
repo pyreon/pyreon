@@ -745,17 +745,22 @@ function LifecyclePage() {
   )
 }
 
-function HttpPage() {
-  const navigate = useNavigate()
-  // The Authorization value is a RUNTIME string built from a signal — not a literal — so this request proves the
-  // header value is evaluated on the device when the request is built (what a signed-in app needs to send its token).
-  // Until runtime header values crossed, this header was dropped on iOS and Android.
-  const token = signal('tok-42')
-  const posted = useFetch<EchoReply>('http://localhost:8790/echo', {
+// A same-file CUSTOM HOOK wrapping a native hook. Natively a hook's state is view state, which only exists inside a
+// component, so the compiler inlines this into HttpPage (inline-hooks.ts). Until it did, a hook like this was skipped
+// on iOS and Android. The Authorization value is a RUNTIME string built from a signal — evaluated on the device when
+// the request is built, which is what a signed-in app needs to send its token.
+function usePostEcho(token: () => string) {
+  return useFetch<EchoReply>('http://localhost:8790/echo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token()}` },
     body: '{"name":"pyreon"}',
   })
+}
+
+function HttpPage() {
+  const navigate = useNavigate()
+  const token = signal('tok-42')
+  const posted = usePostEcho(token)
   const failed = useFetch<EchoReply>('http://localhost:8790/boom', { method: 'PUT' })
   return (
     <Stack gap={3} padding={4} data-testid="http-page">
