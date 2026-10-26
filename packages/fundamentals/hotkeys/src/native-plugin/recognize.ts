@@ -1,6 +1,8 @@
 import type { AstNode, CallRecognizer, ExtPayload } from '@pyreon/native-compiler/plugin-api'
 import { parseHotkeyCombo } from './combo'
 type AnyNode = AstNode & { body?: AnyNode; params?: AnyNode[] }
+/** A `BlockStatement`: unlike a function node, its `body` is the statement LIST. */
+type BlockNode = AstNode & { body?: AnyNode[] }
 const SUPPRESSIONS = new Set(['preventDefault', 'stopPropagation'])
 
 /** `<name>.preventDefault()` / `<name>.stopPropagation()` as an expression statement. */
@@ -40,17 +42,19 @@ function countRefs(node: unknown, name: string): number {
  * ANY other read of the parameter — `e.key`, passing it on, a nested closure —
  * leaves a reference behind and refuses.
  */
-function stripEventSuppression(cb: AnyNode, params: AnyNode[]): AnyNode | null {
+function stripEventSuppression(cb: AnyNode, params: AnyNode[]): AstNode | null {
   const param = params[0] as (AnyNode & { name?: string }) | undefined
   if (params.length !== 1 || param?.type !== 'Identifier' || !param.name) return null
   const name = param.name
-  const body = cb.body as AnyNode & { body?: AnyNode[] }
+  // `AnyNode` types `body` as one node (right for a function), so a block needs
+  // the explicit reinterpretation to reach its statement list.
+  const body = cb.body as unknown as BlockNode
   // An expression body (`(e) => n.set(1)`) has no statements to strip, so it
   // lowers only when it never mentions the parameter at all.
   if (body.type !== 'BlockStatement') return countRefs(body, name) === 0 ? body : null
   const kept = (body.body ?? []).filter((st) => !isSuppressionStatement(st, name))
   if (countRefs(kept, name) > 0) return null
-  return { ...body, body: kept } as AnyNode
+  return { ...body, body: kept }
 }
 
 export const recognizeHotkey: CallRecognizer = (_call, ctx) => {
