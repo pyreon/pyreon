@@ -64,6 +64,16 @@ describe('buildScaffold — file tree', () => {
     }
   })
 
+  it('never tells the user to run a Gradle wrapper it did not generate', () => {
+    // The scaffold writes no gradlew / gradle/wrapper/*, and its own scripts
+    // call a bare `gradle`. A README that says `./gradlew` sends a new user to
+    // "no such file" on their first Android build.
+    expect(paths.some((p) => p.endsWith('gradlew') || p.includes('gradle/wrapper/'))).toBe(false)
+    const readme = get('README.md')
+    expect(readme).not.toContain('./gradlew')
+    expect(readme).toContain('gradle assembleDebug')
+  })
+
   it('documents the useNativeModule escape hatch in the README', () => {
     // Discoverability is the point. `useNativeModule` is what stops a new app
     // being blocked on a framework release when it needs a capability the

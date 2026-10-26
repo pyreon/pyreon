@@ -762,7 +762,7 @@ kotlin {
 # reflection-sensitive dependency is kotlinx-serialization (useFetch /
 # loader payloads), which ships its own keep rules
 # (META-INF/com.android.tools/r8/kotlinx-serialization-r8.pro) that R8
-# applies automatically. A real \`./gradlew assembleRelease\` with
+# applies automatically. A real \`gradle assembleRelease\` with
 # minify enabled builds clean against the runtime out of the box.
 #
 # Add keep rules for YOUR app's own reflection / serialization here, e.g.:
@@ -956,11 +956,13 @@ npm run build:ios  # src/App.tsx → ios/generated/App.swift
 cd ios && xcodegen generate && open ${pascal}.xcodeproj
 \`\`\`
 
-## Android (requires the Android SDK + Gradle)
+## Android (requires the Android SDK, JDK 17+, and Gradle 9.6+ on PATH)
+
+No Gradle wrapper is generated; use a system \`gradle\` (e.g. \`brew install gradle\`).
 
 \`\`\`bash
 npm run build:android   # src/App.tsx → android/.../generated/App.kt
-cd android && ./gradlew assembleDebug
+cd android && gradle assembleDebug
 \`\`\`
 
 Edit \`src/App.tsx\` — every target re-compiles from that single file.
