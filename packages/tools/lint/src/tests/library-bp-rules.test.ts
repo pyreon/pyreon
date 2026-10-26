@@ -156,6 +156,21 @@ describe('pyreon/rx-prefer-pipe (rx, dep-gated)', () => {
     expect(diagIds(result)).toContain('pyreon/rx-prefer-pipe')
   })
 
+  it('suggests a pipe() that actually works — plain-function steps, never curried rx calls', () => {
+    // rx transforms are data-first (source, fn), not curried operators, so
+    // `pipe(src, filter(p), map(f))` does not work. A lint message that
+    // suggests it sends every reader to broken code.
+    const result = lint(
+      `import { map, filter } from '@pyreon/rx'
+       const out = map(filter(src, (u) => u.active), (u) => u.name)`,
+      join(rxDir, 'src', 'M.ts'),
+    )
+    const msg = result.diagnostics.find((d) => d.ruleId === 'pyreon/rx-prefer-pipe')?.message ?? ''
+    expect(msg).toContain('pipe(src, (xs) =>')
+    expect(msg).not.toMatch(/pipe\(src, (map|filter)\(…\), /)
+    expect(msg).not.toMatch(/pipe\(src, \w+\(\.\.\.\)/)
+  })
+
   it('FIRES on sortBy(map(...), ...) nested transforms', () => {
     const result = lint(
       `import { sortBy, map } from '@pyreon/rx'
@@ -165,7 +180,7 @@ describe('pyreon/rx-prefer-pipe (rx, dep-gated)', () => {
     expect(diagIds(result)).toContain('pyreon/rx-prefer-pipe')
   })
 
-  it('does NOT fire on the correct pipe(src, filter(...), map(...)) form', () => {
+  it('does NOT fire on the correct pipe(src, plainFn, plainFn) form', () => {
     const result = lint(
       `import { pipe, filter, map } from '@pyreon/rx'
        const out = pipe(src, (a) => a.filter(Boolean), (a) => a.map(String))`,
