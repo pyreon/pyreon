@@ -5,8 +5,15 @@
 // two-argument `t(key, { count })` needs a lowering, because the generic object-literal emit builds a struct
 // (or a one-field labelled tuple, a Swift PARSE error) where the runtime takes a dictionary.
 //
-// v1 scope: string keys and string values. Async loaders, nested message objects, plural suffixes and
-// namespaces are out of scope; top-level dotted keys are kept verbatim (`{ 'section.title': 'Report' }`).
+// The runtimes resolve CLDR plural categories (`zero`/`one`/`two`/`few`/`many`/`other`, then `_other`, then the
+// bare key) from a baked CLDR rule table, and the active locale is writable: `i18n.locale.set('pl')` already
+// lowers to the property write `i18n.locale = "pl"` through the generic signal-write path, and the READ
+// `i18n.locale()` lowers here to the property `i18n.locale` (a call would not compile — it is a property on both
+// runtimes).
+//
+// Scope: string keys and string values. Async loaders, nested message objects, `context` variants, custom
+// `pluralRules` and namespaces are out of scope; top-level dotted keys are kept verbatim
+// (`{ 'section.title': 'Report' }`).
 
 import {
   staticPropKey,
@@ -180,9 +187,35 @@ function interpolatedT(
   return `${ctx.ident(callee.object.name)}.t(${keyArg}, ${wrap(entries)})`
 }
 
+/**
+ * `i18n.locale()` — the web reads the locale signal by CALLING it; both runtimes expose `locale` as a
+ * property (observable on Swift, `mutableStateOf`-backed on Compose), so the call drops its parens. Without
+ * this the emit was `i18n.locale()`, which compiles on neither target.
+ */
+function localeRead(site: ReceiverSite, ctx: { ident(name: string): string }): string | undefined {
+  if (site.kind !== 'call') return undefined
+  const { callee, args } = site.expr
+  if (
+    callee.kind !== 'member' ||
+    callee.property !== 'locale' ||
+    callee.object.kind !== 'identifier' ||
+    callee.object.name !== site.receiver.name ||
+    args.length !== 0
+  ) {
+    return undefined
+  }
+  return `${ctx.ident(callee.object.name)}.locale`
+}
+
 const i18nReceiver: ReceiverLowering = {
-  swift: { expr: (site, ctx) => interpolatedT(site, ctx, (k, v) => `${k}: ${v}`, (entries) => `[${entries}]`) },
-  kotlin: { expr: (site, ctx) => interpolatedT(site, ctx, (k, v) => `${k} to ${v}`, (entries) => `mapOf(${entries})`) },
+  swift: {
+    expr: (site, ctx) =>
+      localeRead(site, ctx) ?? interpolatedT(site, ctx, (k, v) => `${k}: ${v}`, (entries) => `[${entries}]`),
+  },
+  kotlin: {
+    expr: (site, ctx) =>
+      localeRead(site, ctx) ?? interpolatedT(site, ctx, (k, v) => `${k} to ${v}`, (entries) => `mapOf(${entries})`),
+  },
 }
 
 /**

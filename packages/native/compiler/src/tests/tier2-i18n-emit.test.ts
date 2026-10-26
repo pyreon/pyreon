@@ -4,8 +4,10 @@
 // emits the PyreonI18n reactive container. Method `i18n.t(key)` flows
 // through unchanged (runtime container defines it).
 //
-// v1 scope: single-arg `t(key)`. Interpolation values, locale writes,
-// pluralization, namespaces, async loading deferred — each its own PR.
+// Scope: `t(key)`, `t(key, { count, … })` (CLDR plurals resolve in the
+// runtime), and the locale signal — `i18n.locale()` reads lower to the
+// property, `i18n.locale.set(x)` writes to the property assignment.
+// Namespaces and async loading stay web-only.
 //
 // Bisect-verify: disable `tryDeclFromCreateI18n` in parse.ts → each
 // "emits" spec fails with "expected … to contain PyreonI18n(…)". Restored
@@ -17,7 +19,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURE = resolve(HERE, '..', 'fixtures', 'tier2-i18n.tsx')
@@ -99,5 +102,55 @@ export function App() {
     expect(i18nWarning).toBeDefined()
     // No PyreonI18n line in emit (silent-drop preserved).
     expect(swift.code).not.toContain('PyreonI18n(')
+  })
+
+  describe('locale signal (#3981)', () => {
+    const SWITCH_SRC = `
+import { createI18n } from '@pyreon/i18n'
+import { Stack, Text, Button } from '@pyreon/primitives'
+
+export function Files() {
+  const i18n = createI18n({
+    locale: 'cs',
+    messages: {
+      cs: { files_one: '{{count}} soubor', files_few: '{{count}} soubory', files_many: '{{count}} souboru', files_other: '{{count}} souborů' },
+      en: { files_one: '{{count}} file', files_other: '{{count}} files' },
+    },
+  })
+  return (
+    <Stack>
+      <Text>{i18n.t('files', { count: 3 })}</Text>
+      <Text>{i18n.locale()}</Text>
+      <Button onPress={() => i18n.locale.set('en')}>English</Button>
+    </Stack>
+  )
+}
+`
+
+    it('Swift: the read drops the call parens, the write assigns the property', () => {
+      const r = transform(SWITCH_SRC, { target: 'swift' })
+      expect(r.code).toContain('Text(verbatim: "\\(i18n.locale)")')
+      expect(r.code).not.toContain('i18n.locale()')
+      expect(r.code).toContain('i18n.locale = "en"')
+      expect(r.warnings).toEqual([])
+    })
+
+    it('Kotlin: the read drops the call parens, the write assigns the property', () => {
+      const r = transform(SWITCH_SRC, { target: 'kotlin' })
+      expect(r.code).toContain('Text(text = "${i18n.locale}")')
+      expect(r.code).not.toContain('i18n.locale()')
+      expect(r.code).toContain('i18n.locale = "en"')
+      expect(r.warnings).toEqual([])
+    })
+
+    it.runIf(isSwiftcAvailable())('Swift emit typechecks against the stubs', () => {
+      const v = validateSwiftWithStubs(transform(SWITCH_SRC, { target: 'swift' }).code)
+      expect(v.ok, v.error).toBe(true)
+    })
+
+    it.runIf(isKotlincAvailable())('Kotlin emit typechecks against the stubs', () => {
+      const v = validateKotlin(transform(SWITCH_SRC, { target: 'kotlin' }).code)
+      expect(v.ok, v.error).toBe(true)
+    })
   })
 })

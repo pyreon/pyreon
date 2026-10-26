@@ -76,7 +76,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonHttp.buildURLRequest',
     'PyreonHttp.install',
     'PyreonI18n.fallbackLocale',
-    'PyreonI18n.locale',
     'PyreonI18n.messages',
     'PyreonNetworkStatus.isMonitoring',
     'PyreonNetworkStatus.update',

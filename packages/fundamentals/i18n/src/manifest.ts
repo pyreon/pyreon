@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'service-backend',
     rationale:
-      'createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms',
+      'createI18n core (t(), interpolation, CLDR plurals, locale.set) lowers to PyreonI18n; translation device-proven both platforms',
   },
   longExample: `import { createI18n, I18nProvider, useI18n, Trans } from '@pyreon/i18n'
 
