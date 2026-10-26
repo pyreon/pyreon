@@ -45,6 +45,27 @@ Scaffolded scripts, beyond `dev` / `build:ios` / `build:android`: `preview` (Vit
 
 The project also ships `AGENTS.md`, `CLAUDE.md` and `.mcp.json`: instructions for AI coding assistants (the commands above, the native-subset rules, where the capability matrix lives) and the Pyreon MCP server registration, matching what `create-zero` scaffolds for web apps.
 
+## Deep links
+
+Every generated app can be opened at a route by URL, with no setup. The scheme defaults to the project's identifier (`my-app` → `myapp://`); choose another with `--scheme`:
+
+```bash
+npx create-multiplatform my-app --scheme acme   # acme://item/42
+```
+
+The host files forward every inbound URL to the router: iOS through `.onOpenURL` (and a universal link through `onContinueUserActivity`), Android through the launch intent and `onNewIntent` (the activity is `singleTop`, so a link sent to the running app reaches it instead of stacking a second copy). The scheme is registered for both: `CFBundleURLTypes` on iOS, a `VIEW`/`BROWSABLE` intent filter on Android.
+
+How a URL becomes a route: for a **custom scheme** the host is the first route segment, so `acme://item/42` opens `/item/42` and `acme://about` opens `/about`. For a **web link** the host is the domain and is ignored: `https://example.com/item/42` also opens `/item/42`. Query and fragment are dropped, and a URL that yields nothing opens `/`.
+
+Try it on a running simulator or emulator:
+
+```bash
+xcrun simctl openurl booted "myapp://item/42"
+adb shell am start -a android.intent.action.VIEW -d "myapp://item/42"
+```
+
+Not generated: verified web links (universal links on iOS, `autoVerify` app links on Android). They need a domain you control, an Associated Domains entitlement and an `assetlinks.json` / `apple-app-site-association` file, so they stay a manual step. The forwarding for them is already in place; only the entitlement, the manifest filter and the hosted association file are missing.
+
 ## What gets generated
 
 A project sharing **one canonical-primitive source** across three targets:

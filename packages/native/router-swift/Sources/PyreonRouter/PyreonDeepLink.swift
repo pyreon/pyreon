@@ -54,11 +54,12 @@ public enum PyreonDeepLink {
     /// Forward an inbound URL. The host calls this from `onOpenURL` /
     /// `application(_:open:options:)`.
     ///
-    /// Only the PATH is used: a deep link's host/scheme identify the app, not
-    /// the destination, so `pyreon://app/users/42` and
-    /// `https://example.com/users/42` both route to `/users/42`. A URL that
-    /// yields no path routes to `/` rather than being dropped — landing on the
-    /// home screen is the correct degradation for a malformed link.
+    /// The route is the URL's path, with a custom scheme's HOST folded in as the
+    /// first segment: `myapp://item/42` and `https://example.com/item/42` both
+    /// route to `/item/42` (a web link's host is its domain, a custom scheme's is
+    /// part of the route — see `pathFor`). A URL that yields nothing routes to `/`
+    /// rather than being dropped — landing on the home screen is the correct
+    /// degradation for a malformed link.
     public static func receive(_ url: URL) {
         receive(path: normalizedPath(from: url))
     }
@@ -128,17 +129,34 @@ public enum PyreonDeepLink {
     }
 
     /// The route path a URL denotes.
-    ///
-    /// `URL.path` is empty for a custom scheme whose destination sits in the
-    /// HOST position (`pyreon://about`), which is the shape most apps use, so
-    /// the host is folded in when the path is empty. Query and fragment are
-    /// dropped — the router owns its own search-param handling.
     static func normalizedPath(from url: URL) -> String {
-        let rawPath = url.path
-        if rawPath.isEmpty || rawPath == "/" {
-            if let host = url.host, !host.isEmpty { return "/\(host)" }
-            return "/"
+        pathFor(scheme: url.scheme, host: url.host, path: url.path)
+    }
+
+    /// The rule, on plain strings so it is testable without constructing a `URL`.
+    ///
+    /// - A CUSTOM scheme (`myapp://item/42`) puts the first route segment in the
+    ///   HOST position, so the route is `/` + host + path → `/item/42`. A host-only
+    ///   link (`myapp://about`) is the same rule with an empty path → `/about`.
+    ///   An empty host (`myapp:///item/42`) simply contributes nothing.
+    /// - A WEB link (`https://example.com/users/42`) has the domain in the host
+    ///   position; that identifies the app, not the destination, so only the path
+    ///   is used → `/users/42`.
+    ///
+    /// Query and fragment are dropped (the router owns its own search params), and
+    /// a URL that yields nothing routes to `/` rather than being dropped.
+    static func pathFor(scheme: String?, host: String?, path: String?) -> String {
+        let lowered = scheme?.lowercased()
+        let isWeb = lowered == "http" || lowered == "https"
+        let head = (!isWeb && !(host ?? "").isEmpty) ? "/\(host!)" : ""
+        let raw = path ?? ""
+        let tail: String
+        if raw.isEmpty || raw == "/" {
+            tail = ""
+        } else {
+            tail = raw.hasPrefix("/") ? raw : "/\(raw)"
         }
-        return rawPath.hasPrefix("/") ? rawPath : "/\(rawPath)"
+        let full = head + tail
+        return full.isEmpty ? "/" : full
     }
 }

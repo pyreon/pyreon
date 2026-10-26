@@ -108,6 +108,12 @@ XCUITest resolves a drag's destination once, before the gesture starts. A flow c
 
 ---
 
+### A URL-to-route rule with no test fails on the SHAPE everyone uses, and passes on the shape its author tried
+
+(native deep links, #3984): `PyreonDeepLink` folded a URL's host into the route only when the path was EMPTY, so `myapp://about` worked and `myapp://item/42` arrived as `/42`, with the first segment silently gone. Both runtimes shipped that, and neither had a test for the URL-to-path step (the tests fed `receive(path:)` directly), so the only thing that could find it was sending a real link to a real simulator. The rule is now one pure function over `(scheme, host, path)` on both platforms: a custom scheme's host is the first segment, a web link's host is its domain and is ignored. Keep it pure and string-typed so it is testable without constructing a `URL` / `Uri` (the Kotlin verify stub's `Uri` has fixed null fields), and test both shapes plus the real `URL` parse. Device-check a link channel COLD and WARM: they are separate code paths (launch intent vs `onNewIntent`; initial `pending` vs live listener).
+
+---
+
 ### An integer literal in a position that EXPECTS a Double is an Int unless something says otherwise
 
 (PMTC, #3956): Kotlin never coerces an integer literal into a `Double`, and Swift drops a local's annotation, so `const ZERO: Double = 0`, `const MARKS: Double[] = [0, 1]`, `function zero(): Double { return 0 }`, `half(0)` and `half(geo.latitude ?? 0)` each failed one target or both. The issue named two spellings; probing showed every position that names a Double, so the fix is the RULE, not the spelling. `contextual-double-literals.ts` runs after the other float passes and sets `float` on an integer literal wherever a Double is declared or required (module/local/signal initializers, returns, call arguments to a known function, parameter defaults, and the partner of a `??`/`||` whose other side infers Double); `Double` is read by NAME (`type Double = number` is the documented alias) as well as inferred. Locked by `native-contextual-double-literals.test.ts`, compiled with the real `kotlinc`/`swiftc` and bisect-verified (removing the one call reproduces the issue's exact Kotlin errors). An Int context must stay an Int: the control specs keep the pass from widening every number.
