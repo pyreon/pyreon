@@ -2820,6 +2820,24 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           )
         }
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
+        // A plain `let` that a CLOSURE reassigns is component state in everything but name. As a value-const it
+        // emits an immutable `let`/`val` (Swift: not in scope of the helper func; Kotlin: "val cannot be reassigned"),
+        // so it becomes the signal-backed `@State`/`mutableStateOf` it behaves as — reads stay bare identifiers.
+        if (
+          decl !== null &&
+          decl.kind === 'value' &&
+          stmt.kind === 'let' &&
+          declarator.id?.type === 'Identifier' &&
+          reassignedInClosure(declarator.id.name as string, body)
+        ) {
+          decls.push({
+            kind: 'signal',
+            name: decl.name,
+            type: inferTypeFromInitial(decl.expr),
+            initial: decl.expr,
+          })
+          continue
+        }
         if (decl) decls.push(decl)
       }
     } else if (stmt.type === 'FunctionDeclaration' && stmt.id?.name) {
@@ -3743,6 +3761,32 @@ function runModuleScanners(program: AnyNode, source: string, ctx: ParseCtx): voi
 }
 
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
+/** Whether `name` is assigned (`=`, `+=`, `++`, …) inside a function nested in `body` — a closure over it. */
+function reassignedInClosure(name: string, body: readonly AnyNode[]): boolean {
+  const walk = (n: unknown, inFn: boolean): boolean => {
+    if (Array.isArray(n)) return n.some((x) => walk(x, inFn))
+    if (n === null || typeof n !== 'object') return false
+    const node = n as AnyNode
+    const fn =
+      inFn ||
+      node.type === 'ArrowFunctionExpression' ||
+      node.type === 'FunctionExpression' ||
+      node.type === 'FunctionDeclaration'
+    if (
+      fn &&
+      ((node.type === 'AssignmentExpression' && node.left?.type === 'Identifier' && node.left.name === name) ||
+        (node.type === 'UpdateExpression' && node.argument?.type === 'Identifier' && node.argument.name === name))
+    )
+      return true
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end') continue
+      if (walk(node[k], fn)) return true
+    }
+    return false
+  }
+  return walk(body, false)
+}
+
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
   if (
