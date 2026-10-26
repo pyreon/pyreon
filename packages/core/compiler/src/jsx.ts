@@ -3713,6 +3713,82 @@ export function transformJSX_JS(
     return resolved
   }
 
+  // ── ASI hazard: an inlined name at the START of a statement ──────────────
+  //
+  // Inlining replaces a prop-derived name with `(<its initializer>)`. In a
+  // function body written WITHOUT semicolons, a statement that begins with such a
+  // name now begins with `(`, and ASI does not insert a `;` before a `(`: the
+  // previous line absorbs it (`start.set(x)\n(() => {…})()` parses as
+  // `start.set(x)(() => {…})()` — a runtime TypeError — and `++counter\n(props.x)`
+  // as a call of `counter`, a parse error). Valid source, run un-compiled, was fine.
+  //
+  // So a statement start needs a leading `;` exactly when (a) it is an expression
+  // statement in a statement LIST (a body, a case, the program), (b) it has a
+  // preceding sibling, and (c) that sibling does not already end a statement
+  // (`;` or a closing block). A sole-child position (`if (c) api.x()`) is never
+  // affected — its previous token is `)`/`else`/`do`, which cannot join — and a
+  // `;` there would end the `if` with an empty statement, so it is not added.
+  // Checked against the SOURCE node's end character, so semicolon-style code is
+  // byte-identical to before.
+  function endsWithBlock(st: N | null | undefined): boolean {
+    if (!st) return false
+    switch (st.type) {
+      case 'BlockStatement':
+      case 'FunctionDeclaration':
+      case 'ClassDeclaration':
+      case 'TryStatement':
+      case 'SwitchStatement':
+        return true
+      case 'IfStatement':
+        return endsWithBlock(st.alternate ?? st.consequent)
+      case 'ForStatement':
+      case 'ForInStatement':
+      case 'ForOfStatement':
+      case 'WhileStatement':
+      case 'LabeledStatement':
+      case 'WithStatement':
+        return endsWithBlock(st.body)
+      default:
+        return false
+    }
+  }
+
+  let asiHazardStarts: Set<number> | null = null
+  /** Does the expression statement starting at `start` need a leading `;` once its first token is parenthesized? */
+  function needsLeadingSemicolon(start: number): boolean {
+    if (asiHazardStarts === null) {
+      const found = new Set<number>()
+      const visit = (node: N): void => {
+        const list: N[] | null =
+          node.type === 'Program' ||
+          node.type === 'BlockStatement' ||
+          node.type === 'StaticBlock' ||
+          node.type === 'TSModuleBlock'
+            ? node.body
+            : node.type === 'SwitchCase'
+              ? node.consequent
+              : null
+        if (Array.isArray(list)) {
+          for (let i = 1; i < list.length; i++) {
+            const st = list[i] as N
+            const prev = list[i - 1] as N
+            if (
+              st.type === 'ExpressionStatement' &&
+              !endsWithBlock(prev) &&
+              code.charCodeAt((prev.end as number) - 1) !== 59 /* ; */
+            ) {
+              found.add(st.start as number)
+            }
+          }
+        }
+        forEachChildFast(node, visit)
+      }
+      visit(program)
+      asiHazardStarts = found
+    }
+    return asiHazardStarts.has(start)
+  }
+
   function resolveIdentifiersInText(
     text: string,
     baseOffset: number,
@@ -3874,7 +3950,9 @@ export function transformJSX_JS(
       return {
         start: id.start,
         end: id.end,
-        text: id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`,
+        text: id.shorthand
+          ? `${id.name}: (${resolved})`
+          : `${needsLeadingSemicolon(id.start) ? ';' : ''}(${resolved})`,
       }
     })
     for (const id of signalIdents) {
