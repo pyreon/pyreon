@@ -35,8 +35,9 @@
 // plain path (bisects, or a toolchain that misbehaves in-process).
 
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -294,6 +295,31 @@ function javaCommand(): string | null {
   return runnable('java') ? 'java' : null
 }
 
+/**
+ * Move a freshly built artefact into `dest` atomically, across filesystems.
+ *
+ * The artefact is built under `os.tmpdir()`, but `dest` is in the verdict
+ * cache, which CI restores onto a DIFFERENT mount — and `rename(2)` cannot
+ * cross devices (`EXDEV`). A bare rename therefore failed every cold CI run
+ * and silently disabled the daemon ("server did not compile: EXDEV"). Copy
+ * into a temp name in the destination directory first, then rename within
+ * it: same filesystem, still atomic, so a concurrent reader sees either no
+ * jar or the whole jar.
+ */
+/** @internal exported for the cross-device regression test */
+export function installArtefact(built: string, dest: string): void {
+  const dir = dirname(dest)
+  mkdirSync(dir, { recursive: true })
+  const staged = join(dir, `.${randomBytes(12).toString('hex')}.tmp`)
+  try {
+    copyFileSync(built, staged)
+    renameSync(staged, dest)
+  } catch (err) {
+    rmSync(staged, { force: true })
+    throw err
+  }
+}
+
 /** Where built artefacts (server jar, stubs jars) live: the verdict cache, else the spool. */
 function artefactDir(spool: string): string {
   return cacheDir() ?? spool
@@ -317,8 +343,7 @@ function serverJar(kotlincVersion: string, libDir: string, spool: string): strin
         timeout: 180_000,
       },
     )
-    mkdirSync(dir, { recursive: true })
-    renameSync(tmpJar, jar)
+    installArtefact(tmpJar, jar)
     return jar
   } finally {
     rmSync(work, { recursive: true, force: true })
@@ -556,8 +581,7 @@ function stubsJar(
     const tmpJar = join(work, 'stubs.jar')
     const v = request(d, tmpJar, '', [src], timeoutMs)
     if (!v || v.code !== 0) return null
-    mkdirSync(dir, { recursive: true })
-    renameSync(tmpJar, jar)
+    installArtefact(tmpJar, jar)
     return jar
   } finally {
     rmSync(work, { recursive: true, force: true })

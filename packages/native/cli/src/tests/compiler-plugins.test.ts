@@ -45,10 +45,21 @@ afterEach(() => {
   vi.restoreAllMocks()
   rmSync(root, { recursive: true, force: true })
 })
+// Each spawn runs the PUBLISHED bin, which loads the compiler and emits both
+// native targets. Under the coverage run every child also writes V8
+// coverage, which is what pushed the first spec past vitest's 20s default.
+const SPAWN_TIMEOUT_MS = 60_000
 const run = (...args: string[]) =>
-  spawnSync('node', [BIN, ...args], { encoding: 'utf8', timeout: 60_000 })
+  spawnSync('node', [BIN, ...args], { encoding: 'utf8', timeout: SPAWN_TIMEOUT_MS })
+// The wall-clock backstop must EXCEED the budgets a spec composes, or vitest's
+// opaque "Test timed out" fires before the descriptive spawn / validator
+// timeout can. The heaviest spec makes two CLI spawns and then validates the
+// Swift and the Kotlin output, each bounded by validate.ts's compile timeout
+// (150s) after a toolchain probe (60s).
+const VALIDATE_BUDGET_MS = 150_000 + 60_000
+const BACKSTOP_MS = 2 * SPAWN_TIMEOUT_MS + 2 * VALIDATE_BUDGET_MS + 30_000
 
-describe('published compiler plugin CLI', () => {
+describe('published compiler plugin CLI', { timeout: BACKSTOP_MS }, () => {
   it('loads repeatable plugins using both flag forms and emits both real native targets', () => {
     const second = join(root, 'second.mjs')
     writeFileSync(
