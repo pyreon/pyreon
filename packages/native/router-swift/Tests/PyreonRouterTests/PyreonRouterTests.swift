@@ -1291,4 +1291,53 @@ final class PyreonRouterQueryTests: XCTestCase {
         let router = PyreonRouter(initialPath: ["/nope"], routes: [])
         XCTAssertEqual(router.path, ["/nope"])
     }
+
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+final class PyreonDeepLinkPathTests: XCTestCase {
+    // MARK: - Inbound URL -> route path (#3984)
+    //
+    // `myapp://item/42` reached the router as `/42`: the host was folded in only
+    // when the path was EMPTY, so the most common custom-scheme shape lost its
+    // first segment. These pin both the pure rule and the real `URL` parse (a
+    // `URL` splits host and path in ways a hand-written triple would not).
+
+    func testCustomSchemeHostIsTheFirstRouteSegment() throws {
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "item", path: "/42"), "/item/42")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "about", path: ""), "/about")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "about", path: "/"), "/about")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "a", path: "/b/c"), "/a/b/c")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "", path: "/item/42"), "/item/42")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: nil, path: "item/42"), "/item/42")
+    }
+
+    func testWebLinkHostIsTheDomainAndNeverPartOfTheRoute() throws {
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "https", host: "example.com", path: "/users/42"), "/users/42")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "HTTP", host: "example.com", path: "/users/42"), "/users/42")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "https", host: "example.com", path: ""), "/")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "https", host: "example.com", path: "/"), "/")
+    }
+
+    func testAnUrlThatYieldsNothingRoutesHome() throws {
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: nil, host: nil, path: nil), "/")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "", path: ""), "/")
+    }
+
+    func testRealUrlsParseToTheRoutePath() throws {
+        let cases: [(String, String)] = [
+            ("myapp://item/42", "/item/42"),
+            ("myapp://about", "/about"),
+            ("myapp://about/", "/about"),
+            ("myapp:///item/42", "/item/42"),
+            ("myapp://item/42?ref=email#top", "/item/42"),
+            ("https://example.com/users/42", "/users/42"),
+            ("https://example.com", "/"),
+            ("https://example.com/", "/"),
+        ]
+        for (raw, expected) in cases {
+            let url = try XCTUnwrap(URL(string: raw), raw)
+            XCTAssertEqual(PyreonDeepLink.normalizedPath(from: url), expected, raw)
+        }
+    }
 }

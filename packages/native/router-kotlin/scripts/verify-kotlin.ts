@@ -159,7 +159,7 @@ fun CompositionLocalProvider(vararg values: ProvidedValue<*>, content: @Composab
 `
 
 // android.net.Uri — EXACTLY the surface PyreonDeepLink.kt reads
-// (`uri.path` / `uri.host`, both nullable). Mirrored, not a superset:
+// (`uri.scheme` / `uri.path` / `uri.host`, all nullable). Mirrored, not a superset:
 // a wider stub would mask a reference the real SDK rejects (the
 // stub-must-mirror rule), a narrower one manufactures failures — this
 // gate found PyreonDeepLink at all only because the source list became
@@ -167,6 +167,7 @@ fun CompositionLocalProvider(vararg values: ProvidedValue<*>, content: @Composab
 const ANDROID_NET_STUBS = `package android.net
 
 class Uri {
+  val scheme: String? = null
   val path: String? = null
   val host: String? = null
 }

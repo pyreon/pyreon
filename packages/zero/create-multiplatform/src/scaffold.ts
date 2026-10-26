@@ -29,6 +29,52 @@ export interface ScaffoldOptions {
    *  `@main` struct, the Gradle `rootProject.name`, the bundle id, and the
    *  web `<title>`. */
   name: string
+  /** The URL scheme the app is opened by (`myapp` → `myapp://item/42`). Defaults to the project's identifier. */
+  scheme?: string
+}
+
+/**
+ * Schemes that belong to the platform or to web links, never to one app. `http`/`https` are the
+ * universal-link / app-link case, which needs a verified domain and is configured separately.
+ */
+const RESERVED_SCHEMES = new Set([
+  'http',
+  'https',
+  'file',
+  'ftp',
+  'data',
+  'javascript',
+  'mailto',
+  'tel',
+  'sms',
+  'about',
+  'blob',
+  'ws',
+  'wss',
+])
+
+/**
+ * A URL scheme must match RFC 3986 (`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`); lower-cased, because
+ * Android matches the scheme case-sensitively and iOS lower-cases it.
+ */
+export function validateScheme(scheme: string): string {
+  const s = scheme.trim().toLowerCase()
+  if (!/^[a-z][a-z0-9+.-]*$/.test(s)) {
+    throw new Error(
+      `[create-multiplatform] invalid URL scheme "${scheme}" — it must start with a letter and contain only letters, digits, "+", "-" or "." (for example "myapp").`,
+    )
+  }
+  if (RESERVED_SCHEMES.has(s)) {
+    throw new Error(
+      `[create-multiplatform] "${s}" is not a valid app URL scheme — it belongs to the platform or to web links. Pick a scheme unique to your app (for example "myapp").`,
+    )
+  }
+  return s
+}
+
+/** The scheme an app gets when none is chosen: its identifier, prefixed when that does not start with a letter. */
+export function defaultScheme(leaf: string): string {
+  return /^[a-z]/.test(leaf) ? leaf : `app${leaf}`
 }
 
 /** `my-app` → `MyApp` (PascalCase; used for the Swift struct + display name). */
@@ -58,6 +104,7 @@ export function buildScaffold(opts: ScaffoldOptions): FileSpec[] {
   const androidPkg = `com.example.${leaf}`
   const androidPkgPath = androidPkg.replace(/\./g, '/')
   const bundleId = `com.example.${pascal}`
+  const scheme = validateScheme(opts.scheme ?? defaultScheme(leaf))
 
   const files: FileSpec[] = []
   const add = (path: string, content: string) => files.push({ path, content })
@@ -349,6 +396,11 @@ targets:
       path: Info.plist
       properties:
         CFBundleShortVersionString: 0.0.1
+        # Inbound deep links: \`${scheme}://…\` opens the app (PyreonDeepLink forwards it to the router).
+        CFBundleURLTypes:
+          - CFBundleURLName: ${bundleId}
+            CFBundleURLSchemes:
+              - ${scheme}
         CFBundleVersion: '1'
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
@@ -366,6 +418,7 @@ targets:
     'ios/Sources/Main.swift',
     `// @main entry point. SwiftUI App protocol — the canonical iOS entrypoint.
 import SwiftUI
+import PyreonRouter
 
 // \`SwiftUI.App\` (fully qualified) — the emitted component from
 // src/App.tsx is \`struct App: View\`, which shadows the bare \`App\`
@@ -376,6 +429,13 @@ struct ${pascal}App: SwiftUI.App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Inbound deep links: a custom-scheme URL (\`${scheme}://item/42\`) and a universal link both
+                // land here. Only the PATH is used, so the router opens at \`/item/42\`. Safe with no
+                // route configured: a link that matches nothing falls through to the router's not-found.
+                .onOpenURL { PyreonDeepLink.receive($0) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { PyreonDeepLink.receive(url) }
+                }
         }
     }
 }
@@ -414,6 +474,17 @@ struct ContentView: View {
     <string>0.0.1</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>${bundleId}</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>${scheme}</string>
+            </array>
+        </dict>
+    </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchScreen</key>
@@ -703,11 +774,21 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
         <activity
             android:name="${androidPkg}.MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Inbound deep links: \`${scheme}://item/42\` opens the app (MainActivity forwards the intent to
+                 PyreonDeepLink). singleTop above delivers a link to the RUNNING activity via onNewIntent
+                 instead of stacking a second copy. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${scheme}" />
             </intent-filter>
         </activity>
     </application>
@@ -719,6 +800,7 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
     `// Root activity — mounts the Pyreon-emitted App() from generated/App.kt.
 package ${androidPkg}
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -728,6 +810,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import com.pyreon.router.PyreonDeepLink
 import ${androidPkg}.generated.App
 
 // ComponentActivity (NOT plain android.app.Activity) — Compose's
@@ -740,15 +823,26 @@ import ${androidPkg}.generated.App
 //  - testTagsAsResourceId: Compose exposes data-testid (Modifier.testTag) only
 //    to its own test rules unless this is set; with it, UI Automator and so
 //    Maestro can select by id: on Android exactly as on iOS.
+//
+// Deep links: a link that LAUNCHES the app arrives on the launch intent (onCreate); one sent to the
+// running app arrives in onNewIntent (the manifest's singleTop). Both go to PyreonDeepLink, which hands
+// the path to the router. The launch intent is only read on a FRESH start: after a recreate the same
+// intent is still attached, and replaying it would navigate the user back to the link.
 @OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) PyreonDeepLink.receive(intent?.data)
         setContent {
             Box(Modifier.safeDrawingPadding().semantics { testTagsAsResourceId = true }) {
                 App()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        PyreonDeepLink.receive(intent.data)
     }
 }
 `,

@@ -201,9 +201,11 @@
     "playwright": "1.64.1",
     "@playwright/test": "1.64.1",
     "@codemirror/language": "6.13.1",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "uuid": "^11.1.1",
-    "fast-uri": "^3.1.8",
+    "fast-uri": "^3.1.9",
+    "body-parser": "^2.4.0",
+    "ip-address": "^10.7.4",
     "qs": "^6.16.0",
     "hono": "^4.13.13",
     "@changesets/parse": {
