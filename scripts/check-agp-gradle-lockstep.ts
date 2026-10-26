@@ -48,6 +48,8 @@ export const AGP_MAX_COMPILE_SDK: Record<string, number> = {
   '8.12': 36,
   '8.13': 36,
   '8.14': 36,
+  // AGP 9.4.0 release notes: maximum compileSdk API level 37.
+  '9.4': 37,
 }
 
 /** AGP major.minor -> minimum Gradle. Source: AGP release notes. */
@@ -60,6 +62,8 @@ export const AGP_MIN_GRADLE: Record<string, string> = {
   '8.12': '8.13',
   '8.13': '8.13',
   '8.14': '8.14',
+  // AGP 9.4.0 release notes: minimum (and default) Gradle 9.6.0.
+  '9.4': '9.6.0',
 }
 
 export function cmpVersions(a: string, b: string): number {

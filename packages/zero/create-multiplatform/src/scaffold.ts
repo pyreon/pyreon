@@ -542,14 +542,22 @@ include(":app")
   )
   add(
     'android/build.gradle.kts',
-    `plugins {
-    id("com.android.application") version "8.7.0" apply false
-    kotlin("android") version "2.0.21" apply false
+    `// AGP 9 runs Kotlin itself ("built-in Kotlin"), so there is no
+// kotlin("android") plugin. The Compose compiler plugin must match the Kotlin
+// Gradle plugin exactly, so KGP is pinned on the classpath to the same version.
+buildscript {
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
+    }
+}
+
+plugins {
+    id("com.android.application") version "9.4.1" apply false
     // The Pyreon Kotlin runtime sources use @Serializable (useFetch /
     // loader payloads); the app module applies this plugin, so its
     // version must be declared (apply false) at the root or Gradle can't
     // resolve "org.jetbrains.kotlin.plugin.serialization".
-    kotlin("plugin.serialization") version "2.0.21" apply false
+    kotlin("plugin.serialization") version "2.4.21" apply false
 }
 `,
   )
@@ -569,18 +577,17 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
 
 android {
     namespace = "${androidPkg}"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "${bundleId}"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.0.1"
     }
@@ -641,7 +648,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 
     // The Pyreon Kotlin runtimes ship source-only via npm (no AAR), so
     // their src/main/kotlin dirs are extra source roots. The resolved,
@@ -671,8 +677,8 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
-    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
@@ -680,9 +686,9 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Required by the Pyreon Kotlin runtime sources (srcDir above):
     // useFetch/loader need kotlinx-serialization + coroutines; storage needs core-ktx.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
@@ -694,11 +700,11 @@ dependencies {
     // template was last touched, masked because scaffolds install the runtime
     // from npm, which lagged the workspace — the next release would have
     // shipped every scaffolded Android app broken.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
     // media3 — PyreonVideoPlayerAndroid.kt (<Video> primitive) imports
     // androidx.media3.*. Same deal; R8 strips unused classes from release.
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
 }
 
 // Re-run the .tsx → .kt compile on every build (mirrors iOS preBuildScript).
@@ -707,6 +713,14 @@ tasks.register<Exec>("pyreonCompile") {
     commandLine("bash", "scripts/build-android.sh")
 }
 tasks.named("preBuild") { dependsOn("pyreonCompile") }
+
+// Kotlin 2.4 made the old \`kotlinOptions\` DSL an error; configure the
+// Kotlin extension directly (outside android {}).
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
 `,
   )
   add(
