@@ -665,6 +665,9 @@ struct Ctx<'a> {
     /// JS twin `propDerivedFnInits`. Scoped through `prop_derived_log`.
     prop_derived_fn_inits: FxHashSet<String>,
     resolved_cache: FxHashMap<u32, String>,
+    /// Start offsets of expression statements that need a leading `;` once their first token is parenthesized
+    /// (see `asi_hazard_starts`). Built lazily on the first substitution.
+    asi_hazards: std::cell::OnceCell<FxHashSet<u32>>,
     resolving: FxHashSet<String>,
     warned_cycles: FxHashSet<String>,
 
@@ -871,6 +874,7 @@ impl<'a> Ctx<'a> {
             prop_derived_log: Vec::new(),
             prop_derived_fn_inits: FxHashSet::default(),
             resolved_cache: FxHashMap::default(),
+            asi_hazards: std::cell::OnceCell::new(),
             resolving: FxHashSet::default(),
             warned_cycles: FxHashSet::default(),
             is_dynamic_cache: FxHashMap::default(),
@@ -2709,6 +2713,66 @@ fn find_init_prop_derived_idents(
     finder.out
 }
 
+/// Does this statement END with a closing block (so a following `(` starts a NEW statement)?
+fn statement_ends_with_block(st: &Statement) -> bool {
+    match st {
+        Statement::BlockStatement(_)
+        | Statement::FunctionDeclaration(_)
+        | Statement::ClassDeclaration(_)
+        | Statement::TryStatement(_)
+        | Statement::SwitchStatement(_) => true,
+        Statement::IfStatement(i) => {
+            statement_ends_with_block(i.alternate.as_ref().unwrap_or(&i.consequent))
+        }
+        Statement::ForStatement(f) => statement_ends_with_block(&f.body),
+        Statement::ForInStatement(f) => statement_ends_with_block(&f.body),
+        Statement::ForOfStatement(f) => statement_ends_with_block(&f.body),
+        Statement::WhileStatement(w) => statement_ends_with_block(&w.body),
+        Statement::LabeledStatement(l) => statement_ends_with_block(&l.body),
+        Statement::WithStatement(w) => statement_ends_with_block(&w.body),
+        _ => false,
+    }
+}
+
+/// Collects the start of every expression statement, in a statement LIST, that follows a statement which does not
+/// already end itself (`;` or a closing block). Mirrors the JS backend's `needsLeadingSemicolon`.
+struct AsiHazardFinder<'s> {
+    source: &'s str,
+    starts: FxHashSet<u32>,
+}
+
+impl<'a, 's> Visit<'a> for AsiHazardFinder<'s> {
+    fn visit_statements(&mut self, it: &oxc_allocator::Vec<'a, Statement<'a>>) {
+        for i in 1..it.len() {
+            if let Statement::ExpressionStatement(e) = &it[i] {
+                let prev = &it[i - 1];
+                let end = prev.span().end as usize;
+                if !statement_ends_with_block(prev)
+                    && end > 0
+                    && self.source.as_bytes().get(end - 1) != Some(&b';')
+                {
+                    self.starts.insert(e.span.start);
+                }
+            }
+        }
+        oxc_ast_visit::walk::walk_statements(self, it);
+    }
+}
+
+/// ASI hazard — see the JS backend's `needsLeadingSemicolon` for the full reasoning. In a semicolon-free body,
+/// a statement whose first token is an inlined name begins with `(` after substitution, and the previous line
+/// absorbs it. A `;` is only emitted in a statement LIST (never as the sole body of an `if`, where it would
+/// terminate the `if` with an empty statement).
+fn needs_leading_semicolon(ctx: &Ctx, start: u32) -> bool {
+    ctx.asi_hazards
+        .get_or_init(|| {
+            let mut finder = AsiHazardFinder { source: ctx.source, starts: FxHashSet::default() };
+            finder.visit_program(ctx.program);
+            finder.starts
+        })
+        .contains(&start)
+}
+
 /// Resolve prop-derived var to its inlined text (with transitive resolution).
 /// Uses AST-based identifier resolution to correctly skip identifiers inside
 /// string literals, comments, template literal quasis, and property-name positions.
@@ -2776,6 +2840,8 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
                 // normal reference substitutes `(value)` in place.
                 if *is_shorthand {
                     result.push_str(&format!("{}: ({})", ident_name, resolved_ident));
+                } else if needs_leading_semicolon(ctx, *start) {
+                    result.push_str(&format!(";({})", resolved_ident));
                 } else {
                     result.push_str(&format!("({})", resolved_ident));
                 }
@@ -2818,6 +2884,8 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
         let resolved = resolve_var_to_string(&var_name, ctx);
         let text = if is_shorthand {
             format!("{}: ({})", var_name, resolved)
+        } else if needs_leading_semicolon(ctx, start) {
+            format!(";({})", resolved)
         } else {
             format!("({})", resolved)
         };

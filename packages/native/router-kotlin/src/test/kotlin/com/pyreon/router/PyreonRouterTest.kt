@@ -1035,5 +1035,29 @@ fun main() {
         expectEq(router.params.value.isEmpty(), true, "no params on a miss")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${77} test(s) passed")
+    // ── Deep-link URI → route path (#3984) ──────────────────────────────────────
+    // `myapp://item/42` reached the router as `/42`: the host was folded in only when the path
+    // was EMPTY, so the most common custom-scheme shape lost its first segment.
+    runTest("deep link: a custom scheme's host is the first route segment") {
+        expectEq(PyreonDeepLink.pathFor("myapp", "item", "/42"), "/item/42", "myapp://item/42")
+        expectEq(PyreonDeepLink.pathFor("myapp", "about", ""), "/about", "host-only link")
+        expectEq(PyreonDeepLink.pathFor("myapp", "about", "/"), "/about", "host + bare slash")
+        expectEq(PyreonDeepLink.pathFor("myapp", "a", "/b/c"), "/a/b/c", "deep path")
+        expectEq(PyreonDeepLink.pathFor("myapp", "", "/item/42"), "/item/42", "myapp:///item/42 (empty host)")
+        expectEq(PyreonDeepLink.pathFor("myapp", null, "item/42"), "/item/42", "no host, relative path")
+    }
+
+    runTest("deep link: a web link's host is its domain, never part of the route") {
+        expectEq(PyreonDeepLink.pathFor("https", "example.com", "/users/42"), "/users/42", "https")
+        expectEq(PyreonDeepLink.pathFor("HTTP", "example.com", "/users/42"), "/users/42", "scheme is case-insensitive")
+        expectEq(PyreonDeepLink.pathFor("https", "example.com", ""), "/", "bare domain is home")
+        expectEq(PyreonDeepLink.pathFor("https", "example.com", "/"), "/", "domain + slash is home")
+    }
+
+    runTest("deep link: a URI that yields nothing routes home instead of being dropped") {
+        expectEq(PyreonDeepLink.pathFor(null, null, null), "/", "all null")
+        expectEq(PyreonDeepLink.pathFor("myapp", "", ""), "/", "empty host and path")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${80} test(s) passed")
 }

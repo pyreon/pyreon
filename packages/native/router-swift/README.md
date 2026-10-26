@@ -27,7 +27,7 @@ Seven source files under `Sources/PyreonRouter/`:
 | `Link.swift` | `PyreonLink("/path") { Text("Label") }` — declarative navigation. Named `PyreonLink`, not `Link`, to avoid colliding with SwiftUI's own URL-opening `Link` type. |
 | `Hooks.swift` | `useNavigate(router:)`, `useParams(router:)`, `useLoaderData<T>(router:)`. |
 | `RouteLoader.swift` | `PyreonRouteLoader` — wraps a route's component, running its `loader` closure exactly once on first appear and storing the result via `router.setLoaderData`, matching the web router's "loader runs once per navigation" contract. |
-| `PyreonDeepLink.swift` | A process-wide inbound deep-link channel. `PyreonDeepLink.receive(_ url: URL)` (call from `onOpenURL` / `application(_:open:options:)`) delivers a URL's path to the currently-live router, or holds it as `pending` for the next router constructed if none exists yet (a cold launch). |
+| `PyreonDeepLink.swift` | A process-wide inbound deep-link channel. `PyreonDeepLink.receive(_ url: URL)` (call from `onOpenURL` / `application(_:open:options:)`) delivers a URL's route path (a custom scheme's host is its first segment: `myapp://item/42` is `/item/42`; a web link's host is its domain and is ignored) to the currently-live router, or holds it as `pending` for the next router constructed if none exists yet (a cold launch). |
 
 ## API parity with `@pyreon/router`
 
