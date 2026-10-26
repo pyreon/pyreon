@@ -43,11 +43,12 @@ public object PyreonDeepLink {
      * Forward an inbound intent URI. The host calls this from `onCreate`
      * (cold) and `onNewIntent` (warm).
      *
-     * Only the PATH is used: a deep link's scheme/host identify the app, not
-     * the destination, so `pyreon://app/users/42` and
-     * `https://example.com/users/42` both route to `/users/42`. A URI with no
-     * usable path routes to `/` rather than being dropped — landing on home is
-     * the right degradation for a malformed link.
+     * The route is the URI's path, with a custom scheme's HOST folded in as the
+     * first segment: `myapp://item/42` and `https://example.com/item/42` both
+     * route to `/item/42` (a web link's host is its domain, a custom scheme's is
+     * part of the route — see [pathFor]). A URI that yields nothing routes to `/`
+     * rather than being dropped — landing on home is the right degradation for a
+     * malformed link.
      */
     public fun receive(uri: Uri?) {
         if (uri == null) return
@@ -102,13 +103,30 @@ public object PyreonDeepLink {
         listener = null
     }
 
-    /** The route path a URI denotes. */
-    internal fun normalizedPath(uri: Uri): String {
-        val path = uri.path
-        if (path.isNullOrEmpty() || path == "/") {
-            val host = uri.host
-            return if (!host.isNullOrEmpty()) "/$host" else "/"
+    /** The route path a URI denotes (see [pathFor]). */
+    internal fun normalizedPath(uri: Uri): String = pathFor(uri.scheme, uri.host, uri.path)
+
+    /**
+     * The rule, on plain strings so it is testable without constructing a `Uri`.
+     *
+     * - A CUSTOM scheme (`myapp://item/42`) puts the first route segment in the HOST position, so the
+     *   route is `/` + host + path → `/item/42`. A host-only link (`myapp://about`) is the same rule with an
+     *   empty path → `/about`. An empty host (`myapp:///item/42`) contributes nothing.
+     * - A WEB link (`https://example.com/users/42`) has the domain in the host position; that identifies
+     *   the app, not the destination, so only the path is used → `/users/42`.
+     *
+     * Query and fragment are dropped (the router owns its own search params), and a URI that yields
+     * nothing routes to `/` rather than being dropped.
+     */
+    internal fun pathFor(scheme: String?, host: String?, path: String?): String {
+        val isWeb = scheme.equals("http", ignoreCase = true) || scheme.equals("https", ignoreCase = true)
+        val head = if (!isWeb && !host.isNullOrEmpty()) "/$host" else ""
+        val tail = when {
+            path.isNullOrEmpty() || path == "/" -> ""
+            path.startsWith("/") -> path
+            else -> "/$path"
         }
-        return if (path.startsWith("/")) path else "/$path"
+        val full = head + tail
+        return if (full.isEmpty()) "/" else full
     }
 }
