@@ -63,7 +63,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.0.5",
     "@vitus-labs/tools-rolldown": "^2.8.0",
-    "motion": "^14.4.0"
+    "motion": "^14.6.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

@@ -62,14 +62,14 @@
     "@tanstack/store": "^0.11.2"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@tanstack/react-table": "9.3.1",
-    "bun-types": "^1.4.3",
+    "bun-types": "^1.4.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

@@ -71,7 +71,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "magic-string": "^1.4.2",
+    "magic-string": "^1.4.4",
     "oxc-parser": "^0.155.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
