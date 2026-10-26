@@ -92,7 +92,7 @@ jobs:
       # Supply-chain hardening — audit network egress to catch exfil
       # attempts during npm publish (which uses long-lived OIDC tokens).
       - name: Harden runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
 
@@ -219,12 +219,22 @@ jobs:
 
       - name: Create Release PR or Publish
         id: changesets
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        # v2 renamed every root input (v1 `version`/`publish`/`title`/`commit`
+        # are silently IGNORED by v2 — the action would fall back to its own
+        # defaults) and stopped reading the token from `env.GITHUB_TOKEN`;
+        # it must be passed as `github-token`. `push-with-git-cli: true` keeps
+        # v1's push mechanism (v2 defaults to the GitHub API), so tag pushes
+        # behave exactly as heal-release-chain.ts expects.
+        # `env.GITHUB_TOKEN` below stays: the version/publish SCRIPTS read it
+        # (@changesets/changelog-github resolves PR links with it).
         with:
-          version: bun run version-packages
-          publish: bun run release
-          title: 'chore: version packages'
-          commit: 'chore: version packages'
+          version-script: bun run version-packages
+          publish-script: bun run release
+          pr-title: 'chore: version packages'
+          commit-message: 'chore: version packages'
+          push-with-git-cli: true
+          github-token: ${{ steps.token.outputs.use-pat == 'true' && secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         env:
           # Prefer a fine-grained PAT (`RELEASE_PAT`) when present so commits
           # the action pushes to the Version PR branch trigger downstream
@@ -404,7 +414,7 @@ jobs:
       id-token: write
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: Announce
@@ -458,7 +468,7 @@ jobs:
       id-token: write
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
 
