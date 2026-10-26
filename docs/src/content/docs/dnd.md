@@ -77,9 +77,15 @@ const { isDragging } = useDraggable({
 
 Every hook in this package follows three conventions:
 
-- **Elements are getters.** You pass `element: () => el` (and `handle: () => handleEl`), not the element itself. The hook captures the ref on the next microtask, so the element doesn't need to exist when the hook is called — it just has to exist by the time the component has mounted.
+- **Elements are refs or getters.** Each hook returns a `ref` callback — attach it (`<div ref={ref}>`) and the hook registers on mount, follows a swapped element, and disposes on unmount. Alternatively pass `element: () => el` (and `handle: () => handleEl`); the getter is resolved on the next microtask, so the element only has to exist once the component has mounted. Use one or the other.
 - **State is a signal accessor.** `isDragging`, `isOver`, `activeId`, etc. are all `() => T` accessors. Read them in JSX / effects / computeds for fine-grained reactivity — only the bound text node or class re-evaluates, never the whole component.
 - **Cleanup is automatic.** Each hook registers its Pragmatic DnD teardown with `onCleanup`, so it's released when the owning component unmounts. You never manage the returned cleanup function yourself.
+
+```tsx
+// The ref form — no element variable needed:
+const { ref, isDragging } = useDraggable({ data: { id: 'card-1' } })
+const view = <div ref={ref} class={isDragging() ? 'opacity-50' : ''} />
+```
 
 ## `useDraggable`
 
@@ -149,18 +155,20 @@ By default the whole element is draggable. Pass `handle: () => handleEl` to rest
 
 | Option        | Type                         | Required | Description                                                          |
 | ------------- | ---------------------------- | -------- | -------------------------------------------------------------------- |
-| `element`     | `() => HTMLElement \| null`  | yes      | Getter for the draggable element. Captured on the next microtask.    |
+| `element`     | `() => HTMLElement \| null`  | no       | Getter for the draggable element, resolved on the next microtask. Omit when you attach the returned `ref`. |
 | `data`        | `T \| (() => T)`             | yes      | Payload transferred on drag. A getter is resolved fresh per drag.    |
 | `handle`      | `() => HTMLElement \| null`  | no       | Restrict drag initiation to this sub-element.                        |
 | `disabled`    | `boolean \| (() => boolean)` | no       | Disable dragging. A getter is re-evaluated on each drag attempt.     |
 | `onDragStart` | `() => void`                 | no       | Fired when the drag begins.                                          |
 | `onDragEnd`   | `() => void`                 | no       | Fired when the drag ends — on **either** a successful drop or cancel. |
+| `preview`     | `DragPreviewOptions`         | no       | Custom native drag preview: `{ render(container) }` draws into a container (return a cleanup), plus an offset preset. |
 
 ### `useDraggable` result
 
 | Property     | Type            | Description                                                          |
 | ------------ | --------------- | -------------------------------------------------------------------- |
 | `isDragging` | `() => boolean` | `true` while this element is being dragged (reactive signal accessor). |
+| `ref`        | `(el: HTMLElement \| null) => void` | Ref callback for the draggable element (alternative to `element`). |
 
 ## `useDroppable`
 
@@ -193,25 +201,29 @@ function DropColumn(props: { onAdd: (id: string) => void }) {
 The callbacks receive the **source** draggable's `data` (typed as `DragData`). Use `canDrop` to reject incompatible payloads — when it returns `false`, the target won't highlight, `onDragEnter` won't fire, and a drop won't land.
 
 :::warning
-The `source` payload reaching `canDrop` / `onDragEnter` / `onDrop` is typed `DragData` (`Record<string, unknown>`), not your draggable's `T` — Pragmatic DnD doesn't carry the source's generic across the boundary. Narrow it yourself (`source.type === 'card'`, `typeof source.id === 'string'`) before trusting fields.
+The `source` payload reaching `canDrop` / `onDragEnter` / `onDrop` is typed `DragData` (`Record<string, unknown>`) by default, not your draggable's `T` — Pragmatic DnD doesn't carry the source's generic across the boundary. Declare it with `useDroppable`'s second generic (`useDroppable<TargetData, CardData>(…)`), and still narrow it at runtime (`source.type === 'card'`, `typeof source.id === 'string'`) before trusting fields.
 :::
 
 ### `useDroppable` options
 
 | Option        | Type                                  | Required | Description                                                                       |
 | ------------- | ------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `element`     | `() => HTMLElement \| null`           | yes      | Getter for the drop-target element.                                               |
+| `element`     | `() => HTMLElement \| null`           | no       | Getter for the drop-target element. Omit when you attach the returned `ref`.     |
 | `data`        | `T \| (() => T)`                      | no       | Data attached to this target — surfaced to a `useDragMonitor`'s `onDrop` target arg. |
 | `canDrop`     | `(sourceData: DragData) => boolean`   | no       | Filter what can drop here. Omit to accept everything.                             |
 | `onDragEnter` | `(sourceData: DragData) => void`      | no       | Fired when an accepted draggable enters.                                          |
 | `onDragLeave` | `() => void`                          | no       | Fired when the draggable leaves.                                                  |
-| `onDrop`      | `(sourceData: DragData) => void`      | no       | Fired when an accepted draggable is released over this target.                    |
+| `onDrop`      | `(sourceData: DragData, location: DropLocation) => void` | no | Fired when an accepted draggable is released over this target. `location` is `{ edge, data }`: the closest configured edge (`null` without `edges`) and this target's data. |
+| `edges`       | `DropEdge[]`                          | no       | Opt into closest-edge detection (e.g. `['top', 'bottom']`); read it from `overEdge`. |
+| `sticky`      | `boolean`                             | no       | Keep drop-target status while the pointer crosses gaps between targets.          |
 
 ### `useDroppable` result
 
 | Property | Type            | Description                                                                  |
 | -------- | --------------- | ---------------------------------------------------------------------------- |
 | `isOver` | `() => boolean` | `true` while an **accepted** draggable is hovering this target (reactive).   |
+| `overEdge` | `() => DropEdge \| null` | Closest configured edge while hovered; always `null` without `edges`.     |
+| `ref`    | `(el: HTMLElement \| null) => void` | Ref callback for the drop target (alternative to `element`).          |
 
 ## `useSortable`
 
@@ -380,6 +392,8 @@ Dropping an item onto another column's **item** inserts it at that item's edge; 
 | `groupId`            | `string`                               | no       | Opt-in cross-list universe. Sortables sharing a `groupId` accept drags from one another.     |
 | `onCrossListDrop`    | `(item: T) => void`                    | no       | Fired on the **source** when one of its items is dropped on a sibling group. Remove the item. |
 | `onCrossListReceive` | `(item: T, targetIndex: number) => void` | no     | Fired on the **destination** when a sibling-group item drops on it. Insert at `targetIndex`. |
+| `label`              | `(item: T) => string`                  | no       | Name used in screen-reader announcements. Defaults to `String(by(item))`.                    |
+| `disabled`           | `boolean \| (() => boolean)`           | no       | Disable reordering (pointer and keyboard).                                                   |
 
 ### `useSortable` result
 
@@ -390,9 +404,12 @@ Dropping an item onto another column's **item** inserts it at that item's edge; 
 | `activeId`     | `() => string \| number \| null`                | Key of the row currently being dragged (`null` when idle).                                   |
 | `overId`       | `() => string \| number \| null`                | Key of the row the pointer is over (`null` when not over a row).                             |
 | `overEdge`     | `() => DropEdge \| null`                         | Closest edge of the hovered row: `'top'`/`'bottom'` or `'left'`/`'right'`.                    |
+| `itemHandleRef` | `(key: string \| number) => (el: HTMLElement \| null) => void` | Optional per-item drag handle (a grip): dragging starts only from that element. |
+| `isActive`     | `(key: string \| number) => boolean`            | `true` only for the dragging row. Prefer it over `activeId() === key` in row templates — it notifies two rows per change instead of all of them. |
+| `isOverKey`    | `(key: string \| number) => boolean`            | Same, for the hovered row.                                                                   |
 
 :::tip
-The ref callbacks accept `HTMLElement | null` because Pyreon's runtime calls a `ref` with `null` on unmount. The hook treats the `null` call as a no-op — per-item Pragmatic DnD registrations are disposed individually when an item unmounts or re-registers (so a churning `<For>` list never accumulates dead listeners), and the container-level registrations are released via `onCleanup` when the whole sortable unmounts.
+The ref callbacks accept `HTMLElement | null` because Pyreon's runtime calls a `ref` with `null` on unmount. A `null` call disposes that registration — per-item Pragmatic DnD registrations are released when an item unmounts or re-registers (so a churning `<For>` list never accumulates dead listeners), and `containerRef(null)` releases the container, so a container behind `<Show>` can toggle without leaking.
 :::
 
 ## `useFileDrop`
@@ -454,17 +471,18 @@ useFileDrop({
 ```
 
 :::warning
-`maxFiles` **truncates silently** — it keeps the first N files and discards the rest, it does not reject the whole drop. If you need to *reject* an over-count drop with a message, check `files.length` against your limit inside `onDrop` yourself and surface the error there.
+`maxFiles` keeps the first N files and discards the rest — it does not reject the whole drop. Pass `onReject(rejected, reason)` to be told which files were dropped and why (`'accept'` or `'maxFiles'`); without it the discard is silent.
 :::
 
 ### `useFileDrop` options
 
 | Option     | Type                         | Required | Description                                                                 |
 | ---------- | ---------------------------- | -------- | --------------------------------------------------------------------------- |
-| `element`  | `() => HTMLElement \| null`  | yes      | Getter for the drop-zone element.                                           |
+| `element`  | `() => HTMLElement \| null`  | no       | Getter for the drop-zone element. Omit when you attach the returned `ref`.  |
 | `onDrop`   | `(files: File[]) => void`    | yes      | Called with the filtered, count-limited files (only if ≥1 survives).        |
 | `accept`   | `string[]`                   | no       | Extensions (`'.pdf'`), MIME globs (`'image/*'`), or exact MIME types.       |
-| `maxFiles` | `number`                     | no       | Keep at most this many files (excess silently truncated).                   |
+| `maxFiles` | `number`                     | no       | Keep at most this many files (the excess goes to `onReject`).               |
+| `onReject` | `(rejected: File[], reason: FileRejectReason) => void` | no | Files not delivered and why: `'accept'` or `'maxFiles'`. Fired once per reason per drop. |
 | `disabled` | `boolean \| (() => boolean)` | no       | Disable drops. A getter is re-evaluated on each drag-over.                  |
 
 ### `useFileDrop` result
@@ -473,6 +491,7 @@ useFileDrop({
 | ----------------- | --------------- | ---------------------------------------------------------- |
 | `isOver`          | `() => boolean` | Files are hovering **this** drop zone (reactive).          |
 | `isDraggingFiles` | `() => boolean` | Files are being dragged **anywhere on the page** (reactive). |
+| `ref`             | `(el: HTMLElement \| null) => void` | Ref callback for the drop zone (alternative to `element`). |
 
 ## `useDragMonitor`
 
@@ -598,6 +617,10 @@ const { isDragging } = useDraggable<CardData>({
 :::warning
 The generic only constrains what *this* draggable produces. A drop handler (`useDroppable`'s `canDrop`/`onDrop`, `useDragMonitor`'s `onDrop`) receives the source data as the wide `DragData` type — Pragmatic DnD erases the source's generic across the drag boundary. Narrow incoming data with a discriminant field (`data.type === 'card'`) before reading typed fields off it.
 :::
+
+## Multiplatform
+
+`useSortable` lowers to the native `PyreonSortableState` engine on iOS and Android (PMTC) — list reorder through SwiftUI `.draggable` / `.dropDestination` and a Compose long-press drag. `useDraggable`, `useDroppable`, `useDragMonitor` and `useFileDrop` are DOM-shaped and stay web.
 
 ## API Reference
 

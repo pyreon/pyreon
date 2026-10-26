@@ -76,13 +76,15 @@ The old API (everything in `useForm({ initialValues, validators })`) is still su
 ## Anti-pattern
 
 ```tsx
-// BROKEN — destructures the field state and loses signal identity
+// BROKEN — reads the field's value ONCE at setup
 function EmailInput() {
-  const { value, error } = useField('email')   // value is now the signal itself, not reactive
-  return <input value={value()} />              // never updates
+  const email = useField('email').value()      // a plain string snapshot
+  return <input value={email} />                // never updates
 }
 
-// FIX — keep the field object, call signals inside reactive scopes
+// FIX — keep the signal, call it inside the reactive scope.
+// (Destructuring `const { value } = useField('email')` is fine too:
+// `value` is the field's signal, so `value()` in JSX stays reactive.)
 function EmailInput() {
   const f = useField('email')
   return <input value={f.value()} onInput={(e) => f.value.set(e.currentTarget.value)} />

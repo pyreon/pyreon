@@ -707,7 +707,12 @@ export interface ZeroConfig {
    */
   i18n?: I18nRoutingConfig
 
-  /** App-level middleware applied to all routes. */
+  /**
+   * NOT applied by the `zero()` plugin. Middleware is code, and the plugin's
+   * config reaches the production server only as serialized data, so a
+   * non-empty array here is dropped with a build warning. Pass middleware to
+   * `createServer({ middleware })` in `src/entry-server.ts` instead.
+   */
   middleware?: Middleware[]
 
   /** Server port for dev/preview. Default: 3000 */

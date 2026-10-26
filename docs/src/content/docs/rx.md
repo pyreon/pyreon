@@ -161,7 +161,7 @@ const active = rx.filter(users, (u) => u.active) // Computed<User[]>
 const big = rx.filter([1, 2, 3, 4, 5], (n) => n > 3) // [4, 5] (plain)
 ```
 
-<Example file="./examples/rx/rx-pipe-filter-bars" title="pipe(filter, map) — green bars appear as values cross the threshold" />
+<Example file="./examples/rx/rx-pipe-filter-bars" title="pipe — filter then map in one computed; green bars appear as values cross the threshold" />
 
 ### `map`
 
@@ -607,7 +607,7 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 
 `rx` is a `Readonly` object exposing all 42 functions plus `pipe` for dot-notation use (`rx.filter(...)`). Every member is also a tree-shakeable named export.
 
-### Collections (23)
+### Collections (26)
 
 | Function                       | Signature (signal-input form)                                                                | Returns (signal in)              |
 | ------------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------- |
@@ -634,6 +634,9 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 | `dropWhile(source, predicate)` | `(Signal<T[]>, (item: T, i: number) => boolean)` — drops leading run                         | `Computed<T[]>`                  |
 | `sample(source, n)`            | `(Signal<T[]>, number)` — random `n` (Fisher-Yates)                                          | `Computed<T[]>`                  |
 | `mapValues(source, fn)`        | `(Signal<Record<string, T>>, (value: T, key: string) => U)`                                  | `Computed<Record<string, U>>`    |
+| `intersection(a, b, key?)`     | `(Signal<T[]> \| T[], Signal<T[]> \| T[], KeyOf<T>?)` — items of `a` also in `b`; either side may be a signal | `Computed<T[]>` (plain `T[]` when both are arrays) |
+| `difference(a, b, key?)`       | `(Signal<T[]> \| T[], Signal<T[]> \| T[], KeyOf<T>?)` — items of `a` not in `b`             | `Computed<T[]>` (plain when both are arrays) |
+| `union(a, b, key?)`            | `(Signal<T[]> \| T[], Signal<T[]> \| T[], KeyOf<T>?)` — order-preserving, first occurrence wins | `Computed<T[]>` (plain when both are arrays) |
 
 ### Aggregation (8)
 
@@ -689,3 +692,7 @@ Composes left-to-right into **one** computed; signal source → `Computed`, plai
 | ------------------- | ------------------------------------------------------------------- |
 | `KeyOf<T>`          | `keyof T \| ((item: T) => string \| number)`                        |
 | `ReadableSignal<T>` | `(() => T) & { peek?: () => T }`                                    |
+
+## Multiplatform
+
+On iOS and Android (PMTC), the `rx` namespace functions and their standalone forms lower to native collection operations (import aliases included); an unsupported function warns by name at compile time.

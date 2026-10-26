@@ -166,6 +166,8 @@ npx vite build
 
 ```ts
 interface PyreonPluginOptions {
+  /** Compile every app module as Plain Mode (no 'use plain' needed; 'use classic' opts a module out). Default: false. */
+  plain?: boolean
   /** Restrict which modules the JSX transform runs on (picomatch globs, regexes, or arrays). */
   include?: FilterPattern
   /** Modules the transform must never touch. */
@@ -226,6 +228,7 @@ interface PyreonCollapseOptions {
 
 | Option      | Type      | Required              | Description                                                                                                                                                                             |
 | ----------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plain`     | `boolean` | No                    | Compile every app module (outside `node_modules`) as Plain Mode — no `'use plain'` directive needed; a module opts out with `'use classic'`. Default `false`. See [Plain Mode](/docs/plain-mode). |
 | `include` / `exclude` | `FilterPattern` | No | Restrict/exclude which modules the JSX transform runs on. Default: every JSX-bearing module except `node_modules` (where only `@pyreon/*` packages are transformed). |
 | `compat`    | `'react' \| 'vue' \| 'solid' \| 'svelte' \| 'preact'` | No | Alias an existing framework's imports (`react`, `react-dom`, `vue`, …) to Pyreon's matching compat layer — drop-in migration with zero source changes. |
 | `ssr`       | `object`  | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                        |
@@ -749,8 +752,8 @@ export default defineConfig({
 ### src/entry-server.ts
 
 ```tsx
-import { renderWithHead } from '@pyreon/head'
-import { createRouter, prefetchLoaderData, serializeLoaderData } from '@pyreon/router'
+import { renderWithHead } from '@pyreon/head/ssr'
+import { createRouter, serializeLoaderData, stringifyLoaderData } from '@pyreon/router'
 import { routes } from './routes'
 import { App } from './App'
 
@@ -761,8 +764,9 @@ export async function handler(req: Request): Promise<Response> {
     url: url.pathname + url.search,
   })
 
-  // Pre-fetch all loader data for the matched route
-  await prefetchLoaderData(router, url.pathname + url.search)
+  // Resolve the matched route's lazy components and run its loaders.
+  // (`prefetchLoaderData` runs loaders only — a lazy page would render empty.)
+  await router.preload(url.pathname + url.search, req)
 
   // Render the app to HTML with head management
   const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App router={router} />)
@@ -773,7 +777,8 @@ export async function handler(req: Request): Promise<Response> {
   const bodyAttrStr = Object.entries(bodyAttrs)
     .map(([k, v]) => `${k}="${v}"`)
     .join(' ')
-  const loaderData = JSON.stringify(serializeLoaderData(router))
+  // Escapes `<`, U+2028 and U+2029 so the JSON is safe inside an inline <script>
+  const loaderData = stringifyLoaderData(serializeLoaderData(router))
 
   return new Response(
     `<!DOCTYPE html>
@@ -823,17 +828,19 @@ hydrateRoot(
 ### src/App.tsx
 
 ```tsx
-import { RouterOutlet, Link } from '@pyreon/router'
+import { type Router, RouterLink, RouterProvider, RouterView } from '@pyreon/router'
 
-export function App(props: { router: any }) {
+export function App(props: { router: Router }) {
   return (
-    <div class="app">
-      <nav>
-        <Link to="/">Home</Link>
-        <Link to="/about">About</Link>
-      </nav>
-      <RouterOutlet router={props.router} />
-    </div>
+    <RouterProvider router={props.router}>
+      <div class="app">
+        <nav>
+          <RouterLink to="/">Home</RouterLink>
+          <RouterLink to="/about">About</RouterLink>
+        </nav>
+        <RouterView />
+      </div>
+    </RouterProvider>
   )
 }
 ```

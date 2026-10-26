@@ -1296,6 +1296,14 @@ The following are re-exported from `@tanstack/virtual-core` for convenience:
 | `Range`              | Represents a visible range with `startIndex`, `endIndex`, `overscan`, and `count`        |
 | `Rect`               | Represents a rectangle with `width` and `height`                                         |
 | `ScrollToOptions`    | Options for scroll-to methods: `align` and `behavior`                                    |
+| `UseVirtualizerOptions` / `UseVirtualizerResult` | Options and result of `useVirtualizer` |
+| `UseWindowVirtualizerOptions` / `UseWindowVirtualizerResult` | Options and result of `useWindowVirtualizer` |
+| `VirtualItemMeasurement` | Return type of `item(index)`: reactive `start()`, `size()`, `lane()` |
+| `ItemRegistry`       | The per-index measurement registry behind `item(index)` |
+
+### On iOS and Android
+
+`@pyreon/virtual` virtualizes DOM scroll containers and is web only. Native lists are lazy by construction: render the rows with a `<For>` as the **only** child of a `<Scroll>` (it becomes a `LazyVStack` on iOS and a `LazyColumn` on Android) and no virtualizer is needed. Do not put that `<For>` among other children inside a `<Scroll>` — Compose rejects a lazy list inside a scrolling column at measure time.
 
 ---
 

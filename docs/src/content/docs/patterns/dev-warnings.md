@@ -1,6 +1,6 @@
 ---
 title: "Dev-mode warnings"
-summary: "Use import.meta.env?.DEV to gate warnings. Never typeof process."
+summary: "Gate warnings on bare process.env.NODE_ENV !== 'production', inline. Never typeof process, never import.meta.env.DEV."
 seeAlso: [ssr-safe-hooks]
 ---
 
@@ -8,46 +8,52 @@ seeAlso: [ssr-safe-hooks]
 
 ## The pattern
 
-Gate every dev-only warning, validation, or introspection on `import.meta.env?.DEV === true`:
+Gate every dev-only warning, validation, or introspection on a bare `process.env.NODE_ENV !== 'production'` check, written inline at the call site:
 
 ```ts
-if (import.meta.env?.DEV === true) {
-  console.warn('[pyreon] something sketchy happened')
+if (process.env.NODE_ENV !== 'production') {
+  console.warn('[Pyreon] something sketchy happened')
 }
 ```
 
-For code that runs inside a hot path (a render function, a mount-time hook), pair with a module-level const so the entire branch tree-shakes in production:
-
-```ts
-const __DEV__ = import.meta.env?.DEV === true
-
-function mount() {
-  if (__DEV__) {
-    console.warn('[pyreon] mount warning')
-  }
-}
-```
+Write the check at every site. Do not assign it to a module-level constant (`const __DEV__ = process.env.NODE_ENV !== 'production'`) — see the anti-patterns below.
 
 ## Why
 
-Vite (Pyreon's bundler) literal-replaces `import.meta.env.DEV` at build time — `true` in dev, `false` in prod — then its tree-shaker removes the dead branch. **The warning string, the `console.warn` call, and the entire guarded block are deleted from the production bundle**, which is exactly what you want: rich diagnostics during development, zero overhead in prod.
+Every modern bundler — Vite, Rolldown, Webpack (Next.js), esbuild, Rollup, Parcel, Bun — replaces `process.env.NODE_ENV` with a string literal when it builds for production. The condition becomes `'production' !== 'production'`, i.e. `false`, and the minifier removes the branch. **The warning string, the `console.warn` call, and the whole guarded block are deleted from the production bundle**: rich diagnostics during development, zero overhead in prod.
 
-Vitest (the test runner) sets `import.meta.env.DEV` to `true` automatically, so unit tests can still observe the warnings if they want to.
+This is the same convention React, Vue, Preact, Solid, MobX and Redux use, and it works whichever bundler the code is eventually built with — which matters for a library published to npm.
 
-## Anti-pattern
+## Anti-patterns
 
 ```ts
 // BROKEN — dead code in browser bundles
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-  console.warn('[pyreon] something sketchy happened')
+  console.warn('[Pyreon] something sketchy happened')
 }
 ```
 
-Vite does NOT polyfill `process`. In a real browser bundle, `typeof process` evaluates to `'undefined'`, so the gate always fails and the warning never fires. Unit tests pass (vitest has `process` defined in its Node environment), production users get nothing. This is the exact failure mode PR #200 fixed across 12 files.
+Vite does NOT polyfill `process`. In a real browser bundle, `typeof process` evaluates to `'undefined'`, so the gate always fails and the warning never fires. Unit tests pass (vitest has `process` defined in its Node environment), production users get nothing.
+
+```ts
+// BROKEN outside Vite — bundler-coupled
+if (import.meta.env?.DEV === true) {
+  console.warn('[Pyreon] something sketchy happened')
+}
+```
+
+`import.meta.env.DEV` is a Vite/Rolldown feature. Built with Webpack, esbuild, Rollup, Parcel or Bun, `import.meta.env` is `undefined` and the warning never fires — not even in development.
+
+```ts
+// WORSE BUNDLES — the alias defeats tree-shaking in some bundlers
+const __DEV__ = process.env.NODE_ENV !== 'production'
+if (__DEV__) console.warn('[Pyreon] mount warning')
+```
+
+Bun.build and several esbuild configurations do not fold the constant through the alias, so the dev-only strings ship in the production bundle. The inline check folds reliably.
 
 ## Related
 
 - Detector: `process-dev-gate` — the MCP `validate` tool flags this automatically
-- Lint rule: `pyreon/no-process-dev-gate` (auto-fixable)
+- Lint rule: `pyreon/no-process-dev-gate` (auto-fixes both broken gates to the bare form)
 - Reference implementation: `packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions`
-- Anti-pattern: `typeof process !== 'undefined'` for dev-mode warnings

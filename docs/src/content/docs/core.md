@@ -618,11 +618,10 @@ function ChatMessages(props: { messages: () => Message[] }) {
 
 ### onCleanup
 
-Register a cleanup function that runs when the current reactive scope is disposed. Inside an `effect`, `onCleanup` runs before each re-execution and on final disposal. Inside a component, it runs when the component unmounts. This is the idiomatic way to clean up resources in effects.
+`onCleanup` is exported from `@pyreon/reactivity` (not `@pyreon/core`). It registers a cleanup function that runs when the current reactive scope is disposed. Inside an `effect`, `onCleanup` runs before each re-execution and on final disposal. Inside a component, it runs when the component unmounts. This is the idiomatic way to clean up resources in effects.
 
 ```tsx
-import { onCleanup } from '@pyreon/core'
-import { signal, effect } from '@pyreon/reactivity'
+import { effect, onCleanup, signal } from '@pyreon/reactivity'
 
 function WebSocketComponent(props: { url: () => string }) {
   const messages = signal<string[]>([])
@@ -698,7 +697,7 @@ function LoggingWrapper(props: { children: VNodeChild }) {
 
 ## Context
 
-Pyreon's context system provides dependency injection without prop-drilling, similar to React's Context API or Vue's provide/inject. Values flow down the component tree via a stack-based provider system.
+Pyreon's context system provides dependency injection without prop-drilling, similar to React's Context API or Vue's provide/inject. On the client, each mounted component's scope is a context owner: `provide()` writes onto it, `useContext()` walks up the owner chain, and the value is released when the component unmounts. During SSR a request-scoped stack is used instead.
 
 ### createContext
 
@@ -726,6 +725,28 @@ Each context gets a unique symbol ID, so even two contexts with the same default
 const ContextA = createContext('default')
 const ContextB = createContext('default')
 // ContextA !== ContextB -- they have different symbol IDs
+```
+
+### createReactiveContext
+
+Create a context whose value is an accessor `() => T`. `useContext()` on it is typed to return `() => T`, so you call it inside a reactive scope to read the current value. Use it for values that change at runtime — color mode, locale, theme — instead of providing an object with getters that a consumer could destructure (which reads each getter once and loses reactivity).
+
+```tsx
+import { createReactiveContext, provide, useContext } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+
+const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
+
+function ModeProvider(props: { children: VNodeChild }) {
+  const mode = signal<'light' | 'dark'>('dark')
+  provide(ModeCtx, () => mode())
+  return <>{props.children}</>
+}
+
+function ModeLabel() {
+  const getMode = useContext(ModeCtx) // () => 'light' | 'dark'
+  return <span>{() => getMode()}</span>
+}
 ```
 
 ### useContext
@@ -781,7 +802,7 @@ function ThemedContent() {
 
 ### withContext
 
-Provide a value for a context during a function execution. Used internally by the renderer when it encounters a provider component.
+Run `fn` with `ctx` provided — for code outside component setup. On the client the value is provided onto the active component owner; during SSR (no owner) a frame is pushed for the duration of `fn`.
 
 ```ts
 import { withContext } from '@pyreon/core'
@@ -1028,6 +1049,41 @@ function DrawingCanvas() {
 }
 ```
 
+### elementRef
+
+`elementRef<T>()` returns a value that is both a ref callback and a reader: the runtime calls it as `ref(el)` on mount and `ref(null)` on unmount, and calling it with no argument returns the current element. That means one value can be passed to `ref` and to any hook that takes an element getter. `.current` is also available, so it drops into code written for `createRef`. It is not reactive — reading it does not subscribe.
+
+```tsx
+import { elementRef } from '@pyreon/core'
+import { useElementSize } from '@pyreon/hooks'
+
+function Panel() {
+  const el = elementRef<HTMLDivElement>()
+  const size = useElementSize(el) // el is () => HTMLDivElement | null
+  return <div ref={el}>{() => size().width}</div>
+}
+```
+
+### use (directives)
+
+`use(...directives)` composes element behaviours into a single ref callback. A directive is `(el) => cleanup | void`. Falsy entries are skipped, so a directive can be applied conditionally inline. Cleanups run in reverse order (LIFO) when the element is removed, and a re-attach tears down the previous registration first.
+
+```tsx
+import { use, type Directive } from '@pyreon/core'
+
+const autoFocus: Directive = (el) => { el.focus() }
+
+const clickOutside = (cb: () => void): Directive => (el) => {
+  const h = (e: Event) => { if (!el.contains(e.target as Node)) cb() }
+  document.addEventListener('mousedown', h)
+  return () => document.removeEventListener('mousedown', h)
+}
+
+function Popover(props: { close: () => void; focusOnOpen: boolean }) {
+  return <div ref={use(clickOutside(props.close), props.focusOnOpen && autoFocus)} />
+}
+```
+
 ## Control Flow Components
 
 ### Show
@@ -1173,8 +1229,8 @@ Efficient reactive list rendering with keyed reconciliation. Unlike a plain `.ma
 <PropTable
   title="For Props"
   props={[
-    { name: "each", type: "() => T[]", required: true, description: "Reactive accessor returning the source array to iterate over." },
-    { name: "by", type: "(item: T, index: number) => string | number", required: true, description: "Key function for unique, stable identifiers. Used for reconciliation." },
+    { name: "each", type: "T[] | (() => T[])", required: true, description: "The source array, or an accessor returning it (use the accessor form for reactive lists)." },
+    { name: "by", type: "(item: T) => string | number", required: true, description: "Key function for unique, stable identifiers. Receives only the item — no index is passed. Used for reconciliation." },
     { name: "children", type: "(item: T) => VNode", required: true, description: "Render function called once per unique key." },
   ]}
 />
@@ -1216,9 +1272,11 @@ The `by` function must return a unique, stable identifier for each item. Common 
   {renderItem}
 </For>
 
-// Index-based key (use only when items have no stable identity)
-<For each={() => items()} by={(_, index) => index}>
-  {renderItem}
+// `by` receives only the item. If items have no stable identity,
+// attach one before rendering (position keys remount rows on reorder)
+const indexed = computed(() => items().map((value, index) => ({ value, index })))
+<For each={() => indexed()} by={(e) => e.index}>
+  {(e) => renderItem(e.value)}
 </For>
 ```
 
@@ -1445,6 +1503,26 @@ When the boundary catches an error, the internal `error.set(err)` call is deferr
 #### Error Boundary Internals
 
 `ErrorBoundary` uses a module-level stack of handler functions. During setup, it pushes a handler onto the stack. When a child component throws during mount, `dispatchToErrorBoundary()` invokes the innermost handler. The handler stores the error in a signal; when the signal becomes non-null, the fallback renders instead of the children.
+
+### Async
+
+`<Async of={source}>` renders one of pending / error / empty / data from any async-shaped source. `of` is structural (`AsyncLike<T>`: `isPending`, `isError`, `error`, `data` accessors), so `@pyreon/query` results and `@pyreon/http` resources work without `@pyreon/core` depending on either. All branches re-evaluate when the source changes.
+
+```tsx
+import { Async } from '@pyreon/core'
+
+<Async
+  of={todos}
+  pending={<Spinner />}
+  error={(e) => <p>Failed: {String(e)}</p>}
+  empty="No todos yet."
+>
+  {(rows) => <ul>{rows.map((r) => <li>{r.title}</li>)}</ul>}
+</Async>
+```
+
+- `error` has no default: an error from a reactive re-run is not catchable by `<ErrorBoundary>`, so `<Async>` renders nothing and warns once in development when `error` is omitted.
+- `empty` renders for `null`/`undefined` data, and for an empty array when `empty` is given. Without `empty`, an empty array is passed to `children`.
 
 ## Dynamic
 
@@ -1782,6 +1860,21 @@ function LabeledInput(props: { label: string }) {
 function createUniqueId(): string
 ```
 
+### Other exports
+
+| Export | Purpose |
+| --- | --- |
+| `makeReactiveProps(raw)` | Converts compiler-emitted `_rp` prop thunks into getters (what the renderer does before calling a component). |
+| `removeUndefinedProps(props)` | Drops `undefined` keys while keeping getter-backed (reactive) props live. |
+| `useControllableState({ value, defaultValue, onChange })` | Controlled/uncontrolled state; `value` is a getter. Returns `[get, set]`. |
+| `useProvidedColorMode()` | The app's explicitly chosen color mode as an accessor, or `undefined` when the app follows the system default. |
+| `isClient` / `isServer` | Environment flags (`isServer = typeof document === 'undefined'`), re-exported from `@pyreon/reactivity`. |
+| `defineCrossModuleState(key, init)` | One shared state object per JS heap, even when a module is loaded twice. Re-exported from `@pyreon/reactivity`. |
+| `normalizeStyleValue`, `toKebabCase`, `CSS_UNITLESS` | The style normalization the renderer uses (number → `px` unless unitless). |
+| `reportError(ctx)` | Dispatches an `ErrorContext` to every handler registered with `registerErrorHandler`. |
+| `isUnsafeUrl`, `isUrlAttr`, `URL_ATTRS` | The URL guard used for `href`/`src`-like attributes. |
+| `nativeCompat`, `isNativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
+
 ## Telemetry
 
 Register global error handlers for monitoring and reporting. This integrates with services like Sentry, Datadog, or custom error tracking.
@@ -2099,13 +2192,13 @@ Dispatch an error to the nearest active `ErrorBoundary`. Returns `true` if the b
 
 ## Exports Summary
 
-<APICard name="defineComponent" type="component" signature={"defineComponent<P>(setup: (props: P) => VNode | (() => VNode)): Component<P>"} description="Marks a function as a Pyreon component for tooling and compiler optimizations." />
+<APICard name="defineComponent" type="function" signature={"defineComponent<P extends object>(fn: ComponentFn<P>): ComponentFn<P>"} description="Identity helper for typing a component; returns `fn` unchanged." />
 
 <APICard name="h" type="function" signature="h(type: string | ComponentFn | symbol, props: Props | null, ...children: VNodeChild[]): VNode" description="Hyperscript function and JSX compile target. Creates VNode objects that describe the UI tree." />
 
-<APICard name="Show" type="component" signature={"Show(props: { when: () => boolean; fallback?: VNodeChild; children: VNodeChild }): VNode"} description="Conditionally renders children when the reactive `when` accessor returns a truthy value. Renders `fallback` otherwise." />
+<APICard name="Show" type="component" signature={"Show(props: { when: unknown | (() => unknown); fallback?: VNodeChild; children?: VNodeChild }): VNode"} description="Conditionally renders children when `when` (a value, or an accessor for reactive conditions) is truthy. Renders `fallback` otherwise." />
 
-<APICard name="For" type="component" signature={"For<T>(props: { each: () => T[]; by: (item: T, index: number) => string | number; children: (item: T) => VNode }): VNode"} description="Keyed reactive list rendering with O(n) reconciliation. Only new keys invoke the render function; existing keys reuse cached VNodes." />
+<APICard name="For" type="component" signature={"For<T>(props: { each: T[] | (() => T[]); by: (item: T) => string | number; children: (item: T) => VNode | NativeItem }): VNode"} description="Keyed reactive list rendering with O(n) reconciliation. Only new keys invoke the render function; existing keys reuse cached VNodes." />
 
 <APICard name="Switch/Match" type="component" signature="Switch(props: { fallback?: VNodeChild; children: Match[] }): VNode" description="Multi-branch conditional rendering. Evaluates each Match child in order and renders the first whose `when()` is truthy." />
 
@@ -2123,7 +2216,7 @@ Dispatch an error to the nearest active `ErrorBoundary`. Returns `true` if the b
 
 <APICard name="onUnmount" type="hook" signature={"onUnmount(callback: () => void): void"} description="Registers a callback to run when the component is removed from the DOM. Use for cleanup not covered by onMount's return value." />
 
-<APICard name="onCleanup" type="hook" signature={"onCleanup(fn: () => void): void"} description="Registers a cleanup function for the current reactive scope. Inside effects, runs before each re-execution and on disposal. Inside components, runs on unmount." />
+<APICard name="onCleanup" type="hook" signature={"onCleanup(fn: () => void): void"} description="Exported from @pyreon/reactivity. Registers a cleanup function for the current reactive scope. Inside effects, runs before each re-execution and on disposal. Inside components, runs on unmount." />
 
 <APICard name="onUpdate" type="hook" signature={"onUpdate(callback: () => void): void"} description="Registers a callback to run after each reactive update within the component. Fires via microtask after effects settle, so the DOM is up-to-date." />
 

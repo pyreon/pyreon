@@ -141,7 +141,7 @@ toast('Item deleted', {
 | `description` | `string \| VNodeChild`                        | —                  | Secondary line rendered under the message.                        |
 | `icon`        | `VNodeChild`                                  | —                  | Leading icon (any VNode — an SVG, `<Icon>`, etc.).                |
 | `dismissible` | `boolean`                                     | `true`             | Whether the toast shows a `×` dismiss button.                     |
-| `action`      | `{ label: string; onClick: () => void }`      | —                  | Action button rendered beside the message (undo/retry patterns).  |
+| `action`      | `{ label: string; onClick: (ctx: { id: string; dismiss: () => void }) => void }` | —                  | Action button rendered beside the message (undo/retry patterns).  |
 | `onDismiss`   | `() => void`                                  | —                  | Called when the toast is dismissed — manually, by the action, by timeout, or when evicted by the queue cap. |
 
 :::note[There is no per-toast `position`]
@@ -316,15 +316,15 @@ function deleteItem(item: Item) {
 }
 ```
 
-A common pattern is to dismiss the toast inside the action so it disappears once the user acts:
+`onClick` receives `{ id, dismiss }` for its own toast, so an action can close the toast without keeping the id `toast()` returned:
 
 ```tsx
-const id = toast('Message archived', {
+toast('Message archived', {
   action: {
     label: 'Undo',
-    onClick: () => {
+    onClick: ({ dismiss }) => {
       unarchive()
-      toast.dismiss(id)
+      dismiss()
     },
   },
 })
@@ -383,6 +383,8 @@ import type {
   ToasterProps,
   ToastPromiseOptions,
   ToastState,
+  ToastAction,
+  ToastActionContext,
 } from '@pyreon/toast'
 ```
 
@@ -393,6 +395,12 @@ import type {
 - `ToastPromiseOptions<T>` — the `{ loading, success, error }` shape for `toast.promise()`, generic over the resolved value `T`
 - `Toast` — the full internal toast record (id, message, type, state, timers, …)
 - `ToastState` — the lifecycle phase: `'entering' | 'visible' | 'exiting'`
+- `ToastAction` — `{ label, onClick(ctx) }`, the `action` option
+- `ToastActionContext` — `{ id, dismiss }`, what an action's `onClick` receives
+
+## Multiplatform
+
+On iOS and Android (PMTC), the core `toast(...)` calls and `<Toaster />` lower to the native `PyreonToast` runtime. The richer surface — `toast.promise`, `toast.update`, the per-toast options, and the animation — stays on the web.
 
 ## Common mistakes
 

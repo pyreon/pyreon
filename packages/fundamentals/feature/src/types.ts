@@ -38,9 +38,9 @@ export interface FeatureConfig<TValues extends Record<string, unknown>> {
   /**
    * Validation schema, in either of two forms.
    *
-   * - A runtime schema (Zod, Valibot, ArkType). Duck-typed — must have
-   *   `safeParseAsync` for auto-validation; Zod schemas carry `_output` so
-   *   `TValues` infers automatically.
+   * - A runtime schema (Zod, Valibot, ArkType). Detected through the Standard
+   *   Schema `~standard` entrypoint, so any compliant validator auto-validates;
+   *   Zod schemas carry `_output` so `TValues` infers automatically.
    * - A LITERAL field-type map, `{ id: 'string', done: 'boolean' }`. This is the
    *   only form `@pyreon/native-compiler` can introspect, so it is what a
    *   feature written for all three targets declares. It carries no validator,

@@ -632,13 +632,17 @@ browser-reserved combo (`mod+s`, `mod+p`). Leave the default `preventDefault: tr
 call `e.preventDefault()` in the handler.
 :::
 
+## Multiplatform
+
+The registry (`registerHotkey`, scopes, conflict reporting) is web only. On iOS and Android (PMTC), `useHotkey('mod+s', () => { … })` with a **literal** shortcut and an inline zero-argument handler lowers to a SwiftUI `.keyboardShortcut` on a hidden zero-size button and a Compose focused key handler on the component root; `mod` resolves to Command on iOS and Ctrl on Android. A computed shortcut, a handler that takes the `KeyboardEvent`, or a comma-separated combo list each warn by name and are dropped.
+
 ## API Reference
 
 ### Hooks
 
 | Export | Signature | Description |
 | ------ | --------- | ----------- |
-| `useHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void` | Register a shortcut bound to the component's lifecycle. Auto-unregisters on unmount. |
+| `useHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: UseHotkeyOptions) => void` | Register a shortcut bound to the component's lifecycle. Auto-unregisters on unmount. |
 | `useHotkeyScope` | `(scope: string) => void` | Activate a scope for the component's lifetime; deactivates on unmount. Reference-counted, so stacked components sharing a scope stay correct. |
 
 ### Imperative API
@@ -651,6 +655,9 @@ call `e.preventDefault()` in the handler.
 | `getActiveScopes` | `() => Signal<Set<string>>` | The reactive set of currently-active scopes. |
 | `getRegisteredHotkeys` | `() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>` | Snapshot of every registered shortcut, for help dialogs. Empty on the server. |
 | `getHotkeyConflicts` | `() => ReadonlyArray<{ scope: string; shortcuts: string[]; descriptions: Array<string \| undefined> }>` | Registered shortcuts that collide (same parsed combo, same scope). |
+| `trigger` | `(shortcut: string, options?: { scope?: string }) => number` | Fire the handlers registered for `shortcut` as if pressed (scope + `enabled` gates respected, input-focus gate skipped). Returns the number fired. |
+| `getPressedKeys` | `() => Signal<Set<string>>` | Reactive set of keys currently held down. |
+| `isKeyPressed` | `(key: string) => boolean` | Whether a key (or bare modifier name) is currently held. |
 
 ### Utilities
 
@@ -659,6 +666,7 @@ call `e.preventDefault()` in the handler.
 | `parseShortcut` | `(shortcut: string) => KeyCombo` | Parse a single combo string into a `KeyCombo`. Supports aliases and `mod`. |
 | `matchesCombo` | `(event: KeyboardEvent, combo: KeyCombo) => boolean` | Whether the event's modifiers + key match the combo (Shift is ignored for single-symbol keys like `?`). |
 | `formatCombo` | `(combo: KeyCombo) => string` | Human-readable label (`⌘` for Meta on Mac, `Meta` elsewhere). |
+| `splitShortcutList` | `(list: string) => string[]` | Split a comma-separated shortcut list, treating a comma KEY correctly (`'ctrl+s, mod+p'` → two; `'ctrl+,'` → one). |
 
 ### Options — `HotkeyOptions`
 
@@ -667,14 +675,20 @@ call `e.preventDefault()` in the handler.
 | `scope` | `string` | `'global'` | Scope the shortcut belongs to. |
 | `preventDefault` | `boolean` | `true` | Call `e.preventDefault()` before the handler. |
 | `stopPropagation` | `boolean` | `false` | Call `e.stopPropagation()` before the handler. |
-| `enableOnInputs` | `boolean` | `false` | Fire even when a form element / contentEditable is focused. |
+| `enableOnInputs` | `boolean \| ReadonlyArray<InputKind>` | `false` | Fire even when a form element / contentEditable is focused. An array allows selectively (`['input']`). |
 | `description` | `string` | — | Human-readable label for help dialogs. |
 | `enabled` | `boolean \| (() => boolean)` | `true` | Whether the shortcut is active; a function is re-evaluated per keystroke. |
+| `event` | `'keydown' \| 'keyup'` | `'keydown'` | Which event fires the hotkey. Sequences are keydown-only. |
+| `ignoreRepeat` | `boolean` | `false` | Skip auto-repeated events while the combo is held. |
+| `once` | `boolean` | `false` | Fire at most once, then auto-unregister. |
+| `target` | `EventTarget` | `window` | Listen on a specific element (fires only while focus is inside it). `UseHotkeyOptions` also accepts a getter (e.g. an element ref), resolved at mount and tracked. |
 
 ### Types
 
 | Type | Shape | Description |
 | ---- | ----- | ----------- |
 | `KeyCombo` | `{ ctrl: boolean; shift: boolean; alt: boolean; meta: boolean; key: string }` | A parsed single key combination. |
-| `HotkeyOptions` | see table above | Registration options for `useHotkey` / `registerHotkey`. |
+| `HotkeyOptions` | see table above | Registration options for `registerHotkey`. |
+| `UseHotkeyOptions` | `HotkeyOptions` with `target?: EventTarget \| (() => EventTarget \| null \| undefined)` | Options for `useHotkey`. |
+| `InputKind` | `'input' \| 'textarea' \| 'select' \| 'contenteditable'` | Element kinds for `enableOnInputs`. |
 | `HotkeyEntry` | `{ shortcut: string; combo: KeyCombo; sequence: KeyCombo[]; handler; options }` | A fully-resolved registry entry (internal shape). For sequential combos, `combo` is the first step and `sequence` holds the rest. |

@@ -104,6 +104,8 @@ pyreon-lint --lsp
 | `--config <path>`             | Path to a config file (skips the auto-discovery walk)                                         |
 | `--ignore <path>`             | Path to a custom ignore file                                                                 |
 | `--lsp`                       | Start the LSP server over stdin/stdout JSON-RPC                                               |
+| `--init`                      | Write a `.pyreonlintrc.json` for this project (`lib` or `app` preset); refuses to overwrite an existing config |
+| `--why-off <rule-id>`         | Explain why a rule is off (or on) for this config, with the edit that changes it, then exit   |
 | `--version`, `-v`             | Print the version                                                                            |
 | `--help`, `-h`                | Print usage                                                                                  |
 
@@ -307,7 +309,7 @@ For Pyreon packages and libraries — the strongest preset.
 
 ### `best-practices`
 
-`recommended` **plus every opt-in best-practice rule enabled** (`meta.optIn`) at its declared severity — **off in all other presets by design**, so you opt in explicitly. The mechanism is per-rule, not per-category: `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in (every rule in the category), `frontend` is half opt-in (6 of its 12 rules ship on by default — see [Accessibility is on by default](#accessibility-is-on-by-default)), and a handful of individually opt-in rules sit inside otherwise-mandatory categories (`reactivity`, `jsx`, `performance`, `ssr`, `styling`, `security`, `web-perf`, `js` — marked `ᵒ` in [Categories at a glance](#categories-at-a-glance)). Library-scoped opt-in rules still self-gate on your `package.json` dependencies even under `best-practices`, so you only see rules for libraries you actually use.
+`recommended` **plus every opt-in best-practice rule enabled** (`meta.optIn`) at its declared severity — **off in all other presets by design**, so you opt in explicitly. The mechanism is per-rule, not per-category: `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in (every rule in the category), `frontend` is half opt-in (6 of its 12 rules ship on by default — see [Accessibility is on by default](#accessibility-is-on-by-default)), and a handful of individually opt-in rules sit inside otherwise-mandatory categories (`reactivity`, `jsx`, `performance`, `ssr`, `form`, `styling`, `router`, `security`, `web-perf`, `js` — marked `ᵒ` in [Categories at a glance](#categories-at-a-glance)). Library-scoped opt-in rules still self-gate on your `package.json` dependencies even under `best-practices`, so you only see rules for libraries you actually use.
 
 ### Opt-in best-practice rules
 
@@ -481,15 +483,15 @@ There are **133 rules across 25 categories**. Six of them are **monorepo-scoped*
 
 | Category          | Rules | Opt-in? | Purpose                                                             |
 | ----------------- | ----- | ------- | ------------------------------------------------------------------ |
-| `reactivity`      | 16    |         | Signal/effect/computed correctness — tracking, batching, leaks     |
-| `jsx`             | 12    |         | Pyreon JSX semantics — `class`/`for`, `<For>`/`by`, props, `<Show>`|
+| `reactivity`      | 17    | 2 of 17 | Signal/effect/computed correctness — tracking, batching, leaks     |
+| `jsx`             | 12    | 2 of 12 | Pyreon JSX semantics — `class`/`for`, `<For>`/`by`, props, `<Show>`|
 | `lifecycle`       | 6     |         | `onMount`/`effect` setup-vs-mount, cleanup, idempotent `init*`     |
-| `performance`     | 5     |         | Keyed lists, lazy imports, leak-prone timers                       |
+| `performance`     | 5     | 1 of 5  | Keyed lists, lazy imports, leak-prone timers                       |
 | `ssr`             | 5     | 1 of 5  | Browser globals, hydration mismatch, per-request state             |
 | `architecture`    | 11    |         | Import layering, dev gates, error prefixes, test/config contracts  |
 | `store`           | 3     |         | `defineStore` ids, mutation discipline, provider scope             |
 | `form`            | 4     | 1 of 4  | `useField`/`register`, validation, field arrays                    |
-| `styling`         | 5     |         | Inline style objects, dynamic `styled()`, theme/cx, rocketstyle `.attrs()` |
+| `styling`         | 5     | 1 of 5  | Inline style objects, dynamic `styled()`, theme/cx, rocketstyle `.attrs()` |
 | `hooks`           | 3     |         | Prefer auto-cleanup hooks over raw listeners/timers/storage        |
 | `accessibility`   | 3     |         | Dialog / overlay / toast ARIA                                      |
 | `router`          | 5     | 1 of 5  | `<Link>` vs `<a>`, navigate-in-render, fallback, active state      |

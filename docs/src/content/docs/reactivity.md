@@ -66,6 +66,9 @@ interface Signal<T> {
   trigger(): void
   /** Subscribe a static listener directly. Returns a disposer function. */
   subscribe(listener: () => void): () => void
+  /** Framework-internal fast path used by compiled bindings: register a
+   *  direct updater, lighter than subscribe(). Returns a disposer. */
+  direct(updater: () => void): () => void
   /** Debug name for devtools and logging. */
   label: string | undefined
   /** Returns a snapshot of the signal's debug info. */
@@ -1386,6 +1389,29 @@ effect(() => {
 })
 ```
 
+## Environment
+
+`isServer` and `isClient` are plain constants evaluated once at module load: `isServer = typeof document === 'undefined'`, `isClient` is its inverse. Use them for small environment guards (module-level singletons, lazy globals). For DOM access inside a component, prefer `onMount` / `effect`, which never run during SSR; for heavy server-only code, prefer a `/server` subpath export. Both are re-exported from `@pyreon/core`.
+
+```ts
+import { isServer } from '@pyreon/reactivity'
+
+const storage = isServer ? new Map<string, string>() : window.localStorage
+```
+
+`defineCrossModuleState(key, init)` returns one state object per JS heap: the first module instance to call it with a given key runs `init`, and every later caller (including a duplicated copy of the same package) gets the identical object via `Symbol.for(key)`. `init` must return a mutable object.
+
+## Type Helpers
+
+Type-only exports for working with accessors:
+
+| Type | Result |
+| --- | --- |
+| `SignalValue<S>` | The value type of a signal (`SignalValue<typeof count>` → `number`); `never` for a non-accessor. |
+| `ComputedValue<C>` | Same, for a computed. |
+| `MaybeAccessor<T>` | `T \| (() => T)` — a parameter that accepts a value or an accessor. |
+| `AccessorReturn<A>` | Unwraps `() => T` to `T`; passes plain values through. |
+
 ## Debug Utilities
 
 Development-only tools for tracing signal updates and understanding reactive behavior. All utilities are tree-shakeable and compile away in production when unused.
@@ -1434,6 +1460,16 @@ inspectSignal(count)
 //   Signal "count"
 //     value: 42
 //     subscribers: 3
+```
+
+### getReactiveTrace
+
+`getReactiveTrace()` returns a copy of the recent signal writes (a bounded ring buffer of `{ name, prev, next, timestamp }` entries, values as bounded string previews). It is always `[]` in production. `@pyreon/core`'s `reportError` attaches it to the error context as `reactiveTrace`. `clearReactiveTrace()` empties the buffer (for test isolation).
+
+```ts
+import { getReactiveTrace } from '@pyreon/reactivity'
+
+console.table(getReactiveTrace())
 ```
 
 ## Real-World Reactive Patterns

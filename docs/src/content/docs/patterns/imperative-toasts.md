@@ -56,7 +56,7 @@ toast.promise(api.save(), {
 
 ## Why
 
-Toasts are inherently imperative — they're triggered by an event (a save succeeding, a button click, a WebSocket message) rather than driven by reactive state. The callable API `toast(message)` mirrors that shape directly. `<Toaster />` handles the rendering, cleanup, pause-on-hover, and a11y (`role="alert"`, `aria-live="polite"`).
+Toasts are inherently imperative — they're triggered by an event (a save succeeding, a button click, a WebSocket message) rather than driven by reactive state. The callable API `toast(message)` mirrors that shape directly. `<Toaster />` handles the rendering, cleanup, pause-on-hover, and a11y (each toast gets `role="alert"` for errors and warnings, `role="status"` otherwise; the container is a labelled region with no `aria-live` of its own, so nothing is announced twice).
 
 Mount the `Toaster` ONCE at app root. Multiple `Toaster` instances stack visually and confuse focus management.
 
