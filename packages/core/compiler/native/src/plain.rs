@@ -2812,7 +2812,8 @@ pub fn transform_plain(
         let Statement::ImportDeclaration(imp) = stmt else {
             continue;
         };
-        let source = imp.source.value.as_str();
+        let source = crate::js_text(imp.source.value);
+        let source = source.as_ref();
         if source == PLAIN_SOURCE {
             if let Some(specs) = &imp.specifiers {
                 for spec in specs {
