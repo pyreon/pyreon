@@ -7467,8 +7467,6 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  *
  * Accepts both canonical `onPress` and legacy `onClick` to ease
  * migration from existing PMTC source.
- *
- * `onLongPress` not yet wired — defer to a future arc.
  */
 function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const handler = e.attrs.find(

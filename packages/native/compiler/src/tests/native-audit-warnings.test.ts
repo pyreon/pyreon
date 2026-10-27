@@ -697,34 +697,24 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
   })
 
   // ====================================================================
-  // Native readiness audit (2026-06, CRIT-4) — useLoaderData silent-drop.
-  // Compiler has no emit for useLoaderData on either target; runtime
-  // PyreonRouter.setLoaderData() ships but loader auto-emit is deferred.
-  // Warn at the call site naming the binding so the silent-drop is
-  // visible to the author at compile time.
+  // useLoaderData<T>() — the single-binding read lowers on both targets and a
+  // route `loader` populates it on appear, so it must NOT warn. (It used to
+  // warn that auto-loading was "future work" long after it shipped.)
   // ====================================================================
-  describe('useLoaderData<T>() silent-drop diagnostic', () => {
-    it('warns naming the binding when `const data = useLoaderData<User>()` at component body scope (Swift target)', () => {
-      const result = transform(
-        `
+  describe('useLoaderData<T>() emit', () => {
+    it('a single-binding `const data = useLoaderData<User>()` emits with no warning', () => {
+      for (const target of ['swift', 'kotlin'] as const) {
+        const result = transform(
+          `
         export function ProfilePage() {
           const data = useLoaderData<User>()
           return <Text>Hi</Text>
         }
         `,
-        { target: 'swift' },
-      )
-      // Phase B6 softened the wording: from "no emit" to
-      // "READ-ONLY emit" — read works via runtime; auto-loader
-      // is still future work.
-      expect(
-        result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('const data = useLoaderData') &&
-            w.includes('READ-ONLY emit'),
-        ),
-      ).toBe(true)
+          { target },
+        )
+        expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
+      }
     })
 
     // Phase B6 emit assertions — the binding now EMITS as a real
@@ -790,25 +780,6 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(result.code).not.toContain('useLoaderData(router:')
     })
 
-    it('fires on Kotlin target too (target-independent, parser-level)', () => {
-      const result = transform(
-        `
-        export function ProfilePage() {
-          const data = useLoaderData<User>()
-          return <Text>Hi</Text>
-        }
-        `,
-        { target: 'kotlin' },
-      )
-      expect(
-        result.warnings.some(
-          (w) =>
-            w.includes('useLoaderData') &&
-            w.includes('const data = useLoaderData'),
-        ),
-      ).toBe(true)
-    })
-
     it('warns with destructure-form binding description', () => {
       const result = transform(
         `
@@ -828,7 +799,7 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       ).toBe(true)
     })
 
-    it('names multiple loader bindings independently when several appear', () => {
+    it('several single-binding loader reads all emit, none warns', () => {
       const result = transform(
         `
         export function DashboardPage() {
@@ -839,18 +810,10 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
         `,
         { target: 'swift' },
       )
-      const useLoaderWarnings = result.warnings.filter((w) =>
-        w.includes('useLoaderData'),
-      )
-      // Both bindings get their own warning so a developer with multiple
-      // loaders can spot which is affected.
-      expect(useLoaderWarnings.length).toBeGreaterThanOrEqual(2)
-      expect(
-        useLoaderWarnings.some((w) => w.includes('userData')),
-      ).toBe(true)
-      expect(
-        useLoaderWarnings.some((w) => w.includes('settingsData')),
-      ).toBe(true)
+      // Both bindings emit as reads and neither warns.
+      expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
+      expect(result.code).toContain('private var userData: User?')
+      expect(result.code).toContain('private var settingsData: Settings?')
     })
 
     it('does NOT warn for `router.loaderData()` direct read (different API — no diagnostic needed)', () => {

@@ -1530,15 +1530,14 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
     return { kind: 'unknown' }
   }
-  // FLAT object literal → an object TypeIR. The emit synthesizes a struct from
+  // Object literal → an object TypeIR. The emit synthesizes a struct from
   // the shape and annotates the signal with it (instead of `Any`, which can't
   // be a typed value downstream). Paired with the emit-side
   // `_structFieldsToName` registration so the type annotation and the value's
   // struct constructor agree on ONE name (the top-level type emits before the
   // value, so the registration is in time). `signal({ x: 1, y: 2 })` → a
-  // struct, not `Any`. NESTED objects (`{ pt: { x, y } }`) bail — the nested
-  // struct's registration timing diverges from the value emit, so they stay
-  // `Any` (unchanged, no regression); flat record shapes are the dominant case.
+  // struct, not `Any`. Nested objects and array fields are synthesized too (see
+  // `inferFlatObjectType`).
   if (initial.kind === 'object') {
     const flat = inferFlatObjectType(initial)
     if (flat !== null) return flat
@@ -1547,18 +1546,12 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
 }
 
 /**
- * Infer a FLAT-SCALAR object literal's TypeIR — every field must be a scalar
- * (number/string/boolean). A spread, an empty object, or any non-scalar field
- * (a nested object, OR an array field) returns null (the caller degrades to
- * `unknown`). Scalar-only is what keeps the type-path / value-path struct-name
- * unification sound on BOTH targets: a nested struct's registration can't be
- * guaranteed before its value emits, and an ARRAY field can't be synthesized
- * by the shared scalar-only `synthLiteralStructName` (Kotlin emits no type
- * annotation, so its value path has no registered struct to fall back to for
- * those). Scalar records — `signal({ x: 1, y: 2 })` and the elements of
- * `signal([{ id: 1, name: "a" }])` — are the dominant shape and are fully
- * supported; array-field / nested objects stay `Any` (unchanged, no
- * regression) pending the Kotlin emit-ordering follow-up.
+ * Infer an object literal's TypeIR. Every field must be synthesizable
+ * (`isSynthesizableFieldType`): a scalar (number/string/boolean), a nested
+ * object, or an array of those. A spread, an empty object, or any other field
+ * (a function, a mixed array, a bare identifier) returns null (the caller
+ * degrades to `unknown`). Covers `signal({ x: 1, y: 2 })` and the elements of
+ * `signal([{ id: 1, name: "a" }])`.
  */
 function inferFlatObjectType(obj: Extract<ExprIR, { kind: 'object' }>): TypeIR | null {
   if ((obj.spreads?.length ?? 0) > 0 || obj.fields.length === 0) return null
@@ -3842,8 +3835,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // auto-called read.
   //
   // Faithful + non-regressing by construction: a hook whose single-binding
-  // form produces NO container (e.g. `useSecureStorage`, which warns + drops)
-  // recurses to `null` and FALLS THROUGH to the warn-drop below — so this can
+  // form produces NO container recurses to `null` and FALLS THROUGH to the warn-drop below — so this can
   // only make destructure work where single-binding already works, never
   // worse. Rest elements (`{ data, ...rest }`) and nested patterns
   // (`{ user: { id } }`) also fall through to warn-drop in v1 (no
@@ -3898,7 +3890,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         return containerDecl
       }
       // containerDecl null → the hook has no single-binding container
-      // (e.g. useSecureStorage). Fall through to the warn-drop below.
+      // Fall through to the warn-drop below.
     }
     ctx.warnings.push(
       `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern uses a rest element / nested binding (not yet supported). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,

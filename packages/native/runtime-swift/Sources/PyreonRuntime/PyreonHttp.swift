@@ -25,11 +25,10 @@
 //
 // ## Relationship to the PMTC compiler emit
 //
-// A later emit pass detects `useFetch('/url', { method, headers, body })`
+// The emit detects `useFetch('/url', { method, headers, body })`
 // and emits a `PyreonFetch` whose `.task { }` calls `PyreonHttp.send(...)`
 // + `.decode(T.self)` and feeds the result into `resolve` / `reject`.
-// Until that lands (the per-service-port follow-up), this is usable by
-// hand-written SwiftUI code.
+// It is equally usable by hand-written SwiftUI code.
 
 import Foundation
 

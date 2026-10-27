@@ -8997,10 +8997,6 @@ function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  *
  * `onPress` is the canonical Pyreon event name (mapped to `action:`
  * here per the per-platform-event-name table in the plan).
- *
- * `onLongPress` not yet wired — defer to a future arc when a real
- * primitive consumer demands it; today it's silently dropped (the
- * type-level surface still accepts it).
  */
 function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // Recognize both `onPress` (canonical) and the legacy `onClick`

@@ -194,10 +194,7 @@ public class PyreonRouter(
      *  record's component (or [notFoundComponent] when no match — see
      *  the wildcard-404 catch-all below; or nothing when neither is
      *  configured — the original backward-compat fallback).
-     *
-     *  Phase A4 ships a flat list; nested-route depth indexing
-     *  ([RouteRecord.children]) lands as A4.5 — separate PR to limit
-     *  blast radius. */
+     */
     public val routes: MutableState<List<RouteRecord>> = mutableStateOf(routes)
 
     /** Wildcard-404 catch-all — Phase A6 of the readiness audit. When
@@ -221,8 +218,7 @@ public class PyreonRouter(
     /** Phase 3 (loaders) — per-route loaded data, keyed by full path. A
      *  route's loader stores its result here on navigation; `useLoaderData()`
      *  reads the current path's entry. Type-erased (`Any?`) because payloads
-     *  are per-route. Empty until a loader harness populates it (the harness
-     *  emit is a follow-up — this is the runtime contract it targets). */
+     *  are per-route. Empty until a loader harness populates it. */
     public val loaderData: MutableState<Map<String, Any?>> = mutableStateOf(emptyMap())
 
     /** Top-of-stack path. Mirrors `router.currentRoute().path` on the web side. */

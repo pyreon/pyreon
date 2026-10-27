@@ -22,7 +22,7 @@
 // splits raw field state from schema validation. This is the per-service
 // runtime PORT (the `PyreonFetch` / `PyreonStorage` pattern); the
 // `useForm` / `useField` / `<Form>` / `<Submit>` emit builds on this
-// contract in a follow-up.
+// contract.
 //
 // The container owns only the state machine — no DOM, no validation
 // engine, no async — so it unit-tests synchronously with no SwiftUI host.

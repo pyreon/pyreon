@@ -7,7 +7,7 @@ import UIKit
 #endif
 
 // The chart draw-list contract. The RUNTIME owns these types; the generated
-// PyreonChartEngine geometry (gen-native-chart-engine, follow-up) references
+// PyreonChartEngine geometry references
 // them rather than re-declaring — one declaration, no concat collisions.
 // Field-for-field the fat-struct lowering of the engine's `DrawCmd` union:
 // `kind` discriminates, variant fields are optional.

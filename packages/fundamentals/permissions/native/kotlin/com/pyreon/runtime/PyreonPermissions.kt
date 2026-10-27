@@ -20,8 +20,8 @@
 // No platform API, no schema libs, no Android-SDK dependency — the
 // already-framework-agnostic `@pyreon/permissions` logic ported as a
 // reactive native container. Coroutine-free, unit-testable synchronously.
-// The `usePermissions` / `<Can>` compiler emit builds on this contract in
-// a follow-up (the PyreonFetch / PyreonForm per-service-port pattern).
+// The `usePermissions` / `<Can>` compiler emit builds on this contract (the
+// PyreonFetch / PyreonForm per-service-port pattern).
 
 package com.pyreon.runtime
 

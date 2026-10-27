@@ -11,8 +11,9 @@
 // wires the platform lifecycle — e.g. `ProcessLifecycleOwner` — and returns an
 // unregister thunk). This keeps the file free of `androidx.lifecycle.*` /
 // `android.*` so it compiles against the Compose-only kotlinc validate stubs
-// (the same asymmetry PyreonNetworkStatus / PyreonStorage document). A
-// `ProcessLifecycleOwner`-backed convenience overload is a Phase-2 follow-up.
+// (the same asymmetry PyreonNetworkStatus documents). The
+// `ProcessLifecycleOwner`-backed wiring lives in PyreonAppStateAndroid.kt
+// (`rememberPyreonAppState()`).
 //
 // The lifecycle STATE machine (`phase` + `update`) is pure + unit-testable.
 
