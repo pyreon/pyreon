@@ -45,7 +45,7 @@ yarn add @pyreon/rich-text
 `@pyreon/rich-text` declares `@pyreon/core`, `@pyreon/reactivity`, **and `@pyreon/runtime-dom`** as peer dependencies. `<RichText>` emits compiled `_tpl()` / `_bind()` calls, which need the DOM runtime — declare all three in your app's dependencies or the editor won't mount.
 :::
 
-The TipTap engine (`@tiptap/core` + `@tiptap/starter-kit`) is **lazy-loaded on mount**, so `@tiptap/*` stays out of your initial bundle — the package itself is a small wrapper (see [Bundle & lazy-loading](#bundle--lazy-loading)). The editing engine downloads only when a `<RichText>` first renders.
+The TipTap engine (`@tiptap/core` + `@tiptap/starter-kit`) is **lazy-loaded on mount**, so `@tiptap/*` stays out of your initial bundle — the package itself is a small wrapper (see [Bundle & lazy-loading](#bundle-lazy-loading)). The editing engine downloads only when a `<RichText>` first renders.
 
 ## The editor instance
 

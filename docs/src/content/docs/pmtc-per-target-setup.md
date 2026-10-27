@@ -76,7 +76,7 @@ targets:
         optional: true
 ```
 
-In the Xcode UI the equivalent is File → Add Package Dependencies → Add Local… → `ios/PyreonPackages/native-runtime-swift` (and `native-router-swift`). Add both `PyreonPackages/` and `PyreonNative/` to `.gitignore`; they are derived from `node_modules`. See [Native Packages → iOS](./native-packages.md#ios--resolved-symlinks-staged-sources) for the details.
+In the Xcode UI the equivalent is File → Add Package Dependencies → Add Local… → `ios/PyreonPackages/native-runtime-swift` (and `native-router-swift`). Add both `PyreonPackages/` and `PyreonNative/` to `.gitignore`; they are derived from `node_modules`. See [Native Packages → iOS](./native-packages.md#ios-resolved-symlinks-staged-sources) for the details.
 
 **CocoaPods**: not supported. The Swift runtime ships as SwiftPM only.
 
@@ -176,7 +176,7 @@ android {
 }
 ```
 
-The runtimes also need their own library dependencies on the app module (Compose, kotlinx-serialization, OkHttp, and the media/imaging artifacts for the primitives you use). Copy the `dependencies { }` block from a scaffolded project's `app/build.gradle.kts` rather than assembling it by hand. See [Native Packages → Android](./native-packages.md#android--a-generated-srcdir-list) for the details.
+The runtimes also need their own library dependencies on the app module (Compose, kotlinx-serialization, OkHttp, and the media/imaging artifacts for the primitives you use). Copy the `dependencies { }` block from a scaffolded project's `app/build.gradle.kts` rather than assembling it by hand. See [Native Packages → Android](./native-packages.md#android-a-generated-srcdir-list) for the details.
 
 ### Step 2 — Run PMTC at build time
 
