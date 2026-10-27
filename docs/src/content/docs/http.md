@@ -77,6 +77,8 @@ The core has **zero dependencies**. Each capability is a separate entry, so an u
 | TanStack adapters | `@pyreon/http/query` |
 | network-free mocking | `@pyreon/http/mock` |
 | per-request SSR context | `@pyreon/http/server` |
+| lossless 64-bit JSON codec | `@pyreon/http/json` |
+| SSE / NDJSON streaming | `@pyreon/http/stream` |
 
 `/server` is the only entry that touches `node:async_hooks`, so it stays out of every browser bundle by construction.
 
@@ -369,6 +371,27 @@ expect(handle.calls).toHaveLength(1)
 ```
 
 A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.
+
+## Lower-level exports
+
+The client covers the common path; these are the building blocks underneath it.
+
+| Export | Entry | Description |
+| --- | --- | --- |
+| `defineEndpoint(client, spec, options?)` | `@pyreon/http` | Standalone form of `api.endpoint(spec, options)`. |
+| `compose(middleware, transport)` | `@pyreon/http` | Fold a middleware list over a transport into one `Transport`. |
+| `createFetchTransport(fetchImpl?)` / `fetchTransport` / `toHttpResponse(raw, request)` | `@pyreon/http` | The default `fetch`-backed transport, a factory for a custom `fetch`, and the `Response` → `HttpResponse` adapter. |
+| `buildUrl(baseUrl, path, params, query)` / `joinUrl` / `applyPathParams` / `buildQuery` / `isAbsoluteUrl` | `@pyreon/http` | The URL helpers the client uses (encoding included). |
+| `isAbortError(value)` | `@pyreon/http` | True for the client's `AbortError` and for the platform `DOMException` named `AbortError` that `fetch` rejects with. |
+| `getAmbientRequest()` / `resolveAgainstAmbientOrigin(url)` | `@pyreon/http` | Read the in-scope SSR request, and resolve a relative URL against its origin. |
+| `bearer` / `refresh` / `dedupe` / `logger` / `retry` / `forwardHeaders` | `@pyreon/http/middleware` | The shipped middleware (see Middleware above). |
+| `toQueryOptions(client, path, options?)` | `@pyreon/http/query` | `{ queryKey, queryFn }` for an ad-hoc GET without declaring an endpoint. |
+| `runWithRequest(request, fn)` / `getRequest()` | `@pyreon/http/server` | Run code with an ambient request, and read it back. |
+| `isRetryableStreamError(error)` | `@pyreon/http/stream` | The default `shouldRetry` of a stream's reconnect policy. |
+
+## Multiplatform
+
+The client itself is web/Node only — the transport and middleware run on `fetch`. On iOS and Android (PMTC), same-file endpoint calls lower to the native networking runtime instead: `useFetch<T>(getUser({ params: { id: '1' } }))` becomes a `PyreonFetch`, `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` a cached `PyreonQuery`, and `useStream` over `openEventStream` / `openNdjsonStream` with a same-file endpoint a `PyreonStream`. A computed `baseUrl` stays web.
 
 ## Relationship to the rest of the framework
 

@@ -3,11 +3,10 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 export default defineNodeConfig({
   category: 'zero',
   environment: 'happy-dom',
-  // PR 5/6 add JSX components (<Search>, <Sidebar>, <Toc>) — overlay,
-  // keyboard handler, scroll-spy via IntersectionObserver. Coverage
-  // needs the Chromium-backed browser test harness (a PR 7 follow-up).
-  // Exclude until the spike adds the harness so the docs-pyreon
-  // migration isn't blocked on coverage drift.
+  // JSX components (<Search>, <Sidebar>, <Toc>) — overlay, keyboard
+  // handler, scroll-spy via IntersectionObserver — are covered by the
+  // Chromium-backed browser tests (vitest.browser.config.ts), not by
+  // node vitest, so they are excluded from node coverage.
   coverageExclude: [
     'src/search/search-runtime.tsx',
     'src/components/Sidebar.tsx',
@@ -20,7 +19,7 @@ export default defineNodeConfig({
   // and optional-dependency dynamic imports (katex / mermaid success
   // paths) — none reachable from node vitest. Those paths are exercised
   // by the real docs build (docs/ runs this pipeline), verify-modes, and
-  // the Chromium harness planned in the PR 7 follow-up. Thresholds below
+  // the Chromium harness (vitest.browser.config.ts). Thresholds below
   // reflect ACHIEVED node-coverage (87.39/80.79/90.85/89.1 at true-up)
   // minus ~1pp run-to-run variance margin; the BELOW_FLOOR_EXEMPTIONS
   // entry in scripts/check-coverage.ts carries the same rationale and

@@ -52,6 +52,7 @@ function ToggleLike(props: { id: string }) {
 Pair `useInfiniteQuery` with the `useInfiniteScroll` hook:
 
 ```tsx
+import { For } from '@pyreon/core'
 import { useInfiniteQuery } from '@pyreon/query'
 import { useInfiniteScroll } from '@pyreon/hooks'
 
@@ -132,8 +133,10 @@ draft.remove()                           // clears the key
 Map a 422 response onto fields — errors show immediately (they don't wait for blur):
 
 ```tsx
+import { useForm } from '@pyreon/form'
+
 const form = useForm({
-  fields: [email, password],
+  initialValues: { email: '', password: '' },
   onSubmit: async (values) => {
     const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(values) })
     if (res.status === 422) {

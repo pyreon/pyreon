@@ -615,7 +615,7 @@ Emitted when a `<For>` component is used without a `by` prop:
 </For>
 ```
 
-Without `by`, the runtime falls back to index-based diffing, which is slower and can cause bugs with stateful children.
+`by` is required. There is no index-based fallback: the runtime calls the key function on every item, so a `<For>` without `by` throws a `TypeError` (`getKey is not a function` on the client, `by is not a function` during SSR) as soon as the list has an item.
 
 ### Warning Types
 
@@ -647,7 +647,7 @@ Currently-emitted codes:
 
 ## API Reference
 
-### `transformJSX(code, filename?)`
+### `transformJSX(code, filename?, options?)`
 
 The main API. Transforms JSX source code, applying reactive wrapping, static hoisting, and template emission.
 
@@ -665,8 +665,25 @@ console.log(result.warnings) // Array of compiler warnings
 
 - **`code`** (`string`) -- The JSX source code to transform.
 - **`filename`** (`string`, optional) -- The filename for parser context. Defaults to `"input.tsx"`. All files are parsed as TSX regardless of extension.
+- **`options`** (`TransformOptions`, optional) -- see below.
 
 **Returns:** `TransformResult`
+
+### `TransformOptions`
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ssr` | `boolean` | `false` | Compile for server rendering: skip `_tpl()` and emit `h()` calls for `@pyreon/runtime-server`. |
+| `ssrTemplate` | `boolean` | `false` | With `ssr: true`, lower eligible static-skeleton subtrees to `_ssr(...)` string builds (byte-identical HTML to the `h()` walk). Off at this API; `@pyreon/vite-plugin` turns it on for SSR transforms. |
+| `templatizeComponentChildren` | `boolean` | `false` | Client emit only: bake an element's static skeleton into the template and append trailing component children (`_mountChild`) instead of bailing the element to `h()`. Off at this API; on by default in `@pyreon/vite-plugin`. |
+| `knownSignals` | `string[]` | — | Names of signals imported from other modules, so `{count}` in JSX is auto-called. The vite-plugin fills this from its cross-module registry. |
+| `plain` | `boolean` | `false` | Run the [Plain Mode](/docs/plain-mode) pre-pass without a `'use plain'` directive (`'use classic'` still opts out). |
+| `reactivityLens` | `boolean` | `false` | Collect `TransformResult.reactivityLens` spans. The emitted code is identical either way. |
+| `collapseRocketstyle` | object | — | Rocketstyle collapse inputs, supplied by the vite-plugin when `collapse: true`. Not for direct use. |
+
+```ts
+const result = transformJSX(code, 'App.tsx', { ssr: true, ssrTemplate: true })
+```
 
 ### `TransformResult`
 
@@ -678,6 +695,10 @@ interface TransformResult {
   usesTemplates?: boolean
   /** Compiler warnings for common mistakes */
   warnings: CompilerWarning[]
+  /** V3 source map — JS backend only, and only when the code changed */
+  map?: GeneratedSourceMap
+  /** Reactivity-lens spans — only when `options.reactivityLens` is true */
+  reactivityLens?: ReactivitySpan[]
 }
 ```
 
@@ -1117,6 +1138,22 @@ To diagnose the resolved path in dev: set `DEBUG=pyreon:compiler` and the loader
 | --------------------- | -------- | --------------------------------------------------------- |
 | `transformJSX`        | Function | Transform JSX source code (auto-selects native or JS)     |
 | `transformJSX_JS`     | Function | JS-only path — bypasses the native binary                 |
-| `loadNativeBinding`   | Function | Resolve the native `.node` binding (or `null` if absent)  |
 | `TransformResult`     | Type     | Interface for the transform output                        |
 | `CompilerWarning`     | Type     | Interface for compiler warning objects                    |
+| `TransformOptions`    | Type     | Options for `transformJSX` (see above)                    |
+| `transformPlain` / `detectPlain` / `migrateToPlain` | Function | [Plain Mode](/docs/plain-mode) pre-pass, detection, and the classic→plain codemod |
+| `transformDeferInline` | Function | The `<Defer>` inline-children pre-pass                    |
+| `deriveIslandName` / `fnv1a6` / `islandRelPath` | Function | Island auto-name derivation (shared with the vite-plugin and the project scanner) |
+| `filePathToUrlPath` / `apiFilePathToPattern` / `isApiRoute` / `stripRouteExtension` / `ROUTE_EXTENSIONS` / `SPECIAL_ROUTE_FILES` | Function / Const | The `@pyreon/zero` file-system route convention |
+| `scanCollapsibleSites` / `rocketstyleCollapseKey` | Function | Rocketstyle collapse site detection (used by the vite-plugin) |
+
+The main entry never imports the TypeScript compiler API. The TypeScript-backed tools live on subpaths:
+
+| Subpath | Contents |
+| --- | --- |
+| `@pyreon/compiler/analyze` | `detectPyreonPatterns`, `migratePyreonCode`, `analyzeReactivity`, `formatReactivityLens`, the React-pattern detectors/migrators |
+| `@pyreon/compiler/audits` | `generateContext` (project scanner), `auditTestEnvironment`, `auditIslands`, `auditSsg` and their formatters |
+| `@pyreon/compiler/validate` | `analyzeValidate`, `emitValidator`, `emitSchemaSource`, `isEmittable` (the `@pyreon/validate` emitter) |
+| `@pyreon/compiler/diagnose` | `diagnoseError`, `ERROR_PATTERNS` — TypeScript-free, safe for browser bundles |
+| `@pyreon/compiler/plain` | The Plain Mode pre-pass alone |
+| `@pyreon/compiler/fs-route-convention` | The fs-route helpers alone |

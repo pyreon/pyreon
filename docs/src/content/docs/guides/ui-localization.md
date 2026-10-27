@@ -9,6 +9,10 @@ replace per instance, and everything date-related is driven by
 `Intl.DateTimeFormat` (no hardcoded month or weekday names anywhere). This
 guide catalogs every override point and shows the `@pyreon/i18n` wiring.
 
+:::warning{title="Workspace-internal packages"}
+`@pyreon/ui-components` and `@pyreon/ui-primitives` are private packages inside the Pyreon monorepo — they are not published to npm, so you cannot install them in your own project yet. This guide documents how they work for contributors and for apps built inside the monorepo; the same override-by-prop and `Intl` patterns apply to components you write yourself.
+:::
+
 ## The model
 
 There is no hidden translation registry inside the UI packages — localization

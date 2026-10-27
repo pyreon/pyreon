@@ -20,7 +20,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
 - **Fast, and we retracted the parts of our own benchmark that overstated it — three times.** A synthetic row-list benchmark across an 8-framework field found our harness had handicapped [Octane](https://octanejs.dev) — the nearest rival — with a `String()` wrapper that disabled its compiler fast path; let a V8 engine artifact inflate the retained-memory numbers for five implementations; and used a CSS table-layout mode that forced a full-table re-measure on any op that widened a cell, which inflated our published Pyreon-vs-Solid `partial update` lead from a real ~2.1× to a false ~4.9× (retracted). Corrected (pending merge — see [benchmarks](https://pyreon.dev/docs/benchmarks)): Pyreon **wins bulk-create outright** — 10,000 rows in 80.3ms vs Octane 83.4ms, and **~2.6× faster than React and ~3.3× than Preact** at that size — plus an outright win on `append` (~1.14–1.20×, widened after the table-layout fix, 14.2ms vs Octane's 16.3ms) — and is **statistically tied with Octane** on create-1k, replace, partial-update, and remove. Octane, in turn, **wins `clear rows`** (a real ~1.45× on `main` today, not a timer artifact — and a real architectural gap, since Octane registers no per-row subscriptions at all; a separate fix, still open, narrows it to ~1.15× without closing it). `select row` is at the floor of what real-Chromium timing can resolve for both. (Real Chromium, published deps, every competitor on its own documented fast path; retained memory is a 3-way tie with Preact for 3rd of 8, not a win.)
 - **77 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
-- **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
+- **Migration paths.** Drop-in compat layers for React, Preact, Vue, Solid, and Svelte.
 
 ## Quick Start
 
@@ -113,7 +113,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/virtual`](packages/fundamentals/virtual/) | TanStack Virtual adapter — element and window virtualizers |
 | [`@pyreon/i18n`](packages/fundamentals/i18n/) | Reactive i18n — async namespaces, plurals, interpolation |
 | [`@pyreon/feature`](packages/fundamentals/feature/) | Schema-driven CRUD — auto-generated queries, forms, tables, stores |
-| [`@pyreon/charts`](packages/fundamentals/charts/) | Two engines: a lazy-loaded ECharts bridge, and Pyreon's own tree-shakeable plot engine with canvas + server-side SVG backends |
+| [`@pyreon/charts`](packages/fundamentals/charts/) | Charts on web, iOS and Android — `<Chart>` with mark children over a first-party engine (21 chart families), canvas + SVG backends, tree-shakeable marks |
 | [`@pyreon/storage`](packages/fundamentals/storage/) | Reactive storage — localStorage, sessionStorage, cookies, IndexedDB |
 | [`@pyreon/hooks`](packages/fundamentals/hooks/) | 65 hooks — useHover, useFocus, useBreakpoint, useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useImagePicker, useFilePicker, useDialog, useTimeAgo, etc. |
 | [`@pyreon/hotkeys`](packages/fundamentals/hotkeys/) | Keyboard shortcuts — scope-aware, modifier keys, conflict detection |
@@ -129,6 +129,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/sync`](packages/fundamentals/sync/) | Local-first CRDT sync — a synced signal IS a signal; Yjs, IndexedDB, cross-tab + WebSocket, presence / live cursors |
 | [`@pyreon/rich-text`](packages/fundamentals/rich-text/) | Reactive WYSIWYG — signal-backed TipTap / ProseMirror, lazy-loaded, a11y-labeled |
 | [`@pyreon/a11y`](packages/fundamentals/a11y/) | A11y primitives — `announce()` live regions, `<VisuallyHidden>`, `createA11yId`, zero setup |
+| [`@pyreon/auth`](packages/fundamentals/auth/) | Authentication on web, iOS and Android — OIDC sign-in (`useOidc`), ID-token verification, signed sessions, TOTP, passkeys, route guards |
 
 ### UI System
 
@@ -144,7 +145,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/kinetic`](packages/ui-system/kinetic/) | CSS-transition animations |
 | [`@pyreon/kinetic-presets`](packages/ui-system/kinetic-presets/) | 120+ animation presets |
 | [`@pyreon/connector-document`](packages/ui-system/connector-document/) | Bridge between ui-system styled components and `@pyreon/document` |
-| [`@pyreon/document-primitives`](packages/ui-system/document-primitives/) | Rocketstyle document components — render in the browser, export to 18 formats |
+| [`@pyreon/document-primitives`](packages/ui-system/document-primitives/) | Rocketstyle document components — render in the browser, export to 20 formats |
 
 ### Tools
 
@@ -160,7 +161,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/solid-compat`](packages/tools/solid-compat/) | Drop-in Solid compatibility layer |
 | [`@pyreon/svelte-compat`](packages/tools/svelte-compat/) | Drop-in Svelte compatibility layer |
 | [`@pyreon/testing`](packages/tools/testing/) | Test kit at Testing-Library parity — `render`/`screen`/`fireEvent`, jest-dom matchers, plus reactive fire-count / leak matchers |
-| [`@pyreon/cli`](packages/tools/cli/) | `pyreon` CLI — `doctor`, `check`, `add`, `new`, `mcp`, `lint`, `info`, `upgrade` |
+| [`@pyreon/cli`](packages/tools/cli/) | `pyreon` CLI — `doctor`, `check`, `add`, `new`, `mcp`, `lint`, `info`, `upgrade`, `plain`, `context`, plus `atlas` / `loom` / `lathe` delegators |
 | [`@pyreon/mcp`](packages/tools/mcp/) | MCP server — API reference, patterns, `validate`, `diagnose` for AI assistants |
 | [`@pyreon/config`](packages/tools/config/) | One `pyreon.config.ts` for the whole ecosystem — a typed section per package |
 | [`@pyreon/atlas`](packages/tools/atlas/) | AI-native component workbench — derives, verifies, and serves a machine-readable component catalog |
@@ -188,7 +189,7 @@ The Pyreon Multi-Target Compiler (PMTC) lowers a subset of Pyreon JSX to native 
 | [`@pyreon/native-cli`](packages/native/cli/) | CLI that builds a directory of Pyreon sources to SwiftUI and Jetpack Compose with `@pyreon/native-compiler` |
 | [`@pyreon/native-runtime-swift`](packages/native/runtime-swift/) | Swift Package Manager runtime that compiler-emitted SwiftUI code links against on iOS |
 | [`@pyreon/native-runtime-kotlin`](packages/native/runtime-kotlin/) | Kotlin runtime that compiler-emitted Jetpack Compose code links against on Android |
-| [`@pyreon/native-router-swift`](packages/native/router-swift/) | `@pyreon/router`'s API (`RouterProvider`, `RouterView`, `Link`, `useNavigate`, `useParams`) for SwiftUI, built on `NavigationStack` |
+| [`@pyreon/native-router-swift`](packages/native/router-swift/) | `@pyreon/router`'s API (`RouterProvider`, `RouterView`, `PyreonLink`, `useNavigate`, `useParams`) for SwiftUI, built on `NavigationStack` |
 | [`@pyreon/native-router-kotlin`](packages/native/router-kotlin/) | `@pyreon/router`'s API (`RouterProvider`, `RouterView`, `PyreonLink`, `useNavigate`, `useParams`) for Android Jetpack Compose |
 
 ## How It Works
@@ -197,7 +198,7 @@ The Pyreon Multi-Target Compiler (PMTC) lowers a subset of Pyreon JSX to native 
 Signal write -> notify subscribers -> re-run affected effects -> patch DOM nodes
 ```
 
-There is no virtual DOM tree. There is no diffing pass. Each signal maintains a `Set<Effect>` of subscribers. When a signal is written, only those effects re-run, and each effect updates exactly one DOM node.
+There is no virtual DOM tree. There is no diffing pass. Each signal tracks its subscribers directly (an inline slot for the first, promoted to a `Set` on the second). When a signal is written, only those effects re-run, and each effect updates exactly one DOM node.
 
 **React (every state change):**
 
@@ -220,7 +221,7 @@ signal.set() -> re-run 1 effect -> update 1 DOM node
 | SSR streaming | Yes | Yes | Yes | Yes |
 | Island architecture | No | No | Partial | Yes |
 | Bundle (core) | ~42 kB | ~34 kB | ~7 kB | ~6 kB |
-| Migration support | -- | -- | -- | React, Vue, Solid, Preact |
+| Migration support | -- | -- | -- | React, Preact, Vue, Solid, Svelte |
 
 ## Documentation
 
@@ -230,13 +231,13 @@ Full documentation at [pyreon.dev](https://pyreon.dev) (Pyreon-native site in `d
 
 ```bash
 bun install                # install dependencies
-bun run test               # run all tests (7,500+)
+bun run test               # run all tests
 bun run lint               # lint (oxlint)
 bun run format             # format (oxfmt)
 bun run typecheck          # typecheck all packages
 ```
 
-The monorepo uses Bun workspaces with 77 packages across 6 categories (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`). Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+The monorepo uses Bun workspaces. 77 packages across 6 categories are published (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`), plus private internals. Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
 
 ## License
 

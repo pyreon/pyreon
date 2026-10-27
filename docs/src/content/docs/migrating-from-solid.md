@@ -42,7 +42,7 @@ Reading is identical (`count()`). Writing moves from a separate `setCount` to `c
 | `batch(fn)` | `batch(fn)` | same |
 | `untrack(fn)` | `untrack(fn)` | same |
 | `<Show when={c()}>` | `<Show when={c}>` | Pyreon accepts an accessor **or** a value |
-| `<Index>` / `<Switch>` / `<Match>` | same names | same control-flow set |
+| `<Switch>` / `<Match>` | same names | same control flow (Solid's `<Index>` exists only in `@pyreon/solid-compat`) |
 
 ## The one JSX difference: keyed `<For>`
 
@@ -58,7 +58,7 @@ Solid's `<For>` keys by **reference identity** of each item. Pyreon's `<For>` ke
 <For each={rows} by={row => row.id}>{row => <tr>{row.label}</tr>}</For>
 ```
 
-Two things: pass the **signal** to `each` (not `rows()`), and give it a stable `by` key. (`<Index>` is available when you want index-based keying like Solid's.)
+Two things: pass the **signal** to `each` (not `rows()`), and give it a stable `by` key. (Pyreon core has no `<Index>`; it exists only in `@pyreon/solid-compat`. In native Pyreon, key by a stable `by`.)
 
 ## Reactive item reads in `<For>`
 

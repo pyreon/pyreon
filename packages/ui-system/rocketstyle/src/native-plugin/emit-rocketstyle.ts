@@ -13,8 +13,7 @@
 // switch on the dimension's value. Each StyleProperty in the IR
 // belongs to ONE dimension (rocketstyle's structural rule: dimensions
 // don't overlap on a given CSS property). The TSX-source →
-// RocketstyleIR parser is a follow-up; this PR exercises the emitter
-// shape against hand-built IR.
+// RocketstyleIR parser lives in `parse-rocketstyle.ts`.
 //
 // Trade-off: Phase 0 emits the FULL matrix-resolution shape even when
 // only ONE dimension actually varies a property — keeps the structure

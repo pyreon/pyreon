@@ -64,7 +64,7 @@ mount(
 For SSR, use `renderWithHead` which automatically creates and injects a head context:
 
 ```tsx
-import { renderWithHead } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head/ssr'
 
 const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
 
@@ -835,12 +835,29 @@ interface HeadTag {
 
 ## SSR: renderWithHead
 
-`renderWithHead` renders a Pyreon app to HTML and extracts all head tags into a serialized string:
+`renderWithHead` renders a Pyreon app to HTML and extracts all head tags into a serialized string. It lives on the `@pyreon/head/ssr` subpath (the main entry stays client-safe):
 
 ```tsx
-import { renderWithHead } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head/ssr'
 
 const result = await renderWithHead(<App />)
+```
+
+`renderWithHead(app, options?)` accepts one option, `nonce`: a per-request CSP nonce stamped onto every inline `<script>`/`<style>` tag the head emits (a tag that already carries its own `nonce` keeps it). Omit it for SSG or when no CSP is in use.
+
+```tsx
+const { html, head } = await renderWithHead(<App />, { nonce })
+```
+
+`serializeHead(tags, titleTemplate?, nonce?)` (also on `@pyreon/head/ssr`) is the string-producing half on its own, for pipelines that resolve the head separately from the app render:
+
+```ts
+import { createHeadContext } from '@pyreon/head'
+import { serializeHead } from '@pyreon/head/ssr'
+
+const ctx = createHeadContext()
+// ...render with ctx provided...
+const head = serializeHead(ctx.resolve(), ctx.resolveTitleTemplate())
 ```
 
 ### RenderWithHeadResult
@@ -1065,7 +1082,8 @@ const Dashboard = defineComponent(() => {
 | `HeadProvider`      | Component | Provide head context to component tree (CSR) |
 | `createHeadContext` | Function  | Create a head context store                  |
 | `HeadContext`       | Context   | The Pyreon context object (for advanced use) |
-| `renderWithHead`    | Function  | SSR: render app with head extraction         |
+| `renderWithHead`    | Function  | SSR: render app with head extraction (`@pyreon/head/ssr`) |
+| `serializeHead`     | Function  | SSR: serialize resolved tags to a `<head>` fragment (`@pyreon/head/ssr`) |
 
 ## Type Exports
 
@@ -1076,7 +1094,10 @@ const Dashboard = defineComponent(() => {
 | `HeadEntry`            | An entry containing tags and attributes |
 | `HeadContextValue`     | The context value interface             |
 | `HeadProviderProps`    | Props for `HeadProvider`                |
-| `RenderWithHeadResult` | Return type of `renderWithHead`         |
+| `RenderWithHeadResult` | Return type of `renderWithHead` (`@pyreon/head/ssr`) |
+| `RenderWithHeadOptions` | Options for `renderWithHead` (`{ nonce? }`) (`@pyreon/head/ssr`) |
+| `MetaTag` / `LinkTag` / `ScriptTag` / `StyleTag` / `BaseTag` | Tag shapes accepted by `useHead` |
+| `SpeculationRules` / `SpeculationRule` / `SpeculationEagerness` | Speculation Rules input types |
 
 ## Script Tags & Defer Default
 

@@ -551,7 +551,8 @@ The shared component is exactly what you write for the web:
 
 ```tsx
 import { useOidc } from '@pyreon/auth'
-import { Button, Show, Stack, Text } from '@pyreon/primitives'
+import { Show } from '@pyreon/core'
+import { Button, Stack, Text } from '@pyreon/primitives'
 
 export function Account() {
   const auth = useOidc({
@@ -698,5 +699,6 @@ The live demo at the top of this page is built exactly this way — its provider
 | Passkeys | `passkeyChallenge`, `verifyRegistration`, `verifyAssertion`, `derToRaw` |
 | Hardening | `createAttemptLimiter`, `timingSafeEqual` |
 | PKCE | `generateCodeVerifier`, `codeChallengeS256`, `randomToken`, `base64url`, `decodeBase64url` |
+| Passport bridge (`@pyreon/auth/passport`, server only) | `runStrategy(strategy, input, options?)` — run any Passport strategy without Express or Passport itself; resolves with a `PassportOutcome` (`success` / `fail` / `redirect` / `pass`) and rejects only on a strategy `error()`. Types: `PassportStrategyLike`, `PassportRequest`, `PassportInput`, `PassportOutcome` |
 
-Every signature, option and common mistake is in the [API reference](/docs/reference/auth).
+Every signature, option, option / result type and common mistake is in the [API reference](/docs/reference/auth).

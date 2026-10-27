@@ -128,10 +128,10 @@ export default {
 | `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, workers?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, revalidateTimeoutMs?, cacheKey?, expireOnTimeout?, store?, revalidateRequest?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
 | `routeRules` | `Record<string, { renderMode?: RenderMode }>`                                 | —       | Central glob-keyed per-path render-mode overrides (`'*'` = one segment, `'**'` = any depth). Applies only to routes without their own `renderMode` export — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
-| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
+| `adapter`    | `"node" \| "bun" \| "deno" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
 | `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication (fans every route into per-locale copies at build) — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)**. Independent of the `i18nRouting()` Vite plugin below, which only does request-time locale detection — the two compose |
-| `middleware` | `Middleware[]`                                                                | `[]`    | App-level server middleware, applied to every route            |
+| `middleware` | `Middleware[]`                                                                | `[]`    | Not applied by the `zero()` plugin (code cannot cross into the server bundle; a non-empty value is reported as dropped). Pass middleware to `createServer({ middleware })` in `src/entry-server.ts` |
 | `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                     |
 | `typedRoutes`| `boolean`                                                                     | `false` | Generate `src/pyreon-routes.d.ts` so `<Link href>` autocompletes your routes — see **[Typed routes](#typed-routes)** |
 | `entryClient`| `string \| false`                                                             | `'/src/entry-client.ts'` | Client entry module, auto-injected as a `<script type="module">` before `<!--pyreon-scripts-->` in `index.html`. `false` disables auto-injection (you add the `<script>` tag yourself) |
@@ -969,8 +969,7 @@ It creates the bag on first call, so neither middleware has to know which ran fi
 ### CSP Nonce
 
 ```tsx
-import { cspMiddleware } from '@pyreon/zero/csp'
-import { useNonce } from '@pyreon/zero/server'
+import { cspMiddleware, useNonce } from '@pyreon/zero/csp'
 
 cspMiddleware({ directives: { 'default-src': ["'self'"], 'script-src': ["'self'", "'nonce'"] } })
 
@@ -988,7 +987,7 @@ function InlineScript() {
 API routes are `.ts` files in `src/routes/api/` that export HTTP method handlers and return `Response` objects.
 
 ```ts title="src/routes/api/posts.ts"
-import type { ApiContext } from '@pyreon/zero'
+import type { ApiContext } from '@pyreon/zero/api-routes'
 
 export function GET(ctx: ApiContext) {
   return Response.json([{ id: 1, title: 'Hello World' }])
@@ -1911,13 +1910,22 @@ Reports LCP, CLS, INP, FCP and TTFB with `web-vitals`-library semantics (activat
 | `@pyreon/zero/server`      | `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `ogImagePlugin`, `iconsPlugin`, `i18nRouting`, `vercelRevalidateHandler`, fs-router helpers, `createISRHandler`, `createFsStore`, `createMemoryStore`, default = `zeroPlugin` |
 | `@pyreon/zero/client`      | `startClient`                                                                        |
 | `@pyreon/zero/config`      | `defineConfig`, `resolveConfig`                                                       |
+| `@pyreon/zero/edge`        | Request-time runtime without build tooling: `createServer`, `createApp`, `createISRHandler`, `createMemoryStore`, `compose`, `getContext`, `render404Page`. The edge sub-build resolves `@pyreon/zero/server` to this module |
+| `@pyreon/zero/app`         | `createApp`                                                                          |
+| `@pyreon/zero/pipeline`    | The request pipeline shared by `createServer` and the dev server: `createRequestPipeline`, `runRequestPipeline`, `DATA_ENDPOINT` |
+| `@pyreon/zero/middleware`  | `compose`, `getContext`                                                              |
 | `@pyreon/zero/image`       | `Image`, `useImage`, `createImage`                                                   |
+| `@pyreon/zero/no-optimize` | `NoOptimize`, `useNoOptimize` — subtree opt-out of image optimization                 |
+| `@pyreon/zero/use-resource-hints` | `usePreconnect`, `useDnsPrefetch`, `usePreload`                              |
 | `@pyreon/zero/link`        | `Link`, `useLink`, `createLink`, `prefetchRoute`                                     |
 | `@pyreon/zero/script`      | `Script`, `useScript`, `createScript`                                                |
 | `@pyreon/zero/meta`        | `Meta`, `buildMetaTags`                                                              |
 | `@pyreon/zero/theme`       | Theme signals + `ThemeToggle`                                                         |
 | `@pyreon/zero/font`        | `fontPlugin`, `fontVariables`                                                         |
 | `@pyreon/zero/image-plugin`| `imagePlugin`                                                                        |
+| `@pyreon/zero/image-types` | Ambient types for `?optimize` / `?component` / `?raw` image imports (`/// <reference types="@pyreon/zero/image-types" />`) |
+| `@pyreon/zero/font-import-plugin` | `fontImportPlugin` (`?font` imports → `FontDescriptor` + generated `@font-face`)   |
+| `@pyreon/zero/font-types`  | Ambient types for `?font` imports                                                    |
 | `@pyreon/zero/cache`       | `cacheMiddleware`, `securityHeaders`, `varyEncoding`                                  |
 | `@pyreon/zero/seo`         | `seoPlugin`, `seoMiddleware`, `generateSitemap`, `generateRobots`, `jsonLd`           |
 | `@pyreon/zero/actions`     | `defineAction`, `fail`, `Form`, `useSubmission`, `createActionMiddleware`             |
@@ -1925,7 +1933,7 @@ Reports LCP, CLS, INP, FCP and TTFB with `web-vitals`-library semantics (activat
 | `@pyreon/zero/cors`        | `corsMiddleware`                                                                     |
 | `@pyreon/zero/rate-limit`  | `rateLimitMiddleware`                                                                 |
 | `@pyreon/zero/compression` | `compressionMiddleware`                                                              |
-| `@pyreon/zero/csp`         | `cspMiddleware`                                                                       |
+| `@pyreon/zero/csp`         | `cspMiddleware`, `useNonce`, `buildCspHeader`, `cspHashForInlineScript`               |
 | `@pyreon/zero/env`         | `validateEnv`, `schema`, `publicEnv`                                                  |
 | `@pyreon/zero/logger`      | `loggerMiddleware`                                                                   |
 | `@pyreon/zero/favicon`     | `faviconPlugin`, `faviconLinks`                                                       |

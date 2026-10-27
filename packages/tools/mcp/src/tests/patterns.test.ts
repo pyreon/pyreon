@@ -227,7 +227,9 @@ describe('formatPatternBody', () => {
     const devWarnings = findPattern(registry, 'dev-warnings')!
     const out = formatPatternBody(devWarnings)
     expect(out).toContain('# Dev-mode warnings')
-    expect(out).toContain('import.meta.env')
+    // The pattern teaches the bundler-agnostic bare gate; `import.meta.env`
+    // appears only in its anti-pattern section.
+    expect(out).toContain("process.env.NODE_ENV !== 'production'")
   })
 
   it('appends a See also footer when seeAlso is populated', () => {

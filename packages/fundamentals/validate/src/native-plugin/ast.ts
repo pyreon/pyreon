@@ -3,7 +3,14 @@
 // deciders go through THESE functions — they run at different times, so a hand-copied predicate would be free to
 // drift from the one that actually lowers.
 
-import { dynamicKeyText, hasDynamicKey, staticPropKey, unwrapTypeLayers, type ModuleParseContext } from '@pyreon/native-compiler/plugin-api'
+import {
+  dynamicKeyText,
+  hasDynamicKey,
+  literalScalar,
+  staticPropKey,
+  unwrapTypeLayers,
+  type ModuleParseContext,
+} from '@pyreon/native-compiler/plugin-api'
 import type { FieldMetaDefnIR } from './ir'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
@@ -120,13 +127,26 @@ export function extractLiteralFieldMeta(
     const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
-    if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
-      meta.push({ name: keyName, value: valueNode.value })
-    } else {
-      // Non-string meta values silently dropped in v1 (the audit's
-      // Strategy-A complexity is per-validator schema introspection,
-      // not the meta map; richer meta types are a follow-up).
+    const value = metaScalar(valueNode)
+    if (value !== undefined) {
+      meta.push({ name: keyName, value })
+    } else if (report) {
+      // `FieldMeta` also carries `autoFocus: boolean` and `defaultValue: unknown`, so a non-string value is
+      // ordinary. Strings, booleans and numbers lower; anything else (an object, an array, a variable) has no
+      // compile-time value, and dropping it silently would leave `field.<key>` unresolved in native code.
+      report.ctx.report(
+        `${report.where}: the value of \`${keyName}\` is not a string, number or boolean literal, so it cannot be baked into the native field metadata and is left out. Write it as a literal, or read it from your own code instead of the metadata.`,
+      )
     }
   }
   return meta
+}
+
+/** A meta value that has a compile-time literal: a string, a boolean, or a number (a leading minus folds in). */
+function metaScalar(node: AnyNode | undefined): string | number | boolean | undefined {
+  if (node?.type === 'UnaryExpression' && node.operator === '-') {
+    const inner = literalScalar(unwrapTypeLayers(node.argument as AnyNode | undefined))
+    return typeof inner === 'number' ? -inner : undefined
+  }
+  return literalScalar(node)
 }
