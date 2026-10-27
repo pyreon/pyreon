@@ -1888,7 +1888,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (field) return field
       }
       if (objType.kind === 'array') {
-        // `.length` and `.at()` etc. — minimal coverage for now.
+        // Property reads only: `length` is the sole array property. Methods
+        // such as `.at()` are typed in the call branch.
         if (expr.property === 'length') return { kind: 'number' }
       }
       // `s.length` on a string → number (Swift `.count`). Without this,

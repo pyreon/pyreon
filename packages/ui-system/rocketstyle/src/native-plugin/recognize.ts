@@ -234,8 +234,8 @@ function unwrapDimBody(arg: AnyNode | undefined): AnyNode | undefined {
 /**
  * An object literal (`{ backgroundColor: '#2563eb', padding: 8 }`) → a style
  * object ExprIR (camelCase keys already; literal values only). A non-literal
- * value (theme-token member `t.color.primary`, a ternary, a call) → dropped +
- * warned (theme-token resolution is the tracked follow-up).
+ * value that is neither a literal nor a resolvable theme token (a ternary, a
+ * call) → dropped + warned.
  */
 function objectExprToStyleObject(
   obj: AnyNode | undefined,

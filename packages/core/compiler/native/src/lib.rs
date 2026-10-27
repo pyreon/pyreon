@@ -755,8 +755,8 @@ struct Ctx<'a> {
     /// `selector(k) ? a : b` ternary auto-promotion to `.subscribe(k, m => ...)`.
     /// See JS backend's `selectorVars` for parity.
     selector_vars: FxHashSet<String>,
-    /// Shadowed selector names — populated by find_shadowing logic in
-    /// future PR. Currently always empty (matches JS backend's TODO).
+    /// Shadowed selector names. Currently always empty (the JS backend's
+    /// `shadowedSelectors` set is likewise never populated).
     shadowed_selectors: FxHashSet<String>,
     /// Bindings whose initializer is DIRECTLY a JSX element/fragment
     /// (optionally parenthesized) — e.g. `const header = <h1/>`. A bare

@@ -337,8 +337,9 @@ export function _resetObservationCache(): void {
  * SCOPE: this validates emit that references ONLY SwiftUI + stdlib +
  * Foundation symbols. Emit that references the `PyreonRuntime` package
  * (storage / fetch / store / router components) needs that module on the
- * search path — a follow-up that builds the runtime module and passes
- * `-I`. For now, callers pass SwiftUI-only emit (the dominant shape).
+ * search path; that emit is type-checked against the real runtime sources in
+ * `tests/real-runtime-typecheck.test.ts`. Callers of this function pass
+ * SwiftUI-only emit (the dominant shape).
  *
  * Skips (does NOT fail) when SwiftUI is unavailable (Linux / no macOS
  * SDK), honoring PYREON_REQUIRE_NATIVE_VALIDATE for the swiftc-absent
@@ -504,10 +505,9 @@ function shadowStubDeclarations(stub: string, emit: string): string {
  * real on the Linux toolchain, so `String.trimmingCharacters`, `Codable`, etc.
  * type-check for real rather than against a stub.
  *
- * SCOPE: the stub covers the surface the two shipped example apps emit. Emit that
- * references symbols outside the stub (Spacer / ScrollView / Image / @Observable /
- * PyreonRouter / fetch / …) will fail here until the stub is expanded — a tracked
- * follow-up. Callers pass emit known to be within the stub surface.
+ * SCOPE: the stub covers the surface the shipped example apps and compiler
+ * fixtures emit. Emit that references symbols outside the stub will fail here
+ * until the stub is expanded. Callers pass emit known to be within the stub surface.
  *
  * Honors PYREON_SKIP_NATIVE_VALIDATE (force skip) and PYREON_REQUIRE_NATIVE_VALIDATE
  * (fail-on-absent) identically to `validateSwift` / `validateKotlin`.

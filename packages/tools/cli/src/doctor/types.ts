@@ -4,14 +4,11 @@
  * Each programmatic gate (`runDistributionGate`, `runDocClaimsGate`, ...)
  * returns `GateResult`. The aggregator in `pyreon doctor` merges every
  * gate's findings into a `DoctorReport` with per-category subscores + an
- * overall 0-100 health score — that aggregation layer lands in the
- * follow-up PR (this PR is foundation-only).
+ * overall 0-100 health score.
  *
- * Why a unified shape now (PR 1) instead of together with the aggregator
- * (PR 2): the gates are independently usable today via standalone scripts
- * (`bun run check-distribution`, etc.). Locking the shape early means the
- * scripts and the future aggregator consume the same `Finding[]` — no
- * shim layer.
+ * Why a unified shape: the gates are independently usable via standalone
+ * scripts (`bun run check-distribution`, etc.). The scripts and the
+ * aggregator consume the same `Finding[]` — no shim layer.
  *
  * Mirrors the existing per-detector shapes (`IslandFinding`, `SsgFinding`,
  * `TestAuditEntry`) but elevated to a cross-gate vocabulary. Categories

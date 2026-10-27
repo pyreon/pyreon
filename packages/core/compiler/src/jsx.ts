@@ -4332,7 +4332,7 @@ export function transformJSX_JS(
       }
       // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
       // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
-      // to the h() path on any non-eligible shape. JS backend only for now.
+      // to the h() path on any non-eligible shape.
       if (ssrTemplate && trySsrTemplateEmit(node)) {
         return
       }
