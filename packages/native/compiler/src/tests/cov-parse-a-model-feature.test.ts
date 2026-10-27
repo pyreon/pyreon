@@ -194,10 +194,16 @@ describe('withField(schema, meta)', () => {
     expect(has(src, 'second argument must be a literal meta object')).toBe(true)
   })
 
-  it('a meta object with no STRING-valued entry is declined', () => {
-    const src = wf(`const F = withField(s.string(), { n: 1 })`)
+  it('a meta object with no LITERAL-valued entry is declined', () => {
+    const src = wf(`const k = 1\nconst F = withField(s.string(), { n: k })`)
     expect(has(src, 'no recognized meta fields')).toBe(true)
     expect(emitsMeta(src)).toBe(false)
+  })
+
+  it('a number-valued entry lowers (non-string meta is kept, not declined)', () => {
+    const src = wf(`const F = withField(s.string(), { n: 1 })`)
+    expect(has(src, 'no recognized meta fields')).toBe(false)
+    expect(emitsMeta(src)).toBe(true)
   })
 })
 

@@ -7,6 +7,7 @@
 // X.label / X.placeholder directly.
 
 import { describe, expect, it } from 'vitest'
+import { validateKotlin, validateSwiftWithStubs } from '../validate'
 import { transform } from './first-party-plugins'
 
 const SRC = `
@@ -55,23 +56,66 @@ export const f = withField(schema, dynamicMeta)
     expect(w).toBeDefined()
   })
 
-  it('Non-string meta values are silently dropped (v1 scope)', () => {
-    const src = `
+  // `FieldMeta` carries `autoFocus: boolean` and `defaultValue: unknown`, so
+  // non-string values are ordinary. They used to be dropped with no warning,
+  // leaving `field.autoFocus` unresolved in native code.
+  const SCALARS = `
 import { withField } from '@pyreon/validate'
 
-const schema = {} as unknown
+const schema = 'email'
 
 export const f = withField(schema, {
   label: 'Field',
   autoFocus: true,
   defaultValue: 42,
 })
+
+export const g = withField(schema, {
+  label: 'Offset',
+  defaultValue: -1.5,
+})
+`
+
+  it('Swift: boolean and number meta values lower as typed fields', () => {
+    const r = transform(SCALARS, { target: 'swift' })
+    expect(r.code).toContain('let label: String = "Field"')
+    expect(r.code).toContain('let autoFocus: Bool = true')
+    expect(r.code).toContain('let defaultValue: Int = 42')
+    expect(r.code).toContain('let defaultValue: Double = -1.5')
+    expect(r.warnings.filter((w) => w.includes('withField'))).toEqual([])
+    const v = validateSwiftWithStubs(r.code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
+  it('Kotlin: boolean and number meta values lower as typed fields', () => {
+    const r = transform(SCALARS, { target: 'kotlin' })
+    expect(r.code).toContain('val autoFocus: Boolean = true,')
+    expect(r.code).toContain('val defaultValue: Int = 42,')
+    expect(r.code).toContain('val defaultValue: Double = -1.5,')
+    const v = validateKotlin(r.code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
+  it('a meta value with no compile-time literal is named in a warning, not dropped silently', () => {
+    const src = `
+import { withField } from '@pyreon/validate'
+
+const schema = 'email'
+const hints = { short: 'Email' }
+
+export const f = withField(schema, {
+  label: 'Field',
+  i18nLabel: hints.short,
+  defaultValue: [1, 2],
+})
 `
     const r = transform(src, { target: 'swift' })
-    // Only the string `label` survives.
     expect(r.code).toContain('let label: String = "Field"')
-    expect(r.code).not.toContain('autoFocus')
+    expect(r.code).not.toContain('i18nLabel')
     expect(r.code).not.toContain('defaultValue')
+    for (const key of ['i18nLabel', 'defaultValue']) {
+      expect(r.warnings.some((w) => w.includes(`\`${key}\``) && w.includes('not a string, number or boolean literal'))).toBe(true)
+    }
   })
 
   it('Multiple withField sites emit independent structs', () => {
@@ -136,8 +180,8 @@ describe('@pyreon/validate withField — the import warning tracks the emit', ()
     const cases = [
       // meta is an identifier, not a literal object
       `const meta = { label: 'N' }\nexport const f = withField({}, meta)`,
-      // literal object, but no string-valued entries
-      `export const f = withField({}, { rows: 3 })`,
+      // literal object, but no entry has a compile-time literal value
+      `const rows = 3\nexport const f = withField({}, { rows })`,
       // imported but never declared at top level at all
       ``,
     ]
@@ -157,7 +201,7 @@ describe('@pyreon/validate withField — the import warning tracks the emit', ()
   it('keeps the per-declaration diagnostic for a sibling that does not lower', () => {
     const src = `import { withField } from '@pyreon/validate'
 export const a = withField({}, { label: 'A' })
-export const b = withField({}, { rows: 3 })
+export const b = withField({}, { rows: count })
 `
     const r = transform(src, { target: 'swift' })
     expect(r.code).toContain('PyreonFieldMeta_a')
