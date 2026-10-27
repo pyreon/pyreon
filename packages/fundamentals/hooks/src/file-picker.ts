@@ -33,7 +33,7 @@ import { onHookCleanup } from './lifecycle'
  */
 export function createFilePicker(
   configure: (input: HTMLInputElement) => void,
-): () => Promise<string | null> {
+): (configureCall?: (input: HTMLInputElement) => void) => Promise<string | null> {
   /** Abort handles for picks whose sheet is still open. */
   const inFlight = new Set<() => void>()
 
@@ -43,13 +43,15 @@ export function createFilePicker(
     inFlight.clear()
   })
 
-  return () => {
+  // `configureCall` is the per-pick half (`useFilePicker`'s `accept`); `configure` is the hook's fixed half.
+  return (configureCall) => {
     /* v8 ignore next — SSR arm; `isClient` is a module-load constant and this suite runs under happy-dom, so this is unreachable without mocking @pyreon/reactivity (forbidden by the test-environment rules). */
     if (!isClient) return Promise.resolve(null)
     return new Promise<string | null>((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
       configure(input)
+      configureCall?.(input)
       // Keep the input out of layout: it is only a programmatic trigger.
       input.style.display = 'none'
       document.body.appendChild(input)

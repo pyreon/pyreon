@@ -82,3 +82,43 @@ describe('M3.8 useFilePicker — Kotlin emit', () => {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 })
+
+// `pick(accept)` — the web `<input accept>` vocabulary, passed per pick. The array
+// lowers like any other: a literal to `["…"]` / `listOf("…")`, a const by name.
+// Both runtimes take it with a default, so the bare `pick()` above is unchanged.
+const ACCEPT_SRC = `import { signal } from '@pyreon/reactivity'
+import { useFilePicker } from '@pyreon/hooks'
+export function Files() {
+  const files = useFilePicker()
+  const status = signal('idle')
+  const images = ['image/*']
+  return (
+    <VStack>
+      <Text>{status()}</Text>
+      <Button onPress={async () => { const uri = await files.pick(['application/pdf', '.csv']); status.set(uri === null ? 'c' : 'p') }}>Docs</Button>
+      <Button onPress={async () => { const uri = await files.pick(images); status.set(uri === null ? 'c' : 'p') }}>Images</Button>
+    </VStack>
+  )
+}`
+
+describe('useFilePicker — pick(accept)', () => {
+  it('passes the accept list through on both targets, with no warning', () => {
+    const swift = transform(ACCEPT_SRC, { target: 'swift' })
+    expect(swift.warnings).toEqual([])
+    expect(swift.code).toContain('await files.pick(["application/pdf", ".csv"])')
+    const kotlin = transform(ACCEPT_SRC, { target: 'kotlin' })
+    expect(kotlin.warnings).toEqual([])
+    expect(kotlin.code).toContain('files.pick(listOf("application/pdf", ".csv"))')
+    expect(kotlin.code).toContain('files.pick(images)')
+  })
+
+  it.skipIf(!isSwiftcAvailable())('Swift emit typechecks against the stubs', () => {
+    const v = validateSwiftWithStubs(transform(ACCEPT_SRC, { target: 'swift' }).code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('Kotlin emit typechecks against the stubs', () => {
+    const v = validateKotlin(transform(ACCEPT_SRC, { target: 'kotlin' }).code)
+    expect(v.ok, v.error).toBe(true)
+  })
+})

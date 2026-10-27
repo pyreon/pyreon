@@ -24,9 +24,11 @@
 // UIDocumentPickerViewController, so the whole implementation is gated on UIKit.
 
 import Foundation
+#if canImport(UniformTypeIdentifiers)
+import UniformTypeIdentifiers
+#endif
 #if canImport(UIKit)
 import UIKit
-import UniformTypeIdentifiers
 #endif
 
 public struct PyreonFilePicker {
@@ -52,16 +54,17 @@ public struct PyreonFilePicker {
     /// `startAccessingSecurityScopedResource()` / `stop…`, so the bytes must be
     /// copied into an app-owned location before that access ends. Treat the
     /// result as ephemeral: the OS may reclaim `NSTemporaryDirectory()`.
-    public func pick() async -> String? {
+    ///
+    /// `accept` limits the selectable files, in the web `<input accept>`
+    /// vocabulary (see `contentTypes(for:)`); empty means any file.
+    public func pick(_ accept: [String] = []) async -> String? {
         #if canImport(UIKit)
         guard let presenter = await PyreonFilePicker.topViewController() else {
             return nil
         }
         return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
             _Concurrency.Task { @MainActor in
-                // `.item` is the broadest UTType — any file. A typed filter is a
-                // follow-up (the emit passes no argument today).
-                let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.item])
+                let picker = UIDocumentPickerViewController(forOpeningContentTypes: PyreonFilePicker.contentTypes(for: accept))
                 picker.allowsMultipleSelection = false
 
                 // The continuation MUST resume exactly once. didPick and
@@ -96,6 +99,44 @@ public struct PyreonFilePicker {
         return nil
         #endif
     }
+
+    #if canImport(UniformTypeIdentifiers)
+    /// The UTTypes for a web-style `accept` list: a MIME type or `.ext` resolves
+    /// through UTType's own tables, and the four common wildcards map to their
+    /// umbrella types. Anything unresolvable (including a type UTType only knows
+    /// as a dynamic placeholder), or an empty list, widens to
+    /// `.item` (any file): a filter that is too broad shows extra files, one
+    /// that is too narrow hides the file the user wants.
+    static func contentTypes(for accept: [String]) -> [UTType] {
+        var out: [UTType] = []
+        for raw in accept {
+            let entry = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            if entry.isEmpty { continue }
+            let resolved: UTType?
+            switch entry {
+            case "*/*": resolved = .item
+            case "image/*": resolved = .image
+            case "video/*": resolved = .movie
+            case "audio/*": resolved = .audio
+            case "text/*": resolved = .text
+            default:
+                if entry.hasPrefix(".") {
+                    resolved = UTType(filenameExtension: String(entry.dropFirst()))
+                } else if entry.contains("/") {
+                    resolved = UTType(mimeType: entry)
+                } else {
+                    resolved = nil
+                }
+            }
+            // UTType invents a DYNAMIC type for a MIME type or extension it does
+            // not know rather than returning nil; no real file conforms to it, so
+            // filtering on it would show nothing. Treat it as unresolved.
+            guard let type = resolved, !type.isDynamic else { return [.item] }
+            if !out.contains(type) { out.append(type) }
+        }
+        return out.isEmpty ? [.item] : out
+    }
+    #endif
 
     #if canImport(UIKit)
     private static var delegateKey: UInt8 = 0

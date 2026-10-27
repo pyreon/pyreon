@@ -1257,7 +1257,7 @@ class PyreonImagePicker {
 class PyreonFilePicker {
   var launcher: ActivityResultLauncher<Array<String>>? = null
   fun onResult(uri: String?) {}
-  suspend fun pick(): String? = null
+  suspend fun pick(accept: List<String> = emptyList()): String? = null
   fun isAvailable(): Boolean = true
 }
 
