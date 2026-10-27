@@ -11,14 +11,13 @@
 
 plugins {
     id("com.android.application")
-    kotlin("android")
     kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.21"
 }
 
 android {
     namespace = "com.pyreon"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.pyreon.PyreonRouterDemo"
@@ -68,13 +67,12 @@ dependencies {
     // Compose BOM — same version as native-todomvc-android and
     // native-counter-android for consistency across the Android
     // example fleet.
-    // COMPILE-SDK CEILING. AGP 8.13.2 supports compileSdk 36 at most, and an
+    // COMPILE-SDK CEILING. AGP 9.4 supports compileSdk 37 at most, and an
     // androidx artifact declares its own `minCompileSdk` in AAR metadata — a
     // dependency above the ceiling fails `checkDebugAarMetadata`, not the
-    // compile. Verified from the artifacts: compose-bom 2026.08.00 ships
-    // compose 1.12 (needs 37) and androidx.core 1.19.0 needs 37, so both are
-    // held one release back. Raising either requires AGP 9 + compileSdk 37.
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    // compile. compose 1.12 (compose-bom 2026.08.00+) and androidx.core 1.19
+    // need 37, which is why this app compiles against 37.
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -82,14 +80,14 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     // TWO runtime sources in the runtime-kotlin srcDir import okhttp3:
     // PyreonWebSocketOkHttp.kt (the default transport behind the TS-side
     // ws.connect()) and PyreonHttpOkHttp.kt (the executor behind a
     // `useFetch(url, { method })` — the HTTP layer had NO Android edge at all
     // until it was written). Every app compiling the runtime srcDir needs the
     // dep whether or not it uses either (the srcDir compiles all sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
@@ -102,7 +100,7 @@ dependencies {
     // whose artifact is missing fails only at the real gradle build,
     // the stub-masked-symbol class).
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
@@ -112,7 +110,7 @@ dependencies {
     // so without this line ui-test-junit4 resolves VERSIONLESS
     // ("Could not find androidx.compose.ui:ui-test-junit4:" — the
     // first device-CI run to reach dependency resolution caught it).
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
