@@ -437,8 +437,8 @@
       "warnings": 0
     },
     "golden-fixture:a11y-02.tsx|kotlin": {
-      "sha": "f4ea4d5f46eb93c87b342b7c6c8f9841cb42f13c41690a5dc0a137c0db51e7a4",
-      "bytes": 303,
+      "sha": "8f023fd0010ed19b841c760f3e30cf155e24bda13e7f8cb70a4893baad84be45",
+      "bytes": 340,
       "warnings": 0
     },
     "golden-fixture:a11y-03.tsx|swift": {
@@ -447,8 +447,8 @@
       "warnings": 0
     },
     "golden-fixture:a11y-03.tsx|kotlin": {
-      "sha": "acc41943c568ae4bf66857097e0c920cb613da1409f6fa260c53778f40a80842",
-      "bytes": 315,
+      "sha": "7a54769bc3e42bb392272cd7e1e34260cc6d0a0da7d93e6ee50a59db21f4e87e",
+      "bytes": 350,
       "warnings": 0
     },
     "golden-fixture:a11y-04.tsx|swift": {
@@ -507,8 +507,8 @@
       "warnings": 0
     },
     "golden-fixture:a11y-09.tsx|kotlin": {
-      "sha": "21958b855afa20b0fbc7d81eb2855068b737a613f94a54a573e62cf371345f29",
-      "bytes": 303,
+      "sha": "601b2577754028d6ccd52701f392fae2fcc596f0e163afe001341097f99fd66c",
+      "bytes": 338,
       "warnings": 0
     },
     "golden-fixture:a11y-10.tsx|swift": {
@@ -517,8 +517,8 @@
       "warnings": 0
     },
     "golden-fixture:a11y-10.tsx|kotlin": {
-      "sha": "7253eb32221103db883e705b65e0ed89c6dd069f0e6bbb042ec562f1bb9b7b06",
-      "bytes": 227,
+      "sha": "2ac722a50ed2eada1c43300728769dd292ab322d930ed7844b5c51506429873f",
+      "bytes": 256,
       "warnings": 0
     },
     "golden-fixture:a11y-11.tsx|swift": {
@@ -537,8 +537,8 @@
       "warnings": 1
     },
     "golden-fixture:a11y-12.tsx|kotlin": {
-      "sha": "b4490c48669b9c54b2067c830c26e650ee3e1b380c7448d3259f5ad42a9c11ae",
-      "bytes": 460,
+      "sha": "89376f6f298d73b60967fac303280df9796bcd805ecdf0ec7338737a6f735ecc",
+      "bytes": 499,
       "warnings": 1
     },
     "golden-fixture:auth-01.tsx|swift": {
@@ -2677,8 +2677,8 @@
       "warnings": 1
     },
     "golden-fixture:flow-46.tsx|kotlin": {
-      "sha": "36df44b5a9cd155b90767045eeb9658c90591f296c26b41e7e8c58ca6453e038",
-      "bytes": 162492,
+      "sha": "17a3fb44191be6efc724f9c7e964ee1cb5450a88813ada7ac12052a4e70f127b",
+      "bytes": 162515,
       "warnings": 0
     },
     "golden-fixture:flow-47.tsx|swift": {
@@ -6237,8 +6237,8 @@
       "warnings": 0
     },
     "golden-fixture:toast-06.tsx|kotlin": {
-      "sha": "acc41943c568ae4bf66857097e0c920cb613da1409f6fa260c53778f40a80842",
-      "bytes": 315,
+      "sha": "7a54769bc3e42bb392272cd7e1e34260cc6d0a0da7d93e6ee50a59db21f4e87e",
+      "bytes": 350,
       "warnings": 0
     },
     "golden-fixture:toast-07.tsx|swift": {
@@ -7377,8 +7377,8 @@
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "a116c0e3da793800b9bb17309303bffcb43ec4e5a4d197be313b0d2a8355c254",
-      "bytes": 165240,
+      "sha": "2d5351b9fbc95d00841f560281f5f9afd763067f8551a8b0f63103a15fcd2b59",
+      "bytes": 165263,
       "warnings": 0
     },
     "example:native-todomvc-ios/TodoApp.tsx|swift": {
@@ -7677,8 +7677,8 @@
       "warnings": 0
     },
     "registry:@pyreon/a11y|kotlin": {
-      "sha": "c43027d449b3f178491026a1d3be77e867635e407681982c32c9150b296f3dff",
-      "bytes": 216,
+      "sha": "ee95580deeee7ce8c7bba91a8d61ab35bce2cb0b07b22789f41e78f7ab50506a",
+      "bytes": 249,
       "warnings": 0
     },
     "registry:@pyreon/sized-map|swift": {
