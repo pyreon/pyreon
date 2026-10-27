@@ -1025,13 +1025,13 @@ import { signal } from '@pyreon/reactivity'
 import { Text } from '@pyreon/primitives'
 function describeErr(err: Error): string { return err.message }
 export function App() {
-  const tree = signal({ title: 'x', child: [{ id: 1 }], items: [{ id: 2 }] })
+  const tree = signal({ title: 'x', child: [{ id: 1 }], items: [{ name: 'b' }] })
   return <Text>{tree().title}</Text>
 }`)
     expect(out).toContain('fun describeErr(err: Throwable): String = err.message')
     // `child` does not end in `s`, so it is used as-is; `items` singularizes
     expect(out).toContain('data class AppTreeChild(val id: Long)')
-    expect(out).toContain('data class AppTreeItem(val id: Long)')
+    expect(out).toContain('data class AppTreeItem(val name: String)')
   })
 })
 

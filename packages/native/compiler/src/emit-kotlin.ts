@@ -275,6 +275,8 @@ function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): stri
  * `__Obj0`/`__Obj1`/… names line up across targets. Reset per emitKotlin run.
  */
 let _synthExprStructs: StructIR[] = []
+/** The data classes synthesised for component state (`AppPt`), by name, so a literal resolved to one can read its field types. Reset per emit run. */
+let _synthStateClassesKotlin = new Map<string, { name: string; fields: { name: string; type: TypeIR }[] }>()
 let _synthExprStructKeys: Map<string, string> = new Map()
 
 // The active component's inference ctx, exposed to `emitKotlinExpr`'s
@@ -353,7 +355,8 @@ function kotlinStructCtorArgs(
 ): string {
   const structDef =
     _declaredStructs.find((st) => st.name === structName) ??
-    _synthExprStructs.find((st) => st.name === structName)
+    _synthExprStructs.find((st) => st.name === structName) ??
+    _synthStateClassesKotlin.get(structName)
   const fieldT = new Map((structDef?.fields ?? []).map((f) => [f.name, f.type]))
   return orderFieldsByStructK(fields, structName)
     .map((f) => {
@@ -779,6 +782,7 @@ export function emitKotlin(
   _declaredStructs = structs
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
+  _synthStateClassesKotlin = new Map()
   for (const s of structs) {
     const key = structShapeKey(s.fields)
     if (!_structTypedKeyToName.has(key)) _structTypedKeyToName.set(key, s.name)
@@ -939,6 +943,7 @@ export function emitKotlin(
   _structFieldsToName = new Map()
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
+  _synthStateClassesKotlin = new Map()
   _componentNames = new Set()
   _componentSlotsMapKotlin = new Map()
   _activeSlotsKotlin = new Map()
@@ -1455,7 +1460,7 @@ function resolveKotlinRowTypeName(elem: TypeIR): string {
   if (elem.kind === 'typeRef') return elem.name
   if (elem.kind === 'object') {
     const names = new Set(elem.fields.map((f) => f.name))
-    const match = [..._synthExprStructs, ..._kotlinStructDefs].find(
+    const match = [..._synthExprStructs, ..._kotlinStructDefs, ..._synthStateClassesKotlin.values()].find(
       (st) => st.fields.length === names.size && st.fields.every((f) => names.has(f.name)),
     )
     if (match) return match.name
@@ -1504,9 +1509,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // (`"all"`) as an enum case (`Filter.all`).
     const isEnumTyped = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
+    // Type FIRST: rendering it synthesises (and indexes) the data class an inline object type becomes, which the
+    // initial value's object literals must then resolve to. Emitting the value first left every literal to
+    // synthesise its own `__ObjN` — see `registerKotlinSynthClass`. Swift already collects its structs up front.
+    const typeStr = kotlinType(d.type, ctx, d.name)
     const initial = withExpectedTypeKotlin(d.type, () => emitKotlinExpr(d.initial, 0))
     _activeEnumType = undefined
-    const typeStr = kotlinType(d.type, ctx, d.name)
     // A signal that outlives the process (`storageKey`): the loaded plugin's persistence backend either owns the whole
     // declaration (its own runtime, for the types Compose cannot save) or names the `remember`-like delegate and keeps
     // the core's own `mutableStateOf` line (null seeds, empty lists and all). The core decides only WHICH: native iff
@@ -2784,15 +2792,54 @@ function knownKotlinShape(t: Extract<TypeIR, { kind: 'object' }>): string | unde
   return _structTypedKeyToName.get(structShapeKey(t.fields))
 }
 
+/**
+ * The component-state data class (`AppPt`) an object literal belongs to when its field NAMES match and every value
+ * fits the field's type. The fit check is what makes a names match safe: a whole number fits a Double field (the
+ * constructor-argument emit coerces it), while a String does not fit a Long one, so `{ id: 'id' }` does not claim
+ * `CRow { id: Long }`. A value whose type cannot be inferred is not counted against the match.
+ */
+function stateClassForLiteralKotlin(fields: readonly { name: string; value: ExprIR }[]): string | undefined {
+  const names = new Set(fields.map((f) => f.name))
+  for (const cls of _synthStateClassesKotlin.values()) {
+    if (cls.fields.length !== names.size || !cls.fields.every((f) => names.has(f.name))) continue
+    const fieldType = new Map(cls.fields.map((f) => [f.name, f.type]))
+    if (fields.every((f) => valueFitsKotlinField(f.value, fieldType.get(f.name)!))) return cls.name
+  }
+  return undefined
+}
+
+function valueFitsKotlinField(value: ExprIR, field: TypeIR): boolean {
+  const ft = unwrapOptionalType(field)
+  if (value.kind === 'literal' && value.value === null) return typeIsOptional(field)
+  const vt = inferType(value, _kotlinExprInferCtx)
+  if (vt.kind === 'unknown' || ft.kind === 'unknown') return true
+  if (ft.kind === 'number') return vt.kind === 'number' && (vt.float !== true || typeWantsFloat(ft))
+  if (ft.kind === 'string' || ft.kind === 'boolean') return vt.kind === ft.kind
+  if (ft.kind === 'array') return vt.kind === 'array'
+  // A nested object field is a typeRef to its own class; the nested literal resolves on its own.
+  if (ft.kind === 'typeRef') return vt.kind === 'object' || vt.kind === 'typeRef'
+  return true
+}
+
 function registerKotlinSynthClass(
   t: Extract<TypeIR, { kind: 'object' }>,
   ctx: KotlinCtx,
   name: string,
 ): string {
   if (ctx.synthesizedDataClasses.some((s) => s.name === name)) return name
+  // Index the class under BOTH keys, as `registerSwiftSynthStruct` does, so an object literal of this shape emits as
+  // `AppPt(…)`. Kotlin registered it under neither, so every literal synthesised its own `__ObjN` instead: harmless
+  // while every row had identical value types, but a column mixing `1.5` and `3` gave the rows DIFFERENT classes,
+  // the list became `List<Any>`, and the first field read (`pts[0].x`) was "unresolved reference" on Kotlin while
+  // Swift compiled. The typed key catches the rows whose values match exactly; a row that differs only by an
+  // integer in a Double field is caught by `stateClassForLiteralKotlin`, which matches by field names but only
+  // when every value FITS the field — a blanket name-only key let `{ id: 'id' }` claim `CRow { id: Long }`.
+  const typedKey = structShapeKey(t.fields)
+  if (!_structTypedKeyToName.has(typedKey)) _structTypedKeyToName.set(typedKey, name)
   // Reserve the name BEFORE recursing so a nested field can't re-derive it.
   const entry: { name: string; fields: { name: string; type: TypeIR }[] } = { name, fields: [] }
   ctx.synthesizedDataClasses.push(entry)
+  _synthStateClassesKotlin.set(name, entry)
   entry.fields = t.fields.map((f) => ({
     name: f.name,
     type: resolveKotlinSynthFieldType(f.type, ctx, name, f.name),
@@ -4695,7 +4742,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const structName =
           expectedStructForKotlin(e.fields) ??
           (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
-          _structFieldsToName.get(fieldSet)
+          _structFieldsToName.get(fieldSet) ??
+          stateClassForLiteralKotlin(e.fields)
         if (structName !== undefined) {
           const args = kotlinStructCtorArgs(e.fields, structName, indent)
           return `${kotlinIdent(structName)}(${args})`
