@@ -171,6 +171,9 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
       }
     }
   }
+  // A plain-url fetch decodes into `type` too, with no schema to settle its number fields: record it so the core can name an
+  // integer-default field a fractional payload would fail to decode (#3956). The endpoint path recorded it above, with its schema.
+  if (resolvedEndpoint === undefined) ctx.recordDecode(type, undefined)
   // The IR inside the payload (`TypeIR`) is JSON, which `ExtPayload` cannot express structurally.
   return { type: FETCH_TYPE, payload: { type, url, ...req } as unknown as ExtPayload }
 }
