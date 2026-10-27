@@ -131,12 +131,17 @@ describe('parse.ts — parseStatement: helper-body loops', () => {
     ['no test', 'for (let i = 0; ; i++) { a += i }'],
     ['no init/test/update', 'for (;;) { break }'],
     ['init is an assignment, not a declaration', 'let i = 0\n for (i = 0; i < 3; i++) { a += 1 }'],
-    ['two declarators', 'for (let i = 0, j = 1; i < 3; i++) { a += 1 }'],
     ['destructured counter', 'for (let [i] = [0]; i < 3; i++) { a += 1 }'],
     ['counter without an initializer', 'for (let i; i < 3; i++) { a += 1 }'],
   ])('a non-canonical for (%s) warns and drops', (_label, loop) => {
     const r = swift(body(loop))
     expect(r.warnings.join('\n')).toContain(RANGE_WARN)
+    expect(r.code).not.toContain('for i in')
+  })
+
+  it('a second declarator that the test does not read warns (its initialiser must not be dropped)', () => {
+    const r = swift(body('for (let i = 0, j = 1; i < 3; i++) { a += 1 }'))
+    expect(r.warnings.join('\n')).toContain('cached bound')
     expect(r.code).not.toContain('for i in')
   })
 
