@@ -7,8 +7,15 @@
 // `i18n.locale()`, because the runtime's `locale` is a property, not a function. The WRITE
 // `i18n.locale.set('de')` already emits as `i18n.locale = "de"`, which the runtime's settable property takes.
 //
-// v1 scope: string keys and string values. Async loaders, nested message objects, plural suffixes and
-// namespaces are out of scope; top-level dotted keys are kept verbatim (`{ 'section.title': 'Report' }`).
+// The runtimes resolve CLDR plural categories (`zero`/`one`/`two`/`few`/`many`/`other`, then `_other`, then the
+// bare key) from a baked CLDR rule table, and the active locale is writable: `i18n.locale.set('pl')` already
+// lowers to the property write `i18n.locale = "pl"` through the generic signal-write path, and the READ
+// `i18n.locale()` lowers here to the property `i18n.locale` (a call would not compile — it is a property on both
+// runtimes).
+//
+// Scope: string keys and string values. Async loaders, nested message objects, `context` variants, custom
+// `pluralRules` and namespaces are out of scope; top-level dotted keys are kept verbatim
+// (`{ 'section.title': 'Report' }`).
 
 import {
   staticPropKey,

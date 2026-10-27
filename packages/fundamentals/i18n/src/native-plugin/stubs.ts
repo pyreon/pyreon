@@ -37,6 +37,7 @@ class PyreonI18n(
   val messages: Map<String, Map<String, String>>,
   val fallbackLocale: String? = null,
 ) {
+  // Settable, like the real runtime: \`i18n.locale.set('pl')\` lowers to \`i18n.locale = "pl"\`.
   var locale: String = initialLocale
   fun t(key: String): String {
     messages[locale]?.get(key)?.let { return it }
@@ -45,7 +46,7 @@ class PyreonI18n(
     }
     return key
   }
-  // Two-arg overload — interpolation + one/other plurals. Mirrors the
+  // Two-arg overload — interpolation + CLDR plurals. Mirrors the
   // REAL runtime-kotlin signature t(key, values: Map<String, Any?>)
   // (see PyreonI18n.kt) so the emitted dict-arg call shape
   // i18n.t("items", mapOf("count" to n)) typechecks here.
