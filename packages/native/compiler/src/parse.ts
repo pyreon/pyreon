@@ -5163,6 +5163,91 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
  * `i++` / `++i` / `i += K` (positive numeric literal K); and the body
  * never REASSIGNS the counter (Swift's range binding is a `let`).
  */
+/**
+ * `for (let i = 0, n = xs.length; i < n; i++)` — the "cache the bound" idiom. A native range loop evaluates its
+ * bound ONCE, which is exactly what caching it in a second declarator achieves in JS, so when every extra
+ * declarator is read in the loop TEST and nowhere else, substituting its initialiser into the test and lowering the canonical
+ * single-counter loop is semantically identical. Returns `node` unchanged when that does not hold — an extra name
+ * used in the body or the update (its value could be read after a mutation), an initialiser that reads the
+ * counter or another extra (its value would differ per iteration once inlined), or a non-identifier binding —
+ * and the caller's warning stands.
+ */
+function withCachedBoundsInlined(node: AnyNode): AnyNode {
+  const init = node.init as AnyNode | undefined
+  const decls = (init?.type === 'VariableDeclaration' ? (init.declarations as AnyNode[] | undefined) : undefined) ?? []
+  if (decls.length < 2 || !node.test) return node
+  const [counter, ...extras] = decls
+  if (counter?.id?.type !== 'Identifier') return node
+  const names = new Set<string>()
+  for (const d of extras) {
+    if (d?.id?.type !== 'Identifier' || !d.init) return node
+    names.add(d.id.name as string)
+  }
+  const replacements = new Map<string, AnyNode>()
+  for (const d of extras) {
+    if (identifiersRead(d.init).some((n) => n === counter.id.name || names.has(n))) return node
+    replacements.set(d.id.name as string, d.init as AnyNode)
+  }
+  if ([...identifiersRead(node.body), ...identifiersRead(node.update)].some((n) => names.has(n))) return node
+  // Every extra name must be READ by the test. An unread one would vanish with the substitution, and with it any
+  // side effect of its initialiser (`for (let i = 0, j = tick(); …)`).
+  const readByTest = new Set(identifiersRead(node.test))
+  if ([...names].some((n) => !readByTest.has(n))) return node
+  return {
+    ...node,
+    init: { ...init, declarations: [counter] },
+    test: substituteIdentifiers(node.test, replacements),
+  }
+}
+
+/** Identifier names READ in a subtree: not a non-computed member property or object key, which are names, not reads. */
+function identifiersRead(node: unknown): string[] {
+  const out: string[] = []
+  const visit = (n: unknown, parentKey?: string, parent?: AnyNode): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x, parentKey, parent)
+      return
+    }
+    const a = n as AnyNode
+    if (a.type === 'Identifier') {
+      const isPropertyName =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && !parent.computed) ||
+        ((parent?.type === 'Property' || parent?.type === 'ObjectProperty') && parentKey === 'key' && !parent.computed)
+      if (!isPropertyName) out.push(a.name as string)
+      return
+    }
+    for (const key of Object.keys(a)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(a[key], key, a)
+    }
+  }
+  visit(node)
+  return out
+}
+
+/** A copy of `node` with every READ of a name in `replacements` swapped for its replacement subtree. */
+function substituteIdentifiers(node: AnyNode, replacements: ReadonlyMap<string, AnyNode>): AnyNode {
+  const visit = (n: unknown, parentKey?: string, parent?: AnyNode): unknown => {
+    if (!n || typeof n !== 'object') return n
+    if (Array.isArray(n)) return n.map((x) => visit(x, parentKey, parent))
+    const a = n as AnyNode
+    if (a.type === 'Identifier') {
+      const isPropertyName =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && !parent.computed) ||
+        ((parent?.type === 'Property' || parent?.type === 'ObjectProperty') && parentKey === 'key' && !parent.computed)
+      const r = isPropertyName ? undefined : replacements.get(a.name as string)
+      return r ?? a
+    }
+    const copy: Record<string, unknown> = {}
+    for (const key of Object.keys(a)) copy[key] = visit(a[key], key, a)
+    return copy
+  }
+  return visit(node) as AnyNode
+}
+
 function classifyForRange(
   node: AnyNode,
   ctx: ParseCtx,
@@ -5424,8 +5509,14 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       // conditions/updates, a counter REASSIGNED in the body — Swift's
       // range binding is immutable) warns by name; pre-fix EVERY
       // ForStatement warn-dropped the whole loop.
-      const range = classifyForRange(node, ctx)
+      const range = classifyForRange(withCachedBoundsInlined(node), ctx)
       if (range !== null) return range
+      if (((node.init?.declarations as AnyNode[] | undefined)?.length ?? 0) > 1) {
+        ctx.warnings.push(
+          `A \`for\` loop with more than one declarator lowers only in the "cached bound" shape — \`for (let i = 0, n = xs.length; i < n; i++)\`, where every extra name is read in the test and nowhere else, and its initialiser does not read the counter. Here an extra name is unused, used in the body or update, or reads the counter — declare it before the loop instead.`,
+        )
+        return null
+      }
       ctx.warnings.push(
         `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\` or the descending \`for (let i = n; i >= 0; i--)\`; \`<=\`/\`>=\`, or \`i += k\`/\`i -= k\` with a positive literal step; the test and update must agree in direction and the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
       )
