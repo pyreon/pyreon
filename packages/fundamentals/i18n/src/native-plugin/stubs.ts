@@ -8,7 +8,10 @@
 
 import type { StubAugmentation } from '@pyreon/native-compiler/plugin-api'
 
-export const I18N_SWIFT_STUBS = `public struct PyreonI18n {
+export const I18N_SWIFT_STUBS = `public final class PyreonI18n {
+  // A settable locale, as in the real (@Observable final class) runtime:
+  // \`i18n.locale.set('de')\` lowers to an assignment, \`i18n.locale()\` to a read.
+  public var locale: String
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
   // made it required, so \`createI18n({ locale, messages })\` — the two-argument
   // form the docs show and the common case — was REJECTED by the gate with
@@ -20,7 +23,7 @@ export const I18N_SWIFT_STUBS = `public struct PyreonI18n {
     locale: String,
     messages: [String: [String: String]],
     fallbackLocale: String? = nil
-  ) {}
+  ) { self.locale = locale }
   // t(key) OR t(key, interpolation values) — the emit passes [String: Any]-shaped
   // dictionary literals ([String: String] and [String: Int] both coerce).
   public func t(_ key: String, _ values: [String: Any] = [:]) -> String { "" }
@@ -34,8 +37,8 @@ class PyreonI18n(
   val messages: Map<String, Map<String, String>>,
   val fallbackLocale: String? = null,
 ) {
+  // Settable, like the real runtime: \`i18n.locale.set('pl')\` lowers to \`i18n.locale = "pl"\`.
   var locale: String = initialLocale
-    private set
   fun t(key: String): String {
     messages[locale]?.get(key)?.let { return it }
     if (fallbackLocale != null) {
@@ -43,7 +46,7 @@ class PyreonI18n(
     }
     return key
   }
-  // Two-arg overload — interpolation + one/other plurals. Mirrors the
+  // Two-arg overload — interpolation + CLDR plurals. Mirrors the
   // REAL runtime-kotlin signature t(key, values: Map<String, Any?>)
   // (see PyreonI18n.kt) so the emitted dict-arg call shape
   // i18n.t("items", mapOf("count" to n)) typechecks here.

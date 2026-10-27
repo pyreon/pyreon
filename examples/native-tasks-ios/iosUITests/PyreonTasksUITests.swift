@@ -304,6 +304,59 @@ final class PyreonTasksUITests: XCTestCase {
         }
     }
 
+    /// Tap a hosted web editor and type into it, retrying until `reached` holds.
+    ///
+    /// Why not a single centre tap: the preceding step typed into CodeMirror, so the software keyboard is still up,
+    /// and `scrollIntoView` only guarantees the view is partly hittable. The view's CENTRE can sit under the keyboard
+    /// or in a layout that is still settling, in which case the tap never focuses the editor and the keystrokes go
+    /// nowhere. That showed up as a first-attempt failure (edits label 0) that only passed on the CI retry. Tapping
+    /// the part of the view that is actually visible above the keyboard, and re-checking that the keystroke arrived,
+    /// removes the dependence on timing.
+    private func typeIntoHostedEditor(
+        _ app: XCUIApplication,
+        view: XCUIElement,
+        text: String,
+        attempts: Int = 4,
+        reached: () -> Bool
+    ) -> Bool {
+        let window = app.windows.firstMatch.frame
+        // Anything above this is the status bar / navigation chrome; a tap there never reaches the page.
+        let topInset = window.minY + 110
+        let scroller = app.scrollViews.firstMatch.exists ? app.scrollViews.firstMatch : app
+        for _ in 0..<attempts {
+            scrollIntoView(view, in: app, maxSwipes: 16)
+            // Bring the WHOLE view into the clear band between the top chrome and the keyboard. Tapping a sliver that
+            // is only partly on screen lands on the chrome (or on whichever editor still holds keyboard focus), so
+            // the keystrokes keep going to the previous editor.
+            var settle = 0
+            while settle < 6 {
+                var bottom = window.maxY
+                if app.keyboards.count > 0 { bottom = min(bottom, app.keyboards.firstMatch.frame.minY) }
+                let frame = view.frame
+                if frame.minY < topInset { scroller.swipeDown() }
+                else if frame.maxY > bottom - 10 { scroller.swipeUp() }
+                else { break }
+                settle += 1
+            }
+            var bottom = window.maxY
+            if app.keyboards.count > 0 { bottom = min(bottom, app.keyboards.firstMatch.frame.minY) }
+            let clear = CGRect(x: view.frame.minX, y: max(view.frame.minY, topInset), width: view.frame.width, height: 0)
+                .union(CGRect(x: view.frame.minX, y: min(view.frame.maxY, bottom - 10), width: view.frame.width, height: 0))
+            guard clear.height >= 40 else { continue }
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: clear.midX, dy: clear.midY))
+                .tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            app.typeText(text)
+            let deadline = Date().addingTimeInterval(6)
+            while Date() < deadline {
+                if reached() { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            }
+        }
+        return reached()
+    }
+
     /// Login -> tasks -> toolkit. Factored out because the crash-reporter proof
     /// needs to reach the toolkit page TWICE (once to record, once after a real
     /// relaunch), and duplicating the login flow would be two places to rot.
@@ -574,14 +627,10 @@ final class PyreonTasksUITests: XCTestCase {
         let richEditsAfterPush = Int(richEdits.label) ?? 0
 
         // REVERSE: typing reaches native as the document's JSON text.
-        scrollIntoView(richView, in: app, maxSwipes: 16)
-        richView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        app.typeText("ZZ")
-        let typingDeadline = Date().addingTimeInterval(15)
-        while Date() < typingDeadline && (Int(richEdits.label) ?? 0) <= richEditsAfterPush {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        let reached = typeIntoHostedEditor(app, view: richView, text: "ZZ") {
+            (Int(richEdits.label) ?? 0) > richEditsAfterPush
         }
-        XCTAssertGreaterThan(Int(richEdits.label) ?? 0, richEditsAfterPush, "typing in TipTap never reached the native signal (edits label: \(richEdits.label))")
+        XCTAssertTrue(reached, "typing in TipTap never reached the native signal (edits label: \(richEdits.label), keyboardShown: \(app.keyboards.count > 0), view frame: \(richView.frame), code value: \(app.staticTexts["gal-code-value"].firstMatch.label), rich value: \(app.staticTexts["gal-rich-value"].firstMatch.label), focused: \(app.descendants(matching: .any).matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch.debugDescription))")
     }
 
     func test_grammarBarSelectionAfterPartialVisibility() throws {

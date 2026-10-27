@@ -80,13 +80,13 @@ const B = rocketstyle()({ name: 'B', component: Stack }).states({ primary: { bac
 function App() { return (<B state="primary"><Text>x</Text></B>) }`
     const kr = swift(known)
     expect(kr.code).toContain('.background(Color(.sRGB, red: 0.145, green: 0.388, blue: 0.922')
-    expect(kr.warnings.join('\n')).not.toMatch(/not yet lowered/)
+    expect(kr.warnings.join('\n')).not.toMatch(/non-literal value/)
 
     const unknown = `import { Stack, Text } from '@pyreon/primitives'
 const B = rocketstyle()({ name: 'B', component: Stack }).states({ primary: { backgroundColor: t.color.doesNotExist } })
 function App() { return (<B state="primary"><Text>x</Text></B>) }`
     expect(swift(unknown).warnings.join('\n')).toMatch(
-      /theme\s+token \/ expression.*not yet lowered/,
+      /non-literal value\(s\) \[backgroundColor\] — neither a literal nor a theme token/,
     )
   })
 })

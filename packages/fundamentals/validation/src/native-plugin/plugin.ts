@@ -77,7 +77,7 @@ export const validationPlugin: CompilerPlugin = {
     warnUnloweredSchemaAdapter(node, ctx)
     return undefined
   },
-  items: { schema: createSchemaItem({ declaredBy: 'zodSchema/valibotSchema/arkTypeSchema' }) },
+  items: { schema: createSchemaItem({ declaredBy: 'zodSchema/valibotSchema/arktypeSchema' }) },
   refineStructs: createSchemaStructRefinement(VALIDATION_PLUGIN_NAME),
   // Every recognizer here only CLAIMS the call (`null`) and declares nothing, so there is no declaration type to emit.
   decls: {},

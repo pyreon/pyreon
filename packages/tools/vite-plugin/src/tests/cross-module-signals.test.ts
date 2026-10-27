@@ -18,6 +18,12 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import pyreonPlugin, { type PyreonPluginOptions } from '../index'
 
+// A signal read compiles to `name()` in expression position and to the direct
+// `_bindText(name, …)` binding when it is the sole text child (`<div>{name}</div>`).
+// Either one means the name was recognised as a signal.
+const readsSignal = (code: string | undefined, name: string): boolean =>
+  new RegExp(`\\b${name}\\(\\)|_bindText\\(${name},`).test(code ?? '')
+
 type ConfigHook = (
   userConfig: Record<string, unknown>,
   env: { command: string; isSsrBuild?: boolean },
@@ -126,7 +132,7 @@ export function App() { return <div>{count}</div> }`,
     expect(result).toBeDefined()
     // Auto-call rewrite — `count` reference becomes `count()` because
     // it's tracked as a signal export from ./store
-    expect(result!.code).toMatch(/count\(\)/)
+    expect(readsSignal(result!.code, 'count')).toBe(true)
   })
 
   it('registers `const x = signal(); export { x }` separate-export pattern', async () => {
@@ -154,7 +160,7 @@ export const Comp = () => <div>{exported}</div>`,
     // The 'exported' name should be recognised — it's the as-aliased
     // export of a signal-bound local. Auto-call rewrite turns the
     // bare reference into a tracked call.
-    expect(result!.code).toMatch(/exported\(\)/)
+    expect(readsSignal(result!.code, 'exported')).toBe(true)
   })
 
   it('registers `export default signal()` as the magic default key', async () => {
@@ -178,7 +184,7 @@ export const Comp = () => <div>{counter}</div>`,
     )
     expect(result).toBeDefined()
     // Default-import path resolves through the magic 'default' registry key.
-    expect(result!.code).toMatch(/counter\(\)/)
+    expect(readsSignal(result!.code, 'counter')).toBe(true)
   })
 
   it('skips node_modules / dist / lib / build / dot directories during walk', async () => {
@@ -248,7 +254,7 @@ export const Use = () => <div>{${name}}</div>`,
       expect(result).toBeDefined()
       // Each signal name should be auto-called when used as a bare
       // identifier in an h() child position.
-      expect(result!.code).toMatch(new RegExp(`${name}\\(\\)`))
+      expect(readsSignal(result!.code, name)).toBe(true)
     }
   })
 
@@ -413,6 +419,7 @@ export default signal(0)`,
       plugin,
       `import { h } from "@pyreon/core"
 import myCount from "./default"
+
 export const Use = () => <div>{myCount}</div>`,
       join(root, 'src/use.tsx'),
       { './default': join(root, 'src/default.ts') },
@@ -420,6 +427,6 @@ export const Use = () => <div>{myCount}</div>`,
     expect(result).toBeDefined()
     // The local name `myCount` should be auto-called even though the
     // export is `default` — that's the cross-module default-import path
-    expect(result!.code).toMatch(/myCount\(\)/)
+    expect(readsSignal(result!.code, 'myCount')).toBe(true)
   })
 })

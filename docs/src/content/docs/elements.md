@@ -168,20 +168,22 @@ Three separate axes, three separate prop groups — `content*` (simple elements)
 | `beforeContent` | `VNodeChild`                                 | --                              | Content rendered before the main slot. Commonly used for icons, avatars, or leading visuals.                                                                                |
 | `afterContent`  | `VNodeChild`                                 | --                              | Content rendered after the main slot. Commonly used for badges, arrows, action buttons, or trailing metadata.                                                               |
 | `direction`     | `'inline' \| 'rows' \| 'reverseInline' \| 'reverseRows'` | `'inline'`             | The **slot axis** on a compound element (`beforeContent`/`afterContent` present) — how `[before][children][after]` lay out relative to each other. `'inline'` → `flex-direction: row`, `'rows'` → `flex-direction: column`, `'reverseInline'` → `row-reverse`, `'reverseRows'` → `column-reverse`. Note `'row'` (without the trailing `s`) is NOT valid. **On a SIMPLE element (no slots) this prop has NO effect** — see [Two axes](#two-axes-the-content-trio-vs-the-slot-trio) below; use `contentDirection` instead. |
-| `alignX`        | `'left' \| 'center' \| 'right'`              | --                              | Slot-axis horizontal alignment (compound elements only — see above). In `inline` direction, maps to `justify-content`. In `rows` direction, maps to `align-items`.          |
-| `alignY`        | `'top' \| 'center' \| 'bottom'`              | `'center'` (inline) / -- (rows) | Slot-axis vertical alignment (compound elements only — see above). In `inline` direction, maps to `align-items` (defaults to `center`). In `rows` direction, maps to `justify-content`.                                    |
+| `alignX`        | `'left' \| 'center' \| 'right' \| 'spaceBetween' \| 'spaceAround' \| 'block'` | --              | Slot-axis horizontal alignment (compound elements only — see above). In `inline` direction, maps to `justify-content`. In `rows` direction, maps to `align-items`.          |
+| `alignY`        | `'top' \| 'center' \| 'bottom' \| 'spaceBetween' \| 'spaceAround' \| 'block'` | `'center'` (inline) / -- (rows) | Slot-axis vertical alignment (compound elements only — see above). In `inline` direction, maps to `align-items` (defaults to `center`). In `rows` direction, maps to `justify-content`.                                    |
 | `contentDirection` | `'inline' \| 'rows' \| 'reverseInline' \| 'reverseRows'` | `'rows'`         | The layout axis on a **simple** element (no `beforeContent`/`afterContent`) — same values as `direction`, but this is the prop that actually governs a plain `<Element>{children}</Element>`. Defaults to `'rows'` (a column), unlike `direction`'s `'inline'` default. |
-| `contentAlignX` | `'left' \| 'center' \| 'right'`              | --                              | Simple-element horizontal alignment (the `contentDirection` counterpart of `alignX`).                                                                                        |
-| `contentAlignY` | `'top' \| 'center' \| 'bottom'`              | --                              | Simple-element vertical alignment (the `contentDirection` counterpart of `alignY`).                                                                                           |
+| `contentAlignX` | same as `alignX`                             | --                              | Simple-element horizontal alignment (the `contentDirection` counterpart of `alignX`).                                                                                        |
+| `contentAlignY` | same as `alignY`                             | --                              | Simple-element vertical alignment (the `contentDirection` counterpart of `alignY`).                                                                                           |
 | `beforeContentDirection` / `beforeContentAlignX` / `beforeContentAlignY` | same as above | `'inline'` direction | On a compound element, controls the layout of MULTIPLE children **inside** the `beforeContent` slot itself (a separate axis from the outer `direction`).             |
 | `afterContentDirection` / `afterContentAlignX` / `afterContentAlignY` | same as above | `'inline'` direction | Same as the `beforeContent*` trio, for the `afterContent` slot.                                                                                                              |
-| `gap`           | `number`                                     | --                              | Gap between slots in pixels. Rendered as `gap: Npx` on the flex container.                                                                                                  |
+| `gap`           | `number \| string`                           | --                              | Spacing on the flex container. A number is converted to rem (`8` → `0.5rem`); a string is used as-is. Applies to simple elements (CSS `gap`) and between the slots of a compound element. |
 | `block`         | `boolean`                                    | `false`                         | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent.                                                       |
 | `equalCols`     | `boolean`                                    | `false`                         | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
 | `equalBeforeAfter` | `boolean`                                 | `false`                         | When `true`, the `beforeContent` and `afterContent` slots are kept the same width via a `ResizeObserver` — handles async slot content (font swaps, lazy text, viewport resize) without snapping out of alignment. Falls back to a one-shot mount-time measurement when `ResizeObserver` is undefined (SSR or older runtimes).                                                                                                                          |
 | `class`         | `string`                                     | --                              | CSS class name applied to the outer element.                                                                                                                                |
 | `style`         | `string \| Record<string, string \| number>` | --                              | Inline styles merged with computed flex styles. Can be a CSS string or an object. Object styles are merged with the computed styles; string styles are appended.            |
 | `dangerouslySetInnerHTML` | `{ __html: string }`               | --                              | Inject raw HTML (React-compatible shape). Mutually exclusive with `children` — both runtime-dom and runtime-server treat both as inner-content sources. Forwarded through `Wrapper` correctly (was silently dropped pre-#486).                                                                                                                                                                                                                              |
+
+For the align props, `'block'` means stretch. Every direction and align prop, plus `gap` and `block`, also accepts the responsive forms: a mobile-first array (`['rows', 'inline']`) or an object keyed by breakpoint (`{ xs: 'rows', md: 'inline' }`). See [Unistyle](/docs/unistyle).
 
 Element also passes through any valid HTML attributes: `id`, `role`, `tabindex`, `title`, `href`, `src`, `alt`, `type`, `name`, `value`, `disabled`, `hidden`, `draggable`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 
@@ -227,8 +229,8 @@ Default `alignX` in rows mode is `stretch` (no explicit `alignX` means `align-it
 ```ts
 // Stacked card content
 <Element
-  direction="rows"
-  alignX="center"
+  contentDirection="rows"
+  contentAlignX="center"
   gap={16}
   block={true}
   class="card"
@@ -317,7 +319,7 @@ function NavItem(props: { icon: VNodeChild; label: string; badge?: number; activ
 function Card(props: { title: string; description: string; image?: string; actions?: VNodeChild }) {
   return (
     <Element
-      direction="rows"
+      contentDirection="rows"
       gap={16}
       block={true}
       class="card"
@@ -327,7 +329,7 @@ function Card(props: { title: string; description: string; image?: string; actio
       <h3 style="margin: 0;">{props.title}</h3>
       <p style="margin: 0; color: #666;">{props.description}</p>
       {props.actions
-        ? <Element alignX="right" block={true} gap={8}>{props.actions}</Element>
+        ? <Element contentDirection="inline" contentAlignX="right" block={true} gap={8}>{props.actions}</Element>
         : null}
     </Element>
   )
@@ -338,9 +340,9 @@ function Card(props: { title: string; description: string; image?: string; actio
 
 ```ts
 <Element
-  direction="rows"
-  alignX="center"
-  alignY="center"
+  contentDirection="rows"
+  contentAlignX="center"
+  contentAlignY="center"
   block={true}
   gap={24}
   style={{ 'min-height': '400px', 'text-align': 'center' }}
@@ -371,7 +373,7 @@ Element passes through all `aria-*` attributes, `role`, and `tabindex`, making i
 <Element
   tag="nav"
   aria-label="Main navigation"
-  direction="rows"
+  contentDirection="rows"
   gap={4}
   block={true}
 >{...navItems}</Element>
@@ -996,7 +998,7 @@ return (
             aria-modal="true"
           >
             <p>{props.message}</p>
-            <Element gap={8} alignX="right" block={true} style="margin-top: 16px;">
+            <Element gap={8} contentDirection="inline" contentAlignX="right" block={true} style="margin-top: 16px;">
               <button onClick={close}>Cancel</button>
               <button
                 onClick={() => { props.onConfirm(); close() }}
@@ -1305,7 +1307,7 @@ interface SettingGroup {
 function SettingsPanel(props: { groups: SettingGroup[] }) {
   return (
     <Element
-      direction="rows"
+      contentDirection="rows"
       gap={32}
       block={true}
       class="settings-panel"

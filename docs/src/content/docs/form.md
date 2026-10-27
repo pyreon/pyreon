@@ -1633,6 +1633,10 @@ const stop = onFormChange(() => console.log('a form registered or unregistered')
 The registry holds each form in a `WeakRef`, so registering does not keep an unmounted form alive. A name whose form has been collected disappears from `getActiveForms()` on the next call rather than lingering as a dead entry. Calling `unregisterForm` on unmount is still worth doing — it fires the change listeners immediately instead of at the next GC.
 :::
 
+## Multiplatform
+
+On iOS and Android (PMTC), `useForm` and `useFieldArray` lower to the native `PyreonForm` / `PyreonFieldArray` runtimes (device-proven on both platforms).
+
 ## API Reference
 
 ### `useForm(options)`
@@ -1641,7 +1645,7 @@ Create a signal-based form.
 
 **Options (`UseFormOptions<TValues>`):**
 
-<APICard name="initialValues" type="property" signature="initialValues: TValues" description="Initial values for each field. Required." />
+<APICard name="initialValues" type="property" signature="initialValues: TValues | (() => TValues)" description="Initial values for each field. Required. Pass a factory to compute them lazily at form creation." />
 <APICard name="onSubmit" type="property" signature={"onSubmit: (values: TValues) => void | Promise<void>"} description="Submit handler called with validated values. Required." />
 <APICard name="validators" type="property" signature={"validators?: Partial<{ [K in keyof TValues]: ValidateFn }>"} description="Per-field validator functions. Each receives the field value and all form values, returning an error string or undefined." />
 <APICard name="schema" type="property" signature={"schema?: SchemaValidateFn<TValues> | StandardSchema | TypedAdapter"} description="Schema-level validator that runs after all field-level validators. Accepts a plain SchemaValidateFn, a raw Standard Schema (zod / valibot / arktype / @pyreon/validate) directly, or a @pyreon/validation typed adapter. Field-level errors win over schema errors on the same field." />
@@ -1666,12 +1670,26 @@ Create a signal-based form.
 <APICard name="clearErrors" type="function" signature="clearErrors(): void" description="Clear all field errors at once." />
 <APICard name="resetField" type="function" signature="resetField(field: keyof TValues, options?: { keepError?: boolean; keepTouched?: boolean }): void" description="Reset a single field to its current baseline (initial value, or the value from the most recent reset(values) / setInitialValues) without affecting other fields. Pass keepError / keepTouched to preserve those across the reset." />
 <APICard name="register" type="function" signature="register(field: keyof TValues, opts?: { type: 'checkbox' | 'number' | 'file' }): FieldRegisterProps" description="Get input binding props for a field. Returns id, value, onInput, onBlur (+ auto-wired aria). Pass { type: 'checkbox' } for a checked accessor (no value), { type: 'number' } for valueAsNumber, or { type: 'file' } for a value-less bag whose onInput writes the FileList." />
-<APICard name="handleSubmit" type="function" signature={"handleSubmit(event?: Event): Promise<void>"} description="Submit the form. Prevents default, validates all fields, calls onSubmit if valid, and focuses the first errored field on failure (unless focusOnError: false)." />
+<APICard name="handleSubmit" type="function" signature={"handleSubmit(eventOrOptions?: Event | { rethrow?: boolean }): Promise<void>"} description="Submit the form. Prevents default, validates all fields, calls onSubmit if valid, and focuses the first errored field on failure (unless focusOnError: false). Pass { rethrow: true } to re-throw an onSubmit error after it is recorded in submitError." />
 <APICard name="reset" type="function" signature="reset(values?: Partial<TValues>, options?: { keepErrors?: boolean; keepTouched?: boolean; keepDirty?: boolean; keepSubmitCount?: boolean }): void" description="Reset the form. With no args, reverts every field to its initial value and clears errors/touched/dirty + submitCount. Pass values to reset to a new baseline (named fields become the new baseline — durably, for the dirty compare, resetField, and later plain reset() calls; the rest revert to their own baseline). options preserves selected state across the reset." />
 <APICard name="validate" type="function" signature={"validate(): Promise<boolean>"} description="Manually validate all fields. Returns whether the form is valid. Bypasses debounce." />
 <APICard name="focusFirstError" type="function" signature="focusFirstError(): void" description="Move focus to the first errored + register()-bound field (declaration order). Called automatically by handleSubmit on failure unless focusOnError: false. SSR-safe no-op." />
 <APICard name="registerField" type="function" signature="registerField(name: string, initialValue?: unknown, validator?: ValidateFn): void" description="Add a field at runtime for data-driven forms. Becomes first-class (values / onSubmit / validity). Idempotent — re-registering keeps the current value and refreshes the validator. Dynamic fields are runtime-typed; read via getValues()[name] / fields[name]." />
 <APICard name="unregisterField" type="function" signature="unregisterField(name: string): void" description="Remove a runtime-registered field, cleaning up its value, validator, and its contribution to isValid() / isDirty(). Unknown field is a no-op." />
+<APICard name="setInitialValues" type="function" signature="setInitialValues(values: Partial<TValues>): void" description="Move the baseline used for the dirty compare and resetField without changing current values." />
+<APICard name="trigger" type="function" signature="trigger(field?: keyof TValues | ReadonlyArray<keyof TValues>): Promise<boolean>" description="Validate one field, several fields, or (no argument) all fields. Resolves to whether they are valid." />
+<APICard name="getValues" type="function" signature="getValues(): TValues / getValues(name): TValues[K]" description="Read current values without creating a reactive subscription for a single field." />
+<APICard name="getFieldState" type="function" signature="getFieldState(field: K): FieldState<TValues[K]> | undefined" description="Look up a field's state object, including runtime-registered fields." />
+<APICard name="dirtyFields" type="function" signature="dirtyFields(): Partial<Record<keyof TValues, boolean>>" description="Fields whose value differs from the baseline." />
+<APICard name="touchedFields" type="function" signature="touchedFields(): Partial<Record<keyof TValues, boolean>>" description="Fields that have been blurred." />
+<APICard name="isSubmitted" type="property" signature="isSubmitted: Accessor<boolean>" description="True after the first submit attempt." />
+<APICard name="isSubmitSuccessful" type="property" signature="isSubmitSuccessful: Signal<boolean>" description="True when the last submit completed without onSubmit throwing." />
+<APICard name="disabled" type="property" signature="disabled: Signal<boolean>" description="Disables the whole form. Disabled fields are excluded from submit values." />
+<APICard name="readOnly" type="property" signature="readOnly: Signal<boolean>" description="Makes the whole form read-only." />
+<APICard name="labelProps" type="function" signature="labelProps(field): FieldLabelProps" description="Props for a <label> ({ for }) that pair with register()'s input id." />
+<APICard name="errorProps" type="function" signature="errorProps(field): FieldErrorProps" description="Props for an error element (id, role) that register()'s aria-describedby points at." />
+
+`useForm` also accepts a field-definition form, `useForm({ fields: [email, password], onSubmit, schema?, validateOn?, debounceMs?, focusOnError? })` (`UseFormFieldsOptions`), where the value types are inferred from `field()` definitions — see [Form fields](/docs/patterns/form-fields).
 
 ### `useFieldArray(initial?)`
 
@@ -1681,15 +1699,16 @@ Create a dynamic array of form fields with stable keys.
 function useFieldArray<T>(initial?: T[]): UseFieldArrayResult<T>
 ```
 
-### `useField(form, field)`
+### `useField(form, field)` / `useField(name)`
 
-Extract a single field's state from a form, returning a `UseFieldResult<T>` with the field's signals, setters, and convenience computeds (`hasError`, `showError`).
+Extract a single field's state from a form, returning a `UseFieldResult<T>` with the field's signals, setters, and convenience computeds (`hasError`, `showError`). The one-argument form reads the form from the nearest `<Form>` / `<FormProvider>`.
 
 ```ts
 function useField<TValues, K extends keyof TValues>(
   form: FormState<TValues>,
   field: K,
 ): UseFieldResult<TValues[K]>
+function useField<T = unknown>(name: string): UseFieldResult<T> // inside <Form> / <FormProvider>
 ```
 
 ### `useWatch(form, field?)`
@@ -1701,11 +1720,11 @@ function useWatch<TValues>(form: FormState<TValues>): Computed<TValues>
 function useWatch<TValues, K extends keyof TValues>(
   form: FormState<TValues>,
   field: K,
-): Computed<TValues[K]>
-function useWatch<TValues, K extends keyof TValues>(
+): Signal<TValues[K]>
+function useWatch<TValues, K extends (keyof TValues)[]>(
   form: FormState<TValues>,
-  fields: K[],
-): Computed<TValues[K]>[]
+  fields: K,
+): { [I in keyof K]: Signal<TValues[K[I]]> }
 ```
 
 ### `useFormState(form, selector?)`
@@ -1731,6 +1750,16 @@ function useFormContext<TValues>(): FormState<TValues>
 
 `useFormContext()` throws if called outside a `FormProvider`.
 
+### Components and helpers
+
+| Export | Description |
+| --- | --- |
+| `<Form of={form} disabled? readOnly?>` | Renders a `<form>` wired to `form.handleSubmit` and provides the form to descendants (so `useField(name)` works). `disabled` / `readOnly` sync to the form-level signals. |
+| `<Submit>` | A submit button disabled while the form is validating, submitting, or disabled. Must be inside `<Form>` / `<FormProvider>`. |
+| `field(name, defaultValue, validator?)` | Declare a typed field definition for `useForm({ fields })` — see [Form fields](/docs/patterns/form-fields). |
+| `nestValues(flat)` | Convert flat dot-path values (`{ 'address.city': 'x' }`) to a nested object. |
+| `flattenValues(nested)` | The inverse — flatten a nested object to dot-path keys. |
+
 ## Type Exports
 
 <APICard name="Accessor" type="type" signature={"Accessor<T> = Signal<T> | Computed<T>"} description="A reactive value that can be read by calling it. Both Signal and Computed satisfy this interface." />
@@ -1745,3 +1774,7 @@ function useFormContext<TValues>(): FormState<TValues>
 <APICard name="UseFieldArrayResult" type="type" signature={"UseFieldArrayResult<T>"} description="Return type of useFieldArray with methods for array manipulation." />
 <APICard name="UseFieldResult" type="type" signature={"UseFieldResult<T>"} description="Return type of useField with the field's signals, setters, and convenience computeds." />
 <APICard name="FormStateSummary" type="type" signature={"FormStateSummary<TValues>"} description="Shape returned by useFormState containing isSubmitting, isValid, isDirty, errors, and more." />
+<APICard name="SubmitOptions" type="type" signature={"SubmitOptions = { rethrow?: boolean }"} description="Options for a programmatic handleSubmit(options) call." />
+<APICard name="FormProps / SubmitProps" type="type" signature="FormProps, SubmitProps" description="Props of the <Form> and <Submit> components." />
+<APICard name="FieldDefinition / InferFieldValues / UseFormFieldsOptions" type="type" signature="FieldDefinition, InferFieldValues<TDefs>, UseFormFieldsOptions<TDefs>" description="Types for the field-definition form of useForm." />
+<APICard name="FieldNames / FieldValue / FormValues / NestValues" type="type" signature="FieldNames, FieldValue, FormValues, NestValues" description="Helper types for field names, per-field values, and nested value shapes." />

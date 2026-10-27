@@ -178,6 +178,7 @@ pyreon atlas init .              # detect this workspace's packages and write py
 pyreon atlas scan .              # derive + verify the component catalog (exits non-zero on failing scenarios)
 pyreon atlas dev .               # serve the Atlas workbench for this project
 pyreon atlas verify <Component>  # re-check ONE component; reports WHICH check failed
+pyreon atlas check <Component> '{"state":"primary"}'  # validate a proposed usage against the derived contract
 pyreon atlas verify-browser .    # browser-half verification: reactive coverage + visual snapshots
 pyreon atlas build .             # compile the workbench into a static, deployable site
 pyreon atlas --dry-run <args>    # print the npx command without launching
@@ -245,6 +246,7 @@ Conversion is per-**binding**: a `let`/`const` converts only when **every** refe
 | --- | --- |
 | `--write` | Apply the codemod to every fully-convertible binding, in place. |
 | `--json` | Machine-readable report (`files`, `summary`, `declinedHistogram`). |
+| `--include-tests` | Also scan test and spec files (skipped by default). |
 
 ## `pyreon doctor`
 
@@ -255,7 +257,7 @@ The orchestrator selects a gate set, runs every gate concurrently via `Promise.a
 Each gate emits **findings** in a unified shape: a `category` (`correctness` / `performance` / `architecture` / `testing` / `documentation` / `best-practices`), a `severity` (`error` / `warning` / `info`), a stable `<gate>/<rule>` code, a human message, an optional source location, and an optional fix hint. The aggregator sorts findings (errors first, then by category, then by code), tallies totals, and computes the score.
 
 :::note{title="Gate isolation"}
-A gate that throws is caught and recorded as a single `<gate>/gate-failed` **error** finding rather than rejecting the whole run. You always get a complete report — a broken gate surfaces as one finding instead of swallowing the other eleven.
+A gate that throws is caught and recorded as a single `<gate>/gate-failed` **error** finding rather than rejecting the whole run. You always get a complete report — a broken gate surfaces as one finding instead of swallowing the other fourteen.
 :::
 
 ### Scan scope — workspace roots
@@ -327,6 +329,7 @@ Letter grades:
 | `--gha` | Shortcut for `--format=gha` — GitHub Actions annotation lines. |
 | `--ci` | Exit non-zero on **error** findings only (advisory `best-practices` errors excluded; warnings/info never fail). |
 | `--audit-min-risk <high\|medium\|low>` | Minimum risk floor for the `audit-tests` gate (default: `medium`). |
+| `--roots <globs>` | Comma-separated globs (relative to cwd) that replace workspace-root discovery for the file-scanning gates. |
 | `--help`, `-h` | Print usage. |
 | `--version`, `-v` | Print the CLI version. |
 
@@ -656,17 +659,17 @@ console.log(context.components.length, 'components')
 | Command | Description |
 | --- | --- |
 | `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
-| `pyreon plain [paths] [--write] [--json]` | Plain-Mode readiness report + classic→plain codemod. No paths → the whole tree under cwd. |
+| `pyreon plain [paths] [--write] [--json] [--include-tests]` | Plain-Mode readiness report + classic→plain codemod. No paths → the whole tree under cwd. |
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |
 | `pyreon mcp [args]` | Launch the Pyreon MCP server (delegates to `@pyreon/mcp`; prefers the project-local install). |
-| `pyreon atlas [args]` | Component workbench (delegates to `@pyreon/atlas`: `init`/`scan`/`dev`/`verify`/`verify-browser`/`build`). |
+| `pyreon atlas [args]` | Component workbench (delegates to `@pyreon/atlas`: `init`/`scan`/`check`/`dev`/`verify`/`verify-browser`/`build`). |
 | `pyreon loom [args]` | Dependency observatory (delegates to `@pyreon/loom`: `scan`/`dev`/`build`). |
-| `pyreon lathe [args]` | Spec-to-client generator (delegates to `@pyreon/lathe`: `generate`/`check`/`pull`). |
+| `pyreon lathe [args]` | Spec-to-client generator (delegates to `@pyreon/lathe`: `init`/`generate`/`check`/`diff`/`pull`). |
 | `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 13 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
 | `pyreon info [--json]` | Environment + installed `@pyreon/*` versions + version-skew check. |
-| `pyreon upgrade [--to <v>] [--write] [--exact]` | Align every `@pyreon/*` dependency to one version. Dry-run by default. |
+| `pyreon upgrade [--to <v>] [--write] [--exact] [--json]` | Align every `@pyreon/*` dependency to one version. Dry-run by default. |
 | `pyreon lint [paths] [--fix] [--watch] […]` | Run `@pyreon/lint` (forwards every `pyreon-lint` flag). |
 | `pyreon --help` / `-h` | Show usage. |
 | `pyreon --version` / `-v` | Show the CLI version. |

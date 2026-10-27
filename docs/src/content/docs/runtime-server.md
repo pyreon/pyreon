@@ -1038,7 +1038,7 @@ export async function handler(req: Request): Promise<Response> {
 ### SSR with Head Management
 
 ```tsx
-import { renderWithHead } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head/ssr'
 import { h } from '@pyreon/core'
 import { App } from './App'
 
@@ -1173,9 +1173,25 @@ The renderer already uses `Promise.all` for array children, meaning sibling asyn
 
 ## Suspense Streaming Timeout
 
-Suspense boundaries in `renderToStream` have a 30-second timeout. If async children do not resolve within 30 seconds, the fallback HTML remains in the output and the stream continues without the resolved content. This prevents a single slow data source from blocking the entire page indefinitely.
+Each Suspense boundary in `renderToStream` waits `suspenseTimeoutMs` (default `30_000`). If async children do not resolve within that window, the fallback HTML remains in the output and the stream continues without the resolved content. This prevents a single slow data source from blocking the entire page indefinitely. Pass `Infinity` to disable the timeout; values `<= 0` or `NaN` fall back to the default.
 
 The timeout is per-boundary -- other Suspense boundaries that resolve faster are unaffected.
+
+`renderToStream(root, options?)` accepts:
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `suspenseTimeoutMs` | `number` | Per-boundary Suspense timeout in ms. Default `30_000`. |
+| `signal` | `AbortSignal` | Abandons pending Suspense boundaries when aborted (pass the incoming `Request.signal` to stop waiting when the client disconnects). The async work itself is not killed; the stream just stops awaiting it. |
+| `nonce` | `string` | CSP nonce stamped on every inline `<script>`/`<style>` the stream emits (the Suspense swap helper and calls, styler flushes). |
+
+```ts
+const stream = renderToStream(<App />, {
+  signal: request.signal,
+  suspenseTimeoutMs: 10_000,
+  nonce,
+})
+```
 
 ## XSS Protection in Suspense Templates
 
@@ -1218,7 +1234,7 @@ Keys are URL-encoded (and `-` is escaped), so a user-supplied key can never clos
 | Export                            | Type                                                           | Description                                           |
 | --------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------- |
 | `renderToString(root)`            | `(VNode \| null) => Promise<string>`                           | Render VNode tree to complete HTML string             |
-| `renderToStream(root)`            | `(VNode \| null) => ReadableStream<string>`                    | Render VNode tree to progressive HTML stream          |
+| `renderToStream(root, options?)`  | `(VNode \| null, RenderToStreamOptions?) => ReadableStream<string>` | Render VNode tree to progressive HTML stream          |
 | `runWithRequestContext(fn)`       | `<T>(fn: () => Promise<T>) => Promise<T>`                      | Run function with isolated context and store registry |
 | `configureStoreIsolation(setter)` | `(setter: (provider: () => Map<string, unknown> \| undefined) => void) => void` | Enable per-request store isolation for concurrent SSR |
 

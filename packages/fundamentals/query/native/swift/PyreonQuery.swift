@@ -37,8 +37,11 @@
 // so two screens reading `["todos"]` hit the same entry — the behaviour
 // that makes a query cache a cache. Entries store the decoded value as
 // `Any` (the queryKey implies the type; a mismatched cast is treated as a
-// miss). Bounded eviction is a follow-up; v1 keeps every key (the same
-// starting point every query cache had).
+// miss). The cache is BOUNDED: past `maxEntries` the least recently used
+// entry is evicted. A runtime key (a route param, a prop) adds one entry per
+// distinct value, so an unbounded cache grows for the life of the process.
+// Evicting is always safe: a live `PyreonQuery` keeps its own `data`, so an
+// evicted key costs only a refetch on its next stale check.
 
 import Foundation
 import Observation
@@ -53,30 +56,67 @@ public final class PyreonQueryCache: @unchecked Sendable {
         let at: Date
     }
     private var store: [String: Entry] = [:]
+    /// Keys from least to most recently used. Bounded by `maxEntries`, so the
+    /// linear moves stay small.
+    private var recency: [String] = []
     private let lock = NSLock()
 
+    /// The most entries kept before the least recently used is evicted.
+    /// Settable per app (`PyreonQueryCache.shared.maxEntries = 500`); lowering
+    /// it evicts down to the new bound on the next write.
+    public var maxEntries: Int {
+        get { lock.lock(); defer { lock.unlock() }; return _maxEntries }
+        set { lock.lock(); defer { lock.unlock() }; _maxEntries = max(1, newValue) }
+    }
+    private var _maxEntries: Int
+
+    public init(maxEntries: Int = 100) {
+        _maxEntries = max(1, maxEntries)
+    }
+
     /// The cached value for `key` and its age in seconds, or nil on a miss.
+    /// A hit counts as a use for eviction.
     func lookup<T>(_ key: String, as _: T.Type) -> (value: T, ageSeconds: TimeInterval)? {
         lock.lock(); defer { lock.unlock() }
         guard let e = store[key], let typed = e.value as? T else { return nil }
+        touch(key)
         return (typed, Date().timeIntervalSince(e.at))
     }
 
     func write(_ key: String, _ value: Any) {
         lock.lock(); defer { lock.unlock() }
         store[key] = Entry(value: value, at: Date())
+        touch(key)
+        while store.count > _maxEntries, let oldest = recency.first {
+            recency.removeFirst()
+            store.removeValue(forKey: oldest)
+        }
+    }
+
+    /// Number of cached entries (for tests and diagnostics).
+    public var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return store.count
     }
 
     /// Drop a key (invalidation). Public so an app can force a refetch path.
     public func invalidate(_ key: String) {
         lock.lock(); defer { lock.unlock() }
         store.removeValue(forKey: key)
+        recency.removeAll { $0 == key }
     }
 
     /// Test seam — clear everything between cases.
     public func clearAll() {
         lock.lock(); defer { lock.unlock() }
         store.removeAll()
+        recency.removeAll()
+    }
+
+    /// Move `key` to the most-recently-used end. Caller holds the lock.
+    private func touch(_ key: String) {
+        if let i = recency.firstIndex(of: key) { recency.remove(at: i) }
+        recency.append(key)
     }
 }
 

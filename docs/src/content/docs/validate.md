@@ -43,7 +43,7 @@ bun add zod        # or valibot, or arktype — any Standard Schema validator
 If you want **Pyreon's own `s` validator**, no extra dependency is needed — `import { s } from '@pyreon/validate'`.
 
 :::note[Bundle contract]
-The package is tree-shakeable in two layers. A **DX-helpers-only** import (`withField` / `parseReactive` / `formatErrors`) is ~**0.5 KB gz** — Pyreon's `s` runtime is never pulled in. The **`s` validator runtime** is included only when you import `s` (or its standalone primitives like `string`, `object`), adding the runtime for a combined ~**3.9 KB gz**. So pairing the helpers with Zod / Valibot / ArkType stays as light as before.
+The package is tree-shakeable in two layers. A **DX-helpers-only** import (`withField` / `parseReactive` / `formatErrors`) is ~**0.5 KB gz** — Pyreon's `s` runtime is never pulled in. The **`s` validator runtime** is included only when you import `s` (or its standalone primitives like `string`, `object`), adding the full chainable runtime — see "Tree-shaking" below for measured sizes and how the compiler prunes it. So pairing the helpers with Zod / Valibot / ArkType stays as light as before.
 :::
 
 ## Why this exists
@@ -383,7 +383,7 @@ Opt in once:
 
 ```ts
 // vite.config.ts
-import { pyreon } from '@pyreon/vite-plugin'
+import pyreon from '@pyreon/vite-plugin'
 export default { plugins: [pyreon({ optimizeValidators: true })] }
 ```
 
@@ -477,8 +477,6 @@ A numeric TS `enum { A }` compiles to `{ A: 0, 0: 'A' }`. `s.nativeEnum` filters
 | `.email(opts?)` | email; precision tiers `'html5'` / `'standard'` (default) / `'rfc5322'` |
 | `.url()` | `http(s)://…` |
 | `.url({ protocol })` | any RFC 3986 absolute URI whose scheme matches `protocol` (zod 4's option) — e.g. `/^[a-z][a-z0-9+.-]*$/i` for every scheme |
-
-On iOS and Android (PMTC), both forms lower to the same verdicts as the web — asserted by executing the emitted Swift and Kotlin over a corpus that includes the cases where the three regex engines disagree (`$` before a trailing newline, `\s` and `.` membership, case folding). A `protocol` that is not an inline, portable regular-expression literal is not guessed at: the field lowers without a URL check and the compiler warns by name.
 | `.uuid()` | UUID v1–v5 |
 | `.ip()` | IPv4 or IPv6 |
 | `.cidr()` | CIDR notation (`x.x.x.x/0-32` or `…/0-128`) |
@@ -493,6 +491,8 @@ On iOS and Android (PMTC), both forms lower to the same verdicts as the web — 
 | `.jwt()` | three base64url segments (`header.payload.signature`) |
 | `.duration()` | ISO 8601 duration (`P3Y6M4DT12H30M5S`, `PT1H`, …) |
 | `.iso.date()` / `.iso.dateTime()` / `.iso.time()` | ISO 8601 date / date-time / time |
+
+On iOS and Android (PMTC), both `.url()` forms lower to the same verdicts as the web — asserted by executing the emitted Swift and Kotlin over a corpus that includes the cases where the three regex engines disagree (`$` before a trailing newline, `\s` and `.` membership, case folding). A `protocol` that is not an inline, portable regular-expression literal is not guessed at: the field lowers without a URL check and the compiler warns by name.
 
 ```ts
 import { s } from '@pyreon/validate'
@@ -985,6 +985,30 @@ Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `P
 | **Tuple** | `.rest(schema)` for a variadic tail |
 | **Types** | `Infer<S>` · `Input<S>` · `Output<S>` · `Result<T>` · `Schema<T>` · `SuperRefineCtx` · `PyreonIssue` · `ValidationError` · `PendingCheck` |
 
+### Configuration and format registry
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| `configure` | `(options: ValidateConfig) => void` | Global runtime config. `configure({ jit: false })` disables code generation (`new Function`) for a CSP without `'unsafe-eval'`; affects schemas compiled after the call. |
+| `getFormatValidator` | `(name: string) => FormatValidator \| undefined` | The validator installed for a named format, if any. |
+| `uninstallFormatValidator` | `(name: string) => void` | Remove an installed format validator (falls back to the built-in). |
+| `resolveFormat` | `(name, light: FormatValidator) => FormatValidator` | The installed validator for `name`, else `light`. |
+| `installServerCheck` / `getServerCheck` / `uninstallServerCheck` | `(key, fn?: ServerCheckFn)` | The registry behind `.serverCheck(key)`. Apps normally use `registerServerCheck` from `@pyreon/validate/server`; these are exported for tests. |
+| `validateCreditCard` / `validateIp` / `validatePhone` / `isIPv6` | `(value: string) => boolean` | The lightweight client format validators, for standalone use. |
+
+Types: `ValidateConfig`, `FormatValidator`, `ServerCheckFn` (`(value, context?) => boolean \| Promise<boolean>`), `EmailPrecision` (`'html5' \| 'standard' \| 'rfc5322'`), `UrlOpts`.
+
+### Mini entry (`@pyreon/validate/mini`)
+
+The compiler's tree-shakeable emit target (see "Tree-shaking" above): lean base constructors (`object`, `string`, `number`, …) plus standalone check actions (`minLength`, `email`, `minValue`, `integer`, …), composed with `.check(...)` or `pipe(schema, ...actions)`. Verdicts are identical to the chainable form.
+
+### JSON Schema entry (`@pyreon/validate/json-schema`)
+
+| Export | Description |
+| --- | --- |
+| `toJsonSchema(schema, options?)` | Emit a JSON Schema document for an `s` schema (see "JSON Schema emit" above). |
+| `JsonSchema` / `ToJsonSchemaOptions` | The result type and the options type. |
+
 ### Server entry (`@pyreon/validate/server`)
 
 | Export | Description |
@@ -993,3 +1017,6 @@ Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `P
 | `addDisposableDomains(domains)` | Extend the disposable-email blocklist. |
 | `isDisposableEmail(email)` / `strictEmail(value)` / `strictPhone(value)` | The strict server validators. |
 | `installServerValidators()` | Explicitly install the strict email + phone validators (runs automatically on import). |
+| `uninstallServerCheck(key)` | Remove a registered server check. |
+
+Types: `ServerCheckFn`.

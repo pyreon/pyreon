@@ -21,12 +21,24 @@ A 10k-row `<For>` allocates ~10k signals + cleanup closures. The signal struct i
 import { useVirtualizer } from '@pyreon/virtual'
 
 function BigList(props: { rows: Row[] }) {
-  const v = useVirtualizer({ count: props.rows.length, estimateSize: () => 32, getScrollElement: () => scrollEl })
+  let scrollEl: HTMLDivElement | null = null
+  // Options are a function, so signal/prop reads inside them stay reactive.
+  const v = useVirtualizer(() => ({
+    count: props.rows.length,
+    estimateSize: () => 32,
+    getScrollElement: () => scrollEl,
+  }))
   return (
-    <div ref={scrollEl} style={{ height: '400px', overflow: 'auto' }}>
-      <For each={v.virtualItems()} by={(i) => i.key}>
-        {(item) => <Row row={props.rows[item.index]} />}
-      </For>
+    <div ref={(el) => (scrollEl = el)} style={{ height: '400px', overflow: 'auto' }}>
+      <div style={() => `height: ${v.totalSize()}px; position: relative`}>
+        <For each={() => v.virtualItems()} by={(item) => item.index}>
+          {(item) => (
+            <div style={`position: absolute; top: ${item.start}px; width: 100%`}>
+              <Row row={props.rows[item.index]} />
+            </div>
+          )}
+        </For>
+      </div>
     </div>
   )
 }
@@ -59,8 +71,8 @@ batch(() => { a.set(1); b.set(2); c.set(3) })   // one pass
 
 ## Measuring
 
-- `@pyreon/perf-harness` exposes dev-mode counters (mount, signalCreate, styler.resolve, …) — `perfHarness.overlay()` shows them live (Ctrl+Shift+P).
-- `examples/benchmark` runs the row-list benchmark; `bun run measure-memory` reports retained bytes per primitive.
+- In your app: the browser's Performance panel for wall-clock, and `@pyreon/testing`'s `expectEffect` / `expectSignal` matchers to assert how often an effect re-runs (a fire-count regression is usually the first sign of a reactivity problem).
+- In the Pyreon monorepo itself (not published to npm): `@pyreon/perf-harness` dev-mode counters, the `examples/benchmark` row-list suite, and `bun run measure-memory` for retained bytes per primitive.
 
 ## Common pitfalls
 

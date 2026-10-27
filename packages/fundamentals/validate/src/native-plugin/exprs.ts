@@ -128,6 +128,20 @@ export const safeParseExpr: ExprEmitter = {
 
 const fieldMetaOf = (item: { payload: unknown }): FieldMetaDefnIR => item.payload as FieldMetaDefnIR
 
+/** The native type and literal for a meta value. Swift and Kotlin share `Int`/`Double`/`String`; only the boolean
+ *  type name differs. A whole number outside 32-bit range is a `Double`, since Kotlin's `Int` is 32-bit. */
+function metaLiteral(
+  value: string | number | boolean,
+  str: (s: string) => string,
+  boolType: string,
+): [string, string] {
+  if (typeof value === 'string') return ['String', str(value)]
+  if (typeof value === 'boolean') return [boolType, String(value)]
+  if (Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) return ['Int', String(value)]
+  const text = String(value)
+  return ['Double', /[.eE]/.test(text) ? text : `${text}.0`]
+}
+
 const fieldMetaBindings: ItemBindings = {
   names: (item) => [item.name],
   rename(item, renames) {
@@ -157,7 +171,8 @@ export const fieldMetaItem: ModuleItemEmitter = {
     const lines: string[] = []
     lines.push(`struct PyreonFieldMeta_${fm.bindingName} {`)
     for (const m of fm.meta) {
-      lines.push(`    let ${m.name}: String = ${swiftStr(m.value)}`)
+      const [type, literal] = metaLiteral(m.value, swiftStr, 'Bool')
+      lines.push(`    let ${m.name}: ${type} = ${literal}`)
     }
     lines.push(`}`)
     lines.push(``)
@@ -176,7 +191,8 @@ export const fieldMetaItem: ModuleItemEmitter = {
     const lines: string[] = []
     lines.push(`data class PyreonFieldMeta_${fm.bindingName}(`)
     for (const m of fm.meta) {
-      lines.push(`    val ${m.name}: String = ${kotlinStr(m.value)},`)
+      const [type, literal] = metaLiteral(m.value, kotlinStr, 'Boolean')
+      lines.push(`    val ${m.name}: ${type} = ${literal},`)
     }
     lines.push(`)`)
     lines.push(``)

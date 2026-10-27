@@ -29,6 +29,10 @@ yarn add @pyreon/hooks
 
 :::
 
+:::note[Secure-context hooks]
+Eight hooks wrap browser APIs that exist only in a secure context: `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useClipboard`, `useNotifications`, `useShare` and `useWakeLock`. `localhost` is secure, but a phone opening your dev server at `http://192.168.x.x` is not, so the browser simply does not define those APIs there. The hooks dev-warn when they detect an insecure origin. To test on a real device, serve dev over HTTPS — `@pyreon/zero/server`'s `https({ lan: true })` does this.
+:::
+
 ## useToggle
 
 A simple boolean toggle with convenience methods. Useful for disclosure patterns, visibility toggles, and binary UI state.
@@ -1781,7 +1785,7 @@ const view = <div onMouseEnter={t.clear} onMouseLeave={t.reset}>…</div>
 Reactive "5 minutes ago" / "in 2 hours" relative-time string. Auto-updates on a sensible interval (every minute under an hour, every hour under a day, etc.) so the UI stays accurate without manual scheduling. Cleans up the interval on unmount.
 
 ```ts
-(date: Date | (() => Date), opts?: UseTimeAgoOptions) => Signal<string>
+(date: Date | number | (() => Date | number), opts?: UseTimeAgoOptions) => () => string
 ```
 
 ```tsx
@@ -2124,8 +2128,13 @@ These are the WEB halves of hooks the Pyreon Multi-Target Compiler already lower
 Thin reactive JSON fetch — `{ data, error, isPending, refetch }`, all signals. Fires once at setup (client-only; SSR renders the not-yet-loaded state). Each `refetch()` aborts the previous in-flight request so a slow stale response can never clobber a fresh one; unmount aborts too. Deliberately thinner than `@pyreon/query`: no cache, no dedup, no retries — reach for `@pyreon/query` when you need those. The same call compiles to native `PyreonFetch<T>` containers on iOS/Android via PMTC.
 
 ```ts
-function useFetch<T>(url: string): { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }
+function useFetch<T>(
+  source: string | PromiseLike<T>,
+  init?: UseFetchInit, // { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; headers?: Record<string, string>; body?: string }
+): { data: Signal<T | undefined>; error: Signal<unknown>; isPending: Signal<boolean>; refetch: () => void }
 ```
+
+`source` is a URL, or a promise such as an [`@pyreon/http`](/docs/http) endpoint call (`useFetch(getUser({ params: { id: '1' } }))`). Pass `init` for a non-GET request; on native it lowers to `PyreonHttp`, and the method and body must be literals there. `init.headers` are read once, when the request is built at setup — a value that changes later (a token after sign-in) belongs in `@pyreon/query`, whose `queryFn` builds the request on each run.
 
 ```tsx
 // @check
@@ -2312,6 +2321,8 @@ onMount(() => crash.start())
 </Show>
 ```
 
+On the web, forward reports to a vendor (Sentry, your own endpoint) with `setCrashTransport(send)` from `@pyreon/hooks`. `send(report: string)` is called with the rehydrated report on `start()` and with each recorded error; pass `undefined` to unset it. It mirrors the native crash-transport registry.
+
 ## API Reference
 
 | Hook                | Signature                                                      | Description                                         |
@@ -2350,7 +2361,7 @@ onMount(() => crash.start())
 | `useThrottledCallback` | `(callback, delay) => callback & { cancel }` | Throttle a callback invocation |
 | `useInterval` | `(callback, delay) => void` | Reactive `setInterval` with auto-cleanup |
 | `useTimeout` | `(callback, delay) => { reset, clear }` | Reactive `setTimeout` with auto-cleanup |
-| `useTimeAgo` | `(date, opts?) => Signal<string>` | Reactive "3 minutes ago"-style relative time string |
+| `useTimeAgo` | `(date, opts?) => () => string` | Reactive "3 minutes ago"-style relative time string |
 | `useBluetooth` | `() => UseBluetoothResult` | Web Bluetooth device scan/connect (SSR/unsupported-safe) |
 | `useDeviceMotion` | `() => UseDeviceMotionResult` | Reactive accelerometer/gyroscope readings |
 | `useSpeech` | `() => UseSpeechResult` | Speech synthesis (`speak`) + recognition |
@@ -2370,7 +2381,7 @@ onMount(() => crash.start())
 | `useImagePicker` | `() => UseImagePickerResult` | Pick an image from the gallery/camera roll |
 | `useSafeArea` | `() => () => SafeAreaInsets` | Reactive safe-area insets (notch-aware) |
 | `useScreenOrientation` | `() => UseScreenOrientationResult` | Reactive orientation + angle (read-only) |
-| `useFetch` | `<T>(url) => UseFetchResult<T>` | Thin reactive JSON fetch — `{ data, error, isPending, refetch }` |
+| `useFetch` | `<T>(source: string \| PromiseLike<T>, init?) => UseFetchResult<T>` | Thin reactive JSON fetch — `{ data, error, isPending, refetch }` |
 | `useSecureStorage` | `() => SecureStorage` | Imperative Keychain/Keystore-backed secret store |
 | `useAuth` | `<User = unknown>() => UseAuthResult<User>` | Shared auth-state container (status/user/error + transitions) |
 | `useDatabase` | `() => UseDatabaseResult` | A tiny local record store (insert/get/all/delete/find/count) |

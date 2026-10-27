@@ -2995,7 +2995,62 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     }
   }
 
+  // Collect this function as a pure-logic HELPER, or name why it cannot be one. Shared by the two helper gates
+  // below: the ordinary one (a top-level `return`) and the nested-return one.
+  const collectHelper = (): null => {
+    // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
+    // the IR has no generic-parameter representation, so a referenced `T`
+    // degrades to `unknown` and the emitted signature is uncompilable. Keep
+    // it a NAMED warning (the #2090 behavior for the shape helper-emission
+    // doesn't yet cover).
+    const isGeneric = ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    if (isGeneric) {
+      ctx.warnings.push(
+        `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
+      )
+      return null
+    }
+    // A non-generic pure-logic helper: parse it into the same
+    // `DeclIR{kind:'function'}` shape store methods use and collect it — the
+    // parse return threads `helperFns` to both emitters, which emit it at file
+    // scope via the reusable `emitSwiftFunction` / `emitKotlinFunction`. This
+    // REPLACES the #2090 warn+skip: the silent-mis-emit-as-broken-view is now
+    // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
+    // no `Double` type + no param-level fractional refinement — so an
+    // integer-literal call site needs no Kotlin numeric coercion.)
+    // Collect every non-generic helper. Two shapes previously deferred here
+    // are now HANDLED downstream, so there is no per-collect gate:
+    //   - a missing return annotation → `refineHelperReturns` infers the
+    //     return type from the body (drops the annotation requirement);
+    //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
+    //     now seeds the helper's Int params into the coercion ctx so the body
+    //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
+    //     `number` return to `Double`, so the signature matches (proven on
+    //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
+    //     Double return. A genuinely-un-inferable body is warned + dropped by
+    //     `refineHelperReturns`.
+    if (!unsupportedHelperParams(fn, name, ctx)) ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+    // The deferred props warnings were about PARAMETERS, not props. An
+    // unresolvable parameter type still reaches the native signature verbatim,
+    // so it is re-named in helper terms rather than dropped.
+    for (const w of deferredPropsWarnings) {
+      const unresolved = /^Component props type `([^`]+)` can't be resolved/.exec(w)?.[1]
+      if (unresolved !== undefined) {
+        ctx.warnings.push(
+          `Helper function \`${name}\`: parameter type \`${unresolved}\` can't be resolved — PMTC only resolves an object-shape \`type ${unresolved} = { … }\` / \`interface ${unresolved} { … }\` declared in the SAME file, a local string-literal union, or a native primitive. The native \`func\` / \`fun\` names \`${unresolved}\` verbatim, so it fails the build unless the platform itself defines a type of that name. Declare it locally or annotate the parameter with a supported type.`,
+        )
+      }
+    }
+    return null
+  }
+
   if (returnExpr === null) {
+    // No top-level `return` does not mean no return: a helper can return from every branch of an `if`/`else` or a
+    // `switch` (`function label(k: number) { if (k === 1) { return 'one' } else { return 'many' } }`). The
+    // component walk only records top-level returns, so such a helper used to reach the line below and be DROPPED
+    // with a "Component … no return statement found" warning, while the call to it stayed in the emit and failed
+    // to compile on both targets. The helper path already lowers control flow; route it there.
+    if (hasNestedValueReturns(fn, name, ctx)) return collectHelper()
     for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
     return null
@@ -3087,50 +3142,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     !returnContainsJsx(returnExpr) &&
     !returnsNothing
   ) {
-    // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
-    // the IR has no generic-parameter representation, so a referenced `T`
-    // degrades to `unknown` and the emitted signature is uncompilable. Keep
-    // it a NAMED warning (the #2090 behavior for the shape helper-emission
-    // doesn't yet cover).
-    const isGeneric = ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
-    if (isGeneric) {
-      ctx.warnings.push(
-        `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
-      )
-      return null
-    }
-    // A non-generic pure-logic helper: parse it into the same
-    // `DeclIR{kind:'function'}` shape store methods use and collect it — the
-    // parse return threads `helperFns` to both emitters, which emit it at file
-    // scope via the reusable `emitSwiftFunction` / `emitKotlinFunction`. This
-    // REPLACES the #2090 warn+skip: the silent-mis-emit-as-broken-view is now
-    // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
-    // no `Double` type + no param-level fractional refinement — so an
-    // integer-literal call site needs no Kotlin numeric coercion.)
-    // Collect every non-generic helper. Two shapes previously deferred here
-    // are now HANDLED downstream, so there is no per-collect gate:
-    //   - a missing return annotation → `refineHelperReturns` infers the
-    //     return type from the body (drops the annotation requirement);
-    //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
-    //     now seeds the helper's Int params into the coercion ctx so the body
-    //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
-    //     `number` return to `Double`, so the signature matches (proven on
-    //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
-    //     Double return. A genuinely-un-inferable body is warned + dropped by
-    //     `refineHelperReturns`.
-    if (!unsupportedHelperParams(fn, name, ctx)) ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
-    // The deferred props warnings were about PARAMETERS, not props. An
-    // unresolvable parameter type still reaches the native signature verbatim,
-    // so it is re-named in helper terms rather than dropped.
-    for (const w of deferredPropsWarnings) {
-      const unresolved = /^Component props type `([^`]+)` can't be resolved/.exec(w)?.[1]
-      if (unresolved !== undefined) {
-        ctx.warnings.push(
-          `Helper function \`${name}\`: parameter type \`${unresolved}\` can't be resolved — PMTC only resolves an object-shape \`type ${unresolved} = { … }\` / \`interface ${unresolved} { … }\` declared in the SAME file, a local string-literal union, or a native primitive. The native \`func\` / \`fun\` names \`${unresolved}\` verbatim, so it fails the build unless the platform itself defines a type of that name. Declare it locally or annotate the parameter with a supported type.`,
-        )
-      }
-    }
-    return null
+    return collectHelper()
   }
 
   // Confirmed a genuine component (past the helper carve-out) — NOW emit the
@@ -3190,6 +3202,76 @@ function warnLocalShadowsProp(
  * fragment, conditional root) IS recognized, so a real component can never be
  * misclassified as a helper.
  */
+/**
+ * Whether a function with NO top-level `return` is still a value-returning helper: every `return` sits inside
+ * control flow (`if`/`else`, `switch`, a loop). Uses the same rules as the ordinary helper gate in
+ * `tryComponentFromTopLevel`: a camelCase name, value parameters or a non-view return annotation, and no JSX in any
+ * returned value. All-nullish returns stay a component unless a non-view annotation says otherwise, matching
+ * that gate's `return null` rule.
+ */
+function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolean {
+  const first = name.charAt(0)
+  if (first !== first.toLowerCase() || first === first.toUpperCase()) return false
+  const returnAnno = (fn.returnType as { typeAnnotation?: AnyNode } | undefined)?.typeAnnotation
+  const annoText =
+    returnAnno !== undefined ? ctx.source.slice(returnAnno.start as number, returnAnno.end as number).trim() : ''
+  const nonViewAnno =
+    annoText !== '' && !/^(VNodeChild|JSX\.Element|Element|ReactNode|VNode|void|null)$/.test(annoText)
+  if (((fn.params as AnyNode[] | undefined)?.length ?? 0) === 0 && !nonViewAnno) return false
+  const args: AnyNode[] = []
+  let bare = false
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as AnyNode
+    // A nested function's returns are its own, not this function's.
+    if (
+      n.type === 'FunctionDeclaration' ||
+      n.type === 'FunctionExpression' ||
+      n.type === 'ArrowFunctionExpression' ||
+      n.type === 'ClassDeclaration' ||
+      n.type === 'ClassExpression'
+    ) {
+      return
+    }
+    if (n.type === 'ReturnStatement') {
+      if (n.argument) args.push(n.argument as AnyNode)
+      else bare = true
+      return
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(n[key])
+    }
+  }
+  visit(fn.body?.body)
+  if (args.length === 0 || bare) return false
+  const isNullish = (a: AnyNode): boolean =>
+    (a.type === 'Literal' && a.value === null) || (a.type === 'Identifier' && a.name === 'undefined')
+  if (!nonViewAnno && args.every(isNullish)) return false
+  return !args.some(astContainsJsx)
+}
+
+/** Whether an AST subtree contains a JSX element or fragment. */
+function astContainsJsx(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false
+  if (Array.isArray(node)) return node.some(astContainsJsx)
+  const n = node as AnyNode
+  if (n.type === 'JSXElement' || n.type === 'JSXFragment') return true
+  for (const key of Object.keys(n)) {
+    if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+      continue
+    }
+    if (astContainsJsx(n[key])) return true
+  }
+  return false
+}
+
 function returnContainsJsx(expr: ExprIR): boolean {
   switch (expr.kind) {
     case 'jsx-element':
@@ -5073,6 +5155,91 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
  * `i++` / `++i` / `i += K` (positive numeric literal K); and the body
  * never REASSIGNS the counter (Swift's range binding is a `let`).
  */
+/**
+ * `for (let i = 0, n = xs.length; i < n; i++)` — the "cache the bound" idiom. A native range loop evaluates its
+ * bound ONCE, which is exactly what caching it in a second declarator achieves in JS, so when every extra
+ * declarator is read in the loop TEST and nowhere else, substituting its initialiser into the test and lowering the canonical
+ * single-counter loop is semantically identical. Returns `node` unchanged when that does not hold — an extra name
+ * used in the body or the update (its value could be read after a mutation), an initialiser that reads the
+ * counter or another extra (its value would differ per iteration once inlined), or a non-identifier binding —
+ * and the caller's warning stands.
+ */
+function withCachedBoundsInlined(node: AnyNode): AnyNode {
+  const init = node.init as AnyNode | undefined
+  const decls = (init?.type === 'VariableDeclaration' ? (init.declarations as AnyNode[] | undefined) : undefined) ?? []
+  if (decls.length < 2 || !node.test) return node
+  const [counter, ...extras] = decls
+  if (counter?.id?.type !== 'Identifier') return node
+  const names = new Set<string>()
+  for (const d of extras) {
+    if (d?.id?.type !== 'Identifier' || !d.init) return node
+    names.add(d.id.name as string)
+  }
+  const replacements = new Map<string, AnyNode>()
+  for (const d of extras) {
+    if (identifiersRead(d.init).some((n) => n === counter.id.name || names.has(n))) return node
+    replacements.set(d.id.name as string, d.init as AnyNode)
+  }
+  if ([...identifiersRead(node.body), ...identifiersRead(node.update)].some((n) => names.has(n))) return node
+  // Every extra name must be READ by the test. An unread one would vanish with the substitution, and with it any
+  // side effect of its initialiser (`for (let i = 0, j = tick(); …)`).
+  const readByTest = new Set(identifiersRead(node.test))
+  if ([...names].some((n) => !readByTest.has(n))) return node
+  return {
+    ...node,
+    init: { ...init, declarations: [counter] },
+    test: substituteIdentifiers(node.test, replacements),
+  }
+}
+
+/** Identifier names READ in a subtree: not a non-computed member property or object key, which are names, not reads. */
+function identifiersRead(node: unknown): string[] {
+  const out: string[] = []
+  const visit = (n: unknown, parentKey?: string, parent?: AnyNode): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x, parentKey, parent)
+      return
+    }
+    const a = n as AnyNode
+    if (a.type === 'Identifier') {
+      const isPropertyName =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && !parent.computed) ||
+        ((parent?.type === 'Property' || parent?.type === 'ObjectProperty') && parentKey === 'key' && !parent.computed)
+      if (!isPropertyName) out.push(a.name as string)
+      return
+    }
+    for (const key of Object.keys(a)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(a[key], key, a)
+    }
+  }
+  visit(node)
+  return out
+}
+
+/** A copy of `node` with every READ of a name in `replacements` swapped for its replacement subtree. */
+function substituteIdentifiers(node: AnyNode, replacements: ReadonlyMap<string, AnyNode>): AnyNode {
+  const visit = (n: unknown, parentKey?: string, parent?: AnyNode): unknown => {
+    if (!n || typeof n !== 'object') return n
+    if (Array.isArray(n)) return n.map((x) => visit(x, parentKey, parent))
+    const a = n as AnyNode
+    if (a.type === 'Identifier') {
+      const isPropertyName =
+        (parent?.type === 'MemberExpression' && parentKey === 'property' && !parent.computed) ||
+        ((parent?.type === 'Property' || parent?.type === 'ObjectProperty') && parentKey === 'key' && !parent.computed)
+      const r = isPropertyName ? undefined : replacements.get(a.name as string)
+      return r ?? a
+    }
+    const copy: Record<string, unknown> = {}
+    for (const key of Object.keys(a)) copy[key] = visit(a[key], key, a)
+    return copy
+  }
+  return visit(node) as AnyNode
+}
+
 function classifyForRange(
   node: AnyNode,
   ctx: ParseCtx,
@@ -5334,8 +5501,14 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       // conditions/updates, a counter REASSIGNED in the body — Swift's
       // range binding is immutable) warns by name; pre-fix EVERY
       // ForStatement warn-dropped the whole loop.
-      const range = classifyForRange(node, ctx)
+      const range = classifyForRange(withCachedBoundsInlined(node), ctx)
       if (range !== null) return range
+      if (((node.init?.declarations as AnyNode[] | undefined)?.length ?? 0) > 1) {
+        ctx.warnings.push(
+          `A \`for\` loop with more than one declarator lowers only in the "cached bound" shape — \`for (let i = 0, n = xs.length; i < n; i++)\`, where every extra name is read in the test and nowhere else, and its initialiser does not read the counter. Here an extra name is unused, used in the body or update, or reads the counter — declare it before the loop instead.`,
+        )
+        return null
+      }
       ctx.warnings.push(
         `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\` or the descending \`for (let i = n; i >= 0; i--)\`; \`<=\`/\`>=\`, or \`i += k\`/\`i -= k\` with a positive literal step; the test and update must agree in direction and the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
       )
@@ -5385,12 +5558,21 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         else pendingTests.push(parseExpr(sc.test, ctx))
         const consequent = (sc.consequent as AnyNode[] | undefined) ?? []
         if (consequent.length === 0) continue // empty label — share next body
-        const body: StatementIR[] = []
+        // A braced case body (`case 1: { … }`) is the idiomatic way to scope a
+        // `const` to one case; Swift and Kotlin scope every case body on their
+        // own, so the braces flatten away. The flattened statements then go
+        // through the BLOCK walker, not one `parseStatement` at a time, so the
+        // shapes only it handles (a multi-declarator `const a = 1, b = 2`, a
+        // destructuring declaration) work in a case exactly as in a function
+        // body. Both used to be dropped here.
+        const flat: AnyNode[] = []
         for (const st of consequent) {
-          if (st.type === 'BreakStatement' && !st.label) continue // strip (no fall-through)
-          const parsed = parseStatement(st, ctx)
-          if (parsed) body.push(parsed)
+          if (st.type === 'BlockStatement') flat.push(...((st.body as AnyNode[] | undefined) ?? []))
+          else flat.push(st)
         }
+        // strip a case-level `break` (no fall-through on either target)
+        const kept = flat.filter((st) => !(st.type === 'BreakStatement' && !st.label))
+        const body = parseStatementBlock({ type: 'BlockStatement', body: kept }, ctx)
         cases.push({ tests: pendingDefault ? [] : pendingTests, body })
         pendingTests = []
         pendingDefault = false

@@ -280,8 +280,11 @@ describe('useUrlState rejection names the real reason', () => {
     expect(u('NaN')).toContain('NON-FINITE number')
   })
 
-  it('an array default keeps the collection wording; a variable gets "not a literal"', () => {
-    expect(u("['a']")).toContain('an array or object default')
+  // An array of scalar literals now LOWERS (a list binding), so the collection wording is asserted on the shapes that
+  // still decline: an object (a JSON codec with no native type) and an array the lists cannot hold (mixed element types).
+  it('an object / unholdable array keeps collection wording; a variable gets "not a literal"', () => {
+    expect(u('{ a: 1 }')).toContain('an object default')
+    expect(u("['a', 1]")).toContain('an array default lowers only when every element')
     expect(u('someVar')).toContain('this default is not a literal')
   })
 })

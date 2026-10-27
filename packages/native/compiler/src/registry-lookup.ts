@@ -663,6 +663,11 @@ export function isHeadLifecycleDecl(d: DeclIR): d is ExtDecl {
   )
 }
 
+/** The type of the BARE zero-arg call `<binding>()` of a callable plugin declaration, by its owner's typing, or `undefined`. */
+export function pluginValueType(d: ExtDecl): TypeIR | undefined {
+  return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.value?.(d)
+}
+
 /** The type of the zero-arg call read `<binding>.<property>()` on a plugin declaration, or `undefined`. */
 export function pluginCallReadType(d: ExtDecl, property: string): TypeIR | undefined {
   return activeRegistries().calls.emitter(d.plugin, d.type)?.typing?.callRead?.(d, property)

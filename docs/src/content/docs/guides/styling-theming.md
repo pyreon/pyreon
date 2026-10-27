@@ -34,12 +34,12 @@ Dynamic, signal-driven styling, live:
 
 ## unistyle — responsive props
 
-Values can be a single value, a mobile-first array, or a breakpoint object:
+Inside a unistyle-processed style object (a rocketstyle `.theme()`, for example), a value can be a single value, a mobile-first array, or a breakpoint object:
 
 ```tsx
-// padding: 8px on xs, 16px from md up
-<Box padding={[8, 8, 16]} />
-<Box padding={{ xs: 8, md: 16 }} />
+// padding: 8px on xs and sm, 16px from md up
+.theme(() => ({ padding: ['8px', '8px', '16px'] }))
+.theme(() => ({ padding: { xs: '8px', md: '16px' } }))
 ```
 
 Live breakpoint detection:
@@ -52,17 +52,19 @@ Dimensions (`state`, `size`, `variant`, theme, dark mode) map prop values to CSS
 
 ```tsx
 import { rocketstyle } from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
 
-const Button = rocketstyle('button')
+// rocketstyle(config?) returns a factory; call it with { name, component }.
+const Button = rocketstyle()({ name: 'Button', component: Element })
   .attrs({ tag: 'button' })                    // layout: tag, direction, gap…
-  .states({
-    primary: (t) => ({ background: t.colors.primary, color: 'white' }),
-    danger: (t) => ({ background: t.colors.danger, color: 'white' }),
-  })
-  .sizes({
-    small: () => ({ padding: '4px 8px' }),
-    large: () => ({ padding: '12px 24px' }),
-  })
+  .states((t) => ({
+    primary: { backgroundColor: t.colors.primary, color: 'white' },
+    danger: { backgroundColor: t.colors.danger, color: 'white' },
+  }))
+  .sizes(() => ({
+    small: { padding: '4px 8px' },
+    large: { padding: '12px 24px' },
+  }))
 
 // usage — string values, not booleans:
 <Button state="primary" size="large">Save</Button>
@@ -80,14 +82,14 @@ import { PyreonUI } from '@pyreon/ui-core'
 </PyreonUI>
 ```
 
-`mode` is `"light" | "dark" | "system"` (system auto-detects `prefers-color-scheme`); `useMode()` returns the resolved mode as a signal. Opt into CSS-variables mode with `init({ cssVariables: true })` — then a dark/light flip is a single `data-theme` attribute write with zero className churn.
+`mode` is `"light" | "dark" | "system"` (system auto-detects `prefers-color-scheme`); `useMode()` returns the resolved mode (`'light' | 'dark'`) as a plain value — call it inside a reactive scope (a JSX accessor, an effect) to track changes. Opt into CSS-variables mode with `init({ cssVariables: true })` — then a dark/light flip is a single `data-theme` attribute write with zero className churn.
 
 ## Common pitfalls
 
 - **Putting CSS in `.attrs()` or layout in `.theme()`.** Layout (`tag`, `direction`, `gap`, `alignX/Y`, `block`) belongs in `.attrs()`; colors/spacing/borders/pseudo-states belong in `.theme()`.
 - **Booleans when `useBooleans` is false (the default).** `<Button primary />` is silently dropped — write `<Button state="primary" />`.
 - **CSS-spec property order.** Unistyle uses property-first names: `borderWidthTop`, not `borderTopWidth`.
-- **Re-augmenting `ThemeDefault` / `StylesDefault` in an app.** `@pyreon/ui-theme` already augments them — a second augmentation triggers TS2320. Remove the app-level one.
+- **Re-augmenting the theme interface twice.** If a theme library you depend on already augments `ThemeDefault` / `StylesDefault`, a second app-level augmentation with a different type triggers TS2320. Remove the app-level one.
 
 ## Related
 

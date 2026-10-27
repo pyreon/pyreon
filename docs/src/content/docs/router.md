@@ -1028,6 +1028,32 @@ interface ResolvedRoute<
 }
 ```
 
+### useNavigate
+
+Returns a navigate function. It calls `router.push(path)`; use `useRouter().push` directly when you need the returned `NavigationResult`.
+
+```tsx
+import { useNavigate } from '@pyreon/router'
+
+function LogoutButton() {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate('/login')}>Log out</button>
+}
+```
+
+### useParams
+
+Returns the current route's params as a plain object. It is a **snapshot** read at call time (it reads `currentRoute()` once), so calling it in component setup does not track later param changes — use `useRoute()().params` inside a reactive scope for that.
+
+```tsx
+import { useParams } from '@pyreon/router'
+
+function UserPage() {
+  const { id } = useParams<{ id: string }>()
+  return <h1>User {id}</h1>
+}
+```
+
 ### useSearchParams
 
 Reactive read/write access to URL query parameters:
@@ -1035,7 +1061,7 @@ Reactive read/write access to URL query parameters:
 ```ts
 function useSearchParams<T extends Record<string, string>>(
   defaults?: T,
-): [get: () => T, set: (updates: Partial<T>) => Promise<void>]
+): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]
 ```
 
 ```tsx
@@ -1440,7 +1466,7 @@ interface LoaderContext {
 
 The `signal` is crucial for cancellation: if the user navigates away before the loader finishes, the signal is aborted. Always pass it to `fetch()` and other async operations.
 
-`request` is populated when the loader runs **during SSR** (via `prefetchLoaderData(router, path, request)`) AND for **serverLoaders run by the data endpoint** on client-side navigations — it is `undefined` for an isomorphic `loader` running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
+`request` is populated when the loader runs **during SSR** (via `router.preload(path, request)` or `prefetchLoaderData(router, path, request)`) AND for **serverLoaders run by the data endpoint** on client-side navigations — it is `undefined` for an isomorphic `loader` running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
 
 ```ts
 loader: ({ request }) => {
@@ -1545,25 +1571,30 @@ function OrgMembers() {
 
 ### SSR Data Loaders
 
-For SSR, prefetch loader data before rendering, serialize it into the HTML, and hydrate it on the client:
+For SSR, preload the matched route before rendering, serialize its loader data into the HTML, and hydrate it on the client:
 
 **Server:**
 
 ```tsx
-import { createRouter, prefetchLoaderData, serializeLoaderData } from '@pyreon/router'
+import { createRouter, serializeLoaderData, stringifyLoaderData } from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
 // In your SSR handler:
-const router = createRouter({ routes, url: req.url })
+const { pathname, search } = new URL(req.url)
+const router = createRouter({ routes, url: pathname + search })
 
-// Run all loaders for the matched route
-await prefetchLoaderData(router, req.url)
+// Resolve lazy route components AND run the matched loaders.
+// `renderToString` is synchronous over the route tree, so a lazy page that
+// was not preloaded renders empty.
+await router.preload(pathname + search, req)
 
 // Render the app
 const html = await renderToString(<App />)
 
-// Serialize loader data for client hydration
-const loaderData = JSON.stringify(serializeLoaderData(router))
+// Serialize loader data for client hydration. `stringifyLoaderData` escapes
+// `<`, U+2028 and U+2029 so the JSON cannot break out of the <script>, and
+// names the route when a loader returns a circular structure.
+const loaderData = stringifyLoaderData(serializeLoaderData(router))
 
 // Include in HTML response:
 const page = `
@@ -1641,7 +1672,7 @@ import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
 `getRedirectInfo(err)` returns `{ url, status }` for further inspection. Most apps don't need to touch these — the framework handles redirects transparently — but they're available for advanced control flow.
 
-**`LoaderContext.request`** is populated when a loader runs during SSR (via `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
+**`LoaderContext.request`** is populated when a loader runs during SSR (via `router.preload(path, request)` or `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
 
 ### notFound() — trigger a 404 boundary
 
@@ -1843,21 +1874,24 @@ The full `Router` interface:
 
 ```ts
 interface Router {
+  /** Which part of the URL holds the route ('hash' is the default) */
+  readonly mode: 'hash' | 'history'
+
   /** Navigate to a path or named route */
-  push(path: string): Promise<void>
+  push(path: string): Promise<NavigationResult>
   push(location: {
     name: string
     params?: Record<string, string>
     query?: Record<string, string>
-  }): Promise<void>
+  }): Promise<NavigationResult>
 
   /** Replace current history entry */
-  replace(path: string): Promise<void>
+  replace(path: string): Promise<NavigationResult>
   replace(location: {
     name: string
     params?: Record<string, string>
     query?: Record<string, string>
-  }): Promise<void>
+  }): Promise<NavigationResult>
 
   /** Go back in history */
   back(): void
@@ -1919,6 +1953,9 @@ interface Router {
    *  - function: invalidate entries where the predicate returns true
    */
   invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)): void
+
+  /** Re-run the current route's loaders in place (no navigation) */
+  revalidate(): Promise<void>
 
   /** Remove all event listeners, clear caches, abort in-flight navigations */
   destroy(): void
@@ -2374,21 +2411,28 @@ The module-level `_activeRouter` fallback is set by `RouterProvider` for CSR con
 A typical SSR flow:
 
 1. Create the router with `url: req.url`
-2. Prefetch loader data with `prefetchLoaderData(router, req.url)`
+2. Preload the route with `router.preload(path, req)` (resolves lazy components and runs loaders)
 3. Render the app to string
-4. Serialize loader data with `serializeLoaderData(router)` and embed in HTML
+4. Serialize loader data with `stringifyLoaderData(serializeLoaderData(router))` and embed in HTML
 5. On the client, create a new router and hydrate with `hydrateLoaderData(router, data)`
 6. Mount the app
 
 ```tsx
 // Server
-import { createRouter, prefetchLoaderData, serializeLoaderData } from '@pyreon/router'
+import {
+  createRouter,
+  RouterProvider,
+  RouterView,
+  serializeLoaderData,
+  stringifyLoaderData,
+} from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
 export async function handleRequest(req: Request): Promise<Response> {
-  const router = createRouter({ routes, url: new URL(req.url).pathname })
+  const path = new URL(req.url).pathname
+  const router = createRouter({ routes, url: path })
 
-  await prefetchLoaderData(router, new URL(req.url).pathname)
+  await router.preload(path, req)
 
   const html = await renderToString(
     <RouterProvider router={router}>
@@ -2396,7 +2440,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     </RouterProvider>,
   )
 
-  const loaderData = JSON.stringify(serializeLoaderData(router))
+  const loaderData = stringifyLoaderData(serializeLoaderData(router))
 
   return new Response(
     `
@@ -2604,7 +2648,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="stringifyQuery" type="function" signature={"stringifyQuery(params: Record<string, string>): string"} description="Convert a query object to a query string with a leading '?'. Returns empty string if the object is empty." />
 
-<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string, request?: Request): Promise<void>"} description="SSR: prefetch all loader data for the matched route at the given URL. The optional request is forwarded to loaders as LoaderContext.request." />
+<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string, request?: Request): Promise<void>"} description="Run all loaders for the matched route at the given URL (loaders only — it does not resolve lazy route components; use router.preload for SSR rendering). The optional request is forwarded to loaders as LoaderContext.request." />
 
 <APICard name="serializeLoaderData" type="function" signature={"serializeLoaderData(router: Router): Record<string, unknown>"} description="SSR: serialize the router's loader data for embedding in HTML." />
 
@@ -2619,6 +2663,14 @@ router.push({ name: 'user', params: { id: '42' } })
 <APICard name="notFound" type="function" signature="notFound(message?: string): never" description="Throw inside a loader or component to trigger the nearest NotFoundBoundary." />
 
 <APICard name="isNotFoundError" type="function" signature="isNotFoundError(err: unknown): boolean" description="Type guard — true when err is a notFound() sentinel." />
+
+<APICard name="stringifyLoaderData" type="function" signature={"stringifyLoaderData(data: Record<string, unknown>): string"} description="SSR: JSON-serialize loader data for an inline <script> — escapes <, U+2028 and U+2029, and throws a [Pyreon] error naming the key on a circular reference." />
+
+<APICard name="getActiveRouter / setActiveRouter" type="function" signature={"getActiveRouter(): Router | null / setActiveRouter(router: Router | null): void"} description="Read the router from context (falling back to the module-level active router), or install a router without a RouterProvider." />
+
+<APICard name="safeRedirectLocation / classifyRedirectTarget" type="function" signature={"safeRedirectLocation(target: string): string / classifyRedirectTarget(target: string): { kind: 'internal' | 'external' | 'block'; url: string }"} description="Classify a redirect target; safeRedirectLocation passes internal paths and http(s) URLs through and maps blocked targets (e.g. protocol-relative or javascript:) to '/'." />
+
+<APICard name="classifyHref / toRouterPath" type="function" signature={"classifyHref(to: string, config?: LinkConfig): LinkKind / toRouterPath(to: string): string"} description="How RouterLink classifies a target ('internal' | 'external' | 'hash' | 'protocol'), and the stripping of a same-origin absolute URL to a router path." />
 
 ### Components
 
@@ -2636,9 +2688,13 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useRoute" type="hook" signature={"useRoute(): () => ResolvedRoute"} description="Access the current resolved route as a reactive signal." />
 
+<APICard name="useNavigate" type="hook" signature={"useNavigate(): (path: string) => void"} description="Returns a function that navigates to a path via router.push." />
+
+<APICard name="useParams" type="hook" signature={"useParams<T extends Record<string, string>>(): T"} description="Snapshot of the current route's params (not reactive)." />
+
 <APICard name="useLoaderData" type="hook" signature={"useLoaderData<T>(): T"} description="Read data returned by the current route's loader function." />
 
-<APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
+<APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 
 <APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): TypedSearchParams<T>"} description="Type-safe search params with automatic coercion from URL strings." />
 
@@ -2679,6 +2735,8 @@ router.push({ name: 'user', params: { id: '42' } })
 <APICard name="NavigationGuard" type="type" signature={"type NavigationGuard = (to: ResolvedRoute, from: ResolvedRoute) => NavigationGuardResult | Promise<NavigationGuardResult>"} description="Guard function called before navigation commits." />
 
 <APICard name="NavigationGuardResult" type="type" signature="type NavigationGuardResult = boolean | string | undefined" description="Guard return type: true/undefined to allow, false to cancel, string to redirect." />
+
+<APICard name="RoutePath / ExternalHref / LinkKind" type="type" signature={"type RoutePath; type ExternalHref; type LinkKind = 'internal' | 'external' | 'hash' | 'protocol'"} description="RoutePath is the union of registered route paths (string when RegisteredRoutes is not augmented); ExternalHref is the template-literal type of hrefs RouterLink treats as external (scheme://…, mailto:, tel:, …); LinkKind is the result of classifyHref." />
 
 <APICard name="AfterEachHook" type="type" signature={"type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void"} description="Hook function called after navigation commits. Cannot affect navigation." />
 

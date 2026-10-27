@@ -252,6 +252,13 @@ export interface DeclLifecycle {
  * treat conservatively (no optional unwrapping, no numeric coercion).
  */
 export interface DeclTyping {
+  /**
+   * The type of the BARE zero-argument call `<binding>()` of a {@link DeclEmitter.callable} declaration — `tags()` on a
+   * `useUrlState('tags', ['a'])`. Without it that call is `unknown`, and a method chained onto it (`tags().length`,
+   * `tags().map(…)`) lowers without the receiver's type: Swift needs `.count` where the web says `.length`. Return
+   * `undefined` for a binding whose reads need no typing — a scalar interpolates through `callAsFunction` regardless.
+   */
+  value?(decl: ExtDecl): TypeIR | undefined
   /** The type of the zero-argument CALL read `<binding>.<property>()` (the web's signal-read shape), or `undefined`. */
   callRead?(decl: ExtDecl, property: string): TypeIR | undefined
   /**

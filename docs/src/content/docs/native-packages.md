@@ -149,6 +149,8 @@ pyreon-native assets    --target=<ios|android|web> --source=<dir> --out=<dir>
 pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
 pyreon-native dev       --target=<ios|android> [--app=<dir>] [--device=<name|id>] [--once]
 pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
+pyreon-native plugins   [--app=<dir>] [--verify]
+pyreon-native explain   <file.tsx> [--app=<dir>] [--no-plugins]
 ```
 
 | Command | Does |
@@ -158,6 +160,9 @@ pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [
 | `assets` | Materializes bundled images and fonts into the platform's expected layout. |
 | `stage-web` | Stages a web bundle for the [WebView host](/docs/multiplatform). |
 | `wire` | Resolves the native source roots an app needs (see above). `--android-out=<file>` writes the resolved Gradle `srcDirs` list; `--ios-out=<dir>` stages co-located Swift into `<dir>/PyreonNative` and links the SwiftPM runtimes into `<dir>/PyreonPackages`. A package that declares native sources whose directory is missing exits `2`. |
+| `dev` | The on-device edit loop: watches the source, compiles in memory, and on a real change runs an incremental `xcodebuild` / `gradle` build, installs it on the booted simulator or emulator and relaunches the app. `--once` runs one build-install-launch cycle and exits. |
+| `plugins` | Lists the service registry (each hook and the plugin that owns it), the call recognizers, the element lowerings, and every package-declared plugin (`pyreon.native.plugin` in a package's `package.json`). `--verify` checks that each service's Swift/Kotlin types are declared in that package's own native sources. |
+| `explain` | Compiles one file for both targets and prints, per service hook it uses, the owning plugin and the declaration each target emits. |
 
 Exit codes: `0` success, `1` usage error, `2` a compiler/build error on a source file (or a broken `wire` declaration).
 

@@ -38,6 +38,9 @@ function isUnsafeI18nKey(key: string): boolean {
  * - count === 0 tries an explicit `_zero` form before the CLDR category, so
  *   English can say "No items" even though CLDR has no `zero` category for `en`.
  * - context combines with plural: `key_male_one`, `key_male`, `key_one`, `key`.
+ * - a CLDR category with no message of its own falls back to `key_other`
+ *   before the bare key (a Czech `few` form not translated yet still shows
+ *   a plural, not the raw key). The native runtimes resolve the same order.
  *
  * Returns `[keyPath]` unchanged when neither context nor count is present.
  */
@@ -56,6 +59,7 @@ function buildKeyCandidates(
     if (count === 0) suffixes.push('zero')
     const category = resolvePluralCategory(locale, count as number, pluralRules)
     if (category !== 'zero') suffixes.push(category)
+    if (category !== 'other') suffixes.push('other')
   }
 
   const cands: string[] = []
