@@ -59,7 +59,7 @@
     "@pyreon/validation": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
@@ -71,7 +71,7 @@
     "formik": "^2.4.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-hook-form": "^7.90.0"
+    "react-hook-form": "^7.91.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

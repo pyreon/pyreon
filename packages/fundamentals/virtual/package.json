@@ -45,16 +45,16 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
-    "@tanstack/virtual-core": "^3.19.6"
+    "@tanstack/virtual-core": "^3.19.8"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@tanstack/react-virtual": "3.14.21",
+    "@tanstack/react-virtual": "3.14.23",
     "@vitest/browser-playwright": "^5.0.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

@@ -47,14 +47,14 @@
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/pdfmake": "^0.3.3",
-    "docx": "^9.13.0",
+    "docx": "^9.14.0",
     "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.12",
+    "pdfmake": "^0.3.13",
     "pptxgenjs": "^4.0.1"
   },
   "publishConfig": {

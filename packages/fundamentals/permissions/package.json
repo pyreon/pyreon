@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@casl/ability": "^7.0.2",
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
