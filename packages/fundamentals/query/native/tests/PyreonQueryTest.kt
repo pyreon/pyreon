@@ -56,10 +56,35 @@ fun testQueryRejectKeepsStaleData() {
     check(q.data.value == 5) { "an error leaves the last good data in place (stale-while-error)" }
 }
 
+fun testQueryCacheEvictsLeastRecentlyUsed() {
+    PyreonQueryCache.clearAll()
+    val before = PyreonQueryCache.maxEntries
+    try {
+        PyreonQueryCache.maxEntries = 2
+        PyreonQueryCache.write("a", 1)
+        PyreonQueryCache.write("b", 2)
+        check(PyreonQueryCache.lookup<Int>("a") != null) { "a is cached" }
+        PyreonQueryCache.write("c", 3) // a was just used, so b is the least recent
+        check(PyreonQueryCache.count == 2) { "the cache stays at maxEntries" }
+        check(PyreonQueryCache.lookup<Int>("b") == null) { "the least recently used key was evicted" }
+        check(PyreonQueryCache.lookup<Int>("a")?.first == 1) { "a recently read key survives" }
+        check(PyreonQueryCache.lookup<Int>("c")?.first == 3) { "the new key is cached" }
+        for (i in 0 until 50) PyreonQueryCache.write("k$i", i)
+        check(PyreonQueryCache.count == 2) { "a burst of distinct keys never exceeds the bound" }
+        PyreonQueryCache.maxEntries = 1
+        PyreonQueryCache.write("z", 9)
+        check(PyreonQueryCache.count == 1) { "lowering maxEntries sheds down to the new bound" }
+    } finally {
+        PyreonQueryCache.maxEntries = before
+        PyreonQueryCache.clearAll()
+    }
+}
+
 fun main() {
     testQueryFetchesOnMissThenServesFromCache()
     testQueryStaleServesCachedThenRefetches()
     testQueryBackgroundRefreshDoesNotBlankUI()
     testQueryRejectKeepsStaleData()
+    testQueryCacheEvictsLeastRecentlyUsed()
     println("[PyreonQueryTest] all smoke tests passed")
 }

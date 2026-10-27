@@ -72,6 +72,25 @@ struct PyreonQueryTests {
             check(q.data == 5, "an error keeps the last good data (stale-while-error)")
         }
 
+        // bounded: past maxEntries the least recently USED entry goes, so a
+        // runtime key (one entry per route param) cannot grow the cache forever
+        do {
+            let cache = PyreonQueryCache(maxEntries: 2)
+            cache.write("a", 1)
+            cache.write("b", 2)
+            check(cache.lookup("a", as: Int.self) != nil, "a is cached")
+            cache.write("c", 3) // a was just used, so b is the least recent
+            check(cache.count == 2, "the cache stays at maxEntries")
+            check(cache.lookup("b", as: Int.self) == nil, "the least recently used key was evicted")
+            check(cache.lookup("a", as: Int.self)?.value == 1, "a recently read key survives")
+            check(cache.lookup("c", as: Int.self)?.value == 3, "the new key is cached")
+            for i in 0..<50 { cache.write("k\(i)", i) }
+            check(cache.count == 2, "a burst of distinct keys never exceeds the bound")
+            cache.maxEntries = 1
+            cache.write("z", 9)
+            check(cache.count == 1, "lowering maxEntries sheds down to the new bound")
+        }
+
         print("[PyreonQueryTests] all assertions passed")
     }
 }
