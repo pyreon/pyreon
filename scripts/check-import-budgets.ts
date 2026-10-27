@@ -44,6 +44,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { staticClosureCode } from './bundle-static-closure'
 import { parseSync, Visitor } from 'oxc-parser'
 
 import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
@@ -65,7 +66,7 @@ declare const Bun: {
   }): Promise<{
     success: boolean
     logs: unknown[]
-    outputs: Array<{ kind: string; text(): Promise<string> }>
+    outputs: Array<{ kind: string; path: string; text(): Promise<string> }>
   }>
 }
 
@@ -443,11 +444,12 @@ async function measureScenario(s: Scenario): Promise<MeasuredImport> {
         error: result.logs.map((l) => String(l)).join('\n'),
       }
     }
-    const out = result.outputs.find((o) => o.kind === 'entry-point')
-    if (!out) {
+    // Entry plus its STATIC chunk closure — see bundle-static-closure.ts for
+    // why the entry-point file alone undercounts.
+    const code = await staticClosureCode(result.outputs)
+    if (code === null) {
       return { id: s.id, pkg: s.pkg, raw: 0, gzip: 0, failed: true, error: 'no entry-point output' }
     }
-    const code = await out.text()
     return {
       id: s.id,
       pkg: s.pkg,
