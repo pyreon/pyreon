@@ -622,14 +622,14 @@
       "warnings": 1
     },
     "golden-fixture:chart-kotlin-05.tsx|swift": {
-      "sha": "3e402ad278b76e197998d7aec6c70aa9b5547b7c7ff9d893cab19c608b819425",
-      "bytes": 7312,
-      "warnings": 2
+      "sha": "a996ffcda781bd613dfdc476aec5bb39659b3b72a298e6c9c3215f653f6b6a5d",
+      "bytes": 7387,
+      "warnings": 1
     },
     "golden-fixture:chart-kotlin-05.tsx|kotlin": {
-      "sha": "e6fc8b811622660190e5e9c39c38c7ccbf67b020b07ece1bdf9dfc126f52ee5d",
-      "bytes": 8079,
-      "warnings": 2
+      "sha": "e1d6fb191ff63ce592e1779fff77ebde7ac34ff78e9bfd3c58d821840b219de7",
+      "bytes": 8154,
+      "warnings": 1
     },
     "golden-fixture:chart-kotlin-06.tsx|swift": {
       "sha": "5c5929cb33ac17fcb31544f61e6bbcd6b0d9cf7da4f5d088bcbc2669621490b2",

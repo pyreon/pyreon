@@ -82,6 +82,7 @@ import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
 import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, type ThemeTable } from './theme-native'
 import { typeShapeKey, lowerRouteParams } from './expr-utils'
+import { bodyReturnsValue } from './async-function'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
 // `any` to keep the parser readable. As the IR coverage grows we can
@@ -3051,6 +3052,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     // with a "Component … no return statement found" warning, while the call to it stayed in the emit and failed
     // to compile on both targets. The helper path already lowers control flow; route it there.
     if (hasNestedValueReturns(fn, name, ctx)) return collectHelper()
+    // Nor does a function with no value return at all have to be a component: `function notify(msg: string) {
+    // toast(msg) }` is a side-effect helper, and it was dropped the same way. A component must return JSX, so a
+    // lowercase function with no value return and no JSX anywhere is a VOID helper.
+    if (isVoidHelper(fn, name)) return collectHelper()
     for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
     return null
@@ -3257,6 +3262,47 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
   return !args.some(astContainsJsx)
 }
 
+/**
+ * A top-level function that returns no value: a lowercase name (a PascalCase one is a component by convention, and one
+ * with no return is a component missing its JSX, which keeps its warning), no JSX anywhere in the body, and no
+ * `return` carrying a value in its own body (a bare `return;` is fine; nested functions' returns are theirs).
+ */
+function isVoidHelper(fn: AnyNode, name: string): boolean {
+  const first = name.charAt(0)
+  if (first !== first.toLowerCase() || first === first.toUpperCase()) return false
+  if (astContainsJsx(fn.body)) return false
+  let valueReturn = false
+  const visit = (node: unknown): void => {
+    if (valueReturn || !node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n)
+      return
+    }
+    const n = node as AnyNode
+    if (
+      n.type === 'FunctionDeclaration' ||
+      n.type === 'FunctionExpression' ||
+      n.type === 'ArrowFunctionExpression' ||
+      n.type === 'ClassDeclaration' ||
+      n.type === 'ClassExpression'
+    ) {
+      return
+    }
+    if (n.type === 'ReturnStatement') {
+      if (n.argument) valueReturn = true
+      return
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span' || key === 'start' || key === 'end') {
+        continue
+      }
+      visit(n[key])
+    }
+  }
+  visit(fn.body?.body)
+  return !valueReturn
+}
+
 /** Whether an AST subtree contains a JSX element or fragment. */
 function astContainsJsx(node: unknown): boolean {
   if (!node || typeof node !== 'object') return false
@@ -3329,6 +3375,9 @@ function refineHelperReturns(
     // Int×Double-coerced) body. A non-number annotation (string/boolean/struct)
     // is unambiguous → kept as-is.
     if (h.returnType.kind !== 'unknown' && h.returnType.kind !== 'number') continue
+    // A body with no `return <value>` is a VOID helper: an `unknown` return already emits as a plain `func` / `fun`
+    // with no result type, which is exactly right. There is nothing to infer, and failing to infer it must not drop it.
+    if (h.returnType.kind === 'unknown' && !bodyReturnsValue(h.body)) continue
     const inferred = inferReturnType(h.params, h.body, ctx)
     if (inferred.kind === 'unknown') {
       if (h.returnType.kind === 'number') continue // keep the `number` annotation
