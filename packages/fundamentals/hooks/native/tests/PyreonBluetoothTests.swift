@@ -44,6 +44,7 @@ struct PyreonBluetoothTests {
         // This directory's single @main also drives the sibling suites — see
         // PyreonRateLimitTests for why they cannot own their own entry point.
         PyreonRateLimitTests.runAll()
+        PyreonFilePickerTests.runAll()
     }
 
     @available(iOS 17.0, macOS 14.0, *)
