@@ -15,7 +15,7 @@
  * not reproduce the bug at all.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, Show, _fuse, _lc, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, h, Show, _fuse, _lc, _rp, cx } from '@pyreon/core'
 import { _bind, computed, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, test } from 'vitest'
