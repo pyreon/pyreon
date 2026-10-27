@@ -2247,6 +2247,20 @@ function renderPropValue(key: string, value: unknown): string | null {
   }
 }
 
+/**
+ * Props that exist only as DOM properties, with no content attribute to
+ * serialize. Kept in step with the compiled SSR path, which skips the
+ * lowercase ones (`indeterminate`, `volume`) at compile time in both backends.
+ */
+const PROPERTY_ONLY_PROPS = new Set([
+  'indeterminate',
+  'currentTime',
+  'playbackRate',
+  'defaultPlaybackRate',
+  'volume',
+  'srcObject',
+])
+
 function renderProp(tag: string, key: string, value: unknown): string | null {
   if (renderPropSkipped(key)) return null
 
@@ -2263,6 +2277,21 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   // in only after hydration, and stayed blank with JS off. The value is
   // emitted as the text content instead; see `textareaValue`.
   if (key === 'value' && tag === 'textarea') return null
+
+  // Props the client sets as a PROPERTY that maps onto a different content
+  // attribute, or onto none. The camelCase-to-kebab fallback below used to turn
+  // them into attributes no browser reads (`default-value="x"`), so the server
+  // HTML disagreed with what the client mount produces for the same props.
+  //   - `defaultValue` / `defaultChecked` on an input ARE the `value` /
+  //     `checked` content attributes; on a textarea `defaultValue` is the text
+  //     content (see `textareaValue`).
+  //   - `defaultMuted` on a media element is the `muted` content attribute.
+  //   - The rest exist only as properties, so there is nothing to serialize.
+  if (key === 'defaultValue' && tag === 'input') return renderProp(tag, 'value', value)
+  if (key === 'defaultChecked' && tag === 'input') return renderProp(tag, 'checked', value)
+  if (key === 'defaultValue' && tag === 'textarea') return null
+  if (key === 'defaultMuted' && (tag === 'video' || tag === 'audio')) return renderProp(tag, 'muted', value)
+  if (PROPERTY_ONLY_PROPS.has(key)) return null
 
   if (typeof value === 'function') {
     return renderProp(tag, key, (value as () => unknown)())
@@ -2776,7 +2805,9 @@ function rawTextContent(
 
 function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
   if (tag !== 'textarea' || props == null) return null
-  let v = props.value
+  // `value` wins over `defaultValue`, as on the client, where setting the
+  // `value` property after the default overrides it.
+  let v = props.value ?? props.defaultValue
   if (typeof v === 'function') v = (v as () => unknown)()
   if (v === null || v === undefined || typeof v === 'boolean') return null
   return escapeHtml(String(v))

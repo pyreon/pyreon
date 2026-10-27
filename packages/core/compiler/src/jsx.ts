@@ -2157,6 +2157,14 @@ export function transformJSX_JS(
     // costs nothing for a `<textarea>` without a `value`, and it covers the
     // static-bake arm as well as the runtime helper.
     if (tag === 'textarea' && name === 'value') return false
+    // `<textarea defaultValue>` is the same: on a textarea the default IS the
+    // text content, which `textareaValue` emits from the h() path.
+    if (tag === 'textarea' && name === 'defaultValue') return false
+    // Property-only props have no content attribute, and `renderProp` drops
+    // them (`PROPERTY_ONLY_PROPS` in runtime-server). The lowercase ones would
+    // otherwise be BAKED here as an attribute no browser reads; the camelCase
+    // ones already reach `_ssrAttr`, i.e. `renderProp`.
+    if (name === 'indeterminate' || name === 'volume') return true
     const isAria = name.charCodeAt(0) === 97 /* a */ && name.startsWith('aria-')
     // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't
     // replicate at BAKE time — so an uppercase-named attr can only go through

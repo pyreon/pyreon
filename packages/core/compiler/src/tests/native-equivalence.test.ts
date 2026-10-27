@@ -2985,3 +2985,17 @@ describeNative('re-mountable component-child templates (#3955)', () => {
     expect(root).not.toMatch(/, 1\)/)
   })
 })
+
+describe('JS syntax and optional native parity — SSR props with a different content attribute, or none', () => {
+  // `<textarea defaultValue>` bails to the h() path (its default is text
+  // content); `indeterminate` / `volume` have no content attribute and are
+  // skipped rather than baked. Both backends must agree byte for byte.
+  test('textarea defaultValue bails', () =>
+    compareSsrTemplate('export const C = () => <div><textarea defaultValue="draft" /></div>'))
+  test('indeterminate is skipped, not baked', () =>
+    compareSsrTemplate('export const C = () => <input type="checkbox" indeterminate />'))
+  test('volume is skipped, not baked', () =>
+    compareSsrTemplate('export const C = () => <video volume={0.5} />'))
+  test('input defaultValue reaches _ssrAttr', () =>
+    compareSsrTemplate('export const C = () => <input defaultValue="x" />'))
+})
