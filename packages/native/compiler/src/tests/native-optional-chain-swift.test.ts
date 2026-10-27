@@ -71,8 +71,16 @@ describe('P1 — Swift optional-chain fix + batch-3 finds', () => {
     expect(transform(src, { target: 'swift' }).code).toContain('String(nums[0])')
     expect(transform(src, { target: 'kotlin' }).code).toContain('nums[0].toString()')
   })
-  it('a destructured callback param warns NAMED on both targets (was silent unbound names)', () => {
+  it('a plain object-pattern callback param lowers to member reads (was silent unbound names, then a warning)', () => {
     const src = A(`  const out = computed(() => items().map(({name}: Item) => name).length)`)
+    for (const t of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target: t })
+      expect(r.warnings.some((w) => w.includes('destructured callback parameter'))).toBe(false)
+      expect(r.code).toMatch(/__p\d+\.name/)
+    }
+  })
+  it('a destructured callback param the lowering does not cover (a default) still warns NAMED on both targets', () => {
+    const src = A(`  const out = computed(() => items().map(({name = 'x'}: Item) => name).length)`)
     expect(transform(src, { target: 'swift' }).warnings.some((w) => w.includes('destructured callback parameter'))).toBe(true)
     expect(transform(src, { target: 'kotlin' }).warnings.some((w) => w.includes('destructured callback parameter'))).toBe(true)
   })

@@ -187,7 +187,7 @@ export function App() {
     expect(w.some((x) => x.includes('use an object type'))).toBe(true)
   })
 
-  it('object pattern warns too', () => {
+  it('a plain object pattern lowers to member reads (an unsupported one still warns — native-optional-chain-swift)', () => {
     const src = `
 import { signal, computed } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
@@ -200,6 +200,7 @@ export function App() {
     const out = transform(src, { target: 'kotlin' })
     expect(
       (out.warnings ?? []).some((x) => x.includes('destructured callback parameter')),
-    ).toBe(true)
+    ).toBe(false)
+    expect(out.code).toMatch(/todos\.map\(\{ (__p\d+) -> \1\.id \}\)/)
   })
 })
