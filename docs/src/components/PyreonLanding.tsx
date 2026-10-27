@@ -259,7 +259,7 @@ export function PyreonLanding() {
             <span class="pyreon-pill pyreon-pill--ember">firing</span>
           </div>
           <div class="px-counter">
-            <span class="px-counter-label">$count</span>
+            <span class="px-counter-label">count()</span>
             {/* Remount the digit span on every tick via `<For>` keyed
                 by `pulseKey`. CSS animations don't re-fire when only
                 text content changes — Vue uses `:key="pulseKey"` to
@@ -273,15 +273,15 @@ export function PyreonLanding() {
           <pre class="px-code">
             <span class="c-cm">{`// counter.tsx\n`}</span>
             <span class="c-kw">const</span>{' '}
-            <span class="c-var">$count</span> ={' '}
+            <span class="c-var">count</span> ={' '}
             <span class="c-fn">signal</span>(<span class="c-num">0</span>){'\n'}
             <span class="c-fn">setInterval</span>(() ={'>'}{' '}
-            <span class="c-var">$count</span>.<span class="c-fn">set</span>(
-            <span class="c-var">$count</span>+<span class="c-num">1</span>),{' '}
-            <span class="c-num">2600</span>){'\n'}
-            {'<'}<span class="c-fn">Counter</span>{'>'}
-            {'{'}<span class="c-var">$count</span>{'}'}
-            {'</'}<span class="c-fn">Counter</span>{'>'}
+            <span class="c-var">count</span>.<span class="c-fn">update</span>(
+            <span class="c-var">n</span> ={'>'} <span class="c-var">n</span> +{' '}
+            <span class="c-num">1</span>), <span class="c-num">2600</span>){'\n'}
+            {'<'}<span class="c-fn">span</span>{'>'}
+            {'{'}<span class="c-var">count</span>(){'}'}
+            {'</'}<span class="c-fn">span</span>{'>'}
           </pre>
           <p class="px-demo-foot">
             The wrapping component, the layout, the page — never re-render.
