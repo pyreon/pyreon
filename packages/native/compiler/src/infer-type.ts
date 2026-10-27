@@ -22,7 +22,7 @@ import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './ex
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
-import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
+import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -1390,6 +1390,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (sig) return sig
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
+        // …and the bare call of a CALLABLE plugin declaration (`tags()` on a `useUrlState`), typed by its owner.
+        const ext = ctx.extDecls?.get(expr.callee.name)
+        const declared = ext === undefined ? undefined : pluginValueType(ext)
+        if (declared !== undefined) return declared
         // …and a zero-arg HELPER call. The helper lookup below was gated on
         // `args.length >= 1`, so `f()` on a no-argument helper fell through
         // to `unknown` — the arity gate was an accident of where the helper
